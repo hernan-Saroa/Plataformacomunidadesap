@@ -1,16 +1,165 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ProcesoAuditable, NivelRiesgo } from './entities/proceso-auditable.entity';
+import { TipoProceso } from './entities/tipo-proceso.entity';
 import { CreateProcesoAuditableDto } from './dto/create-proceso-auditable.dto';
 import { UpdateProcesoAuditableDto } from './dto/update-proceso-auditable.dto';
+import { CreateTipoProcesoDto, UpdateTipoProcesoDto } from './dto/tipo-proceso.dto';
 
 @Injectable()
 export class UniversoAuditoriasService {
   constructor(
     @InjectRepository(ProcesoAuditable)
     private readonly procesoRepository: Repository<ProcesoAuditable>,
+    @InjectRepository(TipoProceso)
+    private readonly tipoProcesoRepository: Repository<TipoProceso>,
   ) {}
+
+  private readonly tiposProcesoDefault: Array<Pick<TipoProceso, 'codigo' | 'nombre' | 'color' | 'orden'>> = [
+    { codigo: 'estrategico', nombre: 'Estratégico', color: 'bg-purple-100 text-purple-700', orden: 1 },
+    { codigo: 'misional', nombre: 'Misional', color: 'bg-blue-100 text-blue-700', orden: 2 },
+    { codigo: 'apoyo', nombre: 'Apoyo', color: 'bg-green-100 text-green-700', orden: 3 },
+    { codigo: 'transversal', nombre: 'Transversal', color: 'bg-emerald-100 text-emerald-700', orden: 4 },
+    { codigo: 'evaluacion', nombre: 'Evaluación', color: 'bg-orange-100 text-orange-700', orden: 5 },
+    { codigo: 'territorial', nombre: 'Territorial', color: 'bg-teal-100 text-teal-700', orden: 6 },
+  ];
+
+  private normalizarCodigoTipo(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private async resolveTipoProceso(tipoProcesoId?: string, tipo?: string): Promise<TipoProceso | null> {
+    if (tipoProcesoId) {
+      const tipoProceso = await this.tipoProcesoRepository.findOne({ where: { id: tipoProcesoId } });
+      if (!tipoProceso) {
+        throw new BadRequestException(`Tipo de proceso con ID ${tipoProcesoId} no encontrado`);
+      }
+      return tipoProceso;
+    }
+
+    if (!tipo) return null;
+
+    const codigo = this.normalizarCodigoTipo(tipo);
+    const tipoProceso = await this.tipoProcesoRepository
+      .createQueryBuilder('tipoProceso')
+      .where('tipoProceso.codigo = :codigo', { codigo })
+      .orWhere('LOWER(tipoProceso.nombre) = LOWER(:tipo)', { tipo })
+      .getOne();
+
+    return tipoProceso || null;
+  }
+
+  async findTiposProceso(soloActivos = true): Promise<TipoProceso[]> {
+    const query = this.tipoProcesoRepository
+      .createQueryBuilder('tipoProceso')
+      .orderBy('tipoProceso.orden', 'ASC')
+      .addOrderBy('tipoProceso.nombre', 'ASC');
+
+    if (soloActivos) {
+      query.where('tipoProceso.activo = :activo', { activo: true });
+    }
+
+    return query.getMany();
+  }
+
+  async seedTiposProcesoDefaults(): Promise<TipoProceso[]> {
+    for (const tipoDefault of this.tiposProcesoDefault) {
+      const existente = await this.tipoProcesoRepository.findOne({ where: { codigo: tipoDefault.codigo } });
+      if (existente) {
+        await this.tipoProcesoRepository.save({
+          ...existente,
+          nombre: tipoDefault.nombre,
+          color: tipoDefault.color,
+          orden: tipoDefault.orden,
+          activo: true,
+        });
+      } else {
+        await this.tipoProcesoRepository.save(this.tipoProcesoRepository.create({
+          ...tipoDefault,
+          activo: true,
+        }));
+      }
+    }
+
+    return this.findTiposProceso(false);
+  }
+
+  async createTipoProceso(createDto: CreateTipoProcesoDto): Promise<TipoProceso> {
+    const codigo = this.normalizarCodigoTipo(createDto.codigo || createDto.nombre);
+    if (!codigo) {
+      throw new BadRequestException('El código del tipo de proceso es obligatorio');
+    }
+
+    const existente = await this.tipoProcesoRepository.findOne({ where: { codigo } });
+    if (existente) {
+      if (!existente.activo) {
+        return this.tipoProcesoRepository.save({
+          ...existente,
+          nombre: createDto.nombre,
+          color: createDto.color || existente.color,
+          orden: createDto.orden ?? existente.orden,
+          activo: true,
+        });
+      }
+      throw new BadRequestException(`Ya existe un tipo de proceso con el código ${codigo}`);
+    }
+
+    const maxOrden = await this.tipoProcesoRepository
+      .createQueryBuilder('tipoProceso')
+      .select('COALESCE(MAX(tipoProceso.orden), 0)', 'max')
+      .getRawOne<{ max: number }>();
+
+    const tipoProceso = this.tipoProcesoRepository.create({
+      codigo,
+      nombre: createDto.nombre,
+      color: createDto.color || 'bg-gray-100 text-gray-700',
+      orden: createDto.orden ?? Number(maxOrden?.max || 0) + 1,
+      activo: true,
+    });
+
+    return this.tipoProcesoRepository.save(tipoProceso);
+  }
+
+  async updateTipoProceso(id: string, updateDto: UpdateTipoProcesoDto): Promise<TipoProceso> {
+    const tipoProceso = await this.tipoProcesoRepository.findOne({ where: { id } });
+    if (!tipoProceso) {
+      throw new NotFoundException(`Tipo de proceso con ID ${id} no encontrado`);
+    }
+
+    if (updateDto.codigo) {
+      const codigo = this.normalizarCodigoTipo(updateDto.codigo);
+      const existente = await this.tipoProcesoRepository.findOne({ where: { codigo } });
+      if (existente && existente.id !== id) {
+        throw new BadRequestException(`Ya existe un tipo de proceso con el código ${codigo}`);
+      }
+      tipoProceso.codigo = codigo;
+    }
+
+    if (updateDto.nombre !== undefined) tipoProceso.nombre = updateDto.nombre;
+    if (updateDto.color !== undefined) tipoProceso.color = updateDto.color;
+    if (updateDto.orden !== undefined) tipoProceso.orden = updateDto.orden;
+    if (updateDto.activo !== undefined) tipoProceso.activo = updateDto.activo;
+
+    const saved = await this.tipoProcesoRepository.save(tipoProceso);
+    await this.procesoRepository.update({ tipoProcesoId: saved.id }, { tipo: saved.codigo });
+    return saved;
+  }
+
+  async inactivarTipoProceso(id: string): Promise<TipoProceso> {
+    const procesosAsociados = await this.procesoRepository.count({ where: { tipoProcesoId: id, activo: true } });
+    if (procesosAsociados > 0) {
+      throw new BadRequestException('No se puede inactivar un tipo con procesos activos asociados');
+    }
+
+    return this.updateTipoProceso(id, { activo: false });
+  }
 
   /**
    * Calcula el riesgo inherente (probabilidad * impacto)
@@ -185,6 +334,7 @@ export class UniversoAuditoriasService {
     soloActivos?: boolean;
   }): Promise<ProcesoAuditable[]> {
     const query = this.procesoRepository.createQueryBuilder('proceso')
+      .leftJoinAndSelect('proceso.tipoProceso', 'tipoProceso')
       .orderBy('proceso.prioridad', 'DESC')
       .addOrderBy('proceso.createdAt', 'DESC');
 
@@ -226,6 +376,7 @@ export class UniversoAuditoriasService {
   async findOne(id: string): Promise<ProcesoAuditable> {
     const proceso = await this.procesoRepository.findOne({
       where: { id },
+      relations: ['tipoProceso'],
     });
 
     if (!proceso) {
@@ -257,6 +408,7 @@ export class UniversoAuditoriasService {
     // Procesar evaluación de riesgo
     const { evaluacionRiesgo: evaluacionRiesgoCompleta, prioridad, priorizacionAnos } = 
       this.procesarEvaluacionRiesgo(createDto.evaluacionRiesgo);
+    const tipoProceso = await this.resolveTipoProceso(createDto.tipoProcesoId, createDto.tipo);
 
     // Calcular ultimaAuditoria y proximaAuditoria
     const ultimaAuditoria = createDto.ultimaAuditoria ? new Date(createDto.ultimaAuditoria) : undefined;
@@ -271,7 +423,9 @@ export class UniversoAuditoriasService {
       codigo: createDto.codigo,
       nombre: createDto.nombre,
       descripcion: createDto.descripcion || createDto.nombre,
-      tipo: createDto.tipo,
+      tipo: tipoProceso?.codigo || createDto.tipo,
+      tipoProcesoId: tipoProceso?.id,
+      tipoProceso: tipoProceso || undefined,
       macroproceso: createDto.macroproceso,
       unidadesAuditables: createDto.unidadesAuditables || [],
       responsable: createDto.responsable || 'Sin asignar',
@@ -308,7 +462,12 @@ export class UniversoAuditoriasService {
     // Actualizar campos básicos
     if (updateDto.nombre) proceso.nombre = updateDto.nombre;
     if (updateDto.descripcion) proceso.descripcion = updateDto.descripcion;
-    if (updateDto.tipo) proceso.tipo = updateDto.tipo;
+    if (updateDto.tipoProcesoId !== undefined || updateDto.tipo) {
+      const tipoProceso = await this.resolveTipoProceso(updateDto.tipoProcesoId, updateDto.tipo);
+      proceso.tipoProcesoId = tipoProceso?.id;
+      proceso.tipoProceso = tipoProceso || undefined;
+      proceso.tipo = tipoProceso?.codigo || updateDto.tipo || proceso.tipo;
+    }
     if (updateDto.macroproceso) proceso.macroproceso = updateDto.macroproceso;
     if (updateDto.unidadesAuditables !== undefined) proceso.unidadesAuditables = updateDto.unidadesAuditables;
     if (updateDto.responsable) proceso.responsable = updateDto.responsable;
@@ -443,4 +602,3 @@ export class UniversoAuditoriasService {
     };
   }
 }
-

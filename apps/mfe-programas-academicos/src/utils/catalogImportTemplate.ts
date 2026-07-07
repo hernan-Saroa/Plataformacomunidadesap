@@ -4,6 +4,8 @@ const PROGRAM_HEADERS = [
   'nombre_corto',
   'nombre_excel_origen',
   'tipo_programa',
+  'categoria_horas_circular003',
+  'descripcion_categoria_circular003',
   'codigo_facultad',
   'nombre_facultad',
   'modalidad_principal',
@@ -55,10 +57,42 @@ export async function downloadCatalogImportTemplate(): Promise<void> {
       'Programa ejemplo',
       'Programa académico de ejemplo',
       'pregrado',
+      'pregrado_territorial',
+      'APT / Territorial — 16h por crédito',
       'PREGRADO',
       'Pregrado',
       'presencial',
       16,
+      null,
+      true,
+    ],
+    [
+      'PRO-EJEMPLO-002',
+      'Pregrado Sede Central Ejemplo',
+      'AP_Diurno',
+      'AP Diurno',
+      'pregrado',
+      'pregrado_sede_central',
+      'Pregrado Sede Central (AP/EP) — Bloque Fijo',
+      'PREGRADO',
+      'Pregrado',
+      'presencial',
+      null,
+      64,
+      true,
+    ],
+    [
+      'PRO-EJEMPLO-003',
+      'Maestría de Ejemplo',
+      'Maestría Ejemplo',
+      'Maestría',
+      'maestria',
+      'maestria',
+      'Maestría — 12h por crédito',
+      'POSGRADO',
+      'Posgrado',
+      'presencial',
+      12,
       null,
       true,
     ],
@@ -90,7 +124,7 @@ export async function downloadCatalogImportTemplate(): Promise<void> {
     ['CET-0288', 'Sede Central', 'SC', 'SEDE_CENTRAL', 'X'],
   ]);
 
-  configureSheet(programSheet, [20, 38, 24, 38, 20, 22, 25, 24, 24, 26, 12], 'K');
+  configureSheet(programSheet, [20, 38, 24, 38, 20, 30, 44, 22, 25, 24, 24, 26, 12], 'M');
   configureSheet(subjectSheet, [22, 42, 36, 12, 15, 15, 22, 24, 34, 22, 38, 22, 28, 32, 12], 'O');
   configureSheet(offerSheet, [18, 30, 16, 28, 22], 'E');
 

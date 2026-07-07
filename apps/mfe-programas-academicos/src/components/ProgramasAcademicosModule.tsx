@@ -392,7 +392,7 @@ export function ProgramasAcademicosModule() {
             <div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">Programas Académicos</h1>
 
-              <p className="text-xs text-gray-400 mt-0.5">Gestión de programas de todas las sedes ESAP</p>
+              <p className="text-xs text-gray-400 mt-0.5">Gestión de programas de todos los CETAPs ESAP</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -588,7 +588,7 @@ export function ProgramasAcademicosModule() {
               onChange={(e) => setSedeFilter(e.target.value)}
               className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
             >
-              <option value="all">Sede</option>
+              <option value="all">CETAP</option>
               {sedes.map(sede => (
                 <option key={sede} value={sede}>{sede}</option>
               ))}
@@ -627,7 +627,7 @@ export function ProgramasAcademicosModule() {
                   <th className="px-6 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Programa</th>
                   <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Nivel</th>
                   <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Plan de Estudios</th>
-                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Sede</th>
+                  <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">CETAP</th>
                   <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Estudiantes</th>
                   <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Estado</th>
                   <th className="px-5 py-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider text-right">Acciones</th>
@@ -650,7 +650,25 @@ export function ProgramasAcademicosModule() {
                             <p className="font-semibold text-gray-900 text-xs group-hover:text-[#003DA5] transition-colors">
                               {programa.nombre}
                             </p>
-                            <p className="text-[10px] text-gray-400 font-mono mt-0.5">{programa.codigo}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px] text-gray-400 font-mono">{programa.codigo}</p>
+                              {programa.categoria_horas_circular003 && (
+                                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                  programa.categoria_horas_circular003 === 'pregrado_sede_central' ? 'bg-orange-100 text-orange-700' :
+                                  programa.categoria_horas_circular003 === 'pregrado_territorial' ? 'bg-blue-100 text-blue-700' :
+                                  programa.categoria_horas_circular003 === 'especializacion' ? 'bg-emerald-100 text-emerald-700' :
+                                  programa.categoria_horas_circular003 === 'maestria' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {programa.categoria_horas_circular003 === 'pregrado_sede_central' ? 'SC Fijo' :
+                                   programa.categoria_horas_circular003 === 'pregrado_territorial' ? 'Territorial' :
+                                   programa.categoria_horas_circular003 === 'especializacion' ? 'Esp.' :
+                                   programa.categoria_horas_circular003 === 'maestria' ? 'Maestría' : programa.categoria_horas_circular003}
+                                </span>
+                              )}
+                              {programa.nombre_corto && (
+                                <span className="text-[9px] text-gray-400">({programa.nombre_corto})</span>
+                              )}
+                            </div>
                           </div>
                         </td>
 
@@ -810,6 +828,59 @@ export function ProgramasAcademicosModule() {
                                     </div>
                                   </div>
 
+                                {/* Circular 003 — Configuración de Horas */}
+                                <div className="bg-white rounded-xl p-4 shadow-sm border border-blue-200">
+                                  <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-blue-600" />
+                                    Configuración Circular 003/2025
+                                  </h4>
+                                  <div className="space-y-2 text-sm">
+                                    <p className="text-gray-700">
+                                      <span className="font-semibold">Categoría Normativa:</span>{' '}
+                                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                                        programa.categoria_horas_circular003 === 'pregrado_sede_central' ? 'bg-orange-100 text-orange-700' :
+                                        programa.categoria_horas_circular003 === 'pregrado_territorial' ? 'bg-blue-100 text-blue-700' :
+                                        programa.categoria_horas_circular003 === 'especializacion' ? 'bg-emerald-100 text-emerald-700' :
+                                        programa.categoria_horas_circular003 === 'maestria' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                                      }`}>
+                                        {programa.descripcion_categoria_circular003 || programa.categoria_horas_circular003 || 'Sin categorizar'}
+                                      </span>
+                                    </p>
+                                    <p className="text-gray-700">
+                                      <span className="font-semibold">Tipo Programa:</span>{' '}
+                                      <span className="capitalize">{programa.tipo_programa || programa.nivelFormacion || 'N/A'}</span>
+                                    </p>
+                                    {programa.categoria_horas_circular003 === 'pregrado_sede_central' ? (
+                                      <>
+                                        <p className="text-gray-700">
+                                          <span className="font-semibold">Horas Bloque Fijo:</span> {programa.horas_pregrado_central || 64}h
+                                          <span className="text-gray-400 ml-1">(N/A por crédito)</span>
+                                        </p>
+                                        <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mt-1">
+                                          <p className="text-xs font-bold text-orange-800">
+                                            Fórmula: {programa.horas_pregrado_central || 64}h × 3 (Criterio 1+2) = <span className="text-orange-900 text-sm">{(programa.horas_pregrado_central || 64) * 3}h PTA</span>
+                                          </p>
+                                          <p className="text-[10px] text-orange-600 mt-0.5">Bloque fijo — independiente del número de créditos</p>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <p className="text-gray-700">
+                                          <span className="font-semibold">Horas Base por Crédito:</span> {programa.horas_base_por_credito || programa.horasBasePorCredito || 'N/A'}h/Cr
+                                        </p>
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mt-1">
+                                          <p className="text-xs font-bold text-blue-800">
+                                            Fórmula: Créditos × {programa.horas_base_por_credito || programa.horasBasePorCredito || '?'}h × 3 (Criterio 1+2)
+                                          </p>
+                                          <p className="text-[10px] text-blue-600 mt-0.5">
+                                            Ejemplo: 3 Cr × {programa.horas_base_por_credito || programa.horasBasePorCredito || '?'} × 3 = {3 * (programa.horas_base_por_credito || programa.horasBasePorCredito || 0) * 3}h PTA
+                                          </p>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+
                                 <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mt-4">
                                   <h4 className="font-black text-gray-900 text-sm mb-2">Descripción</h4>
                                   <p className="text-sm text-gray-700">{programa.descripcion}</p>
@@ -871,9 +942,19 @@ export function ProgramasAcademicosModule() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 flex-wrap">
                     {getNivelBadge(programa.nivelFormacion)}
                     <Badge variant="outline" className="text-xs">{programa.modalidad}</Badge>
+                    {programa.categoria_horas_circular003 && (
+                      <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                        programa.categoria_horas_circular003 === 'pregrado_sede_central' ? 'bg-orange-100 text-orange-700' :
+                        programa.categoria_horas_circular003 === 'pregrado_territorial' ? 'bg-blue-100 text-blue-700' :
+                        programa.categoria_horas_circular003 === 'especializacion' ? 'bg-emerald-100 text-emerald-700' :
+                        programa.categoria_horas_circular003 === 'maestria' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {programa.descripcion_categoria_circular003 || programa.categoria_horas_circular003}
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-3 pt-3 border-t border-gray-100">
@@ -926,6 +1007,30 @@ export function ProgramasAcademicosModule() {
                             <p><span className="font-semibold text-gray-900">Modalidad Principal:</span> <span className="capitalize">{programa.modalidad || 'Presencial'}</span></p>
                             <p><span className="font-semibold text-gray-900">Facultad:</span> {programa.facultad}</p>
                             <p><span className="font-semibold text-gray-900">Costo:</span> ${(programa.costoMatricula || 0).toLocaleString()} COP</p>
+                          </div>
+                        </div>
+
+                        {/* Circular 003 — Mobile */}
+                        <div>
+                          <h4 className="font-bold text-gray-900 text-[13px] mb-2 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-blue-600" />
+                            Circular 003/2025
+                          </h4>
+                          <div className="space-y-1.5 text-xs text-gray-700">
+                            <p><span className="font-semibold text-gray-900">Categoría:</span> {programa.descripcion_categoria_circular003 || programa.categoria_horas_circular003 || 'Sin categorizar'}</p>
+                            {programa.categoria_horas_circular003 === 'pregrado_sede_central' ? (
+                              <div className="bg-orange-50 border border-orange-200 rounded-lg px-2 py-1.5">
+                                <p className="text-[10px] font-bold text-orange-800">
+                                  Bloque fijo: {programa.horas_pregrado_central || 64}h × 3 = {(programa.horas_pregrado_central || 64) * 3}h PTA
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
+                                <p className="text-[10px] font-bold text-blue-800">
+                                  Cr × {programa.horas_base_por_credito || programa.horasBasePorCredito || '?'}h × 3 = horas PTA
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </div>
                         

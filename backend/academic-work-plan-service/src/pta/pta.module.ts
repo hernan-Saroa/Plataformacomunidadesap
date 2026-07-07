@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthModule } from '../auth/auth.module';
 import { PtaController } from './pta.controller';
 import { PtaService } from './pta.service';
+import { PtaPermissionsService } from './auth/pta-permissions.service';
+import { PtaAuthGuard } from './auth/pta-auth.guard';
+import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './entities/historial-estado-pta.entity';
 import { PtaEvidenciaEntity } from './entities/pta-evidencia.entity';
@@ -42,6 +46,7 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
 
 @Module({
   imports: [
+    AuthModule,
     TypeOrmModule.forFeature([
       PlanTrabajoAcademicoEntity,
       HistorialEstadoPtaEntity,
@@ -72,6 +77,6 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
     ]),
   ],
   controllers: [PtaController, AsignaturasImportController, CascadaController, PeriodoAcademicoController],
-  providers: [PtaService, AsignaturasImportService, ExcelParserService],
+  providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard, PtaNotificationsService],
 })
 export class PtaModule {}

@@ -260,6 +260,29 @@ export class ActuacionService {
         return { message: 'OTP enviado con éxito' };
     }
 
+    /**
+     * Verifica el OTP en el paso de verificación de identidad, SIN consumirlo ni
+     * autorizar la actuación. Permite rechazar códigos incorrectos de inmediato
+     * (antes de la animación de firma) en lugar de esperar a autorizarActuacion.
+     * El código se elimina solo al autorizar, por lo que esta comprobación es
+     * idempotente y puede llamarse las veces que sea necesario.
+     */
+    async verificarOtp(actuacionId: string, otp: string): Promise<{ valid: boolean }> {
+        const actuacion = await this.actuacionRepository.findOne({ where: { id: actuacionId } });
+        if (!actuacion) throw new NotFoundException('Actuación no encontrada');
+
+        const metadata = actuacion.metadata || {};
+
+        if (!metadata.otp || metadata.otp !== otp) {
+            throw new BadRequestException('Código OTP incorrecto');
+        }
+        if (!metadata.otpExpiry || new Date(metadata.otpExpiry) < new Date()) {
+            throw new BadRequestException('El código OTP ha expirado');
+        }
+
+        return { valid: true };
+    }
+
     async autorizarActuacion(
         actuacionId: string,
         otp: string,

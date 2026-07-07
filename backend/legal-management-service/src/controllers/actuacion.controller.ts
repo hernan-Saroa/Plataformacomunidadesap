@@ -164,6 +164,14 @@ export class ActuacionController {
         return this.actuacionService.enviarOtp(actuacionId, email, name);
     }
 
+    @Post(':actuacionId/verificar-otp')
+    async verificarOtp(
+        @Param('actuacionId') actuacionId: string,
+        @Body('otp') otp: string
+    ) {
+        return this.actuacionService.verificarOtp(actuacionId, otp);
+    }
+
     @Post(':actuacionId/autorizar')
     @UseInterceptors(FileInterceptor('file', {
         storage: diskStorage({

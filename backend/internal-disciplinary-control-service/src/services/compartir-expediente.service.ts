@@ -177,6 +177,7 @@ export class CompartirExpedienteService {
   async obtenerExpedientePublico(token: string, frontendBaseUrl?: string): Promise<{
     token: string;
     requiereClave: boolean;
+    fechaExpiracionEnlace: Date | null;
     proceso: {
       id: string;
       radicado: string;
@@ -220,6 +221,7 @@ export class CompartirExpedienteService {
     return {
       token: compartido.tokenAcceso,
       requiereClave: compartido.requiereClave,
+      fechaExpiracionEnlace: compartido.fechaExpiracion,
       proceso: {
         id: proceso.id,
         radicado: proceso.radicadoProceso,

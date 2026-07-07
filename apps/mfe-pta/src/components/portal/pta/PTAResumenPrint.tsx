@@ -127,7 +127,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
             {/* Componente Investigación (Si existe) */}
             {(() => {
               // Normaliza desde el DTO plano (extension_actividades, etc.) o desde la forma agrupada (backoffice)
-              const proyectos = pta?.investigacion_proyecto?.nombre
+              const proyectos = (pta?.investigacion_proyecto?.nombre || pta?.investigacion_proyecto?.rol)
                 ? [pta.investigacion_proyecto]
                 : (pta?.investigacion?.proyectos || []);
               const actividades = pta?.investigacion_actividades || pta?.investigacion?.actividades || [];

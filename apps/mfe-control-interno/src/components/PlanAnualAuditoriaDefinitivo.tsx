@@ -2896,30 +2896,43 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         vigenciaContext?.refetch?.();
         if (opciones?.permanecerEnWizard) {
           setAñoActual(vigencia);
-          await abrirWizardConPlan(
-            {
-              id: planCreado.id,
-              vigencia,
-              version: 1,
-              estado: 'BORRADOR',
-              jefeOCI: {
-                ...jefeOCI,
-                id: responsableIdPerson,
-                idPerson: responsableIdPerson,
-                idTercero: responsableIdPerson,
-              },
-              fechaInicio,
-              fechaFin,
-              equipoAprobacion: comiteAprobacion || [],
-              ordenAprobacion: ordenAprobacion || 'secuencial',
-              roles: [],
-            } as PlanAnual,
-            false,
+          const yaEditandoEstePlan = planAEditar && planAEditar.id === planCreado.id;
+          const tieneNuevasActividades = rolesConfig.some((rc: any) =>
+            (rc.actividadesSeleccionadas || []).some((a: any) => a?.incluidaEnPlan !== false && !esUUID(a?.id)) ||
+            (rc.actividadesCustom || []).some((a: any) => !esUUID(a?.id))
           );
-          if (!opciones?.silencioso) {
-            toast.success('Plan creado en borrador', {
-              description: 'Sigue en el asistente. Ya no verá el aviso de borrador temporal en inicio.',
-            });
+
+          if (!yaEditandoEstePlan || tieneNuevasActividades) {
+            await abrirWizardConPlan(
+              {
+                id: planCreado.id,
+                vigencia,
+                version: 1,
+                estado: 'BORRADOR',
+                jefeOCI: {
+                  ...jefeOCI,
+                  id: responsableIdPerson,
+                  idPerson: responsableIdPerson,
+                  idTercero: responsableIdPerson,
+                },
+                fechaInicio,
+                fechaFin,
+                equipoAprobacion: comiteAprobacion || [],
+                ordenAprobacion: ordenAprobacion || 'secuencial',
+                roles: [],
+              } as PlanAnual,
+              false,
+            );
+            if (!opciones?.silencioso) {
+              toast.success('Plan creado en borrador', {
+                description: 'Sigue en el asistente. Ya no verá el aviso de borrador temporal en inicio.',
+              });
+            }
+          } else {
+            // Si ya estábamos editando este plan y no hay nuevas actividades,
+            // simplemente actualizamos el planAEditar sin remount del Wizard
+            const planCompleto = transformarPlanBackendAFicha(planCreado);
+            setPlanAEditar(planCompleto);
           }
           return true;
         }

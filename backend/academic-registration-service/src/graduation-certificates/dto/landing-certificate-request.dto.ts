@@ -1,6 +1,6 @@
 export class LandingCertificateRequestDto {
   /**
-   * Número de cédula del graduado
+   * Número de documento del graduado
    */
   idNumber: string;
 

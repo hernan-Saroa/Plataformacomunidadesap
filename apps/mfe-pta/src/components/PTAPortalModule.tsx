@@ -53,7 +53,16 @@ export function PTAPortalModule({
     >
       <NotificationsProvider>
         <>
-          <Toaster position="bottom-right" richColors />
+          <Toaster 
+            position="bottom-right" 
+            richColors 
+            closeButton 
+            toastOptions={{
+              classNames: {
+                closeButton: 'left-2 right-auto hover:bg-gray-200 bg-white border-gray-200'
+              }
+            }}
+          />
           <div className="min-h-screen">
             {!embedded && (
               <div className="sticky top-0 z-10 bg-white border-b">

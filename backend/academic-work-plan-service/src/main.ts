@@ -2,10 +2,15 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.getHttpAdapter().getInstance().disable?.('x-powered-by');
+
+  // Increase body size limit for large PTA configurations
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   app.set('trust proxy', true);
 

@@ -118,6 +118,10 @@ export class CreateProcesoAuditableDto {
   @IsNotEmpty()
   tipo: string;
 
+  @IsOptional()
+  @IsString()
+  tipoProcesoId?: string;
+
   @IsString()
   @IsNotEmpty()
   macroproceso: string;
@@ -156,4 +160,3 @@ export class CreateProcesoAuditableDto {
   @IsOptional()
   proximaAuditoria?: string;
 }
-

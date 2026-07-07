@@ -38,6 +38,8 @@ export interface ProcesoAuditable {
   nombre: string;
   descripcion: string;
   tipo: string;
+  tipoProcesoId?: string;
+  tipoProceso?: TipoProceso;
   macroproceso?: string;
   unidadesAuditables?: { id: string; nombre: string; descripcion?: string }[];
   responsable: string;
@@ -82,6 +84,17 @@ export interface ProcesoAuditable {
   priorizacionAnos: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TipoProceso {
+  id: string;
+  codigo: string;
+  nombre: string;
+  color: string;
+  orden: number;
+  activo: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /**
@@ -518,6 +531,42 @@ class ControlInternoService {
   // ==========================================================================
   // UNIVERSO DE AUDITORÍAS
   // ==========================================================================
+
+  /**
+   * Obtiene los tipos de proceso parametrizados.
+   */
+  async getTiposProceso(soloActivos = true): Promise<TipoProceso[]> {
+    const q = soloActivos ? '' : '?soloActivos=false';
+    return client.get<TipoProceso[]>(`/universo-auditorias/tipos-proceso${q}`);
+  }
+
+  /**
+   * Crea un tipo de proceso.
+   */
+  async createTipoProceso(data: Partial<TipoProceso>): Promise<TipoProceso> {
+    return client.post<TipoProceso>('/universo-auditorias/tipos-proceso', data);
+  }
+
+  /**
+   * Actualiza un tipo de proceso.
+   */
+  async updateTipoProceso(id: string, data: Partial<TipoProceso>): Promise<TipoProceso> {
+    return client.put<TipoProceso>(`/universo-auditorias/tipos-proceso/${id}`, data);
+  }
+
+  /**
+   * Inactiva un tipo de proceso.
+   */
+  async inactivarTipoProceso(id: string): Promise<TipoProceso> {
+    return client.patch<TipoProceso>(`/universo-auditorias/tipos-proceso/${id}/inactivar`, {});
+  }
+
+  /**
+   * Restaura/reactiva los tipos base del sistema.
+   */
+  async seedTiposProcesoDefaults(): Promise<TipoProceso[]> {
+    return client.post<TipoProceso[]>('/universo-auditorias/tipos-proceso/seed-defaults', {});
+  }
 
   /**
    * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).

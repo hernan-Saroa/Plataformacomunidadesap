@@ -368,6 +368,10 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/enviar-otp`, {});
     }
 
+    async verificarOtpActuacion(expedienteId: string, actuacionId: string, otp: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/verificar-otp`, { otp });
+    }
+
     async autorizarActuacion(expedienteId: string, actuacionId: string, otp: string, file: File): Promise<any> {
         const formData = new FormData();
         formData.append('otp', otp);

@@ -24,7 +24,7 @@ export function ReportePTAInstitucional({
   const asignaturas = pta.asignaturas || [];
 
   // Normaliza desde el DTO plano (o forma agrupada del backoffice como fallback).
-  const proyectosInv = pta?.investigacion_proyecto?.nombre
+  const proyectosInv = (pta?.investigacion_proyecto?.nombre || pta?.investigacion_proyecto?.rol)
     ? [pta.investigacion_proyecto]
     : (pta?.investigacion?.proyectos || []);
   const actInv = pta?.investigacion_actividades || pta?.investigacion?.actividades || [];

@@ -25,8 +25,9 @@ import {
   guardarFirmaDigitalPTA, getPTAUserData, savePTAUserData, deletePTA,
   getAllPtasConEvidencias, revisarEvidenciaPTA,
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
+  getPTAById,
 } from '../../services/api/ptaApi';
-import { apiClient } from '../../../../shell/src/services/api';
+import { apiClient, getBaseURL } from '../../../../shell/src/services/api';
 import { usePTARealtimeSync } from '../../hooks/usePTARealtimeSync';
 import { PTASyncIndicator } from './PTASyncIndicator';
 import {
@@ -37,6 +38,7 @@ import {
   Bookmark, Keyboard, Sigma, Columns3, Activity, Zap,
   Sliders, Star, StickyNote, GitCompare, RefreshCw, Layers,
   Command, ChevronUp, Tag, Bell, GripVertical, Shield, FolderOpen, MoreHorizontal, Trash2, Download,
+  GraduationCap, MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotifications } from '../esap/NotificationsContext';
@@ -54,6 +56,12 @@ import { PTAWorkflowPipeline } from './PTAWorkflowPipeline';
 import { PTAMobileBar } from './PTAMobileBar';
 import { PTAWorldClassToolbar } from './PTAWorldClassToolbar';
 import { ESAPLogoLoader } from '../common/ESAPLogoLoader';
+import {
+  PTA_COMPONENT_KEYS,
+  PTA_EXTENSION_COMPONENT_KEYS,
+  type PTAComponentKey,
+  hasAnyComponentApprovalData,
+} from './shared/ptaComponentPermissions';
 import '../../styles/pta-world-class.css';
 
 // ══ Lazy-loaded components (code splitting — loaded only when their tab/view is active) ══
@@ -126,6 +134,7 @@ function getStatusConfig(estado: string) {
     case 'MODIFICADO_DOCENTE': return { bg: '#F3E8FF', color: '#6B21A8', border: '#DDD6FE' };
     case 'CONCERTADO': return { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7' };
     case 'ESCALADO_SNA': return { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5' };
+    case 'PENDIENTE_APROBACION':
     case 'Pendiente Jefatura': return { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' };
     case 'Pendiente Decanatura': return { bg: '#DBEAFE', color: '#1E40AF', border: '#93C5FD' };
     case 'Pendiente Gestión Profesoral': return { bg: '#E0E7FF', color: '#3730A3', border: '#A5B4FC' };
@@ -136,11 +145,15 @@ function getStatusConfig(estado: string) {
     case 'RADICADO': return { bg: '#047857', color: '#FFFFFF', border: '#059669' };
     case 'Rechazado': return { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5' };
     case 'Devuelto': return { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74' };
+    case 'Terminado':
+    case 'TERMINADO': return { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB' };
     default: return { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' };
   }
 }
 
 function getNextState(current: string): string {
+  if (isEstadoPendienteAprobacion(current)) return 'Aprobado al completar avales';
+  if (current === 'PENDIENTE_APROBACION') return 'Pendiente Jefatura';
   if (current === 'Pendiente Jefatura') return 'Pendiente Decanatura';
   if (current === 'Pendiente Decanatura') return 'Pendiente Gestión Profesoral';
   if (current === 'Pendiente Gestión Profesoral') return 'Aprobado';
@@ -167,6 +180,8 @@ function getDedicacionTooltip(sigla: string): string {
 }
 
 function getNextStateLabel(current: string): string {
+  if (isEstadoPendienteAprobacion(current)) return 'Registrar aprobacion';
+  if (current === 'PENDIENTE_APROBACION') return 'Enviar a Jefatura';
   if (current === 'Pendiente Jefatura') return 'Avanzar a Decanatura';
   if (current === 'Pendiente Decanatura') return 'Avanzar a Gestión Profesoral';
   if (current === 'Pendiente Gestión Profesoral') return 'Aprobar PTA';
@@ -198,6 +213,23 @@ function SortableHeader({ label, field, sortBy, sortDir, onSort }: {
 }
 
 // ═══ Solicitudes PTA — Vista Admin ═══════════════════════════════════
+
+/**
+ * Construye la URL pública (vía API Gateway) de un archivo servido por el microservicio PTA.
+ * El gateway expone los estáticos del servicio en /pta/uploads/... (ruta pública) y los reenvía
+ * a /uploads/... del backend. Usa la MISMA base que las llamadas API (getBaseURL), por lo que
+ * funciona en cualquier entorno. Antes se armaba con http://localhost:5000 hardcodeado —un puerto
+ * inexistente en este entorno— y por eso fallaba con ERR_CONNECTION_REFUSED.
+ */
+function resolvePtaFileUrl(raw?: string | null): string {
+  const value = String(raw || '').trim();
+  if (!value) return '#';
+  if (/^https?:\/\//i.test(value)) return value; // ya es absoluta
+  const base = (getBaseURL() || '').replace(/\/$/, '');
+  if (value.startsWith('/pta/')) return `${base}${value}`;          // ya trae el prefijo de servicio
+  if (value.startsWith('/uploads')) return `${base}/pta${value}`;   // /uploads/... → /pta/uploads/...
+  return `${base}/pta/${value.replace(/^\/+/, '')}`;
+}
 
 function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
@@ -347,7 +379,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
                             <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#374151', marginBottom: 4 }}>Archivos adjuntos ({archivos.length}):</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                               {archivos.map((a: any, i: number) => (
-                                <a key={i} href={a.url?.startsWith('/uploads') ? `http://localhost:5000${a.url}` : a.url} target="_blank" rel="noopener noreferrer"
+                                <a key={i} href={resolvePtaFileUrl(a.url)} target="_blank" rel="noopener noreferrer"
                                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', fontSize: '0.68rem', fontWeight: 600, color: '#DC2626', textDecoration: 'none' }}>
                                   <FileText style={{ width: 12, height: 12 }} /> {a.nombre || `Archivo ${i + 1}`}
                                 </a>
@@ -455,6 +487,18 @@ const COMPONENTES_SEG = [
   { key: 'acad_admin', label: 'Acad. Admin.', color: '#DC2626' },
 ] as const;
 
+// Estados en los que un docente puede subir documentos de soporte (ver PortalDocentePTA:
+// la sección "Documentos y Soportes" solo aparece en PTAs aprobados / en firme / en ejecución).
+// Cualquier otro estado (Borrador, Pendiente_*, En_Concertación, etc.) nunca tendrá evidencias,
+// por lo que no debe listarse en el Seguimiento de Documentos.
+const ESTADOS_CON_DOCUMENTOS_KEYS = new Set([
+  'APROBADO',
+  'APROBADO_DEF',
+  'EN_FIRME',
+  'RADICADO',
+  'EN_EJECUCION',
+]);
+
 function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNombre: string; rolLabel: string }) {
   const [ptasData, setPtasData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -486,7 +530,14 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
     setProcesando(null);
   };
 
+  // Solo aplican al Seguimiento las PTAs que pueden tener documentos: aprobadas / en firme /
+  // en ejecución, o las que ya tengan al menos una evidencia cargada (defensivo ante estados
+  // con etiquetas inconsistentes). Así evitamos filas de Borrador/Pendiente que se despliegan vacías.
+  const aplicaSeguimiento = (p: any) =>
+    (p.evidencias || []).length > 0 || ESTADOS_CON_DOCUMENTOS_KEYS.has(normalizeEstadoKey(p.estado));
+
   const filteredPtas = ptasData.filter((p: any) => {
+    if (!aplicaSeguimiento(p)) return false;
     if (!filtroEstadoRev) return true;
     return (p.evidencias || []).some((e: any) => (e.estado_revision || 'pendiente') === filtroEstadoRev);
   });
@@ -561,12 +612,12 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                   {/* Progress pills per component */}
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {COMPONENTES_SEG.map(comp => {
+                      // Se muestran SIEMPRE los 5 componentes fijos (aunque el PTA tenga 0h en alguno).
                       const horasTotal: number = (pta as any)[`horas_${comp.key}`] || 0;
-                      if (horasTotal === 0) return null;
                       const aprobadas = (pta.evidencias || [])
                         .filter((e: any) => e.componente_pta === comp.key && e.estado_revision === 'aprobado')
                         .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0);
-                      const pct = Math.min(Math.round((aprobadas / horasTotal) * 100), 100);
+                      const pct = horasTotal > 0 ? Math.min(Math.round((aprobadas / horasTotal) * 100), 100) : 0;
                       return (
                         <div key={comp.key} title={`${comp.label}: ${aprobadas}h / ${horasTotal}h`}
                           style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>
@@ -590,6 +641,13 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                   {isOpen && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden' }}>
                       <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {(pta.evidencias || []).length === 0 && (
+                          <div style={{ textAlign: 'center', padding: '18px 12px', background: '#F9FAFB', borderRadius: 10, border: '1px dashed #E5E7EB' }}>
+                            <FolderOpen style={{ width: 26, height: 26, color: '#D1D5DB', margin: '0 auto 6px' }} />
+                            <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: 0, fontWeight: 600 }}>Sin documentos de soporte</p>
+                            <p style={{ fontSize: '0.68rem', color: '#9CA3AF', margin: '2px 0 0' }}>El docente aún no ha subido evidencias para esta PTA</p>
+                          </div>
+                        )}
                         {(pta.evidencias || []).map((ev: any) => {
                           const comp = COMPONENTES_SEG.find(c => c.key === ev.componente_pta);
                           const estadoRev = ev.estado_revision || 'pendiente';
@@ -625,9 +683,8 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                       const hasRealFile = !!(ev.storage_url && ev.storage_url.startsWith('/uploads'));
                                       const canPreview = hasRealFile && ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
                                       const rawUrl = ev.storage_url || ev.storage_path || '';
-                                      // Resolver URL: /uploads/xxx → backend absoluto
-                                      const backendOrigin = (window as any).__API_ORIGIN__ || 'http://localhost:5000';
-                                      const fileUrl = rawUrl.startsWith('/uploads') ? `${backendOrigin}${rawUrl}` : rawUrl.startsWith('http') ? rawUrl : rawUrl ? `${backendOrigin}/${rawUrl}` : '#';
+                                      // Resolver URL a través del API Gateway (/pta/uploads/...), no un puerto hardcodeado.
+                                      const fileUrl = resolvePtaFileUrl(rawUrl);
                                       return (
                                         <>
                                           {canPreview && (
@@ -641,6 +698,8 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                           <a
                                             href={fileUrl}
                                             download={ev.nombre}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                             onClick={e2 => e2.stopPropagation()}
                                             style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
                                           >
@@ -703,7 +762,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>{previewFile.nombre}</span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <a href={previewFile.url} download={previewFile.nombre} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
+                <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
                   <Download style={{ width: 14, height: 14 }} /> Descargar
                 </a>
                 <button onClick={() => setPreviewFile(null)} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -720,7 +779,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                 <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
                   <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />
                   <p style={{ fontSize: '0.85rem' }}>Este tipo de archivo no se puede previsualizar</p>
-                  <a href={previewFile.url} download={previewFile.nombre} style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
+                  <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
                 </div>
               )}
             </div>
@@ -742,17 +801,102 @@ export function PtaBackofficeModule({ initialView }: { initialView?: string } = 
 
 type ModuleView = 'gestion' | 'seguimiento_docs' | 'configuracion' | 'banco_docentes' | 'programacion' | 'concertacion' | 'tablero' | 'reporte' | 'seguimiento' | 'directivo' | 'territorial' | 'comparativo' | 'sna' | 'validador' | 'test_e2e' | 'mapa_territorial' | 'alertas' | 'indicadores' | 'acta_concertacion' | 'simulador_carga' | 'benchmarking' | 'exportador_actas' | 'comite_evaluacion' | 'calendario_academico' | 'asignador_automatico' | 'kanban' | 'metricas_sla' | 'generador_resoluciones' | 'gestion_conflictos' | 'preferencias_notificaciones' | 'workflow_visualizer' | 'verificacion_qr' | 'programacion_institucional' | 'centro_reportes' | 'cronograma' | 'mapeo_sincronizacion' | 'salud_sistema' | 'reconciliacion_masiva' | 'tablero_unificado' | 'solicitudes_pta';
 
+function normalizeEstadoKey(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+}
+
+const ESTADOS_PENDIENTES_APROBACION_KEYS = new Set([
+  'PENDIENTE_JEFATURA',
+  'PENDIENTE_DECANATURA',
+  'PENDIENTE_GESTION_PROFESORAL',
+  'PENDIENTE_APROBACION',
+]);
+
+const ESTADOS_BORRADOR_KEYS = new Set(['BORRADOR']);
+const ESTADOS_APROBACION_KEYS = new Set([
+  ...ESTADOS_PENDIENTES_APROBACION_KEYS,
+  'CONCERTADO',
+]);
+const ESTADOS_CONCERTACION_KEYS = new Set([
+  'EN_CONCERTACION',
+  'OBJETADO_DOCENTE',
+  'MODIFICADO_DOCENTE',
+  'DEVUELTO',
+  'PROPUESTO_POR_DIRECCION',
+  'NOTIFICADO_DOCENTE',
+]);
+const ESTADOS_SNA_KEYS = new Set(['ESCALADO_SNA']);
+const ESTADOS_SEGUIMIENTO_KEYS = new Set(['EN_FIRME', 'RADICADO', 'EN_EJECUCION']);
+const FRONTEND_GROUPED_ESTADO_FILTERS = new Set([
+  'BORRADOR',
+  'BORRADORES',
+  'PENDIENTES',
+  'APROBACION',
+  'CONCERTACION',
+  'SNA',
+  'APROBADO',
+  'APROBADOS',
+  'SEGUIMIENTO',
+]);
+
+function getBackendEstadoFilter(filtroEstado?: string) {
+  if (!filtroEstado) return undefined;
+  return FRONTEND_GROUPED_ESTADO_FILTERS.has(normalizeEstadoKey(filtroEstado))
+    ? undefined
+    : filtroEstado;
+}
+
+function matchesEstadoWorkflowFilter(pta: any, filtroEstado?: string) {
+  const filterKey = normalizeEstadoKey(filtroEstado);
+  if (!filterKey) return true;
+
+  const estadoKey = normalizeEstadoKey(pta?.estado);
+  if (filterKey === 'BORRADOR' || filterKey === 'BORRADORES') return ESTADOS_BORRADOR_KEYS.has(estadoKey);
+  if (filterKey === 'PENDIENTES' || filterKey === 'APROBACION') return ESTADOS_APROBACION_KEYS.has(estadoKey);
+  if (filterKey === 'CONCERTACION') return ESTADOS_CONCERTACION_KEYS.has(estadoKey);
+  if (filterKey === 'SNA') return ESTADOS_SNA_KEYS.has(estadoKey);
+  if (filterKey === 'APROBADO' || filterKey === 'APROBADOS') return estadoKey === 'APROBADO';
+  if (filterKey === 'SEGUIMIENTO') {
+    return ESTADOS_SEGUIMIENTO_KEYS.has(estadoKey) || (pta?.dias_en_proceso > 7 && estadoKey === 'APROBADO');
+  }
+
+  return estadoKey === filterKey;
+}
+
+function isEstadoPendienteAprobacion(estado?: string) {
+  return ESTADOS_PENDIENTES_APROBACION_KEYS.has(normalizeEstadoKey(estado));
+}
+
 // ═══ Level Validation: Mapea estado PTA → nivel requerido para aprobar ═══
 const ESTADO_NIVEL_MAP: Record<string, number> = {
+  'PENDIENTE_APROBACION': 1,
   'Pendiente Jefatura': 1,
   'Pendiente Decanatura': 2,
   'Pendiente Gestión Profesoral': 3,
 };
 
-function puedeAprobarPorNivel(estadoPTA: string, nivelUsuario: number): boolean {
-  const nivelRequerido = ESTADO_NIVEL_MAP[estadoPTA];
+const ESTADO_NIVEL_KEY_MAP: Record<string, number> = {
+  PENDIENTE_APROBACION: 1,
+  PENDIENTE_JEFATURA: 1,
+  PENDIENTE_DECANATURA: 2,
+  PENDIENTE_GESTION_PROFESORAL: 3,
+};
+
+function getNivelRequeridoAprobacion(estadoPTA?: string) {
+  return ESTADO_NIVEL_KEY_MAP[normalizeEstadoKey(estadoPTA)] || ESTADO_NIVEL_MAP[estadoPTA || ''] || 0;
+}
+
+function puedeAprobarPorNivel(estadoPTA: string, nivelUsuario: number, isSuperUser = false): boolean {
+  if (isSuperUser) return true;
+  if (isEstadoPendienteAprobacion(estadoPTA)) return nivelUsuario > 0;
+  const nivelRequerido = getNivelRequeridoAprobacion(estadoPTA);
   if (!nivelRequerido) return false;
-  return nivelUsuario >= nivelRequerido;
+  return nivelUsuario === nivelRequerido;
 }
 
 // ═══ Aging Helper: days since last update ═══
@@ -847,6 +991,14 @@ function NavDropdownPortal({ id, label, icon: Icon, isActive, isOpen, onToggle, 
 function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}) {
   const { permisos, tieneVista, rolLabel, isSimulando, perfil, rolColor, rolBg } = usePermisosPTA();
   const auth = useAuth();
+  const isSuperUserEffective = auth.isSuperUser || perfil.rol === 'admin';
+  const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
+    if (isSuperUserEffective) return [...PTA_COMPONENT_KEYS];
+    return (permisos.componentesAprobables || [])
+      .filter((key): key is PTAComponentKey => PTA_COMPONENT_KEYS.includes(key as PTAComponentKey));
+  }, [isSuperUserEffective, permisos.componentesAprobables]);
+  const shouldRestrictByComponentPermission = !isSuperUserEffective && visibleComponentKeys.length > 0;
+  const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
   const { addNotification } = useNotifications();
   const [ptas, setPtas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -905,6 +1057,41 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
   const [showReporteR01, setShowReporteR01] = useState(false);
+
+  // ── Listener: abrir detalle de PTA desde una notificación (bandeja/correo) ──
+  // El backend (`pta-notifications.service.ts`) emite notificaciones con
+  // url_accion='/pta?ptaId=<id>'. NotificationsPanelV2 despacha el evento
+  // 'pta:open-detalle' con {ptaId, componente} en vez de recargar la página.
+  // Si el módulo aún no estaba montado, se guarda en sessionStorage como respaldo
+  // (mismo patrón que Gestión Legal / Control Interno).
+  useEffect(() => {
+    const abrirDetallePorId = async (ptaId: string) => {
+      if (!ptaId) return;
+      setModuleView('gestion');
+      const res = await getPTAById(ptaId);
+      if (res.success && res.data) setSelectedPTA(res.data);
+    };
+
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.ptaId) abrirDetallePorId(detail.ptaId);
+    };
+
+    window.addEventListener('pta:open-detalle', handleOpen);
+
+    const pending = sessionStorage.getItem('pta:pendingOpenDetalle');
+    if (pending) {
+      sessionStorage.removeItem('pta:pendingOpenDetalle');
+      try {
+        const detail = JSON.parse(pending);
+        if (detail?.ptaId) abrirDetallePorId(detail.ptaId);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return () => window.removeEventListener('pta:open-detalle', handleOpen);
+  }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<string>('docente_nombre');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -1150,8 +1337,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const next = new Set(selectedIds);
       for (let i = start; i <= end; i++) {
         const p = paginated[i];
-        if (p && ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado)
-            && puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion)) {
+        if (p && isEstadoPendienteAprobacion(p.estado)
+            && puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
           next.add(p.id);
         }
       }
@@ -1162,16 +1349,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       setSelectedIds(next);
     }
     lastClickedIdx.current = idx;
-  }, [selectedIds, permisos.nivelAprobacion]);
+  }, [selectedIds, permisos.nivelAprobacion, isSuperUserEffective]);
 
   // ═══ Feature 21: Inline status quick change handler ═══
   const handleInlineStatusChange = useCallback(async (ptaId: string, nuevoEstado: string) => {
     setInlineStatusPtaId(null);
     const pta = ptas.find((p: any) => p.id === ptaId);
-    const esAprobacion = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta?.estado || '');
+    const esAprobacion = isEstadoPendienteAprobacion(pta?.estado);
 
     // Aprobación de G.Profesoral → mostrar firma digital primero
-    if (esAprobacion && nuevoEstado !== 'Devuelto' && pta?.estado === 'Pendiente Gestión Profesoral') {
+    if (esAprobacion && nuevoEstado !== 'Devuelto' && permisos.nivelAprobacion === 3 && !isSuperUserEffective) {
       setSelectedPTA(pta);
       setShowFirmaDigital(true);
       return;
@@ -1179,8 +1366,27 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     setProcesando(true);
     const payload = esAprobacion && nuevoEstado !== 'Devuelto'
-      ? { accion: 'aprobar' as const, observaciones: `Aprobación rápida por ${aprobadorNombre} (${rolLabel})`, actorId: aprobadorId, actorRol: rolLabel }
-      : { estado: nuevoEstado, observaciones: `Cambio rápido a ${nuevoEstado} por ${aprobadorNombre} (${rolLabel})`, actorId: aprobadorId, actorRol: rolLabel };
+      ? {
+          accion: 'aprobar' as const,
+          observaciones: `Aprobación rápida por ${aprobadorNombre} (${rolLabel})`,
+          actorId: aprobadorId,
+          actorRol: rolLabel,
+          nivelAprobacion: permisos.nivelAprobacion,
+          actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
+          isSuperUser: isSuperUserEffective,
+          aprobarTodas: isSuperUserEffective,
+        }
+      : nuevoEstado === 'Devuelto'
+        ? {
+            accion: 'devolver' as const,
+            observaciones: `Devolución rápida por ${aprobadorNombre} (${rolLabel})`,
+            actorId: aprobadorId,
+            actorRol: rolLabel,
+            nivelAprobacion: permisos.nivelAprobacion,
+            actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
+            isSuperUser: isSuperUserEffective,
+          }
+        : { estado: nuevoEstado, observaciones: `Cambio rápido a ${nuevoEstado} por ${aprobadorNombre} (${rolLabel})`, actorId: aprobadorId, actorRol: rolLabel };
     const res = await updatePTAStatus(ptaId, payload);
     setProcesando(false);
     if (res.success) {
@@ -1257,8 +1463,17 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const loadData = async () => {
     setLoading(true);
+    const estadoBackend = getBackendEstadoFilter(filtroEstado);
+    const ptaFilters: any = {
+      periodo: filtroPeriodo,
+      programa: filtroPrograma,
+      nivelAprobacion: permisos.nivelAprobacion,
+      isSuperUser: auth.isSuperUser,
+    };
+    if (estadoBackend) ptaFilters.estado = estadoBackend;
+
     const [ptaRes, statsRes, progsRes] = await Promise.all([
-      getAllPTAs({ estado: filtroEstado, periodo: filtroPeriodo, programa: filtroPrograma, nivelAprobacion: permisos.nivelAprobacion, isSuperUser: auth.isSuperUser }),
+      getAllPTAs(ptaFilters),
       getPTAEstadisticas(filtroPeriodo),
       getCatalogoProgramas(),
     ]);
@@ -1305,12 +1520,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           if (res.data.notes && Object.keys(res.data.notes).length > 0) setInlineNotes(res.data.notes);
           if (res.data.pinned && res.data.pinned.length > 0) setPinnedIds(new Set(res.data.pinned));
           if (res.data.priorityOrder && res.data.priorityOrder.length > 0) setPriorityOrder(res.data.priorityOrder);
-          console.log('[PTA-Persist] User data loaded:', {
-            tags: Object.keys(res.data.tags || {}).length,
-            notes: Object.keys(res.data.notes || {}).length,
-            pinned: (res.data.pinned || []).length,
-            priority: (res.data.priorityOrder || []).length,
-          });
+
         }
       } catch (err) {
         console.error('[PTA-Persist] Error loading user data:', err);
@@ -1332,7 +1542,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           pinned: Array.from(pinnedIds),
           priorityOrder,
         });
-        console.log('[PTA-Persist] Auto-saved user data');
+
       } catch (err) {
         console.error('[PTA-Persist] Error saving user data:', err);
       }
@@ -1422,6 +1632,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         )
       );
     }
+    if (shouldRestrictByComponentPermission) {
+      result = result.filter((p: any) => hasAnyComponentApprovalData(p, visibleComponentKeys));
+    }
     // Apply search query (expanded multi-field)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -1446,43 +1659,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     // ═══ Workflow Tab Filters (Estado) ═══
     if (filtroEstado) {
-      if (filtroEstado === 'borrador') {
-        result = result.filter((p: any) => {
-          const e = (p.estado || '').toUpperCase().replace(/\s+/g, '_');
-          return e === 'BORRADOR' || p.estado === 'Borrador';
-        });
-      } else if (filtroEstado === 'pendientes') {
-        result = result.filter((p: any) => {
-          const e = (p.estado || '').toUpperCase().replace(/\s+/g, '_');
-          return ['PENDIENTE_JEFATURA', 'PENDIENTE_DECANATURA', 'PENDIENTE_GESTIÓN_PROFESORAL', 'PENDIENTE_GESTION_PROFESORAL', 'CONCERTADO'].includes(e) || ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado);
-        });
-      } else if (filtroEstado === 'concertacion') {
-        result = result.filter((p: any) => {
-          const e = (p.estado || '').toUpperCase().replace(/\s+/g, '_');
-          return ['EN_CONCERTACION', 'OBJETADO_DOCENTE', 'MODIFICADO_DOCENTE', 'DEVUELTO', 'PROPUESTO_POR_DIRECCION', 'NOTIFICADO_DOCENTE'].includes(e) || p.estado === 'Devuelto';
-        });
-      } else if (filtroEstado === 'sna') {
-        result = result.filter((p: any) => {
-          const e = (p.estado || '').toUpperCase().replace(/\s+/g, '_');
-          return ['ESCALADO_SNA'].includes(e) || p.estado === 'Escalado SNA';
-        });
-      } else if (filtroEstado === 'aprobado') {
-        result = result.filter((p: any) => {
-          const e = (p.estado || '').toUpperCase().replace(/\s+/g, '_');
-          return e === 'APROBADO' || p.estado === 'Aprobado';
-        });
-      } else if (filtroEstado === 'SEGUIMIENTO') {
-        result = result.filter((p: any) => {
-          const e = (p.estado || '').toUpperCase().replace(/\s+/g, '_');
-          return ['EN_FIRME', 'RADICADO', 'EN_EJECUCIÓN', 'EN_EJECUCION'].includes(e) || (p.dias_en_proceso > 7 && e === 'APROBADO');
-        });
-      } else {
-        result = result.filter((p: any) => p.estado === filtroEstado);
-      }
+      result = result.filter((p: any) => matchesEstadoWorkflowFilter(p, filtroEstado));
     }
     
     return result;
-  }, [ptas, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, filtroTags, ptaTags, filtroEstado]);
+  }, [ptas, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado]);
 
 
   // ═══ Feature 14: Keyboard Navigation ═══
@@ -1561,8 +1742,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     if (!selectedPTA) return;
 
     // ── Validación de nivel de aprobación ──
-    if (!puedeAprobarPorNivel(selectedPTA.estado, permisos.nivelAprobacion)) {
-      const nivelReq = ESTADO_NIVEL_MAP[selectedPTA.estado] || 0;
+    if (!puedeAprobarPorNivel(selectedPTA.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
+      const nivelReq = getNivelRequeridoAprobacion(selectedPTA.estado);
       toast.error(`No tiene nivel suficiente para aprobar`, {
         description: `Este PTA requiere nivel ${nivelReq} (${selectedPTA.estado}). Su nivel: ${permisos.nivelAprobacion} (${rolLabel}).`,
         duration: 6000,
@@ -1570,8 +1751,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       return;
     }
 
-    // If N3 (Gestión Profesoral → Aprobado), trigger digital signature first
-    if (selectedPTA.estado === 'Pendiente Gestión Profesoral' && !showFirmaDigital) {
+    // La aprobación de Gestión Profesoral requiere firma digital, aunque el flujo sea paralelo.
+    if (permisos.nivelAprobacion === 3 && !showFirmaDigital && !isSuperUserEffective) {
       setShowApproval(false);
       setShowFirmaDigital(true);
       return;
@@ -1582,10 +1763,28 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       observaciones: approvalObs || `Aprobado por ${aprobadorNombre} (${rolLabel})`,
       actorId: aprobadorId,
       actorRol: rolLabel,
+      nivelAprobacion: permisos.nivelAprobacion,
+      actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
+      isSuperUser: isSuperUserEffective,
+      aprobarTodas: isSuperUserEffective,
     });
     setProcesando(false);
     if (res.success) {
       const nuevoEstado = res.nuevoEstado || getNextState(selectedPTA.estado);
+      if (res.parcial) {
+        toast.success(res.message || 'Aprobación registrada. Faltan otros avales.');
+        pushActivity('aprobacion', selectedPTA.docente_nombre, nuevoEstado, 'Aprobación parcial registrada');
+        addNotification({
+          title: 'Aprobación PTA registrada',
+          message: `Aprobación de ${rolLabel} registrada para ${selectedPTA.docente_nombre}`,
+          type: 'success',
+        });
+        setShowApproval(false);
+        setApprovalObs('');
+        setSelectedPTA(null);
+        loadData();
+        return;
+      }
       toast.success(`PTA avanzado a: ${nuevoEstado}`);
       pushActivity('aprobacion', selectedPTA.docente_nombre, nuevoEstado, `Aprobado → ${nuevoEstado}`);
       addNotification({
@@ -1611,6 +1810,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       observaciones: devolucionMotivo,
       actorId: aprobadorId,
       actorRol: rolLabel,
+      nivelAprobacion: permisos.nivelAprobacion,
+      actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
+      isSuperUser: isSuperUserEffective,
     });
     setProcesando(false);
     if (res.success) {
@@ -1649,7 +1851,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const statCards = estadisticas ? [
     { label: 'Total PTAs', value: ptas.length, icon: FileText, color: '#003DA5', bg: '#EFF6FF' },
-    { label: 'Pendientes', value: ptas.filter((p: any) => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
+    { label: 'Pendientes', value: ptas.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
     { label: 'Aprobados', value: ptas.filter((p: any) => p.estado === 'Aprobado').length, icon: CheckCircle, color: '#059669', bg: '#D1FAE5' },
     { label: 'En Concertación', value: estadisticas.enConcertacion || 0, icon: MessageSquare, color: '#7C3AED', bg: '#F3E8FF' },
     { label: 'Rechazados', value: estadisticas.rechazados || 0, icon: XCircle, color: '#DC2626', bg: '#FEE2E2' },
@@ -1668,26 +1870,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     },
     { type: 'button' as const, key: 'tablero_unificado' as ModuleView, label: 'Reportes', icon: BarChart3 },
     {
-      type: 'dropdown' as const,
-      id: 'herramientas',
-      label: 'Herramientas',
-      icon: FlaskConical,
-      items: [
-        { key: 'calendario_academico', label: 'Calendario Académico', icon: Calendar },
-        { key: 'benchmarking', label: 'Benchmarking', icon: TrendingUp },
-        { key: 'mapeo_sincronizacion', label: 'Mapeo & Sincronización', icon: RefreshCw },
-        { key: 'salud_sistema', label: 'Salud del Sistema', icon: Shield },
-        { key: 'reconciliacion_masiva', label: 'Reconciliación Masiva', icon: GitCompare },
-        { key: 'validador', label: 'Validador GTH-F081', icon: CheckCircle },
-        { key: 'verificacion_qr', label: 'Verificar Firma QR', icon: CheckCircle },
-        { key: 'preferencias_notificaciones', label: 'Pref. Notificaciones', icon: Bell },
-        { key: 'test_e2e', label: 'Test E2E Flujo', icon: FlaskConical },
-      ],
-    },
-    {
       type: 'direct' as const,
       items: [
-        { key: 'banco_docentes', label: 'Banco Docentes', icon: Users },
         { key: 'configuracion', label: 'Configuración', icon: Sliders },
       ],
     },
@@ -1706,8 +1890,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   // Pending PTAs count for mobile badge
   const listaPendientesAprobar = filteredPtas.filter((p: any) =>
-    ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado)
-    && puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion)
+    isEstadoPendienteAprobacion(p.estado) &&
+    puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective)
   );
   const pendingForApprovalCount = listaPendientesAprobar.length;
 
@@ -1742,8 +1926,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   };
 
   const renderRowActions = (pta: any) => {
-    const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado);
-    const canApproveThisLevel = isPendiente && permisos.puedeAprobar && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion);
+    const isPendiente = isEstadoPendienteAprobacion(pta.estado);
+    const canApproveThisLevel = isPendiente && permisos.puedeAprobar && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective);
     const isPinned = pinnedIds.has(pta.id);
     const hasNote = !!inlineNotes[pta.id];
     const isComparing = compareIds.includes(pta.id);
@@ -1993,7 +2177,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               fontSize: '0.65rem', color: '#D97706', padding: '4px 8px',
               display: 'flex', alignItems: 'center', gap: 3,
               background: '#FEF3C7', borderRadius: 5, border: '1px solid #FDE68A',
-            }} title={`Requiere nivel ${ESTADO_NIVEL_MAP[pta.estado] || '?'}`}>
+            }} title={`Requiere nivel ${getNivelRequeridoAprobacion(pta.estado) || '?'}`}>
               <AlertTriangle style={{ width: 9, height: 9 }} /> Nivel insuf.
             </span>
           )
@@ -2145,62 +2329,67 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                         </span>
                       )}
                     </div>
-                    {/* Selector de Periodo Académico */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">PERIODO:</span>
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowPeriodoDropdownPTA(!showPeriodoDropdownPTA)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 transition-all"
-                        >
-                          {periodoSeleccionadoPTA || '2025-2'}
-                          {esPeriodoActivoPTA && (
-                            <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
-                          )}
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                        {showPeriodoDropdownPTA && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setShowPeriodoDropdownPTA(false)} />
-                            <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20">
-                              <div className="px-3 py-2 border-b border-gray-100">
-                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
-                              </div>
-                              {periodosPTA.length > 0 ? periodosPTA.map((p: any, idx: number) => {
-                                const codigo = p.codigo || `${p.anio}-${p.semestre}`;
-                                const esActivo = p.estado === 'en_curso';
-                                return (
-                                  <button
-                                    key={idx}
-                                    onClick={() => { setPeriodoSeleccionadoPTA(codigo); setShowPeriodoDropdownPTA(false); }}
-                                    className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
-                                      codigo === periodoSeleccionadoPTA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
-                                    }`}
-                                  >
-                                    <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
-                                    {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
-                                  </button>
-                                );
-                              }) : (
-                                <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                      {!esPeriodoActivoPTA && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                          Solo lectura
-                        </span>
-                      )}
-                    </div>
+
                     <p className="text-[11px] md:text-xs text-gray-400 mt-0.5">
                       Gestión y aprobación de PTAs
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Selector de Periodo Académico — derecha */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider hidden sm:inline">PERÍODO:</span>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowPeriodoDropdownPTA(!showPeriodoDropdownPTA)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 hover:bg-[#dce7f9] transition-all shadow-sm"
+                      >
+                        {periodoSeleccionadoPTA || '2025-2'}
+                        {esPeriodoActivoPTA && (
+                          <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
+                        )}
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                      {showPeriodoDropdownPTA && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setShowPeriodoDropdownPTA(false)} />
+                          <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 py-1 z-20">
+                            <div className="px-3 py-2 border-b border-gray-100">
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
+                            </div>
+                            {periodosPTA.length > 0 ? periodosPTA.map((p: any, idx: number) => {
+                              const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                              const esActivo = p.estado === 'en_curso';
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => {
+                                    setPeriodoSeleccionadoPTA(codigo);
+                                    setFiltroPeriodo(codigo);
+                                    setShowPeriodoDropdownPTA(false);
+                                  }}
+                                  className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
+                                    codigo === periodoSeleccionadoPTA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
+                                  }`}
+                                >
+                                  <span>{codigo}{esActivo ? ' (Actual)' : ''}</span>
+                                  {esActivo ? <span className="w-2 h-2 rounded-full bg-green-500" /> : <span className="text-[10px] text-gray-400">Historial</span>}
+                                </button>
+                              );
+                            }) : (
+                              <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {!esPeriodoActivoPTA && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Solo lectura
+                      </span>
+                    )}
+                  </div>
                   <PTASyncIndicator
                     syncState={syncState}
                     sistema="backoffice"
@@ -2419,7 +2608,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             filtroPeriodo={filtroPeriodo}
-            setFiltroPeriodo={setFiltroPeriodo}
+            setFiltroPeriodo={(v) => {
+              setFiltroPeriodo(v);
+              setPeriodoSeleccionadoPTA(v);
+            }}
             filtroPrograma={filtroPrograma}
             setFiltroPrograma={setFiltroPrograma}
             programas={programas}
@@ -2849,7 +3041,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     {listaPendientesAprobar.length} PTA{listaPendientesAprobar.length > 1 ? 's' : ''} requiere{listaPendientesAprobar.length === 1 ? '' : 'n'} tu aprobación
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#C2410C', marginTop: 1 }}>
-                    Haz clic en "Aprobar Nx →" en cada fila, o usa la fase "Aprobación" en el pipeline de arriba para filtrarlos.
+                    Abre el detalle del PTA para revisar, aprobar o devolver segun el nivel actual del flujo.
                   </div>
                 </div>
                 <button
@@ -3038,8 +3230,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             };
 
             const renderRowActions = (pta: any) => {
-              const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado);
-              const canApproveThisLevel = isPendiente && permisos.puedeAprobar && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion);
+              const isPendiente = isEstadoPendienteAprobacion(pta.estado);
+              const canApproveThisLevel = isPendiente && permisos.puedeAprobar && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective);
               const isPinned = pinnedIds.has(pta.id);
               const hasNote = !!inlineNotes[pta.id];
               const isComparing = compareIds.includes(pta.id);
@@ -3116,7 +3308,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         background: '#FEF3C7', borderRadius: 8, border: '1px solid #FDE68A',
                         color: '#D97706', cursor: 'help',
-                      }} title={`Nivel insuficiente. Requiere nivel ${ESTADO_NIVEL_MAP[pta.estado] || '?'}`}>
+                      }} title={`Nivel insuficiente. Requiere nivel ${getNivelRequeridoAprobacion(pta.estado) || '?'}`}>
                         <AlertTriangle style={{ width: 16, height: 16 }} />
                       </span>
                     )
@@ -3337,29 +3529,41 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 {viewMode === 'table' ? (() => {
                   // ═══ Feature 19: Dynamic grid based on visible columns ═══
                   const colSizes: Record<string, string> = {
-                    docente: 'minmax(220px, 3.5fr)', 
-                    estado: 'minmax(150px, 1.5fr)', 
-                    aging: 'minmax(55px, 0.5fr)', 
-                    fecha: 'minmax(64px, 0.7fr)',
-                    hora: 'minmax(64px, 0.7fr)',
-                    dedicacion: 'minmax(54px, 0.5fr)',
-                    carga: 'minmax(120px, 1.2fr)', 
-                    componentes: 'minmax(110px, 1fr)', 
-                    territorial: 'minmax(110px, 1fr)', 
-                    periodo: 'minmax(70px, 0.6fr)',
+                    docente: 'minmax(260px, 4fr)',
+                    estado: 'minmax(210px, 1.15fr)',
+                    aging: 'minmax(55px, 0.4fr)', 
+                    fecha: 'minmax(78px, 0.5fr)',
+                    hora: 'minmax(76px, 0.5fr)',
+                    dedicacion: 'minmax(58px, 0.4fr)',
+                    carga: 'minmax(96px, 0.7fr)',
+                    componentes: 'minmax(132px, 1.2fr)',
+                    territorial: 'minmax(120px, 1fr)',
+                    periodo: 'minmax(78px, 0.6fr)',
+                  };
+                  const colMinWidths: Record<string, number> = {
+                    docente: 260,
+                    estado: 210,
+                    aging: 55,
+                    fecha: 78,
+                    hora: 76,
+                    dedicacion: 58,
+                    carga: 96,
+                    componentes: 132,
+                    territorial: 120,
+                    periodo: 78,
                   };
                   const activeCols = ALL_COLUMNS.filter(c => effectiveCols.has(c.key));
                   const gridCols = [
-                    ...(permisos.puedeAprobar ? ['40px'] : []),
                     ...activeCols.map(c => colSizes[c.key] || '100px'),
                     'minmax(60px, 0.5fr)', // acciones
                   ].join(' ');
-                  const minW = (permisos.puedeAprobar ? 40 : 0) + activeCols.length * 95 + 60;
+                  const minW = activeCols.reduce((sum, col) => sum + (colMinWidths[col.key] || 100), 72) + (activeCols.length * 16);
+                  const tableMinWidth = `max(${minW}px, 100%)`;
 
                   return (
                   <div ref={tableContainerRef} style={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
                     {/* Responsive scroll wrapper — Feature 18: sticky header via overflow */}
-                    <div className="pta-table-wrapper">
+                    <div className="pta-table-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginBottom: 0 }}>
                     {/* Table Header — Feature 18: Sticky */}
                     <div style={{
                       display: 'grid',
@@ -3367,29 +3571,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       columnGap: 16, rowGap: 0, padding: '12px 16px',
                       borderBottom: '2px solid #E5E7EB', background: '#F9FAFB',
                       fontSize: '0.8rem', fontWeight: 800, color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.04em',
-                      minWidth: minW,
+                      minWidth: tableMinWidth,
                       position: 'sticky', top: 0, zIndex: 5,
                     }}>
-                      {permisos.puedeAprobar && (
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.size > 0 && paginated.every((p: any) => selectedIds.has(p.id))}
-                            onChange={e => {
-                              if (e.target.checked) {
-                                const pendientes = paginated.filter((p: any) =>
-                                  ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado)
-                                  && puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion)
-                                );
-                                setSelectedIds(new Set(pendientes.map((p: any) => p.id)));
-                              } else {
-                                setSelectedIds(new Set());
-                              }
-                            }}
-                            style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#003DA5' }}
-                          />
-                        </div>
-                      )}
+
                       {effectiveCols.has('docente') && <SortableHeader label="Docente" field="docente_nombre" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('estado') && <SortableHeader label="Estado" field="estado" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('aging') && <span title="Días en estado actual">Días</span>}
@@ -3435,7 +3620,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 })}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: 8,
-                                  padding: '8px 16px', minWidth: minW,
+                                  padding: '8px 16px', minWidth: tableMinWidth,
                                   background: '#F3F0FF', borderBottom: '1px solid #DDD6FE',
                                   cursor: 'pointer', position: 'sticky', top: 38, zIndex: 4,
                                 }}
@@ -3466,8 +3651,23 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const horasProg = pta.total_horas_programadas || 0;
                       const horasDisp = pta.horas_a_programar || 800;
                       const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
-                      const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(pta.estado);
+                      const isPendiente = isEstadoPendienteAprobacion(pta.estado);
                       const isSelected = selectedIds.has(pta.id);
+                      const estadoLabel = pta.estado?.replace(/_/g, ' ') || 'Sin estado';
+                      // El flujo ahora es granular por componente: en los estados "pendientes" mostramos
+                      // el avance de aprobación (X/N componentes) en vez del rótulo de nivel (ej. "Pendiente Jefatura").
+                      // Si el backend no envía los conteos, caemos al rótulo de estado.
+                      const compAprobados = Number(pta.componentes_aprobados);
+                      const compTotal = Number(pta.componentes_total);
+                      const tieneAvanceComponentes = Number.isFinite(compAprobados) && Number.isFinite(compTotal) && compTotal > 0;
+                      const badgeText = (isPendiente && tieneAvanceComponentes)
+                        ? `${compAprobados}/${compTotal} componentes`
+                        : estadoLabel;
+                      const badgeTitle = (isPendiente && tieneAvanceComponentes)
+                        ? `${compAprobados} de ${compTotal} componentes aprobados — ${estadoLabel}`
+                        : estadoLabel;
+                      const tieneTotalidadAcadAdmin = Array.isArray(pta.academico_admin) &&
+                        pta.academico_admin.some((a: any) => a?.consumeTotalidad === true);
 
                       const aging = calcAging(pta.historialEstados, pta.updatedAt, pta.createdAt);
 
@@ -3495,7 +3695,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             background: dragOverId === pta.id ? '#DBEAFE' : isFocused ? '#F0F4FF' : isSelected ? '#EFF6FF' : 'white',
                             borderLeft: isPendiente ? `3px solid ${sc.color}` : '3px solid transparent',
                             alignItems: 'center',
-                            minWidth: minW,
+                            minWidth: tableMinWidth,
                             outline: isFocused ? '2px solid #003DA5' : dragOverId === pta.id ? '2px dashed #003DA5' : 'none',
                             outlineOffset: -2,
                           }}
@@ -3506,23 +3706,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             if (!isSelected && !isFocused) e.currentTarget.style.background = 'white';
                           }}
                         >
-                          {/* Feature 17: Shift+Click checkbox */}
-                          {permisos.puedeAprobar && (
-                            <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center' }}>
-                              {isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion) && (
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRowSelect(pta.id, idx, e.shiftKey, paginated);
-                                  }}
-                                  onChange={() => {}}
-                                  style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#003DA5' }}
-                                />
-                              )}
-                            </div>
-                          )}
+
 
                           {/* Docente */}
                           {effectiveCols.has('docente') && (
@@ -3571,24 +3755,28 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
                           {/* Estado — Feature 21: Inline Quick-Change */}
                           {effectiveCols.has('estado') && (
-                          <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ position: 'relative', minWidth: 0, display: 'flex', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                             <span
                               style={{
                                 padding: '4px 10px', borderRadius: 6,
                                 background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`,
-                                fontSize: '0.82rem', fontWeight: 800, whiteSpace: 'nowrap',
+                                fontSize: '0.82rem', fontWeight: 800,
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                maxWidth: '100%', minWidth: 0,
+                                whiteSpace: 'normal', overflowWrap: 'break-word',
+                                lineHeight: 1.15, textAlign: 'center',
                                 cursor: permisos.puedeAprobar && isPendiente ? 'pointer' : 'default',
                               }}
                               onClick={() => {
-                                if (permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion)) {
+                                if (permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
                                   setInlineStatusPtaId(inlineStatusPtaId === pta.id ? null : pta.id);
                                 }
                               }}
-                              title={permisos.puedeAprobar && isPendiente ? 'Clic para cambio rápido de estado' : pta.estado}
+                              title={permisos.puedeAprobar && isPendiente ? `Clic para cambio rápido de estado: ${badgeTitle}` : badgeTitle}
                             >
-                              {pta.estado?.replace(/_/g, ' ')?.substring(0, 18)}
-                              {permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion) && (
-                                <Zap style={{ width: 7, height: 7, display: 'inline', marginLeft: 3, verticalAlign: 'middle' }} />
+                              <span style={{ minWidth: 0 }}>{badgeText}</span>
+                              {permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective) && (
+                                <Zap style={{ width: 7, height: 7, flexShrink: 0 }} />
                               )}
                             </span>
                             {inlineStatusPtaId === pta.id && (
@@ -3597,7 +3785,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 <div style={{
                                   position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 9999,
                                   background: 'white', borderRadius: 8, border: '1px solid #E5E7EB',
-                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 180, overflow: 'hidden',
+                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 230, overflow: 'hidden',
                                 }}>
                                   <div style={{ padding: '6px 10px', borderBottom: '1px solid #F3F4F6', fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase' }}>
                                     Cambio rápido
@@ -3627,8 +3815,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                         <span style={{
                                           marginLeft: 'auto', padding: '1px 5px', borderRadius: 4,
                                           background: optSc.bg, color: optSc.color, fontSize: '0.55rem', fontWeight: 700,
+                                          maxWidth: 115, whiteSpace: 'normal', textAlign: 'right', lineHeight: 1.15,
                                         }}>
-                                          {opt.estado.substring(0, 12)}
+                                          {opt.estado.replace(/_/g, ' ')}
                                         </span>
                                       </button>
                                     );
@@ -3705,12 +3894,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             </span>
                             <div style={{ display: 'flex', gap: 3 }}>
                               {[
-                                { key: 'doc', color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
-                                { key: 'inv', color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
-                                { key: 'ext', color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
-                                { key: 'comp', color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) },
-                                { key: 'aa', color: '#6B21A8', has: pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
-                              ].map(c => (
+                                { key: 'doc', keys: ['academica'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
+                                { key: 'inv', keys: ['investigacion'], color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
+                                { key: 'ext', keys: PTA_EXTENSION_COMPONENT_KEYS, color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
+                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) },
+                                { key: 'aa', keys: ['academicas_admin'], color: '#6B21A8', has: pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
+                              ].filter(c => !shouldRestrictByComponentPermission || c.keys.some(key => visibleComponentKeySet.has(key))).map(c => (
                                 <div key={c.key} style={{
                                   width: 10, height: 10, borderRadius: 2,
                                   background: c.has ? c.color : '#E5E7EB',
@@ -3748,18 +3937,20 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               transition={{ duration: 0.2 }}
                               style={{
                                 borderBottom: '2px solid #DBEAFE', background: '#F8FAFF',
-                                overflow: 'hidden', minWidth: minW,
+                                overflow: 'hidden', minWidth: tableMinWidth,
                               }}
                             >
                               <div style={{ padding: '14px 16px 14px 52px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
                                 {[
-                                  { label: 'Horas Docencia', value: pta.horas_docencia || 0, color: '#003DA5', icon: BookOpen },
-                                  { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical },
-                                  { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe },
-                                  { label: 'Horas Complementarias', value: pta.horas_complementarias || 0, color: '#D97706', icon: Briefcase },
-                                  { label: 'Horas Acad. Admin.', value: pta.horas_acad_admin || 0, color: '#6B21A8', icon: Users },
-                                  { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen },
-                                ].map(item => {
+                                  { label: 'Programa', value: pta.programa || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#003DA5', icon: GraduationCap },
+                                  { label: 'Territorial', value: pta.territorial || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#059669', icon: MapPin },
+                                  { label: 'Horas Docencia', value: pta.horas_docencia || 0, color: '#003DA5', icon: BookOpen, keys: ['academica'] },
+                                  { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical, keys: ['investigacion'] },
+                                  { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe, keys: PTA_EXTENSION_COMPONENT_KEYS },
+                                  { label: 'Horas Complementarias', value: pta.horas_complementarias || 0, color: '#D97706', icon: Briefcase, keys: ['complementarias'] },
+                                  { label: 'Horas Acad. Admin.', value: pta.horas_acad_admin || 0, color: '#6B21A8', icon: Users, keys: ['academicas_admin'] },
+                                  { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica'] },
+                                ].filter(item => !item.keys || !shouldRestrictByComponentPermission || item.keys.some(key => visibleComponentKeySet.has(key))).map(item => {
                                   const ItemIcon = item.icon;
                                   return (
                                     <div key={item.label} style={{
@@ -3774,7 +3965,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                       </div>
                                       <div>
                                         <div style={{ fontSize: '0.6rem', color: '#9CA3AF', fontWeight: 500, textTransform: 'uppercase' }}>{item.label}</div>
-                                        <div style={{ fontSize: '0.92rem', fontWeight: 800, color: item.value > 0 ? '#111827' : '#D1D5DB' }}>{item.value}</div>
+                                        <div style={{
+                                          fontSize: '0.92rem', fontWeight: 800,
+                                          color: typeof item.value === 'number' ? (item.value > 0 ? '#111827' : '#D1D5DB') : '#111827',
+                                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        }}>{item.value}</div>
                                       </div>
                                     </div>
                                   );
@@ -3835,7 +4030,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   const totalHorasProg = paginated.reduce((sum: number, p: any) => sum + (p.total_horas_programadas || 0), 0);
                   const totalHorasDisp = paginated.reduce((sum: number, p: any) => sum + (p.horas_a_programar || 800), 0);
                   const avgCarga = totalHorasDisp > 0 ? Math.round((totalHorasProg / totalHorasDisp) * 100) : 0;
-                  const pendCount = paginated.filter((p: any) => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral'].includes(p.estado)).length;
+                  const pendCount = paginated.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length;
                   const aprobCount = paginated.filter((p: any) => p.estado === 'Aprobado').length;
                   
                   return (
@@ -3983,7 +4178,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               puedeAprobar={permisos.puedeAprobar}
               nivelAprobacion={permisos.nivelAprobacion}
               rolLabel={rolLabel}
-              isSuperUser={auth.isSuperUser}
+              isSuperUser={isSuperUserEffective}
               actorId={aprobadorId}
               actorNombre={aprobadorNombre}
               jefaturaTerritorialId={
@@ -4180,7 +4375,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const pta = ptas.find((p: any) => p.id === id);
                       if (!pta) continue;
                       // Validar nivel antes de aprobar cada PTA en lote
-                      if (!puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion)) {
+                      if (!puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
                         console.warn(`[Batch] Nivel insuficiente para PTA ${id} en estado ${pta.estado}`);
                         continue;
                       }
@@ -4189,6 +4384,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                         observaciones: batchObs || `Aprobado en lote por ${aprobadorNombre} (${rolLabel})`,
                         actorId: aprobadorId,
                         actorRol: rolLabel,
+                        nivelAprobacion: permisos.nivelAprobacion,
+                        actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
+                        isSuperUser: isSuperUserEffective,
+                        aprobarTodas: isSuperUserEffective,
                       });
                       if (res.success) successCount++;
                     }
@@ -4240,6 +4439,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 observaciones: `Aprobado con firma digital por ${aprobadorNombre} (${rolLabel}) — Certificado: ${firmaData.certificado_id}`,
                 actorId: aprobadorId,
                 actorRol: rolLabel,
+                nivelAprobacion: permisos.nivelAprobacion,
+                actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
+                isSuperUser: isSuperUserEffective,
+                aprobarTodas: isSuperUserEffective,
               });
 
               // Guardar datos de firma digital si el endpoint existe (no bloquea el flujo)
@@ -4329,11 +4532,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const pta = ptas.find((p: any) => p.id === id);
                       if (!pta) continue;
                       const res = await updatePTAStatus(id, {
-                        estado: 'Devuelto',
+                        accion: 'devolver',
                         observaciones: batchDevMotivo,
                         motivo_devolucion: batchDevMotivo,
-                        aprobador_id: aprobadorId,
-                        aprobador_nombre: `${aprobadorNombre} (${rolLabel})`,
+                        actorId: aprobadorId,
+                        actorRol: rolLabel,
+                        nivelAprobacion: permisos.nivelAprobacion,
+                        actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
+                        isSuperUser: isSuperUserEffective,
                       });
                       if (res.success) successCount++;
                     }

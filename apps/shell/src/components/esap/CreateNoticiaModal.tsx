@@ -1033,7 +1033,17 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 <input
                   type="date"
                   value={formData.fechaQueja}
-                  onChange={(e) => handleChange('fechaQueja', e.target.value)}
+                  onChange={(e) => {
+                    const nuevaFecha = e.target.value;
+                    if (!isEditMode && nuevaFecha && Number(nuevaFecha.split('-')[0]) !== new Date().getFullYear()) {
+                      return;
+                    }
+                    handleChange('fechaQueja', nuevaFecha);
+                  }}
+                  {...(!isEditMode ? {
+                    min: `${new Date().getFullYear()}-01-01`,
+                    max: `${new Date().getFullYear()}-12-31`,
+                  } : {})}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">

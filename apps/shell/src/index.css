@@ -17658,13 +17658,13 @@ body:has([data-login-page-root]),
 
 @media (min-width: 1024px) {
   [data-login-page-root] {
-    grid-template-columns: 40vw minmax(0, 1fr) !important;
+    grid-template-columns: 42vw minmax(0, 1fr) !important;
   }
 
   .esap-login-left {
-    width: 40vw !important;
+    width: 42vw !important;
     min-width: 0 !important;
-    max-width: 40vw !important;
+    max-width: 42vw !important;
   }
 
   .esap-login-hero {
