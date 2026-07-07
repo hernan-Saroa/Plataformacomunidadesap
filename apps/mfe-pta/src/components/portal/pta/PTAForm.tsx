@@ -1124,18 +1124,20 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     [complementarias]
   );
 
-  // Excedentes: se comparan las horas reales contra el tope máximo del componente
+  // Excedentes: se comparan las horas reales contra el tope máximo del componente.
+  // Cada componente usa SU total contra SU tope (dinámico, sin mezclar). Complementarias
+  // usa el total (hComplementarias), consistente con el recorte compProrr, para que el
+  // aviso de prorrateo dispare igual que en Extensión/Investigación.
   const invExcede = !actividadTotalidad && hInvestigacion > maxInvLimit;
   const extExcede = !actividadTotalidad && hExtension > maxExtLimit;
-  const compExcede = !actividadTotalidad && hCompOrdinary > maxCompLimit;
+  const compExcede = !actividadTotalidad && hComplementarias > maxCompLimit;
   const acadExcede = !actividadTotalidad && hAcademicoAdmin > maxAadmLimit;
 
   // ═══ VALIDACIONES COMPLEMENTARIAS ═════════════════════════════════════
   const compWarnings = useMemo(() => {
     const warns: string[] = [];
-    if (hCompOrdinary > maxCompLimit) {
-      warns.push(`Las complementarias (${hCompOrdinary}h) superan el tope de ${maxCompLimit}h, excluyendo Sindicatos.`);
-    }
+    // Prorrateo (Circular 003/2025): el exceso del total de Complementarias NO bloquea el
+    // envío (se prorratea a su tope 25%). El aviso "Prorrateo aplicado" informa al docente.
     complementarias.forEach(comp => {
       if (!comp.actividad_id) return;
       const cat = actComplementarias.find((a: any) => a.id === comp.actividad_id) || comp;
@@ -1170,10 +1172,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // ═══ VALIDACIONES EXTENSIÓN ═══════════════════════════════════════════
   const extWarnings = useMemo(() => {
+    // Prorrateo (Circular 003/2025): el exceso del total de Extensión NO bloquea el envío
+    // (se prorratea a su tope 25%). El aviso "Prorrateo aplicado" informa al docente.
     const warns: string[] = [];
-    if (hExtension > maxExtLimit) {
-      warns.push(`La suma total de extensión (${hExtension}h) supera el tope global permitido (${maxExtLimit}h). Revisa todas las subsecciones.`);
-    }
     return warns;
   }, [hExtension, maxExtLimit]);
 
@@ -1183,44 +1184,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     const rolProyecto = (invProyecto.rol || '').toUpperCase();
     const horasProyecto = hInvestigacion;
 
-    if (!rolProyecto && horasProyecto > horasAProgramar * 0.25) {
-      warns.push(`Sin rol en proyecto: las horas solicitadas (${horasProyecto}h) exceden el máximo del 25% permitido (${Math.round(horasAProgramar * 0.25)}h).`);
-    }
-
-    // REGLA 1: Proporcionalidad dinámica de topes por rol
-    if (rolProyecto && horasProyecto > 0 && tipoVinculacion !== 'CARRERA_009') {
-      const base800 = ptaRules?.horas_base_carrera_003 || 800;
-      const factor = horasAProgramar / base800;
-      let maxH = 0;
-      let rolLabel = '';
-      if (rolProyecto.includes('LÍDER') || rolProyecto.includes('LIDER')) {
-        maxH = Math.round((ptaRules?.max_horas_inv_lider || 400) * factor);
-        rolLabel = 'Investigador Líder';
-      } else if (rolProyecto.includes('COINVESTIGADOR')) {
-        maxH = Math.round((ptaRules?.max_horas_inv_coinvestigador || 300) * factor);
-        rolLabel = 'Coinvestigador';
-      } else if (rolProyecto.includes('ASISTENTE')) {
-        maxH = Math.round((ptaRules?.max_horas_inv_asistente || 200) * factor);
-        rolLabel = 'Asistente Nivel II';
-      }
-      if (maxH > 0 && horasProyecto > maxH) {
-        warns.push(`${rolLabel}: máx ${maxH}h para PTA de ${horasAProgramar}h (proporcional). Solicitadas: ${horasProyecto}h.`);
-      }
-    }
-
-    // REGLA 2: Validación cruzada inv+ext ≤ 50% para Enlace/Director
-    const tieneEnlaceODir = invActividades.some(a => {
-      const n = (a.nombre || '').toUpperCase();
-      return n.includes('ENLACE TERRITORIAL') || n.includes('DIRECTOR DE GRUPO') || n.includes('DIRECTOR GRUPO');
-    });
-    if (tieneEnlaceODir) {
-      const pctCruzado = (ptaRules?.max_pct_inv_ext_combinado ?? 50) / 100;
-      const maxCruzado = Math.round(horasAProgramar * pctCruzado);
-      const sumaInvExt = hInvestigacion + hExtension;
-      if (sumaInvExt > maxCruzado) {
-        warns.push(`Enlace/Director: investigación+extensión (${sumaInvExt}h) excede el ${ptaRules?.max_pct_inv_ext_combinado ?? 50}% del PTA (${maxCruzado}h).`);
-      }
-    }
+    // Prorrateo Circular 003/2025: el exceso de Investigación (sin rol >25%, tope por rol
+    // proporcional, o tope cruzado Inv+Ext) NO bloquea el envío — se prorratea a su tope
+    // para el conteo. El aviso "Prorrateo aplicado" informa al docente del recorte.
 
     // REGLA 3: omitida — cuando el docente llena el proyecto, las actividades son
     // de libre registro (nombre + horas) y no aplica restricción de fomento.
@@ -1781,10 +1747,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Validación de límites de horas — solo bloquear si se excede el tope
-    // (el caso < horasAProgramar se maneja en validateEnvioDocente con modal de confirmación)
-    if (enviar && totalHoras > horasAProgramar) {
-      toast.error(`Te has excedido en ${totalHoras - horasAProgramar}h programables. Verifica tu Plan.`);
+    // Prorrateo (Circular 003/2025): el exceso en Investigación/Extensión/Complementarias
+    // NO bloquea (se prorratea cada uno a su tope). Solo se bloquea si Docencia +
+    // Académico-Administrativo (no prorrateables) superan por sí solos la bolsa de horas.
+    if (enviar && (hDocencia + hAcademicoAdmin) > horasAProgramar) {
+      toast.error(`Docencia + Académico-Administrativo superan las ${horasAProgramar}h programables. Verifica tu Plan.`);
       setSaving(false);
       return;
     }
@@ -1990,8 +1957,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (!validarComposicionParaEnvio()) {
       return false;
     }
-    if (totalHoras > horasAProgramar) {
-      toast.error(`Excedes el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
+    // Prorrateo: el exceso en los 3 componentes prorrateables no bloquea; solo se bloquea
+    // si Docencia + Académico-Administrativo (no prorrateables) superan la bolsa.
+    if ((hDocencia + hAcademicoAdmin) > horasAProgramar) {
+      toast.error(`Docencia + Académico-Administrativo superan el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
       return false;
     }
     if (invWarnings?.length > 0) {
@@ -2019,7 +1988,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
     
     return true;
-  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
+  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hDocencia, hAcademicoAdmin, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
