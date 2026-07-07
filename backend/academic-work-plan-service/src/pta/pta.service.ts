@@ -743,8 +743,12 @@ export class PtaService {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
     }
 
-    if (horas.total > horasAProgramar) {
-      throw new BadRequestException(`El PTA excede las horas programables: ${horas.total}h / ${horasAProgramar}h.`);
+    // Prorrateo (Circular 003/2025): el exceso en Investigación, Extensión y
+    // Complementarias NO bloquea al docente — se prorratea cada uno a su tope para el
+    // conteo. Aquí solo se valida que las partes NO prorrateables (Docencia +
+    // Académico-Administrativo) no superen por sí solas la bolsa de horas.
+    if ((horas.sumDocencia + horas.sumAcad) > horasAProgramar) {
+      throw new BadRequestException(`Docencia + Académico-Administrativo (${horas.sumDocencia + horas.sumAcad}h) superan las horas programables (${horasAProgramar}h).`);
     }
 
     if (tieneTotalidad) return;
@@ -797,30 +801,11 @@ export class PtaService {
       throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
     }
 
-    const maxInv = this.getInvestigacionLimit(body, rules, horasAProgramar);
-    if (horas.sumInv > maxInv) {
-      throw new BadRequestException(`Investigacion supera el tope permitido: ${horas.sumInv}h / ${maxInv}h.`);
-    }
-
-    const maxExt = Math.min(
-      this.getRuleNumber(rules, 'max_horas_extension_global', this.getRuleNumber(rules, 'ext_max_horas_enlace', 200)),
-      horasAProgramar * (this.getRuleNumber(rules, 'max_pct_extension', 25) / 100),
-    );
-    if (horas.sumExt > maxExt) {
-      throw new BadRequestException(`Extension supera el tope permitido: ${horas.sumExt}h / ${maxExt}h.`);
-    }
-
-    const complementarias = Array.isArray(body?.complementarias) ? body.complementarias : [];
-    const horasComplementariasOrdinarias = complementarias
-      .filter((a: any) => !String(a?.nombre || '').toUpperCase().includes('SINDICATO'))
-      .reduce((sum: number, a: any) => sum + (Number(a?.horas) || 0), 0);
-    const maxComp = Math.min(
-      this.getRuleNumber(rules, 'max_horas_complementarias_global', 200),
-      horasAProgramar * (this.getRuleNumber(rules, 'max_pct_complementarias', 25) / 100),
-    );
-    if (horasComplementariasOrdinarias > maxComp) {
-      throw new BadRequestException(`Complementarias supera el tope permitido: ${horasComplementariasOrdinarias}h / ${maxComp}h.`);
-    }
+    // ── Prorrateo Circular 003/2025 ──────────────────────────────────────────
+    // Investigación (≤50%), Extensión (≤25%) y Complementarias (≤25%) NO bloquean al
+    // enviar. Si el docente se excede, el frontend prorratea (recorta) cada componente a
+    // su tope para el conteo y el envío se acepta igual. Por eso aquí ya NO se lanza error
+    // por superar el tope de estos 3 componentes (ni por el tope cruzado Inv+Ext).
 
     const maxAadm = Math.min(
       this.getRuleNumber(rules, 'max_horas_aadm_global', 200),
@@ -830,18 +815,8 @@ export class PtaService {
       throw new BadRequestException(`Actividades academico-administrativas superan el tope permitido: ${horas.sumAcad}h / ${maxAadm}h.`);
     }
 
-    const invActs = Array.isArray(body?.investigacion_actividades) ? body.investigacion_actividades : [];
-    const aplicaCruceInvExt = invActs.some((a: any) => {
-      const nombre = normalizeEstadoFilter(a?.nombre);
-      return nombre.includes('ENLACE_TERRITORIAL') || nombre.includes('DIRECTOR_DE_GRUPO') || nombre.includes('DIRECTOR_GRUPO');
-    });
-    if (aplicaCruceInvExt) {
-      const maxCruzado = horasAProgramar * (this.getRuleNumber(rules, 'max_pct_inv_ext_combinado', 50) / 100);
-      const sumaInvExt = horas.sumInv + horas.sumExt;
-      if (sumaInvExt > maxCruzado) {
-        throw new BadRequestException(`Investigacion + Extension supera el tope cruzado permitido: ${sumaInvExt}h / ${maxCruzado}h.`);
-      }
-    }
+    // El tope cruzado Investigación+Extensión (Enlace Territorial / Director de Grupo)
+    // tampoco bloquea: forma parte del prorrateo de los 3 componentes (no se rechaza).
   }
 
   private toPtaDto(entity: PlanTrabajoAcademicoEntity, extMult: Record<string, number> = { capacitacion: 2 }) {
@@ -1137,22 +1112,29 @@ export class PtaService {
           ext_gobierno: extHoras(EXT_SUB_SECTIONS.ext_gobierno),
         };
 
-        const componentSet = [
-          ...BASE_KEYS,
-          ...Object.keys(EXT_SUB_SECTIONS).filter(k => horasPorComp[k] > 0),
-        ];
-
         const hayActividades = Object.values(horasPorComp).some(h => h > 0);
         const recs = estadoByPta.get(dto.id) || new Map<string, string>();
+        // Un componente cuenta como aprobado si su registro está aprobado o si está vacío
+        // (auto-aprobación cuando el PTA tiene actividades) — consistente con getComponentesAprobacion.
+        const estaAprobado = (k: string) => recs.get(k) === 'aprobado' || (hayActividades && (horasPorComp[k] || 0) === 0);
 
+        // Componentes de ALTO NIVEL que ve el administrador (5): Docencia, Investigación,
+        // Extensión (UNA sola, NO desglosada en sus 4 subsecciones), Complementarias, Acad-Admin.
+        const EXT_KEYS = ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'];
+        let total = 0;
         let aprobados = 0;
-        for (const c of componentSet) {
-          // Auto-aprobación de componentes vacíos (consistente con getComponentesAprobacion; aquí sin persistir).
-          const autoAprobado = hayActividades && horasPorComp[c] === 0;
-          if (recs.get(c) === 'aprobado' || autoAprobado) aprobados++;
+        for (const c of BASE_KEYS) {
+          total++;
+          if (estaAprobado(c)) aprobados++;
+        }
+        // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
+        const extTieneHoras = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
+        if (extTieneHoras) {
+          total++;
+          if (EXT_KEYS.every(k => estaAprobado(k))) aprobados++;
         }
 
-        dto.componentes_total = componentSet.length;
+        dto.componentes_total = total;
         dto.componentes_aprobados = aprobados;
       } catch {
         // No romper la lista por un DTO problemático.
