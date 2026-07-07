@@ -1126,6 +1126,100 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 </div>
               )}
 
+              {/* Investigación — Proyecto y Actividades */}
+              {(() => {
+                const proy = selectedPta.investigacion_proyecto;
+                const invActs = Array.isArray(selectedPta.investigacion_actividades) ? selectedPta.investigacion_actividades : [];
+                const tieneProy = proy && (proy.nombre || proy.rol || proy.codigo || Number(proy.horas_solicitadas) > 0);
+                if (!tieneProy && invActs.length === 0) return null;
+                return (
+                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
+                      <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: PTA_COLORS.INVESTIGACION }} /> Investigación
+                    </h4>
+                    {tieneProy && (
+                      <div className="bg-violet-50/50 rounded-xl border border-violet-100 p-3 mb-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[0.78rem] sm:text-[0.84rem] font-extrabold text-gray-900 leading-tight">{proy.nombre || 'Proyecto de investigación'}</div>
+                            {proy.rol && <div className="text-[0.62rem] sm:text-[0.68rem] text-violet-700 font-bold mt-1">{proy.rol}</div>}
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 text-[0.68rem] font-black shrink-0">{Number(proy.horas_solicitadas || 0)}h</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2 text-[0.66rem] sm:text-[0.72rem] text-gray-600">
+                          {proy.codigo && <div><span className="text-gray-400 font-bold">Código: </span>{proy.codigo}</div>}
+                          {proy.grupo && <div><span className="text-gray-400 font-bold">Grupo: </span>{proy.grupo}</div>}
+                          {proy.linea && <div><span className="text-gray-400 font-bold">Línea: </span>{proy.linea}</div>}
+                          {proy.resolucion_nombre && <div><span className="text-gray-400 font-bold">Resolución: </span>{proy.resolucion_nombre}</div>}
+                        </div>
+                      </div>
+                    )}
+                    {invActs.length > 0 && (
+                      <div className="space-y-2">
+                        {invActs.map((a: any, idx: number) => (
+                          <div key={a.id || a.actividad_id || idx} className="bg-white rounded-xl border border-gray-100 p-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[0.74rem] sm:text-[0.8rem] font-semibold text-gray-800 leading-tight">{a.nombre || a.actividad_nombre || a.actividad_id || 'Actividad'}</div>
+                              {a.descripcion && <div className="text-[0.64rem] text-gray-500 mt-1 leading-relaxed">{a.descripcion}</div>}
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 text-[0.66rem] font-black shrink-0">{Number(a.horas_total ?? a.horas ?? 0)}h</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Extensión — Actividades */}
+              {(() => {
+                const extActs = Array.isArray(selectedPta.extension_actividades) ? selectedPta.extension_actividades : [];
+                if (extActs.length === 0) return null;
+                return (
+                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
+                      <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: PTA_COLORS.EXTENSION }} /> Extensión — Actividades ({extActs.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {extActs.map((e: any, idx: number) => (
+                        <div key={e.id || e.actividad_id || idx} className="bg-white rounded-xl border border-gray-100 p-3 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[0.74rem] sm:text-[0.8rem] font-semibold text-gray-800 leading-tight">{e.nombre || e.actividad_nombre || e.actividad_id || 'Actividad de extensión'}</div>
+                            {e.seccion && <div className="text-[0.6rem] text-emerald-700 font-bold mt-1">{e.seccion}</div>}
+                            {e.descripcion && <div className="text-[0.64rem] text-gray-500 mt-1 leading-relaxed">{e.descripcion}</div>}
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[0.66rem] font-black shrink-0">{Number(e.horas ?? e.horas_ejecutadas ?? 0)}h</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Complementarias — Actividades */}
+              {(() => {
+                const comps = Array.isArray(selectedPta.complementarias) ? selectedPta.complementarias : [];
+                if (comps.length === 0) return null;
+                return (
+                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
+                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
+                      <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: PTA_COLORS.COMPLEMENTARIAS }} /> Complementarias ({comps.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {comps.map((c: any, idx: number) => (
+                        <div key={c.id || c.actividad_id || idx} className="bg-white rounded-xl border border-gray-100 p-3 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[0.74rem] sm:text-[0.8rem] font-semibold text-gray-800 leading-tight">{c.nombre || c.actividad_nombre || c.actividad_id || 'Actividad complementaria'}</div>
+                            {c.descripcion && <div className="text-[0.64rem] text-gray-500 mt-1 leading-relaxed">{c.descripcion}</div>}
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[0.66rem] font-black shrink-0">{Number(c.horas ?? 0)}h</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* V05: Concertación (if applicable) */}
               {selectedPta.estado === 'EN_CONCERTACION' && (
                 <div style={{ background: 'white', borderRadius: 14, border: '1px solid #DDD6FE', padding: '18px 22px', marginBottom: 14 }}>
