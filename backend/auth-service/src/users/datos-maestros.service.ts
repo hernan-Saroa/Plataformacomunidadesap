@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Seccional } from './seccional.entity';
+import { Sede } from './sede.entity';
 
 export interface Territorial {
   id: string;
@@ -19,86 +23,112 @@ export interface ProgramaAcademico {
 
 @Injectable()
 export class DatosMaestrosService {
-  // Datos mock por ahora - en producción vendrían de base de datos
-  private territoriales: Territorial[] = [
-    { id: 'bog', nombre: 'Bogotá' },
-    { id: 'med', nombre: 'Medellín' },
-    { id: 'cal', nombre: 'Cali' },
-    { id: 'bar', nombre: 'Barranquilla' },
-    { id: 'buc', nombre: 'Bucaramanga' },
-    { id: 'car', nombre: 'Cartagena' },
-    { id: 'pas', nombre: 'Pasto' },
-    { id: 'man', nombre: 'Manizales' },
-    { id: 'iba', nombre: 'Ibagué' },
-    { id: 'nev', nombre: 'Neiva' },
-  ];
+  constructor(
+    @InjectRepository(Seccional)
+    private readonly seccionalRepo: Repository<Seccional>,
+    @InjectRepository(Sede)
+    private readonly sedeRepo: Repository<Sede>,
+  ) {}
 
-  private cetaps: CETAP[] = [
-    // Bogotá
-    { id: 'bog-1', nombre: 'CETAP Bogotá Norte', territorialId: 'bog' },
-    { id: 'bog-2', nombre: 'CETAP Bogotá Sur', territorialId: 'bog' },
-    { id: 'bog-3', nombre: 'CETAP Bogotá Centro', territorialId: 'bog' },
-    // Medellín
-    { id: 'med-1', nombre: 'CETAP Medellín Oriente', territorialId: 'med' },
-    { id: 'med-2', nombre: 'CETAP Medellín Occidente', territorialId: 'med' },
-    // Cali
-    { id: 'cal-1', nombre: 'CETAP Cali Norte', territorialId: 'cal' },
-    { id: 'cal-2', nombre: 'CETAP Cali Sur', territorialId: 'cal' },
-    // Barranquilla
-    { id: 'bar-1', nombre: 'CETAP Atlántico Norte', territorialId: 'bar' },
-    { id: 'bar-2', nombre: 'CETAP Atlántico Sur', territorialId: 'bar' },
-    // Bucaramanga
-    { id: 'buc-1', nombre: 'CETAP Santander Centro', territorialId: 'buc' },
-    // Cartagena
-    { id: 'car-1', nombre: 'CETAP Bolívar Centro', territorialId: 'car' },
-    // Pasto
-    { id: 'pas-1', nombre: 'CETAP Nariño Norte', territorialId: 'pas' },
-    // Manizales
-    { id: 'man-1', nombre: 'CETAP Caldas Centro', territorialId: 'man' },
-    // Ibagué
-    { id: 'iba-1', nombre: 'CETAP Tolima Centro', territorialId: 'iba' },
-    // Neiva
-    { id: 'nev-1', nombre: 'CETAP Huila Centro', territorialId: 'nev' },
-  ];
-
-  private programas: ProgramaAcademico[] = [
-    { id: 'adm', nombre: 'Administración Pública', codigo: 'ADM' },
-    { id: 'con', nombre: 'Contaduría Pública', codigo: 'CON' },
-    { id: 'sis', nombre: 'Ingeniería de Sistemas', codigo: 'SIS' },
-    { id: 'der', nombre: 'Derecho', codigo: 'DER' },
-    { id: 'psi', nombre: 'Psicología', codigo: 'PSI' },
-    { id: 'enf', nombre: 'Enfermería', codigo: 'ENF' },
-    { id: 'med', nombre: 'Medicina', codigo: 'MED' },
-    { id: 'arq', nombre: 'Arquitectura', codigo: 'ARQ' },
-    { id: 'ing-civ', nombre: 'Ingeniería Civil', codigo: 'ING-CIV' },
-    { id: 'ing-ind', nombre: 'Ingeniería Industrial', codigo: 'ING-IND' },
-    { id: 'eco', nombre: 'Economía', codigo: 'ECO' },
-    { id: 'com', nombre: 'Comunicación Social', codigo: 'COM' },
-    { id: 'tur', nombre: 'Turismo', codigo: 'TUR' },
-    { id: 'edu', nombre: 'Educación', codigo: 'EDU' },
-    { id: 'dis-ind', nombre: 'Diseño Industrial', codigo: 'DIS-IND' },
-  ];
-
+  /**
+   * Obtiene las territoriales (seccionales) del módulo de Estructura Organizacional.
+   * Ya NO usa datos mock: consulta directamente auth.seccionales.
+   */
   async getTerritoriales(): Promise<Territorial[]> {
-    // Simular delay de API
-    await new Promise(resolve => setTimeout(resolve, 100));
-    return this.territoriales;
+    const seccionales = await this.seccionalRepo.find({
+      order: { nomSeccional: 'ASC' },
+    });
+    return seccionales.map(s => ({
+      id: String(s.idSeccional),
+      nombre: s.nomSeccional,
+    }));
   }
 
+  /**
+   * Obtiene los CETAPs (sedes) del módulo de Estructura Organizacional,
+   * filtrados por seccional/territorial si se especifica.
+   */
   async getCETAPs(territorialId?: string): Promise<CETAP[]> {
-    // Simular delay de API
-    await new Promise(resolve => setTimeout(resolve, 150));
-
+    const where: any = {};
     if (territorialId) {
-      return this.cetaps.filter(cetap => cetap.territorialId === territorialId);
+      where.idSeccional = Number(territorialId);
     }
-
-    return this.cetaps;
+    const sedes = await this.sedeRepo.find({
+      where,
+      order: { nomSede: 'ASC' },
+    });
+    return sedes.map(s => ({
+      id: String(s.idSede),
+      nombre: s.nomSede || `Sede ${s.codSede}`,
+      territorialId: String(s.idSeccional),
+    }));
   }
 
-  async getProgramasAcademicos(): Promise<ProgramaAcademico[]> {
-    // Simular delay de API
-    await new Promise(resolve => setTimeout(resolve, 100));
-    return this.programas;
+  /**
+   * Obtiene los programas académicos de la tabla auth.programas_academicos.
+   * Usa query directa pues la entidad puede estar en otro módulo.
+   */
+  async getProgramasAcademicos(sedeId?: string): Promise<ProgramaAcademico[]> {
+    const mapRows = (rows: any[]) => (rows || []).map((r: any) => ({
+      id: String(r.id),
+      nombre: r.nombre,
+      codigo: r.codigo || '',
+    }));
+
+    try {
+      if (sedeId) {
+        // Estrategia 1: vía sede_cetap_mapping (columna correcta: id_cetap)
+        try {
+          const rows = await this.seccionalRepo.manager.query(
+            `SELECT DISTINCT p.id, p.codigo, p.nombre
+             FROM academic_work_plan.programa p
+             JOIN academic_work_plan.oferta_cetap_programa ocp ON ocp.id_programa = p.id AND ocp.activa = TRUE
+             JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+             JOIN auth.sede_cetap_mapping scm ON scm.id_cetap = c.id
+             WHERE scm.id_sede = $1 AND p.activo = TRUE
+             ORDER BY p.nombre ASC`,
+            [Number(sedeId)],
+          );
+          if (rows && rows.length > 0) return mapRows(rows);
+        } catch (e) {
+          console.warn('[DatosMaestros] sede_cetap_mapping query falló:', e.message);
+        }
+
+        // Estrategia 2: match por nombre de sede ↔ nombre de cetap
+        const sede = await this.sedeRepo.findOne({ where: { idSede: Number(sedeId) } });
+        if (sede && sede.nomSede) {
+          // Limpiar nombre: quitar prefijo "CETAP " si lo tiene
+          const cleanName = sede.nomSede.replace(/^CETAP\s*/i, '').trim();
+          // Normalizar para comparación: quitar tildes, lowercase
+          const normalized = cleanName
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+
+          const rows = await this.seccionalRepo.manager.query(
+            `SELECT DISTINCT p.id, p.codigo, p.nombre
+             FROM academic_work_plan.programa p
+             JOIN academic_work_plan.oferta_cetap_programa ocp ON ocp.id_programa = p.id AND ocp.activa = TRUE
+             JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+             WHERE (
+               LOWER(c.nombre) = LOWER($1)
+               OR c.nombre_normalizado = $2
+               OR LOWER(c.nombre) LIKE LOWER($3)
+             ) AND p.activo = TRUE
+             ORDER BY p.nombre ASC`,
+            [cleanName, normalized, `%${cleanName}%`],
+          );
+          if (rows && rows.length > 0) return mapRows(rows);
+        }
+      }
+
+      // Sin filtro o sin resultados: todos los programas activos
+      const rows = await this.seccionalRepo.manager.query(
+        `SELECT id, codigo, nombre FROM academic_work_plan.programa WHERE activo = TRUE ORDER BY nombre ASC`,
+      );
+      return mapRows(rows);
+    } catch (error) {
+      console.warn('[DatosMaestros] Error cargando programas académicos:', error.message);
+      return [];
+    }
   }
 }

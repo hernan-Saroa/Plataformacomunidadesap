@@ -68,23 +68,72 @@ export class CascadaController {
     @Query('periodo') periodCodigo?: string,
   ) {
     const period = periodCodigo || '2025-2';
-    const query = this.programaRepo.createQueryBuilder('programa')
-      .innerJoin(
-        OfertaCetapProgramaEntity,
-        'oferta',
-        'oferta.id_programa = programa.id AND oferta.activa = true'
-      )
-      .innerJoin(
-        PeriodoAcademicoEntity,
-        'periodo',
-        'oferta.id_periodo_academico = periodo.id AND periodo.codigo = :period',
-        { period }
-      )
-      .where('oferta.id_cetap = :cetapId', { cetapId })
-      .andWhere('programa.activo = true');
 
-    const data = await query.orderBy('programa.nombre', 'ASC').getMany();
-    return { success: true, data };
+    // The cetapId may come from either academic_work_plan.cetap.id or auth.sedes.id_sede.
+    // Use a raw query that resolves both ID types via cross-schema lookup (nombre_normalizado).
+    // First try with exact periodo match, then fallback to any active oferta.
+    let data = await this.programaRepo.manager.query(
+      `
+      SELECT DISTINCT p.*
+      FROM academic_work_plan.programa p
+      INNER JOIN academic_work_plan.oferta_cetap_programa ocp
+        ON ocp.id_programa = p.id AND ocp.activa = true
+      INNER JOIN academic_work_plan.periodo_academico per
+        ON ocp.id_periodo_academico = per.id AND per.codigo = $2
+      INNER JOIN academic_work_plan.cetap c
+        ON c.id = ocp.id_cetap
+      WHERE p.activo = true
+        AND (
+          c.id::text = $1
+          OR c.nombre_normalizado = (
+            SELECT LOWER(REPLACE(TRIM(s.nom_sede), ' ', ''))
+            FROM auth.sedes s
+            WHERE s.id_sede::text = $1
+            LIMIT 1
+          )
+        )
+      ORDER BY p.nombre ASC
+      `,
+      [cetapId, period],
+    );
+
+    // Fallback: if no results with exact periodo, try with any active oferta
+    if (data.length === 0) {
+      data = await this.programaRepo.manager.query(
+        `
+        SELECT DISTINCT p.*
+        FROM academic_work_plan.programa p
+        INNER JOIN academic_work_plan.oferta_cetap_programa ocp
+          ON ocp.id_programa = p.id AND ocp.activa = true
+        INNER JOIN academic_work_plan.cetap c
+          ON c.id = ocp.id_cetap
+        WHERE p.activo = true
+          AND (
+            c.id::text = $1
+            OR c.nombre_normalizado = (
+              SELECT LOWER(REPLACE(TRIM(s.nom_sede), ' ', ''))
+              FROM auth.sedes s
+              WHERE s.id_sede::text = $1
+              LIMIT 1
+            )
+          )
+        ORDER BY p.nombre ASC
+        `,
+        [cetapId],
+      );
+    }
+
+    const nivelFormacionMap: Record<string, string> = {
+      pregrado: 'Pregrado',
+      especializacion: 'Especialización',
+      maestria: 'Maestría',
+    };
+    const mappedData = data.map((p: any) => ({
+      ...p,
+      nivel: nivelFormacionMap[p.tipo] || p.tipo || 'Pregrado',
+    }));
+
+    return { success: true, data: mappedData };
   }
 
   @Get('asignaturas')

@@ -47,6 +47,22 @@ export interface ProgramaAcademicoDTO {
   creditosPlan?: number;
   createdAt: string;
   updatedAt: string;
+
+  // ─── Campos Clave Circular 003/2025 (Catálogo CARGA_2) ───
+  nombre_corto?: string;                     // Código operativo (AP_Diurno, APT, etc.)
+  tipo_programa?: string;                    // pregrado | especializacion | maestria
+  categoria_horas_circular003?: string;       // CLAVE: pregrado_sede_central | pregrado_territorial | especializacion | maestria
+  descripcion_categoria_circular003?: string; // Nombre oficial Tabla 1 Circular
+  horas_base_por_credito?: number | null;     // 16 (APT/Esp), 12 (Maestría), NULL (Sede Central)
+  horas_pregrado_central?: number | null;     // 64 (solo Sede Central, bloque fijo)
+  // Campos calculados derivados
+  horasBasePorCredito?: number;               // Alias legacy para retrocompatibilidad
+  duracionSemestres?: number;                 // Alias legacy
+  estudiantesActivos?: number;                // Conteo de estudiantes
+  docentesAsignados?: number;                 // Conteo de docentes
+  acreditacion?: any;                         // Datos de acreditación
+  fechaCreacion?: string;                     // Fecha de creación
+  cetapsList?: any[];                         // CETAPs vinculados
 }
 
 export interface ProgramasResponse {

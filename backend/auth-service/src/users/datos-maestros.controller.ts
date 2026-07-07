@@ -16,7 +16,7 @@ export class DatosMaestrosController {
   }
 
   @Get('programas-academicos')
-  async getProgramasAcademicos() {
-    return await this.datosMaestrosService.getProgramasAcademicos();
+  async getProgramasAcademicos(@Query('sedeId') sedeId?: string) {
+    return await this.datosMaestrosService.getProgramasAcademicos(sedeId);
   }
 }

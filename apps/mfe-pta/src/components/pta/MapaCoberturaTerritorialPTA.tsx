@@ -91,7 +91,21 @@ export function MapaCoberturaTerritorialPTA() {
 
   const [ptas, setPtas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const geoJson = COLOMBIA_GEOJSON as any;
+  // Convert DeptFeature[] → standard GeoJSON FeatureCollection for Leaflet
+  const geoJson = useMemo(() => {
+    if (!COLOMBIA_GEOJSON || !Array.isArray(COLOMBIA_GEOJSON)) return null;
+    return {
+      type: 'FeatureCollection' as const,
+      features: (COLOMBIA_GEOJSON as any[]).map((dept: any) => ({
+        type: 'Feature' as const,
+        properties: { NOMBRE_DPT: dept.name || dept.id, id: dept.id },
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: dept.coords,
+        },
+      })),
+    };
+  }, []);
   const [mapReady, setMapReady] = useState(false);
   const [selectedTerr, setSelectedTerr] = useState<string | null>(null);
   const [showCetaps, setShowCetaps] = useState(true);

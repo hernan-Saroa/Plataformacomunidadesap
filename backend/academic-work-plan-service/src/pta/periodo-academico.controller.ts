@@ -17,6 +17,7 @@ import { PeriodoAcademicoEntity } from './entities/periodo-academico.entity';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/public.decorator';
+import { PtaService } from './pta.service';
 
 @UseGuards(RolesGuard)
 @Controller(['periodos-academicos', 'pta/periodos-academicos'])
@@ -24,6 +25,7 @@ export class PeriodoAcademicoController {
   constructor(
     @InjectRepository(PeriodoAcademicoEntity)
     private readonly repo: Repository<PeriodoAcademicoEntity>,
+    private readonly ptaService: PtaService,
   ) {}
 
   @Public()
@@ -105,6 +107,9 @@ export class PeriodoAcademicoController {
       estado: 'planeacion',
     });
 
+    // Nota: la finalización de los PTA de períodos anteriores NO ocurre al crear el
+    // período (queda en 'planeacion'), sino cuando el período se pone "en curso"
+    // (ver update()). Así no se cierran PTAs activos por planear un período futuro.
     try {
       return await this.repo.save(newPeriod);
     } catch (error) {
@@ -221,18 +226,27 @@ export class PeriodoAcademicoController {
         for (const p of allOtherPeriods) {
           if (p.id !== period.id) {
             if (
-              p.anio < period.anio || 
+              p.anio < period.anio ||
               (p.anio === period.anio && p.semestre < period.semestre)
             ) {
               p.estado = 'cerrado'; // Histórico
             } else if (
-              p.anio > period.anio || 
+              p.anio > period.anio ||
               (p.anio === period.anio && p.semestre > period.semestre)
             ) {
               p.estado = 'planeacion'; // Planeación
             }
             await this.repo.save(p);
           }
+        }
+
+        // Al poner este período "en curso", todos los PTA de períodos anteriores
+        // pasan a 'Terminado' (solo lectura), incluso los que estaban en seguimiento.
+        // Best-effort: no debe impedir la activación del período si algo falla.
+        try {
+          await this.ptaService.finalizarPtasPorNuevoPeriodo(period.codigo);
+        } catch (e) {
+          console.warn('No se pudieron finalizar los PTA al activar el período:', (e as any)?.message);
         }
       }
     }
