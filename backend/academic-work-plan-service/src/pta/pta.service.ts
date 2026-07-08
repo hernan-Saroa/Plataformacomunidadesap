@@ -703,6 +703,11 @@ export class PtaService {
     return Number.isFinite(value) ? value : fallback;
   }
 
+  private getPositiveRuleNumber(rules: any, key: string, fallback: number): number {
+    const value = Number(rules?.[key]);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
   private getInvestigacionLimit(body: any, rules: any, horasAProgramar: number): number {
     const rolRaw = coalesceString(body?.investigacion_proyecto?.rol);
     if (!rolRaw) {
@@ -743,15 +748,32 @@ export class PtaService {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
     }
 
-    // Prorrateo (Circular 003/2025): el exceso en Investigación, Extensión y
-    // Complementarias NO bloquea al docente — se prorratea cada uno a su tope para el
-    // conteo. Aquí solo se valida que las partes NO prorrateables (Docencia +
-    // Académico-Administrativo) no superen por sí solas la bolsa de horas.
-    if ((horas.sumDocencia + horas.sumAcad) > horasAProgramar) {
-      throw new BadRequestException(`Docencia + Académico-Administrativo (${horas.sumDocencia + horas.sumAcad}h) superan las horas programables (${horasAProgramar}h).`);
-    }
-
+    // El envio se valida por topes individuales de componente, no por suma global.
     if (tieneTotalidad) return;
+
+    const maxDocencia = this.getPositiveRuleNumber(
+      rules,
+      'max_horas_docencia_global',
+      this.getPositiveRuleNumber(rules, 'horas_base_carrera_003', 800),
+    );
+    const maxInvestigacion = this.getPositiveRuleNumber(rules, 'max_horas_investigacion_global', 400);
+    const maxExtension = this.getPositiveRuleNumber(
+      rules,
+      'max_horas_extension_global',
+      this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+    );
+    const maxComplementarias = this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200);
+
+    const assertComponentLimit = (label: string, value: number, limit: number) => {
+      if (value > limit) {
+        throw new BadRequestException(`El componente ${label} excede el limite permitido: ${value}h / ${limit}h.`);
+      }
+    };
+
+    assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
+    assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
+    assertComponentLimit('Extension', horas.sumExt, maxExtension);
+    assertComponentLimit('Complementarias', horas.sumComp, maxComplementarias);
 
     const asignaturas = Array.isArray(body?.asignaturas)
       ? body.asignaturas.filter((a: any) => a?.asignatura_id)
@@ -801,12 +823,6 @@ export class PtaService {
       throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
     }
 
-    // ── Prorrateo Circular 003/2025 ──────────────────────────────────────────
-    // Investigación (≤50%), Extensión (≤25%) y Complementarias (≤25%) NO bloquean al
-    // enviar. Si el docente se excede, el frontend prorratea (recorta) cada componente a
-    // su tope para el conteo y el envío se acepta igual. Por eso aquí ya NO se lanza error
-    // por superar el tope de estos 3 componentes (ni por el tope cruzado Inv+Ext).
-
     const maxAadm = Math.min(
       this.getRuleNumber(rules, 'max_horas_aadm_global', 200),
       horasAProgramar * (this.getRuleNumber(rules, 'max_pct_aadm', 25) / 100),
@@ -815,8 +831,6 @@ export class PtaService {
       throw new BadRequestException(`Actividades academico-administrativas superan el tope permitido: ${horas.sumAcad}h / ${maxAadm}h.`);
     }
 
-    // El tope cruzado Investigación+Extensión (Enlace Territorial / Director de Grupo)
-    // tampoco bloquea: forma parte del prorrateo de los 3 componentes (no se rechaza).
   }
 
   private toPtaDto(entity: PlanTrabajoAcademicoEntity, extMult: Record<string, number> = { capacitacion: 2 }) {
