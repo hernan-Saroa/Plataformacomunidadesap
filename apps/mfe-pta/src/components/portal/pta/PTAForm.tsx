@@ -25,7 +25,8 @@ import {
   getCatalogoActividadesComplementarias, getCatalogoActividadesAcademicoAdmin,
   getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
   requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
-  getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada
+  getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada,
+  getOfertaCetap
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
@@ -1276,6 +1277,26 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (field === 'programa_id') {
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
+        // La cantidad de estudiantes NO es editable en el PTA: se rellena
+        // automáticamente con los cupos configurados en "Programas Académicos"
+        // para la combinación (CETAP, Programa). Es la fuente única y dinámica.
+        const cetapForOferta = updated.cetap_id;
+        if (value && cetapForOferta) {
+          getOfertaCetap(String(cetapForOferta), String(value))
+            .then(res => {
+              const cupos = Number(res?.data?.cupos_estimados);
+              if (Number.isFinite(cupos) && cupos > 0) {
+                setAsignaturas(prev =>
+                  prev.map(x =>
+                    x.id === id ? { ...x, total_estudiantes: cupos } : x,
+                  ),
+                );
+              }
+            })
+            .catch(() => {
+              /* silencioso: si no hay oferta se conserva el valor actual */
+            });
+        }
       }
       // On asignatura selection - auto-fill fields + calculate hours
       if (field === 'asignatura_id' && value) {
@@ -2899,8 +2920,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 min={asig.fecha_inicio || periodoFechaMin}
                                 max={periodoFechaMax}
                                 onChange={v => handleAsigChange(asig.id, 'fecha_fin', v)} />
-                              <FormInput label="Estudiantes" type="number" value={asig.total_estudiantes} disabled={!rowEditable}
-                                onChange={v => handleAsigChange(asig.id, 'total_estudiantes', Math.min(50, Math.max(1, Number(v) || 1)))} />
+                              {/* Estudiantes: NO editable. Se rellena automáticamente con los
+                                  cupos configurados por (CETAP, Programa) en Programas Académicos. */}
+                              <FormInput label="Estudiantes (automático)" type="number" value={asig.total_estudiantes} disabled
+                                onChange={() => { /* solo lectura: valor dinámico desde Programas Académicos */ }} />
                               
                               {/* Modalidad moved here to save space */}
                               {asig.asignatura_id && (

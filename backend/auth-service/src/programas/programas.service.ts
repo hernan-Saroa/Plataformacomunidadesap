@@ -1093,6 +1093,17 @@ export class ProgramasService {
   }
 
   async actualizarCuposCetap(programaId: string, ofertaId: string, cupos: number) {
+    // Regla de negocio: los cupos por CETAP deben estar entre 1 y 100.
+    // Se valida en el backend para garantizar la integridad aunque el frontend
+    // sea manipulado. El valor se persiste en oferta_cetap_programa.cupos_estimados
+    // y es la fuente única que luego alimenta (de solo lectura) el PTA del docente.
+    const cuposNum = Number(cupos);
+    if (!Number.isInteger(cuposNum) || cuposNum < 1 || cuposNum > 100) {
+      throw new BadRequestException(
+        'La cantidad de estudiantes por CETAP debe ser un número entero entre 1 y 100.',
+      );
+    }
+
     // Validate that the oferta belongs to the given program to prevent tampering
     const oferta = await this.programaRepo.query(
       `SELECT id FROM academic_work_plan.oferta_cetap_programa WHERE id = $1 AND id_programa = $2 LIMIT 1`,
@@ -1105,10 +1116,10 @@ export class ProgramasService {
 
     await this.programaRepo.query(
       `UPDATE academic_work_plan.oferta_cetap_programa SET cupos_estimados = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-      [cupos, ofertaId]
+      [cuposNum, ofertaId]
     );
 
-    return { success: true };
+    return { success: true, cupos: cuposNum };
   }
 
   // ─── Circular 003/2025 — Helpers ─────────────────────────────────

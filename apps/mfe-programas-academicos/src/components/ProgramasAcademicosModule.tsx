@@ -37,7 +37,8 @@ import { ImportarAsignaturas } from './ImportarAsignaturas';
 import { GestionPeriodos } from './GestionPeriodos';
 import { ProgramCetapsModal } from './ProgramCetapsModal';
 import { useAuth } from '../hooks';
-import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../services/api';
+import { apiClient } from '../../services/api';
+import type { ProgramaAcademicoDTO } from '../../services/api/programas.service';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 // ✅ DÍA 5: ResponsiveHeader para headers adaptativos
@@ -302,7 +303,13 @@ export function ProgramasAcademicosModule() {
   const handleUpdateEstudiantesCetap = async (ofertaId: string, estudiantes: number) => {
     if (!selectedProgramaForCetaps) return;
     try {
-      await api.programas.updateCetapEstudiantes(selectedProgramaForCetaps.id, ofertaId, estudiantes);
+      // PATCH directo (mismo patrón que el resto del módulo, p. ej. el delete de arriba).
+      // El barrel de servicios de esta app no expone updateCetapEstudiantes, por eso
+      // se llama al endpoint con apiClient para evitar el ReferenceError previo.
+      await apiClient.patch(
+        `/auth/api/v1/programas-academicos/${selectedProgramaForCetaps.id}/cetaps/${ofertaId}`,
+        { cupos: estudiantes },
+      );
       // Update local state to reflect the new count
       const updatedCetapsList = selectedProgramaForCetaps.cetapsList?.map(c => 
         c.ofertaId === ofertaId ? { ...c, estudiantes } : c

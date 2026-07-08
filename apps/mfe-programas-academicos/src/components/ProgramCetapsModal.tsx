@@ -16,10 +16,20 @@ export function ProgramCetapsModal({ onClose, programaNombre, cetapsList, onUpda
   const [editValue, setEditValue] = useState<number>(0);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Regla de negocio: mínimo 1, máximo 100 estudiantes por CETAP.
+  const MIN_ESTUDIANTES = 1;
+  const MAX_ESTUDIANTES = 100;
+  const clampEstudiantes = (v: number) => {
+    const n = Math.floor(Number(v));
+    if (!Number.isFinite(n)) return MIN_ESTUDIANTES;
+    return Math.min(MAX_ESTUDIANTES, Math.max(MIN_ESTUDIANTES, n));
+  };
+
   const handleSave = async (ofertaId: string) => {
+    const value = clampEstudiantes(editValue);
     try {
       setIsUpdating(true);
-      await onUpdateEstudiantes(ofertaId, editValue);
+      await onUpdateEstudiantes(ofertaId, value);
       setEditingId(null);
     } catch (e) {
       console.error(e);
@@ -131,12 +141,15 @@ export function ProgramCetapsModal({ onClose, programaNombre, cetapsList, onUpda
                             <div className="flex items-center gap-2">
                               {isEditing ? (
                                 <div className="flex items-center gap-1">
-                                  <input 
-                                    type="number" 
-                                    value={editValue} 
-                                    onChange={e => setEditValue(Number(e.target.value))}
+                                  <input
+                                    type="number"
+                                    value={editValue}
+                                    onChange={e => setEditValue(clampEstudiantes(Number(e.target.value)))}
+                                    onBlur={() => setEditValue(v => clampEstudiantes(v))}
                                     className="w-16 h-6 px-1 border border-[#003DA5] rounded text-xs text-center"
-                                    min="0"
+                                    min={MIN_ESTUDIANTES}
+                                    max={MAX_ESTUDIANTES}
+                                    title="Entre 1 y 100 estudiantes"
                                     disabled={isUpdating}
                                   />
                                   <button 
