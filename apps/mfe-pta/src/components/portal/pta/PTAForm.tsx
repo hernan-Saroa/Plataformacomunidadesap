@@ -4,7 +4,7 @@
  * Motor de cálculo según fórmulas Excel:
  * - K15: Horas base por programa (AP=64, Maestría=créd×12, otros=créd×16)
  * - L15: Total horas = horasBase × 3 (con excepciones)
- * - Prorrateo: Doc=100%, Inv=50%, Ext=25%, Comp=25%
+ * - Topes por componente desde configuracion (defaults: Doc=800h, Inv=400h, Ext=200h, Comp=200h)
  * 
  * Dropdowns en cascada: Territorial → CETAP → Programa → Asignatura
  * 5 Componentes: Docencia, Investigación, Extensión (4 secciones), Complementarias
@@ -380,15 +380,6 @@ function calcTotalHoras(asigNombre: string, horasBase: number, rules?: any, prog
     ? Number(progCfg.multiplicador)
     : (rules?.criterio_multiplicador_docencia || 3);
   return horasBase * mult;
-}
-
-/**
- * Prorrateo: aplica el tope máximo por componente según la Circular 003/2025.
- * Las horas cuentan al 100% hasta el límite; el excedente se ignora en el total.
- * Ej: Investigador Líder tiene un tope de 400h (50% de 800h del PTA).
- */
-function prorratear(total: number, base: number, pct: number): number {
-  return Math.min(total, base * pct);
 }
 
 // ═══ CONSTANTS ═══════════════════════════════════════════════════════
@@ -1060,10 +1051,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     [academicoAdmin]
   );
 
-  // Prorrateo según Circular 003/2025 y Configuración Dinámica Backend
-  const maxPctExt = ptaRules?.max_pct_extension ? (ptaRules.max_pct_extension / 100) : 0.25;
-  const maxPctComp = ptaRules?.max_pct_complementarias ? (ptaRules.max_pct_complementarias / 100) : 0.25;
-
+  // Catalogos dinamicos segun la configuracion backend.
   // Roles e actividades dinámicos — prioridad: ptaRules (config) > catálogo API
   const rolesParaDropdown: any[] = useMemo(() => {
     if (ptaRules?.inv_roles?.length) return ptaRules.inv_roles.map((r: any) => ({ ...r, horas_max: r.horas_max }));
@@ -1097,29 +1085,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return hInvestigacion_raw;
   }, [hInvestigacion_raw, invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
 
-  // Prorrateo según Circular 003/2025 y Configuración Dinámica Backend
-  const maxPctInv = useMemo(() => {
-    if (invProyecto.rol) {
-      const maxRol = rolesHorasMap[invProyecto.rol];
-      if (!maxRol || !isFinite(maxRol)) {
-        // Rol no encontrado en el mapa — usar porcentaje configurado
-        return ptaRules?.max_pct_investigacion ? (ptaRules.max_pct_investigacion / 100) : 0.5;
-      }
-      let rolLimit = maxRol;
-      if (tipoVinculacion !== 'CARRERA_009') {
-          const base800 = ptaRules?.horas_base_carrera_003 || 800;
-          const factor = horasAProgramar / base800;
-          rolLimit = Math.round(maxRol * factor);
-      }
-      return horasAProgramar > 0 ? (rolLimit / horasAProgramar) : 0.5;
-    }
-    return 0.25; // 25% si no tiene rol
-  }, [invProyecto.rol, rolesHorasMap, tipoVinculacion, ptaRules, horasAProgramar]);
-
-  const docProrr = prorratear(hDocencia, horasAProgramar, 1.0);
-  const invProrr = prorratear(hInvestigacion, horasAProgramar, maxPctInv);
-  const extProrr = prorratear(hExtension, horasAProgramar, maxPctExt);
-  const compProrr = prorratear(hComplementarias, horasAProgramar, maxPctComp);
+  const docProrr = hDocencia;
+  const invProrr = hInvestigacion;
+  const extProrr = hExtension;
+  const compProrr = hComplementarias;
   const acadProrr = hAcademicoAdmin;
 
   const totalHoras = docProrr + invProrr + extProrr + compProrr + acadProrr;
@@ -1149,11 +1118,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
-  const maxExtGlobalHours = ptaRules?.max_horas_extension_global ?? ptaRules?.ext_max_horas_enlace ?? 200;
-  const maxExtLimit = Math.min(maxExtGlobalHours, horasAProgramar * maxPctExt);
+  const maxDocenciaLimit = getPositiveRuleNumber(ptaRules?.max_horas_docencia_global ?? ptaRules?.horas_base_carrera_003, 800);
+  const maxExtGlobalHours = getPositiveRuleNumber(ptaRules?.max_horas_extension_global ?? ptaRules?.ext_max_horas_enlace, 200);
+  const maxExtLimit = maxExtGlobalHours;
   // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
-  const maxInvLimit = Math.min(ptaRules?.max_horas_investigacion_global || 400, horasAProgramar * maxPctInv);
-  const maxCompLimit = Math.min(ptaRules?.max_horas_complementarias_global ?? 200, horasAProgramar * maxPctComp);
+  const maxInvLimit = getPositiveRuleNumber(ptaRules?.max_horas_investigacion_global, 400);
+  const maxCompLimit = getPositiveRuleNumber(ptaRules?.max_horas_complementarias_global, 200);
   const maxAadmLimit = Math.min(ptaRules?.max_horas_aadm_global ?? 200, horasAProgramar * ((ptaRules?.max_pct_aadm ?? 25) / 100));
 
   const hCompOrdinary = useMemo(() =>
@@ -1167,16 +1137,66 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Cada componente usa SU total contra SU tope (dinámico, sin mezclar). Complementarias
   // usa el total (hComplementarias), consistente con el recorte compProrr, para que el
   // aviso de prorrateo dispare igual que en Extensión/Investigación.
-  const invExcede = hInvestigacion > maxInvLimit;
-  const extExcede = hExtension > maxExtLimit;
-  const compExcede = hComplementarias > maxCompLimit;
-  const acadExcede = hAcademicoAdmin > maxAadmLimit;
+  // Excedentes: se comparan las horas reales contra el tope maximo del componente.
+  const docExcede = !actividadTotalidad && hDocencia > maxDocenciaLimit;
+  const invExcede = !actividadTotalidad && hInvestigacion > maxInvLimit;
+  const extExcede = !actividadTotalidad && hExtension > maxExtLimit;
+  const compExcede = !actividadTotalidad && hComplementarias > maxCompLimit;
+  const acadExcede = !actividadTotalidad && hAcademicoAdmin > maxAadmLimit;
+
+  const componentLimitViolations = useMemo(() => {
+    if (actividadTotalidad) return [];
+    const violations: Array<{
+      section: 'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin';
+      label: string;
+      hours: number;
+      limit: number;
+      message: string;
+    }> = [];
+
+    const addViolation = (
+      section: 'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin',
+      label: string,
+      hours: number,
+      limit: number,
+    ) => {
+      if (hours > limit) {
+        violations.push({
+          section,
+          label,
+          hours,
+          limit,
+          message: `El componente ${label} excede el limite permitido: ${hours}h / ${limit}h.`,
+        });
+      }
+    };
+
+    addViolation('docencia', 'Docencia', hDocencia, maxDocenciaLimit);
+    addViolation('investigacion', 'Investigacion', hInvestigacion, maxInvLimit);
+    addViolation('extension', 'Extension', hExtension, maxExtLimit);
+    addViolation('complementarias', 'Complementarias', hComplementarias, maxCompLimit);
+    addViolation('academico_admin', 'Academico-Administrativo', hAcademicoAdmin, maxAadmLimit);
+
+    return violations;
+  }, [
+    actividadTotalidad,
+    hDocencia,
+    hInvestigacion,
+    hExtension,
+    hComplementarias,
+    hAcademicoAdmin,
+    maxDocenciaLimit,
+    maxInvLimit,
+    maxExtLimit,
+    maxCompLimit,
+    maxAadmLimit,
+  ]);
+  const hasBlockingHourLimits = componentLimitViolations.length > 0;
 
   // ═══ VALIDACIONES COMPLEMENTARIAS ═════════════════════════════════════
   const compWarnings = useMemo(() => {
     const warns: string[] = [];
-    // Prorrateo (Circular 003/2025): el exceso del total de Complementarias NO bloquea el
-    // envío (se prorratea a su tope 25%). El aviso "Prorrateo aplicado" informa al docente.
+    // Valida restricciones propias de cada actividad complementaria.
     complementarias.forEach(comp => {
       if (!comp.actividad_id) return;
       const cat = actComplementarias.find((a: any) => a.id === comp.actividad_id) || comp;
@@ -1184,7 +1204,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (error) warns.push(error);
     });
     return warns;
-  }, [hCompOrdinary, maxPctComp, maxCompLimit, complementarias, actComplementarias, ptaRules]);
+  }, [hCompOrdinary, maxCompLimit, complementarias, actComplementarias, ptaRules, actividadTotalidad]);
 
   // ═══ VALIDACIONES ACADÉMICO ADMINISTRATIVAS ═══════════════════════════
   const acadWarnings = useMemo(() => {
@@ -1207,8 +1227,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // ═══ VALIDACIONES EXTENSIÓN ═══════════════════════════════════════════
   const extWarnings = useMemo(() => {
-    // Prorrateo (Circular 003/2025): el exceso del total de Extensión NO bloquea el envío
-    // (se prorratea a su tope 25%). El aviso "Prorrateo aplicado" informa al docente.
+    // Reservado para validaciones propias de extension.
     const warns: string[] = [];
     return warns;
   }, [hExtension, maxExtLimit]);
@@ -1219,9 +1238,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     const rolProyecto = (invProyecto.rol || '').toUpperCase();
     const horasProyecto = hInvestigacion;
 
-    // Prorrateo Circular 003/2025: el exceso de Investigación (sin rol >25%, tope por rol
-    // proporcional, o tope cruzado Inv+Ext) NO bloquea el envío — se prorratea a su tope
-    // para el conteo. El aviso "Prorrateo aplicado" informa al docente del recorte.
+    // Validaciones documentales propias de investigacion.
 
     // REGLA 3: omitida — cuando el docente llena el proyecto, las actividades son
     // de libre registro (nombre + horas) y no aplica restricción de fomento.
@@ -1591,8 +1608,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             .filter(x => x.id !== id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
             .reduce((sum, x) => sum + (x.horas || 0), 0);
           const remainingLimit = isSindicato ? Infinity : Math.max(0, maxCompLimit - otherOrdinarySum);
-          const globalRemainingLimit = Math.max(0, horasAProgramar - totalHoras + (c.horas || 0));
-          const trueRemainingLimit = Math.min(remainingLimit, globalRemainingLimit);
+          const trueRemainingLimit = remainingLimit;
           const constraint = getComplementariaConstraint(cat, ptaRules);
           const suggestedHours = getInitialConstraintValue(constraint);
 
@@ -1614,8 +1630,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             .filter(x => x.id !== id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
             .reduce((sum, x) => sum + (x.horas || 0), 0);
           const remainingLimit = isSindicato ? Infinity : Math.max(0, maxCompLimit - otherOrdinarySum);
-          const globalRemainingLimit = Math.max(0, horasAProgramar - totalHoras + (c.horas || 0));
-          const trueRemainingLimit = Math.min(remainingLimit, globalRemainingLimit);
+          const trueRemainingLimit = remainingLimit;
           const boundedConstraint = constraint.editable && canSelectWithRemaining(constraint, trueRemainingLimit)
             ? { ...constraint, max: Math.min(constraint.max, trueRemainingLimit) }
             : constraint;
@@ -1774,11 +1789,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Prorrateo (Circular 003/2025): el exceso en Investigación/Extensión/Complementarias
-    // NO bloquea (se prorratea cada uno a su tope). Solo se bloquea si Docencia +
-    // Académico-Administrativo (no prorrateables) superan por sí solos la bolsa de horas.
-    if (enviar && (hDocencia + hAcademicoAdmin) > horasAProgramar) {
-      toast.error(`Docencia + Académico-Administrativo superan las ${horasAProgramar}h programables. Verifica tu Plan.`);
+    // Bloqueo por topes individuales de componente, no por suma global del PTA.
+    if (enviar && hasBlockingHourLimits) {
+      const firstViolation = componentLimitViolations[0];
+      toast.error(firstViolation?.message || 'Hay componentes que exceden el limite permitido de horas.');
+      if (firstViolation?.section) setActiveSection(firstViolation.section);
       setSaving(false);
       return;
     }
@@ -1993,10 +2008,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (!validarComposicionParaEnvio()) {
       return false;
     }
-    // Prorrateo: el exceso en los 3 componentes prorrateables no bloquea; solo se bloquea
-    // si Docencia + Académico-Administrativo (no prorrateables) superan la bolsa.
-    if ((hDocencia + hAcademicoAdmin) > horasAProgramar) {
-      toast.error(`Docencia + Académico-Administrativo superan el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
+    // Bloqueo por topes individuales de componente, no por suma global del PTA.
+    if (hasBlockingHourLimits) {
+      const firstViolation = componentLimitViolations[0];
+      toast.error(firstViolation?.message || 'Hay componentes que exceden el limite permitido de horas.');
+      if (firstViolation?.section) setActiveSection(firstViolation.section);
       return false;
     }
     if (invWarnings?.length > 0) {
@@ -2024,7 +2040,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
     
     return true;
-  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hDocencia, hAcademicoAdmin, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
+  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -2141,12 +2157,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     (CAMPOS_POR_SECCION[key] || []).some(f => camposModificados[f]);
 
   const allSections = [
-    { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: hDocencia, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: '100%', bloqueada: false, modificada: seccionModificada('docencia') },
-    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${Math.round(maxInvLimit)}h`, excede: invExcede, bloqueada: !hasDocencia, modificada: seccionModificada('investigacion') },
-    { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: hExtension, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${ptaRules?.max_pct_extension || 25}%`, excede: extExcede, bloqueada: !hasDocencia, modificada: seccionModificada('extension') },
-    // Complementarias unificado: incluye la sub-sección académico-administrativa (AADM).
-    // Siempre accesible (aun sin docencia) porque la sub-sección AADM permite registrar
-    // actividades del 100% sin docencia (ej. Comisión, Año Sabático).
+    { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: hDocencia, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: `${maxDocenciaLimit}h`, excede: docExcede, bloqueada: !!actividadTotalidad, modificada: seccionModificada('docencia') },
+    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${Math.round(maxInvLimit)}h`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
+    { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: hExtension, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${maxExtLimit}h`, excede: extExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('extension') },
+    //{ key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${maxCompLimit}h`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
     { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length + academicoAdmin.length, hours: hComplementarias + hAcademicoAdmin, prorr: compProrr + acadProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede || acadExcede, bloqueada: false, modificada: seccionModificada('complementarias') },
   ];
   const sections = isAdminComponentRestricted
@@ -2482,7 +2496,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   Total Horas PTA
                 </label>
                 <div className={`w-full px-3 py-2 rounded-xl border border-transparent flex items-center min-h-[36px] text-[12px] font-extrabold shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] ${
-                  totalHoras > horasAProgramar
+                  hasBlockingHourLimits
                     ? 'bg-red-50/50 text-red-700 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.15)]'
                     : totalHoras >= horasAProgramar
                       ? 'bg-green-50/50 text-green-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]'
@@ -2502,15 +2516,31 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <DocumentosPendientesAlert documentosPendientes={documentosPendientes} />
 
               {/* Status banner */}
-              <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-                {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
+              <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${hasBlockingHourLimits ? 'bg-red-50 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                {hasBlockingHourLimits ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
                   <span className="font-bold">
-                    {totalHoras > horasAProgramar ? `Excede por ${totalHoras - horasAProgramar}h. Verifica tu Plan.` : totalHoras >= horasAProgramar ? 'Carga completa o dentro del mínimo. Listo para enviar.' : `PTA Incompleto: Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
+                    {hasBlockingHourLimits ? componentLimitViolations[0]?.message : totalHoras >= horasAProgramar ? 'Topes por componente cumplidos. Listo para enviar.' : `PTA Incompleto: Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
                   </span>
                   <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
                 </div>
               </div>
+
+              {hasBlockingHourLimits && (
+                <div className="rounded-xl border border-red-200 bg-red-50/70 px-3.5 py-2.5 text-[11px] text-red-800">
+                  <div className="flex items-center gap-1.5 font-bold mb-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Limites de horas excedidos
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {componentLimitViolations.map(v => (
+                      <span key={v.section} className="rounded-lg bg-white/80 border border-red-100 px-2 py-1 font-semibold">
+                        {v.label}: {v.hours}h / {v.limit}h
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ─── TABS HORIZONTALES (Módulos del PTA) ─── */}
               <div className="w-full bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-[0_2px_12px_rgb(0,0,0,0.03)] p-1.5">
@@ -2632,30 +2662,29 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <span className="font-bold text-slate-700">{horasAProgramar}h</span>
                   </div>
                   <div className={`mt-3 p-2.5 rounded-lg border text-[10px] leading-relaxed flex items-start gap-1.5 ${
-                    totalHoras > horasAProgramar ? 'bg-red-50 border-red-200 text-red-800'
+                    hasBlockingHourLimits ? 'bg-red-50 border-red-200 text-red-800'
                     : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800'
                     : 'bg-blue-50 border-blue-200 text-blue-800'
                   }`}>
-                    {totalHoras > horasAProgramar ? <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                    {hasBlockingHourLimits ? <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
                       : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5" />
                       : <Info className="w-3 h-3 shrink-0 mt-0.5" />}
                     <span>
-                      {totalHoras > horasAProgramar
-                        ? `Excede por ${totalHoras - horasAProgramar}h`
+                      {hasBlockingHourLimits
+                        ? (componentLimitViolations[0]?.message || 'Hay componentes que exceden el limite permitido.')
                         : totalHoras >= horasAProgramar
                           ? 'Carga completa. Listo para enviar.'
                           : `Faltan ${horasAProgramar - totalHoras}h por programar.`}
                     </span>
                   </div>
-                  {(invExcede || extExcede || compExcede || acadExcede) && (
-                    <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800">
+                  {hasBlockingHourLimits && (
+                    <div className="mt-2 p-2 rounded-lg bg-red-50 border border-red-200 text-[10px] text-red-800">
                       <div className="font-semibold mb-1 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Prorrateo aplicado
+                        <AlertTriangle className="w-3 h-3" /> Limites excedidos
                       </div>
-                      {invExcede && <div>Invest: {hInvestigacion}h→{invProrr}h</div>}
-                      {extExcede && <div>Ext: {hExtension}h→{extProrr}h</div>}
-                      {compExcede && <div>Comp: {hComplementarias}h→{compProrr}h</div>}
-                      {acadExcede && <div>Acad: {hAcademicoAdmin}h→{acadProrr}h</div>}
+                      {componentLimitViolations.map(v => (
+                        <div key={v.section}>{v.label}: {v.hours}h / {v.limit}h</div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -2975,7 +3004,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             {/* ─── INVESTIGACIÓN ─── */}
             {hasDocencia && activeVisibleSection === 'investigacion' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (máx ${Math.round(maxInvLimit)}h — ${Math.round(maxPctInv * 100)}% o ${ptaRules?.max_horas_investigacion_global || 400}h global)`}
+                <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (máx ${Math.round(maxInvLimit)}h)`}
                   color={PTA_COLORS.INVESTIGACION} icon={FlaskConical} excede={invExcede} />
 
                 {invWarnings.length > 0 && (
@@ -3133,8 +3162,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         )}
                       </div>
                       {isEditable && (() => {
-                        const _maxInvL = Math.min(ptaRules?.max_horas_investigacion_global || 400, horasAProgramar * ((ptaRules?.max_pct_investigacion || 50) / 100));
-                        const cupoInv = Math.max(0, _maxInvL - hInvestigacion);
+                        const cupoInv = Math.max(0, maxInvLimit - hInvestigacion);
                         if (cupoInv <= 0) return null;
                         return (
                           <button onClick={handleAddInvActividad}
@@ -3189,7 +3217,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={e => {
                                     let val = Number(e.target.value) || 0;
                                     if (val < 0) val = 0;
-                                    const limiteMax = Math.min(ptaRules?.max_horas_investigacion_global || 400, horasAProgramar * (ptaRules?.max_pct_investigacion ? (ptaRules.max_pct_investigacion / 100) : 0.5));
+                                    const limiteMax = maxInvLimit;
                                     const otherActsSum = invActividades.filter(a => a.id !== act.id).reduce((sum, a) => sum + (a.horas_total || 0), 0);
                                     const remaining = Math.max(0, limiteMax - otherActsSum);
                                     if (val > remaining) val = remaining;
@@ -3397,7 +3425,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             {/* ─── EXTENSIÓN (4 subsecciones fijas) ─── */}
             {hasDocencia && activeVisibleSection === 'extension' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h — ${ptaRules?.max_pct_extension || 25}% o ${maxExtGlobalHours}h global)`}
+                <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h)`}
                   color={PTA_COLORS.EXTENSION} icon={Globe} excede={extExcede} />
 
                 {extWarnings.length > 0 && (
@@ -3736,8 +3764,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                         .filter(x => x.id !== comp.id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
                                         .reduce((sum, x) => sum + (x.horas || 0), 0);
                                       const remainingLimit = isSindicato ? Infinity : Math.max(0, maxCompLimit - otherOrdinarySum);
-                                      const globalRemainingLimit = Math.max(0, horasAProgramar - totalHoras + (comp.horas || 0));
-                                      const trueRemainingLimit = Math.min(remainingLimit, globalRemainingLimit);
+                                      const trueRemainingLimit = remainingLimit;
 
                                       if (comp.actividad_id === a.id) return true;
                                       return canSelectWithRemaining(optionConstraint, trueRemainingLimit);
@@ -3918,17 +3945,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           {/* ─── INLINE WARNINGS & STATUS (visible debajo del contenido) ─── */}
           <div className="flex flex-col gap-3 mt-2 mb-4">
 
-            {/* Prorrateo warnings */}
-            {(invExcede || extExcede || compExcede || acadExcede) && (
-              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+            {/* Component limit warnings */}
+            {hasBlockingHourLimits && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800">
                 <div className="font-bold mb-1.5 flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Prorrateo aplicado — Las horas han sido recortadas al tope permitido
+                  <AlertTriangle className="w-3.5 h-3.5" /> Limites de horas excedidos
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {invExcede && <span>Investigación: {hInvestigacion}h → {invProrr}h ({ptaRules?.max_pct_investigacion || 50}%)</span>}
-                  {extExcede && <span>Extensión: {hExtension}h → {extProrr}h ({ptaRules?.max_pct_extension || 25}%)</span>}
-                  {compExcede && <span>Complementarias: {hComplementarias}h → {compProrr}h ({ptaRules?.max_pct_complementarias || 25}%)</span>}
-                  {acadExcede && <span>Académico-Admin: {hAcademicoAdmin}h → {acadProrr}h (25%)</span>}
+                  {componentLimitViolations.map(v => (
+                    <span key={v.section}>{v.label}: {v.hours}h / {v.limit}h</span>
+                  ))}
                 </div>
               </div>
             )}
@@ -3943,11 +3969,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       <div className={`${isAdminEdit ? 'sticky -mx-6 rounded-b-2xl' : 'fixed left-0 right-0'} bottom-0 z-50 bg-white/90 backdrop-blur-2xl border-t border-gray-200/50 p-4 px-6 md:px-8 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]`} style={{borderTop: '1px solid darkgray'}}>
         <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto w-full">
           {/* Status compacto */}
-          <div className={`hidden sm:flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${totalHoras > horasAProgramar ? 'bg-red-50/80 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-blue-50/80 border-blue-200 text-blue-800'}`}>
-            {totalHoras > horasAProgramar ? <AlertCircle className="w-4 h-4 shrink-0" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
+          <div className={`hidden sm:flex items-center gap-3 px-4 py-2.5 rounded-2xl border ${hasBlockingHourLimits ? 'bg-red-50/80 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-blue-50/80 border-blue-200 text-blue-800'}`}>
+            {hasBlockingHourLimits ? <AlertCircle className="w-4 h-4 shrink-0" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
             <div className="flex flex-col">
               <span className="text-[12px] font-bold leading-tight">
-                {totalHoras > horasAProgramar ? `Excede por ${totalHoras - horasAProgramar}h` : totalHoras >= horasAProgramar ? 'Horas completas' : `Faltan ${horasAProgramar - totalHoras}h`}
+                {hasBlockingHourLimits ? 'Limite excedido' : totalHoras >= horasAProgramar ? 'Horas completas' : `Faltan ${horasAProgramar - totalHoras}h`}
               </span>
               <span className="text-[10px] font-medium opacity-80">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
             </div>
@@ -3987,9 +4013,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <Send className="w-3.5 h-3.5" /> Avanzar sin cambios
                   </button>
                   <button onClick={() => solicitarFirmaDocente('via_save')}
-                    disabled={saving || requestingFirmaCode || totalHoras > horasAProgramar}
+                    disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
                     className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ background: (saving || requestingFirmaCode || totalHoras > horasAProgramar) ? '#9CA3AF' : '#7C3AED' }}>
+                    style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : '#7C3AED' }}>
                     <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
                   </button>
                 </>
@@ -4005,9 +4031,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   </button>
                   <button
                     onClick={() => { if (!validateEnvioDocente()) return; solicitarFirmaDocente('via_save'); }}
-                    disabled={saving || requestingFirmaCode || totalHoras > horasAProgramar}
+                    disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
                     className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                    style={{ background: (saving || requestingFirmaCode || totalHoras > horasAProgramar) ? '#9CA3AF' : '#003DA5' }}>
+                    style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : '#003DA5' }}>
                     {requestingFirmaCode ? <><Clock className="w-3.5 h-3.5" /> Enviando...</>
                       : originalEstado === 'Devuelto' ? <><RotateCcw className="w-3.5 h-3.5" /> Re-enviar</>
                       : <><Send className="w-3.5 h-3.5" /> Enviar a Aprobación</>}

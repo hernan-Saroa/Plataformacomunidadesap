@@ -2,38 +2,53 @@ import * as xlsx from 'xlsx';
 import { ExcelParserService } from '../parsers/excel-parser.service';
 import { ImportValidator } from '../validators/import.validator';
 
-function buildWorkbook(marker = 'X'): Buffer {
+function buildWorkbook(marker = 'X', includeCircularColumns = false): Buffer {
   const workbook = xlsx.utils.book_new();
+
+  const programHeaders = [
+    'codigo_programa',
+    'nombre_programa',
+    'nombre_corto',
+    'nombre_excel_origen',
+    'tipo_programa',
+    ...(includeCircularColumns
+      ? [
+          'categoria_horas_circular003',
+          'descripcion_categoria_circular003',
+        ]
+      : []),
+    'codigo_facultad',
+    'nombre_facultad',
+    'modalidad_principal',
+    'horas_base_por_credito',
+    'horas_pregrado_central',
+    'activo',
+  ];
+  const programRow = [
+    'PRO-EJEMPLO-001',
+    'Programa de ejemplo',
+    'Programa ejemplo',
+    'Programa de ejemplo',
+    'pregrado',
+    ...(includeCircularColumns
+      ? [
+          'pregrado_territorial',
+          'APT / Territorial - 16h por credito',
+        ]
+      : []),
+    'PREGRADO',
+    'Pregrado',
+    'presencial',
+    16,
+    null,
+    'TRUE',
+  ];
 
   xlsx.utils.book_append_sheet(
     workbook,
     xlsx.utils.aoa_to_sheet([
-      [
-        'codigo_programa',
-        'nombre_programa',
-        'nombre_corto',
-        'nombre_excel_origen',
-        'tipo_programa',
-        'codigo_facultad',
-        'nombre_facultad',
-        'modalidad_principal',
-        'horas_base_por_credito',
-        'horas_pregrado_central',
-        'activo',
-      ],
-      [
-        'PRO-EJEMPLO-001',
-        'Programa de ejemplo',
-        'Programa ejemplo',
-        'Programa de ejemplo',
-        'pregrado',
-        'PREGRADO',
-        'Pregrado',
-        'presencial',
-        16,
-        null,
-        'TRUE',
-      ],
+      programHeaders,
+      programRow,
     ]),
     'PROGRAMAS',
   );
@@ -110,11 +125,25 @@ describe('ExcelParserService', () => {
 
     expect(validation.errors).toEqual([]);
     expect(parsed.programas[0].activo).toBe(true);
+    expect(parsed.programas[0].categoria_horas_circular003).toBe(
+      'pregrado_territorial',
+    );
     expect(parsed.asignaturas[0].requiere_revision_modalidad).toBe(false);
     expect(parsed.asignaturas[0].activa).toBe(true);
     expect(parsed.matrizOferta[0].programas_ofertados).toEqual([
       'PRO-EJEMPLO-001',
     ]);
+  });
+
+  it('acepta columnas informativas de Circular 003 cuando vienen en la plantilla nueva', () => {
+    const parsed = parser.parseExcel(buildWorkbook('X', true));
+
+    expect(parsed.programas[0].categoria_horas_circular003).toBe(
+      'pregrado_territorial',
+    );
+    expect(parsed.programas[0].descripcion_categoria_circular003).toBe(
+      'APT / Territorial - 16h por credito',
+    );
   });
 
   it('rechaza marcadores diferentes de X en MATRIZ_OFERTA', () => {
