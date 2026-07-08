@@ -165,6 +165,14 @@ async function sincronizarResponsablesRolesEnBackend(
     const idPerson = idPersonaParaPlanAnual(resp);
     const idPersistido =
       idPerson || String(resp.id || resp.idPerson || resp.idTercero || '').trim() || undefined;
+
+    // S& MODIFICADO: Evitar peticiones redundantes si el responsable del rol no ha cambiado
+    const idPersistidoStr = String(idPerson || idPersistido || '').trim();
+    const idBackendStr = String(rolBackend.responsable_id || '').trim();
+    if (rolBackend.responsable === resp.nombre && idBackendStr === idPersistidoStr) {
+      continue;
+    }
+
     await planAnualApi.updateRol(planId, rolBackend.id, {
       responsable: resp.nombre,
       responsable_id: idPerson || idPersistido,
@@ -2725,41 +2733,30 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
           await limpiarBorradoresWizard();
           setAñoActual(vigencia);
-          setPlanesListVersion((v) => v + 1);
-          if (opciones?.permanecerEnWizard) {
-            const reloadedResp = await planAnualApi.getById(planAEditar.id);
-            if (reloadedResp.success && reloadedResp.data) {
-              setPlanAEditar(reloadedResp.data);
-            } else {
-              setPlanAEditar((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      vigencia,
-                      estado: 'BORRADOR',
-                      jefeOCI: {
-                        ...jefeOCI,
-                        id: responsableIdPerson,
-                        idPerson: responsableIdPerson,
-                        idTercero: responsableIdPerson,
-                      },
-                      fechaInicio,
-                      fechaFin,
-                      equipoAprobacion: comiteAprobacion || [],
-                      ordenAprobacion: (ordenAprobacion || 'secuencial') as 'secuencial' | 'paralelo',
-                    }
-                  : prev,
-              );
+
+          const tieneNuevasActividades = rolesConfig.some((rc: any) =>
+            (rc.actividadesSeleccionadas || []).some((a: any) => a?.incluidaEnPlan !== false && !esUUID(a?.id)) ||
+            (rc.actividadesCustom || []).some((a: any) => !esUUID(a?.id))
+          );
+
+          // Solo recargar lista y plan si no es un autoguardado silencioso de edición
+          // o si hay nuevas actividades que necesitan resolver sus UUIDs en la interfaz
+          const requiereActualizacionPadre = !opciones?.silencioso || tieneNuevasActividades;
+
+          if (requiereActualizacionPadre) {
+            setPlanesListVersion((v) => v + 1);
+            if (opciones?.permanecerEnWizard) {
+              const reloadedResp = await planAnualApi.getById(planAEditar.id);
+              if (reloadedResp.success && reloadedResp.data) {
+                setPlanAEditar(reloadedResp.data);
+              }
             }
-            if (!opciones?.silencioso) {
-              toast.success('Plan guardado en borrador', {
-                description: 'Puede seguir editando en el asistente. El borrador temporal ya no aparece en inicio.',
-              });
-            }
-          } else {
-            if (!opciones?.silencioso) {
-              toast.success('Plan guardado exitosamente');
-            }
+          }
+
+          if (!opciones?.silencioso) {
+            toast.success('Plan guardado en borrador', {
+              description: 'Puede seguir editando en el asistente. El borrador temporal ya no aparece en inicio.',
+            });
           }
           return true;
         } else {
