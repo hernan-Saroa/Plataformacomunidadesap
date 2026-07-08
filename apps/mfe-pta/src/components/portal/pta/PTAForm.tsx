@@ -464,6 +464,20 @@ const DEFAULT_COMP_SECCIONES = [
   { key: COMP_SECCION_AADM, label: 'ACTIVIDADES ACADÉMICO-ADMINISTRATIVAS', color: PTA_COLORS.ACAD_ADMIN, orden: 2 },
 ];
 
+// Aplana una actividad de comp_actividades_v2 (config) al shape plano que consumen los
+// dropdowns/constraints del docente: { id, nombre, max_horas, min_horas, consumeTotalidad }.
+function flattenCompV2Catalog(arr: any[]): any[] {
+  return (Array.isArray(arr) ? arr : []).map((a: any) => ({
+    id: a.id,
+    nombre: a.nombre,
+    max_horas: a.consumeTotalidad
+      ? null
+      : (a.max_horas ?? (Array.isArray(a.items) && a.items.length ? Math.max(...a.items.map((i: any) => Number(i.horas || 0))) : 0)),
+    min_horas: a.min_horas,
+    consumeTotalidad: !!a.consumeTotalidad,
+  }));
+}
+
 const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   academica: 'docencia',
   investigacion: 'investigacion',
@@ -662,8 +676,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         });
         setActExtension(normalized);
       }
-      if (actComp.success) setActComplementarias(actComp.data);
-      if (actAcad.success) setActAcadAdmin(actAcad.data);
+      // Catálogos de Complementarias por sección. Fuente de verdad = config del backoffice
+      // (comp_actividades_v2, lo que el admin edita). Si esa sección está vacía, se usa el
+      // catálogo legacy por endpoint como respaldo.
+      const compV2 = (config.success && config.data?.comp_actividades_v2) || {};
+      const compFromV2 = flattenCompV2Catalog(compV2[COMP_SECCION_DOCENCIA]);
+      const aadmFromV2 = flattenCompV2Catalog(compV2[COMP_SECCION_AADM]);
+      const compData = compFromV2.length > 0 ? compFromV2 : (actComp.success && Array.isArray(actComp.data) ? actComp.data : []);
+      const aadmData = aadmFromV2.length > 0 ? aadmFromV2 : (actAcad.success && Array.isArray(actAcad.data) ? actAcad.data : []);
+      setActComplementarias(compData);
+      setActAcadAdmin(aadmData);
       if (roles.success) setRolesInvestigacion(roles.data);
       if (config.success && config.data) setPtaRules(config.data);
       if (periodos.success) setPeriodosDisponibles(periodos.data);
@@ -1106,7 +1128,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const compSecciones = (Array.isArray(ptaRules?.comp_secciones) && ptaRules.comp_secciones.length > 0)
     ? ptaRules.comp_secciones
     : DEFAULT_COMP_SECCIONES;
-  // Catálogo de actividades por sección de Complementarias.
+  // Catálogo de actividades por sección de Complementarias (para el selector de sub-tabs).
   const getCompCatalog = (secKey: string): any[] =>
     secKey === COMP_SECCION_AADM ? actAcadAdmin : actComplementarias;
 
@@ -1666,10 +1688,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // ═══ HANDLERS: ACADEMICO ADMINISTRATIVO ═══════════════════════════
 
   const handleAddAcademicoAdmin = () => {
-    if (academicoAdmin.length >= 17) {
-      toast.error('Máximo 17 actividades académico-administrativas por PTA');
-      return;
-    }
     setAcademicoAdmin(prev => [...prev, {
       id: Date.now(), actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
@@ -3846,11 +3864,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   title="Actividades Académico-Administrativas"
                   subtitle={`${hAcademicoAdmin}h programadas (topes definidos por actividad y soporte)`}
                   color={PTA_COLORS.ACAD_ADMIN} icon={Shield} excede={acadExcede}
-                  action={(() => {
-                    if (!isEditable || academicoAdmin.length >= 17) return undefined;
-                    if (horasRestantes <= 0) return undefined;
-                    return { label: 'Agregar Actividad', onClick: handleAddAcademicoAdmin };
-                  })()} />
+                  action={isEditable ? { label: 'Agregar Actividad', onClick: handleAddAcademicoAdmin } : undefined} />
 
                 {!hasDocencia && (
                   <div className="mx-4 md:mx-6 mt-3 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm flex items-start gap-2.5">
@@ -3906,14 +3920,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleAcadChange(comp.id, 'actividad_id', v)}
                                   options={actAcadAdmin
                                     .filter((a: any) => {
-                                      if (!hasDocencia && !a.consumeTotalidad) {
-                                        return false;
-                                      }
-                                      const optionConstraint = getAcademicoAdminConstraint(a, ptaRules, horasAProgramar);
-                                      const globalRemainingLimit = Math.max(0, horasAProgramar - totalHoras + (comp.horas || 0));
-
-                                      if (comp.actividad_id === a.id) return true;
-                                      return a.consumeTotalidad || canSelectWithRemaining(optionConstraint, globalRemainingLimit);
+                                      // Sin docencia solo se permiten actividades de dedicación exclusiva (100%).
+                                      if (!hasDocencia && !a.consumeTotalidad) return false;
+                                      // Sin más condiciones: se muestran todas las actividades configuradas
+                                      // (el prorrateo/validación se encargan del exceso, no se bloquea la vista).
+                                      return true;
                                     })
                                     .map((a: any) => ({ value: a.id, label: a.consumeTotalidad ? `⚠ ${a.nombre} (100% PTA)` : `${a.nombre} (${getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar))})` }))}
                                   placeholder="Seleccionar actividad..." />
