@@ -1201,10 +1201,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // usa el total (hComplementarias), consistente con el recorte compProrr, para que el
   // aviso de prorrateo dispare igual que en Extensión/Investigación.
   // Excedentes: se comparan las horas reales contra el tope maximo del componente.
+  // El tope de Complementarias (config: % o tope absoluto) aplica al COMPONENTE completo,
+  // es decir la suma de sus dos secciones (Complementarias a la Docencia + Académico-
+  // Administrativas). No se valida cada sección por separado sino su total combinado.
+  const hComplementariasComponente = hComplementarias + hAcademicoAdmin;
+
   const docExcede = !actividadTotalidad && hDocencia > maxDocenciaLimit;
   const invExcede = !actividadTotalidad && hInvestigacion > maxInvLimit;
   const extExcede = !actividadTotalidad && hExtension > maxExtLimit;
-  const compExcede = !actividadTotalidad && hComplementarias > maxCompLimit;
+  const compExcede = !actividadTotalidad && hComplementariasComponente > maxCompLimit;
+  // Sub-tope propio de Académico-Administrativas (independiente del tope del componente).
   const acadExcede = !actividadTotalidad && hAcademicoAdmin > maxAadmLimit;
 
   const componentLimitViolations = useMemo(() => {
@@ -1237,7 +1243,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     addViolation('docencia', 'Docencia', hDocencia, maxDocenciaLimit);
     addViolation('investigacion', 'Investigacion', hInvestigacion, maxInvLimit);
     addViolation('extension', 'Extension', hExtension, maxExtLimit);
-    addViolation('complementarias', 'Complementarias', hComplementarias, maxCompLimit);
+    addViolation('complementarias', 'Complementarias', hComplementariasComponente, maxCompLimit);
     addViolation('academico_admin', 'Academico-Administrativo', hAcademicoAdmin, maxAadmLimit);
 
     return violations;
