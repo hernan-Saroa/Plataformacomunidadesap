@@ -103,8 +103,8 @@ const COMPONENT_STEPS = [
   { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
   { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
+  // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
   { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
-  { key: 'academicas_admin', label: 'AADM', icon: Award, color: '#6B21A8' },
 ];
 
 function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
@@ -888,16 +888,15 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 const horasDoc = selectedPta.horas_docencia ?? asigs.reduce((s: number, a: any) => s + (a.total_horas || a.horas || 0), 0);
                 const horasInv = selectedPta.horas_investigacion ?? 0;
                 const horasExt = selectedPta.horas_extension ?? 0;
+                // horas_complementarias ya incluye la sección académico-administrativa.
                 const horasComp = selectedPta.horas_complementarias ?? 0;
-                const horasAA = selectedPta.horas_acad_admin ?? 0;
-                const horasTotal = selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp + horasAA);
+                const horasTotal = selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp);
                 const horasMax = selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800;
                 const comps = [
                   { label: 'Docencia', value: horasDoc, color: PTA_COLORS.DOCENCIA, icon: BookOpen },
                   { label: 'Investigación', value: horasInv, color: PTA_COLORS.INVESTIGACION, icon: FlaskConical },
                   { label: 'Extensión', value: horasExt, color: PTA_COLORS.EXTENSION, icon: Globe },
                   { label: 'Complementarias', value: horasComp, color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
-                  { label: 'Acad. Admin.', value: horasAA, color: PTA_COLORS.ACAD_ADMIN, icon: Shield },
                 ];
 
                 // Donut chart calculations
@@ -1037,16 +1036,20 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
               })()}
 
               {(() => {
-                const acadAdminActs = Array.isArray(selectedPta.academico_admin)
+                const rawComp = Array.isArray(selectedPta.complementarias) ? selectedPta.complementarias : [];
+                const fromComp = rawComp.filter((c: any) => c?.seccion === 'academico_administrativas'
+                  || (c?.seccion == null && c?.consumeTotalidad !== undefined));
+                const legacy = Array.isArray(selectedPta.academico_admin)
                   ? selectedPta.academico_admin
                   : (selectedPta.acad_admin?.actividades || selectedPta.academico_administrativo?.actividades || []);
+                const acadAdminActs = [...fromComp, ...legacy];
                 if (!acadAdminActs.length) return null;
 
                 return (
                   <div className="bg-orange-50/70 rounded-2xl border border-orange-100 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
                     <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-orange-900 mb-3 flex items-center gap-2">
                       <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600" />
-                      Actividad Academico-Administrativa
+                      Complementarias · Académico-Administrativas
                     </h4>
 
                     <div className="space-y-2">

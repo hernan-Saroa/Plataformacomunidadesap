@@ -278,8 +278,8 @@ const COMPONENTES_PTA = [
   { key: 'docencia', label: 'Docencia', color: PTA_COLORS.DOCENCIA, icon: BookOpen },
   { key: 'investigacion', label: 'Investigación', color: PTA_COLORS.INVESTIGACION, icon: FlaskConical },
   { key: 'extension', label: 'Extensión', color: PTA_COLORS.EXTENSION, icon: Globe },
+  // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
   { key: 'complementarias', label: 'Complementarias', color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
-  { key: 'acad_admin', label: 'Acad. Admin.', color: PTA_COLORS.ACAD_ADMIN, icon: Shield },
 ] as const;
 
 interface AdjuntosDocumentosProps {

@@ -483,8 +483,8 @@ const COMPONENTES_SEG = [
   { key: 'docencia', label: 'Docencia', color: '#003DA5' },
   { key: 'investigacion', label: 'Investigación', color: '#7C3AED' },
   { key: 'extension', label: 'Extensión', color: '#059669' },
+  // Complementarias incluye la sección Académico-Administrativa (AADM fusionado).
   { key: 'complementarias', label: 'Complementarias', color: '#D97706' },
-  { key: 'acad_admin', label: 'Acad. Admin.', color: '#DC2626' },
 ] as const;
 
 // Estados en los que un docente puede subir documentos de soporte (ver PortalDocentePTA:
@@ -3666,8 +3666,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const badgeTitle = (isPendiente && tieneAvanceComponentes)
                         ? `${compAprobados} de ${compTotal} componentes aprobados — ${estadoLabel}`
                         : estadoLabel;
-                      const tieneTotalidadAcadAdmin = Array.isArray(pta.academico_admin) &&
-                        pta.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+                      const tieneTotalidadAcadAdmin =
+                        (Array.isArray(pta.academico_admin) && pta.academico_admin.some((a: any) => a?.consumeTotalidad === true)) ||
+                        (Array.isArray(pta.complementarias) && pta.complementarias.some((a: any) => a?.consumeTotalidad === true));
 
                       const aging = calcAging(pta.historialEstados, pta.updatedAt, pta.createdAt);
 
@@ -3897,8 +3898,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 { key: 'doc', keys: ['academica'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
                                 { key: 'inv', keys: ['investigacion'], color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
                                 { key: 'ext', keys: PTA_EXTENSION_COMPONENT_KEYS, color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
-                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) },
-                                { key: 'aa', keys: ['academicas_admin'], color: '#6B21A8', has: pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
+                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) || pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
                               ].filter(c => !shouldRestrictByComponentPermission || c.keys.some(key => visibleComponentKeySet.has(key))).map(c => (
                                 <div key={c.key} style={{
                                   width: 10, height: 10, borderRadius: 2,
@@ -3948,7 +3948,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                   { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical, keys: ['investigacion'] },
                                   { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe, keys: PTA_EXTENSION_COMPONENT_KEYS },
                                   { label: 'Horas Complementarias', value: pta.horas_complementarias || 0, color: '#D97706', icon: Briefcase, keys: ['complementarias'] },
-                                  { label: 'Horas Acad. Admin.', value: pta.horas_acad_admin || 0, color: '#6B21A8', icon: Users, keys: ['academicas_admin'] },
                                   { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica'] },
                                 ].filter(item => !item.keys || !shouldRestrictByComponentPermission || item.keys.some(key => visibleComponentKeySet.has(key))).map(item => {
                                   const ItemIcon = item.icon;
@@ -4917,7 +4916,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             { label: 'Horas Investigación', key: 'horas_investigacion', isNumber: true },
             { label: 'Horas Extensión', key: 'horas_extension', isNumber: true },
             { label: 'Horas Complementarias', key: 'horas_complementarias', isNumber: true },
-            { label: 'Horas Acad. Admin.', key: 'horas_acad_admin', isNumber: true },
             { label: 'Num. Asignaturas', key: 'num_asignaturas', isNumber: true },
           ];
 

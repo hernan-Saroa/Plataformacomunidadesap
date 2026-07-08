@@ -211,15 +211,17 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
               );
             })()}
 
-            {/* Componente Complementarias */}
+            {/* Componente Complementarias — sección "a la docencia" */}
             {(() => {
-              const acts = Array.isArray(pta?.complementarias)
+              const rawComp = Array.isArray(pta?.complementarias)
                 ? pta.complementarias
                 : (pta?.complementarias?.actividades || []);
+              const acts = rawComp.filter((c: any) => c?.seccion !== 'academico_administrativas'
+                && !(c?.seccion == null && c?.consumeTotalidad !== undefined));
               if (acts.length === 0) return null;
               return (
                 <div className="mb-8">
-                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.COMPLEMENTARIAS }}>5. ACTIVIDADES COMPLEMENTARIAS</h3>
+                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.COMPLEMENTARIAS }}>5. ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA</h3>
                   <table className="w-full text-sm border-collapse border border-gray-200">
                     <thead>
                       <tr className="bg-gray-50">
@@ -247,15 +249,19 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
               );
             })()}
 
-            {/* Componente Académico-Administrativo */}
+            {/* Componente Complementarias — sub-sección Académico-Administrativa */}
             {(() => {
-              const acts = Array.isArray(pta?.academico_admin)
+              const rawComp = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
+              const fromComp = rawComp.filter((c: any) => c?.seccion === 'academico_administrativas'
+                || (c?.seccion == null && c?.consumeTotalidad !== undefined));
+              const legacy = Array.isArray(pta?.academico_admin)
                 ? pta.academico_admin
                 : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
+              const acts = [...fromComp, ...legacy];
               if (acts.length === 0) return null;
               return (
                 <div className="mb-8">
-                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.ACAD_ADMIN }}>6. ACADÉMICO-ADMINISTRATIVAS</h3>
+                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.ACAD_ADMIN }}>6. COMPLEMENTARIAS · ACADÉMICO-ADMINISTRATIVAS</h3>
                   <table className="w-full text-sm border-collapse border border-gray-200">
                     <thead>
                       <tr className="bg-gray-50">

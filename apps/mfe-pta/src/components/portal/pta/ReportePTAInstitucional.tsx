@@ -42,17 +42,18 @@ export function ReportePTAInstitucional({
   const horasDocencia = pta.horas_docencia ?? asignaturas.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0);
   const horasInvestigacion = pta.horas_investigacion ?? (proyectosInv.reduce((s: number, p: any) => s + (p.horas_solicitadas || 0), 0) + actInv.reduce((s: number, a: any) => s + (a.horas_total || a.horas || 0), 0));
   const horasExtension = pta.horas_extension ?? extActs.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  const horasComplementarias = pta.horas_complementarias ?? compActs.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  const horasAcadAdmin = pta.horas_acad_admin ?? acadActs.reduce((s: number, a: any) => s + (a.horas || 0), 0);
+  // Complementarias unificado incluye la sección académico-administrativa (AADM fusionado).
+  const horasComplementarias = pta.horas_complementarias ??
+    (compActs.reduce((s: number, a: any) => s + (a.horas || 0), 0) + acadActs.reduce((s: number, a: any) => s + (a.horas || 0), 0));
 
-  const horasProg = horasDocencia + horasInvestigacion + horasExtension + horasComplementarias + horasAcadAdmin;
+  const horasProg = horasDocencia + horasInvestigacion + horasExtension + horasComplementarias;
 
   // Calculo %
   const getPct = (val: number) => horasProg > 0 ? ((val / horasProg) * 100).toFixed(0) : '0';
 
   // Datos para Charts
   const chartData = [
-    { name: 'Sede/Territorial', Docencia: horasDocencia, Investigación: horasInvestigacion, Extensión: horasExtension, Complementarias: horasComplementarias, Académico: horasAcadAdmin }
+    { name: 'Sede/Territorial', Docencia: horasDocencia, Investigación: horasInvestigacion, Extensión: horasExtension, Complementarias: horasComplementarias }
   ];
 
   const pieData = [
@@ -60,7 +61,6 @@ export function ReportePTAInstitucional({
     { name: 'Investigación', value: horasInvestigacion, color: PTA_COLORS.INVESTIGACION },
     { name: 'Extensión', value: horasExtension, color: PTA_COLORS.EXTENSION },
     { name: 'Complementarias', value: horasComplementarias, color: PTA_COLORS.COMPLEMENTARIAS },
-    { name: 'Acad. Admin.', value: horasAcadAdmin, color: PTA_COLORS.ACAD_ADMIN },
   ].filter(d => d.value > 0);
 
   const handlePrint = () => window.print();
@@ -167,8 +167,7 @@ export function ReportePTAInstitucional({
                   { label: "DOCENCIA", color: PTA_COLORS.DOCENCIA },
                   { label: "INVESTIGACIÓN", color: PTA_COLORS.INVESTIGACION },
                   { label: "EXTENSIÓN\nACADÉMICA", color: PTA_COLORS.EXTENSION },
-                  { label: "ACTIVIDADES\nCOMPLEMENTARIAS", color: PTA_COLORS.COMPLEMENTARIAS },
-                  { label: "ACADÉMICO-ADMIN\nISTRATIVAS", color: PTA_COLORS.ACAD_ADMIN }
+                  { label: "ACTIVIDADES\nCOMPLEMENTARIAS", color: PTA_COLORS.COMPLEMENTARIAS }
                 ].map((btn, i) => (
                    <div key={i} className="flex-1 px-2 relative z-10">
                       <div 
@@ -189,13 +188,12 @@ export function ReportePTAInstitucional({
               RESUMEN PLAN DE TRABAJO
             </div>
 
-            <div className="grid grid-cols-[1fr_2.5fr_1fr_2.5fr_1fr_2.5fr_1fr_2.5fr_1fr_2.5fr] border-b-[6px] border-[#203764]">
+            <div className="grid grid-cols-[1fr_2.5fr_1fr_2.5fr_1fr_2.5fr_1fr_2.5fr] border-b-[6px] border-[#203764]">
                {[
                  { label: 'CARGA EN DOCENCIA', pct: getPct(horasDocencia), val: horasDocencia },
                  { label: 'CARGA EN INVESTIGACIÓN', pct: getPct(horasInvestigacion), val: horasInvestigacion },
                  { label: 'CARGA EN EXTENSIÓN ACADÉMICA', pct: getPct(horasExtension), val: horasExtension },
-                 { label: 'CARGA EN ACTIVIDADES COMPLEMENTARIAS', pct: getPct(horasComplementarias), val: horasComplementarias },
-                 { label: 'CARGA EN ACADÉMICO-ADMIN.', pct: getPct(horasAcadAdmin), val: horasAcadAdmin }
+                 { label: 'CARGA EN ACTIVIDADES COMPLEMENTARIAS', pct: getPct(horasComplementarias), val: horasComplementarias }
                ].map((c, i) => (
                   <React.Fragment key={i}>
                      <div className="col-span-1 border-r border-[#203764]">
@@ -235,7 +233,6 @@ export function ReportePTAInstitucional({
                         <Bar dataKey="Investigación" stackId="a" fill={PTA_COLORS.INVESTIGACION} />
                         <Bar dataKey="Extensión" stackId="a" fill={PTA_COLORS.EXTENSION} />
                         <Bar dataKey="Complementarias" stackId="a" fill={PTA_COLORS.COMPLEMENTARIAS} />
-                        <Bar dataKey="Académico" stackId="a" fill={PTA_COLORS.ACAD_ADMIN} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -303,8 +300,7 @@ export function ReportePTAInstitucional({
                           { label: 'DOCENCIA', apr: horasDocencia, prog: horasDocencia, pend: 0, pct: '100%', color: PTA_COLORS.DOCENCIA },
                           { label: 'INVESTIGACIÓN', apr: horasInvestigacion, prog: horasInvestigacion, pend: 0, pct: '100%', color: PTA_COLORS.INVESTIGACION },
                           { label: 'EXTENSIÓN', apr: horasExtension, prog: horasExtension, pend: 0, pct: '100%', color: PTA_COLORS.EXTENSION },
-                          { label: 'COMPLEMENTARIAS', apr: horasComplementarias, prog: horasComplementarias, pend: 0, pct: '100%', color: PTA_COLORS.COMPLEMENTARIAS },
-                          { label: 'ACAD. ADMIN.', apr: horasAcadAdmin, prog: horasAcadAdmin, pend: 0, pct: '100%', color: PTA_COLORS.ACAD_ADMIN }
+                          { label: 'COMPLEMENTARIAS', apr: horasComplementarias, prog: horasComplementarias, pend: 0, pct: '100%', color: PTA_COLORS.COMPLEMENTARIAS }
                         ], totalApr: horasProg, totalProg: horasProg, totalPend: 0, totalColor: '#D9E1F2' },
                         
                         /* RESPONSABLE DE AREA */
@@ -312,8 +308,7 @@ export function ReportePTAInstitucional({
                           { label: 'DOCENCIA', apr: 0, prog: horasDocencia, pend: horasDocencia, pct: '0%', color: PTA_COLORS.DOCENCIA },
                           { label: 'INVESTIGACIÓN', apr: 0, prog: horasInvestigacion, pend: horasInvestigacion, pct: '0%', color: PTA_COLORS.INVESTIGACION },
                           { label: 'EXTENSIÓN', apr: 0, prog: horasExtension, pend: horasExtension, pct: '0%', color: PTA_COLORS.EXTENSION },
-                          { label: 'COMPLEMENTARIAS', apr: 0, prog: horasComplementarias, pend: horasComplementarias, pct: '0%', color: PTA_COLORS.COMPLEMENTARIAS },
-                          { label: 'ACAD. ADMIN.', apr: 0, prog: horasAcadAdmin, pend: horasAcadAdmin, pct: '0%', color: PTA_COLORS.ACAD_ADMIN }
+                          { label: 'COMPLEMENTARIAS', apr: 0, prog: horasComplementarias, pend: horasComplementarias, pct: '0%', color: PTA_COLORS.COMPLEMENTARIAS }
                         ], totalApr: 0, totalProg: horasProg, totalPend: horasProg, totalColor: '#E2EFDA' },
 
                         /* JEFE INMEDIATO */
@@ -321,15 +316,14 @@ export function ReportePTAInstitucional({
                           { label: 'DOCENCIA', apr: 0, prog: horasDocencia, pend: horasDocencia, pct: '0%', color: PTA_COLORS.DOCENCIA },
                           { label: 'INVESTIGACIÓN', apr: 0, prog: horasInvestigacion, pend: horasInvestigacion, pct: '0%', color: PTA_COLORS.INVESTIGACION },
                           { label: 'EXTENSIÓN', apr: 0, prog: horasExtension, pend: horasExtension, pct: '0%', color: PTA_COLORS.EXTENSION },
-                          { label: 'COMPLEMENTARIAS', apr: 0, prog: horasComplementarias, pend: horasComplementarias, pct: '0%', color: PTA_COLORS.COMPLEMENTARIAS },
-                          { label: 'ACAD. ADMIN.', apr: 0, prog: horasAcadAdmin, pend: horasAcadAdmin, pct: '0%', color: PTA_COLORS.ACAD_ADMIN }
+                          { label: 'COMPLEMENTARIAS', apr: 0, prog: horasComplementarias, pend: horasComplementarias, pct: '0%', color: PTA_COLORS.COMPLEMENTARIAS }
                         ], totalApr: 0, totalProg: horasProg, totalPend: horasProg, totalColor: '#DDEBF7' },
                       ].map((section, sidx) => (
                         <React.Fragment key={sidx}>
                            {section.rows.map((r, ridx) => (
                              <tr key={`${sidx}-${ridx}`} className="text-[9px]">
                                 {ridx === 0 && (
-                                   <td rowSpan={5} className="border-r border-b border-black font-bold whitespace-pre-line p-1" style={{backgroundColor: section.totalColor}}>
+                                   <td rowSpan={4} className="border-r border-b border-black font-bold whitespace-pre-line p-1" style={{backgroundColor: section.totalColor}}>
                                      <div>{section.title}</div>
                                      <div className="text-sm mt-1">{section.pct}</div>
                                    </td>

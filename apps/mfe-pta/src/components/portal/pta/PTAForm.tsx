@@ -189,6 +189,7 @@ interface ComplementariaItem {
   horas: number;
   descripcion: string;
   consumeTotalidad?: boolean;
+  seccion?: 'complementarias_docencia' | 'academico_administrativas';
   fecha_inicio: string;
   fecha_fin: string;
 }
@@ -452,7 +453,16 @@ function normalizeExtensionSectionKey(section: unknown): string {
 
 // ═══ COMPONENT ═══════════════════════════════════════════════════════
 
-type PTAFormSectionKey = 'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin';
+type PTAFormSectionKey = 'docencia' | 'investigacion' | 'extension' | 'complementarias';
+
+// Secciones fijas de Complementarias (espejo de la config comp_secciones). AADM es
+// ahora la sub-sección 'academico_administrativas' de Complementarias.
+const COMP_SECCION_DOCENCIA = 'complementarias_docencia';
+const COMP_SECCION_AADM = 'academico_administrativas';
+const DEFAULT_COMP_SECCIONES = [
+  { key: COMP_SECCION_DOCENCIA, label: 'ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA', color: PTA_COLORS.COMPLEMENTARIAS, orden: 1 },
+  { key: COMP_SECCION_AADM, label: 'ACTIVIDADES ACADÉMICO-ADMINISTRATIVAS', color: PTA_COLORS.ACAD_ADMIN, orden: 2 },
+];
 
 const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   academica: 'docencia',
@@ -462,7 +472,6 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   ext_fortalecimiento: 'extension',
   ext_gobierno: 'extension',
   complementarias: 'complementarias',
-  academicas_admin: 'academico_admin',
 };
 
 const EXT_SUBSECTION_TO_COMPONENT: Record<string, PTAComponentKey> = {
@@ -576,8 +585,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [complementarias, setComplementarias] = useState<ComplementariaItem[]>([]);
   const [academicoAdmin, setAcademicoAdmin] = useState<ComplementariaItem[]>([]);
 
-  const [activeSection, setActiveSection] = useState<'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin'>('docencia');
+  const [activeSection, setActiveSection] = useState<'docencia' | 'investigacion' | 'extension' | 'complementarias'>('docencia');
   const [extSubseccion, setExtSubseccion] = useState('capacitacion');
+  const [complementariasSubseccion, setComplementariasSubseccion] = useState(COMP_SECCION_DOCENCIA);
   const [documentosPendientes, setDocumentosPendientes] = useState<any[]>([]);
   const adminAllowedComponentKeys = useMemo(
     () => (allowedComponentKeys || []).map(key => String(key)).filter(Boolean),
@@ -815,8 +825,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           return baseAct;
         });
         setExtActividades(normalizedExtActs);
-        setComplementarias(d.complementarias || []);
-        setAcademicoAdmin(d.academico_admin || []);
+        // Complementarias unificado: separar por sección + fusionar array legacy academico_admin.
+        {
+          const rawComp = Array.isArray(d.complementarias) ? d.complementarias : [];
+          const isAadm = (c: any) => c?.seccion === COMP_SECCION_AADM
+            || (c?.seccion == null && c?.consumeTotalidad !== undefined);
+          setComplementarias(rawComp.filter((c: any) => !isAadm(c)));
+          setAcademicoAdmin([
+            ...rawComp.filter((c: any) => isAadm(c)),
+            ...(Array.isArray(d.academico_admin) ? d.academico_admin : []),
+          ]);
+        }
         setObservacionesDocente(d.observaciones_docente || '');
         if (d.camposModificadosPorRevisor) setCamposModificados(d.camposModificadosPorRevisor);
         // Guardar docente_id del PTA para usarlo en modo admin
@@ -1077,10 +1096,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const horasRestantes = horasAProgramar - totalHoras;
   const porcentaje = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
 
-  // Actividad académico-admin que consume el 100% del PTA (bloquea otras secciones)
+  // Actividad de la sección académico-administrativa que consume el 100% del PTA.
+  // Ya NO bloquea la vista; solo se usa para exención de validaciones de envío.
   const actividadTotalidad = academicoAdmin.find(a => a.consumeTotalidad);
 
   const hasDocencia = asignaturas.length > 0;
+
+  // Secciones de Complementarias (parametrizables desde config). AADM es una sección.
+  const compSecciones = (Array.isArray(ptaRules?.comp_secciones) && ptaRules.comp_secciones.length > 0)
+    ? ptaRules.comp_secciones
+    : DEFAULT_COMP_SECCIONES;
+  // Catálogo de actividades por sección de Complementarias.
+  const getCompCatalog = (secKey: string): any[] =>
+    secKey === COMP_SECCION_AADM ? actAcadAdmin : actComplementarias;
 
   // Bloqueo: la resolución y/o adjunto son obligatorios pero no se han llenado
   const invResolucionPendiente = useMemo(() => {
@@ -1099,6 +1127,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const maxCompLimit = getPositiveRuleNumber(ptaRules?.max_horas_complementarias_global, 200);
   const maxAadmLimit = Math.min(ptaRules?.max_horas_aadm_global ?? 200, horasAProgramar * ((ptaRules?.max_pct_aadm ?? 25) / 100));
 
+  const hCompOrdinary = useMemo(() =>
+    complementarias
+      .filter(c => !String(c.nombre).toUpperCase().includes('SINDICATO'))
+      .reduce((t, c) => t + (c.horas || 0), 0),
+    [complementarias]
+  );
+
+  // Excedentes: se comparan las horas reales contra el tope máximo del componente.
+  // Cada componente usa SU total contra SU tope (dinámico, sin mezclar). Complementarias
+  // usa el total (hComplementarias), consistente con el recorte compProrr, para que el
+  // aviso de prorrateo dispare igual que en Extensión/Investigación.
   // Excedentes: se comparan las horas reales contra el tope maximo del componente.
   const docExcede = !actividadTotalidad && hDocencia > maxDocenciaLimit;
   const invExcede = !actividadTotalidad && hInvestigacion > maxInvLimit;
@@ -1165,12 +1204,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const error = getConstraintErrorMessage(comp.nombre || cat.nombre || comp.actividad_id, Number(comp.horas || 0), getComplementariaConstraint(cat, ptaRules));
       if (error) warns.push(error);
     });
-    // Revisar si hay un acto administrativo del 100% que impida cargas complementarias
-    if (actividadTotalidad && complementarias.length > 0) {
-      warns.push(`No puedes asignar horas complementarias porque tienes un acto administrativo 100% (${actividadTotalidad.nombre}).`);
-    }
     return warns;
-  }, [actividadTotalidad, complementarias, actComplementarias, ptaRules]);
+  }, [hCompOrdinary, maxCompLimit, complementarias, actComplementarias, ptaRules, actividadTotalidad]);
 
   // ═══ VALIDACIONES ACADÉMICO ADMINISTRATIVAS ═══════════════════════════
   const acadWarnings = useMemo(() => {
@@ -1656,16 +1691,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           updated.horas = constraint.editable && canSelectWithRemaining(constraint, globalRemainingLimit)
             ? Math.min(suggestedHours, globalRemainingLimit)
             : suggestedHours;
-
-          if (updated.consumeTotalidad) {
-            // Limpieza integral automática para evitar cruce de topes con otras secciones
-            setAsignaturas([]);
-            setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
-            setInvActividades([]);
-            setExtActividades([]);
-            setComplementarias([]);
-            toast.info('Las demás actividades han sido removidas automáticamente debido a la asignación de un rol del 100%.');
-          }
+          // Una actividad del 100% ya NO limpia ni bloquea las demás secciones: solo
+          // consume las horas de la bolsa y el prorrateo existente maneja el excedente.
         } else {
           updated.nombre = '';
           updated.horas = 0;
@@ -1828,8 +1855,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Validación de reglas de negocio para Académico-Administrativas
-    if (enviar && (!isAdminComponentRestricted || canEditFormSection('academico_admin')) && acadWarnings && acadWarnings.length > 0) {
+    // Validación de reglas de negocio para Académico-Administrativas (sub-sección de Complementarias)
+    if (enviar && (!isAdminComponentRestricted || canEditFormSection('complementarias')) && acadWarnings && acadWarnings.length > 0) {
       toast.error('Existen errores en las Actividades Académico-Administrativas. Se requiere documento soporte.');
       setSaving(false);
       return;
@@ -1859,7 +1886,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         : null,  // null explícito → backend borra los datos anteriores
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
       extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || (e.horas_ejecutadas ?? 0) > 0))),
-      complementarias: complementarias.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
+      // Complementarias unificado: un solo array con tag de sección. Se mantiene también
+      // academico_admin (alias legacy) durante la transición para backends no migrados.
+      complementarias: [
+        ...complementarias
+          .filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0))
+          .map(c => ({ ...c, seccion: COMP_SECCION_DOCENCIA })),
+        ...academicoAdmin
+          .filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0))
+          .map(c => ({ ...c, seccion: COMP_SECCION_AADM })),
+      ],
       academico_admin: academicoAdmin.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
       observaciones_docente: observacionesDocente,
       _reenvio: isReenvio || undefined,
@@ -2134,8 +2170,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     docencia: ['docencia'],
     investigacion: ['investigacion_proyecto', 'investigacion_actividades'],
     extension: ['extension_actividades'],
-    complementarias: ['complementarias'],
-    academico_admin: ['academico_admin'],
+    // Complementarias cubre ambas sub-secciones (incl. la legacy academico_admin).
+    complementarias: ['complementarias', 'academico_admin'],
   };
   const seccionModificada = (key: string) =>
     isEnRevisionDocente && Object.keys(camposModificados).length > 0 &&
@@ -2145,8 +2181,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: hDocencia, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: `${maxDocenciaLimit}h`, excede: docExcede, bloqueada: !!actividadTotalidad, modificada: seccionModificada('docencia') },
     { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${Math.round(maxInvLimit)}h`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
     { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: hExtension, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${maxExtLimit}h`, excede: extExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('extension') },
-    { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${maxCompLimit}h`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
-    { key: 'academico_admin' as const, icon: Shield, label: 'Académico-Administrativo', count: academicoAdmin.length, hours: hAcademicoAdmin, prorr: acadProrr, color: PTA_COLORS.ACAD_ADMIN, limit: actividadTotalidad ? '100%' : 'Según actividad', excede: acadExcede, bloqueada: !hasDocencia && !actividadTotalidad, modificada: seccionModificada('academico_admin') },
+    //{ key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${maxCompLimit}h`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
+    { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length + academicoAdmin.length, hours: hComplementarias + hAcademicoAdmin, prorr: compProrr + acadProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede || acadExcede, bloqueada: false, modificada: seccionModificada('complementarias') },
   ];
   const sections = isAdminComponentRestricted
     ? allSections.filter(s => canEditFormSection(s.key))
@@ -2160,6 +2196,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const currentExtSubseccion = visibleExtSecciones.some(s => s.key === extSubseccion)
     ? extSubseccion
     : (visibleExtSecciones[0]?.key || extSubseccion);
+
+  const currentCompSubseccion = compSecciones.some((s: any) => s.key === complementariasSubseccion)
+    ? complementariasSubseccion
+    : (compSecciones[0]?.key || COMP_SECCION_DOCENCIA);
 
   // Nombres del docente (territorial y CETAP fijos)
   const defaultTerritorialNombre = territoriales.find(t => t.id === defaultTerritorial)?.nombre || '—';
@@ -2544,7 +2584,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         activeVisibleSection === s.key ? 'text-gray-500' : s.excede ? 'text-red-500' : 'text-gray-400'
                       }`}>{s.hours}h</span>
                       {s.excede && <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />}
-                      {s.bloqueada && s.key !== 'academico_admin' && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />}
+                      {s.bloqueada && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />}
                       {s.modificada && <span title="Modificado por el revisor" className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse shrink-0" />}
                       {activeVisibleSection === s.key && (
                         <div className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full" style={{ backgroundColor: s.color }} />
@@ -2677,20 +2717,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           {/* Active section */}
           <div className="bg-white rounded-3xl border border-gray-200/50 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8">
 
-            {/* Overlay de sección bloqueada por actividad de totalidad */}
-            {actividadTotalidad && activeVisibleSection !== 'academico_admin' && (
-              <div className="p-8 text-center">
-                <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-                <p className="text-sm font-bold text-gray-700 mb-1">Sección bloqueada</p>
-                <p className="text-xs text-gray-500">
-                  La actividad <span className="font-semibold text-amber-700">«{actividadTotalidad.nombre}»</span> consume el 100% del PTA ({horasAProgramar}h).<br />
-                  Elimínala desde la sección Académico-Administrativo para desbloquear.
-                </p>
-              </div>
-            )}
-
-            {/* Overlay de sección bloqueada por falta de asignaturas en Docencia */}
-            {!actividadTotalidad && !hasDocencia && activeVisibleSection !== 'docencia' && activeVisibleSection !== 'academico_admin' && (
+            {/* Overlay de sección bloqueada por falta de asignaturas en Docencia.
+                Complementarias queda accesible: su sub-sección AADM permite el 100% sin docencia. */}
+            {!hasDocencia && activeVisibleSection !== 'docencia' && activeVisibleSection !== 'complementarias' && (
               <div className="p-12 text-center flex flex-col items-center justify-center min-h-[350px] animate-in fade-in duration-300">
                 <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mb-4 border border-amber-200">
                   <AlertTriangle className="w-8 h-8 text-amber-500" />
@@ -2703,7 +2732,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             )}
 
             {/* ─── DOCENCIA ─── */}
-            {!actividadTotalidad && activeVisibleSection === 'docencia' && (
+            {activeVisibleSection === 'docencia' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader title="Docencia Directa" subtitle={`${hDocencia}h programadas (máx 10 asignaturas)`}
                   color={PTA_COLORS.DOCENCIA} icon={BookOpen}
@@ -2996,7 +3025,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             )}
 
             {/* ─── INVESTIGACIÓN ─── */}
-            {!actividadTotalidad && hasDocencia && activeVisibleSection === 'investigacion' && (
+            {hasDocencia && activeVisibleSection === 'investigacion' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (máx ${Math.round(maxInvLimit)}h)`}
                   color={PTA_COLORS.INVESTIGACION} icon={FlaskConical} excede={invExcede} />
@@ -3417,7 +3446,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             )}
 
             {/* ─── EXTENSIÓN (4 subsecciones fijas) ─── */}
-            {!actividadTotalidad && hasDocencia && activeVisibleSection === 'extension' && (
+            {hasDocencia && activeVisibleSection === 'extension' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader title="Extensión" subtitle={`${hExtension}h programadas (máx ${maxExtLimit}h)`}
                   color={PTA_COLORS.EXTENSION} icon={Globe} excede={extExcede} />
@@ -3679,10 +3708,36 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             )}
 
 
-            {/* ─── COMPLEMENTARIAS ─── */}
-            {!actividadTotalidad && hasDocencia && activeVisibleSection === 'complementarias' && (
+            {/* ─── COMPLEMENTARIAS: sub-tabs por sección (parametrizables desde config) ─── */}
+            {activeVisibleSection === 'complementarias' && (
+              <div className="flex flex-wrap gap-2 px-4 md:px-6 pt-5 pb-2">
+                {compSecciones.map((s: any) => {
+                  const count = s.key === COMP_SECCION_AADM ? academicoAdmin.length : complementarias.length;
+                  return (
+                    <button key={s.key} onClick={() => setComplementariasSubseccion(s.key)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${currentCompSubseccion === s.key ? 'text-white border-transparent' : 'text-gray-600 border-gray-200 bg-white hover:bg-gray-50'}`}
+                      style={{ background: currentCompSubseccion === s.key ? s.color : undefined }}>
+                      {s.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ─── COMPLEMENTARIAS · Sub-sección: Complementarias a la Docencia ─── */}
+            {activeVisibleSection === 'complementarias' && currentCompSubseccion === COMP_SECCION_DOCENCIA && (!hasDocencia ? (
+              <div className="p-12 text-center flex flex-col items-center justify-center min-h-[300px] animate-in fade-in duration-300">
+                <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mb-4 border border-amber-200">
+                  <AlertTriangle className="w-8 h-8 text-amber-500" />
+                </div>
+                <h3 className="text-base font-bold text-gray-900 mb-2">Requiere Docencia</h3>
+                <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed text-center">
+                  Configure al menos una asignatura en <span className="font-bold text-[#003DA5]">Docencia Directa</span> para registrar actividades complementarias a la docencia. Las actividades <span className="font-semibold">Académico-Administrativas</span> del 100% pueden registrarse sin docencia en su sub-sección.
+                </p>
+              </div>
+            ) : (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Actividades Complementarias" subtitle={`${hComplementarias}h programadas (máx ${maxCompLimit}h, máx 17 act.)`}
+                <SectionHeader title="Actividades Complementarias a la Docencia" subtitle={`${hComplementarias}h programadas (máx ${maxCompLimit}h — ${ptaRules?.max_pct_complementarias || 25}% o ${ptaRules?.max_horas_complementarias_global ?? 200}h global, máx 17 act.)`}
                   color={PTA_COLORS.COMPLEMENTARIAS} icon={Briefcase} excede={compExcede}
                   action={(() => {
                     if (!isEditable || complementarias.length >= 17) return undefined;
@@ -3782,24 +3837,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   )}
                 </div>
               </div>
-            )}
+            ))}
 
-            {/* ─── ACADEMICO ADMINISTRATIVO ─── */}
-            {activeVisibleSection === 'academico_admin' && (
+            {/* ─── COMPLEMENTARIAS · Sub-sección: Académico-Administrativas ─── */}
+            {activeVisibleSection === 'complementarias' && currentCompSubseccion === COMP_SECCION_AADM && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader
                   title="Actividades Académico-Administrativas"
-                  subtitle={actividadTotalidad
-                    ? `${actividadTotalidad.nombre} — consume el 100% del PTA (${horasAProgramar}h)`
-                    : `${hAcademicoAdmin}h programadas (topes definidos por actividad y soporte)`}
+                  subtitle={`${hAcademicoAdmin}h programadas (topes definidos por actividad y soporte)`}
                   color={PTA_COLORS.ACAD_ADMIN} icon={Shield} excede={acadExcede}
                   action={(() => {
-                    if (!isEditable || !!actividadTotalidad || academicoAdmin.length >= 17) return undefined;
+                    if (!isEditable || academicoAdmin.length >= 17) return undefined;
                     if (horasRestantes <= 0) return undefined;
                     return { label: 'Agregar Actividad', onClick: handleAddAcademicoAdmin };
                   })()} />
 
-                {!hasDocencia && !actividadTotalidad && (
+                {!hasDocencia && (
                   <div className="mx-4 md:mx-6 mt-3 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm flex items-start gap-2.5">
                     <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                     <div>
@@ -3821,11 +3874,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                 <div className="p-4 md:p-6">
                   {actividadTotalidad && (
-                    <div className="flex items-start gap-3 p-3 mb-4 rounded-xl bg-amber-50 border border-amber-300 text-sm text-amber-900">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-3 p-3 mb-4 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-900">
+                      <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-bold mb-0.5">Secciones bloqueadas</p>
-                        <p className="text-xs text-amber-800">La actividad seleccionada consume el 100% del PTA ({horasAProgramar}h). Docencia, Investigación, Extensión y Complementarias quedan inhabilitadas.</p>
+                        <p className="font-bold mb-0.5">Actividad de dedicación exclusiva (100%)</p>
+                        <p className="text-xs text-blue-800">«{actividadTotalidad.nombre}» consume el 100% del PTA ({horasAProgramar}h). Puedes seguir agregando actividades; el prorrateo ajustará automáticamente el excedente.</p>
                       </div>
                     </div>
                   )}
