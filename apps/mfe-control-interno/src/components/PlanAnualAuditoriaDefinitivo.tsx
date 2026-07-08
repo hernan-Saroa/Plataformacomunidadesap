@@ -1468,6 +1468,58 @@ function mapTareasSeguimientoDesdeBackend(
   }));
 }
 
+function obtenerFirmaComparacionActividad(act: any) {
+  const responsables = (Array.isArray(act.responsables) ? act.responsables : [])
+    .map((r: any) => String(r.id || r.idPerson || r.idTercero || '').trim())
+    .filter(Boolean)
+    .sort();
+
+  const puntosControl = (Array.isArray(act.puntosControl || act.puntos_control) ? (act.puntosControl || act.puntos_control) : [])
+    .map((p: any) => String(p.fecha || '').split('T')[0])
+    .filter(Boolean)
+    .sort();
+
+  const tareas = (Array.isArray(act.tareasSeguimiento || act.tareas_seguimiento) ? (act.tareasSeguimiento || act.tareas_seguimiento) : [])
+    .map((t: any) => {
+      const fl = t.fechaLimite ?? t.fechaEntrega ?? t.fecha_limite ?? t.fecha_entrega;
+      return {
+        desc: String(t.descripcion || '').trim(),
+        limite: fl ? String(fl).split('T')[0] : null,
+        reqAdj: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+        reqObs: !!(t.requiereObservaciones ?? t.requiere_observaciones)
+      };
+    })
+    .sort((a, b) => a.desc.localeCompare(b.desc));
+
+  const configEvidencias = act.configuracionEvidencias || act.configuracion_evidencias || {};
+  const normConfig = {
+    adjuntosRequeridos: configEvidencias.adjuntosRequeridos || 'OPCIONAL',
+    observacionRequerida: configEvidencias.observacionRequerida || 'OPCIONAL',
+    minimoAdjuntos: Number(configEvidencias.minimoAdjuntos || 0),
+    longitudMinimaObservacion: Number(configEvidencias.longitudMinimaObservacion || 0)
+  };
+
+  const requiereAuth = !!(
+    act.requiereAutorizacionJefeOCI ?? 
+    act.requiereVerificacionDirector ?? 
+    act.requiere_verificacion_director
+  );
+
+  return {
+    nombre: String(act.nombre || '').trim(),
+    descripcion: String(act.descripcion || '').trim(),
+    fechaInicio: String(act.fechaInicio || act.fecha_inicio || '').split('T')[0],
+    fechaFin: String(act.fechaFin || act.fecha_fin || '').split('T')[0],
+    fechaCorte: String(act.fechaCorte || act.fecha_corte || '').split('T')[0],
+    frecuenciaPuntosControl: act.frecuenciaPuntosControl || act.frecuencia_puntos_control || 'trimestral',
+    requiereVerificacionDirector: requiereAuth,
+    responsables,
+    puntosControl,
+    tareas,
+    configEvidencias: normConfig
+  };
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -2619,8 +2671,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             }
             const original = originalPorId.get(String(act.id));
             if (original) {
-              const payloadOriginal = construirPayloadActividad(original);
-              if (JSON.stringify(payloadOriginal) === JSON.stringify(payloadNuevo)) {
+              const firmaOriginal = obtenerFirmaComparacionActividad(original);
+              const firmaNueva = obtenerFirmaComparacionActividad(act);
+              if (JSON.stringify(firmaOriginal) === JSON.stringify(firmaNueva)) {
                 actividadesSinCambios++;
                 continue;
               }
