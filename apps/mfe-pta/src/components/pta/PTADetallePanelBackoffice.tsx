@@ -46,6 +46,7 @@ import {
   PTA_EXTENSION_COMPONENT_KEYS,
   type PTAComponentKey,
   componentKeysForApprovalLevel,
+  splitComplementarias,
 } from './shared/ptaComponentPermissions';
 
 // ═══ TYPES ════════════════════════════════════════════════════════════
@@ -371,16 +372,11 @@ function ApprovalTracker({
       baseColor: '#059669'
     },
     {
+      // Complementarias incluye la sub-sección Académico-Administrativa (AADM).
       label: 'Complementarias',
       icon: Briefcase,
       status: getStatusForComponent(['complementarias']),
       baseColor: '#FFC000'
-    },
-    {
-      label: 'AADM',
-      icon: Award,
-      status: getStatusForComponent(['academicas_admin']),
-      baseColor: '#6B21A8'
     }
   ].filter(step => step.status !== 'hidden');
 
@@ -813,14 +809,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     otras: extActsRaw.filter((a: any) => a.seccion === 'otras'),
   };
   
-  const complementarias = {
-    actividades: Array.isArray(pta.complementarias) ? pta.complementarias : (pta.complementarias?.actividades || [])
-  };
-  
-  const acadAdmin = {
-    actividades: Array.isArray(pta.academico_admin) ? pta.academico_admin : (pta.acad_admin?.actividades || pta.academico_administrativo?.actividades || [])
-  };
-  const tieneTotalidadAcadAdmin = acadAdmin.actividades.some((a: any) => a?.consumeTotalidad === true);
+  // AADM es una sección de Complementarias. `splitComplementarias` separa ambas
+  // secciones y fusiona data legacy, evitando doble conteo.
+  const _compSplit = splitComplementarias(pta);
+  // La sección "complementarias a la docencia" y la sub-sección académico-administrativa
+  // se muestran como grupos separados dentro del mismo componente Complementarias.
+  const complementarias = { actividades: _compSplit.docencia };
+  const acadAdmin = { actividades: _compSplit.aadm };
+  const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
   const territorialResumen = pta.territorial || pta.territorial_nombre;
   const historial = pta.historial || [];
@@ -848,20 +844,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }, 0);
   }, [pta, extension]);
 
+  // Complementarias unificado incluye la sección académico-administrativa.
   const horasComplementarias = useMemo(() => {
     if (pta.horas_complementarias !== undefined) return pta.horas_complementarias;
-    const acts = (complementarias as any).actividades || [];
-    return acts.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  }, [pta, complementarias]);
+    return _compSplit.horasDocencia + _compSplit.horasAadm;
+  }, [pta, _compSplit.horasDocencia, _compSplit.horasAadm]);
 
-  const horasAcadAdmin = useMemo(() => {
-    if (pta.horas_acad_admin !== undefined) return pta.horas_acad_admin;
-    const acts = acadAdmin.actividades || [];
-    return acts.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  }, [pta, acadAdmin]);
+  // Solo para el total del sub-grupo AADM dentro del acordeón de Complementarias.
+  const horasAcadAdmin = _compSplit.horasAadm;
 
   const hProg = Number(pta.total_horas_programadas || 0);
-  const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias + horasAcadAdmin);
+  const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
   const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
 
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
@@ -2085,7 +2078,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       { label: 'Investigación', value: horasInvestigacion, color: PTA_COLORS.INVESTIGACION },
                       { label: 'Extensión', value: horasExtension, color: PTA_COLORS.EXTENSION },
                       { label: 'Complementarias', value: horasComplementarias, color: PTA_COLORS.COMPLEMENTARIAS },
-                      { label: 'Acad. Admin.', value: horasAcadAdmin, color: PTA_COLORS.ACAD_ADMIN },
                     ];
                     const size = isMobile ? 110 : 130;
                     const sw = isMobile ? 14 : 16;
@@ -2132,15 +2124,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     <ComponentBar label="Investigación" hours={horasInvestigacion} total={horasDisp} color={PTA_COLORS.INVESTIGACION} icon={FlaskConical} />
                     <ComponentBar label="Extensión" hours={horasExtension} total={horasDisp} color={PTA_COLORS.EXTENSION} icon={Globe} />
                     <ComponentBar label="Complementarias" hours={horasComplementarias} total={horasDisp} color={PTA_COLORS.COMPLEMENTARIAS} icon={Briefcase} />
-                    <ComponentBar label="Acad. Admin." hours={horasAcadAdmin} total={horasDisp} color={PTA_COLORS.ACAD_ADMIN} icon={Award} />
                   </div>
                 </div>
               </div>
 
-              {/* Pie summary — 3 cols mobile, 5 cols desktop */}
+              {/* Pie summary — 3 cols mobile, 4 cols desktop */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(5, 1fr)',
+                gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
                 gap: 6, marginBottom: 16,
               }}>
                 {[
@@ -2148,7 +2139,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   { label: 'Inv.', value: horasInvestigacion, pct: horasProg > 0 ? Math.round((horasInvestigacion / horasProg) * 100) : 0, color: PTA_COLORS.INVESTIGACION },
                   { label: 'Ext.', value: horasExtension, pct: horasProg > 0 ? Math.round((horasExtension / horasProg) * 100) : 0, color: PTA_COLORS.EXTENSION },
                   { label: 'Comp.', value: horasComplementarias, pct: horasProg > 0 ? Math.round((horasComplementarias / horasProg) * 100) : 0, color: PTA_COLORS.COMPLEMENTARIAS },
-                  { label: 'A.Adm.', value: horasAcadAdmin, pct: horasProg > 0 ? Math.round((horasAcadAdmin / horasProg) * 100) : 0, color: PTA_COLORS.ACAD_ADMIN },
                 ].map(item => (
                   <div key={item.label} style={{
                     textAlign: 'center', padding: '8px 4px', borderRadius: 8,
@@ -2593,7 +2583,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
                       <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706' }}>
-                        Total Complementarias: {horasComplementarias}h
+                        Total Complementarias a la Docencia: {_compSplit.horasDocencia}h
                       </span>
                     </div>
                   </>
@@ -2605,10 +2595,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </SectionCollapsible>
               )}
 
-              {/* Académico Administrativo */}
-              {shouldShowComponentKey('academicas_admin') && (
+              {/* Complementarias · Sub-sección Académico-Administrativa */}
+              {acadAdmin.actividades?.length > 0 && (
               <SectionCollapsible
-                title="Actividades Académico Administrativo"
+                title="Complementarias · Académico-Administrativas"
                 icon={Award}
                 color="#FFC000"
                 count={acadAdmin.actividades?.length || 0}
@@ -2703,7 +2693,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   const extSubKeys = Object.keys(extSubKeyMap);
                   const extConHoras = extSubKeys.filter(k => getSubcomponentHours(k) > 0);
                   const visibleComponenteKeys = new Set([
-                    'academica', 'investigacion', 'complementarias', 'academicas_admin',
+                    'academica', 'investigacion', 'complementarias',
                     ...extConHoras.map(k => extSubKeyMap[k]),
                   ].filter(key => shouldShowComponentKey(key)));
                   const total = visibleComponenteKeys.size;
@@ -2884,22 +2874,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </motion.div>
                   )}
 
-                  {/* 4. Actividades Complementarias */}
+                  {/* 4. Actividades Complementarias (incluye la sub-sección Académico-Administrativa) */}
                   {renderComponentCard(
                     'complementarias',
                     'Actividades Complementarias',
                     Briefcase,
                     PTA_COLORS.COMPLEMENTARIAS,
-                    `Contenido: ${(complementarias.actividades?.length || 0)} actividad(es) (${horasComplementarias}h)`
-                  )}
-
-                  {/* 5. AADM */}
-                  {renderComponentCard(
-                    'academicas_admin',
-                    'Actividades Académico-Administrativas (AADM)',
-                    Award,
-                    PTA_COLORS.ACAD_ADMIN,
-                    `Contenido: ${(acadAdmin.actividades?.length || 0)} actividad(es) (${horasAcadAdmin}h)`
+                    `Contenido: ${(complementarias.actividades?.length || 0)} actividad(es) (${horasComplementarias}h)` +
+                      (acadAdmin.actividades?.length ? ` · incl. ${acadAdmin.actividades.length} académico-administrativa(s) (${horasAcadAdmin}h)` : '')
                   )}
                 </div>
               )}

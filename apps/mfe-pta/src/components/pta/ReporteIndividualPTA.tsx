@@ -84,16 +84,19 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       }, {})
     : (pta.extension && typeof pta.extension === 'object' ? pta.extension : {});
 
-  const complementarias = Array.isArray(pta.complementarias)
+  // AADM es una sección de Complementarias. Separamos ambas secciones (y fusionamos
+  // data legacy) para no doble-contar ni mostrar AADM como componente aparte.
+  const _rawComp = Array.isArray(pta.complementarias)
     ? pta.complementarias
     : (pta.complementarias?.actividades || []);
-
-  const acadAdminRaw = pta.acad_admin || pta.academico_administrativo || {};
-  const acadAdminActividades = Array.isArray(acadAdminRaw)
-    ? acadAdminRaw
-    : Array.isArray(pta.academico_admin)
-      ? pta.academico_admin
-      : (acadAdminRaw.actividades || []);
+  const _legacyAadm = Array.isArray(pta.academico_admin)
+    ? pta.academico_admin
+    : (Array.isArray(pta.acad_admin) ? pta.acad_admin
+      : (pta.acad_admin?.actividades || pta.academico_administrativo?.actividades || []));
+  const _isAadm = (c: any) => c?.seccion === 'academico_administrativas'
+    || (c?.seccion == null && c?.consumeTotalidad !== undefined);
+  const complementarias = _rawComp.filter((c: any) => !_isAadm(c));
+  const acadAdminActividades = [..._rawComp.filter((c: any) => _isAadm(c)), ..._legacyAadm];
 
 
   // Historial: accept both camelCase (historialEstados) and legacy snake_case
@@ -112,12 +115,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         if (Array.isArray(arr)) return s + arr.reduce((ss: number, a: any) => ss + (a.horas || 0), 0);
         return s;
       }, 0);
-  const horasComplementarias = pta.horas_complementarias
-    || complementarias.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
-  const horasAcadAdmin = pta.horas_acad_admin
-    || acadAdminActividades.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
+  const horasAcadAdmin = acadAdminActividades.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
+  const horasComplementariasDocencia = complementarias.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
+  // Complementarias unificado = sección docencia + sección académico-administrativa.
+  const horasComplementarias = pta.horas_complementarias != null
+    ? pta.horas_complementarias
+    : (horasComplementariasDocencia + horasAcadAdmin);
   const totalProgramado = pta.total_horas_programadas
-    || (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias + horasAcadAdmin);
+    || (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
 
   const pctDocencia = ((horasDocencia / horasProgramables) * 100).toFixed(1);
   const pctInvestigacion = ((horasInvestigacion / horasProgramables) * 100).toFixed(1);
@@ -137,8 +142,10 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       ok: horasExtension <= horasProgramables * 0.25,
     },
     {
-      label: `Complementarias: ${pctComplementarias}% (Maximo 25%)`,
-      ok: horasComplementarias <= horasProgramables * 0.25,
+      // El tope del 25% aplica a la sección "complementarias a la docencia"; la
+      // sección académico-administrativa tiene sus propios topes (incl. 100%).
+      label: `Complementarias a la docencia: ${((horasComplementariasDocencia / horasProgramables) * 100).toFixed(1)}% (Maximo 25%)`,
+      ok: horasComplementariasDocencia <= horasProgramables * 0.25,
     },
     {
       label: `Total programado: ${pctTotal}% de ${horasProgramables}h`,
@@ -610,12 +617,12 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
             marginTop: 10, padding: '8px 12px', borderRadius: 6, background: `${PTA_COLORS.COMPLEMENTARIAS}15`,
             fontWeight: 700, fontSize: '0.85rem', color: PTA_COLORS.COMPLEMENTARIAS, textAlign: 'right',
           }}>
-            TOTAL HORAS COMPLEMENTARIAS: {horasComplementarias} horas ({pctComplementarias}%)
+            TOTAL COMPLEMENTARIAS A LA DOCENCIA: {horasComplementariasDocencia} horas ({((horasComplementariasDocencia / horasProgramables) * 100).toFixed(1)}%)
           </div>
         </div>
 
-        {/* Section 6: Académico-Administrativas */}
-        <SectionHeader icon={Briefcase} label="6. ACADEMICO-ADMINISTRATIVAS" color={PTA_COLORS.ACAD_ADMIN} />
+        {/* Section 6: Complementarias · Académico-Administrativas (sub-sección de Complementarias) */}
+        <SectionHeader icon={Briefcase} label="6. COMPLEMENTARIAS · ACADÉMICO-ADMINISTRATIVAS" color={PTA_COLORS.ACAD_ADMIN} />
         <div style={{ padding: '16px 32px 20px' }}>
           {acadAdminActividades.length > 0 ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -679,7 +686,6 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                   { label: 'Investigación', value: horasInvestigacion, color: PTA_COLORS.INVESTIGACION },
                   { label: 'Extensión', value: horasExtension, color: PTA_COLORS.EXTENSION },
                   { label: 'Complementarias', value: horasComplementarias, color: PTA_COLORS.COMPLEMENTARIAS },
-                  { label: 'Acad. Admin.', value: horasAcadAdmin, color: PTA_COLORS.ACAD_ADMIN },
                 ]}
                 total={totalProgramado}
                 limit={horasProgramables}
@@ -703,7 +709,6 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     { label: 'Investigación', horas: horasInvestigacion, pct: pctInvestigacion, color: PTA_COLORS.INVESTIGACION },
                     { label: 'Extensión', horas: horasExtension, pct: pctExtension, color: PTA_COLORS.EXTENSION },
                     { label: 'Complementarias', horas: horasComplementarias, pct: pctComplementarias, color: PTA_COLORS.COMPLEMENTARIAS },
-                    { label: 'Acad. Admin.', horas: horasAcadAdmin, pct: pctAcadAdmin, color: PTA_COLORS.ACAD_ADMIN },
                   ].map((row, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #E5E7EB' }}>
                       <td style={{ padding: '7px 10px', fontWeight: 600, color: row.color }}>
