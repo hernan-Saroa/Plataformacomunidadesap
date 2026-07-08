@@ -4,7 +4,7 @@ import {
   Upload, AlertTriangle, Loader2,
   ArrowLeft, Download, FileSpreadsheet, MapPin, CheckCircle2,
   Search, ChevronRight, Edit3, RefreshCw, Info, AlertCircle,
-  Check, Globe, Building2, ArrowRight, Shield, Sparkles
+  Check, Globe, Building2, ArrowRight, Shield, Sparkles, XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { estructuraService } from '../../services/estructuraService';
@@ -18,7 +18,7 @@ interface ImportarEstructuraViewProps {
   onPeriodoChange?: (periodo: string) => void;
 }
 
-type WizardStep = 'upload' | 'validate' | 'importing';
+type WizardStep = 'upload' | 'validate' | 'importing' | 'done';
 
 export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], periodoSeleccionado, onPeriodoChange }: ImportarEstructuraViewProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -29,7 +29,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<any[]>([]);
   const [isSimulated, setIsSimulated] = useState(false);
-  
+
   const [selectedDtCode, setSelectedDtCode] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -39,10 +39,12 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Derive wizard step ───
-  const currentStep: WizardStep = 
+  // 'done' = importación REAL ya ejecutada (result presente y NO simulado).
+  const currentStep: WizardStep =
     loading ? 'importing' :
-    (result && !error) ? 'validate' :
-    'upload';
+      (result && !isSimulated && !error) ? 'done' :
+        (result && !error) ? 'validate' :
+          'upload';
 
   const steps = [
     { id: 'upload', label: 'Subir archivo', icon: Upload },
@@ -118,10 +120,9 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   const handleImportar = async (dryRun = true, fileToImport?: File, skipInvalid = false) => {
     const currentFile = fileToImport || file;
     if (!currentFile) return;
-    if (!periodoSeleccionado) {
-      toast.error('Debe seleccionar un periodo académico antes de importar.');
-      return;
-    }
+    // El periodo NO es requerido en la carga masiva: alimenta el catálogo maestro
+    // y los CETAP quedan disponibles en todos los periodos. La activación por
+    // periodo se gestiona aparte en "Activación por Periodo".
     setLoading(true); setError(null); setValidationErrors([]);
     if (!dryRun) setResult(null);
 
@@ -130,9 +131,14 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
       setResult(res.data || res);
       setIsSimulated(dryRun);
       if (!dryRun) {
-        const omitidos = (res.data?.carga?.cetaps?.omitidos || 0) + (res.data?.carga?.direcciones_territoriales?.omitidos || 0);
-        toast.success(omitidos > 0 ? `Importación parcial: ${omitidos} fila(s) omitidas.` : 'Estructura geográfica cargada exitosamente');
-        onSuccess();
+        const data = res.data || res;
+        const r = data?.resumen || {};
+        const nuevos = r.nuevos?.length || 0;
+        const actualizados = r.actualizados?.length || 0;
+        const yaExistian = (r.identicos || 0) + (r.ya_existentes_otro_codigo?.length || 0);
+        toast.success(`Importación completada: ${nuevos} nueva(s), ${actualizados} actualizada(s), ${yaExistian} ya existían.`);
+        // NO navegamos aquí: se muestra el paso 'done' con el resumen detallado.
+        // La navegación + refresco ocurre al pulsar "Finalizar" (onSuccess).
       }
     } catch (err: any) {
       console.error(err);
@@ -211,6 +217,22 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   const identicalDts = result?.analisis_duplicados?.territoriales?.identicos || (isAllIdentical ? totalDts : 0);
   const identicalCetaps = result?.analisis_duplicados?.cetaps?.identicos || (isAllIdentical ? totalCetaps : 0);
   const allDuplicates = newDts === 0 && newCetaps === 0 && (updatedDts > 0 || updatedCetaps > 0);
+  // Conteos por estado desde el preview COMPLETO (suman exactamente totalCetaps).
+  const cetapsPreview: any[] = result?.preview_cetaps || [];
+  const countByEstado = (e: string) => cetapsPreview.filter((c: any) => c._estado_import === e).length;
+  const sedesNuevas = countByEstado('nuevo');
+  const sedesActualizar = countByEstado('actualizar');
+  const sedesYaExisten = countByEstado('identico') + countByEstado('ya_existe_otro_codigo');
+  const sedesError = countByEstado('error');
+  const estadoImportInfo = (e: string): { label: string; cls: string; dot: string } => {
+    switch (e) {
+      case 'nuevo': return { label: 'Nueva', cls: 'text-emerald-700 bg-emerald-50', dot: 'bg-emerald-500' };
+      case 'actualizar': return { label: 'Se actualiza', cls: 'text-[#003DA5] bg-blue-50', dot: 'bg-[#003DA5]' };
+      case 'ya_existe_otro_codigo': return { label: 'Ya existe (otro código)', cls: 'text-amber-700 bg-amber-50', dot: 'bg-amber-500' };
+      case 'error': return { label: 'Error', cls: 'text-red-600 bg-red-50', dot: 'bg-red-500' };
+      default: return { label: 'Ya existe', cls: 'text-gray-500 bg-gray-100', dot: 'bg-gray-400' };
+    }
+  };
   const legacySync = result?.sincronizacion_legacy;
   const legacyUpdates =
     (legacySync?.seccionales?.actualizadas || 0) +
@@ -218,6 +240,20 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   const legacyCreates =
     (legacySync?.seccionales?.creadas || 0) +
     (legacySync?.sedes?.creadas || 0);
+
+  // ─── Resumen post-importación (paso 'done') ───
+  const resumen = result?.resumen || {};
+  const doneNuevosList: any[] = resumen.nuevos || [];
+  const doneActualizadosList: any[] = resumen.actualizados || [];
+  // "Ya existían bajo otro código": mismo nombre+territorial pero código distinto.
+  // NO es un error: se conserva el existente. Se cuentan como "ya existían".
+  const doneYaExistenOtroCodigoList: any[] = resumen.ya_existentes_otro_codigo || [];
+  const doneIdenticos = resumen.identicos || 0;
+  const doneYaExistian = doneIdenticos + doneYaExistenOtroCodigoList.length;
+  const doneConError = resumen.con_error || 0;
+  const doneYaExistenMsgs: string[] = (result?.advertencias || [])
+    .filter((a: any) => a && a.hoja === 'YA_EXISTE_OTRO_CODIGO')
+    .map((a: any) => a.mensaje);
 
   // ═══════════════════════════════ RENDER ═══════════════════════════════
   return (
@@ -244,7 +280,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
         <div className="px-6 py-3 bg-gray-50/50 flex items-center justify-center gap-0">
           {steps.map((step, idx) => {
             const stepOrder = ['upload', 'validate', 'importing'];
-            const currentIdx = stepOrder.indexOf(currentStep);
+            // 'done' se ubica más allá del último paso → todos aparecen completos.
+            const currentIdx = currentStep === 'done' ? stepOrder.length : stepOrder.indexOf(currentStep);
             const stepIdx = idx;
             const isActive = currentStep === step.id;
             const isComplete = stepIdx < currentIdx;
@@ -256,21 +293,18 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                 {idx > 0 && (
                   <div className={`w-12 h-px mx-1 transition-all duration-500 ${isComplete ? 'bg-emerald-400' : 'bg-gray-200'}`} />
                 )}
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${
-                  isActive ? 'bg-[#003DA5]/10' : ''
-                }`}>
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${
-                    isComplete ? 'bg-emerald-500 text-white' :
-                    isActive ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' :
-                    'bg-gray-200 text-gray-400'
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${isActive ? 'bg-[#003DA5]/10' : ''
                   }`}>
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${isComplete ? 'bg-emerald-500 text-white' :
+                    isActive ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' :
+                      'bg-gray-200 text-gray-400'
+                    }`}>
                     {isComplete ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
                   </div>
-                  <span className={`text-xs font-semibold transition-colors hidden sm:inline ${
-                    isActive ? 'text-[#003DA5]' :
+                  <span className={`text-xs font-semibold transition-colors hidden sm:inline ${isActive ? 'text-[#003DA5]' :
                     isComplete ? 'text-emerald-600' :
-                    'text-gray-400'
-                  }`}>{step.label}</span>
+                      'text-gray-400'
+                    }`}>{step.label}</span>
                 </div>
               </React.Fragment>
             );
@@ -294,35 +328,22 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                 {/* Left: Drop Zone & Form */}
                 <div className="p-8 flex flex-col items-center justify-center border-r border-gray-50">
-                  <div className="w-full max-w-sm mb-6">
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                      Periodo Académico <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={periodoSeleccionado || ''}
-                      onChange={(e) => onPeriodoChange?.(e.target.value)}
-                      className="w-full text-sm border-gray-200 rounded-lg focus:ring-[#003DA5] focus:border-[#003DA5]"
-                    >
-                      <option value="" disabled>Seleccione un periodo...</option>
-                      {periodos.map((p) => (
-                        <option key={p.codigo} value={p.codigo}>{p.codigo}</option>
-                      ))}
-                    </select>
-                  </div>
-                  
+                  {/* El periodo académico se removió de la carga masiva: alimenta
+                      el catálogo maestro y los CETAP quedan disponibles en todos
+                      los periodos. La activación por periodo se hace aparte. */}
+
                   <div
                     onDragEnter={handleDrag}
                     onDragOver={handleDrag}
                     onDragLeave={handleDrag}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`w-full max-w-sm border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 group ${
-                      dragActive
-                        ? 'border-[#003DA5] bg-blue-50/60 scale-[0.98]'
-                        : file
+                    className={`w-full max-w-sm border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 group ${dragActive
+                      ? 'border-[#003DA5] bg-blue-50/60 scale-[0.98]'
+                      : file
                         ? 'border-emerald-300 bg-emerald-50/30'
                         : 'border-gray-200 hover:border-[#003DA5]/40 hover:bg-gray-50/50'
-                    }`}
+                      }`}
                   >
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.xls" className="hidden" />
                     {file ? (
@@ -613,7 +634,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                     <button onClick={resetState} className="px-4 py-2 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
                       Cambiar archivo
                     </button>
-                    <button 
+                    <button
                       disabled
                       className="px-5 py-2.5 text-xs font-bold text-white bg-gray-300 rounded-xl cursor-not-allowed flex items-center gap-2"
                     >
@@ -639,10 +660,10 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                 {[
                   { label: 'Territoriales', value: totalDts, icon: Building2, color: 'text-[#003DA5]', bg: 'bg-blue-50' },
                   { label: 'Total Sedes', value: totalCetaps, icon: MapPin, color: 'text-gray-600', bg: 'bg-gray-50' },
-                  { label: 'Nuevas', value: newDts + newCetaps, icon: Sparkles, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { label: 'Existentes', value: updatedDts + updatedCetaps + identicalDts + identicalCetaps, icon: RefreshCw, color: 'text-amber-600', bg: 'bg-amber-50' },
-                  { label: 'Activas', value: isAllIdentical ? (identicalDts + identicalCetaps) : countActiveCetaps, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { label: 'Inactivas', value: countInactiveCetaps, icon: AlertCircle, color: 'text-gray-400', bg: 'bg-gray-50' },
+                  { label: 'Nuevas', value: sedesNuevas, icon: Sparkles, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                  { label: 'Se actualizarán', value: sedesActualizar, icon: RefreshCw, color: 'text-[#003DA5]', bg: 'bg-blue-50' },
+                  { label: 'Ya existen', value: sedesYaExisten, icon: CheckCircle2, color: 'text-gray-500', bg: 'bg-gray-50' },
+                  { label: 'Con error', value: sedesError, icon: AlertCircle, color: sedesError > 0 ? 'text-red-600' : 'text-gray-300', bg: sedesError > 0 ? 'bg-red-50' : 'bg-gray-50' },
                 ].map(({ label, value, icon: Icon, color, bg }) => (
                   <div key={label} className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
@@ -667,9 +688,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                     {result.errores.some((e: any) => e.fila) && workbookRef.current && (
                       <button
                         onClick={() => setShowCorrectionPanel(!showCorrectionPanel)}
-                        className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${
-                          showCorrectionPanel ? 'bg-gray-200 text-gray-600' : 'bg-[#003DA5] text-white hover:bg-[#002d7a]'
-                        }`}
+                        className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${showCorrectionPanel ? 'bg-gray-200 text-gray-600' : 'bg-[#003DA5] text-white hover:bg-[#002d7a]'
+                          }`}
                       >
                         <Edit3 className="w-3 h-3" />
                         {showCorrectionPanel ? 'Ver errores' : 'Corregir inline'}
@@ -755,9 +775,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                                   <td className="px-3 py-2">
                                     <input type="text" placeholder={err.valorEsperado || 'Nuevo valor...'} value={corrections[corrKey] || ''}
                                       onChange={(e) => handleCorrectionChange(corrKey, e.target.value)}
-                                      className={`w-full px-2 py-1 border rounded text-xs font-medium transition-all focus:outline-none focus:ring-1 ${
-                                        hasCorrected ? 'border-emerald-300 bg-emerald-50 text-emerald-800 focus:ring-emerald-200' : 'border-gray-200 bg-white text-gray-700 focus:ring-[#003DA5]/20'
-                                      }`}
+                                      className={`w-full px-2 py-1 border rounded text-xs font-medium transition-all focus:outline-none focus:ring-1 ${hasCorrected ? 'border-emerald-300 bg-emerald-50 text-emerald-800 focus:ring-emerald-200' : 'border-gray-200 bg-white text-gray-700 focus:ring-[#003DA5]/20'
+                                        }`}
                                     />
                                   </td>
                                   <td className="px-3 py-2 text-[10px] text-gray-400 max-w-[140px] whitespace-normal">{err.mensaje}</td>
@@ -803,9 +822,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                   </div>
                   <div className="flex-1 p-2">
                     <button onClick={() => setSelectedDtCode(null)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center justify-between mb-1 ${
-                        !selectedDtCode ? 'bg-[#003DA5] text-white shadow-sm shadow-[#003DA5]/15' : 'hover:bg-gray-50 text-gray-600'
-                      }`}>
+                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center justify-between mb-1 ${!selectedDtCode ? 'bg-[#003DA5] text-white shadow-sm shadow-[#003DA5]/15' : 'hover:bg-gray-50 text-gray-600'
+                        }`}>
                       <div className="flex items-center gap-2.5">
                         <Globe className={`w-3.5 h-3.5 ${!selectedDtCode ? 'text-white/80' : 'text-gray-400'}`} />
                         <span className="text-xs font-semibold">Todas</span>
@@ -818,9 +836,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                       const cetapCount = (result?.preview_cetaps || []).filter((c: any) => c.codigo_dt === dt.codigo_dt).length;
                       return (
                         <button key={idx} onClick={() => setSelectedDtCode(dt.codigo_dt)}
-                          className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between ${
-                            isSelected ? 'bg-blue-50/80 text-[#003DA5]' : 'hover:bg-gray-50/80 text-gray-600'
-                          }`}>
+                          className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between ${isSelected ? 'bg-blue-50/80 text-[#003DA5]' : 'hover:bg-gray-50/80 text-gray-600'
+                            }`}>
                           <div className="flex flex-col min-w-0 pr-2">
                             <span className={`text-xs font-semibold truncate ${isSelected ? 'text-[#003DA5]' : 'text-gray-700'}`}>{dt.nombre_dt}</span>
                             <span className="text-[10px] font-mono text-gray-400 mt-0.5">{dt.codigo_dt}</span>
@@ -859,31 +876,40 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
-                        {visibleCetaps.map((c: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-blue-50/20 transition-colors group">
-                            <td className="px-5 py-3 font-mono text-[11px] text-gray-400 group-hover:text-[#003DA5] transition-colors">{c.codigo_cetap}</td>
-                            <td className="px-5 py-3 font-medium text-gray-800 text-xs">{c.nombre_cetap}</td>
-                            {!activeTerritorial && <td className="px-5 py-3 font-mono text-[11px] text-gray-400">{c.codigo_dt}</td>}
-                            <td className="px-5 py-3">
-                              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded">{c.tipo}</span>
-                            </td>
-                            <td className="px-5 py-3">
-                              <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${c.activo ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 bg-gray-50'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${c.activo ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                                {c.activo ? 'Activo' : 'Inactivo'}
-                              </span>
-                            </td>
-                            {periodoSeleccionado && (
+                        {visibleCetaps.map((c: any, idx: number) => {
+                          const est = estadoImportInfo(c._estado_import);
+                          return (
+                            <tr key={idx} className="hover:bg-blue-50/20 transition-colors group">
+                              <td className="px-5 py-3 font-mono text-[11px] text-gray-400 group-hover:text-[#003DA5] transition-colors">{c.codigo_cetap}</td>
+                              <td className="px-5 py-3 font-medium text-gray-800 text-xs">{c.nombre_cetap}</td>
+                              {!activeTerritorial && <td className="px-5 py-3 font-mono text-[11px] text-gray-400">{c.codigo_dt}</td>}
                               <td className="px-5 py-3">
-                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${c.activo ? 'text-[#003DA5] bg-blue-50' : 'text-amber-600 bg-amber-50'}`}>
-                                  {c.activo ? 'Habilitado' : 'Deshabilitado'}
+                                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded">{c.tipo}</span>
+                              </td>
+                              <td className="px-5 py-3">
+                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md ${est.cls}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${est.dot}`} />
+                                  {est.label}
                                 </span>
                               </td>
-                            )}
-                          </tr>
-                        ))}
+                              <td className="px-5 py-3">
+                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${c.activo ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 bg-gray-50'}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${c.activo ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                                  {c.activo ? 'Activo' : 'Inactivo'}
+                                </span>
+                              </td>
+                              {periodoSeleccionado && (
+                                <td className="px-5 py-3">
+                                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${c.activo ? 'text-[#003DA5] bg-blue-50' : 'text-amber-600 bg-amber-50'}`}>
+                                    {c.activo ? 'Habilitado' : 'Deshabilitado'}
+                                  </span>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
                         {visibleCetaps.length === 0 && (
-                          <tr><td colSpan={!activeTerritorial ? 5 : 4} className="px-5 py-14 text-center">
+                          <tr><td colSpan={!activeTerritorial ? 6 : 5} className="px-5 py-14 text-center">
                             <div className="flex flex-col items-center gap-2 text-gray-300">
                               <MapPin className="w-5 h-5" />
                               <p className="text-[11px] font-medium">Sin sedes para esta selección</p>
@@ -920,6 +946,133 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                 <p className="text-[11px] text-gray-400 mt-1">
                   {isSimulated ? 'Ejecutando reglas de validación G1-G7' : 'Sincronizando en base de datos'}
                 </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ━━━━━ STEP 4: DONE — Resumen de la importación ━━━━━ */}
+        {currentStep === 'done' && (
+          <motion.div
+            key="done"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.25 }}
+          >
+            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+              {/* Header */}
+              <div className="px-8 py-5 flex items-center justify-between gap-4 flex-wrap bg-emerald-50/30 border-b border-emerald-100">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm">Importación completada</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {doneNuevosList.length} nueva(s) · {doneActualizadosList.length} actualizada(s) · {doneYaExistian} ya existían{doneConError > 0 ? ` · ${doneConError} con error` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={resetState} className="px-4 py-2 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
+                    Importar otro
+                  </button>
+                  <button onClick={onSuccess} className="px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-sm flex items-center gap-2">
+                    <Check className="w-4 h-4" /> Finalizar
+                  </button>
+                </div>
+              </div>
+
+              {/* Metric row */}
+              <div className="px-8 py-5 grid grid-cols-2 sm:grid-cols-4 gap-4 border-b border-gray-100">
+                {[
+                  { label: 'Nuevas creadas', value: doneNuevosList.length, icon: Sparkles, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                  { label: 'Actualizadas', value: doneActualizadosList.length, icon: RefreshCw, color: 'text-[#003DA5]', bg: 'bg-blue-50' },
+                  { label: 'Ya existían', value: doneYaExistian, icon: CheckCircle2, color: 'text-gray-500', bg: 'bg-gray-50' },
+                  { label: 'Con error', value: doneConError, icon: AlertTriangle, color: doneConError > 0 ? 'text-red-600' : 'text-gray-300', bg: doneConError > 0 ? 'bg-red-50' : 'bg-gray-50' },
+                ].map(({ label, value, icon: Icon, color, bg }) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
+                      <Icon className={`w-5 h-5 ${color}`} />
+                    </div>
+                    <div>
+                      <span className="text-xl font-bold text-gray-900 leading-none">{value}</span>
+                      <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mt-0.5">{label}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Detail lists */}
+              <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                {/* Nuevos creados */}
+                {doneNuevosList.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> Registros nuevos creados ({doneNuevosList.length})
+                    </h4>
+                    <div className="border border-emerald-100 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-emerald-50/60 sticky top-0 border-b border-emerald-100">
+                          <tr>
+                            <th className="px-4 py-2 font-semibold text-gray-400 uppercase text-[10px]">Tipo</th>
+                            <th className="px-4 py-2 font-semibold text-gray-400 uppercase text-[10px]">Código</th>
+                            <th className="px-4 py-2 font-semibold text-gray-400 uppercase text-[10px]">Nombre</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {doneNuevosList.map((r: any, i: number) => (
+                            <tr key={i} className="hover:bg-emerald-50/30">
+                              <td className="px-4 py-2 text-gray-500">{r.tipo}</td>
+                              <td className="px-4 py-2 font-mono text-[11px] text-gray-500">{r.codigo}</td>
+                              <td className="px-4 py-2 font-medium text-gray-800">{r.nombre}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ya existían bajo otro código (no es error: se conserva el existente) */}
+                {doneYaExistenMsgs.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-[#003DA5] uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5" /> Ya existían — no se duplicaron ({doneYaExistenMsgs.length})
+                    </h4>
+                    <p className="text-[11px] text-gray-400 mb-2">
+                      Estos registros del archivo ya estaban en el catálogo (por nombre y territorial), en algunos casos bajo un código distinto. Se conservó el registro existente; no se creó ningún duplicado.
+                    </p>
+                    <div className="border border-blue-100 rounded-lg divide-y divide-blue-50 max-h-56 overflow-y-auto">
+                      {doneYaExistenMsgs.map((m: string, i: number) => (
+                        <div key={i} className="px-4 py-2 text-[11px] text-gray-600 flex items-start gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#003DA5]/50 mt-1.5 shrink-0" />
+                          <span>{m}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {doneIdenticos > 0 && (
+                  <p className="text-[11px] text-gray-400">
+                    {doneIdenticos} registro(s) ya estaban cargados con datos idénticos (sin cambios).
+                  </p>
+                )}
+
+                {doneConError > 0 && (
+                  <p className="text-[11px] text-red-500">
+                    {doneConError} fila(s) del archivo se omitieron por errores de validación.
+                  </p>
+                )}
+
+                {doneNuevosList.length === 0 && doneActualizadosList.length === 0 && doneYaExistenMsgs.length === 0 && (
+                  <div className="text-center py-10 text-gray-400">
+                    <Info className="w-6 h-6 mx-auto mb-2" />
+                    <p className="text-xs">No hubo cambios nuevos: todos los registros del archivo ya existían con los mismos datos.</p>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

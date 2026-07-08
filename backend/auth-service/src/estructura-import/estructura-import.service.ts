@@ -39,7 +39,7 @@ export class EstructuraImportService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly excelParser: EstructuraExcelParserService,
-  ) {}
+  ) { }
 
   getTemplateBuffer(): Buffer {
     const fileName =
@@ -76,7 +76,7 @@ export class EstructuraImportService {
 
     // 2. Validate G1-G7
     const validation = GeograficoValidator.validarPreInsert(territoriales, cetaps);
-    
+
     const result = new ImportGeograficoResultDto();
     result.dry_run = dryRun;
     result.skip_invalid = skipInvalid;
@@ -100,7 +100,7 @@ export class EstructuraImportService {
       result.carga.cetaps.creados = 0;
       result.carga.cetaps.omitidos = validation.invalidCetaps.length;
       result.tiempo_ms = Date.now() - startTime;
-      
+
       if (!dryRun) {
         throw new BadRequestException({
           success: false,
@@ -136,6 +136,31 @@ export class EstructuraImportService {
     if (validation.isValid) {
       dtToProcess = territoriales;
       cetapsToProcess = cetaps;
+    }
+
+    // El catálogo maestro tiene claves únicas ADEMÁS del código:
+    //   - direccion_territorial: nombre y nombre_normalizado (globales)
+    //   - cetap: (id_direccion_territorial, nombre_normalizado)
+    // El upsert solo resuelve conflictos por código, así que una fila con un
+    // código NUEVO pero un nombre que ya existe con otro código rompería la
+    // transacción. En vez de fallar, se OMITEN esas filas duplicadas y se
+    // importan las demás (comportamiento idempotente pedido por el negocio).
+    const conflictScan = await this.filterCatalogNameConflicts(
+      dtToProcess,
+      cetapsToProcess,
+    );
+    dtToProcess = conflictScan.territoriales;
+    cetapsToProcess = conflictScan.cetaps;
+    const conflictSkippedDts = conflictScan.skippedTerritoriales;
+    const conflictSkippedCetaps = conflictScan.skippedCetaps;
+    if (conflictScan.messages.length > 0) {
+      result.advertencias.push(
+        ...conflictScan.messages.map((mensaje) => ({
+          hoja: 'YA_EXISTE_OTRO_CODIGO',
+          mensaje,
+          severity: 'warning' as const,
+        })),
+      );
     }
 
     const legacyPlan = await this.buildLegacySyncPlan(
@@ -218,12 +243,14 @@ export class EstructuraImportService {
     // Populate result counts
     result.carga.direcciones_territoriales.creados = newDts.length;
     result.carga.direcciones_territoriales.actualizados = modifiedDts.length;
-    result.carga.direcciones_territoriales.omitidos = validation.invalidTerritoriales.length + identicalDts.length;
+    result.carga.direcciones_territoriales.omitidos =
+      validation.invalidTerritoriales.length + identicalDts.length + conflictSkippedDts.length;
     result.carga.cetaps.creados = newCetaps.length;
     result.carga.cetaps.actualizados = modifiedCetaps.length;
-    result.carga.cetaps.omitidos = validation.invalidCetaps.length + identicalCetaps.length;
-    result.omitidas_territoriales = validation.invalidTerritoriales;
-    result.omitidas_cetaps = validation.invalidCetaps;
+    result.carga.cetaps.omitidos =
+      validation.invalidCetaps.length + identicalCetaps.length + conflictSkippedCetaps.length;
+    result.omitidas_territoriales = [...validation.invalidTerritoriales, ...conflictSkippedDts];
+    result.omitidas_cetaps = [...validation.invalidCetaps, ...conflictSkippedCetaps];
 
     // Resumen detallado de duplicados
     (result as any).analisis_duplicados = {
@@ -241,7 +268,7 @@ export class EstructuraImportService {
         legacyPlan.summary.seccionales.actualizadas > 0 ||
         legacyPlan.summary.sedes.creadas > 0 ||
         legacyPlan.summary.sedes.actualizadas > 0;
-      
+
       allIdentical =
         (identicalDts.length > 0 || identicalCetaps.length > 0) &&
         newDts.length === 0 &&
@@ -313,9 +340,8 @@ export class EstructuraImportService {
           .slice(0, 5)
           .map(e => `• ${e.hoja}${e.fila ? ` fila ${e.fila}` : ''}: ${e.mensaje}`)
           .join('\n');
-        const msgDetallado = `La estructura nueva es válida, pero existen ${enrichedErrors.length} ambigüedad(es) en la estructura organizacional actual:\n${resumenErrores}${
-          enrichedErrors.length > 5 ? `\n... y ${enrichedErrors.length - 5} más` : ''
-        }`;
+        const msgDetallado = `La estructura nueva es válida, pero existen ${enrichedErrors.length} ambigüedad(es) en la estructura organizacional actual:\n${resumenErrores}${enrichedErrors.length > 5 ? `\n... y ${enrichedErrors.length - 5} más` : ''
+          }`;
 
         if (!dryRun) {
           throw new BadRequestException({
@@ -346,9 +372,9 @@ export class EstructuraImportService {
         result.success = validation.isValid || (skipInvalid && !validation.hasBlockingErrors);
       }
       result.tiempo_ms = Date.now() - startTime;
-      // Siempre mostrar TODOS los datos en el preview
-      result.preview_territoriales = dtToProcess;
-      result.preview_cetaps = cetapsToProcess;
+      // Preview COMPLETO con estado por fila (incluye las que ya existen).
+      result.preview_territoriales = previewTerritorialesFull;
+      result.preview_cetaps = previewCetapsFull;
       return result;
     }
 
@@ -357,8 +383,8 @@ export class EstructuraImportService {
       result.success = true;
       result.tiempo_ms = Date.now() - startTime;
       (result as any).blocked_reason = 'ALL_IDENTICAL';
-      result.preview_territoriales = dtToProcess;
-      result.preview_cetaps = cetapsToProcess;
+      result.preview_territoriales = previewTerritorialesFull;
+      result.preview_cetaps = previewCetapsFull;
       return result;
     }
 
@@ -375,6 +401,7 @@ export class EstructuraImportService {
     let dtUpdatedCount = 0;
     let cetapCreatedCount = 0;
     let cetapUpdatedCount = 0;
+    const legacyNameTruncations: string[] = [];
 
     try {
       await queryRunner.query(
@@ -503,6 +530,15 @@ export class EstructuraImportService {
 
         const matched = legacyPlan.sedeByCetapCode.get(c.codigo_cetap);
         const sedeAct = c.activo ? 'ACTIVO' : 'INACTIVO';
+        // El espejo legacy auth.sedes.nom_sede es varchar(50), más estrecho que
+        // el catálogo maestro cetap.nombre varchar(100). Se recorta solo para el
+        // legacy (el catálogo ya guardó el nombre completo) y se avisa.
+        const nomSedeLegacy = this.truncateForLegacy(c.nombre_cetap, 50);
+        if (nomSedeLegacy !== c.nombre_cetap) {
+          legacyNameTruncations.push(
+            `La sede ${c.codigo_cetap} ("${c.nombre_cetap}") se registró en la estructura organizacional con el nombre recortado a 50 caracteres. El catálogo maestro conserva el nombre completo.`,
+          );
+        }
         let idSede: string;
         if (matched) {
           idSede = String(matched.id_sede);
@@ -524,7 +560,7 @@ export class EstructuraImportService {
              WHERE id_sede = $8`,
             [
               c.codigo_cetap,
-              c.nombre_cetap,
+              nomSedeLegacy,
               idSeccional,
               sedeAct,
               c.latitud,
@@ -546,7 +582,7 @@ export class EstructuraImportService {
             [
               idSede,
               c.codigo_cetap,
-              c.nombre_cetap,
+              nomSedeLegacy,
               idSeccional,
               sedeAct,
               c.latitud,
@@ -651,10 +687,11 @@ export class EstructuraImportService {
     } catch (error: any) {
       this.logger.error(`Error en la transacción de importación geográfica: ${error.message}`, error.stack);
       await queryRunner.rollbackTransaction();
+      const detalle = error?.message || 'error desconocido en la base de datos';
       throw new BadRequestException({
         success: false,
-        message: 'Error al persistir la estructura geográfica en la base de datos.',
-        errores: [error.message],
+        message: `No se pudo guardar la estructura geográfica: ${detalle}`,
+        errores: [detalle],
       });
     } finally {
       await queryRunner.release();
@@ -664,11 +701,20 @@ export class EstructuraImportService {
     result.carga.direcciones_territoriales.actualizados = dtUpdatedCount;
     result.carga.cetaps.creados = cetapCreatedCount;
     result.carga.cetaps.actualizados = cetapUpdatedCount;
+    if (legacyNameTruncations.length > 0) {
+      result.advertencias.push(
+        ...legacyNameTruncations.map((mensaje) => ({
+          hoja: 'SINCRONIZACION_LEGACY',
+          mensaje,
+          severity: 'warning' as const,
+        })),
+      );
+    }
     result.tiempo_ms = Date.now() - startTime;
     return result;
   }
 
-   private async analyzePeriodSync(
+  private async analyzePeriodSync(
     periodo?: string,
     cetapsFromExcel: any[] = [],
   ): Promise<{
@@ -815,7 +861,7 @@ export class EstructuraImportService {
           (row: any) =>
             !selectedSeccionalIds.has(String(row.id_seccional)) &&
             this.normalizeLegacyName(row.nom_seccional) ===
-              this.normalizeLegacyName(dt.nombre_dt),
+            this.normalizeLegacyName(dt.nombre_dt),
         );
         if (candidates.length === 1) {
           matched = candidates[0];
@@ -947,6 +993,7 @@ export class EstructuraImportService {
       seccionalByDtCode,
       sedeByCetapCode,
       errors,
+      warnings,
       summary: {
         seccionales: {
           creadas: secCreated,
@@ -994,6 +1041,18 @@ export class EstructuraImportService {
     return name
       .toLocaleLowerCase('es-CO')
       .replace(/(^|\s)\p{L}/gu, (letter) => letter.toLocaleUpperCase('es-CO'));
+  }
+
+  /**
+   * Recorta un texto al máximo permitido por una columna de las tablas legacy
+   * (auth.sedes / auth.seccionales), que son más estrechas que el catálogo
+   * maestro (p. ej. nom_sede varchar(50) vs cetap.nombre varchar(100)). El
+   * catálogo maestro conserva el valor completo; el espejo legacy solo guarda
+   * una versión recortada para no romper la transacción.
+   */
+  private truncateForLegacy(value: unknown, maxLen: number): string {
+    const s = String(value ?? '');
+    return s.length > maxLen ? s.slice(0, maxLen) : s;
   }
 
   private sameLegacyStatus(current: unknown, expected: string): boolean {

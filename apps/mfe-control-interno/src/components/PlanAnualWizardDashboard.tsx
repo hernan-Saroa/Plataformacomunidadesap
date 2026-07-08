@@ -7773,7 +7773,7 @@ function SeccionGestionYSeguimiento({
 
   // Alinear % guardado en BD con el cálculo por cortes/tareas (evita 0% obsoleto en pantalla)
   useEffect(() => {
-    if (plan.estado === 'BORRADOR') return;
+    if (esEstadoPlanBorrador(plan.estado)) return;
     const firma = `${plan.id ?? ''}-${plan.roles.reduce((n, r) => n + r.actividades.length, 0)}`;
     if (avanceSincronizadoRef.current === firma) return;
 

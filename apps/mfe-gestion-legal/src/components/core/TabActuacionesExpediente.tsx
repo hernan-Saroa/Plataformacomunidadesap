@@ -1120,9 +1120,17 @@ export function TabActuacionesExpediente({
           etapaLabel="Autorización de Actuación"
           correoDestino={(authService.getCurrentUser() as any)?.email}
           onVerifyCodigo={async (codigo) => {
-            // Guardamos el OTP ingresado para usarlo al final
+            // Validamos el código contra el OTP real enviado al correo del usuario
+            // activo ANTES de avanzar. Si es incorrecto o expiró, el backend responde
+            // con error y el modal lo muestra (ya no acepta cualquier combinación).
+            const expId = expedienteId || String(modalFirmaActuacion.expedienteId);
+            try {
+              await legalService.verificarOtpActuacion(expId, String(modalFirmaActuacion.id), codigo);
+            } catch (err: any) {
+              throw new Error(err?.response?.data?.message || 'Código incorrecto. Verifica e intenta nuevamente.');
+            }
+            // Guardamos el OTP ya verificado para reutilizarlo al autorizar/firmar al final.
             setOtpArray(codigo.split(''));
-            return Promise.resolve();
           }}
           onFirmaCompleta={handleConfirmarFirmaHash}
           onCancelar={() => setModalFirmaActuacion(null)}
