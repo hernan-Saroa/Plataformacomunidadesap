@@ -938,12 +938,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (p.sede_id || p.sedeId) {
           const cetapDefault = String(p.sede_id || p.sedeId);
           setDefaultCetap(cetapDefault);
-          // Pre-cargar programas filtrados para el CETAP del docente
-          getCatalogoProgramasCascada(cetapDefault).then(result => {
-            if (result.success && result.data.length > 0) {
-              setProgramasPorCetap(prev => ({ ...prev, [cetapDefault]: result.data }));
+          // Pre-cargar programas filtrados para el CETAP del docente (Nota: el periodo puede no estar final aquí si el PTA es existente y carga lento, pero el onChange lo manejará)
+          getCatalogoProgramasCascada(cetapDefault, periodo).then(result => {
+            if (result.success) {
+              setProgramasPorCetap(prev => ({ ...prev, [cetapDefault]: result.data || [] }));
             }
-          }).catch(() => { /* silencioso - fallback a lista completa */ });
+          }).catch(() => { setProgramasPorCetap(prev => ({ ...prev, [cetapDefault]: [] })); });
         }
         // Nombre del docente para firma digital
         const nombre = p.nombre || p.primer_nombre || p.fullName || p.name || '';
@@ -992,6 +992,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   }, [asignaturas]);
   const docenciaOverlapWarnings = docenciaOverlapInfo.warnings;
   const docenciaConflictIds = docenciaOverlapInfo.conflictIds;
+
+  // Recargar programas filtrados si el periodo cambia y ya hay un CETAP por defecto
+  useEffect(() => {
+    if (defaultCetap && periodo) {
+      getCatalogoProgramasCascada(defaultCetap, periodo).then(result => {
+        if (result.success) {
+          setProgramasPorCetap(prev => ({ ...prev, [defaultCetap]: result.data || [] }));
+        }
+      }).catch(() => { setProgramasPorCetap(prev => ({ ...prev, [defaultCetap]: [] })); });
+    }
+  }, [periodo, defaultCetap]);
 
   // ═══ CÁLCULOS (réplica fórmulas Excel) ═══════════════════════════
 
@@ -1243,11 +1254,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         updated.asignatura_nombre = '';
         if (value && !programasPorCetap[value]) {
           // Cargar programas del CETAP desde Programas Académicos
-          getCatalogoProgramasCascada(value).then(result => {
+          getCatalogoProgramasCascada(value, periodo).then(result => {
             if (result.success && result.data.length > 0) {
               setProgramasPorCetap(prev => ({ ...prev, [value]: result.data }));
             } else {
-              // Fallback: marcar que se cargó pero sin resultados específicos → usar todos
+              // Fallback: marcar que se cargó pero sin resultados específicos → usar todos (o ninguno si es estricto)
               setProgramasPorCetap(prev => ({ ...prev, [value]: [] }));
             }
           }).catch(() => {
@@ -2793,11 +2804,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               <FormSelect label="Programa" value={asig.programa_id} disabled={!rowEditable || !programaHabilitado}
                                 onChange={v => handleAsigChange(asig.id, 'programa_id', v)}
                                 options={(() => {
-                                  // Usar programas filtrados por CETAP si están disponibles
+                                  // Usar programas filtrados por CETAP si hay un CETAP seleccionado
                                   const cetapId = asig.cetap_id;
-                                  const filtrados = cetapId && programasPorCetap[cetapId];
-                                  // Si hay programas filtrados del CETAP, usarlos; si no, mostrar todos como fallback
-                                  const lista = (filtrados && filtrados.length > 0) ? filtrados : programas;
+                                  // Si hay CETAP, mostrar estrictamente sus programas. Si está undefined (cargando) o vacío, mostrar vacío.
+                                  // Solo mostramos 'programas' si por alguna razón extraña no hay cetap (aunque el select está disableado)
+                                  const lista = cetapId ? (programasPorCetap[cetapId] || []) : programas;
                                   return lista.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }));
                                 })()}
                                 placeholder={programaHabilitado ? 'Seleccionar...' : 'Pendiente...'} />

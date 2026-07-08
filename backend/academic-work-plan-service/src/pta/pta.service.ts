@@ -3012,10 +3012,24 @@ export class PtaService {
    */
   async getProgramasPorSede(query?: any) {
     const sedeId = coalesceString(query?.cetap_id, query?.sede_id, query?.cetapId);
+    const periodoCodigo = query?.periodo;
 
     if (!sedeId) {
       return [];
     }
+
+    const params: any[] = [sedeId];
+    let joinPeriodo = '';
+    
+    if (periodoCodigo) {
+      params.push(periodoCodigo);
+      joinPeriodo = `
+        INNER JOIN academic_work_plan.periodo_academico per
+          ON ocp.id_periodo_academico = per.id AND per.codigo = $2
+      `;
+    }
+
+    console.log('[BACKEND DEBUG] getProgramasPorSede params:', { sedeId, periodoCodigo, params });
 
     // Single query: try direct cetap.id match OR bridge via auth.sedes.cod_sede
     const raw = await this.ptaRepo.manager.query(
@@ -3032,6 +3046,7 @@ export class PtaService {
       FROM academic_work_plan.programa p
       INNER JOIN academic_work_plan.oferta_cetap_programa ocp
         ON ocp.id_programa = p.id AND ocp.activa = true
+      ${joinPeriodo}
       INNER JOIN academic_work_plan.cetap c
         ON c.id = ocp.id_cetap AND c.activo = true
       WHERE p.activo = true
@@ -3048,7 +3063,7 @@ export class PtaService {
         )
       ORDER BY p.nombre ASC
       `,
-      [sedeId],
+      params,
     );
 
     const nivelFormacionMap: Record<string, string> = {

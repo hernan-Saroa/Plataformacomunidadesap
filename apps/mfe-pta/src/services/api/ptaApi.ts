@@ -191,6 +191,8 @@ export async function getCatalogoProgramasCascada(cetapId: string, periodo?: str
   try {
     // Primary: use programas-por-sede endpoint (handles auth.sedes.id_sede correctly)
     const params: Record<string, string> = { cetap_id: cetapId, _t: Date.now().toString() };
+    if (periodo) params.periodo = periodo;
+    
     const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/programas-por-sede`, params);
     const normalized = normalizeResult<any[]>(raw, []);
     const data = Array.isArray(normalized.data) ? normalized.data : [];
@@ -198,7 +200,6 @@ export async function getCatalogoProgramasCascada(cetapId: string, periodo?: str
       return { success: true, data };
     }
     // Fallback: try cascada endpoint (uses academic_work_plan.cetap.id)
-    if (periodo) params.periodo = periodo;
     const raw2 = await apiClient.get<any>(`${PTA_BASE}/cascada/programas`, params);
     const normalized2 = normalizeResult<any[]>(raw2, []);
     const data2 = Array.isArray(normalized2.data) ? normalized2.data : [];

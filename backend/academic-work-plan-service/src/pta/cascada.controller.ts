@@ -67,38 +67,41 @@ export class CascadaController {
     @Query('cetap_id') cetapId: string,
     @Query('periodo') periodCodigo?: string,
   ) {
-    const period = periodCodigo || '2025-2';
+    let data: any[] = [];
+
+    console.log('[BACKEND DEBUG] cascada.controller getProgramas params:', { cetapId, periodCodigo });
 
     // The cetapId may come from either academic_work_plan.cetap.id or auth.sedes.id_sede.
     // Use a raw query that resolves both ID types via cross-schema lookup (nombre_normalizado).
-    // First try with exact periodo match, then fallback to any active oferta.
-    let data = await this.programaRepo.manager.query(
-      `
-      SELECT DISTINCT p.*
-      FROM academic_work_plan.programa p
-      INNER JOIN academic_work_plan.oferta_cetap_programa ocp
-        ON ocp.id_programa = p.id AND ocp.activa = true
-      INNER JOIN academic_work_plan.periodo_academico per
-        ON ocp.id_periodo_academico = per.id AND per.codigo = $2
-      INNER JOIN academic_work_plan.cetap c
-        ON c.id = ocp.id_cetap
-      WHERE p.activo = true
-        AND (
-          c.id::text = $1
-          OR c.nombre_normalizado = (
-            SELECT LOWER(REPLACE(TRIM(s.nom_sede), ' ', ''))
-            FROM auth.sedes s
-            WHERE s.id_sede::text = $1
-            LIMIT 1
+    
+    if (periodCodigo) {
+      // Si se provee un periodo explícito, filtrar estrictamente por ese periodo sin fallback.
+      data = await this.programaRepo.manager.query(
+        `
+        SELECT DISTINCT p.*
+        FROM academic_work_plan.programa p
+        INNER JOIN academic_work_plan.oferta_cetap_programa ocp
+          ON ocp.id_programa = p.id AND ocp.activa = true
+        INNER JOIN academic_work_plan.periodo_academico per
+          ON ocp.id_periodo_academico = per.id AND per.codigo = $2
+        INNER JOIN academic_work_plan.cetap c
+          ON c.id = ocp.id_cetap
+        WHERE p.activo = true
+          AND (
+            c.id::text = $1
+            OR c.nombre_normalizado = (
+              SELECT LOWER(REPLACE(TRIM(s.nom_sede), ' ', ''))
+              FROM auth.sedes s
+              WHERE s.id_sede::text = $1
+              LIMIT 1
+            )
           )
-        )
-      ORDER BY p.nombre ASC
-      `,
-      [cetapId, period],
-    );
-
-    // Fallback: if no results with exact periodo, try with any active oferta
-    if (data.length === 0) {
+        ORDER BY p.nombre ASC
+        `,
+        [cetapId, periodCodigo],
+      );
+    } else {
+      // Si no se provee periodo, traer todos los programas históricamente ofertados en el CETAP
       data = await this.programaRepo.manager.query(
         `
         SELECT DISTINCT p.*

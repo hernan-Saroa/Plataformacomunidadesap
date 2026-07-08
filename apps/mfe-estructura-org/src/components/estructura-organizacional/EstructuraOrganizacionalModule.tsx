@@ -208,11 +208,10 @@ export function EstructuraOrganizacionalModule() {
     }
   };
 
-  // ── Vista por PERIODO: solo se muestran las sedes MIEMBRO del periodo ──
-  // (las que tienen fila en periodo_cetap para ese periodo). Así cada periodo
-  // es independiente: lo que importas/agregas/quitas en uno no afecta a otro.
-  // El filtro Todos/Activos/Inactivos opera SOLO dentro de los miembros.
-  const sedesMiembro = sedesOriginales.filter(s => memberSedeIds.has(Number(s.idSede)));
+  // ── Vista por PERIODO: se muestran todas las sedes del catálogo maestro ──
+  // El filtro Todos/Activos/Inactivos opera sobre todo el catálogo para permitir
+  // activar o desactivar cualquier sede en el periodo seleccionado.
+  const sedesMiembro = sedesOriginales;
   const sedesFiltradas = filtroActivacion === 'todos'
     ? sedesMiembro
     : filtroActivacion === 'activos'
@@ -266,17 +265,17 @@ export function EstructuraOrganizacionalModule() {
       toast.error('Seleccione un periodo académico primero');
       return;
     }
-    const memberIds = [...memberSedeIds];
-    if (memberIds.length === 0) {
-      toast.info('Este periodo no tiene sedes. Importa o agrega sedes al periodo primero.');
+    const allSedeIds = sedesOriginales.map(s => Number(s.idSede));
+    if (allSedeIds.length === 0) {
+      toast.info('No hay sedes en el catálogo para activar.');
       return;
     }
     const prevIds = activeSedeIds;
     setActivacionEnCurso(true);
-    setActiveSedeIds(new Set(memberSedeIds));
+    setActiveSedeIds(new Set(allSedeIds));
     try {
-      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, true, memberIds);
-      const n = res?.data?.actualizados ?? memberIds.length;
+      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, true, allSedeIds);
+      const n = res?.data?.actualizados ?? allSedeIds.length;
       const omitidos = res?.data?.omitidos ?? 0;
       await applyPeriodFilter();
       if (omitidos > 0) {
@@ -299,17 +298,17 @@ export function EstructuraOrganizacionalModule() {
       toast.error('Seleccione un periodo académico primero');
       return;
     }
-    const memberIds = [...memberSedeIds];
-    if (memberIds.length === 0) {
-      toast.info('Este periodo no tiene sedes para desactivar.');
+    const allSedeIds = sedesOriginales.map(s => Number(s.idSede));
+    if (allSedeIds.length === 0) {
+      toast.info('No hay sedes en el catálogo para desactivar.');
       return;
     }
     const prevIds = activeSedeIds;
     setActivacionEnCurso(true);
     setActiveSedeIds(new Set());
     try {
-      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, false, memberIds);
-      const n = res?.data?.actualizados ?? memberIds.length;
+      const res = await estructuraService.bulkToggleSedePeriodStatus(periodo, false, allSedeIds);
+      const n = res?.data?.actualizados ?? allSedeIds.length;
       const omitidos = res?.data?.omitidos ?? 0;
       await applyPeriodFilter();
       if (omitidos > 0) {
@@ -333,9 +332,9 @@ export function EstructuraOrganizacionalModule() {
       toast.error('Seleccione un periodo académico primero');
       return;
     }
-    // Solo las sedes MIEMBRO de la seccional en este periodo (las visibles).
+    // Todas las sedes de la seccional en el catálogo.
     const sedesDeLaSeccional = sedesOriginales.filter(
-      s => s.idSeccional === idSeccional && memberSedeIds.has(Number(s.idSede)),
+      s => s.idSeccional === idSeccional,
     );
     if (sedesDeLaSeccional.length === 0) return;
 
