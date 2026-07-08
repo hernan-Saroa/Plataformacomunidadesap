@@ -556,6 +556,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Modal de confirmación PTA incompleto (reemplaza window.confirm nativo)
   const [showConfirmIncompleto, setShowConfirmIncompleto] = useState(false);
   const [confirmIncompletoData, setConfirmIncompletoData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
+  // Confirmación de horas de EXCESO (el PTA supera el límite programable).
+  const [showConfirmExceso, setShowConfirmExceso] = useState(false);
+  const [confirmExcesoData, setConfirmExcesoData] = useState<{ totalHoras: number; horasRequeridas: number; horasExceso: number; porcentaje: number } | null>(null);
 
   // Legacy — conservados por compatibilidad
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
@@ -776,14 +779,43 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     });
   }, []);
 
-  // Sync CETAPs for existing asignaturas
+  const loadingProgramasRef = useRef<Set<string>>(new Set());
+
+  // Carga (una sola vez) los programas ofertados por un CETAP, para poblar el
+  // dropdown "Programa". Necesario al recargar un borrador: la asignatura ya trae
+  // su programa_id, pero sin la lista de opciones el select no puede mostrarlo.
+  const loadProgramasCetap = useCallback(async (cetapId: string) => {
+    if (!cetapId) return;
+    setProgramasPorCetap(prev => {
+      if (prev[cetapId] || loadingProgramasRef.current.has(cetapId)) return prev;
+      loadingProgramasRef.current.add(cetapId);
+      getCatalogoProgramasCascada(cetapId, periodo)
+        .then(result => {
+          loadingProgramasRef.current.delete(cetapId);
+          setProgramasPorCetap(curr => ({
+            ...curr,
+            [cetapId]: result.success && result.data.length > 0 ? result.data : [],
+          }));
+        })
+        .catch(() => {
+          loadingProgramasRef.current.delete(cetapId);
+          setProgramasPorCetap(curr => ({ ...curr, [cetapId]: [] }));
+        });
+      return prev;
+    });
+  }, [periodo]);
+
+  // Sync CETAPs + Programas for existing asignaturas
   useEffect(() => {
     if (!asignaturas.length) return;
     asignaturas.forEach(a => {
       const tid = a.territorial_id || defaultTerritorial;
       if (tid) loadCetaps(tid);
+      // Poblar las opciones de "Programa" del CETAP de cada asignatura guardada
+      // para que el programa persistido se muestre tras "Guardar Borrador" + recargar.
+      if (a.cetap_id) loadProgramasCetap(String(a.cetap_id));
     });
-  }, [asignaturas, defaultTerritorial, loadCetaps]);
+  }, [asignaturas, defaultTerritorial, loadCetaps, loadProgramasCetap]);
 
   // Load existing PTA
   useEffect(() => {
@@ -1095,6 +1127,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const totalHoras = docProrr + invProrr + extProrr + compProrr + acadProrr;
   const horasRestantes = horasAProgramar - totalHoras;
   const porcentaje = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
+  // Horas por encima del límite programable (0 si no hay exceso).
+  const horasExceso = Math.max(0, totalHoras - horasAProgramar);
 
   // Actividad de la sección académico-administrativa que consume el 100% del PTA.
   // Ya NO bloquea la vista; solo se usa para exención de validaciones de envío.
@@ -2059,7 +2093,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       setShowConfirmIncompleto(true);
       return false; // Detener el flujo — el modal se encargará de continuar si el usuario acepta
     }
-    
+
+    // Horas de exceso: si el PTA supera el límite programable, se pide
+    // confirmación explícita (no bloquea; el docente decide enviarlo así).
+    const horasExcesoEnvio = totalHoras - horasAProgramar;
+    if (horasExcesoEnvio > 0) {
+      const porcentajeReal = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
+      setConfirmExcesoData({ totalHoras, horasRequeridas: horasAProgramar, horasExceso: horasExcesoEnvio, porcentaje: porcentajeReal });
+      setShowConfirmExceso(true);
+      return false; // Detener el flujo — el modal continúa si el usuario acepta
+    }
+
     return true;
   }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
 
@@ -2392,6 +2436,122 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         document.body
       )}
 
+      {/* Modal: confirmación de HORAS DE EXCESO (supera el límite programable) */}
+      {showConfirmExceso && confirmExcesoData && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: '20px', maxWidth: '460px', width: '92%',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+            overflow: 'hidden', animation: 'scaleIn 0.25s ease'
+          }}>
+            {/* Header con icono de advertencia */}
+            <div style={{
+              background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%)',
+              padding: '28px 28px 20px', borderBottom: '1px solid #FDE68A',
+              display: 'flex', alignItems: 'flex-start', gap: '16px'
+            }}>
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
+                background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
+              }}>
+                <AlertTriangle style={{ width: '24px', height: '24px', color: '#fff' }} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#92400E', lineHeight: 1.3 }}>
+                  PTA con horas de exceso
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#B45309', fontWeight: 500 }}>
+                  El plan supera el límite programable
+                </p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px 28px' }}>
+              <div style={{
+                background: '#FFFBEB', borderRadius: '14px', padding: '16px 20px',
+                border: '1px solid #FDE68A', marginBottom: '20px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#374151' }}>
+                    {confirmExcesoData.totalHoras}h programadas
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#9CA3AF' }}>
+                    límite {confirmExcesoData.horasRequeridas}h
+                  </span>
+                </div>
+                <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 800, color: '#D97706' }}>
+                    +{confirmExcesoData.horasExceso}h
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '6px', fontWeight: 600 }}>
+                    de exceso ({confirmExcesoData.porcentaje}%)
+                  </span>
+                </div>
+              </div>
+
+              <p style={{
+                margin: 0, fontSize: '13.5px', lineHeight: 1.65, color: '#4B5563', fontWeight: 500
+              }}>
+                Este PTA tiene <strong style={{ color: '#D97706' }}>{confirmExcesoData.horasExceso} horas de exceso</strong> por encima de las {confirmExcesoData.horasRequeridas}h del límite programable.
+              </p>
+              <p style={{
+                margin: '12px 0 0', fontSize: '13.5px', lineHeight: 1.65, color: '#6B7280', fontWeight: 500
+              }}>
+                ¿Desea enviarlo de todas formas?
+              </p>
+            </div>
+
+            {/* Footer con botones */}
+            <div style={{
+              padding: '0 28px 24px', display: 'flex', gap: '12px', justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => { setShowConfirmExceso(false); setConfirmExcesoData(null); }}
+                style={{
+                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
+                  border: '2px solid #E5E7EB', background: '#fff', color: '#374151',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseOver={e => { (e.target as HTMLElement).style.background = '#F3F4F6'; }}
+                onMouseOut={e => { (e.target as HTMLElement).style.background = '#fff'; }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmExceso(false);
+                  setConfirmExcesoData(null);
+                  solicitarFirmaDocente('via_save');
+                }}
+                style={{
+                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
+                  border: 'none', background: '#D97706', color: '#fff',
+                  cursor: 'pointer', transition: 'all 0.2s',
+                  boxShadow: '0 4px 12px rgba(217,119,6,0.3)'
+                }}
+                onMouseOver={e => { (e.target as HTMLElement).style.background = '#B45309'; }}
+                onMouseOut={e => { (e.target as HTMLElement).style.background = '#D97706'; }}
+              >
+                Sí, enviar de todas formas
+              </button>
+            </div>
+          </div>
+          <style>{`
+            @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes scaleIn { from { opacity: 0; transform: scale(0.95) } to { opacity: 1; transform: scale(1) } }
+          `}</style>
+        </div>,
+        document.body
+      )}
+
       {/* Banner: Revisión docente post-aprobación parcial */}
       {isEnRevisionDocente && (
         <div className="flex flex-col gap-3 p-4 rounded-xl mb-5 bg-violet-50 border border-violet-200">
@@ -2519,9 +2679,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 <div className={`w-full px-3 py-2 rounded-xl border border-transparent flex items-center min-h-[36px] text-[12px] font-extrabold shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] ${
                   hasBlockingHourLimits
                     ? 'bg-red-50/50 text-red-700 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.15)]'
-                    : totalHoras >= horasAProgramar
-                      ? 'bg-green-50/50 text-green-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]'
-                      : 'bg-blue-50/50 text-blue-700 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.15)]'
+                    : horasExceso > 0
+                      ? 'bg-amber-50/50 text-amber-700 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.15)]'
+                      : totalHoras >= horasAProgramar
+                        ? 'bg-green-50/50 text-green-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]'
+                        : 'bg-blue-50/50 text-blue-700 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.15)]'
                 }`}>
                   {totalHoras}h / {horasAProgramar}h ({porcentaje}%)
                 </div>
@@ -2537,7 +2699,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <DocumentosPendientesAlert documentosPendientes={documentosPendientes} />
 
               {/* Status banner */}
-              <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${hasBlockingHourLimits ? 'bg-red-50 border-red-200 text-red-800' : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+              <div className={`p-3.5 rounded-xl border text-[12px] leading-relaxed flex items-start gap-2 ${hasBlockingHourLimits ? 'bg-red-50 border-red-200 text-red-800' : horasExceso > 0 ? 'bg-amber-50 border-amber-200 text-amber-800' : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
                 {hasBlockingHourLimits ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
                   <span className="font-bold">
@@ -2682,6 +2844,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <span>Límite programable:</span>
                     <span className="font-bold text-slate-700">{horasAProgramar}h</span>
                   </div>
+                  {horasExceso > 0 && (
+                    <div className="mt-1.5 flex justify-between items-center text-[10px] font-semibold text-amber-600">
+                      <span className="flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Horas de exceso:
+                      </span>
+                      <span className="font-bold text-amber-700">+{horasExceso}h</span>
+                    </div>
+                  )}
                   <div className={`mt-3 p-2.5 rounded-lg border text-[10px] leading-relaxed flex items-start gap-1.5 ${
                     hasBlockingHourLimits ? 'bg-red-50 border-red-200 text-red-800'
                     : totalHoras >= horasAProgramar ? 'bg-green-50 border-green-200 text-green-800'
