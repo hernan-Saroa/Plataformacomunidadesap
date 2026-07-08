@@ -1180,7 +1180,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const maxExtLimit = maxExtGlobalHours;
   // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
   const maxInvLimit = getPositiveRuleNumber(ptaRules?.max_horas_investigacion_global, 400);
-  const maxCompLimit = getPositiveRuleNumber(ptaRules?.max_horas_complementarias_global, 200);
+  // Límite Complementarias: mínimo entre el tope absoluto (ej. 200h) y el porcentaje
+  // configurado sobre el PTA total (ej. 25% de 800h = 200h). Espejo del flujo de
+  // Extensión/AADM: la config expresa el límite como % de las horas del PTA.
+  const maxCompLimit = Math.min(
+    getPositiveRuleNumber(ptaRules?.max_horas_complementarias_global, 200),
+    horasAProgramar * (getPositiveRuleNumber(ptaRules?.max_pct_complementarias, 25) / 100),
+  );
   const maxAadmLimit = Math.min(ptaRules?.max_horas_aadm_global ?? 200, horasAProgramar * ((ptaRules?.max_pct_aadm ?? 25) / 100));
 
   const hCompOrdinary = useMemo(() =>
