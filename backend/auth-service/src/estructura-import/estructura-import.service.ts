@@ -11,6 +11,7 @@ interface LegacySyncPlan {
   sedeByCetapCode: Map<string, any | null>;
   summary: ImportGeograficoResultDto['sincronizacion_legacy'];
   errors: Array<{ mensaje: string; hoja?: string; fila?: number; codigo?: string; columna?: string; datoErrado?: string; valorEsperado?: string }>;
+  warnings: Array<{ mensaje: string; hoja?: string; fila?: number; codigo?: string; columna?: string; datoErrado?: string; valorEsperado?: string }>;
 }
 
 @Injectable()
@@ -238,6 +239,17 @@ export class EstructuraImportService {
         else identicalCetaps.push(c);
       }
     }
+
+    const previewTerritorialesFull = [
+      ...newDts.map((dt) => ({ ...dt, estado_importacion: 'nuevo' })),
+      ...modifiedDts.map((dt) => ({ ...dt, estado_importacion: 'modificado' })),
+      ...identicalDts.map((dt) => ({ ...dt, estado_importacion: 'identico' })),
+    ];
+    const previewCetapsFull = [
+      ...newCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'nuevo' })),
+      ...modifiedCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'modificado' })),
+      ...identicalCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'identico' })),
+    ];
 
     let allIdentical = false;
     // Populate result counts
@@ -808,6 +820,119 @@ export class EstructuraImportService {
     };
   }
 
+  private async filterCatalogNameConflicts(
+    territoriales: any[],
+    cetaps: any[],
+  ): Promise<{
+    territoriales: any[];
+    cetaps: any[];
+    skippedTerritoriales: any[];
+    skippedCetaps: any[];
+    messages: string[];
+  }> {
+    if (territoriales.length === 0 && cetaps.length === 0) {
+      return {
+        territoriales,
+        cetaps,
+        skippedTerritoriales: [],
+        skippedCetaps: [],
+        messages: [],
+      };
+    }
+
+    const existingDts = await this.dataSource.query(
+      `SELECT id, codigo, nombre, nombre_normalizado
+         FROM academic_work_plan.direccion_territorial`,
+    );
+    const dtByNormalizedName = new Map<string, any>();
+    for (const row of existingDts) {
+      const normalizedName = String(row.nombre_normalizado || '').trim();
+      if (normalizedName) dtByNormalizedName.set(normalizedName, row);
+    }
+
+    const filteredDts: any[] = [];
+    const skippedTerritoriales: any[] = [];
+    const messages: string[] = [];
+    const allowedDtCodes = new Set<string>();
+
+    for (const dt of territoriales) {
+      const code = String(dt.codigo_dt || '').trim();
+      const normalizedName = String(dt.nombre_normalizado || '').trim();
+      const existingSameName = normalizedName
+        ? dtByNormalizedName.get(normalizedName)
+        : null;
+
+      if (
+        existingSameName &&
+        String(existingSameName.codigo || '').trim() !== code
+      ) {
+        skippedTerritoriales.push(dt);
+        messages.push(
+          `Se omitio la territorial ${code} porque el nombre "${dt.nombre_dt}" ya existe con el codigo ${existingSameName.codigo}.`,
+        );
+        continue;
+      }
+
+      filteredDts.push(dt);
+      if (code) allowedDtCodes.add(code);
+    }
+
+    const existingCetaps = await this.dataSource.query(
+      `SELECT c.codigo, c.nombre, c.nombre_normalizado, dt.codigo AS codigo_dt
+         FROM academic_work_plan.cetap c
+         INNER JOIN academic_work_plan.direccion_territorial dt
+                 ON dt.id = c.id_direccion_territorial`,
+    );
+    const cetapByDtAndName = new Map<string, any>();
+    for (const row of existingCetaps) {
+      const dtCode = String(row.codigo_dt || '').trim();
+      const normalizedName = String(row.nombre_normalizado || '').trim();
+      if (dtCode && normalizedName) {
+        cetapByDtAndName.set(`${dtCode}::${normalizedName}`, row);
+      }
+    }
+
+    const filteredCetaps: any[] = [];
+    const skippedCetaps: any[] = [];
+    for (const cetap of cetaps) {
+      const dtCode = String(cetap.codigo_dt || '').trim();
+      const code = String(cetap.codigo_cetap || '').trim();
+      const normalizedName = String(cetap.nombre_normalizado || '').trim();
+
+      if (!allowedDtCodes.has(dtCode)) {
+        skippedCetaps.push(cetap);
+        messages.push(
+          `Se omitio el CETAP ${code} porque su territorial ${dtCode} fue omitida.`,
+        );
+        continue;
+      }
+
+      const existingSameName = normalizedName
+        ? cetapByDtAndName.get(`${dtCode}::${normalizedName}`)
+        : null;
+      if (
+        existingSameName &&
+        String(existingSameName.codigo || '').trim() !== code
+      ) {
+        skippedCetaps.push(cetap);
+        messages.push(
+          `Se omitio el CETAP ${code} porque el nombre "${cetap.nombre_cetap}" ya existe en la territorial ${dtCode} con el codigo ${existingSameName.codigo}.`,
+        );
+        continue;
+      }
+
+      filteredCetaps.push(cetap);
+    }
+
+    return {
+      territoriales: filteredDts,
+      cetaps: filteredCetaps,
+      skippedTerritoriales,
+      skippedCetaps,
+      messages,
+    };
+  }
+
   private async buildLegacySyncPlan(
     territoriales: any[],
     cetaps: any[],
@@ -825,6 +950,7 @@ export class EstructuraImportService {
     const seccionalByDtCode = new Map<string, any | null>();
     const sedeByCetapCode = new Map<string, any | null>();
     const errors: LegacySyncPlan['errors'] = [];
+    const warnings: LegacySyncPlan['warnings'] = [];
     const selectedSeccionalIds = new Set<string>();
 
     const bySecCode = new Map<string, any>();
