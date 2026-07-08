@@ -169,7 +169,7 @@ export class EstructuraImportService {
       cetapsToProcess,
     );
     result.sincronizacion_legacy = legacyPlan.summary;
-    const periodSync = await this.analyzePeriodSync(periodo, cetapsToProcess);
+    const periodSync = await this.analyzePeriodSync(periodo, cetapsToProcess, dtToProcess);
     (result as any).sincronizacion_periodo = periodSync;
 
     // Calcular indicadores
@@ -631,33 +631,33 @@ export class EstructuraImportService {
           );
         }
         const periodoId = periodRows[0].id;
-        this.logger.log(`Iniciando sincronización total para el periodo ${periodo} (ID: ${periodoId})`);
+        this.logger.log(`Sincronizando activación por periodo ${periodo} (ID: ${periodoId}) para ${cetapsToProcess.length} CETAP del archivo`);
 
-        // 1. Asegurar que todas las sedes del catálogo maestro tengan una entrada en este periodo (por defecto inactivas)
-        // Esto garantiza que la vista de "Activas/Desactivas" muestre todo el catálogo.
-        await queryRunner.query(
-          `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
-           SELECT $1, id, false FROM academic_work_plan.cetap
-           ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
-          [periodoId],
-        );
+        // Mapa de "activo" por territorial tomado del propio archivo (hoja
+        // DIRECCIONES_TERRITORIALES). Permite respetar AMBAS columnas "activo":
+        // si una territorial viene marcada como inactiva, sus CETAP quedan
+        // inactivos en el periodo aunque su fila individual diga TRUE.
+        const dtActivoByCode = new Map<string, boolean>();
+        for (const dt of dtToProcess) {
+          dtActivoByCode.set(dt.codigo_dt, dt.activo);
+        }
 
-        // 2. Marcar TODAS las sedes del periodo como inactivas inicialmente.
-        // Las que vengan en el Excel se activarán/desactivarán según el archivo,
-        // las que NO vengan quedarán como inactivas (pero visibles en el catálogo).
-        await queryRunner.query(
-          'UPDATE academic_work_plan.periodo_cetap SET activo = false WHERE id_periodo_academico = $1',
-          [periodoId],
-        );
-
-        // 3. Sincronizar el estado de cada CETAP presente en el Excel para este periodo específico
+        // Activación por periodo NO destructiva e idempotente: SOLO se tocan los
+        // CETAP presentes en el archivo. Los CETAP que NO vengan en esta subida
+        // conservan su estado actual en el periodo. Así se soportan cargas
+        // parciales y múltiples subidas sin desactivar lo previamente activado.
+        // Cada periodo es independiente del catálogo maestro y de otros periodos.
         for (const c of cetapsToProcess) {
+          const dtActivo = dtActivoByCode.has(c.codigo_dt)
+            ? dtActivoByCode.get(c.codigo_dt)
+            : true;
+          const activoEnPeriodo = c.activo && dtActivo;
           await queryRunner.query(
             `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
              SELECT $1, id, $2 FROM academic_work_plan.cetap WHERE codigo = $3
-             ON CONFLICT (id_periodo_academico, id_cetap) 
+             ON CONFLICT (id_periodo_academico, id_cetap)
              DO UPDATE SET activo = EXCLUDED.activo, updated_at = CURRENT_TIMESTAMP`,
-            [periodoId, c.activo, c.codigo_cetap],
+            [periodoId, activoEnPeriodo, c.codigo_cetap],
           );
         }
       }
@@ -729,6 +729,7 @@ export class EstructuraImportService {
   private async analyzePeriodSync(
     periodo?: string,
     cetapsFromExcel: any[] = [],
+    territorialesFromExcel: any[] = [],
   ): Promise<{
     periodo: string | null;
     required: boolean;
@@ -783,20 +784,30 @@ export class EstructuraImportService {
       statusMap.set(row.codigo, row.activo);
     }
 
+    // Mismo criterio que la sincronización real: el estado efectivo en el
+    // periodo combina AMBAS columnas "activo" (la del CETAP y la de su
+    // territorial). Una fila sin registro previo se considera inactiva.
+    const dtActivoByCode = new Map<string, boolean>();
+    for (const dt of territorialesFromExcel) {
+      dtActivoByCode.set(dt.codigo_dt, dt.activo);
+    }
+
     let activaciones = 0;
     let desactivaciones = 0;
     let sinCambios = 0;
 
     for (const c of cetapsFromExcel) {
-      const current = statusMap.get(c.codigo_cetap);
-      if (current === undefined) {
-        if (c.activo) activaciones++;
-        else desactivaciones++;
-      } else if (current !== c.activo) {
-        if (c.activo) activaciones++;
-        else desactivaciones++;
-      } else {
+      const dtActivo = dtActivoByCode.has(c.codigo_dt)
+        ? dtActivoByCode.get(c.codigo_dt)
+        : true;
+      const target = Boolean(c.activo && dtActivo);
+      const current = statusMap.get(c.codigo_cetap) === true;
+      if (current === target) {
         sinCambios++;
+      } else if (target) {
+        activaciones++;
+      } else {
+        desactivaciones++;
       }
     }
 
