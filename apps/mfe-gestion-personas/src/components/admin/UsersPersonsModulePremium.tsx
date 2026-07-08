@@ -1749,8 +1749,8 @@ export function UsersPersonsModulePremium() {
                           }}
                         >
                           <div className="flex flex-wrap gap-1.5">
-                            {user.roles.map((role, idx) => (
-                              <div key={idx}>
+                            {user.roles.map((role: any) => (
+                              <div key={role.id || role.code || role.name}>
                                 {getRoleBadge(
                                   role.name,
                                   role.color,

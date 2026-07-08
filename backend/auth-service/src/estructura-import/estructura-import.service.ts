@@ -10,7 +10,7 @@ interface LegacySyncPlan {
   seccionalByDtCode: Map<string, any | null>;
   sedeByCetapCode: Map<string, any | null>;
   summary: ImportGeograficoResultDto['sincronizacion_legacy'];
-  errors: string[];
+  errors: Array<{ mensaje: string; hoja?: string; fila?: number; codigo?: string; columna?: string; datoErrado?: string; valorEsperado?: string }>;
 }
 
 @Injectable()
@@ -143,39 +143,8 @@ export class EstructuraImportService {
       cetapsToProcess,
     );
     result.sincronizacion_legacy = legacyPlan.summary;
-    const periodSync = await this.analyzePeriodSync(periodo);
+    const periodSync = await this.analyzePeriodSync(periodo, cetapsToProcess);
     (result as any).sincronizacion_periodo = periodSync;
-
-    if (legacyPlan.errors.length > 0 || periodSync.error) {
-      result.success = false;
-      result.preview_territoriales = dtToProcess;
-      result.preview_cetaps = cetapsToProcess;
-      result.tiempo_ms = Date.now() - startTime;
-      result.errores.push(
-        ...legacyPlan.errors.map((message) => ({
-          hoja: 'SINCRONIZACION_LEGACY',
-          mensaje: message,
-          severity: 'error' as const,
-        })),
-      );
-      if (periodSync.error) {
-        result.errores.push({
-          hoja: 'PERIODO_ACADEMICO',
-          mensaje: periodSync.error,
-          severity: 'error',
-        });
-      }
-
-      if (!dryRun) {
-        throw new BadRequestException({
-          success: false,
-          message:
-            'La estructura nueva es válida, pero existen ambigüedades en la estructura organizacional actual.',
-          errores: result.errores,
-        });
-      }
-      return result;
-    }
 
     // Calcular indicadores
     const cetapsPorTipo: Record<string, number> = {};
@@ -245,20 +214,7 @@ export class EstructuraImportService {
       }
     }
 
-    const legacyHasChanges =
-      legacyPlan.summary.seccionales.creadas > 0 ||
-      legacyPlan.summary.seccionales.actualizadas > 0 ||
-      legacyPlan.summary.sedes.creadas > 0 ||
-      legacyPlan.summary.sedes.actualizadas > 0;
-    const allIdentical =
-      (identicalDts.length > 0 || identicalCetaps.length > 0) &&
-      newDts.length === 0 &&
-      newCetaps.length === 0 &&
-      modifiedDts.length === 0 &&
-      modifiedCetaps.length === 0 &&
-      !legacyHasChanges &&
-      !periodSync.required;
-
+    let allIdentical = false;
     // Populate result counts
     result.carga.direcciones_territoriales.creados = newDts.length;
     result.carga.direcciones_territoriales.actualizados = modifiedDts.length;
@@ -276,9 +232,110 @@ export class EstructuraImportService {
       total_identicos: identicalDts.length + identicalCetaps.length,
       total_modificados: modifiedDts.length + modifiedCetaps.length,
       total_nuevos: newDts.length + newCetaps.length,
-      todo_identico: allIdentical,
       cambios_detectados: [...modifiedDts.map((d: any) => ({ tipo: 'DT', codigo: d.codigo_dt, cambios: d._cambios })), ...modifiedCetaps.map((c: any) => ({ tipo: 'CETAP', codigo: c.codigo_cetap, cambios: c._cambios }))],
     };
+
+    if (legacyPlan.errors.length === 0 && !periodSync.error) {
+      const legacyHasChanges =
+        legacyPlan.summary.seccionales.creadas > 0 ||
+        legacyPlan.summary.seccionales.actualizadas > 0 ||
+        legacyPlan.summary.sedes.creadas > 0 ||
+        legacyPlan.summary.sedes.actualizadas > 0;
+      
+      allIdentical =
+        (identicalDts.length > 0 || identicalCetaps.length > 0) &&
+        newDts.length === 0 &&
+        newCetaps.length === 0 &&
+        modifiedDts.length === 0 &&
+        modifiedCetaps.length === 0 &&
+        !legacyHasChanges &&
+        !periodSync.required;
+
+      (result as any).analisis_duplicados.todo_identico = allIdentical;
+    }
+
+    if (legacyPlan.errors.length > 0 || periodSync.error) {
+      const enrichedErrors = legacyPlan.errors.map((err) => ({
+        hoja: err.hoja || 'SINCRONIZACION_LEGACY',
+        fila: err.fila,
+        columna: err.columna || (err.hoja === 'CETAPS' ? 'codigo_cetap / nombre_cetap' : 'codigo_dt / nombre_dt'),
+        datoErrado: err.datoErrado || undefined,
+        valorEsperado: err.valorEsperado || 'Registro único (sin duplicados en la base de datos)',
+        mensaje: err.mensaje,
+        severity: 'error' as const,
+      }));
+      if (periodSync.error) {
+        enrichedErrors.push({
+          hoja: 'PERIODO_ACADEMICO',
+          columna: 'periodo',
+          datoErrado: periodo || undefined,
+          valorEsperado: 'Periodo académico existente',
+          mensaje: periodSync.error,
+          severity: 'error',
+        } as any);
+      }
+
+      // Si skipInvalid está habilitado, permitir continuar con los datos válidos
+      // descartando las filas con ambigüedades
+      if (skipInvalid) {
+        const ambiguousDtCodes = new Set(
+          legacyPlan.errors
+            .filter(e => e.hoja === 'DIRECCIONES_TERRITORIALES')
+            .map(e => e.codigo)
+            .filter(Boolean),
+        );
+        const ambiguousCetapCodes = new Set(
+          legacyPlan.errors
+            .filter(e => e.hoja === 'CETAPS')
+            .map(e => e.codigo)
+            .filter(Boolean),
+        );
+        if (ambiguousDtCodes.size > 0) {
+          dtToProcess = dtToProcess.filter(dt => !ambiguousDtCodes.has(dt.codigo_dt));
+        }
+        if (ambiguousCetapCodes.size > 0) {
+          cetapsToProcess = cetapsToProcess.filter(c => !ambiguousCetapCodes.has(c.codigo_cetap));
+        }
+        result.advertencias.push(
+          ...enrichedErrors.map(e => ({ ...e, severity: 'warning' as const })),
+        );
+        this.logger.warn(
+          `skipInvalid: omitiendo ${ambiguousDtCodes.size} DTs y ${ambiguousCetapCodes.size} CETAPs ambiguos`,
+        );
+      } else {
+        result.success = false;
+        result.preview_territoriales = dtToProcess;
+        result.preview_cetaps = cetapsToProcess;
+        result.tiempo_ms = Date.now() - startTime;
+        result.errores.push(...enrichedErrors);
+
+        const resumenErrores = enrichedErrors
+          .slice(0, 5)
+          .map(e => `• ${e.hoja}${e.fila ? ` fila ${e.fila}` : ''}: ${e.mensaje}`)
+          .join('\n');
+        const msgDetallado = `La estructura nueva es válida, pero existen ${enrichedErrors.length} ambigüedad(es) en la estructura organizacional actual:\n${resumenErrores}${
+          enrichedErrors.length > 5 ? `\n... y ${enrichedErrors.length - 5} más` : ''
+        }`;
+
+        if (!dryRun) {
+          throw new BadRequestException({
+            success: false,
+            message: msgDetallado,
+            errores: result.errores,
+            has_blocking_errors: false,
+            valid_count: {
+              territoriales: dtToProcess.length,
+              cetaps: cetapsToProcess.length,
+            },
+          });
+        }
+        result.success = false;
+        result.message = msgDetallado;
+        return result;
+      }
+    }
+
+
 
     if (dryRun) {
       // Si TODO es idéntico, bloquear
@@ -514,7 +571,7 @@ export class EstructuraImportService {
         );
       }
 
-      // Sincronizar con los periodos académicos.
+      // Sincronizar con el periodo académico específico.
       if (periodo) {
         const periodRows = await queryRunner.query(
           'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1',
@@ -525,19 +582,36 @@ export class EstructuraImportService {
             `El periodo académico "${periodo}" no existe. No se realizó ningún cambio.`,
           );
         }
+        const periodoId = periodRows[0].id;
+        this.logger.log(`Iniciando sincronización total para el periodo ${periodo} (ID: ${periodoId})`);
 
-        // Los CETAP del catálogo quedan disponibles (ACTIVOS) en TODOS los periodos,
-        // no solo en el periodo activo. Cada periodo es independiente: solo se INSERTA
-        // cuando la fila no existe (ON CONFLICT DO NOTHING), de modo que NO se pisan
-        // las inactivaciones manuales que ya se hayan hecho en cada periodo.
+        // 1. Asegurar que todas las sedes del catálogo maestro tengan una entrada en este periodo (por defecto inactivas)
+        // Esto garantiza que la vista de "Activas/Desactivas" muestre todo el catálogo.
         await queryRunner.query(
           `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
-           SELECT pa.id, c.id, TRUE
-             FROM academic_work_plan.periodo_academico pa
-             CROSS JOIN academic_work_plan.cetap c
-            WHERE c.activo = TRUE
+           SELECT $1, id, false FROM academic_work_plan.cetap
            ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
+          [periodoId],
         );
+
+        // 2. Marcar TODAS las sedes del periodo como inactivas inicialmente.
+        // Las que vengan en el Excel se activarán/desactivarán según el archivo,
+        // las que NO vengan quedarán como inactivas (pero visibles en el catálogo).
+        await queryRunner.query(
+          'UPDATE academic_work_plan.periodo_cetap SET activo = false WHERE id_periodo_academico = $1',
+          [periodoId],
+        );
+
+        // 3. Sincronizar el estado de cada CETAP presente en el Excel para este periodo específico
+        for (const c of cetapsToProcess) {
+          await queryRunner.query(
+            `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
+             SELECT $1, id, $2 FROM academic_work_plan.cetap WHERE codigo = $3
+             ON CONFLICT (id_periodo_academico, id_cetap) 
+             DO UPDATE SET activo = EXCLUDED.activo, updated_at = CURRENT_TIMESTAMP`,
+            [periodoId, c.activo, c.codigo_cetap],
+          );
+        }
       }
 
       const postValidation = await queryRunner.query(
@@ -594,13 +668,19 @@ export class EstructuraImportService {
     return result;
   }
 
-  private async analyzePeriodSync(
+   private async analyzePeriodSync(
     periodo?: string,
+    cetapsFromExcel: any[] = [],
   ): Promise<{
     periodo: string | null;
     required: boolean;
     activos_catalogo: number;
     activos_periodo: number;
+    detalles: {
+      activaciones: number;
+      desactivaciones: number;
+      sin_cambios: number;
+    };
     error?: string;
   }> {
     if (!periodo) {
@@ -609,52 +689,76 @@ export class EstructuraImportService {
         required: false,
         activos_catalogo: 0,
         activos_periodo: 0,
+        detalles: { activaciones: 0, desactivaciones: 0, sin_cambios: 0 },
       };
     }
 
-    const rows = await this.dataSource.query(
-      `SELECT
-         p.id,
-         (SELECT COUNT(*)
-            FROM academic_work_plan.cetap c
-           WHERE c.activo = TRUE) AS activos_catalogo,
-         (SELECT COUNT(*)
-            FROM academic_work_plan.periodo_cetap pc
-            INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
-           WHERE pc.id_periodo_academico = p.id
-             AND pc.activo = TRUE
-             AND c.activo = TRUE) AS activos_periodo,
-         (SELECT COUNT(*)
-            FROM academic_work_plan.periodo_cetap pc
-            INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
-           WHERE pc.id_periodo_academico = p.id
-             AND pc.activo = TRUE
-             AND c.activo = FALSE) AS activos_incorrectos
-       FROM academic_work_plan.periodo_academico p
-       WHERE p.codigo = $1
-       LIMIT 1`,
+    const periodRows = await this.dataSource.query(
+      'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1',
       [periodo],
     );
 
-    if (rows.length === 0) {
+    if (periodRows.length === 0) {
       return {
         periodo,
         required: false,
         activos_catalogo: 0,
         activos_periodo: 0,
+        detalles: { activaciones: 0, desactivaciones: 0, sin_cambios: 0 },
         error: `El periodo académico "${periodo}" no existe.`,
       };
     }
 
-    const activosCatalogo = Number(rows[0].activos_catalogo || 0);
-    const activosPeriodo = Number(rows[0].activos_periodo || 0);
-    const activosIncorrectos = Number(rows[0].activos_incorrectos || 0);
+    const periodoId = periodRows[0].id;
+
+    // Obtener estado actual en el periodo
+    const currentPeriodStatus = await this.dataSource.query(
+      `SELECT c.codigo, pc.activo 
+       FROM academic_work_plan.periodo_cetap pc
+       INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
+       WHERE pc.id_periodo_academico = $1`,
+      [periodoId],
+    );
+
+    const statusMap = new Map<string, boolean>();
+    for (const row of currentPeriodStatus) {
+      statusMap.set(row.codigo, row.activo);
+    }
+
+    let activaciones = 0;
+    let desactivaciones = 0;
+    let sinCambios = 0;
+
+    for (const c of cetapsFromExcel) {
+      const current = statusMap.get(c.codigo_cetap);
+      if (current === undefined) {
+        if (c.activo) activaciones++;
+        else desactivaciones++;
+      } else if (current !== c.activo) {
+        if (c.activo) activaciones++;
+        else desactivaciones++;
+      } else {
+        sinCambios++;
+      }
+    }
+
+    const catalogStats = await this.dataSource.query(
+      `SELECT 
+         (SELECT COUNT(*) FROM academic_work_plan.cetap WHERE activo = TRUE) AS activos_catalogo,
+         (SELECT COUNT(*) FROM academic_work_plan.periodo_cetap WHERE id_periodo_academico = $1 AND activo = TRUE) AS activos_periodo`,
+      [periodoId],
+    );
+
     return {
       periodo,
-      required:
-        activosCatalogo !== activosPeriodo || activosIncorrectos > 0,
-      activos_catalogo: activosCatalogo,
-      activos_periodo: activosPeriodo,
+      required: activaciones > 0 || desactivaciones > 0,
+      activos_catalogo: Number(catalogStats[0].activos_catalogo || 0),
+      activos_periodo: Number(catalogStats[0].activos_periodo || 0),
+      detalles: {
+        activaciones,
+        desactivaciones,
+        sin_cambios: sinCambios,
+      },
     };
   }
 
@@ -674,7 +778,7 @@ export class EstructuraImportService {
 
     const seccionalByDtCode = new Map<string, any | null>();
     const sedeByCetapCode = new Map<string, any | null>();
-    const errors: string[] = [];
+    const errors: LegacySyncPlan['errors'] = [];
     const selectedSeccionalIds = new Set<string>();
 
     const bySecCode = new Map<string, any>();
@@ -716,9 +820,16 @@ export class EstructuraImportService {
         if (candidates.length === 1) {
           matched = candidates[0];
         } else if (candidates.length > 1) {
-          errors.push(
-            `La territorial ${dt.codigo_dt} (${dt.nombre_dt}) coincide con varias seccionales existentes.`,
-          );
+          const ids = candidates.map((c: any) => c.id_seccional).join(', ');
+          errors.push({
+            hoja: 'DIRECCIONES_TERRITORIALES',
+            fila: dt._row,
+            codigo: dt.codigo_dt,
+            columna: 'nombre_dt',
+            datoErrado: `"${dt.nombre_dt}" → coincide con IDs: ${ids}`,
+            valorEsperado: 'Registro único en auth.seccionales',
+            mensaje: `La territorial "${dt.codigo_dt}" ("${dt.nombre_dt}") coincide con ${candidates.length} seccionales existentes (IDs: ${ids}). Debe unificar los registros duplicados en la base de datos.`,
+          });
         }
       }
 
@@ -759,9 +870,15 @@ export class EstructuraImportService {
       let matched = sedesByCode.get(cetap.codigo_cetap.toUpperCase()) || null;
 
       if (matched && selectedSedeIds.has(String(matched.id_sede))) {
-        errors.push(
-          `El código ${cetap.codigo_cetap} apunta a una sede ya utilizada por otra fila.`,
-        );
+        errors.push({
+          hoja: 'CETAPS',
+          fila: cetap._row,
+          codigo: cetap.codigo_cetap,
+          columna: 'codigo_cetap',
+          datoErrado: cetap.codigo_cetap,
+          valorEsperado: 'Código único (no reutilizado en otra fila)',
+          mensaje: `El código "${cetap.codigo_cetap}" ("${cetap.nombre_cetap}") apunta a una sede ya utilizada por otra fila del archivo.`,
+        });
         matched = null;
       }
 
@@ -779,9 +896,16 @@ export class EstructuraImportService {
         if (candidates.length === 1) {
           matched = candidates[0];
         } else if (candidates.length > 1) {
-          errors.push(
-            `El CETAP ${cetap.codigo_cetap} (${cetap.nombre_cetap}) coincide con varias sedes existentes.`,
-          );
+          const ids = candidates.map((c: any) => c.id_sede).join(', ');
+          errors.push({
+            hoja: 'CETAPS',
+            fila: cetap._row,
+            codigo: cetap.codigo_cetap,
+            columna: 'nombre_cetap',
+            datoErrado: `"${cetap.nombre_cetap}" → coincide con IDs: ${ids}`,
+            valorEsperado: 'Registro único en auth.sedes',
+            mensaje: `El CETAP "${cetap.codigo_cetap}" ("${cetap.nombre_cetap}") coincide con ${candidates.length} sedes existentes (IDs: ${ids}) en la territorial "${cetap.codigo_dt}". Debe unificar los registros duplicados.`,
+          });
         } else if (cetap.tipo === 'sede_central') {
           const centralCandidates = sedes.filter(
             (row: any) =>
