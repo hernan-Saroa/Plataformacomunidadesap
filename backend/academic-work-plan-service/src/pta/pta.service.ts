@@ -262,6 +262,10 @@ function isPendingRoleApprovalState(estado?: string | null): boolean {
   return PENDING_ROLE_APPROVAL_STATES.has(normalizeEstadoFilter(estado));
 }
 
+function isDraftPtaState(estado?: string | null): boolean {
+  return normalizeEstadoFilter(estado) === 'BORRADOR';
+}
+
 function pendingApprovalState(estado?: string | null): string {
   return normalizeEstadoFilter(estado) === 'PENDIENTE_APROBACION'
     ? 'Pendiente Jefatura'
@@ -943,12 +947,14 @@ export class PtaService {
       horas_acad_admin: hAcad,
       num_asignaturas: asignaturas.length,
       motivo_devolucion: entity.motivoDevolucion,
-      created_at: entity.createdAt,
-      updated_at: entity.updatedAt,
       dedicacion: (entity as any).dedicacion,
       tipo_vinculacion: (entity as any).tipoVinculacion,
       semanas_vinculacion: (entity as any).semanasVinculacion,
       ...extra,
+      createdAt: entity.createdAt,
+      created_at: entity.createdAt,
+      updatedAt: entity.updatedAt,
+      updated_at: entity.updatedAt,
       pta_id: entity.id,
       ptaId: entity.id,
     };
@@ -1130,6 +1136,56 @@ export class PtaService {
     return dtos;
   }
 
+  private async attachPtaReferenceDates(dtos: any[]): Promise<void> {
+    const ids = dtos.map(d => d?.id).filter(Boolean);
+    if (!ids.length) return;
+
+    let histories: HistorialEstadoPtaEntity[] = [];
+    try {
+      histories = await this.historialRepo.find({
+        where: { ptaId: In(ids) } as any,
+        order: { createdAt: 'DESC' },
+      });
+    } catch (err: any) {
+      this.logger.warn(`No se pudo calcular fecha de referencia PTA: ${err?.message || err}`);
+    }
+
+    const historiesByPta = new Map<string, HistorialEstadoPtaEntity[]>();
+    for (const h of histories) {
+      if (!h?.ptaId) continue;
+      if (!historiesByPta.has(h.ptaId)) historiesByPta.set(h.ptaId, []);
+      historiesByPta.get(h.ptaId)!.push(h);
+    }
+
+    for (const dto of dtos) {
+      const draft = isDraftPtaState(dto?.estado);
+      const submission = (historiesByPta.get(dto.id) || []).find(h =>
+        isPendingRoleApprovalState(h.estadoNuevo) &&
+        !isPendingRoleApprovalState(h.estadoAnterior),
+      );
+      const created = dto.createdAt || dto.created_at;
+      const updated = dto.updatedAt || dto.updated_at;
+      const referenceDate = draft
+        ? (created || updated)
+        : (submission?.createdAt || updated || created);
+
+      dto.fecha_envio_revision = submission?.createdAt || null;
+      dto.fecha_referencia = referenceDate || null;
+      dto.fecha_orden = referenceDate || null;
+    }
+  }
+
+  private sortPtasByReferenceDate(dtos: any[]): any[] {
+    return [...dtos].sort((a, b) => {
+      const aTime = new Date(a?.fecha_orden || a?.fecha_referencia || a?.updatedAt || a?.updated_at || a?.createdAt || a?.created_at || 0).getTime();
+      const bTime = new Date(b?.fecha_orden || b?.fecha_referencia || b?.updatedAt || b?.updated_at || b?.createdAt || b?.created_at || 0).getTime();
+      const safeA = Number.isFinite(aTime) ? aTime : 0;
+      const safeB = Number.isFinite(bTime) ? bTime : 0;
+      if (safeA !== safeB) return safeB - safeA;
+      return String(a?.docente_nombre || '').localeCompare(String(b?.docente_nombre || ''), 'es');
+    });
+  }
+
   /**
    * Adjunta a cada DTO de la lista el avance de aprobación por componente
    * (componentes_aprobados / componentes_total), usando el mismo criterio que el
@@ -1194,19 +1250,34 @@ export class PtaService {
         const EXT_KEYS = ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'];
         let total = 0;
         let aprobados = 0;
+        const componentesEstado: Array<{ key: string; label: string; estado: string }> = [];
         for (const c of BASE_KEYS) {
           total++;
-          if (estaAprobado(c)) aprobados++;
+          const aprobado = estaAprobado(c);
+          if (aprobado) aprobados++;
+          componentesEstado.push({
+            key: c,
+            label: c === 'academica' ? 'Docencia' : c === 'investigacion' ? 'Investigacion' : 'Complementarias',
+            estado: aprobado ? 'aprobado' : (recs.get(c) || 'pendiente'),
+          });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
         const extTieneHoras = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
         if (extTieneHoras) {
           total++;
-          if (EXT_KEYS.every(k => estaAprobado(k))) aprobados++;
+          const extAprobada = EXT_KEYS.every(k => estaAprobado(k));
+          if (extAprobada) aprobados++;
+          const extEstados = EXT_KEYS.map(k => recs.get(k)).filter(Boolean);
+          componentesEstado.push({
+            key: 'extension',
+            label: 'Extension',
+            estado: extAprobada ? 'aprobado' : (extEstados.includes('devuelto') ? 'devuelto' : 'pendiente'),
+          });
         }
 
         dto.componentes_total = total;
         dto.componentes_aprobados = aprobados;
+        dto.componentes_estado = componentesEstado;
       } catch {
         // No romper la lista por un DTO problemático.
       }
@@ -1274,7 +1345,9 @@ export class PtaService {
 
     const rows = await qb.getMany();
     const extMult = await this.getExtMultiplicadores();
-    return this.enrichPtaSummaries(rows.map((row) => this.toPtaDto(row, extMult)));
+    const dtos = rows.map((row) => this.toPtaDto(row, extMult));
+    await this.attachPtaReferenceDates(dtos);
+    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
   }
 
   async getPTAsByDocente(docenteId: string, periodo?: string | undefined) {
@@ -1285,7 +1358,9 @@ export class PtaService {
     qb.orderBy('pta.updatedAt', 'DESC');
     const rows = await qb.getMany();
     const extMult = await this.getExtMultiplicadores();
-    return this.enrichPtaSummaries(rows.map((row) => this.toPtaDto(row, extMult)));
+    const dtos = rows.map((row) => this.toPtaDto(row, extMult));
+    await this.attachPtaReferenceDates(dtos);
+    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
   }
 
   async getPTAById(id: string) {
@@ -1300,6 +1375,7 @@ export class PtaService {
     const [dto] = await this.enrichPtaSummaries([
       this.toPtaDto(pta, await this.getExtMultiplicadores()) as any,
     ]);
+    await this.attachPtaReferenceDates([dto]);
 
     if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
       const asigIds = dto.asignaturas.map((a: any) => a.asignatura_id).filter(Boolean);
@@ -2538,10 +2614,12 @@ export class PtaService {
     }
 
     const extMult = await this.getExtMultiplicadores();
-    return ptas.map((pta) => ({
+    const dtos = ptas.map((pta) => ({
       ...this.toPtaDto(pta, extMult),
       evidencias: evidenciasByPta[pta.id] || [],
     }));
+    await this.attachPtaReferenceDates(dtos);
+    return this.sortPtasByReferenceDate(dtos);
   }
 
   async getConfiguracionPTAGlobal() {
