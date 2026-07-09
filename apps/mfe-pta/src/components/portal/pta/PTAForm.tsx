@@ -530,10 +530,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // afectados — el docente debe ver qué se devolvió y por qué, igual que en el flujo de
   // devolución por componente.
   const [comentarioConcertacion, setComentarioConcertacion] = useState('');
+  // Selección explícita del/los componente(s) a devolver cuando el revisor NO tiene
+  // permiso restringido (aprueba todo / sin restricción): evita adivinar por la pestaña
+  // abierta, que podía no coincidir con lo que realmente se quería devolver.
+  const [componentesSeleccionadosDevolver, setComponentesSeleccionadosDevolver] = useState<string[]>([]);
   // Respuesta obligatoria del docente al reenviar un componente devuelto: por qué lo
   // reenvía / qué corrigió. El revisor la ve junto a su comentario original al volver
   // a concertar/aprobar ese componente.
-  const [respuestaDevolucionDocente, setRespuestaDevolucionDocente] = useState('');
+  const [respuestasDevolucionDocente, setRespuestasDevolucionDocente] = useState<Record<string, string>>({});
   const savingRef = useRef(false);
   const handleSaveRef = useRef<((enviar?: boolean, silent?: boolean) => Promise<void>) | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -651,6 +655,26 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Devolución por componente: el revisor devolvió uno o más componentes al docente.
   // (No aplica en modo admin.)
   const esDevolucionComponentes = !isAdminEdit && devueltoComponentKeys.length > 0;
+  const respuestasDocentePorComponente = useMemo(() => {
+    const entries = devueltoComponentKeys
+      .map(key => [key, (respuestasDevolucionDocente[key] || '').trim()] as const)
+      .filter(([, value]) => Boolean(value));
+    return Object.fromEntries(entries);
+  }, [devueltoComponentKeys, respuestasDevolucionDocente]);
+  const respuestasDevolucionCompletas = useMemo(
+    () => devueltoComponentKeys.every(key => Boolean((respuestasDevolucionDocente[key] || '').trim())),
+    [devueltoComponentKeys, respuestasDevolucionDocente],
+  );
+  const resumenRespuestasDevolucion = useMemo(
+    () => devueltoComponentKeys
+      .map(key => {
+        const value = (respuestasDevolucionDocente[key] || '').trim();
+        return value ? `${componentLabel(key)}: ${value}` : '';
+      })
+      .filter(Boolean)
+      .join('\n'),
+    [devueltoComponentKeys, respuestasDevolucionDocente],
+  );
 
   const adminAllowedComponentKeys = useMemo(
     () => (allowedComponentKeys || []).map(key => String(key)).filter(Boolean),
@@ -2049,26 +2073,35 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     // "Concertar": editar y guardar como revisor/admin equivale a devolver al docente
-    // el/los componente(s) modificados — se exige el comentario que verá el docente.
+    // el/los componente(s) seleccionados — se exige el comentario que verá el docente.
     if (isAdminEdit && currentPtaId && !comentarioConcertacion.trim()) {
       toast.error('Debe ingresar un comentario para el docente antes de guardar.');
       setSaving(false);
       return;
     }
+    // Sin restricción de permiso y con más de un componente disponible: exige elegir
+    // explícitamente cuáles se devuelven (no se adivina por la pestaña abierta).
+    if (isAdminEdit && currentPtaId && !isAdminComponentRestricted && adminEditableComponentKeysNow.length > 1
+      && componentesSeleccionadosDevolver.length === 0) {
+      toast.error('Selecciona qué componente(s) estás devolviendo.');
+      setSaving(false);
+      return;
+    }
 
     const isReenvio = originalEstado === 'Devuelto' && enviar;
+    if (enviar && esDevolucionComponentes && !respuestasDevolucionCompletas) {
+      toast.error('Debes explicar tu respuesta para cada componente devuelto antes de reenviar.');
+      setSaving(false);
+      savingRef.current = false;
+      return;
+    }
 
-    // Sección/componente que el revisor tiene abierto al guardar. Es el respaldo que
-    // usa el backend cuando "Concertar" se guarda SIN cambios de contenido y el revisor
-    // no está restringido a un componente por permiso: se devuelve el componente que
-    // estaba viendo, en vez de no hacer nada.
-    const seccionActivaComponente = isAdminEdit
-      ? (activeSection === 'docencia' ? 'academica'
-        : activeSection === 'investigacion' ? 'investigacion'
-        : activeSection === 'complementarias' ? 'complementarias'
-        : activeSection === 'extension' ? componentKeyForExtensionSubsection(extSubseccion)
-        : undefined)
-      : undefined;
+    // Componente(s) a devolver cuando el revisor no tiene permiso restringido: la
+    // selección explícita del admin, o el único componente disponible si no hay
+    // ambigüedad.
+    const componentesConcertacionSeleccionados = isAdminEdit && !isAdminComponentRestricted
+      ? (adminEditableComponentKeysNow.length <= 1 ? adminEditableComponentKeysNow : componentesSeleccionadosDevolver)
+      : [];
 
     const payload = {
       id: currentPtaId || undefined,
@@ -2087,7 +2120,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       _comentario_concertacion: isAdminEdit ? (comentarioConcertacion.trim() || undefined) : undefined,
       _concertacion_actor_id: isAdminEdit ? concertacionActorId : undefined,
       _concertacion_actor_nombre: isAdminEdit ? concertacionActorNombre : undefined,
-      _concertacion_componente_activo: seccionActivaComponente,
+      _concertacion_componentes: componentesConcertacionSeleccionados,
       asignaturas: asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== ''),
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
@@ -2148,7 +2181,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           // revisor la vea junto a su comentario original al volver a concertar.
           const reenvio = await updatePTAStatus(savedId, {
             accion: 'reenviar_corregido',
-            comentario_docente: esDevolucionComponentes ? respuestaDevolucionDocente.trim() : undefined,
+            comentario_docente: esDevolucionComponentes ? resumenRespuestasDevolucion : undefined,
+            respuestas_docente_componentes: esDevolucionComponentes ? respuestasDocentePorComponente : undefined,
           });
           if (reenvio.success) {
             toast.success(`PTA re-enviado (v${reenvio.version}) → ${reenvio.nuevoEstado}`);
@@ -2475,15 +2509,45 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       </div>
 
       {/* Comentario de Concertación — editar y guardar como revisor/admin equivale a
-          devolver al docente el/los componente(s) que se modifiquen: este comentario
-          es el que el docente verá en el banner de devolución de su PTA. */}
+          devolver al docente el/los componente(s) seleccionados, con este comentario.
+          Si el revisor tiene permiso restringido a ciertos componentes, se devuelven
+          esos automáticamente. Si no (aprueba todo / sin restricción), debe elegir
+          explícitamente cuáles — evita adivinar por la pestaña que tenga abierta, que
+          podía fallar en silencio si no coincidía con lo que realmente quería devolver. */}
       {isAdminEdit && ptaId && (
         <div className="mb-5 p-4 rounded-xl bg-blue-50 border border-blue-200">
+          {!isAdminComponentRestricted && adminEditableComponentKeysNow.length > 1 && (
+            <div className="mb-3">
+              <label className="block text-[13px] font-bold text-blue-900 mb-1.5">
+                ¿Qué componente(s) estás devolviendo? (obligatorio)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {adminEditableComponentKeysNow.map(key => {
+                  const checked = componentesSeleccionadosDevolver.includes(key);
+                  return (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-semibold cursor-pointer ${checked ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-blue-300 text-blue-800'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-blue-600"
+                        checked={checked}
+                        onChange={e => setComponentesSeleccionadosDevolver(prev =>
+                          e.target.checked ? [...prev, key] : prev.filter(k => k !== key))}
+                      />
+                      {componentLabel(key)}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <label className="block text-[13px] font-bold text-blue-900 mb-1.5">
             Comentario para el docente (obligatorio)
           </label>
           <p className="text-[12px] text-blue-700 mb-2">
-            Al guardar, los componentes que edites se devolverán al docente con este comentario para que los corrija y reenvíe.
+            Al guardar, el/los componente(s) {isAdminComponentRestricted || adminEditableComponentKeysNow.length <= 1 ? 'que edites' : 'seleccionados arriba'} se devolverán al docente con este comentario para que los corrija y reenvíe.
           </p>
           <textarea
             value={comentarioConcertacion}
@@ -2799,28 +2863,31 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       <span className="font-semibold">Comentario del revisor: </span>
                       {c.comentarios?.trim() ? c.comentarios : 'Sin comentario.'}
                     </div>
+                    <div className="mt-3">
+                      <label className="block text-xs font-bold text-amber-900 mb-1">
+                        Tu respuesta para este componente (obligatoria)
+                      </label>
+                      <textarea
+                        value={respuestasDevolucionDocente[String(c.componente)] || ''}
+                        onChange={e => {
+                          const key = String(c.componente);
+                          setRespuestasDevolucionDocente(prev => ({ ...prev, [key]: e.target.value }));
+                        }}
+                        rows={2}
+                        placeholder="Explica que corregiste en este componente, o por que lo reenvias asi..."
+                        className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
                   </div>
                 ))}
-              </div>
-              <div className="mt-3">
-                <label className="block text-xs font-bold text-amber-900 mb-1">
-                  Tu respuesta al revisor (obligatoria)
-                </label>
-                <textarea
-                  value={respuestaDevolucionDocente}
-                  onChange={e => setRespuestaDevolucionDocente(e.target.value)}
-                  rows={2}
-                  placeholder="Explica qué corregiste, o por qué reenvías así..."
-                  className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
               </div>
             </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 mt-1">
             <button
               onClick={() => {
-                if (!respuestaDevolucionDocente.trim()) {
-                  toast.error('Debes explicar tu respuesta al revisor antes de reenviar.');
+                if (!respuestasDevolucionCompletas) {
+                  toast.error('Debes explicar tu respuesta para cada componente devuelto antes de reenviar.');
                   return;
                 }
                 solicitarFirmaDocente('via_save');
@@ -4480,7 +4547,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               ) : esDevolucionComponentes ? (
                 // Devolución por componente: solo corregir y re-enviar (no se puede
                 // "avanzar sin cambios" un componente que el revisor devolvió).
-                <button onClick={() => solicitarFirmaDocente('via_save')}
+                <button onClick={() => {
+                  if (!respuestasDevolucionCompletas) {
+                    toast.error('Debes explicar tu respuesta para cada componente devuelto antes de reenviar.');
+                    return;
+                  }
+                  solicitarFirmaDocente('via_save');
+                }}
                   disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
                   className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : '#D97706' }}>
