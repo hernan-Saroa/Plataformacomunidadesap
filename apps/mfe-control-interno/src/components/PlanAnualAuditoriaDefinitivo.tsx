@@ -1478,7 +1478,7 @@ function mapTareasSeguimientoDesdeBackend(
 
 function obtenerFirmaComparacionActividad(act: any) {
   const responsables = (Array.isArray(act.responsables) ? act.responsables : [])
-    .map((r: any) => String(r.id || r.idPerson || r.idTercero || '').trim())
+    .map((r: any) => `${r.id || r.idPerson || r.idTercero || ''}-${r.nombre || ''}`.trim().toLowerCase())
     .filter(Boolean)
     .sort();
 
@@ -1490,11 +1490,16 @@ function obtenerFirmaComparacionActividad(act: any) {
   const tareas = (Array.isArray(act.tareasSeguimiento || act.tareas_seguimiento) ? (act.tareasSeguimiento || act.tareas_seguimiento) : [])
     .map((t: any) => {
       const fl = t.fechaLimite ?? t.fechaEntrega ?? t.fecha_limite ?? t.fecha_entrega;
+      const respIds = (Array.isArray(t.responsables) ? t.responsables : [])
+        .map((r: any) => `${r.id || r.idPerson || r.idTercero || ''}-${r.nombre || ''}`.trim().toLowerCase())
+        .filter(Boolean)
+        .sort();
       return {
         desc: String(t.descripcion || '').trim(),
         limite: fl ? String(fl).split('T')[0] : null,
         reqAdj: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
-        reqObs: !!(t.requiereObservaciones ?? t.requiere_observaciones)
+        reqObs: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+        responsables: respIds
       };
     })
     .sort((a, b) => a.desc.localeCompare(b.desc));
