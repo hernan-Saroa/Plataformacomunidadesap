@@ -95,8 +95,10 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       : (pta.acad_admin?.actividades || pta.academico_administrativo?.actividades || []));
   const _isAadm = (c: any) => c?.seccion === 'academico_administrativas'
     || (c?.seccion == null && c?.consumeTotalidad !== undefined);
-  const complementarias = _rawComp.filter((c: any) => !_isAadm(c));
+  const _compDocencia = _rawComp.filter((c: any) => !_isAadm(c));
   const acadAdminActividades = [..._rawComp.filter((c: any) => _isAadm(c)), ..._legacyAadm];
+  // Todo es "Actividades Complementarias": una sola lista (a la docencia + AADM).
+  const complementarias = [..._compDocencia, ...acadAdminActividades];
 
 
   // Historial: accept both camelCase (historialEstados) and legacy snake_case
@@ -116,7 +118,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         return s;
       }, 0);
   const horasAcadAdmin = acadAdminActividades.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
-  const horasComplementariasDocencia = complementarias.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
+  const horasComplementariasDocencia = _compDocencia.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
   // Complementarias unificado = sección docencia + sección académico-administrativa.
   const horasComplementarias = pta.horas_complementarias != null
     ? pta.horas_complementarias
@@ -617,64 +619,12 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
             marginTop: 10, padding: '8px 12px', borderRadius: 6, background: `${PTA_COLORS.COMPLEMENTARIAS}15`,
             fontWeight: 700, fontSize: '0.85rem', color: PTA_COLORS.COMPLEMENTARIAS, textAlign: 'right',
           }}>
-            TOTAL COMPLEMENTARIAS A LA DOCENCIA: {horasComplementariasDocencia} horas ({((horasComplementariasDocencia / horasProgramables) * 100).toFixed(1)}%)
+            TOTAL HORAS COMPLEMENTARIAS: {horasComplementarias} horas ({pctComplementarias}%)
           </div>
         </div>
 
-        {/* Section 6: Complementarias · Académico-Administrativas (sub-sección de Complementarias) */}
-        <SectionHeader icon={Briefcase} label="6. COMPLEMENTARIAS · ACADÉMICO-ADMINISTRATIVAS" color={PTA_COLORS.ACAD_ADMIN} />
-        <div style={{ padding: '16px 32px 20px' }}>
-          {acadAdminActividades.length > 0 ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ background: `${PTA_COLORS.ACAD_ADMIN}15`, borderBottom: `2px solid ${PTA_COLORS.ACAD_ADMIN}40` }}>
-                  <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>#</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>Actividad</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>Horas</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>% PTA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {acadAdminActividades.map((act: any, idx: number) => (
-                  <tr key={idx} style={{ borderBottom: `1px solid ${PTA_COLORS.ACAD_ADMIN}30` }}>
-                    <td style={{ padding: '6px 10px', color: '#9CA3AF', verticalAlign: 'top' }}>{idx + 1}</td>
-                    <td style={{ padding: '6px 10px', color: '#111827' }}>
-                      <div>{act.nombre || act.actividad || 'Actividad Académico-Administrativa'}</div>
-                      {act.descripcion && (
-                        <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2, fontStyle: 'italic' }}>{act.descripcion}</div>
-                      )}
-                      {(act.fecha_inicio || act.fecha_fin) && (
-                        <div style={{ display: 'flex', gap: 10, fontSize: '0.7rem', color: '#9CA3AF', marginTop: 2 }}>
-                          {act.fecha_inicio && <span>Inicio: {fmtFecha(act.fecha_inicio)}</span>}
-                          {act.fecha_fin && <span>Fin: {fmtFecha(act.fecha_fin)}</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, verticalAlign: 'top' }}>
-                      {act.horas || 0}
-                    </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#6B7280', verticalAlign: 'top' }}>
-                      {((act.horas || 0) / horasProgramables * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div style={{ padding: 12, color: '#9CA3AF', fontSize: '0.82rem', fontStyle: 'italic' }}>
-              Sin actividades académico-administrativas registradas
-            </div>
-          )}
-          <div style={{
-            marginTop: 10, padding: '8px 12px', borderRadius: 6, background: `${PTA_COLORS.ACAD_ADMIN}15`,
-            fontWeight: 700, fontSize: '0.85rem', color: PTA_COLORS.ACAD_ADMIN, textAlign: 'right',
-          }}>
-            TOTAL HORAS ACAD. ADMIN.: {horasAcadAdmin} horas ({pctAcadAdmin}%)
-          </div>
-        </div>
-
-        {/* Section 7: Resumen Ejecutivo */}
-        <SectionHeader icon={Award} label="7. RESUMEN EJECUTIVO" color="#003DA5" />
+        {/* Section 6: Resumen Ejecutivo */}
+        <SectionHeader icon={Award} label="6. RESUMEN EJECUTIVO" color="#003DA5" />
         <div style={{ padding: '16px 32px 24px' }}>
           {/* Two-column layout: Donut + Table */}
           <div style={{ display: 'flex', gap: 24, alignItems: 'stretch', marginBottom: 16 }}>
@@ -789,8 +739,8 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           </div>
         </div>
 
-        {/* Section 8: Firmas y Aprobaciones */}
-        <SectionHeader icon={Award} label="8. FIRMAS Y APROBACIONES" color="#003DA5" />
+        {/* Section 7: Firmas y Aprobaciones */}
+        <SectionHeader icon={Award} label="7. FIRMAS Y APROBACIONES" color="#003DA5" />
         <div style={{ padding: '16px 32px 28px' }}>
           {/* Concertacion signatures */}
           <div style={{

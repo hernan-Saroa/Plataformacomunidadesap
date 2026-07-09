@@ -812,9 +812,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // AADM es una sección de Complementarias. `splitComplementarias` separa ambas
   // secciones y fusiona data legacy, evitando doble conteo.
   const _compSplit = splitComplementarias(pta);
-  // La sección "complementarias a la docencia" y la sub-sección académico-administrativa
-  // se muestran como grupos separados dentro del mismo componente Complementarias.
-  const complementarias = { actividades: _compSplit.docencia };
+  // Todo es "Actividades Complementarias": ambas secciones (a la docencia + académico-
+  // administrativas) se muestran juntas como un solo componente.
+  const complementarias = { actividades: [..._compSplit.docencia, ..._compSplit.aadm] };
   const acadAdmin = { actividades: _compSplit.aadm };
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
@@ -2178,100 +2178,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 ))}
               </div>
 
-              {acadAdmin.actividades.length > 0 && (
-                <div style={{
-                  padding: '10px 12px',
-                  borderRadius: 10,
-                  background: '#FFF7ED',
-                  border: '1px solid #FED7AA',
-                  marginBottom: 14,
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    color: '#9A3412',
-                    textTransform: 'uppercase',
-                    marginBottom: 8,
-                  }}>
-                    <Award style={{ width: 13, height: 13 }} />
-                    Actividad Academico-Administrativa
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {acadAdmin.actividades.map((actividad: any, idx: number) => (
-                      <div key={actividad.id || actividad.actividad_id || idx} style={{
-                        padding: '10px',
-                        borderRadius: 8,
-                        background: 'white',
-                        border: '1px solid #FFEDD5',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#111827', lineHeight: 1.25 }}>
-                              {actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad AADM'}
-                            </div>
-                            {actividad.actividad_id && (
-                              <div style={{ fontSize: '0.64rem', color: '#9CA3AF', fontWeight: 700, marginTop: 2 }}>
-                                Codigo: {actividad.actividad_id}
-                              </div>
-                            )}
-                          </div>
-                          <span style={{
-                            padding: '3px 8px',
-                            borderRadius: 999,
-                            background: '#FFF7ED',
-                            color: '#C2410C',
-                            border: '1px solid #FDBA74',
-                            fontSize: '0.72rem',
-                            fontWeight: 900,
-                            flexShrink: 0,
-                          }}>
-                            {Number(actividad.horas || 0)}h
-                          </span>
-                        </div>
-
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-                          gap: 8,
-                          marginTop: 8,
-                        }}>
-                          {(actividad.fecha_inicio || actividad.fecha_fin) && (
-                            <div style={{ fontSize: '0.72rem', color: '#4B5563' }}>
-                              <span style={{ color: '#9CA3AF', fontWeight: 700 }}>Fechas: </span>
-                              {actividad.fecha_inicio || 'Sin inicio'} - {actividad.fecha_fin || 'Sin fin'}
-                            </div>
-                          )}
-                          {actividad.consumeTotalidad && (
-                            <div style={{ fontSize: '0.72rem', color: '#4B5563' }}>
-                              <span style={{ color: '#9CA3AF', fontWeight: 700 }}>Alcance: </span>
-                              Consume el 100% del PTA
-                            </div>
-                          )}
-                        </div>
-
-                        {(actividad.descripcion || actividad.observaciones) && (
-                          <div style={{
-                            marginTop: 8,
-                            padding: '8px',
-                            borderRadius: 6,
-                            background: '#FFFBEB',
-                            color: '#78350F',
-                            fontSize: '0.74rem',
-                            lineHeight: 1.45,
-                          }}>
-                            {actividad.descripcion || actividad.observaciones}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Observaciones / Motivo devolución */}
               {pta.motivo_devolucion && (
                 <div style={{
@@ -2583,57 +2489,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
                       <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706' }}>
-                        Total Complementarias a la Docencia: {_compSplit.horasDocencia}h
+                        Total Complementarias: {horasComplementarias}h
                       </span>
                     </div>
                   </>
                 ) : (
                   <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '12px 0' }}>
                     Sin actividades complementarias
-                  </p>
-                )}
-              </SectionCollapsible>
-              )}
-
-              {/* Complementarias · Sub-sección Académico-Administrativa */}
-              {acadAdmin.actividades?.length > 0 && (
-              <SectionCollapsible
-                title="Complementarias · Académico-Administrativas"
-                icon={Award}
-                color="#FFC000"
-                count={acadAdmin.actividades?.length || 0}
-              >
-                {acadAdmin.actividades?.length > 0 ? (
-                  <>
-                    {acadAdmin.actividades.map((a: any, i: number) => (
-                      <div key={i} style={{
-                        padding: '7px 10px', borderRadius: 6, background: '#FAFAFA',
-                        border: '1px solid #F3F4F6', marginBottom: 4,
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre}</span>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6B21A8', whiteSpace: 'nowrap' }}>{a.horas}h</span>
-                        </div>
-                        {a.descripcion && (
-                          <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
-                        )}
-                        {(a.fecha_inicio || a.fecha_fin) && (
-                          <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: '0.65rem', color: '#6B7280' }}>
-                            {a.fecha_inicio && <span>Inicio: <strong>{fmtFecha(a.fecha_inicio)}</strong></span>}
-                            {a.fecha_fin && <span>Fin: <strong>{fmtFecha(a.fecha_fin)}</strong></span>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6B21A8' }}>
-                        Total Acad. Admin.: {horasAcadAdmin}h
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '12px 0' }}>
-                    Sin actividades académico administrativas
                   </p>
                 )}
               </SectionCollapsible>

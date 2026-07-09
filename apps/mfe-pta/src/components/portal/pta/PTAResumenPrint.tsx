@@ -211,17 +211,19 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
               );
             })()}
 
-            {/* Componente Complementarias — sección "a la docencia" */}
+            {/* Componente Complementarias (incluye la sección académico-administrativa) */}
             {(() => {
               const rawComp = Array.isArray(pta?.complementarias)
                 ? pta.complementarias
                 : (pta?.complementarias?.actividades || []);
-              const acts = rawComp.filter((c: any) => c?.seccion !== 'academico_administrativas'
-                && !(c?.seccion == null && c?.consumeTotalidad !== undefined));
+              const legacy = Array.isArray(pta?.academico_admin)
+                ? pta.academico_admin
+                : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
+              const acts = [...rawComp, ...legacy];
               if (acts.length === 0) return null;
               return (
                 <div className="mb-8">
-                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.COMPLEMENTARIAS }}>5. ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA</h3>
+                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.COMPLEMENTARIAS }}>5. ACTIVIDADES COMPLEMENTARIAS</h3>
                   <table className="w-full text-sm border-collapse border border-gray-200">
                     <thead>
                       <tr className="bg-gray-50">
@@ -238,46 +240,6 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
                           <tr key={idx}>
                             <td className="border border-gray-200 p-2">{a.nombre || a.actividad || 'Actividad'}</td>
                             <td className="border border-gray-200 p-2">{a.categoria || a.tipo || 'Complementaria'}</td>
-                            <td className="border border-gray-200 p-2 text-center">{(totalH / 16).toFixed(1)}</td>
-                            <td className="border border-gray-200 p-2 text-center font-semibold">{totalH}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-
-            {/* Componente Complementarias — sub-sección Académico-Administrativa */}
-            {(() => {
-              const rawComp = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
-              const fromComp = rawComp.filter((c: any) => c?.seccion === 'academico_administrativas'
-                || (c?.seccion == null && c?.consumeTotalidad !== undefined));
-              const legacy = Array.isArray(pta?.academico_admin)
-                ? pta.academico_admin
-                : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
-              const acts = [...fromComp, ...legacy];
-              if (acts.length === 0) return null;
-              return (
-                <div className="mb-8">
-                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.ACAD_ADMIN }}>6. COMPLEMENTARIAS · ACADÉMICO-ADMINISTRATIVAS</h3>
-                  <table className="w-full text-sm border-collapse border border-gray-200">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="border border-gray-200 p-2 text-left">Actividad</th>
-                        <th className="border border-gray-200 p-2 text-left">Categoría</th>
-                        <th className="border border-gray-200 p-2 text-center">Hrs/Sem</th>
-                        <th className="border border-gray-200 p-2 text-center">Total Hrs</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {acts.map((a: any, idx: number) => {
-                        const totalH = a.horas || 0;
-                        return (
-                          <tr key={idx}>
-                            <td className="border border-gray-200 p-2">{a.nombre || a.actividad || 'Actividad'}</td>
-                            <td className="border border-gray-200 p-2">{a.categoria || a.tipo || 'Académico-Administrativa'}</td>
                             <td className="border border-gray-200 p-2 text-center">{(totalH / 16).toFixed(1)}</td>
                             <td className="border border-gray-200 p-2 text-center font-semibold">{totalH}</td>
                           </tr>

@@ -879,16 +879,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           return baseAct;
         });
         setExtActividades(normalizedExtActs);
-        // Complementarias unificado: separar por sección + fusionar array legacy academico_admin.
+        // Complementarias unificado: separar por sección. IMPORTANTE: no fusionar el array
+        // legacy academico_admin con los ítems ya taggeados en complementarias (evita duplicados).
         {
           const rawComp = Array.isArray(d.complementarias) ? d.complementarias : [];
           const isAadm = (c: any) => c?.seccion === COMP_SECCION_AADM
             || (c?.seccion == null && c?.consumeTotalidad !== undefined);
+          const compAadm = rawComp.filter((c: any) => isAadm(c));
+          const legacyAadm = Array.isArray(d.academico_admin) ? d.academico_admin : [];
           setComplementarias(rawComp.filter((c: any) => !isAadm(c)));
-          setAcademicoAdmin([
-            ...rawComp.filter((c: any) => isAadm(c)),
-            ...(Array.isArray(d.academico_admin) ? d.academico_admin : []),
-          ]);
+          // Si complementarias ya trae la sección AADM se usa esa (PTA migrado/guardado nuevo);
+          // el array legacy solo aplica a PTAs viejos sin la sección dentro de complementarias.
+          setAcademicoAdmin(compAadm.length > 0 ? compAadm : legacyAadm);
         }
         setObservacionesDocente(d.observaciones_docente || '');
         if (d.camposModificadosPorRevisor) setCamposModificados(d.camposModificadosPorRevisor);
@@ -1950,8 +1952,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         : null,  // null explícito → backend borra los datos anteriores
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
       extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || (e.horas_ejecutadas ?? 0) > 0))),
-      // Complementarias unificado: un solo array con tag de sección. Se mantiene también
-      // academico_admin (alias legacy) durante la transición para backends no migrados.
+      // Complementarias unificado: UN SOLO array con tag de sección. NO se envía el alias
+      // legacy academico_admin (evita duplicados al recargar; el backend lee las secciones
+      // desde complementarias).
       complementarias: [
         ...complementarias
           .filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0))
@@ -1960,7 +1963,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           .filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0))
           .map(c => ({ ...c, seccion: COMP_SECCION_AADM })),
       ],
-      academico_admin: academicoAdmin.filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0)),
+      // Se envía vacío explícito para que el backend borre cualquier academico_admin previo.
+      academico_admin: [],
       observaciones_docente: observacionesDocente,
       _reenvio: isReenvio || undefined,
     };
