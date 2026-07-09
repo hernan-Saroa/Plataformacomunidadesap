@@ -100,7 +100,6 @@ export function DashboardDirectivoPTA() {
     { componente: 'Investigación', horas: horas?.investigacion ?? 0, color: PTA_COLORS.INVESTIGACION },
     { componente: 'Extensión', horas: horas?.extension ?? 0, color: PTA_COLORS.EXTENSION },
     { componente: 'Complementarias', horas: horas?.complementarias ?? 0, color: PTA_COLORS.COMPLEMENTARIAS },
-    { componente: 'Acad. Admin.', horas: horas?.academico_admin ?? 0, color: PTA_COLORS.ACAD_ADMIN },
   ].filter(d => d.horas > 0);
 
   function getStatusBadge(estado: string) {

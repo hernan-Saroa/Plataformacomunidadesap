@@ -8,6 +8,8 @@ describe('ImportValidator — Circular 003', () => {
     nombre_corto: 'APT',
     nombre_excel_origen: 'APT',
     tipo_programa: 'pregrado',
+    categoria_horas_circular003: 'pregrado_territorial',
+    descripcion_categoria_circular003: 'APT / Territorial - 16h por credito',
     codigo_facultad: 'PRE',
     modalidad_principal: 'Distancia',
     horas_base_por_credito: 16,

@@ -483,8 +483,8 @@ const COMPONENTES_SEG = [
   { key: 'docencia', label: 'Docencia', color: '#003DA5' },
   { key: 'investigacion', label: 'Investigación', color: '#7C3AED' },
   { key: 'extension', label: 'Extensión', color: '#059669' },
+  // Complementarias incluye la sección Académico-Administrativa (AADM fusionado).
   { key: 'complementarias', label: 'Complementarias', color: '#D97706' },
-  { key: 'acad_admin', label: 'Acad. Admin.', color: '#DC2626' },
 ] as const;
 
 // Estados en los que un docente puede subir documentos de soporte (ver PortalDocentePTA:
@@ -914,6 +914,34 @@ function calcAging(historialEstados?: any[], updatedAt?: string, createdAt?: str
   return { days, label: `${days}d`, color: '#DC2626', bg: '#FEE2E2' };
 }
 
+function getPtaReferenceDate(pta: any): string | null {
+  return pta?.fecha_orden || pta?.fecha_referencia || pta?.fecha_envio_revision || pta?.updatedAt || pta?.updated_at || pta?.createdAt || pta?.created_at || null;
+}
+
+function getPtaSortValue(pta: any, field: string): any {
+  if (field === 'fecha_orden' || field === 'fecha_referencia' || field === 'updated_at' || field === 'updatedAt') {
+    const time = new Date(getPtaReferenceDate(pta) || 0).getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+  return pta?.[field] || '';
+}
+
+function getComponentApprovalGroups(pta: any): { pendientes: any[]; aprobados: any[] } {
+  const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+  const normalized = items
+    .map((item: any) => ({
+      key: String(item?.key || item?.componente || item?.label || ''),
+      label: String(item?.label || item?.nombre || item?.componente || 'Componente'),
+      estado: String(item?.estado || 'pendiente').toLowerCase(),
+    }))
+    .filter((item: any) => item.key || item.label);
+
+  return {
+    pendientes: normalized.filter((item: any) => item.estado !== 'aprobado'),
+    aprobados: normalized.filter((item: any) => item.estado === 'aprobado'),
+  };
+}
+
 // ═══ Stat card → estado filter map ═══
 const STAT_CARD_FILTER_MAP: Record<string, string> = {
   'Total PTAs': '',
@@ -1093,8 +1121,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     return () => window.removeEventListener('pta:open-detalle', handleOpen);
   }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<string>('docente_nombre');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortBy, setSortBy] = useState<string>('fecha_orden');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>(() => {
     // Default to kanban on mobile for better UX
     if (typeof window !== 'undefined' && window.innerWidth < 768) return 'kanban';
@@ -1696,7 +1724,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); setFocusedIdx(f => Math.max(f - 1, 0)); }
       if (e.key === 'Enter' && focusedIdx >= 0) {
         const sorted = [...filteredPtas].sort((a: any, b: any) => {
-          const aVal = a[sortBy] || ''; const bVal = b[sortBy] || '';
+          const aVal = getPtaSortValue(a, sortBy); const bVal = getPtaSortValue(b, sortBy);
           return sortDir === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
         });
         const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -1714,7 +1742,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         const sorted3 = [...filteredPtas].sort((a: any, b: any) => {
           const aPin = pinnedIds.has(a.id) ? 0 : 1; const bPin = pinnedIds.has(b.id) ? 0 : 1;
           if (aPin !== bPin) return aPin - bPin;
-          const aVal = a[sortBy] || ''; const bVal = b[sortBy] || '';
+          const aVal = getPtaSortValue(a, sortBy); const bVal = getPtaSortValue(b, sortBy);
           return sortDir === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
         });
         const ps3 = (currentPage - 1) * PAGE_SIZE;
@@ -1726,7 +1754,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           const aPin = pinnedIds.has(a.id) ? 0 : 1;
           const bPin = pinnedIds.has(b.id) ? 0 : 1;
           if (aPin !== bPin) return aPin - bPin;
-          const aVal = a[sortBy] || ''; const bVal = b[sortBy] || '';
+          const aVal = getPtaSortValue(a, sortBy); const bVal = getPtaSortValue(b, sortBy);
           return sortDir === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
         });
         const pageStart2 = (currentPage - 1) * PAGE_SIZE;
@@ -1908,8 +1936,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       if (aPri >= 0) return -1;
       if (bPri >= 0) return 1;
     }
-    const aVal = a[sortBy] || '';
-    const bVal = b[sortBy] || '';
+    const aVal = getPtaSortValue(a, sortBy);
+    const bVal = getPtaSortValue(b, sortBy);
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
     }
@@ -3212,8 +3240,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 if (aPri >= 0) return -1;
                 if (bPri >= 0) return 1;
               }
-              const aVal = a[sortBy] || '';
-              const bVal = b[sortBy] || '';
+              const aVal = getPtaSortValue(a, sortBy);
+              const bVal = getPtaSortValue(b, sortBy);
               if (typeof aVal === 'number' && typeof bVal === 'number') {
                 return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
               }
@@ -3578,7 +3606,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       {effectiveCols.has('docente') && <SortableHeader label="Docente" field="docente_nombre" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('estado') && <SortableHeader label="Estado" field="estado" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('aging') && <span title="Días en estado actual">Días</span>}
-                      {effectiveCols.has('fecha') && <span>Fecha</span>}
+                      {effectiveCols.has('fecha') && <SortableHeader label="Fecha" field="fecha_orden" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('hora') && <span>Hora</span>}
                       {effectiveCols.has('dedicacion') && <span>Dedic.</span>}
                       {effectiveCols.has('carga') && <SortableHeader label="Carga" field="total_horas_programadas" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
@@ -3660,16 +3688,20 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const compAprobados = Number(pta.componentes_aprobados);
                       const compTotal = Number(pta.componentes_total);
                       const tieneAvanceComponentes = Number.isFinite(compAprobados) && Number.isFinite(compTotal) && compTotal > 0;
+                      const canShowComponentPopover = isPendiente && tieneAvanceComponentes;
+                      const componentGroups = getComponentApprovalGroups(pta);
                       const badgeText = (isPendiente && tieneAvanceComponentes)
                         ? `${compAprobados}/${compTotal} componentes`
                         : estadoLabel;
                       const badgeTitle = (isPendiente && tieneAvanceComponentes)
                         ? `${compAprobados} de ${compTotal} componentes aprobados — ${estadoLabel}`
                         : estadoLabel;
-                      const tieneTotalidadAcadAdmin = Array.isArray(pta.academico_admin) &&
-                        pta.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+                      const tieneTotalidadAcadAdmin =
+                        (Array.isArray(pta.academico_admin) && pta.academico_admin.some((a: any) => a?.consumeTotalidad === true)) ||
+                        (Array.isArray(pta.complementarias) && pta.complementarias.some((a: any) => a?.consumeTotalidad === true));
 
                       const aging = calcAging(pta.historialEstados, pta.updatedAt, pta.createdAt);
+                      const referenceDate = getPtaReferenceDate(pta);
 
                       const isFocused = focusedIdx === idx;
 
@@ -3765,18 +3797,18 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 maxWidth: '100%', minWidth: 0,
                                 whiteSpace: 'normal', overflowWrap: 'break-word',
                                 lineHeight: 1.15, textAlign: 'center',
-                                cursor: permisos.puedeAprobar && isPendiente ? 'pointer' : 'default',
+                                cursor: canShowComponentPopover ? 'pointer' : 'default',
                               }}
                               onClick={() => {
-                                if (permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
+                                if (canShowComponentPopover) {
                                   setInlineStatusPtaId(inlineStatusPtaId === pta.id ? null : pta.id);
                                 }
                               }}
-                              title={permisos.puedeAprobar && isPendiente ? `Clic para cambio rápido de estado: ${badgeTitle}` : badgeTitle}
+                              title={canShowComponentPopover ? `Ver componentes: ${badgeTitle}` : badgeTitle}
                             >
                               <span style={{ minWidth: 0 }}>{badgeText}</span>
-                              {permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective) && (
-                                <Zap style={{ width: 7, height: 7, flexShrink: 0 }} />
+                              {canShowComponentPopover && (
+                                <Layers style={{ width: 8, height: 8, flexShrink: 0 }} />
                               )}
                             </span>
                             {inlineStatusPtaId === pta.id && (
@@ -3785,43 +3817,59 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 <div style={{
                                   position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 9999,
                                   background: 'white', borderRadius: 8, border: '1px solid #E5E7EB',
-                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 230, overflow: 'hidden',
+                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 'min(280px, calc(100vw - 32px))',
+                                  maxWidth: 280, padding: 10, overflow: 'hidden',
                                 }}>
-                                  <div style={{ padding: '6px 10px', borderBottom: '1px solid #F3F4F6', fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase' }}>
-                                    Cambio rápido
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingBottom: 7, borderBottom: '1px solid #F3F4F6' }}>
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Componentes</span>
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 7px', whiteSpace: 'nowrap' }}>
+                                      {compAprobados}/{compTotal}
+                                    </span>
                                   </div>
-                                  {[
-                                    { estado: getNextState(pta.estado), label: getNextStateLabel(pta.estado), icon: ChevronRight, color: '#059669' },
-                                    { estado: 'Devuelto', label: 'Devolver', icon: RotateCcw, color: '#D97706' },
-                                  ].map(opt => {
-                                    const optSc = getStatusConfig(opt.estado);
-                                    return (
-                                      <button
-                                        key={opt.estado}
-                                        onClick={() => handleInlineStatusChange(pta.id, opt.estado)}
-                                        disabled={procesando}
-                                        style={{
-                                          width: '100%', padding: '7px 10px', border: 'none',
-                                          background: 'transparent', cursor: 'pointer', textAlign: 'left',
-                                          display: 'flex', alignItems: 'center', gap: 6,
-                                          fontSize: '0.75rem', fontWeight: 600, color: opt.color,
-                                          borderBottom: '1px solid #F9FAFB',
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                      >
-                                        <opt.icon style={{ width: 11, height: 11 }} />
-                                        <span>{opt.label}</span>
-                                        <span style={{
-                                          marginLeft: 'auto', padding: '1px 5px', borderRadius: 4,
-                                          background: optSc.bg, color: optSc.color, fontSize: '0.55rem', fontWeight: 700,
-                                          maxWidth: 115, whiteSpace: 'normal', textAlign: 'right', lineHeight: 1.15,
-                                        }}>
-                                          {opt.estado.replace(/_/g, ' ')}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
+                                  {componentGroups.pendientes.length === 0 && componentGroups.aprobados.length === 0 ? (
+                                    <div style={{ paddingTop: 8, fontSize: '0.72rem', color: '#6B7280', lineHeight: 1.3 }}>
+                                      Sin detalle de componentes disponible.
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'grid', gap: 9, paddingTop: 9, maxHeight: 220, overflowY: 'auto' }}>
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, fontSize: '0.66rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
+                                          <Clock style={{ width: 10, height: 10 }} /> Pendientes ({componentGroups.pendientes.length})
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                          {componentGroups.pendientes.length > 0 ? componentGroups.pendientes.map((item: any) => (
+                                            <span key={`pend-${item.key}`} style={{
+                                              padding: '3px 7px', borderRadius: 999, background: item.estado === 'devuelto' ? '#FFF7ED' : '#FFFBEB',
+                                              color: item.estado === 'devuelto' ? '#9A3412' : '#92400E', border: `1px solid ${item.estado === 'devuelto' ? '#FDBA74' : '#FDE68A'}`,
+                                              fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.15,
+                                            }}>
+                                              {item.label}{item.estado === 'devuelto' ? ' (devuelto)' : ''}
+                                            </span>
+                                          )) : (
+                                            <span style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 600 }}>Ninguno</span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, fontSize: '0.66rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                                          <CheckCircle style={{ width: 10, height: 10 }} /> Aprobados ({componentGroups.aprobados.length})
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                          {componentGroups.aprobados.length > 0 ? componentGroups.aprobados.map((item: any) => (
+                                            <span key={`apr-${item.key}`} style={{
+                                              padding: '3px 7px', borderRadius: 999, background: '#ECFDF5', color: '#047857',
+                                              border: '1px solid #A7F3D0', fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.15,
+                                            }}>
+                                              {item.label}
+                                            </span>
+                                          )) : (
+                                            <span style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 600 }}>Ninguno</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </>
                             )}
@@ -3849,8 +3897,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           {/* Fecha */}
                           {effectiveCols.has('fecha') && (
                             <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.78rem', color: '#6B7280', fontWeight: 600, textTransform: 'uppercase' }}>
-                              {(pta.updatedAt || pta.updated_at || pta.createdAt) ? (
-                                <><Calendar style={{ width: 11, height: 11, marginRight: 6, color: '#9CA3AF' }} /> {new Date(pta.updatedAt || pta.updated_at || pta.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }).replace('.', '')}</>
+                              {referenceDate ? (
+                                <><Calendar style={{ width: 11, height: 11, marginRight: 6, color: '#9CA3AF' }} /> {new Date(referenceDate).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }).replace('.', '')}</>
                               ) : '—'}
                             </div>
                           )}
@@ -3858,8 +3906,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           {/* Hora */}
                           {effectiveCols.has('hora') && (
                             <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.75rem', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' }}>
-                              {(pta.updatedAt || pta.updated_at || pta.createdAt) ? (
-                                <><Clock style={{ width: 11, height: 11, marginRight: 6 }} /> {new Date(pta.updatedAt || pta.updated_at || pta.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}</>
+                              {referenceDate ? (
+                                <><Clock style={{ width: 11, height: 11, marginRight: 6 }} /> {new Date(referenceDate).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}</>
                               ) : '—'}
                             </div>
                           )}
@@ -3897,8 +3945,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 { key: 'doc', keys: ['academica'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
                                 { key: 'inv', keys: ['investigacion'], color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
                                 { key: 'ext', keys: PTA_EXTENSION_COMPONENT_KEYS, color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
-                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) },
-                                { key: 'aa', keys: ['academicas_admin'], color: '#6B21A8', has: pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
+                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) || pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
                               ].filter(c => !shouldRestrictByComponentPermission || c.keys.some(key => visibleComponentKeySet.has(key))).map(c => (
                                 <div key={c.key} style={{
                                   width: 10, height: 10, borderRadius: 2,
@@ -3948,7 +3995,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                   { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical, keys: ['investigacion'] },
                                   { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe, keys: PTA_EXTENSION_COMPONENT_KEYS },
                                   { label: 'Horas Complementarias', value: pta.horas_complementarias || 0, color: '#D97706', icon: Briefcase, keys: ['complementarias'] },
-                                  { label: 'Horas Acad. Admin.', value: pta.horas_acad_admin || 0, color: '#6B21A8', icon: Users, keys: ['academicas_admin'] },
                                   { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica'] },
                                 ].filter(item => !item.keys || !shouldRestrictByComponentPermission || item.keys.some(key => visibleComponentKeySet.has(key))).map(item => {
                                   const ItemIcon = item.icon;
@@ -4917,7 +4963,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             { label: 'Horas Investigación', key: 'horas_investigacion', isNumber: true },
             { label: 'Horas Extensión', key: 'horas_extension', isNumber: true },
             { label: 'Horas Complementarias', key: 'horas_complementarias', isNumber: true },
-            { label: 'Horas Acad. Admin.', key: 'horas_acad_admin', isNumber: true },
             { label: 'Num. Asignaturas', key: 'num_asignaturas', isNumber: true },
           ];
 

@@ -103,8 +103,8 @@ const COMPONENT_STEPS = [
   { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
   { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
+  // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
   { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
-  { key: 'academicas_admin', label: 'AADM', icon: Award, color: '#6B21A8' },
 ];
 
 function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
@@ -888,16 +888,15 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 const horasDoc = selectedPta.horas_docencia ?? asigs.reduce((s: number, a: any) => s + (a.total_horas || a.horas || 0), 0);
                 const horasInv = selectedPta.horas_investigacion ?? 0;
                 const horasExt = selectedPta.horas_extension ?? 0;
+                // horas_complementarias ya incluye la sección académico-administrativa.
                 const horasComp = selectedPta.horas_complementarias ?? 0;
-                const horasAA = selectedPta.horas_acad_admin ?? 0;
-                const horasTotal = selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp + horasAA);
+                const horasTotal = selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp);
                 const horasMax = selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800;
                 const comps = [
                   { label: 'Docencia', value: horasDoc, color: PTA_COLORS.DOCENCIA, icon: BookOpen },
                   { label: 'Investigación', value: horasInv, color: PTA_COLORS.INVESTIGACION, icon: FlaskConical },
                   { label: 'Extensión', value: horasExt, color: PTA_COLORS.EXTENSION, icon: Globe },
                   { label: 'Complementarias', value: horasComp, color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
-                  { label: 'Acad. Admin.', value: horasAA, color: PTA_COLORS.ACAD_ADMIN, icon: Shield },
                 ];
 
                 // Donut chart calculations
@@ -1036,64 +1035,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 );
               })()}
 
-              {(() => {
-                const acadAdminActs = Array.isArray(selectedPta.academico_admin)
-                  ? selectedPta.academico_admin
-                  : (selectedPta.acad_admin?.actividades || selectedPta.academico_administrativo?.actividades || []);
-                if (!acadAdminActs.length) return null;
-
-                return (
-                  <div className="bg-orange-50/70 rounded-2xl border border-orange-100 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
-                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-orange-900 mb-3 flex items-center gap-2">
-                      <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600" />
-                      Actividad Academico-Administrativa
-                    </h4>
-
-                    <div className="space-y-2">
-                      {acadAdminActs.map((actividad: any, idx: number) => (
-                        <div key={actividad.id || actividad.actividad_id || idx} className="bg-white rounded-xl border border-orange-100 p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-[0.78rem] sm:text-[0.84rem] font-extrabold text-gray-900 leading-tight">
-                                {actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad AADM'}
-                              </div>
-                              {actividad.actividad_id && (
-                                <div className="text-[0.58rem] sm:text-[0.62rem] text-gray-400 font-bold mt-1">
-                                  Codigo: {actividad.actividad_id}
-                                </div>
-                              )}
-                            </div>
-                            <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-[0.68rem] font-black shrink-0">
-                              {Number(actividad.horas || 0)}h
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-[0.68rem] sm:text-[0.72rem] text-gray-600">
-                            {(actividad.fecha_inicio || actividad.fecha_fin) && (
-                              <div>
-                                <span className="text-gray-400 font-bold">Fechas: </span>
-                                {actividad.fecha_inicio || 'Sin inicio'} - {actividad.fecha_fin || 'Sin fin'}
-                              </div>
-                            )}
-                            {actividad.consumeTotalidad && (
-                              <div>
-                                <span className="text-gray-400 font-bold">Alcance: </span>
-                                Consume el 100% del PTA
-                              </div>
-                            )}
-                          </div>
-
-                          {(actividad.descripcion || actividad.observaciones) && (
-                            <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 text-amber-900 text-[0.68rem] sm:text-[0.72rem] leading-relaxed">
-                              {actividad.descripcion || actividad.observaciones}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+              {/* Las actividades académico-administrativas se muestran dentro de
+                  "Complementarias" (son una sección de Complementarias). */}
 
               {/* Asignaturas */}
               {selectedPta.asignaturas?.length > 0 && (

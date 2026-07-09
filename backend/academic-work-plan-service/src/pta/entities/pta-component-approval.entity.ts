@@ -37,6 +37,12 @@ export class PtaComponentApprovalEntity {
   @Column({ name: 'comentarios', type: 'text', nullable: true })
   comentarios: string | null;
 
+  // Respuesta del docente al reenviar un componente devuelto (qué corrigió o por qué
+  // reenvía así). Se muestra junto a `comentarios` (el motivo original del revisor)
+  // cuando el revisor vuelve a concertar/aprobar.
+  @Column({ name: 'respuesta_docente', type: 'text', nullable: true })
+  respuestaDocente: string | null;
+
   @Column({ name: 'fecha_aprobacion', type: 'timestamp', nullable: true })
   fechaAprobacion: Date | null;
 

@@ -21,6 +21,20 @@ import {
 import html2canvas from 'html2canvas';
 import { PTA_COLORS } from './shared/ptaColors';
 import { jsPDF } from 'jspdf';
+import { getComponentesAprobacion } from '../../services/api/ptaApi';
+
+// Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
+// 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
+// Las claves coinciden con auth.permission (migración 327) y con el panel de aprobación.
+const COMPONENTE_APROBACION_SLOTS: { key: string; label: string }[] = [
+  { key: 'academica', label: 'Docencia' },
+  { key: 'investigacion', label: 'Investigación' },
+  { key: 'ext_capacitacion', label: 'Ext. Capacitación' },
+  { key: 'ext_procesos', label: 'Ext. Procesos Selección' },
+  { key: 'ext_fortalecimiento', label: 'Ext. Fortalecimiento' },
+  { key: 'ext_gobierno', label: 'Ext. Alto Gobierno' },
+  { key: 'complementarias', label: 'Complementarias' },
+];
 
 interface ReporteIndividualPTAProps {
   pta: any;
@@ -66,6 +80,24 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
     if (e.target === e.currentTarget) onClose();
   }, [onClose]);
 
+  // Aprobaciones por componente (fuente única: mismo endpoint que el panel de
+  // aprobación). Se precargan del propio PTA si vienen embebidas y se refrescan.
+  const [componentesAprobacion, setComponentesAprobacion] = useState<any[]>(
+    Array.isArray(pta?.componentes_aprobacion) ? pta.componentes_aprobacion : [],
+  );
+  useEffect(() => {
+    if (!pta?.id) return;
+    let cancelled = false;
+    getComponentesAprobacion(pta.id)
+      .then(res => {
+        if (!cancelled && res.success && Array.isArray(res.data)) {
+          setComponentesAprobacion(res.data);
+        }
+      })
+      .catch(() => { /* si no está disponible, se muestran como pendientes */ });
+    return () => { cancelled = true; };
+  }, [pta?.id]);
+
   if (!pta) return null;
 
   const horasProgramables = pta.horas_a_programar || 800;
@@ -84,16 +116,24 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       }, {})
     : (pta.extension && typeof pta.extension === 'object' ? pta.extension : {});
 
-  const complementarias = Array.isArray(pta.complementarias)
+  // AADM es una sección de Complementarias. Separamos ambas secciones (y fusionamos
+  // data legacy) para no doble-contar ni mostrar AADM como componente aparte.
+  const _rawComp = Array.isArray(pta.complementarias)
     ? pta.complementarias
     : (pta.complementarias?.actividades || []);
-
-  const acadAdminRaw = pta.acad_admin || pta.academico_administrativo || {};
-  const acadAdminActividades = Array.isArray(acadAdminRaw)
-    ? acadAdminRaw
-    : Array.isArray(pta.academico_admin)
-      ? pta.academico_admin
-      : (acadAdminRaw.actividades || []);
+  const _legacyAadm = Array.isArray(pta.academico_admin)
+    ? pta.academico_admin
+    : (Array.isArray(pta.acad_admin) ? pta.acad_admin
+      : (pta.acad_admin?.actividades || pta.academico_administrativo?.actividades || []));
+  const _isAadm = (c: any) => c?.seccion === 'academico_administrativas'
+    || (c?.seccion == null && c?.consumeTotalidad !== undefined);
+  const _compDocencia = _rawComp.filter((c: any) => !_isAadm(c));
+  const _compAadm = _rawComp.filter((c: any) => _isAadm(c));
+  // Dedup: si complementarias ya trae la sección AADM se usa esa; el array legacy
+  // academico_admin solo aplica a PTAs viejos (evita duplicar en el reporte).
+  const acadAdminActividades = _compAadm.length > 0 ? _compAadm : _legacyAadm;
+  // Todo es "Actividades Complementarias": una sola lista (a la docencia + AADM).
+  const complementarias = [..._compDocencia, ...acadAdminActividades];
 
 
   // Historial: accept both camelCase (historialEstados) and legacy snake_case
@@ -112,12 +152,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         if (Array.isArray(arr)) return s + arr.reduce((ss: number, a: any) => ss + (a.horas || 0), 0);
         return s;
       }, 0);
-  const horasComplementarias = pta.horas_complementarias
-    || complementarias.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
-  const horasAcadAdmin = pta.horas_acad_admin
-    || acadAdminActividades.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
+  const horasAcadAdmin = acadAdminActividades.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
+  const horasComplementariasDocencia = _compDocencia.reduce((s: number, a: any) => s + (Number(a.horas) || 0), 0);
+  // Complementarias unificado = sección docencia + sección académico-administrativa.
+  const horasComplementarias = pta.horas_complementarias != null
+    ? pta.horas_complementarias
+    : (horasComplementariasDocencia + horasAcadAdmin);
   const totalProgramado = pta.total_horas_programadas
-    || (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias + horasAcadAdmin);
+    || (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
 
   const pctDocencia = ((horasDocencia / horasProgramables) * 100).toFixed(1);
   const pctInvestigacion = ((horasInvestigacion / horasProgramables) * 100).toFixed(1);
@@ -137,8 +179,10 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       ok: horasExtension <= horasProgramables * 0.25,
     },
     {
-      label: `Complementarias: ${pctComplementarias}% (Maximo 25%)`,
-      ok: horasComplementarias <= horasProgramables * 0.25,
+      // El tope del 25% aplica a la sección "complementarias a la docencia"; la
+      // sección académico-administrativa tiene sus propios topes (incl. 100%).
+      label: `Complementarias a la docencia: ${((horasComplementariasDocencia / horasProgramables) * 100).toFixed(1)}% (Maximo 25%)`,
+      ok: horasComplementariasDocencia <= horasProgramables * 0.25,
     },
     {
       label: `Total programado: ${pctTotal}% de ${horasProgramables}h`,
@@ -614,60 +658,8 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           </div>
         </div>
 
-        {/* Section 6: Académico-Administrativas */}
-        <SectionHeader icon={Briefcase} label="6. ACADEMICO-ADMINISTRATIVAS" color={PTA_COLORS.ACAD_ADMIN} />
-        <div style={{ padding: '16px 32px 20px' }}>
-          {acadAdminActividades.length > 0 ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ background: `${PTA_COLORS.ACAD_ADMIN}15`, borderBottom: `2px solid ${PTA_COLORS.ACAD_ADMIN}40` }}>
-                  <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>#</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>Actividad</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>Horas</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.ACAD_ADMIN }}>% PTA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {acadAdminActividades.map((act: any, idx: number) => (
-                  <tr key={idx} style={{ borderBottom: `1px solid ${PTA_COLORS.ACAD_ADMIN}30` }}>
-                    <td style={{ padding: '6px 10px', color: '#9CA3AF', verticalAlign: 'top' }}>{idx + 1}</td>
-                    <td style={{ padding: '6px 10px', color: '#111827' }}>
-                      <div>{act.nombre || act.actividad || 'Actividad Académico-Administrativa'}</div>
-                      {act.descripcion && (
-                        <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2, fontStyle: 'italic' }}>{act.descripcion}</div>
-                      )}
-                      {(act.fecha_inicio || act.fecha_fin) && (
-                        <div style={{ display: 'flex', gap: 10, fontSize: '0.7rem', color: '#9CA3AF', marginTop: 2 }}>
-                          {act.fecha_inicio && <span>Inicio: {fmtFecha(act.fecha_inicio)}</span>}
-                          {act.fecha_fin && <span>Fin: {fmtFecha(act.fecha_fin)}</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, verticalAlign: 'top' }}>
-                      {act.horas || 0}
-                    </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#6B7280', verticalAlign: 'top' }}>
-                      {((act.horas || 0) / horasProgramables * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div style={{ padding: 12, color: '#9CA3AF', fontSize: '0.82rem', fontStyle: 'italic' }}>
-              Sin actividades académico-administrativas registradas
-            </div>
-          )}
-          <div style={{
-            marginTop: 10, padding: '8px 12px', borderRadius: 6, background: `${PTA_COLORS.ACAD_ADMIN}15`,
-            fontWeight: 700, fontSize: '0.85rem', color: PTA_COLORS.ACAD_ADMIN, textAlign: 'right',
-          }}>
-            TOTAL HORAS ACAD. ADMIN.: {horasAcadAdmin} horas ({pctAcadAdmin}%)
-          </div>
-        </div>
-
-        {/* Section 7: Resumen Ejecutivo */}
-        <SectionHeader icon={Award} label="7. RESUMEN EJECUTIVO" color="#003DA5" />
+        {/* Section 6: Resumen Ejecutivo */}
+        <SectionHeader icon={Award} label="6. RESUMEN EJECUTIVO" color="#003DA5" />
         <div style={{ padding: '16px 32px 24px' }}>
           {/* Two-column layout: Donut + Table */}
           <div style={{ display: 'flex', gap: 24, alignItems: 'stretch', marginBottom: 16 }}>
@@ -679,7 +671,6 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                   { label: 'Investigación', value: horasInvestigacion, color: PTA_COLORS.INVESTIGACION },
                   { label: 'Extensión', value: horasExtension, color: PTA_COLORS.EXTENSION },
                   { label: 'Complementarias', value: horasComplementarias, color: PTA_COLORS.COMPLEMENTARIAS },
-                  { label: 'Acad. Admin.', value: horasAcadAdmin, color: PTA_COLORS.ACAD_ADMIN },
                 ]}
                 total={totalProgramado}
                 limit={horasProgramables}
@@ -703,7 +694,6 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     { label: 'Investigación', horas: horasInvestigacion, pct: pctInvestigacion, color: PTA_COLORS.INVESTIGACION },
                     { label: 'Extensión', horas: horasExtension, pct: pctExtension, color: PTA_COLORS.EXTENSION },
                     { label: 'Complementarias', horas: horasComplementarias, pct: pctComplementarias, color: PTA_COLORS.COMPLEMENTARIAS },
-                    { label: 'Acad. Admin.', horas: horasAcadAdmin, pct: pctAcadAdmin, color: PTA_COLORS.ACAD_ADMIN },
                   ].map((row, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #E5E7EB' }}>
                       <td style={{ padding: '7px 10px', fontWeight: 600, color: row.color }}>
@@ -784,105 +774,76 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           </div>
         </div>
 
-        {/* Section 8: Firmas y Aprobaciones */}
-        <SectionHeader icon={Award} label="8. FIRMAS Y APROBACIONES" color="#003DA5" />
+        {/* Section 7: Firmas y Aprobaciones */}
+        <SectionHeader icon={Award} label="7. FIRMAS Y APROBACIONES" color="#003DA5" />
         <div style={{ padding: '16px 32px 28px' }}>
-          {/* Concertacion signatures */}
+          {/* Firma del docente (concertación) */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20,
+            padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,
           }}>
-            <div style={{
-              padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center',
-            }}>
-              <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
-              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
-                {pta.docente_nombre || 'N/A'}
-              </div>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '3px 10px', borderRadius: 6,
-                background: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#D1FAE5' : '#FEF3C7',
-                color: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#065F46' : '#92400E',
-                fontSize: '0.72rem', fontWeight: 600,
-              }}>
-                {pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? (
-                  <>
-                    <CheckCircle2 style={{ width: 12, height: 12 }} />
-                    Firma Digital Verificada
-                  </>
-                ) : (
-                  <>
-                    <Clock style={{ width: 12, height: 12 }} />
-                    Pendiente
-                  </>
-                )}
-              </div>
+            <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+              {pta.docente_nombre || 'N/A'}
             </div>
             <div style={{
-              padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center',
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '3px 10px', borderRadius: 6,
+              background: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#D1FAE5' : '#FEF3C7',
+              color: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#065F46' : '#92400E',
+              fontSize: '0.72rem', fontWeight: 600,
             }}>
-              <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>JEFE INMEDIATO</div>
-              <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
-                {historial.find((h: any) =>
-                  getField(h, 'actorRol', 'actor_rol') === 'Jefatura' ||
-                  (getField(h, 'estadoNuevo', 'estado_nuevo') === 'Pendiente Decanatura')
-                )?.actorRol || historial.find((h: any) =>
-                  getField(h, 'actorRol', 'actor_rol') === 'Jefatura' ||
-                  (getField(h, 'estadoNuevo', 'estado_nuevo') === 'Pendiente Decanatura')
-                )?.actor_rol || 'Pendiente'}
-              </div>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '3px 10px', borderRadius: 6,
-                background: aprobaciones.length > 0 ? '#D1FAE5' : '#F3F4F6',
-                color: aprobaciones.length > 0 ? '#065F46' : '#9CA3AF',
-                fontSize: '0.72rem', fontWeight: 600,
-              }}>
-                {aprobaciones.length > 0 ? (
-                  <><CheckCircle2 style={{ width: 12, height: 12 }} /> Aprobado</>
-                ) : (
-                  <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
-                )}
-              </div>
+              {pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? (
+                <><CheckCircle2 style={{ width: 12, height: 12 }} /> Firma Digital Verificada</>
+              ) : (
+                <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
+              )}
             </div>
           </div>
 
-          {/* Approval chain */}
+          {/* Aprobación por COMPONENTE — flujo paralelo (no lineal). Un slot por
+              componente / sección de extensión (7 en total). Al firmarse aparece
+              el nombre del aprobador. */}
           <h4 style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 10 }}>
-            Cadena de Aprobaciones
+            Aprobación por Componente
           </h4>
-          {aprobaciones.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {aprobaciones.map((apr: any, idx: number) => (
-                <div key={idx} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '10px 14px', borderRadius: 8, border: '1px solid #D1FAE5',
-                  background: '#F0FDF4',
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12,
+          }}>
+            {COMPONENTE_APROBACION_SLOTS.map(slot => {
+              const apr = componentesAprobacion.find((c: any) => c.componente === slot.key);
+              const estado = apr?.estado || 'pendiente';
+              const aprobado = estado === 'aprobado';
+              const devuelto = estado === 'devuelto';
+              const badgeBg = aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : '#F3F4F6';
+              const badgeColor = aprobado ? '#065F46' : devuelto ? '#991B1B' : '#9CA3AF';
+              const fecha = apr?.fechaAprobacion ? fmtFecha(apr.fechaAprobacion) : '';
+              return (
+                <div key={slot.key} style={{
+                  padding: 12, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center',
+                  background: aprobado ? '#F0FDF4' : devuelto ? '#FEF2F2' : '#FFFFFF',
                 }}>
-                  <CheckCircle2 style={{ width: 18, height: 18, color: '#059669', flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#065F46' }}>
-                      {apr.nivel}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#047857' }}>
-                      Aprobado por: {apr.aprobador} | Fecha: {apr.fecha}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#6B7280', fontStyle: 'italic' }}>
-                      {apr.observaciones}
-                    </div>
+                  <div style={{ fontSize: '0.66rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    {slot.label}
                   </div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: aprobado || devuelto ? '#111827' : '#9CA3AF', marginBottom: 5, minHeight: 18 }}>
+                    {aprobado || devuelto ? (apr?.aprobadorNombre || 'Revisor Autorizado') : '—'}
+                  </div>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '3px 10px', borderRadius: 6,
+                    background: badgeBg, color: badgeColor, fontSize: '0.66rem', fontWeight: 600,
+                  }}>
+                    {aprobado ? (<><CheckCircle2 style={{ width: 11, height: 11 }} /> Aprobado</>)
+                      : devuelto ? (<><Clock style={{ width: 11, height: 11 }} /> Devuelto</>)
+                        : (<><Clock style={{ width: 11, height: 11 }} /> Pendiente por firmar</>)}
+                  </div>
+                  {fecha && (
+                    <div style={{ fontSize: '0.63rem', color: '#9CA3AF', marginTop: 4 }}>{fecha}</div>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{
-              padding: 14, borderRadius: 8, background: '#F9FAFB',
-              border: '1px solid #E5E7EB', textAlign: 'center',
-              fontSize: '0.82rem', color: '#9CA3AF',
-            }}>
-              Estado actual: <strong style={{ color: '#374151' }}>{pta.estado || 'Borrador'}</strong> - Cadena de aprobaciones pendiente
-            </div>
-          )}
+              );
+            })}
+          </div>
 
           {/* Digital signature */}
           {firmaDigital && (
