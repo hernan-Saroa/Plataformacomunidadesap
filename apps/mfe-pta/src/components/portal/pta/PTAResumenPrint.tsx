@@ -211,11 +211,18 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
               );
             })()}
 
-            {/* Componente Complementarias */}
+            {/* Componente Complementarias (incluye la sección académico-administrativa) */}
             {(() => {
-              const acts = Array.isArray(pta?.complementarias)
+              const rawComp = Array.isArray(pta?.complementarias)
                 ? pta.complementarias
                 : (pta?.complementarias?.actividades || []);
+              const legacy = Array.isArray(pta?.academico_admin)
+                ? pta.academico_admin
+                : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
+              // Dedup: el array legacy solo se agrega si complementarias NO trae la sección AADM.
+              const hasAadmInComp = rawComp.some((c: any) => c?.seccion === 'academico_administrativas'
+                || (c?.seccion == null && c?.consumeTotalidad !== undefined));
+              const acts = hasAadmInComp ? rawComp : [...rawComp, ...legacy];
               if (acts.length === 0) return null;
               return (
                 <div className="mb-8">
@@ -236,42 +243,6 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
                           <tr key={idx}>
                             <td className="border border-gray-200 p-2">{a.nombre || a.actividad || 'Actividad'}</td>
                             <td className="border border-gray-200 p-2">{a.categoria || a.tipo || 'Complementaria'}</td>
-                            <td className="border border-gray-200 p-2 text-center">{(totalH / 16).toFixed(1)}</td>
-                            <td className="border border-gray-200 p-2 text-center font-semibold">{totalH}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-
-            {/* Componente Académico-Administrativo */}
-            {(() => {
-              const acts = Array.isArray(pta?.academico_admin)
-                ? pta.academico_admin
-                : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
-              if (acts.length === 0) return null;
-              return (
-                <div className="mb-8">
-                  <h3 className="text-base font-bold bg-gray-100 p-2 border-l-4 mb-4" style={{ borderLeftColor: PTA_COLORS.ACAD_ADMIN }}>6. ACADÉMICO-ADMINISTRATIVAS</h3>
-                  <table className="w-full text-sm border-collapse border border-gray-200">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="border border-gray-200 p-2 text-left">Actividad</th>
-                        <th className="border border-gray-200 p-2 text-left">Categoría</th>
-                        <th className="border border-gray-200 p-2 text-center">Hrs/Sem</th>
-                        <th className="border border-gray-200 p-2 text-center">Total Hrs</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {acts.map((a: any, idx: number) => {
-                        const totalH = a.horas || 0;
-                        return (
-                          <tr key={idx}>
-                            <td className="border border-gray-200 p-2">{a.nombre || a.actividad || 'Actividad'}</td>
-                            <td className="border border-gray-200 p-2">{a.categoria || a.tipo || 'Académico-Administrativa'}</td>
                             <td className="border border-gray-200 p-2 text-center">{(totalH / 16).toFixed(1)}</td>
                             <td className="border border-gray-200 p-2 text-center font-semibold">{totalH}</td>
                           </tr>

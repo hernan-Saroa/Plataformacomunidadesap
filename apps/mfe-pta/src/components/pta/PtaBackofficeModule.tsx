@@ -21,7 +21,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  getAllPTAs, getPTAEstadisticas, updatePTAStatus, getCatalogoProgramas, seedPTAs,
+  getAllPTAs, getPTAEstadisticas, updatePTAStatus, seedPTAs,
   guardarFirmaDigitalPTA, getPTAUserData, savePTAUserData, deletePTA,
   getAllPtasConEvidencias, revisarEvidenciaPTA,
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
@@ -106,7 +106,7 @@ const SaludSistemaPTA = React.lazy(() => import('./SaludSistemaPTA').then(m => (
 const ReconciliacionMasivaPTA = React.lazy(() => import('./ReconciliacionMasivaPTA').then(m => ({ default: m.ReconciliacionMasivaPTA })));
 const BancoDocentesPTA = React.lazy(() => import('./banco-docentes/BancoDocentesPTA').then(m => ({ default: m.BancoDocentesPTA })));
 
-const ESTADOS_FILTRO = [
+const ESTADOS_REGISTRO_FILTRO = [
   { key: '', label: 'Todos los estados' },
   { key: 'pendientes', label: 'Pendientes' },
   { key: 'PROPUESTO_POR_DIRECCION', label: 'Propuesto por Dir.' },
@@ -122,6 +122,71 @@ const ESTADOS_FILTRO = [
   { key: 'Rechazado', label: 'Rechazados' },
   { key: 'Devuelto', label: 'Devueltos' },
 ];
+
+const ESTADOS_REGISTRO_OPTIONS = [
+  { key: '', label: 'Todos los estados' },
+  { key: 'Borrador', label: 'Borrador' },
+  { key: 'PROPUESTO_POR_DIRECCION', label: 'Propuesto por Dirección' },
+  { key: 'NOTIFICADO_DOCENTE', label: 'Notificado docente' },
+  { key: 'ACEPTADO_DOCENTE', label: 'Aceptado docente' },
+  { key: 'OBJETADO_DOCENTE', label: 'Objetado docente' },
+  { key: 'MODIFICADO_DOCENTE', label: 'Modificado docente' },
+  { key: 'EN_CONCERTACION', label: 'En Concertación' },
+  { key: 'CONCERTADO', label: 'Concertado' },
+  { key: 'ESCALADO_SNA', label: 'Escalado SNA' },
+  { key: 'RESUELTO_SNA', label: 'Resuelto SNA' },
+  { key: 'PENDIENTE_APROBACION', label: 'Pendiente aprobación' },
+  { key: 'Pendiente Jefatura', label: 'Pendiente Jefatura' },
+  { key: 'Pendiente Decanatura', label: 'Pendiente Decanatura' },
+  { key: 'Pendiente Gestión Profesoral', label: 'Pendiente Gestión Profesoral' },
+  { key: 'Aprobado', label: 'Aprobado' },
+  { key: 'En Firme', label: 'En Firme' },
+  { key: 'RADICADO', label: 'Radicado' },
+  { key: 'EN_EJECUCION', label: 'En ejecución' },
+  { key: 'Terminado', label: 'Terminado' },
+  { key: 'Rechazado', label: 'Rechazado' },
+  { key: 'Devuelto', label: 'Devuelto' },
+  { key: 'REVISION_DOCENTE_N1', label: 'Revisión docente N1' },
+  { key: 'REVISION_DOCENTE_N2', label: 'Revisión docente N2' },
+  { key: 'REVISION_DOCENTE_N3', label: 'Revisión docente N3' },
+  { key: 'CERRADO_INACTIVIDAD', label: 'Cerrado por inactividad' },
+  { key: 'ANULADO', label: 'Anulado' },
+];
+
+const ESTADOS_REGISTRO_PRINCIPALES = [
+  { key: '', label: 'Todos los estados' },
+  { key: 'Borrador', label: 'Borrador' },
+  { key: 'pendientes', label: 'Pendiente aprobacion' },
+  { key: 'concertacion', label: 'En Concertacion' },
+  { key: 'Aprobado', label: 'Aprobado' },
+  { key: 'Terminado', label: 'Terminado' },
+  { key: 'Finalizado', label: 'Finalizado' },
+];
+
+function getPeriodCode(period: any) {
+  return String(
+    period?.codigo ||
+      period?.periodo ||
+      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
+  ).trim();
+}
+
+function getPeriodCreationTime(period: any) {
+  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function sortPeriodsByCreation(periods: any[]) {
+  return [...periods].sort((a, b) => {
+    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
+    if (creationDifference !== 0) return creationDifference;
+    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
+      return Number(b?.anio || 0) - Number(a?.anio || 0);
+    }
+    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
+  });
+}
 
 function getStatusConfig(estado: string) {
   switch (estado) {
@@ -140,6 +205,8 @@ function getStatusConfig(estado: string) {
     case 'Pendiente Gestión Profesoral': return { bg: '#E0E7FF', color: '#3730A3', border: '#A5B4FC' };
     case 'Aprobado':
     case 'APROBADO': return { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7' };
+    case 'Finalizado':
+    case 'FINALIZADO': return { bg: '#DCFCE7', color: '#14532D', border: '#22C55E' };
     case 'En Firme':
     case 'EN_FIRME':
     case 'RADICADO': return { bg: '#047857', color: '#FFFFFF', border: '#059669' };
@@ -483,8 +550,8 @@ const COMPONENTES_SEG = [
   { key: 'docencia', label: 'Docencia', color: '#003DA5' },
   { key: 'investigacion', label: 'Investigación', color: '#7C3AED' },
   { key: 'extension', label: 'Extensión', color: '#059669' },
+  // Complementarias incluye la sección Académico-Administrativa (AADM fusionado).
   { key: 'complementarias', label: 'Complementarias', color: '#D97706' },
-  { key: 'acad_admin', label: 'Acad. Admin.', color: '#DC2626' },
 ] as const;
 
 // Estados en los que un docente puede subir documentos de soporte (ver PortalDocentePTA:
@@ -498,6 +565,32 @@ const ESTADOS_CON_DOCUMENTOS_KEYS = new Set([
   'RADICADO',
   'EN_EJECUCION',
 ]);
+
+type EstadoRevisionDocumento = 'pendiente' | 'aprobado' | 'rechazado';
+
+function normalizeRevisionDocumento(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function getEstadoRevisionDocumento(evidencia: any): EstadoRevisionDocumento {
+  const estado = normalizeRevisionDocumento(evidencia?.estado_revision ?? evidencia?.estadoRevision ?? evidencia);
+  if (estado === 'aprobado' || estado === 'aprobada') return 'aprobado';
+  if (estado === 'rechazado' || estado === 'rechazada' || estado === 'denegado' || estado === 'denegada') return 'rechazado';
+  return 'pendiente';
+}
+
+function isDocumentoAprobado(evidencia: any) {
+  return getEstadoRevisionDocumento(evidencia) === 'aprobado';
+}
+
+function isDocumentoPendiente(evidencia: any) {
+  return getEstadoRevisionDocumento(evidencia) === 'pendiente';
+}
 
 function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNombre: string; rolLabel: string }) {
   const [ptasData, setPtasData] = useState<any[]>([]);
@@ -539,10 +632,10 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   const filteredPtas = ptasData.filter((p: any) => {
     if (!aplicaSeguimiento(p)) return false;
     if (!filtroEstadoRev) return true;
-    return (p.evidencias || []).some((e: any) => (e.estado_revision || 'pendiente') === filtroEstadoRev);
+    return (p.evidencias || []).some((e: any) => getEstadoRevisionDocumento(e) === filtroEstadoRev);
   });
 
-  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + (p.evidencias || []).filter((e: any) => !e.estado_revision || e.estado_revision === 'pendiente').length, 0);
+  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + (p.evidencias || []).filter(isDocumentoPendiente).length, 0);
 
   return (
     <div style={{ padding: '0 0 40px' }}>
@@ -590,7 +683,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filteredPtas.map((pta: any) => {
-            const evsPendientes = (pta.evidencias || []).filter((e: any) => !e.estado_revision || e.estado_revision === 'pendiente');
+            const evsPendientes = (pta.evidencias || []).filter(isDocumentoPendiente);
             const isOpen = selectedPtaId === pta.pta_id;
             return (
               <div key={pta.pta_id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${evsPendientes.length > 0 ? '#FDE68A' : '#E5E7EB'}`, overflow: 'hidden' }}>
@@ -615,7 +708,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                       // Se muestran SIEMPRE los 5 componentes fijos (aunque el PTA tenga 0h en alguno).
                       const horasTotal: number = (pta as any)[`horas_${comp.key}`] || 0;
                       const aprobadas = (pta.evidencias || [])
-                        .filter((e: any) => e.componente_pta === comp.key && e.estado_revision === 'aprobado')
+                        .filter((e: any) => e.componente_pta === comp.key && isDocumentoAprobado(e))
                         .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0);
                       const pct = horasTotal > 0 ? Math.min(Math.round((aprobadas / horasTotal) * 100), 100) : 0;
                       return (
@@ -650,7 +743,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                         )}
                         {(pta.evidencias || []).map((ev: any) => {
                           const comp = COMPONENTES_SEG.find(c => c.key === ev.componente_pta);
-                          const estadoRev = ev.estado_revision || 'pendiente';
+                          const estadoRev = getEstadoRevisionDocumento(ev);
                           const isPendiente = estadoRev === 'pendiente';
                           return (
                             <div key={ev.id} style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px', border: `1px solid ${estadoRev === 'aprobado' ? '#6EE7B7' : estadoRev === 'rechazado' ? '#FCA5A5' : '#E5E7EB'}` }}>
@@ -868,6 +961,23 @@ function matchesEstadoWorkflowFilter(pta: any, filtroEstado?: string) {
   return estadoKey === filterKey;
 }
 
+function matchesEstadoRegistroFilter(pta: any, filtroEstado?: string) {
+  const filterKey = normalizeEstadoKey(filtroEstado);
+  if (!filterKey) return true;
+
+  const estadoKey = normalizeEstadoKey(pta?.estado);
+  if (filterKey === 'BORRADOR') return ESTADOS_BORRADOR_KEYS.has(estadoKey);
+  if (filterKey === 'PENDIENTES' || filterKey === 'APROBACION') return ESTADOS_APROBACION_KEYS.has(estadoKey);
+  if (filterKey === 'CONCERTACION') return ESTADOS_CONCERTACION_KEYS.has(estadoKey) && estadoKey !== 'DEVUELTO';
+  if (filterKey === 'ESCALADO_SNA' || filterKey === 'SNA') return ESTADOS_SNA_KEYS.has(estadoKey);
+  if (filterKey === 'APROBADO') return estadoKey === 'APROBADO';
+  if (filterKey === 'TERMINADO') return estadoKey === 'TERMINADO';
+  if (filterKey === 'FINALIZADO') return estadoKey === 'FINALIZADO';
+  if (filterKey === 'DEVUELTO') return estadoKey === 'DEVUELTO';
+
+  return estadoKey === filterKey;
+}
+
 function isEstadoPendienteAprobacion(estado?: string) {
   return ESTADOS_PENDIENTES_APROBACION_KEYS.has(normalizeEstadoKey(estado));
 }
@@ -912,6 +1022,34 @@ function calcAging(historialEstados?: any[], updatedAt?: string, createdAt?: str
   if (days <= 5) return { days, label: `${days}d`, color: '#D97706', bg: '#FEF3C7' };
   if (days <= 10) return { days, label: `${days}d`, color: '#EA580C', bg: '#FFF7ED' };
   return { days, label: `${days}d`, color: '#DC2626', bg: '#FEE2E2' };
+}
+
+function getPtaReferenceDate(pta: any): string | null {
+  return pta?.fecha_orden || pta?.fecha_referencia || pta?.fecha_envio_revision || pta?.updatedAt || pta?.updated_at || pta?.createdAt || pta?.created_at || null;
+}
+
+function getPtaSortValue(pta: any, field: string): any {
+  if (field === 'fecha_orden' || field === 'fecha_referencia' || field === 'updated_at' || field === 'updatedAt') {
+    const time = new Date(getPtaReferenceDate(pta) || 0).getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+  return pta?.[field] || '';
+}
+
+function getComponentApprovalGroups(pta: any): { pendientes: any[]; aprobados: any[] } {
+  const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+  const normalized = items
+    .map((item: any) => ({
+      key: String(item?.key || item?.componente || item?.label || ''),
+      label: String(item?.label || item?.nombre || item?.componente || 'Componente'),
+      estado: String(item?.estado || 'pendiente').toLowerCase(),
+    }))
+    .filter((item: any) => item.key || item.label);
+
+  return {
+    pendientes: normalized.filter((item: any) => item.estado !== 'aprobado'),
+    aprobados: normalized.filter((item: any) => item.estado === 'aprobado'),
+  };
 }
 
 // ═══ Stat card → estado filter map ═══
@@ -1016,7 +1154,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPeriodo, setFiltroPeriodo] = useState('');
-  const [filtroPrograma, setFiltroPrograma] = useState('');
+  const [filtroEstadoRegistro, setFiltroEstadoRegistro] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // ─── Periodo Académico (Selector Global) ───
@@ -1024,27 +1162,42 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [periodoSeleccionadoPTA, setPeriodoSeleccionadoPTA] = useState<string>('');
   const [showPeriodoDropdownPTA, setShowPeriodoDropdownPTA] = useState(false);
 
-  useEffect(() => {
-    const cargarPeriodos = async () => {
-      try {
-        const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
-        const data = Array.isArray(res) ? res : [];
-        setPeriodosPTA(data);
-        const activo = data.find((p: any) => p.estado === 'en_curso');
-        if (activo) {
-          const codigo = activo.codigo || `${activo.anio}-${activo.semestre}`;
-          setPeriodoSeleccionadoPTA(codigo);
-          setFiltroPeriodo(codigo);
-        }
-      } catch { setPeriodoSeleccionadoPTA('2025-2'); }
-    };
-    cargarPeriodos();
+  const cargarPeriodosPTA = useCallback(async (preferredCode?: string) => {
+    try {
+      const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+      const data = sortPeriodsByCreation(Array.isArray(res) ? res : []);
+      setPeriodosPTA(data);
+
+      const preferred = preferredCode
+        ? data.find((p: any) => getPeriodCode(p) === preferredCode)
+        : null;
+      const activo = preferred || data.find((p: any) => p.estado === 'en_curso') || data[0];
+      const codigo = getPeriodCode(activo);
+      setPeriodoSeleccionadoPTA(codigo);
+      setFiltroPeriodo(codigo);
+    } catch {
+      setPeriodosPTA([]);
+      setPeriodoSeleccionadoPTA('');
+      setFiltroPeriodo('');
+    }
   }, []);
 
-  const periodoActivoPTA = periodosPTA.find((p: any) => p.estado === 'en_curso');
-  const periodoActivoCodigoPTA = periodoActivoPTA?.codigo || periodoActivoPTA?.periodo || '2025-2';
-  const esPeriodoActivoPTA = !periodoSeleccionadoPTA || periodoSeleccionadoPTA === periodoActivoCodigoPTA;
-  const [programas, setProgramas] = useState<any[]>([]);
+  useEffect(() => {
+    cargarPeriodosPTA();
+  }, [cargarPeriodosPTA]);
+
+  useEffect(() => {
+    const handleCatalogPeriodChange = (event: Event) => {
+      const periodCode = (event as CustomEvent<{ periodCode?: string }>).detail?.periodCode;
+      cargarPeriodosPTA(periodCode);
+    };
+    window.addEventListener('esap:academic-catalog-period-changed', handleCatalogPeriodChange);
+    return () => window.removeEventListener('esap:academic-catalog-period-changed', handleCatalogPeriodChange);
+  }, [cargarPeriodosPTA]);
+
+  const periodoActivoPTA = periodosPTA.find((p: any) => p.estado === 'en_curso') || periodosPTA[0];
+  const periodoActivoCodigoPTA = getPeriodCode(periodoActivoPTA);
+  const esPeriodoActivoPTA = !!periodoSeleccionadoPTA && periodoSeleccionadoPTA === periodoActivoCodigoPTA;
   const [estadisticas, setEstadisticas] = useState<any>(null);
   const [selectedPTA, setSelectedPTA] = useState<any>(null);
   const [showApproval, setShowApproval] = useState(false);
@@ -1093,8 +1246,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     return () => window.removeEventListener('pta:open-detalle', handleOpen);
   }, []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<string>('docente_nombre');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortBy, setSortBy] = useState<string>('fecha_orden');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>(() => {
     // Default to kanban on mobile for better UX
     if (typeof window !== 'undefined' && window.innerWidth < 768) return 'kanban';
@@ -1279,7 +1432,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [filtroEstado, filtroPeriodo, filtroPrograma]);
+  }, [filtroEstado, filtroPeriodo]);
 
   // ═══ Feature 23: Pin/unpin handler ═══
   const togglePin = useCallback((ptaId: string) => {
@@ -1466,16 +1619,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     const estadoBackend = getBackendEstadoFilter(filtroEstado);
     const ptaFilters: any = {
       periodo: filtroPeriodo,
-      programa: filtroPrograma,
       nivelAprobacion: permisos.nivelAprobacion,
       isSuperUser: auth.isSuperUser,
     };
     if (estadoBackend) ptaFilters.estado = estadoBackend;
 
-    const [ptaRes, statsRes, progsRes] = await Promise.all([
+    const [ptaRes, statsRes] = await Promise.all([
       getAllPTAs(ptaFilters),
       getPTAEstadisticas(filtroPeriodo),
-      getCatalogoProgramas(),
     ]);
     
     // Auto-seed desactivado: la tabla solo muestra PTAs reales enviados por docentes
@@ -1488,19 +1639,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       setPtas([]);
     }
     if (statsRes.success) setEstadisticas(statsRes.data);
-    if (progsRes.success && Array.isArray(progsRes.data)) {
-      setProgramas(progsRes.data);
-    } else {
-      setProgramas([]);
-    }
     setLoading(false);
     setLastRefreshed(new Date());
     setRefreshCountdown(120);
   };
 
-  useEffect(() => { loadData(); setCurrentPage(1); }, [filtroEstado, filtroPeriodo, filtroPrograma]);
+  useEffect(() => { loadData(); setCurrentPage(1); }, [filtroEstado, filtroPeriodo]);
   // Reset page when search changes
-  useEffect(() => { setCurrentPage(1); }, [searchQuery]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstadoRegistro]);
 
   // ═══ Cargar personas cuando se navega al Banco de Docentes ═══
   useEffect(() => {
@@ -1661,9 +1807,13 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     if (filtroEstado) {
       result = result.filter((p: any) => matchesEstadoWorkflowFilter(p, filtroEstado));
     }
+
+    if (filtroEstadoRegistro) {
+      result = result.filter((p: any) => matchesEstadoRegistroFilter(p, filtroEstadoRegistro));
+    }
     
     return result;
-  }, [ptas, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado]);
+  }, [ptas, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro]);
 
 
   // ═══ Feature 14: Keyboard Navigation ═══
@@ -1696,7 +1846,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); setFocusedIdx(f => Math.max(f - 1, 0)); }
       if (e.key === 'Enter' && focusedIdx >= 0) {
         const sorted = [...filteredPtas].sort((a: any, b: any) => {
-          const aVal = a[sortBy] || ''; const bVal = b[sortBy] || '';
+          const aVal = getPtaSortValue(a, sortBy); const bVal = getPtaSortValue(b, sortBy);
           return sortDir === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
         });
         const pageStart = (currentPage - 1) * PAGE_SIZE;
@@ -1714,7 +1864,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         const sorted3 = [...filteredPtas].sort((a: any, b: any) => {
           const aPin = pinnedIds.has(a.id) ? 0 : 1; const bPin = pinnedIds.has(b.id) ? 0 : 1;
           if (aPin !== bPin) return aPin - bPin;
-          const aVal = a[sortBy] || ''; const bVal = b[sortBy] || '';
+          const aVal = getPtaSortValue(a, sortBy); const bVal = getPtaSortValue(b, sortBy);
           return sortDir === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
         });
         const ps3 = (currentPage - 1) * PAGE_SIZE;
@@ -1726,7 +1876,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           const aPin = pinnedIds.has(a.id) ? 0 : 1;
           const bPin = pinnedIds.has(b.id) ? 0 : 1;
           if (aPin !== bPin) return aPin - bPin;
-          const aVal = a[sortBy] || ''; const bVal = b[sortBy] || '';
+          const aVal = getPtaSortValue(a, sortBy); const bVal = getPtaSortValue(b, sortBy);
           return sortDir === 'asc' ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
         });
         const pageStart2 = (currentPage - 1) * PAGE_SIZE;
@@ -1908,8 +2058,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       if (aPri >= 0) return -1;
       if (bPri >= 0) return 1;
     }
-    const aVal = a[sortBy] || '';
-    const bVal = b[sortBy] || '';
+    const aVal = getPtaSortValue(a, sortBy);
+    const bVal = getPtaSortValue(b, sortBy);
     if (typeof aVal === 'number' && typeof bVal === 'number') {
       return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
     }
@@ -2247,7 +2397,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const concertacionCount = filteredPtas.filter((p: any) => p.estado === 'EN_CONCERTACION').length;
 
   // Active filter count for mobile badge
-  const activeFilterCount = [searchQuery, filtroEstado, filtroPrograma !== ''].filter(Boolean).length;
+  const activeFilterCount = [searchQuery, filtroEstado, filtroEstadoRegistro !== ''].filter(Boolean).length;
 
   // ── Atención requerida ──
   return (
@@ -2344,7 +2494,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                         onClick={() => setShowPeriodoDropdownPTA(!showPeriodoDropdownPTA)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#003DA5]/20 bg-[#EBF0FA] text-[#003DA5] text-sm font-bold hover:border-[#003DA5]/40 hover:bg-[#dce7f9] transition-all shadow-sm"
                       >
-                        {periodoSeleccionadoPTA || '2025-2'}
+                        {periodoSeleccionadoPTA || 'Sin periodo'}
                         {esPeriodoActivoPTA && (
                           <span className="text-[9px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Actual</span>
                         )}
@@ -2358,11 +2508,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Periodos Académicos</p>
                             </div>
                             {periodosPTA.length > 0 ? periodosPTA.map((p: any, idx: number) => {
-                              const codigo = p.codigo || `${p.anio}-${p.semestre}`;
+                              const codigo = getPeriodCode(p);
                               const esActivo = p.estado === 'en_curso';
                               return (
                                 <button
-                                  key={idx}
+                                  key={codigo || idx}
                                   onClick={() => {
                                     setPeriodoSeleccionadoPTA(codigo);
                                     setFiltroPeriodo(codigo);
@@ -2377,7 +2527,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 </button>
                               );
                             }) : (
-                              <div className="px-3 py-3 text-sm text-gray-500">2025-2 (Actual)</div>
+                              <div className="px-3 py-3 text-sm text-gray-500">No hay periodos disponibles</div>
                             )}
                           </div>
                         </>
@@ -2612,9 +2762,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               setFiltroPeriodo(v);
               setPeriodoSeleccionadoPTA(v);
             }}
-            filtroPrograma={filtroPrograma}
-            setFiltroPrograma={setFiltroPrograma}
-            programas={programas}
+            periodosAcademicos={periodosPTA}
+            filtroEstadoRegistro={filtroEstadoRegistro}
+            setFiltroEstadoRegistro={setFiltroEstadoRegistro}
+            estadosRegistro={ESTADOS_REGISTRO_PRINCIPALES}
             vistaActual={viewMode}
             setVistaActual={setViewMode}
             additionalTools={
@@ -3212,8 +3363,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 if (aPri >= 0) return -1;
                 if (bPri >= 0) return 1;
               }
-              const aVal = a[sortBy] || '';
-              const bVal = b[sortBy] || '';
+              const aVal = getPtaSortValue(a, sortBy);
+              const bVal = getPtaSortValue(b, sortBy);
               if (typeof aVal === 'number' && typeof bVal === 'number') {
                 return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
               }
@@ -3578,7 +3729,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       {effectiveCols.has('docente') && <SortableHeader label="Docente" field="docente_nombre" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('estado') && <SortableHeader label="Estado" field="estado" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('aging') && <span title="Días en estado actual">Días</span>}
-                      {effectiveCols.has('fecha') && <span>Fecha</span>}
+                      {effectiveCols.has('fecha') && <SortableHeader label="Fecha" field="fecha_orden" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('hora') && <span>Hora</span>}
                       {effectiveCols.has('dedicacion') && <span>Dedic.</span>}
                       {effectiveCols.has('carga') && <SortableHeader label="Carga" field="total_horas_programadas" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
@@ -3660,16 +3811,20 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const compAprobados = Number(pta.componentes_aprobados);
                       const compTotal = Number(pta.componentes_total);
                       const tieneAvanceComponentes = Number.isFinite(compAprobados) && Number.isFinite(compTotal) && compTotal > 0;
+                      const canShowComponentPopover = isPendiente && tieneAvanceComponentes;
+                      const componentGroups = getComponentApprovalGroups(pta);
                       const badgeText = (isPendiente && tieneAvanceComponentes)
                         ? `${compAprobados}/${compTotal} componentes`
                         : estadoLabel;
                       const badgeTitle = (isPendiente && tieneAvanceComponentes)
                         ? `${compAprobados} de ${compTotal} componentes aprobados — ${estadoLabel}`
                         : estadoLabel;
-                      const tieneTotalidadAcadAdmin = Array.isArray(pta.academico_admin) &&
-                        pta.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+                      const tieneTotalidadAcadAdmin =
+                        (Array.isArray(pta.academico_admin) && pta.academico_admin.some((a: any) => a?.consumeTotalidad === true)) ||
+                        (Array.isArray(pta.complementarias) && pta.complementarias.some((a: any) => a?.consumeTotalidad === true));
 
                       const aging = calcAging(pta.historialEstados, pta.updatedAt, pta.createdAt);
+                      const referenceDate = getPtaReferenceDate(pta);
 
                       const isFocused = focusedIdx === idx;
 
@@ -3765,18 +3920,18 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 maxWidth: '100%', minWidth: 0,
                                 whiteSpace: 'normal', overflowWrap: 'break-word',
                                 lineHeight: 1.15, textAlign: 'center',
-                                cursor: permisos.puedeAprobar && isPendiente ? 'pointer' : 'default',
+                                cursor: canShowComponentPopover ? 'pointer' : 'default',
                               }}
                               onClick={() => {
-                                if (permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
+                                if (canShowComponentPopover) {
                                   setInlineStatusPtaId(inlineStatusPtaId === pta.id ? null : pta.id);
                                 }
                               }}
-                              title={permisos.puedeAprobar && isPendiente ? `Clic para cambio rápido de estado: ${badgeTitle}` : badgeTitle}
+                              title={canShowComponentPopover ? `Ver componentes: ${badgeTitle}` : badgeTitle}
                             >
                               <span style={{ minWidth: 0 }}>{badgeText}</span>
-                              {permisos.puedeAprobar && isPendiente && puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective) && (
-                                <Zap style={{ width: 7, height: 7, flexShrink: 0 }} />
+                              {canShowComponentPopover && (
+                                <Layers style={{ width: 8, height: 8, flexShrink: 0 }} />
                               )}
                             </span>
                             {inlineStatusPtaId === pta.id && (
@@ -3785,43 +3940,59 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 <div style={{
                                   position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 9999,
                                   background: 'white', borderRadius: 8, border: '1px solid #E5E7EB',
-                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 230, overflow: 'hidden',
+                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 'min(280px, calc(100vw - 32px))',
+                                  maxWidth: 280, padding: 10, overflow: 'hidden',
                                 }}>
-                                  <div style={{ padding: '6px 10px', borderBottom: '1px solid #F3F4F6', fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase' }}>
-                                    Cambio rápido
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingBottom: 7, borderBottom: '1px solid #F3F4F6' }}>
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Componentes</span>
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 7px', whiteSpace: 'nowrap' }}>
+                                      {compAprobados}/{compTotal}
+                                    </span>
                                   </div>
-                                  {[
-                                    { estado: getNextState(pta.estado), label: getNextStateLabel(pta.estado), icon: ChevronRight, color: '#059669' },
-                                    { estado: 'Devuelto', label: 'Devolver', icon: RotateCcw, color: '#D97706' },
-                                  ].map(opt => {
-                                    const optSc = getStatusConfig(opt.estado);
-                                    return (
-                                      <button
-                                        key={opt.estado}
-                                        onClick={() => handleInlineStatusChange(pta.id, opt.estado)}
-                                        disabled={procesando}
-                                        style={{
-                                          width: '100%', padding: '7px 10px', border: 'none',
-                                          background: 'transparent', cursor: 'pointer', textAlign: 'left',
-                                          display: 'flex', alignItems: 'center', gap: 6,
-                                          fontSize: '0.75rem', fontWeight: 600, color: opt.color,
-                                          borderBottom: '1px solid #F9FAFB',
-                                        }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                      >
-                                        <opt.icon style={{ width: 11, height: 11 }} />
-                                        <span>{opt.label}</span>
-                                        <span style={{
-                                          marginLeft: 'auto', padding: '1px 5px', borderRadius: 4,
-                                          background: optSc.bg, color: optSc.color, fontSize: '0.55rem', fontWeight: 700,
-                                          maxWidth: 115, whiteSpace: 'normal', textAlign: 'right', lineHeight: 1.15,
-                                        }}>
-                                          {opt.estado.replace(/_/g, ' ')}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
+                                  {componentGroups.pendientes.length === 0 && componentGroups.aprobados.length === 0 ? (
+                                    <div style={{ paddingTop: 8, fontSize: '0.72rem', color: '#6B7280', lineHeight: 1.3 }}>
+                                      Sin detalle de componentes disponible.
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'grid', gap: 9, paddingTop: 9, maxHeight: 220, overflowY: 'auto' }}>
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, fontSize: '0.66rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
+                                          <Clock style={{ width: 10, height: 10 }} /> Pendientes ({componentGroups.pendientes.length})
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                          {componentGroups.pendientes.length > 0 ? componentGroups.pendientes.map((item: any) => (
+                                            <span key={`pend-${item.key}`} style={{
+                                              padding: '3px 7px', borderRadius: 999, background: item.estado === 'devuelto' ? '#FFF7ED' : '#FFFBEB',
+                                              color: item.estado === 'devuelto' ? '#9A3412' : '#92400E', border: `1px solid ${item.estado === 'devuelto' ? '#FDBA74' : '#FDE68A'}`,
+                                              fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.15,
+                                            }}>
+                                              {item.label}{item.estado === 'devuelto' ? ' (devuelto)' : ''}
+                                            </span>
+                                          )) : (
+                                            <span style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 600 }}>Ninguno</span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, fontSize: '0.66rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                                          <CheckCircle style={{ width: 10, height: 10 }} /> Aprobados ({componentGroups.aprobados.length})
+                                        </div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                          {componentGroups.aprobados.length > 0 ? componentGroups.aprobados.map((item: any) => (
+                                            <span key={`apr-${item.key}`} style={{
+                                              padding: '3px 7px', borderRadius: 999, background: '#ECFDF5', color: '#047857',
+                                              border: '1px solid #A7F3D0', fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.15,
+                                            }}>
+                                              {item.label}
+                                            </span>
+                                          )) : (
+                                            <span style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 600 }}>Ninguno</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </>
                             )}
@@ -3849,8 +4020,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           {/* Fecha */}
                           {effectiveCols.has('fecha') && (
                             <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.78rem', color: '#6B7280', fontWeight: 600, textTransform: 'uppercase' }}>
-                              {(pta.updatedAt || pta.updated_at || pta.createdAt) ? (
-                                <><Calendar style={{ width: 11, height: 11, marginRight: 6, color: '#9CA3AF' }} /> {new Date(pta.updatedAt || pta.updated_at || pta.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }).replace('.', '')}</>
+                              {referenceDate ? (
+                                <><Calendar style={{ width: 11, height: 11, marginRight: 6, color: '#9CA3AF' }} /> {new Date(referenceDate).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }).replace('.', '')}</>
                               ) : '—'}
                             </div>
                           )}
@@ -3858,8 +4029,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           {/* Hora */}
                           {effectiveCols.has('hora') && (
                             <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.75rem', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase' }}>
-                              {(pta.updatedAt || pta.updated_at || pta.createdAt) ? (
-                                <><Clock style={{ width: 11, height: 11, marginRight: 6 }} /> {new Date(pta.updatedAt || pta.updated_at || pta.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}</>
+                              {referenceDate ? (
+                                <><Clock style={{ width: 11, height: 11, marginRight: 6 }} /> {new Date(referenceDate).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}</>
                               ) : '—'}
                             </div>
                           )}
@@ -3897,8 +4068,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 { key: 'doc', keys: ['academica'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
                                 { key: 'inv', keys: ['investigacion'], color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
                                 { key: 'ext', keys: PTA_EXTENSION_COMPONENT_KEYS, color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
-                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) },
-                                { key: 'aa', keys: ['academicas_admin'], color: '#6B21A8', has: pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
+                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) || pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
                               ].filter(c => !shouldRestrictByComponentPermission || c.keys.some(key => visibleComponentKeySet.has(key))).map(c => (
                                 <div key={c.key} style={{
                                   width: 10, height: 10, borderRadius: 2,
@@ -3948,7 +4118,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                   { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical, keys: ['investigacion'] },
                                   { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe, keys: PTA_EXTENSION_COMPONENT_KEYS },
                                   { label: 'Horas Complementarias', value: pta.horas_complementarias || 0, color: '#D97706', icon: Briefcase, keys: ['complementarias'] },
-                                  { label: 'Horas Acad. Admin.', value: pta.horas_acad_admin || 0, color: '#6B21A8', icon: Users, keys: ['academicas_admin'] },
                                   { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica'] },
                                 ].filter(item => !item.keys || !shouldRestrictByComponentPermission || item.keys.some(key => visibleComponentKeySet.has(key))).map(item => {
                                   const ItemIcon = item.icon;
@@ -4917,7 +5086,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             { label: 'Horas Investigación', key: 'horas_investigacion', isNumber: true },
             { label: 'Horas Extensión', key: 'horas_extension', isNumber: true },
             { label: 'Horas Complementarias', key: 'horas_complementarias', isNumber: true },
-            { label: 'Horas Acad. Admin.', key: 'horas_acad_admin', isNumber: true },
             { label: 'Num. Asignaturas', key: 'num_asignaturas', isNumber: true },
           ];
 
