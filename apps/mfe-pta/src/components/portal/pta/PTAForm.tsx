@@ -26,7 +26,7 @@ import {
   getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
   requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
   getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada,
-  getOfertaCetap
+  getOfertaCetap, getComponentesAprobacion
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
@@ -488,6 +488,23 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   complementarias: 'complementarias',
 };
 
+// Etiquetas legibles por componente (para banners de devolución, etc.).
+const COMPONENT_LABEL: Record<string, string> = {
+  academica: 'Docencia',
+  investigacion: 'Investigación',
+  ext_capacitacion: 'Extensión — Capacitación',
+  ext_procesos: 'Extensión — Procesos de Selección',
+  ext_fortalecimiento: 'Extensión — Fortalecimiento',
+  ext_gobierno: 'Extensión — Alto Gobierno',
+  complementarias: 'Complementarias',
+  // Legacy
+  academicas_admin: 'Actividades Académico-Administrativas',
+  academico_admin: 'Actividades Académico-Administrativas',
+};
+function componentLabel(key: string): string {
+  return COMPONENT_LABEL[key] || key;
+}
+
 const EXT_SUBSECTION_TO_COMPONENT: Record<string, PTAComponentKey> = {
   capacitacion: 'ext_capacitacion',
   seleccion: 'ext_procesos',
@@ -606,30 +623,55 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [extSubseccion, setExtSubseccion] = useState('capacitacion');
   const [complementariasSubseccion, setComplementariasSubseccion] = useState(COMP_SECCION_DOCENCIA);
   const [documentosPendientes, setDocumentosPendientes] = useState<any[]>([]);
+
+  // Aprobaciones por componente — para detectar devoluciones y mostrar sus comentarios.
+  const [componentesAprobacion, setComponentesAprobacion] = useState<any[]>([]);
+  const componentesDevueltos = useMemo(
+    () => (componentesAprobacion || []).filter(c => String(c?.estado || '').toLowerCase() === 'devuelto'),
+    [componentesAprobacion],
+  );
+  const devueltoComponentKeys = useMemo(
+    () => Array.from(new Set(componentesDevueltos.map(c => String(c?.componente || '')).filter(Boolean))),
+    [componentesDevueltos],
+  );
+  // Devolución por componente: el revisor devolvió uno o más componentes al docente.
+  // (No aplica en modo admin.)
+  const esDevolucionComponentes = !isAdminEdit && devueltoComponentKeys.length > 0;
+
   const adminAllowedComponentKeys = useMemo(
     () => (allowedComponentKeys || []).map(key => String(key)).filter(Boolean),
     [allowedComponentKeys],
   );
   const isAdminComponentRestricted = isAdminEdit && adminAllowedComponentKeys.length > 0;
+
+  // Restricción de edición por componente. Aplica a: (a) admin con edición limitada;
+  // (b) docente corrigiendo una devolución → solo puede editar los componentes devueltos.
+  const restrictedComponentKeys = useMemo(() => {
+    if (isAdminComponentRestricted) return adminAllowedComponentKeys;
+    if (esDevolucionComponentes) return devueltoComponentKeys;
+    return [];
+  }, [isAdminComponentRestricted, adminAllowedComponentKeys, esDevolucionComponentes, devueltoComponentKeys]);
+  const isComponentRestricted = restrictedComponentKeys.length > 0;
+
   const allowedComponentKeySet = useMemo(
-    () => new Set(adminAllowedComponentKeys),
-    [adminAllowedComponentKeys],
+    () => new Set(restrictedComponentKeys),
+    [restrictedComponentKeys],
   );
   const allowedFormSectionSet = useMemo(() => {
-    if (!isAdminComponentRestricted) return null;
+    if (!isComponentRestricted) return null;
     const sections = new Set<PTAFormSectionKey>();
-    adminAllowedComponentKeys.forEach(key => {
+    restrictedComponentKeys.forEach(key => {
       const section = COMPONENT_TO_FORM_SECTION[key as PTAComponentKey];
       if (section) sections.add(section);
     });
     return sections;
-  }, [adminAllowedComponentKeys, isAdminComponentRestricted]);
+  }, [restrictedComponentKeys, isComponentRestricted]);
   const canEditFormSection = useCallback((section: PTAFormSectionKey) => {
     return !allowedFormSectionSet || allowedFormSectionSet.has(section);
   }, [allowedFormSectionSet]);
   const canEditExtensionSubsection = useCallback((section: string) => {
-    return !isAdminComponentRestricted || allowedComponentKeySet.has(componentKeyForExtensionSubsection(section));
-  }, [allowedComponentKeySet, isAdminComponentRestricted]);
+    return !isComponentRestricted || allowedComponentKeySet.has(componentKeyForExtensionSubsection(section));
+  }, [allowedComponentKeySet, isComponentRestricted]);
 
   useEffect(() => {
     const activeDocenteId = userPersonId || docenteIdFromPta;
@@ -901,6 +943,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       }
       setLoadingPta(false);
     });
+  }, [ptaId]);
+
+  // Cargar aprobaciones por componente (para detectar devoluciones + comentarios del revisor).
+  useEffect(() => {
+    if (!ptaId) { setComponentesAprobacion([]); return; }
+    let cancelado = false;
+    getComponentesAprobacion(ptaId)
+      .then((res: any) => {
+        if (!cancelado && res?.success) setComponentesAprobacion(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch((err: any) => console.warn('[PTAForm] No se pudieron cargar aprobaciones por componente:', err?.message || err));
+    return () => { cancelado = true; };
   }, [ptaId]);
 
   // Load active period codigo — solo para PTAs nuevos
@@ -1870,7 +1924,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     // Validación de solapamiento de fechas en Docencia
-    if ((!isAdminComponentRestricted || canEditFormSection('docencia')) && docenciaOverlapWarnings.length > 0) {
+    if ((!isComponentRestricted || canEditFormSection('docencia')) && docenciaOverlapWarnings.length > 0) {
       toast.error(docenciaOverlapWarnings[0]);
       setSaving(false);
       return;
@@ -1886,7 +1940,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     // Validación: si se seleccionó rol en investigación, los campos del proyecto son obligatorios
-    if (enviar && (!isAdminComponentRestricted || canEditFormSection('investigacion')) && invProyecto.rol) {
+    if (enviar && (!isComponentRestricted || canEditFormSection('investigacion')) && invProyecto.rol) {
       const faltantes: string[] = [];
       if (!invProyecto.nombre?.trim()) faltantes.push('nombre del proyecto');
       if (!invProyecto.codigo?.trim()) faltantes.push('código del proyecto');
@@ -1901,28 +1955,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     // Validación de reglas de negocio para Investigación
-    if (enviar && (!isAdminComponentRestricted || canEditFormSection('investigacion')) && invWarnings && invWarnings.length > 0) {
+    if (enviar && (!isComponentRestricted || canEditFormSection('investigacion')) && invWarnings && invWarnings.length > 0) {
       toast.error('Existen errores en la configuración de Investigación. Revisa las advertencias en la sección y corrígelas antes de enviar.');
       setSaving(false);
       return;
     }
 
     // Validación de reglas de negocio para Extensión
-    if (enviar && (!isAdminComponentRestricted || canEditFormSection('extension')) && extWarnings && extWarnings.length > 0) {
+    if (enviar && (!isComponentRestricted || canEditFormSection('extension')) && extWarnings && extWarnings.length > 0) {
       toast.error('Existen errores en la configuración de Extensión. Revisa las advertencias en la sección y corrígelas antes de enviar.');
       setSaving(false);
       return;
     }
 
     // Validación de reglas de negocio para Complementarias
-    if (enviar && (!isAdminComponentRestricted || canEditFormSection('complementarias')) && compWarnings && compWarnings.length > 0) {
+    if (enviar && (!isComponentRestricted || canEditFormSection('complementarias')) && compWarnings && compWarnings.length > 0) {
       toast.error('Existen errores en las Actividades Complementarias. Revisa las advertencias en la sección y corrígelas antes de enviar.');
       setSaving(false);
       return;
     }
 
     // Validación de reglas de negocio para Académico-Administrativas (sub-sección de Complementarias)
-    if (enviar && (!isAdminComponentRestricted || canEditFormSection('complementarias')) && acadWarnings && acadWarnings.length > 0) {
+    if (enviar && (!isComponentRestricted || canEditFormSection('complementarias')) && acadWarnings && acadWarnings.length > 0) {
       toast.error('Existen errores en las Actividades Académico-Administrativas. Se requiere documento soporte.');
       setSaving(false);
       return;
@@ -2262,13 +2316,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     //{ key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${maxCompLimit}h`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
     { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length + academicoAdmin.length, hours: hComplementarias + hAcademicoAdmin, prorr: compProrr + acadProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede || acadExcede, bloqueada: false, modificada: seccionModificada('complementarias') },
   ];
-  const sections = isAdminComponentRestricted
+  const sections = isComponentRestricted
     ? allSections.filter(s => canEditFormSection(s.key))
     : allSections;
   const activeVisibleSection = canEditFormSection(activeSection)
     ? activeSection
     : (sections[0]?.key || activeSection);
-  const visibleExtSecciones = isAdminComponentRestricted
+  const visibleExtSecciones = isComponentRestricted
     ? extSecciones.filter(s => canEditExtensionSubsection(s.key))
     : extSecciones;
   const currentExtSubseccion = visibleExtSecciones.some(s => s.key === extSubseccion)
@@ -2300,17 +2354,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           </button>
           <h1 className="text-2xl md:text-3xl font-black text-gray-900 m-0 leading-tight tracking-tight">
             {ptaId
-              ? isEnRevisionDocente
-                ? 'Revisar PTA — Aprobado con modificaciones'
-                : originalEstado === 'Devuelto'
-                  ? 'Corregir PTA Devuelto'
-                  : 'Editar PTA'
+              ? esDevolucionComponentes
+                ? (componentesDevueltos.length === 1 ? 'Corregir componente devuelto' : 'Corregir componentes devueltos')
+                : isEnRevisionDocente
+                  ? 'Revisar PTA — Aprobado con modificaciones'
+                  : originalEstado === 'Devuelto'
+                    ? 'Corregir PTA Devuelto'
+                    : 'Editar PTA'
               : 'Crear Nuevo PTA'}
           </h1>
           <p className="text-[13px] text-gray-500 mt-2 font-medium">Periodo {periodo} • {dedicacion}</p>
           {isAdminComponentRestricted && (
             <p className="mt-2 inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
               Edicion limitada: {componentEditScopeLabel || 'componentes autorizados'}
+            </p>
+          )}
+          {esDevolucionComponentes && (
+            <p className="mt-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
+              Edición limitada a: {restrictedComponentKeys.map(componentLabel).join(', ')}
             </p>
           )}
         </div>
@@ -2586,8 +2647,61 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         document.body
       )}
 
-      {/* Banner: Revisión docente post-aprobación parcial */}
-      {isEnRevisionDocente && (
+      {/* Banner: Devolución de componente(s) — el revisor devolvió componentes para corrección.
+          Muestra QUÉ componente se devolvió y el comentario del revisor; el docente solo
+          puede editar esos componentes y re-enviar. */}
+      {esDevolucionComponentes && (
+        <div className="flex flex-col gap-3 p-4 rounded-xl mb-5 bg-amber-50 border border-amber-200">
+          <div className="flex items-start gap-3">
+            <RotateCcw className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold text-amber-900 text-sm">
+                {componentesDevueltos.length === 1
+                  ? 'Un componente de tu PTA fue devuelto para corrección'
+                  : `${componentesDevueltos.length} componentes de tu PTA fueron devueltos para corrección`}
+              </div>
+              <p className="text-sm text-amber-800 mt-1 leading-relaxed">
+                Corrige únicamente {componentesDevueltos.length === 1 ? 'el componente indicado' : 'los componentes indicados'} y usa
+                "Corregir y re-enviar". Los demás componentes quedan bloqueados.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                {componentesDevueltos.map((c: any) => (
+                  <div key={c.componente} className="rounded-lg bg-white border border-amber-200 p-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-xs font-bold">
+                        {componentLabel(String(c.componente))}
+                      </span>
+                      {(c.aprobadorNombre || c.aprobador_nombre) && (
+                        <span className="text-[11px] text-amber-700">
+                          Devuelto por {c.aprobadorNombre || c.aprobador_nombre}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 text-sm text-amber-900">
+                      <span className="font-semibold">Comentario del revisor: </span>
+                      {c.comentarios?.trim() ? c.comentarios : 'Sin comentario.'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 mt-1">
+            <button
+              onClick={() => solicitarFirmaDocente('via_save')}
+              disabled={saving || requestingFirmaCode}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
+              style={{ background: '#D97706' }}
+            >
+              <RotateCcw className="w-4 h-4" /> Corregir y re-enviar al revisor
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Banner: Revisión docente post-aprobación parcial (flujo legacy: aprobado, confirma para avanzar).
+          Se oculta cuando en realidad es una devolución por componente. */}
+      {isEnRevisionDocente && !esDevolucionComponentes && (
         <div className="flex flex-col gap-3 p-4 rounded-xl mb-5 bg-violet-50 border border-violet-200">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="w-5 h-5 text-violet-600 shrink-0 mt-0.5" />
@@ -4225,6 +4339,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50"
                   style={{ background: '#003DA5' }}>
                   <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              ) : esDevolucionComponentes ? (
+                // Devolución por componente: solo corregir y re-enviar (no se puede
+                // "avanzar sin cambios" un componente que el revisor devolvió).
+                <button onClick={() => solicitarFirmaDocente('via_save')}
+                  disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
+                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : '#D97706' }}>
+                  <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
                 </button>
               ) : isEnRevisionDocente ? (
                 <>
