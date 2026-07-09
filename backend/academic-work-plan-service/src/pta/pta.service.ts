@@ -82,6 +82,7 @@ function getGroupedPtaEstados(value: unknown): string[] | null {
 
   if (key === 'SNA') return ['ESCALADO_SNA', 'Escalado SNA'];
   if (key === 'APROBADO' || key === 'APROBADOS') return ['Aprobado', 'APROBADO'];
+  if (key === 'FINALIZADO' || key === 'FINALIZADOS') return ['Finalizado', 'FINALIZADO'];
   if (key === 'SEGUIMIENTO') return ['En Firme', 'EN_FIRME', 'RADICADO', 'EN_EJECUCION', 'EN_EJECUCI\u00d3N'];
 
   return null;
@@ -2642,7 +2643,58 @@ export class PtaService {
       comentarioRevision: coalesceString(body?.observaciones, body?.comentario, body?.comentarioRevision) ?? existing.comentarioRevision,
     });
 
+    await this.syncPtaSeguimientoEstado(ptaId);
+
     return this.toEvidenciaDto(updated);
+  }
+
+  private async syncPtaSeguimientoEstado(ptaId: string): Promise<void> {
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!pta) return;
+
+    const extMult = await this.getExtMultiplicadores();
+    const dto = this.toPtaDto(pta, extMult) as any;
+    const requeridas: Record<string, number> = {
+      docencia: Number(dto.horas_docencia || 0),
+      investigacion: Number(dto.horas_investigacion || 0),
+      extension: Number(dto.horas_extension || 0),
+      complementarias: Number(dto.horas_complementarias || 0),
+    };
+
+    const evidencias = await this.evidenciaRepo.find({ where: { ptaId } });
+    const aprobadas: Record<string, number> = {
+      docencia: 0,
+      investigacion: 0,
+      extension: 0,
+      complementarias: 0,
+    };
+
+    for (const evidencia of evidencias) {
+      const componente = String(evidencia.componentePta || '');
+      if (!(componente in aprobadas)) continue;
+      if (normalizeEstadoFilter(evidencia.estado) === 'ELIMINADO') continue;
+      if (normalizeEstadoFilter(evidencia.estadoRevision) !== 'APROBADO') continue;
+      aprobadas[componente] += Number(evidencia.horasAvance || 0);
+    }
+
+    const tieneHorasRequeridas = Object.values(requeridas).some(total => total > 0);
+    const seguimientoCompleto = tieneHorasRequeridas && Object.entries(requeridas).every(([componente, total]) => {
+      if (total <= 0) return true;
+      return (aprobadas[componente] || 0) >= total;
+    });
+
+    const estadoActual = normalizeEstadoFilter(pta.estado);
+    const estadosSeguimiento = new Set(['APROBADO', 'EN_FIRME', 'RADICADO', 'EN_EJECUCION', 'EN_EJECUCION']);
+    if (seguimientoCompleto && estadosSeguimiento.has(estadoActual)) {
+      pta.estado = 'Finalizado';
+      await this.ptaRepo.save(pta);
+      return;
+    }
+
+    if (!seguimientoCompleto && estadoActual === 'FINALIZADO') {
+      pta.estado = 'Aprobado';
+      await this.ptaRepo.save(pta);
+    }
   }
 
   async crearSolicitudPTA(body: any) {
@@ -2716,7 +2768,7 @@ export class PtaService {
   // están en seguimiento. No se tocan los que ya están en un estado terminal.
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
-    const terminales = ['Terminado', 'TERMINADO', 'Rechazado', 'RECHAZADO'];
+    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
     const qb = this.ptaRepo
       .createQueryBuilder()
@@ -2757,7 +2809,7 @@ export class PtaService {
     // elegible para purga si superó el plazo.
     const safe = [
       'Aprobado', 'APROBADO', 'En Firme', 'EN_FIRME', 'RADICADO',
-      'EN_EJECUCION', 'EN_EJECUCIÓN', 'Terminado', 'TERMINADO', 'Rechazado', 'RECHAZADO',
+      'EN_EJECUCION', 'EN_EJECUCIÓN', 'Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO',
     ];
 
     const vencidos = await this.ptaRepo

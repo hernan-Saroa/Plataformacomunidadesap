@@ -72,6 +72,7 @@ const ESTADO_CONFIG: Record<string, { bg: string; color: string; border: string;
   'Pendiente Gestión Profesoral': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Aprobado': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Aprobado' },
   'En Firme': { bg: '#047857', color: '#FFFFFF', border: '#059669', label: 'En Firme — Firmado y Radicado' },
+  'Finalizado': { bg: '#DCFCE7', color: '#14532D', border: '#22C55E', label: 'Finalizado' },
   // Cerrado por apertura de un nuevo período académico: solo lectura / observación.
   'Terminado': { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB', label: 'Terminado (solo lectura)' },
   'Rechazado': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'Rechazado' },
@@ -108,7 +109,7 @@ const COMPONENT_STEPS = [
 ];
 
 function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
-  const isAprobado = estado === 'Aprobado' || estado === 'En Firme';
+  const isAprobado = estado === 'Aprobado' || estado === 'En Firme' || estado === 'Finalizado';
   const isBorrador = estado === 'Borrador';
 
   const getStatusForComponent = (compKeys: string[]) => {
@@ -681,7 +682,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                         <div className="h-[3px] w-full" style={{
                           background: needsAction
                             ? 'linear-gradient(90deg, #EF4444, #F97316)'
-                            : pta.estado === 'Aprobado' || pta.estado === 'En Firme'
+                            : pta.estado === 'Aprobado' || pta.estado === 'En Firme' || pta.estado === 'Finalizado'
                               ? 'linear-gradient(90deg, #059669, #10B981)'
                               : 'linear-gradient(90deg, #003DA5, #0066E6, #3B82F6)',
                         }} />
@@ -1236,7 +1237,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
               )}
 
               {/* ═══ Seguimiento: documentos de soporte (solo cuando Aprobado) ═══ */}
-              {['Aprobado', 'En Firme', 'Aprobado DEF'].includes(selectedPta.estado) && (
+              {['Aprobado', 'En Firme', 'Finalizado', 'Aprobado DEF'].includes(selectedPta.estado) && (
                 <div style={{ background: 'white', borderRadius: 14, border: '1px solid #BBF7D0', padding: '18px 22px', marginBottom: 14 }}>
                   <V12AdjuntosDocumentos
                     ptas={ptas}
@@ -1252,7 +1253,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   pta={selectedPta}
                   userPerfil={{ nombre: userName, identificacion: userPersonId }}
                   onClose={() => setIsReporteOpen(false)}
-                  isParcial={!['Aprobado', 'En Firme'].includes(selectedPta.estado)}
+                  isParcial={!['Aprobado', 'En Firme', 'Finalizado'].includes(selectedPta.estado)}
                   certificadoId={selectedPta.certificado_qr}
                   signedAt={selectedPta.signed_at || selectedPta.updated_at}
                 />
