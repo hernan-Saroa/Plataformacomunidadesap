@@ -719,6 +719,21 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             }));
           normalized[sectionKey] = [...(normalized[sectionKey] || []), ...acts];
         });
+        // De-duplicar actividades por id dentro de cada sección. Distintas claves de
+        // configuración (p.ej. alias legacy que normalizan a 'fortalecimiento') pueden
+        // aportar una misma actividad, generando opciones con id repetido — lo que causaba
+        // la advertencia de React "two children with the same key (LAB_12)" y selección
+        // ambigua en el dropdown de Extensión. Se conserva la primera aparición.
+        Object.keys(normalized).forEach((sec) => {
+          const seen = new Set<string>();
+          normalized[sec] = normalized[sec].filter((a: any) => {
+            const id = String(a?.id ?? '');
+            if (!id) return true;
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+        });
         setActExtension(normalized);
       }
       // Catálogos de Complementarias por sección. Fuente de verdad = config del backoffice
@@ -810,8 +825,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (cat && Array.isArray(cat.items) && cat.items.length > 0) {
           const newCantidades = baseAct.items_cantidades || {};
           const totalHoras = cat.items.reduce((sum: number, item: any, i: number) => {
-            if (item.tipo === 'fija') return sum + (item.horas || 0);
-            if (item.tipo === 'hasta') return sum + Math.min(item.horas || 0, Math.max(0, Number(newCantidades[i]) || 0));
+            const tipo = (item.tipo || 'fija').toLowerCase();
+            if (tipo === 'fija') return sum + (item.horas || 0);
+            if (tipo === 'hasta') return sum + Math.min(item.horas || 0, Math.max(0, Number(newCantidades[i]) || 0));
+            // 'intervalo': el valor ES las horas (acotado a [min, max]); NO se multiplica
+            // por item.horas (eso daba totales absurdos, p.ej. 40 × 120 = 4800h).
+            if (tipo === 'intervalo') return sum + Math.min(item.horas || 0, Math.max(item.min ?? 0, Number(newCantidades[i]) || 0));
             const qty = Math.max(0, Number(newCantidades[i]) || 0);
             return sum + (qty * (item.horas || 0));
           }, 0);
@@ -1390,8 +1409,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
     setAsignaturas(prev => [{
       id: Date.now(),
-      territorial_id: defaultTerritorial,
-      cetap_id: defaultCetap,
+      territorial_id: '',
+      cetap_id: '',
       programa_id: '',
       asignatura_id: '', asignatura_nombre: '', nucleo_tematico: '',
       creditos: 3, semestre: 1, total_estudiantes: 25,
@@ -1799,17 +1818,20 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     setAcademicoAdmin(prev => prev.map(c => {
       if (c.id !== id) return c;
       const updated = { ...c, [field]: value };
+      const otherAcadSum = prev
+        .filter(x => x.id !== id)
+        .reduce((sum, x) => sum + (x.horas || 0), 0);
+      const acadRemainingLimit = Math.max(0, maxAadmLimit - otherAcadSum);
       if (field === 'actividad_id') {
         const cat = actAcadAdmin.find((ac: any) => ac.id === value);
         if (cat) {
-          const globalRemainingLimit = Math.max(0, horasAProgramar - totalHoras + (c.horas || 0));
           const constraint = getAcademicoAdminConstraint(cat, ptaRules, horasAProgramar);
           const suggestedHours = getInitialConstraintValue(constraint);
 
           updated.nombre = cat.nombre;
           updated.consumeTotalidad = cat.consumeTotalidad || false;
-          updated.horas = constraint.editable && canSelectWithRemaining(constraint, globalRemainingLimit)
-            ? Math.min(suggestedHours, globalRemainingLimit)
+          updated.horas = constraint.editable && canSelectWithRemaining(constraint, acadRemainingLimit)
+            ? Math.min(suggestedHours, acadRemainingLimit)
             : suggestedHours;
           // Una actividad del 100% ya NO limpia ni bloquea las demás secciones: solo
           // consume las horas de la bolsa y el prorrateo existente maneja el excedente.
@@ -1823,9 +1845,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const cat = actAcadAdmin.find((ac: any) => ac.id === updated.actividad_id);
         if (cat) {
           const constraint = getAcademicoAdminConstraint({ ...cat, consumeTotalidad: updated.consumeTotalidad }, ptaRules, horasAProgramar);
-          const globalRemainingLimit = Math.max(0, horasAProgramar - totalHoras + (c.horas || 0));
-          const boundedConstraint = constraint.editable && canSelectWithRemaining(constraint, globalRemainingLimit)
-            ? { ...constraint, max: Math.min(constraint.max, globalRemainingLimit) }
+          const boundedConstraint = constraint.editable && canSelectWithRemaining(constraint, acadRemainingLimit)
+            ? { ...constraint, max: Math.min(constraint.max, acadRemainingLimit) }
             : constraint;
 
           updated.horas = clampConstraintValue(value, boundedConstraint);
@@ -3084,7 +3105,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const bloqueadaPorTerritorial = !!(jefaturaTerritorialId && asig.territorial_id && asig.territorial_id !== jefaturaTerritorialId);
                         const rowEditable = isEditable && !bloqueadaPorTerritorial;
                         // Datos de CETAP según la territorial de ESTA asignatura
-                        const tIdAsig = asig.territorial_id || defaultTerritorial;
+                        const tIdAsig = asig.territorial_id;
                         const cetapsCargadosAsig = tIdAsig in cetapsMap;
                         const listaCetapsAsig = cetapsMap[tIdAsig] || [];
                         const hasCetapsAsig = listaCetapsAsig.length > 0;

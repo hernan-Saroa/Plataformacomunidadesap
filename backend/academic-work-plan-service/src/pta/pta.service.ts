@@ -197,10 +197,20 @@ function canonicalizeExtensionActivities(raw: any): Record<string, any[]> {
   for (const [sectionKey, value] of Object.entries(source)) {
     if (!Array.isArray(value)) continue;
     const targetKey = normalizeExtensionSectionKey(sectionKey);
-    result[targetKey] = [
-      ...(result[targetKey] || []),
-      ...value.map((act: any) => ({ ...act })),
-    ];
+    const bucket = result[targetKey] || (result[targetKey] = []);
+    // De-duplicar por id al fusionar: varias claves/alias legacy (p.ej.
+    // laboratorio_innovacion, investigacion_aplicada → fortalecimiento) pueden
+    // aportar la MISMA actividad, dejando ids repetidos (LAB_12, etc.) que rompían
+    // el dropdown (React keys duplicadas) y la selección. Se conserva la primera.
+    const seen = new Set(
+      bucket.map((a: any) => String(a?.id ?? '')).filter(Boolean),
+    );
+    for (const act of value) {
+      const id = String(act?.id ?? '');
+      if (id && seen.has(id)) continue;
+      if (id) seen.add(id);
+      bucket.push({ ...act });
+    }
   }
 
   return result;
