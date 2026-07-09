@@ -46,6 +46,7 @@ import {
   PTA_EXTENSION_COMPONENT_KEYS,
   type PTAComponentKey,
   componentKeysForApprovalLevel,
+  splitComplementarias,
 } from './shared/ptaComponentPermissions';
 
 // ═══ TYPES ════════════════════════════════════════════════════════════
@@ -371,16 +372,11 @@ function ApprovalTracker({
       baseColor: '#059669'
     },
     {
+      // Complementarias incluye la sub-sección Académico-Administrativa (AADM).
       label: 'Complementarias',
       icon: Briefcase,
       status: getStatusForComponent(['complementarias']),
       baseColor: '#FFC000'
-    },
-    {
-      label: 'AADM',
-      icon: Award,
-      status: getStatusForComponent(['academicas_admin']),
-      baseColor: '#6B21A8'
     }
   ].filter(step => step.status !== 'hidden');
 
@@ -612,7 +608,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte, onUpdated,
   puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId, actorNombre,
 }, ref) => {
-  const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'historial' | 'concertacion' | 'evidencias' | 'trazabilidad'>('resumen');
+  const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'concertacion' | 'evidencias' | 'trazabilidad'>('resumen');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
   const [aprobacionesJefatura, setAprobacionesJefatura] = useState<any[]>([]);
   const [pta, setPta] = useState<any>(initialPta);
@@ -708,7 +704,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   }, [pta?.id]);
 
   const handleAprobarComponente = async (componente: string, estado: 'aprobado' | 'devuelto') => {
-    const canApprove = puedeAprobar && isPendiente && isComponentAuthorized(componente);
+    const canApprove = puedeAprobar && puedeActuarSobreComponentes && isComponentAuthorized(componente);
     if (!canApprove) {
       toast.error('No tiene permisos para realizar esta acción');
       return;
@@ -789,6 +785,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const sc = getStatusConfig(pta.estado);
   const isPendiente = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(pta.estado);
+  // Estados en los que puede haber componentes individuales aún pendientes de
+  // aprobar/concertar aunque el estado AGREGADO del PTA ya no sea "Pendiente X" (p.ej.
+  // quedó en REVISION_DOCENTE_N1 porque se devolvió un componente, pero otro sigue
+  // pendiente para un revisor distinto). Se usa para las acciones POR COMPONENTE, para
+  // que puedan resolverse de forma simultánea e independiente sin esperarse entre sí.
+  const ESTADOS_ACCIONABLES_COMPONENTE = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'];
+  const puedeActuarSobreComponentes = ESTADOS_ACCIONABLES_COMPONENTE.includes(pta.estado);
+  const hayComponentesPendientesParaMi = puedeActuarSobreComponentes &&
+    componentesAprobacion.some(c => isComponentAuthorized(c.componente) && (c.estado || 'pendiente') === 'pendiente');
   const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
@@ -813,14 +818,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     otras: extActsRaw.filter((a: any) => a.seccion === 'otras'),
   };
   
-  const complementarias = {
-    actividades: Array.isArray(pta.complementarias) ? pta.complementarias : (pta.complementarias?.actividades || [])
-  };
-  
-  const acadAdmin = {
-    actividades: Array.isArray(pta.academico_admin) ? pta.academico_admin : (pta.acad_admin?.actividades || pta.academico_administrativo?.actividades || [])
-  };
-  const tieneTotalidadAcadAdmin = acadAdmin.actividades.some((a: any) => a?.consumeTotalidad === true);
+  // AADM es una sección de Complementarias. `splitComplementarias` separa ambas
+  // secciones y fusiona data legacy, evitando doble conteo.
+  const _compSplit = splitComplementarias(pta);
+  // Todo es "Actividades Complementarias": ambas secciones (a la docencia + académico-
+  // administrativas) se muestran juntas como un solo componente.
+  const complementarias = { actividades: [..._compSplit.docencia, ..._compSplit.aadm] };
+  const acadAdmin = { actividades: _compSplit.aadm };
+  const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
   const territorialResumen = pta.territorial || pta.territorial_nombre;
   const historial = pta.historial || [];
@@ -848,20 +853,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }, 0);
   }, [pta, extension]);
 
+  // Complementarias unificado incluye la sección académico-administrativa.
   const horasComplementarias = useMemo(() => {
     if (pta.horas_complementarias !== undefined) return pta.horas_complementarias;
-    const acts = (complementarias as any).actividades || [];
-    return acts.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  }, [pta, complementarias]);
+    return _compSplit.horasDocencia + _compSplit.horasAadm;
+  }, [pta, _compSplit.horasDocencia, _compSplit.horasAadm]);
 
-  const horasAcadAdmin = useMemo(() => {
-    if (pta.horas_acad_admin !== undefined) return pta.horas_acad_admin;
-    const acts = acadAdmin.actividades || [];
-    return acts.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-  }, [pta, acadAdmin]);
+  // Solo para el total del sub-grupo AADM dentro del acordeón de Complementarias.
+  const horasAcadAdmin = _compSplit.horasAadm;
 
   const hProg = Number(pta.total_horas_programadas || 0);
-  const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias + horasAcadAdmin);
+  const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
   const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
 
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
@@ -1048,8 +1050,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const componentesPendientes = componentesAprobacionVisibles.filter(c => c.estado === 'pendiente' || !c.estado).length;
   const TABS = [
     ...(shouldHideUnauthorizedComponents ? [] : [{ key: 'resumen', label: 'Resumen', icon: BarChart3 }]),
-    { key: 'componentes', label: 'Componentes', icon: Layers },
-    { key: 'historial', label: 'Aprobación', icon: ShieldCheck, badge: componentesPendientes || undefined },
+    // "Concertación" fusiona las antiguas pestañas "Componentes" (detalle) y "Aprobación"
+    // (aprobar/devolver): en un mismo lugar se ve el detalle de cada componente y se
+    // aprueba o devuelve, con comentario del revisor.
+    { key: 'componentes', label: 'Concertación', icon: ShieldCheck, badge: componentesPendientes || undefined },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
     { key: 'trazabilidad', label: 'Trazabilidad', icon: Activity, badge: historialEstados.length || undefined },
     ...(isConcertacion || concertacion.mensajes?.length > 0
@@ -1094,7 +1098,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const isProcessing = !!procesandoAprobacionComponente[key];
 
     const componentAuthorized = isComponentAuthorized(key);
-    const canEvaluateComponent = puedeAprobar && isPendiente && componentAuthorized && !isAutoAprobado;
+    // Una vez el componente queda resuelto (aprobado o devuelto), deja de ser una
+    // opción editable por defecto — así el botón "Concertar" nunca desaparece del
+    // panel general y cada componente se puede resolver de forma independiente sin
+    // esperar a los demás. "Volver a evaluar" (evaluandoComponente) es la única forma
+    // de reabrir uno ya aprobado.
+    const canEvaluateComponent = puedeAprobar && puedeActuarSobreComponentes && componentAuthorized && !isAutoAprobado &&
+      (estado === 'pendiente' || !!evaluandoComponente[key]);
 
     if (shouldHideUnauthorizedComponents && !componentAuthorized) {
       return null;
@@ -1328,6 +1338,54 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           </div>
         )}
 
+        {/* Historial de concertación: el componente volvió a 'pendiente' tras una
+            devolución — se muestra el comentario original del revisor y la respuesta
+            del docente (por qué reenvía / qué corrigió), para que el revisor tenga
+            contexto antes de volver a aprobar o devolver. */}
+        {isEditing && estado === 'pendiente' && (approval.comentarios || approval.respuestaDocente) && (
+          <div style={{
+            background: 'rgba(239, 246, 255, 0.5)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            fontSize: '0.74rem',
+            border: '1px dashed #BFDBFE',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            marginLeft: 6,
+          }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Historial de concertación — el docente reenvió este componente
+            </div>
+            {approval.comentarios && (
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>
+                  Comentario del revisor (ciclo anterior)
+                </span>
+                <div style={{
+                  borderLeft: '3px solid #94A3B8', padding: '8px 10px', background: 'white',
+                  borderRadius: '0 8px 8px 0', fontStyle: 'italic', color: '#374151', lineHeight: 1.4,
+                }}>
+                  "{approval.comentarios}"
+                </div>
+              </div>
+            )}
+            {approval.respuestaDocente && (
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>
+                  Respuesta del docente
+                </span>
+                <div style={{
+                  borderLeft: '3px solid #3B82F6', padding: '8px 10px', background: 'white',
+                  borderRadius: '0 8px 8px 0', fontStyle: 'italic', color: '#1E3A8A', lineHeight: 1.4,
+                }}>
+                  "{approval.respuestaDocente}"
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Detalle de Aprobación Guardada */}
         {!isEditing && (
           <div style={{
@@ -1449,7 +1507,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             <textarea
               value={comentariosComponente[key] || ''}
               onChange={e => setComentariosComponente(prev => ({ ...prev, [key]: e.target.value }))}
-              placeholder="Escribe aquí observaciones sobre este componente (obligatorio si devuelves)..."
+              placeholder="Comentario opcional al aprobar este componente..."
               disabled={isProcessing}
               rows={2}
               style={{
@@ -1496,30 +1554,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   Cancelar
                 </button>
               )}
-              <button
-                onClick={() => handleAprobarComponente(key, 'devuelto')}
-                disabled={isProcessing}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #FCA5A5',
-                  background: '#FEF2F2',
-                  color: '#B91C1C',
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  cursor: isProcessing ? 'default' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  transition: 'all 0.15s ease',
-                  boxShadow: '0 2px 4px rgba(239, 68, 68, 0.05)'
-                }}
-                onMouseEnter={e => { if (!isProcessing) e.currentTarget.style.background = '#FEE2E2'; }}
-                onMouseLeave={e => { if (!isProcessing) e.currentTarget.style.background = '#FEF2F2'; }}
-              >
-                {isProcessing ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RotateCcw style={{ width: 13, height: 13 }} />}
-                Devolver
-              </button>
+              {/* "Devolver a secas" ya no aplica: para devolver un componente (con comentario
+                  obligatorio) se usa "Concertar" — abre el PTA en modo edición y, al guardar
+                  (con o sin cambios de contenido), el componente queda devuelto al docente. */}
               <button
                 onClick={() => handleAprobarComponente(key, 'aprobado')}
                 disabled={isProcessing}
@@ -1548,8 +1585,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           </div>
         )}
 
-        {/* Mensaje Informativo si no tiene permiso */}
-        {isEditing && !canEvaluateComponent && isPendiente && (
+        {/* Mensaje Informativo si no tiene permiso (la devolución ya tiene su propio
+            banner arriba, así que se excluye aquí para no duplicar el mensaje) */}
+        {isEditing && !canEvaluateComponent && puedeActuarSobreComponentes && approval.estado !== 'devuelto' && (
           <div style={{
             marginLeft: 6,
             padding: '10px 14px',
@@ -2085,7 +2123,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       { label: 'Investigación', value: horasInvestigacion, color: PTA_COLORS.INVESTIGACION },
                       { label: 'Extensión', value: horasExtension, color: PTA_COLORS.EXTENSION },
                       { label: 'Complementarias', value: horasComplementarias, color: PTA_COLORS.COMPLEMENTARIAS },
-                      { label: 'Acad. Admin.', value: horasAcadAdmin, color: PTA_COLORS.ACAD_ADMIN },
                     ];
                     const size = isMobile ? 110 : 130;
                     const sw = isMobile ? 14 : 16;
@@ -2132,15 +2169,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     <ComponentBar label="Investigación" hours={horasInvestigacion} total={horasDisp} color={PTA_COLORS.INVESTIGACION} icon={FlaskConical} />
                     <ComponentBar label="Extensión" hours={horasExtension} total={horasDisp} color={PTA_COLORS.EXTENSION} icon={Globe} />
                     <ComponentBar label="Complementarias" hours={horasComplementarias} total={horasDisp} color={PTA_COLORS.COMPLEMENTARIAS} icon={Briefcase} />
-                    <ComponentBar label="Acad. Admin." hours={horasAcadAdmin} total={horasDisp} color={PTA_COLORS.ACAD_ADMIN} icon={Award} />
                   </div>
                 </div>
               </div>
 
-              {/* Pie summary — 3 cols mobile, 5 cols desktop */}
+              {/* Pie summary — 3 cols mobile, 4 cols desktop */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(5, 1fr)',
+                gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
                 gap: 6, marginBottom: 16,
               }}>
                 {[
@@ -2148,7 +2184,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   { label: 'Inv.', value: horasInvestigacion, pct: horasProg > 0 ? Math.round((horasInvestigacion / horasProg) * 100) : 0, color: PTA_COLORS.INVESTIGACION },
                   { label: 'Ext.', value: horasExtension, pct: horasProg > 0 ? Math.round((horasExtension / horasProg) * 100) : 0, color: PTA_COLORS.EXTENSION },
                   { label: 'Comp.', value: horasComplementarias, pct: horasProg > 0 ? Math.round((horasComplementarias / horasProg) * 100) : 0, color: PTA_COLORS.COMPLEMENTARIAS },
-                  { label: 'A.Adm.', value: horasAcadAdmin, pct: horasProg > 0 ? Math.round((horasAcadAdmin / horasProg) * 100) : 0, color: PTA_COLORS.ACAD_ADMIN },
                 ].map(item => (
                   <div key={item.label} style={{
                     textAlign: 'center', padding: '8px 4px', borderRadius: 8,
@@ -2188,100 +2223,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 ))}
               </div>
 
-              {acadAdmin.actividades.length > 0 && (
-                <div style={{
-                  padding: '10px 12px',
-                  borderRadius: 10,
-                  background: '#FFF7ED',
-                  border: '1px solid #FED7AA',
-                  marginBottom: 14,
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                    color: '#9A3412',
-                    textTransform: 'uppercase',
-                    marginBottom: 8,
-                  }}>
-                    <Award style={{ width: 13, height: 13 }} />
-                    Actividad Academico-Administrativa
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {acadAdmin.actividades.map((actividad: any, idx: number) => (
-                      <div key={actividad.id || actividad.actividad_id || idx} style={{
-                        padding: '10px',
-                        borderRadius: 8,
-                        background: 'white',
-                        border: '1px solid #FFEDD5',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#111827', lineHeight: 1.25 }}>
-                              {actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad AADM'}
-                            </div>
-                            {actividad.actividad_id && (
-                              <div style={{ fontSize: '0.64rem', color: '#9CA3AF', fontWeight: 700, marginTop: 2 }}>
-                                Codigo: {actividad.actividad_id}
-                              </div>
-                            )}
-                          </div>
-                          <span style={{
-                            padding: '3px 8px',
-                            borderRadius: 999,
-                            background: '#FFF7ED',
-                            color: '#C2410C',
-                            border: '1px solid #FDBA74',
-                            fontSize: '0.72rem',
-                            fontWeight: 900,
-                            flexShrink: 0,
-                          }}>
-                            {Number(actividad.horas || 0)}h
-                          </span>
-                        </div>
-
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-                          gap: 8,
-                          marginTop: 8,
-                        }}>
-                          {(actividad.fecha_inicio || actividad.fecha_fin) && (
-                            <div style={{ fontSize: '0.72rem', color: '#4B5563' }}>
-                              <span style={{ color: '#9CA3AF', fontWeight: 700 }}>Fechas: </span>
-                              {actividad.fecha_inicio || 'Sin inicio'} - {actividad.fecha_fin || 'Sin fin'}
-                            </div>
-                          )}
-                          {actividad.consumeTotalidad && (
-                            <div style={{ fontSize: '0.72rem', color: '#4B5563' }}>
-                              <span style={{ color: '#9CA3AF', fontWeight: 700 }}>Alcance: </span>
-                              Consume el 100% del PTA
-                            </div>
-                          )}
-                        </div>
-
-                        {(actividad.descripcion || actividad.observaciones) && (
-                          <div style={{
-                            marginTop: 8,
-                            padding: '8px',
-                            borderRadius: 6,
-                            background: '#FFFBEB',
-                            color: '#78350F',
-                            fontSize: '0.74rem',
-                            lineHeight: 1.45,
-                          }}>
-                            {actividad.descripcion || actividad.observaciones}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Observaciones / Motivo devolución */}
               {pta.motivo_devolucion && (
                 <div style={{
@@ -2314,18 +2255,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             </div>
           )}
 
-          {/* ═══ TAB: Componentes ═══ */}
+          {/* ═══ TAB: Concertación (detalle por componente + aprobar/devolver) ═══ */}
           {activeTab === 'componentes' && (
             <div>
-              {/* Edición completa */}
-              {((puedeAprobarNivelActual && isPendiente) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
+              {/* Edición completa (ahora "Concertar": edición y devolución de componente son la misma acción).
+                  Se basa en si QUEDA ALGÚN COMPONENTE PENDIENTE para este revisor, no en el estado agregado
+                  del PTA — así el botón no desaparece cuando otro componente ya se aprobó o devolvió. */}
+              {((puedeAprobar && hayComponentesPendientesParaMi) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
                 <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
                     {rolLabel === 'Docente'
                       ? 'Puede editar su PTA'
                       : shouldHideUnauthorizedComponents
-                        ? `Como revisor puede editar solo: ${componentEditScopeLabel}`
-                        : 'Como revisor puede editar el PTA completo antes de aprobar'}
+                        ? `Como revisor puede concertar solo: ${componentEditScopeLabel}`
+                        : 'Como revisor puede concertar el PTA completo antes de aprobar'}
                   </span>
                   <button
                     onClick={() => setShowEditForm(true)}
@@ -2336,8 +2279,96 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
                     }}
                   >
-                    <Edit2 style={{ width: 12, height: 12 }} /> {shouldHideUnauthorizedComponents ? 'Editar componente' : 'Editar PTA'}
+                    <Edit2 style={{ width: 12, height: 12 }} /> {shouldHideUnauthorizedComponents ? 'Concertar componente' : 'Concertar'}
                   </button>
+                </div>
+              )}
+
+              {/* Header + traza de aprobación granular (antes tab "Aprobación") */}
+              <div style={{
+                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                borderRadius: 16,
+                padding: '18px 22px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.01)',
+                marginBottom: 20,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: '240px' }}>
+                    <h4 style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0F172A', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 8, letterSpacing: '-0.015em' }}>
+                      <Shield style={{ width: 20, height: 20, color: '#003DA5', strokeWidth: 2.5 }} />
+                      Control de Traza e Historial de Aprobaciones
+                    </h4>
+                    <p style={{ fontSize: '0.74rem', color: '#64748B', margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
+                      A continuación se muestra el estado de validación granular del Plan de Trabajo Académico. Cada componente y subcomponente de extensión debe ser revisado y aprobado individualmente por las áreas y revisores competentes.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Progress Stats & Count Badges */}
+                {(() => {
+                  // Componentes fijos (Docencia, Investigación, Complementarias, AADM) = 4
+                  // + sub-componentes de extensión que tengan horas > 0
+                  const extSubKeyMap: Record<string, string> = {
+                    capacitacion: 'ext_capacitacion',
+                    seleccion: 'ext_procesos',
+                    fortalecimiento: 'ext_fortalecimiento',
+                    alto_gobierno: 'ext_gobierno',
+                    otras: 'ext_secciones',
+                  };
+                  const extSubKeys = Object.keys(extSubKeyMap);
+                  const extConHoras = extSubKeys.filter(k => getSubcomponentHours(k) > 0);
+                  const visibleComponenteKeys = new Set([
+                    'academica', 'investigacion', 'complementarias',
+                    ...extConHoras.map(k => extSubKeyMap[k]),
+                  ].filter(key => shouldShowComponentKey(key)));
+                  const total = visibleComponenteKeys.size;
+                  const aprobados = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
+                  const devueltos = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
+                  const pendientes = total - aprobados - devueltos;
+                  const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
+                  return (
+                    <div style={{ marginTop: 16 }}>
+                      {/* Stats Badges Grid */}
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                        <div style={{ background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#166534' }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+                          Aprobados: {aprobados}
+                        </div>
+                        {devueltos > 0 && (
+                          <div style={{ background: '#FEF2F2', border: '1px solid #FEE2E2', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#991B1B' }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#EF4444' }} />
+                            Devueltos: {devueltos}
+                          </div>
+                        )}
+                        <div style={{ background: '#FFFBEB', border: '1px solid #FEF3C7', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#92400E' }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B' }} className="animate-pulse" />
+                          Pendientes: {pendientes}
+                        </div>
+                      </div>
+
+                      {/* Bar progress */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '0.72rem', fontWeight: 800 }}>
+                        <span style={{ color: '#475569' }}>Progreso de Aprobación Granular</span>
+                        <span style={{ color: aprobados === total ? '#059669' : '#003DA5' }}>
+                          {aprobados} / {total} componentes ({pct}%)
+                        </span>
+                      </div>
+                      <div style={{ width: '100%', height: 8, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden', display: 'flex', gap: 2 }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: aprobados === total ? '#10B981' : 'linear-gradient(90deg, #003DA5, #2563EB)', borderRadius: 4, transition: 'width 0.4s ease-out' }} />
+                        {devueltos > 0 && (
+                          <div style={{ height: '100%', width: `${Math.round((devueltos / total) * 100)}%`, background: '#EF4444', borderRadius: 4 }} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {loadingComponentesAprobacion && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 16px', color: '#9CA3AF' }}>
+                  <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
+                  <span style={{ fontSize: '0.72rem' }}>Actualizando estado de aprobación…</span>
                 </div>
               )}
 
@@ -2418,6 +2449,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </SectionCollapsible>
               )}
 
+              {/* Docencia — aprobar/devolver */}
+              {renderComponentCard(
+                'academica',
+                'Componente Docencia (Asignaturas)',
+                BookOpen,
+                PTA_COLORS.DOCENCIA,
+                `Contenido: ${asignaturas.length} asignatura(s) (${horasDocencia}h)`
+              )}
+
               {/* Investigación */}
               {shouldShowComponentKey('investigacion') && (
               <SectionCollapsible
@@ -2494,6 +2534,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </SectionCollapsible>
               )}
 
+              {/* Investigación — aprobar/devolver */}
+              {renderComponentCard(
+                'investigacion',
+                'Componente Investigación (Proyectos y Actividades)',
+                FlaskConical,
+                PTA_COLORS.INVESTIGACION,
+                `Contenido: ${(investigacion.proyectos?.length || 0)} proyecto(s), ${(investigacion.actividades?.length || 0)} actividad(es) (${horasInvestigacion}h)`
+              )}
+
               {/* Extensión */}
               {PTA_EXTENSION_COMPONENT_KEYS.some(shouldShowComponentKey) && (
               <SectionCollapsible
@@ -2561,6 +2610,117 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </SectionCollapsible>
               )}
 
+              {/* Extensión — aprobar/devolver (por subcomponente) */}
+              {(!shouldHideUnauthorizedComponents || extensionCards.length > 0) && (
+              <motion.div
+                whileHover={{ y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                style={{
+                  background: 'linear-gradient(135deg, #FFFFFF 0%, #F0FDF4 100%)',
+                  borderRadius: 16,
+                  border: '1px solid #A7F3D0',
+                  boxShadow: '0 4px 18px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.01)',
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  marginBottom: 16,
+                  transition: 'border-color 0.25s ease, background 0.25s ease',
+                }}
+              >
+                {/* Indicador lateral de color */}
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  width: 5,
+                  background: 'linear-gradient(180deg, #059669 0%, #059669CC 100%)',
+                  borderRadius: '4px 0 0 4px'
+                }} />
+
+                {/* Encabezado del contenedor de Extensión */}
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', paddingLeft: 6 }}>
+                  <div style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 10,
+                    background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(5, 150, 105, 0.08) 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#059669',
+                    border: '1px solid rgba(5, 150, 105, 0.25)',
+                    flexShrink: 0,
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                  }}>
+                    <Globe style={{ width: 22, height: 22 }} />
+                  </div>
+                  <div>
+                    <h5 style={{ margin: '0 0 3px 0', fontSize: '0.9rem', fontWeight: 800, color: '#1E293B', letterSpacing: '-0.01em' }}>
+                      Componente Extensión Universitaria
+                    </h5>
+                    <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: 'rgba(5, 150, 105, 0.08)', padding: '2px 8px', borderRadius: 6 }}>
+                      Total de Actividades de Extensión: {horasExtension}h
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(5, 150, 105, 0.15)', margin: '6px 0' }} />
+
+                {/* Lista vertical responsiva de subcomponentes */}
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  paddingLeft: 6,
+                }}>
+                  {/* Sub 1: Capacitación — solo si tiene horas */}
+                  {getSubcomponentHours('capacitacion') > 0 && renderComponentCard(
+                    'ext_capacitacion',
+                    'Dirección de Capacitación',
+                    GraduationCap,
+                    '#059669',
+                    `Horas: ${getSubcomponentHours('capacitacion')}h`,
+                    true
+                  )}
+
+                  {/* Sub 2: Procesos de Selección — solo si tiene horas */}
+                  {getSubcomponentHours('seleccion') > 0 && renderComponentCard(
+                    'ext_procesos',
+                    'Dirección de Procesos de Selección',
+                    Briefcase,
+                    '#0284C7',
+                    `Horas: ${getSubcomponentHours('seleccion')}h`,
+                    true
+                  )}
+
+                  {/* Sub 3: Fortalecimiento Institucional — solo si tiene horas */}
+                  {getSubcomponentHours('fortalecimiento') > 0 && renderComponentCard(
+                    'ext_fortalecimiento',
+                    'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal',
+                    Building2,
+                    '#7C3AED',
+                    `Horas: ${getSubcomponentHours('fortalecimiento')}h`,
+                    true
+                  )}
+
+                  {/* Sub 4: Escuela de Alto Gobierno — solo si tiene horas */}
+                  {getSubcomponentHours('alto_gobierno') > 0 && renderComponentCard(
+                    'ext_gobierno',
+                    'Escuela de Alto Gobierno',
+                    Shield,
+                    '#B45309',
+                    `Horas: ${getSubcomponentHours('alto_gobierno')}h`,
+                    true
+                  )}
+
+                </div>
+              </motion.div>
+              )}
+
               {/* Complementarias */}
               {shouldShowComponentKey('complementarias') && (
               <SectionCollapsible
@@ -2605,48 +2765,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               </SectionCollapsible>
               )}
 
-              {/* Académico Administrativo */}
-              {shouldShowComponentKey('academicas_admin') && (
-              <SectionCollapsible
-                title="Actividades Académico Administrativo"
-                icon={Award}
-                color="#FFC000"
-                count={acadAdmin.actividades?.length || 0}
-              >
-                {acadAdmin.actividades?.length > 0 ? (
-                  <>
-                    {acadAdmin.actividades.map((a: any, i: number) => (
-                      <div key={i} style={{
-                        padding: '7px 10px', borderRadius: 6, background: '#FAFAFA',
-                        border: '1px solid #F3F4F6', marginBottom: 4,
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre}</span>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6B21A8', whiteSpace: 'nowrap' }}>{a.horas}h</span>
-                        </div>
-                        {a.descripcion && (
-                          <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
-                        )}
-                        {(a.fecha_inicio || a.fecha_fin) && (
-                          <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: '0.65rem', color: '#6B7280' }}>
-                            {a.fecha_inicio && <span>Inicio: <strong>{fmtFecha(a.fecha_inicio)}</strong></span>}
-                            {a.fecha_fin && <span>Fin: <strong>{fmtFecha(a.fecha_fin)}</strong></span>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6B21A8' }}>
-                        Total Acad. Admin.: {horasAcadAdmin}h
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '12px 0' }}>
-                    Sin actividades académico administrativas
-                  </p>
-                )}
-              </SectionCollapsible>
+              {/* Complementarias — aprobar/devolver (incluye AADM) */}
+              {renderComponentCard(
+                'complementarias',
+                'Actividades Complementarias',
+                Briefcase,
+                PTA_COLORS.COMPLEMENTARIAS,
+                `Contenido: ${(complementarias.actividades?.length || 0)} actividad(es) (${horasComplementarias}h)` +
+                  (acadAdmin.actividades?.length ? ` · incl. ${acadAdmin.actividades.length} académico-administrativa(s) (${horasAcadAdmin}h)` : '')
               )}
 
               {/* Summary bar */}
@@ -2662,248 +2788,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   {horasProg}h / {horasDisp}h ({pctCarga}%)
                 </span>
               </div>
-            </div>
-          )}
-
-          {/* ═══ TAB: Traza Componentes ═══ */}
-          {activeTab === 'historial' && (
-            <div>
-              {/* Header de la pestaña */}
-              <div style={{
-                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
-                borderRadius: 16,
-                padding: '18px 22px',
-                border: '1px solid #E2E8F0',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.01)',
-                marginBottom: 20,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: '240px' }}>
-                    <h4 style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0F172A', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 8, letterSpacing: '-0.015em' }}>
-                      <Shield style={{ width: 20, height: 20, color: '#003DA5', strokeWidth: 2.5 }} />
-                      Control de Traza e Historial de Aprobaciones
-                    </h4>
-                    <p style={{ fontSize: '0.74rem', color: '#64748B', margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
-                      A continuación se muestra el estado de validación granular del Plan de Trabajo Académico. Cada componente y subcomponente de extensión debe ser revisado y aprobado individualmente por las áreas y revisores competentes.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Progress Stats & Count Badges */}
-                {(() => {
-                  // Componentes fijos (Docencia, Investigación, Complementarias, AADM) = 4
-                  // + sub-componentes de extensión que tengan horas > 0
-                  const extSubKeyMap: Record<string, string> = {
-                    capacitacion: 'ext_capacitacion',
-                    seleccion: 'ext_procesos',
-                    fortalecimiento: 'ext_fortalecimiento',
-                    alto_gobierno: 'ext_gobierno',
-                    otras: 'ext_secciones',
-                  };
-                  const extSubKeys = Object.keys(extSubKeyMap);
-                  const extConHoras = extSubKeys.filter(k => getSubcomponentHours(k) > 0);
-                  const visibleComponenteKeys = new Set([
-                    'academica', 'investigacion', 'complementarias', 'academicas_admin',
-                    ...extConHoras.map(k => extSubKeyMap[k]),
-                  ].filter(key => shouldShowComponentKey(key)));
-                  const total = visibleComponenteKeys.size;
-                  const aprobados = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'aprobado').length;
-                  const devueltos = componentesAprobacionVisibles.filter(c => visibleComponenteKeys.has(c.componente) && c.estado === 'devuelto').length;
-                  const pendientes = total - aprobados - devueltos;
-                  const pct = total > 0 ? Math.round((aprobados / total) * 100) : 0;
-                  return (
-                    <div style={{ marginTop: 16 }}>
-                      {/* Stats Badges Grid */}
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                        <div style={{ background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#166534' }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
-                          Aprobados: {aprobados}
-                        </div>
-                        {devueltos > 0 && (
-                          <div style={{ background: '#FEF2F2', border: '1px solid #FEE2E2', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#991B1B' }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#EF4444' }} />
-                            Devueltos: {devueltos}
-                          </div>
-                        )}
-                        <div style={{ background: '#FFFBEB', border: '1px solid #FEF3C7', borderRadius: 8, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', fontWeight: 700, color: '#92400E' }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B' }} className="animate-pulse" />
-                          Pendientes: {pendientes}
-                        </div>
-                      </div>
-
-                      {/* Bar progress */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '0.72rem', fontWeight: 800 }}>
-                        <span style={{ color: '#475569' }}>Progreso de Aprobación Granular</span>
-                        <span style={{ color: aprobados === total ? '#059669' : '#003DA5' }}>
-                          {aprobados} / {total} componentes ({pct}%)
-                        </span>
-                      </div>
-                      <div style={{ width: '100%', height: 8, borderRadius: 4, background: '#E2E8F0', overflow: 'hidden', display: 'flex', gap: 2 }}>
-                        <div style={{ height: '100%', width: `${pct}%`, background: aprobados === total ? '#10B981' : 'linear-gradient(90deg, #003DA5, #2563EB)', borderRadius: 4, transition: 'width 0.4s ease-out' }} />
-                        {devueltos > 0 && (
-                          <div style={{ height: '100%', width: `${Math.round((devueltos / total) * 100)}%`, background: '#EF4444', borderRadius: 4 }} />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {loadingComponentesAprobacion ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 0', color: '#9CA3AF' }}>
-                  <Loader2 style={{ width: 28, height: 28 }} className="animate-spin" />
-                  <span style={{ marginTop: 8, fontSize: '0.78rem' }}>Cargando traza de componentes...</span>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {/* 1. Docencia */}
-                  {renderComponentCard(
-                    'academica',
-                    'Componente Docencia (Asignaturas)',
-                    BookOpen,
-                    PTA_COLORS.DOCENCIA,
-                    `Contenido: ${asignaturas.length} asignatura(s) (${horasDocencia}h)`
-                  )}
-
-                  {/* 2. Investigación */}
-                  {renderComponentCard(
-                    'investigacion',
-                    'Componente Investigación (Proyectos y Actividades)',
-                    FlaskConical,
-                    PTA_COLORS.INVESTIGACION,
-                    `Contenido: ${(investigacion.proyectos?.length || 0)} proyecto(s), ${(investigacion.actividades?.length || 0)} actividad(es) (${horasInvestigacion}h)`
-                  )}
-
-                  {/* 3. Extensión Universitaria (Agrupada) */}
-                  {(!shouldHideUnauthorizedComponents || extensionCards.length > 0) && (
-                  <motion.div
-                    whileHover={{ y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                    style={{
-                      background: 'linear-gradient(135deg, #FFFFFF 0%, #F0FDF4 100%)',
-                      borderRadius: 16,
-                      border: '1px solid #A7F3D0',
-                      boxShadow: '0 4px 18px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.01)',
-                      padding: '20px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 12,
-                      position: 'relative',
-                      overflow: 'hidden',
-                      transition: 'border-color 0.25s ease, background 0.25s ease',
-                    }}
-                  >
-                    {/* Indicador lateral de color */}
-                    <div style={{
-                      position: 'absolute',
-                      top: 0,
-                      bottom: 0,
-                      left: 0,
-                      width: 5,
-                      background: 'linear-gradient(180deg, #059669 0%, #059669CC 100%)',
-                      borderRadius: '4px 0 0 4px'
-                    }} />
-
-                    {/* Encabezado del contenedor de Extensión */}
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', paddingLeft: 6 }}>
-                      <div style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 10,
-                        background: 'linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(5, 150, 105, 0.08) 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#059669',
-                        border: '1px solid rgba(5, 150, 105, 0.25)',
-                        flexShrink: 0,
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                      }}>
-                        <Globe style={{ width: 22, height: 22 }} />
-                      </div>
-                      <div>
-                        <h5 style={{ margin: '0 0 3px 0', fontSize: '0.9rem', fontWeight: 800, color: '#1E293B', letterSpacing: '-0.01em' }}>
-                          Componente Extensión Universitaria
-                        </h5>
-                        <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: 'rgba(5, 150, 105, 0.08)', padding: '2px 8px', borderRadius: 6 }}>
-                          Total de Actividades de Extensión: {horasExtension}h
-                        </span>
-                      </div>
-                    </div>
-
-                    <div style={{ borderTop: '1px solid rgba(5, 150, 105, 0.15)', margin: '6px 0' }} />
-
-                    {/* Lista vertical responsiva de subcomponentes */}
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 12,
-                      paddingLeft: 6,
-                    }}>
-                      {/* Sub 1: Capacitación — solo si tiene horas */}
-                      {getSubcomponentHours('capacitacion') > 0 && renderComponentCard(
-                        'ext_capacitacion',
-                        'Dirección de Capacitación',
-                        GraduationCap,
-                        '#059669',
-                        `Horas: ${getSubcomponentHours('capacitacion')}h`,
-                        true
-                      )}
-
-                      {/* Sub 2: Procesos de Selección — solo si tiene horas */}
-                      {getSubcomponentHours('seleccion') > 0 && renderComponentCard(
-                        'ext_procesos',
-                        'Dirección de Procesos de Selección',
-                        Briefcase,
-                        '#0284C7',
-                        `Horas: ${getSubcomponentHours('seleccion')}h`,
-                        true
-                      )}
-
-                      {/* Sub 3: Fortalecimiento Institucional — solo si tiene horas */}
-                      {getSubcomponentHours('fortalecimiento') > 0 && renderComponentCard(
-                        'ext_fortalecimiento',
-                        'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal',
-                        Building2,
-                        '#7C3AED',
-                        `Horas: ${getSubcomponentHours('fortalecimiento')}h`,
-                        true
-                      )}
-
-                      {/* Sub 4: Escuela de Alto Gobierno — solo si tiene horas */}
-                      {getSubcomponentHours('alto_gobierno') > 0 && renderComponentCard(
-                        'ext_gobierno',
-                        'Escuela de Alto Gobierno',
-                        Shield,
-                        '#B45309',
-                        `Horas: ${getSubcomponentHours('alto_gobierno')}h`,
-                        true
-                      )}
-
-                    </div>
-                  </motion.div>
-                  )}
-
-                  {/* 4. Actividades Complementarias */}
-                  {renderComponentCard(
-                    'complementarias',
-                    'Actividades Complementarias',
-                    Briefcase,
-                    PTA_COLORS.COMPLEMENTARIAS,
-                    `Contenido: ${(complementarias.actividades?.length || 0)} actividad(es) (${horasComplementarias}h)`
-                  )}
-
-                  {/* 5. AADM */}
-                  {renderComponentCard(
-                    'academicas_admin',
-                    'Actividades Académico-Administrativas (AADM)',
-                    Award,
-                    PTA_COLORS.ACAD_ADMIN,
-                    `Contenido: ${(acadAdmin.actividades?.length || 0)} actividad(es) (${horasAcadAdmin}h)`
-                  )}
-                </div>
-              )}
-
             </div>
           )}
 
@@ -3663,6 +3547,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               jefaturaTerritorialId={jefaturaTerritorialId}
               allowedComponentKeys={shouldHideUnauthorizedComponents ? visibleComponentKeys : undefined}
               componentEditScopeLabel={shouldHideUnauthorizedComponents ? componentEditScopeLabel : undefined}
+              concertacionActorId={actorId}
+              concertacionActorNombre={actorNombre || rolLabel}
               onBack={async () => {
                 setShowEditForm(false);
                 const res = await getPTAById(pta.id);
@@ -3671,6 +3557,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   // Notificar al módulo padre para que actualice la fila en la lista
                   onUpdated?.(res.data);
                 }
+                // Refrescar también las aprobaciones por componente: Concertar puede
+                // haber aprobado/devuelto uno o más, y sin esto el tab de Concertación
+                // quedaba con el estado viejo hasta recargar la página (F5).
+                const resComp = await getComponentesAprobacion(pta.id);
+                if (resComp.success) setComponentesAprobacion(resComp.data || []);
               }}
             />
           </div>

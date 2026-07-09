@@ -13,13 +13,14 @@ export interface NotifUser {
 /** Etiquetas legibles por componente para los textos de notificación. */
 const COMPONENT_LABELS: Record<string, string> = {
   academica: 'Docencia',
-  complementarias: 'Actividades Complementarias',
+  complementarias: 'Actividades Complementarias (incl. Académico-Administrativas)',
   investigacion: 'Investigación',
   ext_capacitacion: 'Extensión — Capacitación',
   ext_procesos: 'Extensión — Procesos de Selección',
   ext_fortalecimiento: 'Extensión — Fortalecimiento',
   ext_gobierno: 'Extensión — Alto Gobierno',
   ext_secciones: 'Extensión — Secciones y Actividades',
+  // Legacy (fusionado en complementarias) — se conserva solo para notificaciones históricas.
   academicas_admin: 'Actividades Académico-Administrativas',
 };
 

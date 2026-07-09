@@ -10,10 +10,8 @@ interface LegacySyncPlan {
   seccionalByDtCode: Map<string, any | null>;
   sedeByCetapCode: Map<string, any | null>;
   summary: ImportGeograficoResultDto['sincronizacion_legacy'];
-  /** Errores que SÍ deben bloquear la importación (hoy ninguno: reservado). */
-  errors: string[];
-  /** Ambigüedades de mapeo legacy resueltas de forma determinista. NO bloquean. */
-  warnings: string[];
+  errors: Array<{ mensaje: string; hoja?: string; fila?: number; codigo?: string; columna?: string; datoErrado?: string; valorEsperado?: string }>;
+  warnings: Array<{ mensaje: string; hoja?: string; fila?: number; codigo?: string; columna?: string; datoErrado?: string; valorEsperado?: string }>;
 }
 
 @Injectable()
@@ -42,7 +40,7 @@ export class EstructuraImportService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly excelParser: EstructuraExcelParserService,
-  ) {}
+  ) { }
 
   getTemplateBuffer(): Buffer {
     const fileName =
@@ -79,7 +77,7 @@ export class EstructuraImportService {
 
     // 2. Validate G1-G7
     const validation = GeograficoValidator.validarPreInsert(territoriales, cetaps);
-    
+
     const result = new ImportGeograficoResultDto();
     result.dry_run = dryRun;
     result.skip_invalid = skipInvalid;
@@ -103,7 +101,7 @@ export class EstructuraImportService {
       result.carga.cetaps.creados = 0;
       result.carga.cetaps.omitidos = validation.invalidCetaps.length;
       result.tiempo_ms = Date.now() - startTime;
-      
+
       if (!dryRun) {
         throw new BadRequestException({
           success: false,
@@ -171,57 +169,8 @@ export class EstructuraImportService {
       cetapsToProcess,
     );
     result.sincronizacion_legacy = legacyPlan.summary;
-    const periodSync = await this.analyzePeriodSync(periodo);
+    const periodSync = await this.analyzePeriodSync(periodo, cetapsToProcess, dtToProcess);
     (result as any).sincronizacion_periodo = periodSync;
-
-    // Las ambigüedades de mapeo contra la estructura legacy (auth.seccionales /
-    // auth.sedes) NO bloquean la importación: el catálogo maestro
-    // (academic_work_plan) es la fuente de verdad y se hace upsert idempotente.
-    // buildLegacySyncPlan ya las resolvió de forma determinista (sin crear
-    // duplicados); aquí solo se informan como advertencias.
-    if (legacyPlan.warnings.length > 0) {
-      result.advertencias.push(
-        ...legacyPlan.warnings.map((message) => ({
-          hoja: 'SINCRONIZACION_LEGACY',
-          mensaje: message,
-          severity: 'warning' as const,
-        })),
-      );
-    }
-
-    // Un error de periodo (p. ej. el periodo no existe) o un error legacy
-    // genuinamente irrecuperable sí bloquean, porque impiden sincronizar.
-    if (legacyPlan.errors.length > 0 || periodSync.error) {
-      result.success = false;
-      result.preview_territoriales = dtToProcess;
-      result.preview_cetaps = cetapsToProcess;
-      result.tiempo_ms = Date.now() - startTime;
-      result.errores.push(
-        ...legacyPlan.errors.map((message) => ({
-          hoja: 'SINCRONIZACION_LEGACY',
-          mensaje: message,
-          severity: 'error' as const,
-        })),
-      );
-      if (periodSync.error) {
-        result.errores.push({
-          hoja: 'PERIODO_ACADEMICO',
-          mensaje: periodSync.error,
-          severity: 'error',
-        });
-      }
-
-      if (!dryRun) {
-        throw new BadRequestException({
-          success: false,
-          message:
-            periodSync.error ||
-            'No se pudo sincronizar la estructura con la organización actual.',
-          errores: result.errores,
-        });
-      }
-      return result;
-    }
 
     // Calcular indicadores
     const cetapsPorTipo: Record<string, number> = {};
@@ -291,20 +240,18 @@ export class EstructuraImportService {
       }
     }
 
-    const legacyHasChanges =
-      legacyPlan.summary.seccionales.creadas > 0 ||
-      legacyPlan.summary.seccionales.actualizadas > 0 ||
-      legacyPlan.summary.sedes.creadas > 0 ||
-      legacyPlan.summary.sedes.actualizadas > 0;
-    const allIdentical =
-      (identicalDts.length > 0 || identicalCetaps.length > 0) &&
-      newDts.length === 0 &&
-      newCetaps.length === 0 &&
-      modifiedDts.length === 0 &&
-      modifiedCetaps.length === 0 &&
-      !legacyHasChanges &&
-      !periodSync.required;
+    const previewTerritorialesFull = [
+      ...newDts.map((dt) => ({ ...dt, estado_importacion: 'nuevo' })),
+      ...modifiedDts.map((dt) => ({ ...dt, estado_importacion: 'modificado' })),
+      ...identicalDts.map((dt) => ({ ...dt, estado_importacion: 'identico' })),
+    ];
+    const previewCetapsFull = [
+      ...newCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'nuevo' })),
+      ...modifiedCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'modificado' })),
+      ...identicalCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'identico' })),
+    ];
 
+    let allIdentical = false;
     // Populate result counts
     result.carga.direcciones_territoriales.creados = newDts.length;
     result.carga.direcciones_territoriales.actualizados = modifiedDts.length;
@@ -324,54 +271,109 @@ export class EstructuraImportService {
       total_identicos: identicalDts.length + identicalCetaps.length,
       total_modificados: modifiedDts.length + modifiedCetaps.length,
       total_nuevos: newDts.length + newCetaps.length,
-      todo_identico: allIdentical,
       cambios_detectados: [...modifiedDts.map((d: any) => ({ tipo: 'DT', codigo: d.codigo_dt, cambios: d._cambios })), ...modifiedCetaps.map((c: any) => ({ tipo: 'CETAP', codigo: c.codigo_cetap, cambios: c._cambios }))],
     };
 
-    // Resumen con LISTAS (para el aviso posterior a la importación): qué se creó,
-    // qué se actualizó y qué se omitió por ya existir con otro código.
-    (result as any).resumen = {
-      nuevos: [
-        ...newDts.map((d: any) => ({ tipo: 'Territorial', codigo: d.codigo_dt, nombre: d.nombre_dt })),
-        ...newCetaps.map((c: any) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
-      ],
-      actualizados: [
-        ...modifiedDts.map((d: any) => ({ tipo: 'Territorial', codigo: d.codigo_dt, nombre: d.nombre_dt })),
-        ...modifiedCetaps.map((c: any) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
-      ],
-      ya_existentes_otro_codigo: [
-        ...conflictSkippedDts.map((d: any) => ({ tipo: 'Territorial', codigo: d.codigo_dt, nombre: d.nombre_dt })),
-        ...conflictSkippedCetaps.map((c: any) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
-      ],
-      identicos: identicalDts.length + identicalCetaps.length,
-      con_error:
-        validation.invalidTerritoriales.length + validation.invalidCetaps.length,
-    };
+    if (legacyPlan.errors.length === 0 && !periodSync.error) {
+      const legacyHasChanges =
+        legacyPlan.summary.seccionales.creadas > 0 ||
+        legacyPlan.summary.seccionales.actualizadas > 0 ||
+        legacyPlan.summary.sedes.creadas > 0 ||
+        legacyPlan.summary.sedes.actualizadas > 0;
 
-    // Preview COMPLETO: TODAS las filas del archivo, cada una con su estado, para
-    // que nada "desaparezca" (p. ej. una sede que ya existe bajo otro código) y
-    // las métricas cuadren con lo que se ve en la tabla.
-    //   nuevo | actualizar | identico | ya_existe_otro_codigo | error
-    const tag = (arr: any[], estado: string) =>
-      arr.map((r: any) => ({ ...r, _estado_import: estado }));
-    const previewTerritorialesFull = [
-      ...tag(newDts, 'nuevo'),
-      ...tag(modifiedDts, 'actualizar'),
-      ...tag(conflictSkippedDts, 'ya_existe_otro_codigo'),
-      ...tag(identicalDts, 'identico'),
-      ...tag(validation.invalidTerritoriales, 'error'),
-    ].sort((a: any, b: any) =>
-      String(a.codigo_dt || '').localeCompare(String(b.codigo_dt || ''), 'es'),
-    );
-    const previewCetapsFull = [
-      ...tag(newCetaps, 'nuevo'),
-      ...tag(modifiedCetaps, 'actualizar'),
-      ...tag(conflictSkippedCetaps, 'ya_existe_otro_codigo'),
-      ...tag(identicalCetaps, 'identico'),
-      ...tag(validation.invalidCetaps, 'error'),
-    ].sort((a: any, b: any) =>
-      String(a.codigo_cetap || '').localeCompare(String(b.codigo_cetap || ''), 'es'),
-    );
+      allIdentical =
+        (identicalDts.length > 0 || identicalCetaps.length > 0) &&
+        newDts.length === 0 &&
+        newCetaps.length === 0 &&
+        modifiedDts.length === 0 &&
+        modifiedCetaps.length === 0 &&
+        !legacyHasChanges &&
+        !periodSync.required;
+
+      (result as any).analisis_duplicados.todo_identico = allIdentical;
+    }
+
+    if (legacyPlan.errors.length > 0 || periodSync.error) {
+      const enrichedErrors = legacyPlan.errors.map((err) => ({
+        hoja: err.hoja || 'SINCRONIZACION_LEGACY',
+        fila: err.fila,
+        columna: err.columna || (err.hoja === 'CETAPS' ? 'codigo_cetap / nombre_cetap' : 'codigo_dt / nombre_dt'),
+        datoErrado: err.datoErrado || undefined,
+        valorEsperado: err.valorEsperado || 'Registro único (sin duplicados en la base de datos)',
+        mensaje: err.mensaje,
+        severity: 'error' as const,
+      }));
+      if (periodSync.error) {
+        enrichedErrors.push({
+          hoja: 'PERIODO_ACADEMICO',
+          columna: 'periodo',
+          datoErrado: periodo || undefined,
+          valorEsperado: 'Periodo académico existente',
+          mensaje: periodSync.error,
+          severity: 'error',
+        } as any);
+      }
+
+      // Si skipInvalid está habilitado, permitir continuar con los datos válidos
+      // descartando las filas con ambigüedades
+      if (skipInvalid) {
+        const ambiguousDtCodes = new Set(
+          legacyPlan.errors
+            .filter(e => e.hoja === 'DIRECCIONES_TERRITORIALES')
+            .map(e => e.codigo)
+            .filter(Boolean),
+        );
+        const ambiguousCetapCodes = new Set(
+          legacyPlan.errors
+            .filter(e => e.hoja === 'CETAPS')
+            .map(e => e.codigo)
+            .filter(Boolean),
+        );
+        if (ambiguousDtCodes.size > 0) {
+          dtToProcess = dtToProcess.filter(dt => !ambiguousDtCodes.has(dt.codigo_dt));
+        }
+        if (ambiguousCetapCodes.size > 0) {
+          cetapsToProcess = cetapsToProcess.filter(c => !ambiguousCetapCodes.has(c.codigo_cetap));
+        }
+        result.advertencias.push(
+          ...enrichedErrors.map(e => ({ ...e, severity: 'warning' as const })),
+        );
+        this.logger.warn(
+          `skipInvalid: omitiendo ${ambiguousDtCodes.size} DTs y ${ambiguousCetapCodes.size} CETAPs ambiguos`,
+        );
+      } else {
+        result.success = false;
+        result.preview_territoriales = dtToProcess;
+        result.preview_cetaps = cetapsToProcess;
+        result.tiempo_ms = Date.now() - startTime;
+        result.errores.push(...enrichedErrors);
+
+        const resumenErrores = enrichedErrors
+          .slice(0, 5)
+          .map(e => `• ${e.hoja}${e.fila ? ` fila ${e.fila}` : ''}: ${e.mensaje}`)
+          .join('\n');
+        const msgDetallado = `La estructura nueva es válida, pero existen ${enrichedErrors.length} ambigüedad(es) en la estructura organizacional actual:\n${resumenErrores}${enrichedErrors.length > 5 ? `\n... y ${enrichedErrors.length - 5} más` : ''
+          }`;
+
+        if (!dryRun) {
+          throw new BadRequestException({
+            success: false,
+            message: msgDetallado,
+            errores: result.errores,
+            has_blocking_errors: false,
+            valid_count: {
+              territoriales: dtToProcess.length,
+              cetaps: cetapsToProcess.length,
+            },
+          });
+        }
+        result.success = false;
+        result.message = msgDetallado;
+        return result;
+      }
+    }
+
+
 
     if (dryRun) {
       // Si TODO es idéntico, bloquear
@@ -617,21 +619,48 @@ export class EstructuraImportService {
         );
       }
 
-      // Sincronizar con los periodos académicos.
-      // NOTA: la carga masiva NO depende de un periodo seleccionado. Alimenta el
-      // catálogo maestro y deja cada CETAP activo disponible (ACTIVO) en TODOS los
-      // periodos. Cada periodo es independiente: solo se INSERTA cuando la fila no
-      // existe (ON CONFLICT DO NOTHING), de modo que NO se pisan las
-      // inactivaciones/activaciones manuales hechas por periodo desde la pantalla
-      // de "Activación por Periodo".
-      await queryRunner.query(
-        `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
-         SELECT pa.id, c.id, TRUE
-           FROM academic_work_plan.periodo_academico pa
-           CROSS JOIN academic_work_plan.cetap c
-          WHERE c.activo = TRUE
-         ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
-      );
+      // Sincronizar con el periodo académico específico.
+      if (periodo) {
+        const periodRows = await queryRunner.query(
+          'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1',
+          [periodo],
+        );
+        if (periodRows.length === 0) {
+          throw new Error(
+            `El periodo académico "${periodo}" no existe. No se realizó ningún cambio.`,
+          );
+        }
+        const periodoId = periodRows[0].id;
+        this.logger.log(`Sincronizando activación por periodo ${periodo} (ID: ${periodoId}) para ${cetapsToProcess.length} CETAP del archivo`);
+
+        // Mapa de "activo" por territorial tomado del propio archivo (hoja
+        // DIRECCIONES_TERRITORIALES). Permite respetar AMBAS columnas "activo":
+        // si una territorial viene marcada como inactiva, sus CETAP quedan
+        // inactivos en el periodo aunque su fila individual diga TRUE.
+        const dtActivoByCode = new Map<string, boolean>();
+        for (const dt of dtToProcess) {
+          dtActivoByCode.set(dt.codigo_dt, dt.activo);
+        }
+
+        // Activación por periodo NO destructiva e idempotente: SOLO se tocan los
+        // CETAP presentes en el archivo. Los CETAP que NO vengan en esta subida
+        // conservan su estado actual en el periodo. Así se soportan cargas
+        // parciales y múltiples subidas sin desactivar lo previamente activado.
+        // Cada periodo es independiente del catálogo maestro y de otros periodos.
+        for (const c of cetapsToProcess) {
+          const dtActivo = dtActivoByCode.has(c.codigo_dt)
+            ? dtActivoByCode.get(c.codigo_dt)
+            : true;
+          const activoEnPeriodo = c.activo && dtActivo;
+          await queryRunner.query(
+            `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
+             SELECT $1, id, $2 FROM academic_work_plan.cetap WHERE codigo = $3
+             ON CONFLICT (id_periodo_academico, id_cetap)
+             DO UPDATE SET activo = EXCLUDED.activo, updated_at = CURRENT_TIMESTAMP`,
+            [periodoId, activoEnPeriodo, c.codigo_cetap],
+          );
+        }
+      }
 
       const postValidation = await queryRunner.query(
         `SELECT
@@ -697,16 +726,111 @@ export class EstructuraImportService {
     return result;
   }
 
-  /**
-   * Filtra las filas cuyo NOMBRE ya existe en el catálogo maestro bajo un código
-   * distinto (o se repite dentro del mismo archivo), lo que violaría las claves
-   * únicas secundarias:
-   *   - direccion_territorial: UNIQUE(nombre) y UNIQUE(nombre_normalizado)
-   *   - cetap: UNIQUE(id_direccion_territorial, nombre_normalizado)
-   * El upsert solo resuelve conflictos por código, así que estas filas se OMITEN
-   * (en vez de romper toda la transacción) y se importa el resto. La comparación
-   * es EXACTA (trim), igual que los índices únicos de Postgres.
-   */
+  private async analyzePeriodSync(
+    periodo?: string,
+    cetapsFromExcel: any[] = [],
+    territorialesFromExcel: any[] = [],
+  ): Promise<{
+    periodo: string | null;
+    required: boolean;
+    activos_catalogo: number;
+    activos_periodo: number;
+    detalles: {
+      activaciones: number;
+      desactivaciones: number;
+      sin_cambios: number;
+    };
+    error?: string;
+  }> {
+    if (!periodo) {
+      return {
+        periodo: null,
+        required: false,
+        activos_catalogo: 0,
+        activos_periodo: 0,
+        detalles: { activaciones: 0, desactivaciones: 0, sin_cambios: 0 },
+      };
+    }
+
+    const periodRows = await this.dataSource.query(
+      'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1',
+      [periodo],
+    );
+
+    if (periodRows.length === 0) {
+      return {
+        periodo,
+        required: false,
+        activos_catalogo: 0,
+        activos_periodo: 0,
+        detalles: { activaciones: 0, desactivaciones: 0, sin_cambios: 0 },
+        error: `El periodo académico "${periodo}" no existe.`,
+      };
+    }
+
+    const periodoId = periodRows[0].id;
+
+    // Obtener estado actual en el periodo
+    const currentPeriodStatus = await this.dataSource.query(
+      `SELECT c.codigo, pc.activo 
+       FROM academic_work_plan.periodo_cetap pc
+       INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
+       WHERE pc.id_periodo_academico = $1`,
+      [periodoId],
+    );
+
+    const statusMap = new Map<string, boolean>();
+    for (const row of currentPeriodStatus) {
+      statusMap.set(row.codigo, row.activo);
+    }
+
+    // Mismo criterio que la sincronización real: el estado efectivo en el
+    // periodo combina AMBAS columnas "activo" (la del CETAP y la de su
+    // territorial). Una fila sin registro previo se considera inactiva.
+    const dtActivoByCode = new Map<string, boolean>();
+    for (const dt of territorialesFromExcel) {
+      dtActivoByCode.set(dt.codigo_dt, dt.activo);
+    }
+
+    let activaciones = 0;
+    let desactivaciones = 0;
+    let sinCambios = 0;
+
+    for (const c of cetapsFromExcel) {
+      const dtActivo = dtActivoByCode.has(c.codigo_dt)
+        ? dtActivoByCode.get(c.codigo_dt)
+        : true;
+      const target = Boolean(c.activo && dtActivo);
+      const current = statusMap.get(c.codigo_cetap) === true;
+      if (current === target) {
+        sinCambios++;
+      } else if (target) {
+        activaciones++;
+      } else {
+        desactivaciones++;
+      }
+    }
+
+    const catalogStats = await this.dataSource.query(
+      `SELECT 
+         (SELECT COUNT(*) FROM academic_work_plan.cetap WHERE activo = TRUE) AS activos_catalogo,
+         (SELECT COUNT(*) FROM academic_work_plan.periodo_cetap WHERE id_periodo_academico = $1 AND activo = TRUE) AS activos_periodo`,
+      [periodoId],
+    );
+
+    return {
+      periodo,
+      required: activaciones > 0 || desactivaciones > 0,
+      activos_catalogo: Number(catalogStats[0].activos_catalogo || 0),
+      activos_periodo: Number(catalogStats[0].activos_periodo || 0),
+      detalles: {
+        activaciones,
+        desactivaciones,
+        sin_cambios: sinCambios,
+      },
+    };
+  }
+
   private async filterCatalogNameConflicts(
     territoriales: any[],
     cetaps: any[],
@@ -717,159 +841,106 @@ export class EstructuraImportService {
     skippedCetaps: any[];
     messages: string[];
   }> {
-    const messages: string[] = [];
-    const key = (v: unknown) => String(v ?? '').trim();
-    // Devuelve el código en conflicto si existe y es distinto del propio.
-    const clashWith = (
-      code: string | undefined,
-      own: string,
-    ): string | null => (code && code !== own ? code : null);
-
-    // ── Territoriales: nombre y nombre_normalizado son únicos (globales) ──
-    const dtRows = await this.dataSource.query(
-      'SELECT codigo, nombre, nombre_normalizado FROM academic_work_plan.direccion_territorial',
-    );
-    const dtNameToCode = new Map<string, string>();
-    const dtNormToCode = new Map<string, string>();
-    for (const r of dtRows) {
-      if (key(r.nombre)) dtNameToCode.set(key(r.nombre), r.codigo);
-      if (key(r.nombre_normalizado)) dtNormToCode.set(key(r.nombre_normalizado), r.codigo);
+    if (territoriales.length === 0 && cetaps.length === 0) {
+      return {
+        territoriales,
+        cetaps,
+        skippedTerritoriales: [],
+        skippedCetaps: [],
+        messages: [],
+      };
     }
-    const keptDts: any[] = [];
+
+    const existingDts = await this.dataSource.query(
+      `SELECT id, codigo, nombre, nombre_normalizado
+         FROM academic_work_plan.direccion_territorial`,
+    );
+    const dtByNormalizedName = new Map<string, any>();
+    for (const row of existingDts) {
+      const normalizedName = String(row.nombre_normalizado || '').trim();
+      if (normalizedName) dtByNormalizedName.set(normalizedName, row);
+    }
+
+    const filteredDts: any[] = [];
     const skippedTerritoriales: any[] = [];
-    const skippedDtCodes = new Set<string>();
-    const seenDtName = new Map<string, string>();
-    const seenDtNorm = new Map<string, string>();
+    const messages: string[] = [];
+    const allowedDtCodes = new Set<string>();
+
     for (const dt of territoriales) {
-      const nameKey = key(dt.nombre_dt);
-      const normKey = key(dt.nombre_normalizado);
-      const clash =
-        clashWith(dtNameToCode.get(nameKey), dt.codigo_dt) ||
-        clashWith(dtNormToCode.get(normKey), dt.codigo_dt) ||
-        clashWith(seenDtName.get(nameKey), dt.codigo_dt) ||
-        clashWith(seenDtNorm.get(normKey), dt.codigo_dt);
-      if (clash) {
+      const code = String(dt.codigo_dt || '').trim();
+      const normalizedName = String(dt.nombre_normalizado || '').trim();
+      const existingSameName = normalizedName
+        ? dtByNormalizedName.get(normalizedName)
+        : null;
+
+      if (
+        existingSameName &&
+        String(existingSameName.codigo || '').trim() !== code
+      ) {
         skippedTerritoriales.push(dt);
-        skippedDtCodes.add(dt.codigo_dt);
         messages.push(
-          `Territorial "${dt.nombre_dt}" ya existe (código ${clash}). Se conserva la existente; la fila ${dt.codigo_dt} del archivo no crea un duplicado.`,
+          `Se omitio la territorial ${code} porque el nombre "${dt.nombre_dt}" ya existe con el codigo ${existingSameName.codigo}.`,
         );
         continue;
       }
-      seenDtName.set(nameKey, dt.codigo_dt);
-      seenDtNorm.set(normKey, dt.codigo_dt);
-      keptDts.push(dt);
+
+      filteredDts.push(dt);
+      if (code) allowedDtCodes.add(code);
     }
 
-    // ── CETAPs: (id_direccion_territorial, nombre_normalizado) es único ──
-    const cetapRows = await this.dataSource.query(
-      `SELECT c.codigo, c.nombre_normalizado, dt.codigo AS dt_codigo
+    const existingCetaps = await this.dataSource.query(
+      `SELECT c.codigo, c.nombre, c.nombre_normalizado, dt.codigo AS codigo_dt
          FROM academic_work_plan.cetap c
-         JOIN academic_work_plan.direccion_territorial dt
-           ON dt.id = c.id_direccion_territorial`,
+         INNER JOIN academic_work_plan.direccion_territorial dt
+                 ON dt.id = c.id_direccion_territorial`,
     );
-    const cetapKeyToCode = new Map<string, string>();
-    for (const r of cetapRows) {
-      cetapKeyToCode.set(`${r.dt_codigo}||${key(r.nombre_normalizado)}`, r.codigo);
+    const cetapByDtAndName = new Map<string, any>();
+    for (const row of existingCetaps) {
+      const dtCode = String(row.codigo_dt || '').trim();
+      const normalizedName = String(row.nombre_normalizado || '').trim();
+      if (dtCode && normalizedName) {
+        cetapByDtAndName.set(`${dtCode}::${normalizedName}`, row);
+      }
     }
-    const keptCetaps: any[] = [];
+
+    const filteredCetaps: any[] = [];
     const skippedCetaps: any[] = [];
-    const seenCetapKey = new Map<string, string>();
-    for (const c of cetaps) {
-      // Si su territorial fue omitida por conflicto, este CETAP también se omite
-      // (no tendría territorial válida donde colgar).
-      if (skippedDtCodes.has(c.codigo_dt)) {
-        skippedCetaps.push(c);
+    for (const cetap of cetaps) {
+      const dtCode = String(cetap.codigo_dt || '').trim();
+      const code = String(cetap.codigo_cetap || '').trim();
+      const normalizedName = String(cetap.nombre_normalizado || '').trim();
+
+      if (!allowedDtCodes.has(dtCode)) {
+        skippedCetaps.push(cetap);
         messages.push(
-          `"${c.nombre_cetap}" (${c.codigo_cetap}) no se procesó porque su territorial ${c.codigo_dt} ya existe con otro código.`,
+          `Se omitio el CETAP ${code} porque su territorial ${dtCode} fue omitida.`,
         );
         continue;
       }
-      const k = `${c.codigo_dt}||${key(c.nombre_normalizado)}`;
-      const clash =
-        clashWith(cetapKeyToCode.get(k), c.codigo_cetap) ||
-        clashWith(seenCetapKey.get(k), c.codigo_cetap);
-      if (clash) {
-        skippedCetaps.push(c);
+
+      const existingSameName = normalizedName
+        ? cetapByDtAndName.get(`${dtCode}::${normalizedName}`)
+        : null;
+      if (
+        existingSameName &&
+        String(existingSameName.codigo || '').trim() !== code
+      ) {
+        skippedCetaps.push(cetap);
         messages.push(
-          `"${c.nombre_cetap}" en la territorial ${c.codigo_dt} ya existe (código ${clash}). Se conserva el existente; la fila ${c.codigo_cetap} del archivo no crea un duplicado.`,
+          `Se omitio el CETAP ${code} porque el nombre "${cetap.nombre_cetap}" ya existe en la territorial ${dtCode} con el codigo ${existingSameName.codigo}.`,
         );
         continue;
       }
-      seenCetapKey.set(k, c.codigo_cetap);
-      keptCetaps.push(c);
+
+      filteredCetaps.push(cetap);
     }
 
     return {
-      territoriales: keptDts,
-      cetaps: keptCetaps,
+      territoriales: filteredDts,
+      cetaps: filteredCetaps,
       skippedTerritoriales,
       skippedCetaps,
       messages,
-    };
-  }
-
-  private async analyzePeriodSync(
-    periodo?: string,
-  ): Promise<{
-    periodo: string | null;
-    required: boolean;
-    activos_catalogo: number;
-    activos_periodo: number;
-    error?: string;
-  }> {
-    if (!periodo) {
-      return {
-        periodo: null,
-        required: false,
-        activos_catalogo: 0,
-        activos_periodo: 0,
-      };
-    }
-
-    const rows = await this.dataSource.query(
-      `SELECT
-         p.id,
-         (SELECT COUNT(*)
-            FROM academic_work_plan.cetap c
-           WHERE c.activo = TRUE) AS activos_catalogo,
-         (SELECT COUNT(*)
-            FROM academic_work_plan.periodo_cetap pc
-            INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
-           WHERE pc.id_periodo_academico = p.id
-             AND pc.activo = TRUE
-             AND c.activo = TRUE) AS activos_periodo,
-         (SELECT COUNT(*)
-            FROM academic_work_plan.periodo_cetap pc
-            INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
-           WHERE pc.id_periodo_academico = p.id
-             AND pc.activo = TRUE
-             AND c.activo = FALSE) AS activos_incorrectos
-       FROM academic_work_plan.periodo_academico p
-       WHERE p.codigo = $1
-       LIMIT 1`,
-      [periodo],
-    );
-
-    if (rows.length === 0) {
-      return {
-        periodo,
-        required: false,
-        activos_catalogo: 0,
-        activos_periodo: 0,
-        error: `El periodo académico "${periodo}" no existe.`,
-      };
-    }
-
-    const activosCatalogo = Number(rows[0].activos_catalogo || 0);
-    const activosPeriodo = Number(rows[0].activos_periodo || 0);
-    const activosIncorrectos = Number(rows[0].activos_incorrectos || 0);
-    return {
-      periodo,
-      required:
-        activosCatalogo !== activosPeriodo || activosIncorrectos > 0,
-      activos_catalogo: activosCatalogo,
-      activos_periodo: activosPeriodo,
     };
   }
 
@@ -889,8 +960,8 @@ export class EstructuraImportService {
 
     const seccionalByDtCode = new Map<string, any | null>();
     const sedeByCetapCode = new Map<string, any | null>();
-    const errors: string[] = [];
-    const warnings: string[] = [];
+    const errors: LegacySyncPlan['errors'] = [];
+    const warnings: LegacySyncPlan['warnings'] = [];
     const selectedSeccionalIds = new Set<string>();
 
     const bySecCode = new Map<string, any>();
@@ -927,19 +998,21 @@ export class EstructuraImportService {
           (row: any) =>
             !selectedSeccionalIds.has(String(row.id_seccional)) &&
             this.normalizeLegacyName(row.nom_seccional) ===
-              this.normalizeLegacyName(dt.nombre_dt),
+            this.normalizeLegacyName(dt.nombre_dt),
         );
         if (candidates.length === 1) {
           matched = candidates[0];
         } else if (candidates.length > 1) {
-          // No bloquear: elegir de forma determinista (menor id_seccional) para
-          // vincular a una seccional existente y NO crear un duplicado nuevo.
-          matched = [...candidates].sort(
-            (a, b) => Number(a.id_seccional) - Number(b.id_seccional),
-          )[0];
-          warnings.push(
-            `La territorial ${dt.codigo_dt} (${dt.nombre_dt}) coincidía con ${candidates.length} seccionales existentes; se vinculó a la de código "${matched.cod_seccional}" (id ${matched.id_seccional}).`,
-          );
+          const ids = candidates.map((c: any) => c.id_seccional).join(', ');
+          errors.push({
+            hoja: 'DIRECCIONES_TERRITORIALES',
+            fila: dt._row,
+            codigo: dt.codigo_dt,
+            columna: 'nombre_dt',
+            datoErrado: `"${dt.nombre_dt}" → coincide con IDs: ${ids}`,
+            valorEsperado: 'Registro único en auth.seccionales',
+            mensaje: `La territorial "${dt.codigo_dt}" ("${dt.nombre_dt}") coincide con ${candidates.length} seccionales existentes (IDs: ${ids}). Debe unificar los registros duplicados en la base de datos.`,
+          });
         }
       }
 
@@ -980,11 +1053,15 @@ export class EstructuraImportService {
       let matched = sedesByCode.get(cetap.codigo_cetap.toUpperCase()) || null;
 
       if (matched && selectedSedeIds.has(String(matched.id_sede))) {
-        // No bloquear: los códigos duplicados dentro del archivo ya los filtra
-        // el validador G4 antes de llegar aquí. Se informa por si acaso.
-        warnings.push(
-          `El código ${cetap.codigo_cetap} apuntaba a una sede ya utilizada por otra fila; se omite el remapeo legacy de esta fila.`,
-        );
+        errors.push({
+          hoja: 'CETAPS',
+          fila: cetap._row,
+          codigo: cetap.codigo_cetap,
+          columna: 'codigo_cetap',
+          datoErrado: cetap.codigo_cetap,
+          valorEsperado: 'Código único (no reutilizado en otra fila)',
+          mensaje: `El código "${cetap.codigo_cetap}" ("${cetap.nombre_cetap}") apunta a una sede ya utilizada por otra fila del archivo.`,
+        });
         matched = null;
       }
 
@@ -1002,14 +1079,16 @@ export class EstructuraImportService {
         if (candidates.length === 1) {
           matched = candidates[0];
         } else if (candidates.length > 1) {
-          // No bloquear: elegir de forma determinista (menor id_sede) para
-          // vincular a una sede existente y NO crear un duplicado nuevo.
-          matched = [...candidates].sort(
-            (a, b) => Number(a.id_sede) - Number(b.id_sede),
-          )[0];
-          warnings.push(
-            `El CETAP ${cetap.codigo_cetap} (${cetap.nombre_cetap}) coincidía con ${candidates.length} sedes existentes; se vinculó a la de código "${matched.cod_sede}" (id ${matched.id_sede}).`,
-          );
+          const ids = candidates.map((c: any) => c.id_sede).join(', ');
+          errors.push({
+            hoja: 'CETAPS',
+            fila: cetap._row,
+            codigo: cetap.codigo_cetap,
+            columna: 'nombre_cetap',
+            datoErrado: `"${cetap.nombre_cetap}" → coincide con IDs: ${ids}`,
+            valorEsperado: 'Registro único en auth.sedes',
+            mensaje: `El CETAP "${cetap.codigo_cetap}" ("${cetap.nombre_cetap}") coincide con ${candidates.length} sedes existentes (IDs: ${ids}) en la territorial "${cetap.codigo_dt}". Debe unificar los registros duplicados.`,
+          });
         } else if (cetap.tipo === 'sede_central') {
           const centralCandidates = sedes.filter(
             (row: any) =>

@@ -335,7 +335,7 @@ export const ModalSituacionAdministrativa: React.FC<ModalSituacionAdministrativa
                     onChange={(e) => setAfectaAdministrativo(e.target.checked)}
                     className="w-5 h-5 text-[#2962FF] rounded"
                   />
-                  <span className="text-slate-900">Académico-Administrativo</span>
+                  <span className="text-slate-900">Complementarias (incl. Académico-Administrativas)</span>
                 </label>
               </div>
             </div>

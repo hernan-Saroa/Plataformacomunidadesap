@@ -65,8 +65,6 @@ export class ExcelParserService {
     'nombre_corto',
     'nombre_excel_origen',
     'tipo_programa',
-    'categoria_horas_circular003',
-    'descripcion_categoria_circular003',
     'codigo_facultad',
     'nombre_facultad',
     'modalidad_principal',
@@ -195,6 +193,28 @@ export class ExcelParserService {
   }
 
   private mapToProgramaRow(row: any): ProgramaRow {
+    const tipoPrograma = String(row.tipo_programa || '').trim();
+    const horasPregradoCentral =
+      row.horas_pregrado_central !== undefined &&
+      row.horas_pregrado_central !== null &&
+      String(row.horas_pregrado_central).trim() !== ''
+        ? Number(row.horas_pregrado_central)
+        : null;
+    const categoriaExpl = this.parseOptionalString(
+      row.categoria_horas_circular003,
+    )?.toLowerCase();
+    const descripcionExpl = this.parseOptionalString(
+      row.descripcion_categoria_circular003,
+    );
+    const categoriaInferida = this.inferCategoriaCircular003(
+      tipoPrograma,
+      horasPregradoCentral,
+    );
+    const descripcionInferida = this.inferDescripcionCircular003(
+      tipoPrograma,
+      horasPregradoCentral,
+    );
+
     return {
       codigo_programa: String(row.codigo_programa || '').trim(),
       nombre_programa: String(
@@ -204,17 +224,11 @@ export class ExcelParserService {
       nombre_excel_origen: row.nombre_excel_origen
         ? String(row.nombre_excel_origen).trim()
         : null,
-      tipo_programa: String(row.tipo_programa || '').trim(),
+      tipo_programa: tipoPrograma,
       categoria_horas_circular003:
-        row.categoria_horas_circular003 &&
-        String(row.categoria_horas_circular003).trim() !== ''
-          ? String(row.categoria_horas_circular003).trim().toLowerCase()
-          : null,
+        categoriaExpl || categoriaInferida,
       descripcion_categoria_circular003:
-        row.descripcion_categoria_circular003 &&
-        String(row.descripcion_categoria_circular003).trim() !== ''
-          ? String(row.descripcion_categoria_circular003).trim()
-          : null,
+        descripcionExpl || descripcionInferida,
       codigo_facultad: String(row.codigo_facultad || '').trim(),
       modalidad_principal: String(
         row.modalidad_principal || row.modalidad || '',
@@ -222,14 +236,63 @@ export class ExcelParserService {
       horas_base_por_credito: Number(
         row.horas_base_por_credito ?? Number.NaN,
       ),
-      horas_pregrado_central:
-        row.horas_pregrado_central !== undefined &&
-        row.horas_pregrado_central !== null &&
-        String(row.horas_pregrado_central).trim() !== ''
-          ? Number(row.horas_pregrado_central)
-          : null,
+      horas_pregrado_central: horasPregradoCentral,
       activo: this.parseBooleanValue(row.activo),
     };
+  }
+
+  private parseOptionalString(value: unknown): string | null {
+    if (value === null || value === undefined) return null;
+    const parsed = String(value).trim();
+    return parsed === '' ? null : parsed;
+  }
+
+  private inferCategoriaCircular003(
+    tipoPrograma: string,
+    horasPregradoCentral: number | null,
+  ): string | null {
+    if (horasPregradoCentral && horasPregradoCentral > 0) {
+      return 'pregrado_sede_central';
+    }
+    const tipo = this.normalizeToken(tipoPrograma);
+    if (tipo.includes('maestria')) {
+      return 'maestria';
+    }
+    if (tipo.includes('especializacion')) {
+      return 'especializacion';
+    }
+    if (tipo.includes('pregrado')) {
+      return 'pregrado_territorial';
+    }
+    return null;
+  }
+
+  private inferDescripcionCircular003(
+    tipoPrograma: string,
+    horasPregradoCentral: number | null,
+  ): string | null {
+    if (horasPregradoCentral && horasPregradoCentral > 0) {
+      return 'Pregrado Sede Central (AP/EP) - Bloque Fijo';
+    }
+    const tipo = this.normalizeToken(tipoPrograma);
+    if (tipo.includes('maestria')) {
+      return 'Maestria - 12h por credito';
+    }
+    if (tipo.includes('especializacion')) {
+      return 'Especializacion - 16h por credito';
+    }
+    if (tipo.includes('pregrado')) {
+      return 'APT / Territorial - 16h por credito';
+    }
+    return null;
+  }
+
+  private normalizeToken(value: unknown): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
   }
 
   private parseBooleanValue(

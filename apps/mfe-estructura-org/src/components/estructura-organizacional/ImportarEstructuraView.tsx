@@ -4,7 +4,7 @@ import {
   Upload, AlertTriangle, Loader2,
   ArrowLeft, Download, FileSpreadsheet, MapPin, CheckCircle2,
   Search, ChevronRight, Edit3, RefreshCw, Info, AlertCircle,
-  Check, Globe, Building2, ArrowRight, Shield, Sparkles
+  Check, Globe, Building2, ArrowRight, Shield, Sparkles, XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { estructuraService } from '../../services/estructuraService';
@@ -29,7 +29,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<any[]>([]);
   const [isSimulated, setIsSimulated] = useState(false);
-  
+
   const [selectedDtCode, setSelectedDtCode] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -42,9 +42,9 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
   // 'done' = importación REAL ya ejecutada (result presente y NO simulado).
   const currentStep: WizardStep =
     loading ? 'importing' :
-    (result && !isSimulated && !error) ? 'done' :
-    (result && !error) ? 'validate' :
-    'upload';
+      (result && !isSimulated && !error) ? 'done' :
+        (result && !error) ? 'validate' :
+          'upload';
 
   const steps = [
     { id: 'upload', label: 'Subir archivo', icon: Upload },
@@ -293,21 +293,18 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                 {idx > 0 && (
                   <div className={`w-12 h-px mx-1 transition-all duration-500 ${isComplete ? 'bg-emerald-400' : 'bg-gray-200'}`} />
                 )}
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${
-                  isActive ? 'bg-[#003DA5]/10' : ''
-                }`}>
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${
-                    isComplete ? 'bg-emerald-500 text-white' :
-                    isActive ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' :
-                    'bg-gray-200 text-gray-400'
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${isActive ? 'bg-[#003DA5]/10' : ''
                   }`}>
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${isComplete ? 'bg-emerald-500 text-white' :
+                    isActive ? 'bg-[#003DA5] text-white shadow-md shadow-[#003DA5]/20' :
+                      'bg-gray-200 text-gray-400'
+                    }`}>
                     {isComplete ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
                   </div>
-                  <span className={`text-xs font-semibold transition-colors hidden sm:inline ${
-                    isActive ? 'text-[#003DA5]' :
+                  <span className={`text-xs font-semibold transition-colors hidden sm:inline ${isActive ? 'text-[#003DA5]' :
                     isComplete ? 'text-emerald-600' :
-                    'text-gray-400'
-                  }`}>{step.label}</span>
+                      'text-gray-400'
+                    }`}>{step.label}</span>
                 </div>
               </React.Fragment>
             );
@@ -334,20 +331,19 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                   {/* El periodo académico se removió de la carga masiva: alimenta
                       el catálogo maestro y los CETAP quedan disponibles en todos
                       los periodos. La activación por periodo se hace aparte. */}
-                  
+
                   <div
                     onDragEnter={handleDrag}
                     onDragOver={handleDrag}
                     onDragLeave={handleDrag}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`w-full max-w-sm border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 group ${
-                      dragActive
-                        ? 'border-[#003DA5] bg-blue-50/60 scale-[0.98]'
-                        : file
+                    className={`w-full max-w-sm border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 group ${dragActive
+                      ? 'border-[#003DA5] bg-blue-50/60 scale-[0.98]'
+                      : file
                         ? 'border-emerald-300 bg-emerald-50/30'
                         : 'border-gray-200 hover:border-[#003DA5]/40 hover:bg-gray-50/50'
-                    }`}
+                      }`}
                   >
                     <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.xls" className="hidden" />
                     {file ? (
@@ -432,9 +428,21 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-gray-900 text-sm">Error de validación</h4>
-                  <p className="text-[11px] text-gray-500">Corrija los errores e intente nuevamente</p>
+                  <p className="text-[11px] text-gray-500">
+                    {validationErrors.length > 0
+                      ? `${validationErrors.length} error(es) encontrados — corrija los datos o importe solo los registros válidos`
+                      : 'Corrija los errores e intente nuevamente'}
+                  </p>
                 </div>
                 <div className="flex gap-2">
+                  {validationErrors.length > 0 && file && (
+                    <button
+                      onClick={() => handleImportar(false, undefined, true)}
+                      className="px-3 py-1.5 text-[11px] font-bold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all"
+                    >
+                      Importar Solo Válidos
+                    </button>
+                  )}
                   <button onClick={resetState} className="px-3 py-1.5 text-[11px] font-bold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all">
                     Cargar otro
                   </button>
@@ -444,7 +452,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                 </div>
               </div>
               {validationErrors.length > 0 ? (
-                <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-gray-50 sticky top-0 z-10 border-b border-gray-100">
                       <tr>
@@ -490,7 +498,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
             className=""
           >
             {/* Status + Action Bar */}
-            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 160px)' }}>
+            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex flex-col">
               {/* Status banner */}
               {(result as any).blocked_reason === 'ALL_IDENTICAL' ? (
                 <div className="px-8 py-5 flex items-center justify-between gap-4 flex-wrap bg-blue-50/40 border-b border-blue-100">
@@ -536,6 +544,19 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                         }
                         {legacySync && (
                           <> · Sincronización organizacional: {legacyUpdates} actualizaciones y {legacyCreates} creaciones, sin eliminar registros heredados.</>
+                        )}
+                        {(result as any).sincronizacion_periodo?.periodo && (
+                          <div className="mt-2 flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#003DA5]/5 text-[#003DA5] rounded-md border border-[#003DA5]/10 font-bold tracking-tight">
+                              Periodo {(result as any).sincronizacion_periodo.periodo}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 font-bold tracking-tight">
+                              <Check className="w-3 h-3" /> {(result as any).sincronizacion_periodo.detalles?.activaciones || 0} activaciones
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md border border-amber-100 font-bold tracking-tight">
+                              <AlertTriangle className="w-3 h-3" /> {(result as any).sincronizacion_periodo.detalles?.desactivaciones || 0} desactivaciones
+                            </span>
+                          </div>
                         )}
                       </p>
                     </div>
@@ -597,19 +618,30 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                   </div>
                 </div>
               ) : (
-                <div className="px-6 py-4 bg-red-50/30 border-b border-red-100 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
-                      <AlertCircle className="w-4 h-4 text-red-500" />
+                <div className="px-6 py-5 bg-red-50/40 border-b border-red-100 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shadow-sm">
+                      <AlertCircle className="w-5 h-5 text-red-600" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-900 text-sm">Errores bloqueantes</h3>
-                      <p className="text-[11px] text-gray-500">No es posible importar</p>
+                      <h3 className="font-bold text-gray-900 text-sm">No es posible realizar la importación</h3>
+                      <p className="text-xs text-red-700 mt-0.5 font-medium max-w-2xl">
+                        {result.message || 'Existen errores bloqueantes en la validación de datos o la sincronización con la plataforma.'}
+                      </p>
                     </div>
                   </div>
-                  <button onClick={resetState} className="px-3 py-1.5 text-[11px] font-bold text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-all">
-                    Cargar otro
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={resetState} className="px-4 py-2 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
+                      Cambiar archivo
+                    </button>
+                    <button
+                      disabled
+                      className="px-5 py-2.5 text-xs font-bold text-white bg-gray-300 rounded-xl cursor-not-allowed flex items-center gap-2"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Importar bloqueado
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -656,9 +688,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                     {result.errores.some((e: any) => e.fila) && workbookRef.current && (
                       <button
                         onClick={() => setShowCorrectionPanel(!showCorrectionPanel)}
-                        className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${
-                          showCorrectionPanel ? 'bg-gray-200 text-gray-600' : 'bg-[#003DA5] text-white hover:bg-[#002d7a]'
-                        }`}
+                        className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${showCorrectionPanel ? 'bg-gray-200 text-gray-600' : 'bg-[#003DA5] text-white hover:bg-[#002d7a]'
+                          }`}
                       >
                         <Edit3 className="w-3 h-3" />
                         {showCorrectionPanel ? 'Ver errores' : 'Corregir inline'}
@@ -667,7 +698,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                   </div>
 
                   {!showCorrectionPanel && (
-                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-gray-50/80 sticky top-0 z-10 border-b border-gray-100">
                           <tr>
@@ -684,7 +715,23 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                               <tr key={idx}><td colSpan={5} className="px-4 py-2 text-gray-700">{err}</td></tr>
                             ) : (
                               <tr key={idx} className="hover:bg-amber-50/30">
-                                <td className="px-4 py-2 text-[10px] font-mono text-gray-400">{err.hoja || 'Archivo'}{err.fila ? ` · F${err.fila}` : ''}</td>
+                                <td className="px-4 py-2">
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">
+                                      {err.hoja || 'Archivo'}
+                                    </span>
+                                    {err.fila && (
+                                      <span className="text-[11px] font-mono text-emerald-600 bg-emerald-50 w-fit px-1 rounded">
+                                        Fila {err.fila}
+                                      </span>
+                                    )}
+                                    {!err.fila && err.hoja === 'SINCRONIZACION_LEGACY' && (
+                                      <span className="text-[10px] font-medium text-amber-600 bg-amber-50 w-fit px-1 rounded">
+                                        Base de Datos
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="px-4 py-2 font-mono text-gray-600">{err.columna || '-'}</td>
                                 <td className="px-4 py-2">{err.datoErrado ? <span className="text-red-500 line-through font-medium">{err.datoErrado}</span> : <span className="text-gray-300">—</span>}</td>
                                 <td className="px-4 py-2">{err.valorEsperado ? <span className="text-emerald-600 font-medium flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {err.valorEsperado}</span> : <span className="text-gray-300">—</span>}</td>
@@ -703,7 +750,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                         <Info className="w-3.5 h-3.5 text-[#003DA5] shrink-0 mt-0.5" />
                         <p className="text-[10px] text-gray-600">Corrija los valores y haga clic en <strong className="text-[#003DA5]">Re-validar</strong>.</p>
                       </div>
-                      <div className="overflow-x-auto border border-gray-100 rounded-lg max-h-48 overflow-y-auto">
+                      <div className="overflow-x-auto border border-gray-100 rounded-lg">
                         <table className="w-full text-left text-xs">
                           <thead className="bg-gray-50/80 border-b border-gray-100 sticky top-0 z-10">
                             <tr>
@@ -728,9 +775,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                                   <td className="px-3 py-2">
                                     <input type="text" placeholder={err.valorEsperado || 'Nuevo valor...'} value={corrections[corrKey] || ''}
                                       onChange={(e) => handleCorrectionChange(corrKey, e.target.value)}
-                                      className={`w-full px-2 py-1 border rounded text-xs font-medium transition-all focus:outline-none focus:ring-1 ${
-                                        hasCorrected ? 'border-emerald-300 bg-emerald-50 text-emerald-800 focus:ring-emerald-200' : 'border-gray-200 bg-white text-gray-700 focus:ring-[#003DA5]/20'
-                                      }`}
+                                      className={`w-full px-2 py-1 border rounded text-xs font-medium transition-all focus:outline-none focus:ring-1 ${hasCorrected ? 'border-emerald-300 bg-emerald-50 text-emerald-800 focus:ring-emerald-200' : 'border-gray-200 bg-white text-gray-700 focus:ring-[#003DA5]/20'
+                                        }`}
                                     />
                                   </td>
                                   <td className="px-3 py-2 text-[10px] text-gray-400 max-w-[140px] whitespace-normal">{err.mensaje}</td>
@@ -774,11 +820,10 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                       />
                     </div>
                   </div>
-                  <div className="overflow-y-auto flex-1 min-h-0 p-2">
+                  <div className="flex-1 p-2">
                     <button onClick={() => setSelectedDtCode(null)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center justify-between mb-1 ${
-                        !selectedDtCode ? 'bg-[#003DA5] text-white shadow-sm shadow-[#003DA5]/15' : 'hover:bg-gray-50 text-gray-600'
-                      }`}>
+                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center justify-between mb-1 ${!selectedDtCode ? 'bg-[#003DA5] text-white shadow-sm shadow-[#003DA5]/15' : 'hover:bg-gray-50 text-gray-600'
+                        }`}>
                       <div className="flex items-center gap-2.5">
                         <Globe className={`w-3.5 h-3.5 ${!selectedDtCode ? 'text-white/80' : 'text-gray-400'}`} />
                         <span className="text-xs font-semibold">Todas</span>
@@ -791,9 +836,8 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                       const cetapCount = (result?.preview_cetaps || []).filter((c: any) => c.codigo_dt === dt.codigo_dt).length;
                       return (
                         <button key={idx} onClick={() => setSelectedDtCode(dt.codigo_dt)}
-                          className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between ${
-                            isSelected ? 'bg-blue-50/80 text-[#003DA5]' : 'hover:bg-gray-50/80 text-gray-600'
-                          }`}>
+                          className={`w-full text-left px-3 py-2 rounded-lg transition-all flex items-center justify-between ${isSelected ? 'bg-blue-50/80 text-[#003DA5]' : 'hover:bg-gray-50/80 text-gray-600'
+                            }`}>
                           <div className="flex flex-col min-w-0 pr-2">
                             <span className={`text-xs font-semibold truncate ${isSelected ? 'text-[#003DA5]' : 'text-gray-700'}`}>{dt.nombre_dt}</span>
                             <span className="text-[10px] font-mono text-gray-400 mt-0.5">{dt.codigo_dt}</span>
@@ -807,7 +851,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                 </div>
 
                 {/* Sedes Table */}
-                <div className="flex flex-col overflow-hidden">
+                <div className="flex flex-col">
                   <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-gray-800">{activeTerritorial ? activeTerritorial.nombre_dt : 'Todas las sedes'}</h3>
@@ -819,7 +863,7 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                       </span>
                     )}
                   </div>
-                  <div className="overflow-y-auto flex-1 min-h-0">
+                  <div className="flex-1">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-gray-50/80 sticky top-0 border-b border-gray-100 z-10">
                         <tr>
@@ -827,34 +871,41 @@ export function ImportarEstructuraView({ onBack, onSuccess, periodos = [], perio
                           <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Nombre</th>
                           {!activeTerritorial && <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Territorial</th>}
                           <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Tipo</th>
-                          <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Importación</th>
-                          <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Estado</th>
+                          <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Estado Maestro</th>
+                          {periodoSeleccionado && <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Estado Periodo</th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {visibleCetaps.map((c: any, idx: number) => {
                           const est = estadoImportInfo(c._estado_import);
                           return (
-                          <tr key={idx} className="hover:bg-blue-50/20 transition-colors group">
-                            <td className="px-5 py-3 font-mono text-[11px] text-gray-400 group-hover:text-[#003DA5] transition-colors">{c.codigo_cetap}</td>
-                            <td className="px-5 py-3 font-medium text-gray-800 text-xs">{c.nombre_cetap}</td>
-                            {!activeTerritorial && <td className="px-5 py-3 font-mono text-[11px] text-gray-400">{c.codigo_dt}</td>}
-                            <td className="px-5 py-3">
-                              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded">{c.tipo}</span>
-                            </td>
-                            <td className="px-5 py-3">
-                              <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md ${est.cls}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${est.dot}`} />
-                                {est.label}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3">
-                              <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${c.activo ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 bg-gray-50'}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${c.activo ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                                {c.activo ? 'Activo' : 'Inactivo'}
-                              </span>
-                            </td>
-                          </tr>
+                            <tr key={idx} className="hover:bg-blue-50/20 transition-colors group">
+                              <td className="px-5 py-3 font-mono text-[11px] text-gray-400 group-hover:text-[#003DA5] transition-colors">{c.codigo_cetap}</td>
+                              <td className="px-5 py-3 font-medium text-gray-800 text-xs">{c.nombre_cetap}</td>
+                              {!activeTerritorial && <td className="px-5 py-3 font-mono text-[11px] text-gray-400">{c.codigo_dt}</td>}
+                              <td className="px-5 py-3">
+                                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50 px-2 py-0.5 rounded">{c.tipo}</span>
+                              </td>
+                              <td className="px-5 py-3">
+                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md ${est.cls}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${est.dot}`} />
+                                  {est.label}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3">
+                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${c.activo ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 bg-gray-50'}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${c.activo ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                                  {c.activo ? 'Activo' : 'Inactivo'}
+                                </span>
+                              </td>
+                              {periodoSeleccionado && (
+                                <td className="px-5 py-3">
+                                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${c.activo ? 'text-[#003DA5] bg-blue-50' : 'text-amber-600 bg-amber-50'}`}>
+                                    {c.activo ? 'Habilitado' : 'Deshabilitado'}
+                                  </span>
+                                </td>
+                              )}
+                            </tr>
                           );
                         })}
                         {visibleCetaps.length === 0 && (
