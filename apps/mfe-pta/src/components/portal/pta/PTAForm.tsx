@@ -530,6 +530,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // afectados — el docente debe ver qué se devolvió y por qué, igual que en el flujo de
   // devolución por componente.
   const [comentarioConcertacion, setComentarioConcertacion] = useState('');
+  // Respuesta obligatoria del docente al reenviar un componente devuelto: por qué lo
+  // reenvía / qué corrigió. El revisor la ve junto a su comentario original al volver
+  // a concertar/aprobar ese componente.
+  const [respuestaDevolucionDocente, setRespuestaDevolucionDocente] = useState('');
   const savingRef = useRef(false);
   const handleSaveRef = useRef<((enviar?: boolean, silent?: boolean) => Promise<void>) | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -654,13 +658,21 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   );
   const isAdminComponentRestricted = isAdminEdit && adminAllowedComponentKeys.length > 0;
 
-  // Componentes ya resueltos (aprobados o devueltos) — dejan de ser editables en el
-  // modal de "Concertar" en cuanto se resuelven, sin esperar a que el botón "Concertar"
-  // desaparezca (nunca desaparece mientras quede algo pendiente para el revisor).
+  // Componentes ya resueltos (aprobados o devueltos POR UN REVISOR) — dejan de ser
+  // editables en el modal de "Concertar" en cuanto se resuelven, sin esperar a que el
+  // botón "Concertar" desaparezca (nunca desaparece mientras quede algo pendiente).
+  // Se excluye la auto-aprobación del sistema (subcomponentes de Extensión sin
+  // actividades, ej. Fortalecimiento/Alto Gobierno cuando el docente no cargó nada ahí):
+  // no es una decisión real de un revisor y no debe bloquear agregar contenido nuevo.
   const componentesResueltos = useMemo(
     () => new Set(
       (componentesAprobacion || [])
-        .filter(c => ['aprobado', 'devuelto'].includes(String(c?.estado || '').toLowerCase()))
+        .filter(c => {
+          const est = String(c?.estado || '').toLowerCase();
+          if (est === 'devuelto') return true;
+          if (est === 'aprobado') return c?.aprobadorNombre !== 'Sistema';
+          return false;
+        })
         .map(c => String(c?.componente || '')),
     ),
     [componentesAprobacion],
@@ -2131,8 +2143,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         }
         const { updatePTAStatus } = await import('../../../services/api/ptaApi');
         if (isEnRevisionDocente) {
-          // Revisión docente: re-enviar corregido al nivel que lo devolvió
-          const reenvio = await updatePTAStatus(savedId, { accion: 'reenviar_corregido' });
+          // Revisión docente: re-enviar corregido al nivel que lo devolvió. Si es una
+          // devolución por componente, se adjunta la respuesta del docente para que el
+          // revisor la vea junto a su comentario original al volver a concertar.
+          const reenvio = await updatePTAStatus(savedId, {
+            accion: 'reenviar_corregido',
+            comentario_docente: esDevolucionComponentes ? respuestaDevolucionDocente.trim() : undefined,
+          });
           if (reenvio.success) {
             toast.success(`PTA re-enviado (v${reenvio.version}) → ${reenvio.nuevoEstado}`);
             addNotification({ type: 'success', title: 'Re-envío exitoso', message: `Tu PTA versión ${reenvio.version} fue enviado a ${reenvio.nuevoEstado}` });
@@ -2785,11 +2802,29 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   </div>
                 ))}
               </div>
+              <div className="mt-3">
+                <label className="block text-xs font-bold text-amber-900 mb-1">
+                  Tu respuesta al revisor (obligatoria)
+                </label>
+                <textarea
+                  value={respuestaDevolucionDocente}
+                  onChange={e => setRespuestaDevolucionDocente(e.target.value)}
+                  rows={2}
+                  placeholder="Explica qué corregiste, o por qué reenvías así..."
+                  className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              </div>
             </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 mt-1">
             <button
-              onClick={() => solicitarFirmaDocente('via_save')}
+              onClick={() => {
+                if (!respuestaDevolucionDocente.trim()) {
+                  toast.error('Debes explicar tu respuesta al revisor antes de reenviar.');
+                  return;
+                }
+                solicitarFirmaDocente('via_save');
+              }}
               disabled={saving || requestingFirmaCode}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
               style={{ background: '#D97706' }}
@@ -4440,7 +4475,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 <button onClick={() => handleSave(false)} disabled={saving}
                   className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50"
                   style={{ background: '#003DA5' }}>
-                  <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Guardar cambios'}
+                  <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Concertar'}
                 </button>
               ) : esDevolucionComponentes ? (
                 // Devolución por componente: solo corregir y re-enviar (no se puede

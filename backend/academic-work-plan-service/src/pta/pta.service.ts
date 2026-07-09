@@ -1935,8 +1935,9 @@ export class PtaService {
       // devolver varios componentes de forma independiente sin que un reenvío
       // obligue a re-aprobar todo el PTA de nuevo.
       const veniaDeDevolucionParcial = REVISION_DOCENTE_STATES.has(existing.estado);
+      const respuestaDocenteReenvio = coalesceString(body?.comentario_docente, body?.respuesta_docente);
       await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
-      await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial);
+      await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio);
     }
 
     const estadoAnterior = existing.estado;
@@ -2061,16 +2062,21 @@ export class PtaService {
     await this.initAprobacionesJefatura(ptaId, datosEstructurados);
   }
 
-  private async resetComponentApprovalWorkflow(ptaId: string, soloComponentesDevueltos = false) {
+  private async resetComponentApprovalWorkflow(ptaId: string, soloComponentesDevueltos = false, respuestaDocente?: string | null) {
     const componentKeys = [...COMPONENT_APPROVAL_KEYS, ...LEGACY_COMPONENT_APPROVAL_KEYS];
     if (soloComponentesDevueltos) {
       // Solo se re-revisan los componentes que estaban devueltos; los componentes
       // ya aprobados conservan su fila (no se borran, no vuelven a pendiente).
+      // Se ACTUALIZA en el lugar (no se borra) para conservar el comentario original
+      // del revisor (`comentarios`) como historial visible cuando vuelva a concertar,
+      // y se adjunta la respuesta del docente sobre por qué reenvía / qué corrigió.
       const devueltos = await this.ptaComponentApprovalRepo.find({
         where: { ptaId, componente: In(componentKeys), estado: 'devuelto' },
       });
-      if (devueltos.length > 0) {
-        await this.ptaComponentApprovalRepo.delete({ id: In(devueltos.map(item => item.id)) } as any);
+      for (const row of devueltos) {
+        row.estado = 'pendiente';
+        row.respuestaDocente = respuestaDocente || null;
+        await this.ptaComponentApprovalRepo.save(row);
       }
     } else {
       await this.ptaComponentApprovalRepo.delete({
@@ -2149,6 +2155,9 @@ export class PtaService {
       approval.aprobadorNombre = actorNombre || 'Revisor (Concertación)';
       approval.comentarios = comentario;
       approval.fechaAprobacion = ahora;
+      // Nueva decisión del revisor: la respuesta del docente al ciclo anterior queda
+      // obsoleta.
+      approval.respuestaDocente = null;
       await this.ptaComponentApprovalRepo.save(approval);
     }
 
@@ -4155,6 +4164,9 @@ export class PtaService {
     approval.scope = coalesceString(body?.scope);
     approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);
     approval.fechaAprobacion = new Date();
+    // Nueva decisión del revisor: la respuesta del docente al ciclo anterior queda
+    // obsoleta.
+    approval.respuestaDocente = null;
 
     await this.ptaComponentApprovalRepo.save(approval);
 

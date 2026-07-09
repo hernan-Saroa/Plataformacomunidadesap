@@ -1338,6 +1338,54 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           </div>
         )}
 
+        {/* Historial de concertación: el componente volvió a 'pendiente' tras una
+            devolución — se muestra el comentario original del revisor y la respuesta
+            del docente (por qué reenvía / qué corrigió), para que el revisor tenga
+            contexto antes de volver a aprobar o devolver. */}
+        {isEditing && estado === 'pendiente' && (approval.comentarios || approval.respuestaDocente) && (
+          <div style={{
+            background: 'rgba(239, 246, 255, 0.5)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            fontSize: '0.74rem',
+            border: '1px dashed #BFDBFE',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            marginLeft: 6,
+          }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              Historial de concertación — el docente reenvió este componente
+            </div>
+            {approval.comentarios && (
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>
+                  Comentario del revisor (ciclo anterior)
+                </span>
+                <div style={{
+                  borderLeft: '3px solid #94A3B8', padding: '8px 10px', background: 'white',
+                  borderRadius: '0 8px 8px 0', fontStyle: 'italic', color: '#374151', lineHeight: 1.4,
+                }}>
+                  "{approval.comentarios}"
+                </div>
+              </div>
+            )}
+            {approval.respuestaDocente && (
+              <div>
+                <span style={{ display: 'block', fontSize: '0.62rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>
+                  Respuesta del docente
+                </span>
+                <div style={{
+                  borderLeft: '3px solid #3B82F6', padding: '8px 10px', background: 'white',
+                  borderRadius: '0 8px 8px 0', fontStyle: 'italic', color: '#1E3A8A', lineHeight: 1.4,
+                }}>
+                  "{approval.respuestaDocente}"
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Detalle de Aprobación Guardada */}
         {!isEditing && (
           <div style={{
@@ -3509,6 +3557,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   // Notificar al módulo padre para que actualice la fila en la lista
                   onUpdated?.(res.data);
                 }
+                // Refrescar también las aprobaciones por componente: Concertar puede
+                // haber aprobado/devuelto uno o más, y sin esto el tab de Concertación
+                // quedaba con el estado viejo hasta recargar la página (F5).
+                const resComp = await getComponentesAprobacion(pta.id);
+                if (resComp.success) setComponentesAprobacion(resComp.data || []);
               }}
             />
           </div>
