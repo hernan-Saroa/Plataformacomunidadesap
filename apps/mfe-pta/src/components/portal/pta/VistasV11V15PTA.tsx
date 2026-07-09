@@ -282,6 +282,36 @@ const COMPONENTES_PTA = [
   { key: 'complementarias', label: 'Complementarias', color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
 ] as const;
 
+type EstadoRevisionEvidencia = 'pendiente' | 'aprobado' | 'rechazado';
+
+function normalizeEvidenceStatus(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function getEvidenceRevisionStatus(evidencia: any): EstadoRevisionEvidencia {
+  const estado = normalizeEvidenceStatus(evidencia?.estado_revision ?? evidencia?.estadoRevision ?? evidencia);
+  if (estado === 'aprobado' || estado === 'aprobada') return 'aprobado';
+  if (estado === 'rechazado' || estado === 'rechazada' || estado === 'denegado' || estado === 'denegada') return 'rechazado';
+  return 'pendiente';
+}
+
+function isActiveEvidence(evidencia: any) {
+  return !['eliminado', 'eliminada', 'deleted'].includes(normalizeEvidenceStatus(evidencia?.estado));
+}
+
+function isApprovedEvidence(evidencia: any) {
+  return isActiveEvidence(evidencia) && getEvidenceRevisionStatus(evidencia) === 'aprobado';
+}
+
+function isReservedEvidence(evidencia: any) {
+  return isActiveEvidence(evidencia) && getEvidenceRevisionStatus(evidencia) !== 'rechazado';
+}
+
 interface AdjuntosDocumentosProps {
   ptas: any[];
   userName: string;
@@ -310,24 +340,54 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const [formDescripcion, setFormDescripcion] = useState('');
 
   // Calcular horas por componente del PTA
-  const horasPorComponente: Record<string, number> = {
+  const horasPorComponente = useMemo<Record<string, number>>(() => ({
     docencia: activePta?.horas_docencia || 0,
     investigacion: activePta?.horas_investigacion || 0,
     extension: activePta?.horas_extension || 0,
     complementarias: activePta?.horas_complementarias || 0,
     acad_admin: activePta?.horas_acad_admin || 0,
-  };
+  }), [activePta]);
 
   // Horas aprobadas por componente (de evidencias aprobadas)
   const horasAprobadasPorComponente = useMemo(() => {
     const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0 };
     evidencias.forEach(e => {
-      if (e.estado_revision === 'aprobado' && e.componente_pta && acc[e.componente_pta] !== undefined) {
+      if (isApprovedEvidence(e) && e.componente_pta && acc[e.componente_pta] !== undefined) {
         acc[e.componente_pta] += Number(e.horas_avance) || 0;
       }
     });
     return acc;
   }, [evidencias]);
+
+  const horasReservadasPorComponente = useMemo(() => {
+    const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0 };
+    evidencias.forEach(e => {
+      if (isReservedEvidence(e) && e.componente_pta && acc[e.componente_pta] !== undefined) {
+        acc[e.componente_pta] += Number(e.horas_avance) || 0;
+      }
+    });
+    return acc;
+  }, [evidencias]);
+
+  const horasDisponiblesPorComponente = useMemo(() => {
+    const acc: Record<string, number> = {};
+    Object.keys(horasPorComponente).forEach(key => {
+      acc[key] = Math.max((horasPorComponente[key] || 0) - (horasReservadasPorComponente[key] || 0), 0);
+    });
+    return acc;
+  }, [horasPorComponente, horasReservadasPorComponente]);
+
+  useEffect(() => {
+    const disponibles = horasDisponiblesPorComponente[formComponente] || 0;
+    if (disponibles <= 0) {
+      const next = COMPONENTES_PTA.find(c => (horasDisponiblesPorComponente[c.key] || 0) > 0)?.key;
+      if (next && next !== formComponente) {
+        setFormComponente(next);
+        return;
+      }
+    }
+    if (formHoras > disponibles) setFormHoras(disponibles);
+  }, [horasDisponiblesPorComponente, formComponente, formHoras]);
 
   const loadEvidencias = async () => {
     if (!activePtaId) return;
@@ -349,8 +409,9 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   };
 
   const revisionBadge = (estado_revision?: string) => {
-    if (estado_revision === 'aprobado') return { label: 'Aprobado', color: '#065F46', bg: '#D1FAE5', icon: CheckCircle2 };
-    if (estado_revision === 'rechazado') return { label: 'Rechazado', color: '#991B1B', bg: '#FEE2E2', icon: XCircle };
+    const estado = getEvidenceRevisionStatus(estado_revision);
+    if (estado === 'aprobado') return { label: 'Aprobado', color: '#065F46', bg: '#D1FAE5', icon: CheckCircle2 };
+    if (estado === 'rechazado') return { label: 'Rechazado', color: '#991B1B', bg: '#FEE2E2', icon: XCircle };
     return { label: 'Pendiente revisión', color: '#92400E', bg: '#FEF3C7', icon: Clock };
   };
 
@@ -381,13 +442,18 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
 
   const handleSubmit = async () => {
     if (formFiles.length === 0 || !activePtaId) return;
-    if (formHoras <= 0) { toast.error('Indica cuántas horas avanza esta carga'); return; }
     const maxHoras = horasPorComponente[formComponente] || 0;
     const yaRegistradas = (evidencias
-      .filter(e => e.componente_pta === formComponente && e.estado !== 'eliminado')
+      .filter(e => e.componente_pta === formComponente && isReservedEvidence(e))
       .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0));
-    if (maxHoras > 0 && yaRegistradas + formHoras > maxHoras) {
-      toast.error(`Superas las horas del componente (${maxHoras}h). Ya tienes ${yaRegistradas}h registradas.`);
+    const disponibles = Math.max(maxHoras - yaRegistradas, 0);
+    if (maxHoras > 0 && disponibles <= 0) {
+      toast.error('Este componente ya no tiene horas disponibles para nuevos soportes.');
+      return;
+    }
+    if (formHoras <= 0) { toast.error('Indica cuántas horas avanza esta carga'); return; }
+    if (maxHoras > 0 && formHoras > disponibles) {
+      toast.error(`Superas las horas del componente (${maxHoras}h). Tienes ${yaRegistradas}h aprobadas o pendientes; disponibles: ${disponibles}h.`);
       return;
     }
     setSubmitting(true);
@@ -434,6 +500,8 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const filteredEvidencias = filtroComponente
     ? evidencias.filter(e => e.componente_pta === filtroComponente)
     : evidencias;
+  const horasDisponiblesForm = horasDisponiblesPorComponente[formComponente] || 0;
+  const sinHorasDisponibles = horasDisponiblesForm <= 0;
 
   return (
     <div>
@@ -516,17 +584,20 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
                 >
                   {COMPONENTES_PTA.map(c => (
-                    <option key={c.key} value={c.key}>{c.label} ({horasPorComponente[c.key] || 0}h)</option>
+                    <option key={c.key} value={c.key} disabled={(horasDisponiblesPorComponente[c.key] || 0) <= 0}>
+                      {c.label} ({horasDisponiblesPorComponente[c.key] || 0}h)
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Horas que avanza *</label>
                 <input
-                  type="number" min={1} max={horasPorComponente[formComponente] || 800}
+                  type="number" min={1} max={horasDisponiblesForm || 0}
                   value={formHoras || ''}
                   onChange={e => setFormHoras(Number(e.target.value))}
-                  placeholder="ej. 40"
+                  placeholder={horasDisponiblesForm > 0 ? `Máx. ${horasDisponiblesForm}` : 'Sin horas disponibles'}
+                  disabled={sinHorasDisponibles}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
@@ -542,11 +613,11 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={handleSubmit} disabled={submitting}
-                style={{ flex: 1, padding: '9px 16px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: submitting ? 0.6 : 1 }}
+                onClick={handleSubmit} disabled={submitting || sinHorasDisponibles}
+                style={{ flex: 1, padding: '9px 16px', borderRadius: 8, border: 'none', background: sinHorasDisponibles ? '#9CA3AF' : '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: submitting || sinHorasDisponibles ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: submitting ? 0.6 : 1 }}
               >
                 <Send style={{ width: 14, height: 14 }} />
-                {submitting ? 'Enviando...' : 'Registrar documento'}
+                {submitting ? 'Enviando...' : sinHorasDisponibles ? 'Sin horas disponibles' : 'Registrar documento'}
               </button>
               <button
                 onClick={() => { setShowForm(false); setFormFiles([]); }}
@@ -609,12 +680,13 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
           {filteredEvidencias.map((ev, i) => {
             const fi = fileIcon(ev.nombre || '');
             const FI = fi.icon;
-            const badge = revisionBadge(ev.estado_revision);
+            const estadoRevision = getEvidenceRevisionStatus(ev);
+            const badge = revisionBadge(estadoRevision);
             const BadgeIcon = badge.icon;
             const comp = COMPONENTES_PTA.find(c => c.key === ev.componente_pta);
             return (
               <motion.div key={ev.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
-                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, background: 'white', border: `1px solid ${ev.estado_revision === 'rechazado' ? '#FCA5A5' : ev.estado_revision === 'aprobado' ? '#6EE7B7' : '#E5E7EB'}` }}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, background: 'white', border: `1px solid ${estadoRevision === 'rechazado' ? '#FCA5A5' : estadoRevision === 'aprobado' ? '#6EE7B7' : '#E5E7EB'}` }}
               >
                 <div style={{ width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${fi.color}10`, flexShrink: 0, marginTop: 2 }}>
                   <FI style={{ width: 16, height: 16, color: fi.color }} />
@@ -642,7 +714,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                     )}
                   </div>
                   {ev.comentario_revision && (
-                    <div style={{ marginTop: 4, padding: '4px 8px', borderRadius: 6, background: ev.estado_revision === 'rechazado' ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${ev.estado_revision === 'rechazado' ? '#FECACA' : '#BBF7D0'}`, fontSize: '0.65rem', color: ev.estado_revision === 'rechazado' ? '#991B1B' : '#166534' }}>
+                    <div style={{ marginTop: 4, padding: '4px 8px', borderRadius: 6, background: estadoRevision === 'rechazado' ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${estadoRevision === 'rechazado' ? '#FECACA' : '#BBF7D0'}`, fontSize: '0.65rem', color: estadoRevision === 'rechazado' ? '#991B1B' : '#166534' }}>
                       <strong>Revisor:</strong> {ev.comentario_revision}
                     </div>
                   )}
@@ -650,7 +722,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                     {new Date(ev.fecha_subida).toLocaleDateString('es-CO')} — {(ev.tamanio_bytes / 1024).toFixed(0)} KB
                   </div>
                 </div>
-                {ev.estado_revision !== 'aprobado' && (
+                {estadoRevision !== 'aprobado' && (
                   <button onClick={() => handleDelete(ev.id)} style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Trash2 style={{ width: 12, height: 12, color: '#DC2626' }} />
                   </button>
