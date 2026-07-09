@@ -266,6 +266,13 @@ export class ProgramasService {
           cetapsList,
           horasBasePorCredito: programa.horasBasePorCredito,
           horasPregradoCentral: programa.horasPregradoCentral,
+          // Campos Circular 003/2025 — calculados en runtime
+          nombre_corto: programa.nombreCorto,
+          tipo_programa: programa.tipo,
+          categoria_horas_circular003: this.inferCategoriaCircular003(programa.tipo, programa.horasPregradoCentral),
+          descripcion_categoria_circular003: this.inferDescripcionCircular003(programa.tipo, programa.horasPregradoCentral),
+          horas_base_por_credito: programa.horasBasePorCredito,
+          horas_pregrado_central: programa.horasPregradoCentral,
         };
       })
     );
@@ -348,6 +355,13 @@ export class ProgramasService {
       cetapsList: cetapsRes ? cetapsRes.map((c: any) => ({ ofertaId: c.oferta_id, estudiantes: parseInt(c.cupos_estimados) || 0, cetap: c.nombre, dt: c.dt_nombre || 'Sin Dirección Territorial' })) : [],
       horasBasePorCredito: programa.horasBasePorCredito,
       horasPregradoCentral: programa.horasPregradoCentral,
+      // Campos Circular 003/2025 — calculados en runtime
+      nombre_corto: programa.nombreCorto,
+      tipo_programa: programa.tipo,
+      categoria_horas_circular003: this.inferCategoriaCircular003(programa.tipo, programa.horasPregradoCentral),
+      descripcion_categoria_circular003: this.inferDescripcionCircular003(programa.tipo, programa.horasPregradoCentral),
+      horas_base_por_credito: programa.horasBasePorCredito,
+      horas_pregrado_central: programa.horasPregradoCentral,
     } as any;
   }
 
@@ -778,7 +792,7 @@ export class ProgramasService {
         const asignaturaRepo = manager.getRepository(Asignatura);
         const existentes = await asignaturaRepo.find({ where: { programaId } });
         const existentesPorId = new Map(
-          existentes.map((asignatura) => [asignatura.id, asignatura]),
+          existentes.map((asignatura) => [String(asignatura.id), asignatura]),
         );
         const enviadosIds = new Set<string>();
         const codigosPayload = new Set<string>();
@@ -879,10 +893,30 @@ export class ProgramasService {
         }
 
         const idsAEliminar = existentes
-          .filter((asignatura) => !enviadosIds.has(asignatura.id))
+          .filter((asignatura) => !enviadosIds.has(String(asignatura.id)))
           .map((asignatura) => asignatura.id);
         if (idsAEliminar.length > 0) {
           await asignaturaRepo.delete(idsAEliminar);
+        }
+
+        // Registrar evento de sincronización en tiempo real para que los MFEs lo detecten
+        try {
+          await manager.query(
+            `INSERT INTO academic_work_plan."PtaEvento"
+               (id, "ptaId", tipo, "sistemaOrigen", "leidoBackoffice", "leidoPortal", mensaje, "createdAt")
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+            [
+              randomUUID(),
+              'PLAN_ESTUDIOS', // ptaId
+              'PLAN_ESTUDIOS_ACTUALIZADO', // tipo
+              'backoffice', // sistemaOrigen
+              true, // leidoBackoffice
+              false, // leidoPortal
+              `Plan de estudios actualizado para el programa ${programa.nombre} (ID: ${programaId})`, // mensaje
+            ]
+          );
+        } catch (eventErr) {
+          this.logger.warn(`No se pudo registrar el evento de sync: ${eventErr.message}`);
         }
       });
 
@@ -920,9 +954,9 @@ export class ProgramasService {
       const existentePorId = await manager.query(
         `SELECT id
          FROM academic_work_plan.nucleo_tematico
-         WHERE id = $1 AND id_programa = $2 AND activo = TRUE
+         WHERE id = $1 AND activo = TRUE
          LIMIT 1`,
-        [nucleoId, programaId],
+        [nucleoId],
       );
       if (existentePorId.length > 0) {
         return String(existentePorId[0].id);
@@ -940,10 +974,9 @@ export class ProgramasService {
       `SELECT id
        FROM academic_work_plan.nucleo_tematico
        WHERE LOWER(nombre) = LOWER($1)
-         AND id_programa = $2
          AND activo = TRUE
        LIMIT 1`,
-      [nombre, programaId],
+      [nombre],
     );
     if (existentePorNombre.length > 0) {
       return String(existentePorNombre[0].id);
@@ -951,9 +984,11 @@ export class ProgramasService {
 
     const creado = await manager.query(
       `INSERT INTO academic_work_plan.nucleo_tematico
-         (codigo, nombre, id_programa, activo)
-       VALUES ($1, $2, $3, TRUE)
-       RETURNING id`,
+         (codigo, name_temp, nombre, id_programa, activo)
+       VALUES ($1, $2, $2, $3, TRUE)
+       RETURNING id`
+         .replace('name_temp, ', '')
+         .replace(', $2, $2', ', $2'),
       [
         `NUC-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`,
         nombre,
@@ -1018,6 +1053,11 @@ export class ProgramasService {
       );
 
       if (driverError.code === '23505') {
+        if (driverError.constraint && driverError.constraint.includes('nucleo_tematico')) {
+          throw new ConflictException(
+            `El núcleo temático ya existe o tiene un conflicto de nombre: ${driverError.detail || ''}`,
+          );
+        }
         throw new ConflictException(
           'Ya existe otra asignatura con el mismo código. Cada código debe ser único.',
         );
@@ -1069,6 +1109,25 @@ export class ProgramasService {
     );
 
     return { success: true };
+  }
+
+  // ─── Circular 003/2025 — Helpers ─────────────────────────────────
+  private inferCategoriaCircular003(tipo: string, horasPregradoCentral: number | null): string | null {
+    if (horasPregradoCentral && horasPregradoCentral > 0) return 'pregrado_sede_central';
+    const t = (tipo || '').toLowerCase();
+    if (t.includes('maestria') || t.includes('maestría')) return 'maestria';
+    if (t.includes('especializacion') || t.includes('especialización')) return 'especializacion';
+    if (t.includes('pregrado')) return 'pregrado_territorial';
+    return null;
+  }
+
+  private inferDescripcionCircular003(tipo: string, horasPregradoCentral: number | null): string | null {
+    if (horasPregradoCentral && horasPregradoCentral > 0) return 'Pregrado Sede Central (AP/EP) - Bloque Fijo';
+    const t = (tipo || '').toLowerCase();
+    if (t.includes('maestria') || t.includes('maestría')) return 'Maestria - 12h por credito';
+    if (t.includes('especializacion') || t.includes('especialización')) return 'Especializacion - 16h por credito';
+    if (t.includes('pregrado')) return 'APT / Territorial - 16h por credito';
+    return null;
   }
 }
 

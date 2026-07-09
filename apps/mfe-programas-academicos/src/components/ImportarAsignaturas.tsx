@@ -418,7 +418,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                     <div className="space-y-4">
                       {[
                         { n: '1', t: 'Descargue la plantilla Excel', s: 'Contiene el formato requerido con las hojas: Programas, Asignaturas y Matriz Oferta.' },
-                        { n: '2', t: 'Complete los datos', s: 'Llene las hojas con los códigos, nombres, créditos y modalidades de cada asignatura.' },
+                        { n: '2', t: 'Complete los datos', s: 'Llene las hojas con los códigos, nombres, créditos, modalidades y la categoría de horas Circular 003 de cada programa.' },
                         { n: '3', t: 'Suba el archivo', s: 'Arrastre o seleccione — se valida automáticamente con las reglas de negocio.' },
                         { n: '4', t: 'Confirme la importación', s: 'Revise el preview y confirme. Puede corregir errores directamente.' },
                       ].map(({ n, t, s }) => (
@@ -711,7 +711,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
               <div className="flex-1 flex flex-col">
                 <div className="px-6 py-4 border-b border-gray-100">
                   <h3 className="text-sm font-bold text-gray-800">Resumen del Catálogo</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Detalle de la carga por categoría para el periodo {periodoActivo?.codigo || periodo}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Detalle de la carga por categoría para el período {periodoActivo?.codigo || periodo}</p>
                 </div>
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50/80 sticky top-0 border-b border-gray-100 z-10">
@@ -963,7 +963,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                 </div>
                 <div>
                   <p className="font-bold text-gray-900 text-sm">Procesando catálogo...</p>
-                  <p className="text-[11px] text-gray-400 mt-1">Validando y cargando datos del periodo {periodoActivo?.codigo || periodo}</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Validando y cargando datos del período {periodoActivo?.codigo || periodo}</p>
                 </div>
               </div>
             </div>

@@ -1,7 +1,7 @@
 
 -- Modules - Nuevo
 INSERT INTO auth.module (code, name, description, icon, color, display_order, category) VALUES
-  ('graduates-certificates', 'Verificación de Títulos', 'Verificación de títulos para registro academicos', 'Award', '#003DA5', 9, 'backoffice');
+  ('graduates-certificates', 'Verificación de títulos', 'Verificación de títulos', 'Award', '#003DA5', 9, 'backoffice');
 
 UPDATE auth.module SET display_order = 10 WHERE code = 'enrolamiento';
 UPDATE auth.module SET display_order = 11 WHERE code = 'comunidad_publicaciones';

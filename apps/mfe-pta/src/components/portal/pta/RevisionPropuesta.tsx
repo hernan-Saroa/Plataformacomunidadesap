@@ -220,10 +220,10 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
       </DetailSection>
 
       {/* Investigación detail (read-only if assigned) */}
-      {pta.investigacion_proyecto?.nombre && (
+      {(pta.investigacion_proyecto?.nombre || pta.investigacion_proyecto?.rol) && (
         <DetailSection title="Detalle Investigación" subtitle="Asignado por SNI" icon={FlaskConical} color="#7C3AED" locked>
           <div className="p-3 text-xs space-y-1">
-            <div><span className="text-gray-500">Proyecto:</span> <span className="font-medium text-gray-900">{pta.investigacion_proyecto.nombre}</span></div>
+            <div><span className="text-gray-500">Proyecto:</span> <span className="font-medium text-gray-900">{pta.investigacion_proyecto.nombre || 'Proyecto de Investigación (Pendiente Registro)'}</span></div>
             <div><span className="text-gray-500">Rol:</span> <span className="font-medium text-gray-900">{pta.investigacion_proyecto.rol}</span></div>
             <div><span className="text-gray-500">Horas:</span> <span className="font-bold text-purple-700">{pta.investigacion_proyecto.horas_solicitadas}h</span></div>
           </div>

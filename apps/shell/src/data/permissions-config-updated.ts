@@ -17,7 +17,7 @@
  * ✅ Gestión de Usuarios y Personas (20+ permisos)
  * ✅ Carpeta Digital (10+ permisos)
  * ✅ Roles y Permisos (10+ permisos)
- * ✅ Graduados y Registro Académico (15+ permisos)
+ * ✅ Graduados y Verificación de títulos (15+ permisos)
  * ✅ Enrolamiento (10+ permisos)
  * ✅ Comunidad (Publicaciones, Eventos, Anuncios) (20+ permisos)
  * ✅ Bolsa de Empleo (12+ permisos)
@@ -460,7 +460,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   },
 
   // ==========================================================================
-  // 9. GRADUADOS Y REGISTRO ACADÉMICO (15 permisos)
+  // 9. GRADUADOS Y VERIFICACIÓN DE TÍTULOS (15 permisos)
   // ==========================================================================
   {
     id: 'graduados',
@@ -477,7 +477,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'grad.generate_certificate', name: 'Generar Certificado', description: 'Emitir certificado de título', module: 'graduados', criticidad: 'alta' },
       { id: 'grad.verify_certificate', name: 'Verificar Certificado', description: 'Validar autenticidad mediante QR', module: 'graduados', criticidad: 'media' },
       { id: 'grad.revoke_certificate', name: 'Revocar Certificado', description: 'Anular certificado emitido', module: 'graduados', criticidad: 'critica' },
-      { id: 'grad.view_academic_record', name: 'Ver Registro Académico', description: 'Consultar historial académico', module: 'graduados', criticidad: 'baja' },
+      { id: 'grad.view_academic_record', name: 'Verificación de títulos', description: 'Consultar historial académico', module: 'graduados', criticidad: 'baja' },
       { id: 'grad.edit_academic_record', name: 'Editar Registro', description: 'Modificar datos académicos', module: 'graduados', criticidad: 'alta' },
       { id: 'grad.export', name: 'Exportar Graduados', description: 'Descargar datos de graduados', module: 'graduados', criticidad: 'media' },
       { id: 'grad.view_stats', name: 'Ver Estadísticas', description: 'Consultar métricas de graduados', module: 'graduados', criticidad: 'baja' },

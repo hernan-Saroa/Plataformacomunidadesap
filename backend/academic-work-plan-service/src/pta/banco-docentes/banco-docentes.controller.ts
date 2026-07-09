@@ -115,8 +115,11 @@ export class BancoDocentesController {
    *  ya es accesible públicamente vía el endpoint por-id, así que no hay regresión. */
   @Get('by-persona/:personaId/tarjeta-rund')
   @Public()
-  async getTarjetaRUNDByPersona(@Param('personaId') personaId: string) {
-    const result = await this.service.getTarjetaRUNDByPersona(personaId);
+  async getTarjetaRUNDByPersona(
+    @Param('personaId') personaId: string,
+    @Query('periodoCarga') periodoCarga?: string,
+  ) {
+    const result = await this.service.getTarjetaRUNDByPersona(personaId, periodoCarga);
     if (!result) return { success: false, data: null, message: 'No es docente RUND' };
     return { success: true, data: result };
   }
@@ -143,10 +146,12 @@ export class BancoDocentesController {
     @Body() body: any,
     @Query('dry_run') dryRunQuery?: string,
     @Query('omit_errors') omitErrorsQuery?: string,
+    @Query('periodo_carga') periodoCargaQuery?: string,
   ) {
     let rows: any[] = [];
     const dryRun = dryRunQuery === 'true';
     const omitErrors = omitErrorsQuery === 'true';
+    let periodoCargaFromFile: string | null = null;
 
     if (file) {
       const workbook = xlsx.read(file.buffer, { type: 'buffer', cellDates: true });
@@ -159,13 +164,37 @@ export class BancoDocentesController {
       ) || workbook.SheetNames[0];
       
       const sheet = workbook.Sheets[sheetName];
-      rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
-      
-      // Skip title row if present
-      if (rows.length > 0 && Object.values(rows[0]).some(v => typeof v === 'string' && (v.includes('DOCUMENTO_IDENTIDAD') || v.includes('NOMBRE_COMPLETO') || v.includes('Documento de identidad') || v.includes('Documento de Identidad')))) {
-        rows = xlsx.utils.sheet_to_json(sheet, { defval: null, range: 1 });
+      const matrix = xlsx.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: null, raw: false });
+      const titleText = matrix.slice(0, 2).flat().filter(Boolean).join(' ');
+      const periodMatch = titleText.match(/\b20\d{2}\s*[-_]\s*[12]\b/);
+      periodoCargaFromFile = periodMatch ? periodMatch[0].replace(/\s+/g, '') : null;
+
+      const normalizeHeader = (value: unknown) => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toUpperCase();
+      const headerRowIndex = matrix.findIndex((row) => {
+        const keys = new Set((row || []).map(normalizeHeader));
+        return (keys.has('DOCUMENTOIDENTIDAD') || keys.has('DOCUMENTO') || keys.has('DOCUMENTODEIDENTIDAD'))
+          && (keys.has('NOMBRECOMPLETO') || keys.has('NOMBRE'))
+          && (keys.has('VINCULACION') || keys.has('TIPOVINCULACION'));
+      });
+
+      if (headerRowIndex >= 0) {
+        const headers = (matrix[headerRowIndex] || []).map((header) => String(header || '').trim());
+        rows = matrix.slice(headerRowIndex + 1)
+          .filter((row) => (row || []).some((cell) => cell !== null && cell !== undefined && String(cell).trim() !== ''))
+          .map((row, idx) => {
+            const record: Record<string, any> = { __sourceRowNumber: headerRowIndex + idx + 2 };
+            headers.forEach((header, colIdx) => {
+              if (header) record[header] = row?.[colIdx] ?? null;
+            });
+            return record;
+          });
+      } else {
+        rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
       }
-      console.log('[DEBUG_EXCEL] Headers detectados:', rows.length > 0 ? Object.keys(rows[0]) : 'No rows');
       
       rows = sanitizeDeepStrings(rows) as any[];
     } else if (body?.rows) {
@@ -193,7 +222,12 @@ export class BancoDocentesController {
 
     // Los duplicados se manejarán dentro del servicio bulkUpsert para no bloquear el archivo completo.
 
-    const result = await this.service.bulkUpsert(rows, { rejectExisting: false, dryRun, omitErrors });
+    const result = await this.service.bulkUpsert(rows, {
+      rejectExisting: true,
+      dryRun,
+      omitErrors,
+      periodoCarga: periodoCargaQuery || periodoCargaFromFile || undefined,
+    });
     return { success: true, data: result };
   }
 

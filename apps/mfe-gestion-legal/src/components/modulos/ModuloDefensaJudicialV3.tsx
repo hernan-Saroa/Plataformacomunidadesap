@@ -168,33 +168,19 @@ export function ModuloDefensaJudicialV3() {
   // ✅ Estado para expediente abierto desde notificación (evento legal:open-expediente-detail)
   const [expedienteDesdeNotificacion, setExpedienteDesdeNotificacion] = useState<ExpedienteJudicial | null>(null);
 
-  // ✅ Estado para items archivados/eliminados (cargados desde backend)
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+  // ✅ Estado para items archivados/eliminados (datos crudos del backend).
+  // Guardamos el crudo para poder mapearlos Y filtrarlos con la misma barra
+  // de filtros superior que usan Kanban/Lista (búsqueda, etapa, medio, abogado, fecha).
+  const [archivadosRaw, setArchivadosRaw] = useState<any[]>([]);
 
   // ✅ Función para cargar expedientes archivados desde el backend
   const loadArchivados = async () => {
     try {
       const data = await legalService.getExpedientesArchivados();
-      const mapped: ItemArchivado[] = data.map((exp: any) => ({
-        id: exp.id,
-        codigo: exp.radicado || exp.id,
-        nombre: `${exp.tipoProceso || 'Proceso'} - ${exp.demandante || 'No especificado'}`,
-        tipo: 'Proceso Judicial',
-        estado: exp.estadoArchivo as EstadoArchivado,
-        fechaArchivado: new Date(exp.fechaArchivo || new Date()),
-        usuarioArchivo: exp.usuarioArchivo || 'Sistema',
-        motivoArchivo: exp.motivoArchivo || 'Sin motivo especificado',
-        metadatos: {
-          'Tipo Proceso': exp.tipoProceso || 'No especificado',
-          'Juzgado': exp.juzgadoConocimiento || 'No asignado',
-          'Cuantía': exp.cuantia ? `$${exp.cuantia.toLocaleString()}` : 'No especificada',
-          'Etapa': exp.etapaProcesal || exp.etapa || 'No especificada'
-        }
-      }));
-      setItemsArchivados(mapped);
+      setArchivadosRaw(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error cargando archivados:', error);
-      setItemsArchivados([]);
+      setArchivadosRaw([]);
     }
   };
 
@@ -204,7 +190,7 @@ export function ModuloDefensaJudicialV3() {
       await legalService.restaurarExpediente(itemId);
       toast.success('✅ Expediente restaurado al Kanban');
       // Remover de la lista de archivados
-      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      setArchivadosRaw(prev => prev.filter((r: any) => r.id !== itemId));
       // Recargar expedientes activos
       loadExpedientes();
     } catch (error) {
@@ -219,7 +205,7 @@ export function ModuloDefensaJudicialV3() {
       await legalService.eliminarPermanenteExpediente(itemId);
       toast.success('🗑️ Expediente eliminado permanentemente');
       // Remover de la lista de archivados
-      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      setArchivadosRaw(prev => prev.filter((r: any) => r.id !== itemId));
     } catch (error) {
       console.error('Error eliminando:', error);
       toast.error('❌ Error al eliminar el expediente');
@@ -482,7 +468,11 @@ export function ModuloDefensaJudicialV3() {
           procesosAnexados: exp.procesosAnexados || [],
           procesoPrincipalId: exp.procesoPrincipalId,
           timeline: [],
-          fechaCreacion: new Date(exp.createdAt),
+          // La fecha de "creación" del proceso es su fecha de notificación (no existe
+          // un campo de creación propio). Se usa para el filtro de rango de fecha.
+          fechaCreacion: exp.fechaNotificacion
+            ? new Date(exp.fechaNotificacion)
+            : (exp.createdAt ? new Date(exp.createdAt) : new Date()),
           fechaActualizacion: new Date(exp.updatedAt),
           estado: exp.estado || 'ACTIVO',
           ultimaActuacion: latestActuacionVal || {
@@ -844,19 +834,35 @@ export function ModuloDefensaJudicialV3() {
       exp.abogadoResponsable === filtroAbogado ||
       (filtroAbogado === 'Sin asignar' && esSinAsignar);
 
-    // Filtro por rango de fecha de creación del proceso
+    // Filtro por rango de fecha de notificación del proceso (equivale a su fecha de creación).
+    // Soporta rangos abiertos: solo DESDE, solo HASTA o ambos.
     let matchFecha = true;
     if (filtroFecha) {
       const [fromStr, toStr] = filtroFecha.split(':');
-      if (fromStr && toStr) {
-        const fromDate = new Date(fromStr + 'T00:00:00');
-        const toDate = new Date(toStr + 'T23:59:59');
-        const itemDate = exp.fechaCreacion instanceof Date ? exp.fechaCreacion : new Date(exp.fechaCreacion);
-        matchFecha = itemDate >= fromDate && itemDate <= toDate;
+      const itemDate = exp.fechaCreacion instanceof Date ? exp.fechaCreacion : new Date(exp.fechaCreacion);
+      if (!isNaN(itemDate.getTime())) {
+        if (fromStr && itemDate < new Date(fromStr + 'T00:00:00')) matchFecha = false;
+        if (toStr && itemDate > new Date(toStr + 'T23:59:59')) matchFecha = false;
       }
     }
 
-    return matchBusqueda && matchTipo && matchAbogado && matchFecha;
+    // Filtro por Etapa Procesal. El valor del filtro es el NOMBRE de la etapa
+    // (ver options del ModuleFilters), así que resolvemos su columna para poder
+    // comparar contra el id o el nombre de la etapa del expediente.
+    let matchEtapa = true;
+    if (filtroEtapa !== 'TODAS') {
+      const colSel = columnasTablero.find((c: any) =>
+        normalize(c.nombre) === normalize(filtroEtapa) || normalize(c.id) === normalize(filtroEtapa)
+      );
+      const expEtapa = normalize(exp.etapa || '');
+      const targets = new Set<string>([normalize(filtroEtapa)]);
+      if (colSel) { targets.add(normalize(colSel.id)); targets.add(normalize(colSel.nombre)); }
+      // La primera columna acoge también los que vienen como 'RADICACION' o sin etapa.
+      const esPrimeraColumna = !!(colSel && columnasTablero[0] && normalize(columnasTablero[0].id) === normalize(colSel.id));
+      matchEtapa = targets.has(expEtapa) || (esPrimeraColumna && (expEtapa === 'radicacion' || !exp.etapa));
+    }
+
+    return matchBusqueda && matchTipo && matchAbogado && matchFecha && matchEtapa;
   });
 
   // Función para normalizar strings (quitar acentos, mojibake y convertir a minúsculas)
@@ -930,6 +936,120 @@ export function ModuloDefensaJudicialV3() {
     diasEstimados: 15, // TODO: Mapear desde 'tiempos' si hay relación, o default
     expedientes: expedientesPorEtapa[estado.id] || []
   }));
+
+  // ✅ Predicado de la barra de filtros superior aplicado a la vista de Archivados.
+  // Antes esa vista ignoraba los filtros (búsqueda, etapa, medio de control,
+  // abogado y rango de fecha); ahora usa el mismo criterio que Kanban/Lista.
+  const pasaFiltrosBarra = (exp: any): boolean => {
+    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+
+    // Búsqueda de texto libre
+    const q = busqueda.toLowerCase().trim();
+    const matchBusqueda = q === '' || [
+      exp.id, exp.radicado, exp.demandante, exp.juzgado,
+      exp.tipoProceso, exp.medioControl, exp.abogadoAsignado
+    ].some((v: any) => typeof v === 'string' && v.toLowerCase().includes(q));
+
+    // Medio de Control / Tipo de proceso
+    const filtroNorm = normalize(filtroTipo);
+    const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
+    const filtroNombreNorm = tipoConfigSeleccionado ? normalize(tipoConfigSeleccionado.nombre) : '';
+    const matchTipo = filtroTipo === 'TODOS' ||
+      normalize(exp.tipoProceso) === filtroNorm ||
+      normalize(exp.medioControl) === filtroNorm ||
+      (!!filtroNombreNorm && (normalize(exp.tipoProceso) === filtroNombreNorm || normalize(exp.medioControl) === filtroNombreNorm)) ||
+      (!!exp.tipoProceso && normalize(exp.tipoProceso).includes(filtroNorm)) ||
+      (!!exp.medioControl && normalize(exp.medioControl).includes(filtroNorm));
+
+    // Abogado
+    const esSinAsignar = !exp.abogadoAsignado || exp.abogadoAsignado === 'Sin asignar' || exp.abogadoAsignado === 'No asignado';
+    const matchAbogado = filtroAbogado === 'TODOS' ||
+      exp.abogadoAsignado === filtroAbogado ||
+      (filtroAbogado === 'Sin asignar' && esSinAsignar);
+
+    // Etapa procesal (el valor del filtro es el nombre de la etapa)
+    let matchEtapa = true;
+    if (filtroEtapa !== 'TODAS') {
+      const colSel = columnasTablero.find((c: any) =>
+        normalize(c.nombre) === normalize(filtroEtapa) || normalize(c.id) === normalize(filtroEtapa)
+      );
+      const expEtapa = normalize(exp.etapa || '');
+      const targets = new Set<string>([normalize(filtroEtapa)]);
+      if (colSel) { targets.add(normalize(colSel.id)); targets.add(normalize(colSel.nombre)); }
+      const esPrimeraColumna = !!(colSel && columnasTablero[0] && normalize(columnasTablero[0].id) === normalize(colSel.id));
+      matchEtapa = targets.has(expEtapa) || (esPrimeraColumna && (expEtapa === 'radicacion' || !exp.etapa));
+    }
+
+    // Rango de fecha de notificación (equivale a la fecha de creación del proceso).
+    // Soporta rangos abiertos: solo DESDE, solo HASTA o ambos.
+    let matchFecha = true;
+    if (filtroFecha) {
+      const [fromStr, toStr] = filtroFecha.split(':');
+      const itemDate = exp.fechaCreacion instanceof Date ? exp.fechaCreacion : new Date(exp.fechaCreacion);
+      if (!isNaN(itemDate.getTime())) {
+        if (fromStr && itemDate < new Date(fromStr + 'T00:00:00')) matchFecha = false;
+        if (toStr && itemDate > new Date(toStr + 'T23:59:59')) matchFecha = false;
+      }
+    }
+
+    return matchBusqueda && matchTipo && matchAbogado && matchEtapa && matchFecha;
+  };
+
+  // ✅ Items archivados: mapeo para la UI + filtrado con la barra superior.
+  const abogadoNombrePorId = new Map<string, string>(abogadosList.map(a => [String(a.id), a.nombre]));
+  const itemsArchivados: ItemArchivado[] = archivadosRaw
+    .map((exp: any) => {
+      // Resolver nombre del abogado igual que en la lista activa
+      let abogadoNombre = 'Sin asignar';
+      if (exp.abogadoSustanciador && abogadoNombrePorId.has(String(exp.abogadoSustanciador))) {
+        abogadoNombre = abogadoNombrePorId.get(String(exp.abogadoSustanciador))!;
+      } else if (exp.abogado?.nombreCompleto) {
+        abogadoNombre = exp.abogado.nombreCompleto;
+      } else if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.trim() !== '' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
+        abogadoNombre = exp.abogadoSustanciador;
+      }
+
+      const demandanteStr = (exp.actors && exp.actors.find((a: any) => a.rol === 'DEMANDANTE')?.nombre)
+        || exp.demandante || 'No especificado';
+      const etapaVal = exp.etapaProcesal === 'RADICACION' ? 'NOTIFICADA' : (exp.etapaProcesal || exp.etapa || 'NOTIFICADA');
+
+      return {
+        // Campos usados sólo para el filtrado (nombres homogéneos con la lista activa)
+        filtro: {
+          id: exp.radicado || exp.id,
+          radicado: exp.radicado,
+          demandante: demandanteStr,
+          juzgado: exp.juzgadoConocimiento,
+          tipoProceso: exp.tipoProceso,
+          medioControl: exp.medioControl || exp.tipoProceso,
+          abogadoAsignado: abogadoNombre,
+          etapa: etapaVal,
+          // Igual que en la lista activa: la fecha de "creación" es la de notificación.
+          fechaCreacion: exp.fechaNotificacion
+            ? new Date(exp.fechaNotificacion)
+            : (exp.createdAt ? new Date(exp.createdAt) : (exp.fechaArchivo ? new Date(exp.fechaArchivo) : new Date())),
+        },
+        // Objeto que consume VistaArchivados
+        item: {
+          id: exp.id,
+          codigo: exp.radicado || exp.id,
+          nombre: `${exp.tipoProceso || 'Proceso'} - ${demandanteStr}`,
+          tipo: 'Proceso Judicial',
+          estado: exp.estadoArchivo as EstadoArchivado,
+          fechaArchivado: new Date(exp.fechaArchivo || new Date()),
+          usuarioArchivo: exp.usuarioArchivo || 'Sistema',
+          motivoArchivo: exp.motivoArchivo || 'Sin motivo especificado',
+          metadatos: {
+            'Medio de Control': exp.tipoProceso || 'No especificado',
+            'Juzgado': exp.juzgadoConocimiento || 'No asignado',
+            'Cuantía': exp.cuantia ? `$${exp.cuantia.toLocaleString()}` : 'No especificada',
+            'Etapa': exp.etapaProcesal || exp.etapa || 'No especificada'
+          }
+        } as ItemArchivado
+      };
+    })
+    .filter(({ filtro }) => pasaFiltrosBarra(filtro))
+    .map(({ item }) => item);
 
   const guardandoDemanda = useRef(false);
 
@@ -1156,10 +1276,10 @@ export function ModuloDefensaJudicialV3() {
             filters={[
               {
                 type: 'date-range',
-                label: 'Fecha de Creación',
+                label: 'Fecha de Notificación',
                 value: filtroFecha,
                 onChange: setFiltroFecha,
-                placeholder: 'Fecha Creación'
+                placeholder: 'Fecha Notificación'
               },
               {
                 type: 'select',
@@ -1173,11 +1293,11 @@ export function ModuloDefensaJudicialV3() {
               },
               {
                 type: 'select',
-                label: 'Tipo de Proceso',
+                label: 'Medio de Control',
                 value: filtroTipo,
                 onChange: setFiltroTipo,
                 options: [
-                  { value: 'TODOS', label: 'Todos los tipos' },
+                  { value: 'TODOS', label: 'Todos los medios de control' },
                   ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
                 ]
               },

@@ -1,5 +1,5 @@
 import {
-  IsString,
+  IsString, IsNumber,
   IsEnum,
   IsDateString,
   IsInt,
@@ -10,6 +10,7 @@ import {
   IsArray,
   IsUUID,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { 
   TipoAuditoria, 
   FaseAuditoria, 
@@ -20,6 +21,14 @@ import {
   PrioridadKanban,
   RiesgoKanban
 } from '../entities/auditoria.entity';
+
+const toOptionalNumber = ({ value }: { value: unknown }) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number') return value;
+
+  const normalized = String(value).replace(/[^0-9.-]+/g, '');
+  return normalized ? Number(normalized) : undefined;
+};
 
 export class UpdateAuditoriaDto {
   @IsString()
@@ -216,6 +225,11 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   criterios?: string[];
 
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  equipoAuditores?: string[];
+
   // Estado de checkboxes de actividades (JSON)
   @IsOptional()
   checklistCompletados?: Record<string, boolean>;
@@ -252,4 +266,18 @@ export class UpdateAuditoriaDto {
   @IsBoolean()
   @IsOptional()
   activa?: boolean;
+
+  @IsDateString()
+  @IsOptional()
+  periodoInicio?: string;
+
+  @IsDateString()
+  @IsOptional()
+  periodoFin?: string;
+
+  @Transform(toOptionalNumber)
+  @IsNumber()
+  @IsOptional()
+  presupuestoEstimado?: number;
+
 }

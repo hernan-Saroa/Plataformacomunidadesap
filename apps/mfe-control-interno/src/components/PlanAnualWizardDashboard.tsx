@@ -1771,6 +1771,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
   /** Indica si el último guardado llegó al backend (solo «Nuevo plan») */
   const [serverDraftSynced, setServerDraftSynced] = useState(false);
   const serverBorradorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastServerAutosaveSignatureRef = useRef<string | null>(null);
   /** Evita fusionar dos veces si cambian props tras el primer montaje */
   const mergeWizardDesdeServidorHecho = useRef(false);
   const wizardHydrationCompletedRef = useRef(false);
@@ -1802,6 +1803,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     () => (planesExistentes || []).filter((p) => !planAEditar || p.id !== planAEditar.id),
     [planesExistentes, planAEditar],
   );
+  const planAEditarId = planAEditar?.id ?? null;
   /** Vigencias con plan ya formalizado (no borrador): no se puede crear otro. */
   const vigenciasBloqueadas = useMemo(
     () =>
@@ -2548,7 +2550,21 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     localStorage.setItem(draftKey, JSON.stringify(borrador));
     setLastSaved(new Date());
 
+    const serverAutosaveSignature = JSON.stringify({
+      paso,
+      vigencia,
+      fechaInicio,
+      fechaFin,
+      ordenAprobacion,
+      jefeSeleccionado,
+      rolesConfig,
+      comiteAprobacion,
+      planAEditarId,
+    });
+
     if (serverBorradorTimerRef.current) clearTimeout(serverBorradorTimerRef.current);
+    if (lastServerAutosaveSignatureRef.current === serverAutosaveSignature) return;
+
     serverBorradorTimerRef.current = setTimeout(async () => {
       // Si el paso 1 tiene los campos mínimos requeridos, guardamos/creamos directamente el plan en la base de datos en estado 'borrador'
       if (onGuardarBorrador && jefeSeleccionado && fechaInicio && fechaFin) {
@@ -2564,6 +2580,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
             { silencioso: true }
           );
           if (ok) {
+            lastServerAutosaveSignatureRef.current = serverAutosaveSignature;
             setServerDraftSynced(true);
             setLastSaved(new Date());
           } else {
@@ -2577,6 +2594,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         // Fallback: Si no se puede guardar en BD todavía (faltan campos en Paso 1), guardar en borrador temporal del Wizard
         wizardBorradorApi.save(borrador)
           .then(() => {
+            lastServerAutosaveSignatureRef.current = serverAutosaveSignature;
             setServerDraftSynced(true);
             setLastSaved(new Date());
           })
@@ -2599,7 +2617,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     jefeSeleccionado,
     rolesConfig,
     comiteAprobacion,
-    planAEditar,
+    planAEditarId,
     isSubmitting,
     showSuccessModal,
     draftKey,
@@ -7755,7 +7773,7 @@ function SeccionGestionYSeguimiento({
 
   // Alinear % guardado en BD con el cálculo por cortes/tareas (evita 0% obsoleto en pantalla)
   useEffect(() => {
-    if (plan.estado === 'BORRADOR') return;
+    if (esEstadoPlanBorrador(plan.estado)) return;
     const firma = `${plan.id ?? ''}-${plan.roles.reduce((n, r) => n + r.actividades.length, 0)}`;
     if (avanceSincronizadoRef.current === firma) return;
 
@@ -11892,7 +11910,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   const tieneAuditorias = totalAuditoriasRegistradas !== null ? totalAuditoriasRegistradas > 0 : false;
   // Validaciones de procesos y auditorías solo aplican al PRIMER envío (BORRADOR).
   // Cuando el plan fue DEVUELTO (subsanación), estas condiciones ya se cumplieron al enviarlo inicialmente.
-  const validacionesExtraRequeridas = fueDevuelto ? true : (tieneProcesos && tieneAuditorias);
+  const validacionesExtraRequeridas = fueDevuelto ? true : tieneProcesos;
   const puedeEnviarRevision = porcentajeAsignacion === 100 && equipo.length > 0 && validacionesExtraRequeridas;
 
   return (
@@ -12353,18 +12371,6 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                 Al menos un proceso registrado: <strong>{totalProcesosRegistrados ?? 0} proceso(s)</strong>
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              {totalAuditoriasRegistradas === null ? (
-                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
-              ) : totalAuditoriasRegistradas > 0 ? (
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-red-600" />
-              )}
-              <span className="text-gray-700">
-                Al menos una auditoría creada para esta vigencia: <strong>{totalAuditoriasRegistradas ?? 0} auditoría(s)</strong>
-              </span>
-            </div>
           </div>
         </div>
       )}
@@ -12499,7 +12505,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               </button>
               {!puedeEnviarRevision && !cargandoValidacionesExtra && (
                 <p className="text-xs text-red-600 text-center font-semibold mt-1">
-                  ⚠️ No se puede enviar a aprobación. Verifique que el plan tenga 100% de responsables asignados, al menos un proceso registrado en el Universo Auditable y al menos una auditoría creada para esta vigencia.
+                  ⚠️ No se puede enviar a aprobación. Verifique que el plan tenga 100% de responsables asignados y al menos un proceso registrado en el Universo Auditable.
                 </p>
               )}
             </div>

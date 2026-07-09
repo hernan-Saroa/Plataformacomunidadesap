@@ -54,28 +54,11 @@ export class ActuacionService {
         // Lógica de validación si requiere autorización según la etapa del expediente
         const expediente = await this.expedienteService.findOne(expedienteId);
         if (expediente) {
-            const esDisciplinario =
-                expediente.jurisdiccion === 'DISCIPLINARIO' ||
-                expediente.jurisdiccion === 'Disciplinaria' ||
-                expediente.tipoProceso === 'DISCIPLINARIO' ||
-                expediente.tipoProceso === 'Disciplinario';
-            const configKey = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
-            const config = await this.configService.findByKey(configKey);
-
-            let estadosList: any[] = [];
-            if (config && config.value) {
-                const tipoProcesoConfig = config.value.tiposProcesos?.find(
-                    (tp: any) => tp.id === expediente.tipoProceso || tp.id === expediente.tipoProceso?.toLowerCase()
-                );
-                if (tipoProcesoConfig && Array.isArray(tipoProcesoConfig.estados)) {
-                    estadosList = tipoProcesoConfig.estados;
-                } else if (Array.isArray(config.value.estados)) {
-                    estadosList = config.value.estados;
-                }
-            }
+            // Resolución tolerante (id o nombre normalizado) de las etapas del tipo de proceso.
+            const estadosList = await this.configService.getEstadosForExpediente(expediente);
 
             if (estadosList.length > 0) {
-                const estadoKanban = estadosList.find((e: any) => e.id === expediente.etapaProcesal);
+                const estadoKanban = this.configService.findEstado(estadosList, expediente.etapaProcesal);
                 if (estadoKanban && estadoKanban.aprobacionTipo && estadoKanban.aprobacionTipo !== 'ninguno') {
                     // Requiere aprobación!
                     const metadata = safeData.metadata || {};
@@ -277,6 +260,29 @@ export class ActuacionService {
         return { message: 'OTP enviado con éxito' };
     }
 
+    /**
+     * Verifica el OTP en el paso de verificación de identidad, SIN consumirlo ni
+     * autorizar la actuación. Permite rechazar códigos incorrectos de inmediato
+     * (antes de la animación de firma) en lugar de esperar a autorizarActuacion.
+     * El código se elimina solo al autorizar, por lo que esta comprobación es
+     * idempotente y puede llamarse las veces que sea necesario.
+     */
+    async verificarOtp(actuacionId: string, otp: string): Promise<{ valid: boolean }> {
+        const actuacion = await this.actuacionRepository.findOne({ where: { id: actuacionId } });
+        if (!actuacion) throw new NotFoundException('Actuación no encontrada');
+
+        const metadata = actuacion.metadata || {};
+
+        if (!metadata.otp || metadata.otp !== otp) {
+            throw new BadRequestException('Código OTP incorrecto');
+        }
+        if (!metadata.otpExpiry || new Date(metadata.otpExpiry) < new Date()) {
+            throw new BadRequestException('El código OTP ha expirado');
+        }
+
+        return { valid: true };
+    }
+
     async autorizarActuacion(
         actuacionId: string,
         otp: string,
@@ -385,30 +391,19 @@ export class ActuacionService {
                 expediente.jurisdiccion === 'Disciplinaria' ||
                 expediente.tipoProceso === 'DISCIPLINARIO' ||
                 expediente.tipoProceso === 'Disciplinario';
-            const configKey = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
-            const config = await this.configService.findByKey(configKey);
 
             let etapaAnterior = expediente.etapaProcesal;
             let anteriorColumna: any = null;
 
-            let estadosList: any[] = [];
-            if (config && config.value) {
-                const tipoProcesoConfig = config.value.tiposProcesos?.find(
-                    (tp: any) => tp.id === expediente.tipoProceso || tp.id === expediente.tipoProceso?.toLowerCase()
-                );
-                if (tipoProcesoConfig && Array.isArray(tipoProcesoConfig.estados)) {
-                    estadosList = tipoProcesoConfig.estados;
-                } else if (Array.isArray(config.value.estados)) {
-                    estadosList = config.value.estados;
-                }
-            }
+            // Resolución tolerante (id o nombre normalizado) de las etapas del tipo de proceso.
+            const estadosList = await this.configService.getEstadosForExpediente(expediente);
 
             if (estadosList.length > 0) {
                 const estadosActivos = estadosList
                     .filter((e: any) => e.activo !== false)
                     .sort((a: any, b: any) => (a.orden || 0) - (b.orden || 0));
 
-                const currentIndex = estadosActivos.findIndex((e: any) => e.id === expediente.etapaProcesal);
+                const currentIndex = this.configService.findEstadoIndex(estadosActivos, expediente.etapaProcesal);
                 if (currentIndex > 0) {
                     anteriorColumna = estadosActivos[currentIndex - 1];
                     etapaAnterior = anteriorColumna.id;

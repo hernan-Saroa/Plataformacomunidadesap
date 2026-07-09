@@ -960,7 +960,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             </>
           ) : restrictedMode === 'registro-academico' ? (
             <>
-              {/* Módulo de Registro Académico - Único módulo visible */}
+              {/* Módulo de Verificación de títulos - Único módulo visible */}
               <div className="mb-8">
                 <AnimatePresence mode="wait">
                   {!effectiveCollapsed && (
@@ -972,7 +972,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
                     >
                       <GraduationCap className="w-3 h-3" />
-                      Registro Académico
+                      Verificación de títulos
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1138,7 +1138,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     'graduates',
                     'graduates-verification',
                     <GraduationCap className="w-5 h-5" strokeWidth={2} />,
-                    'Registro Académico',
+                    'Verificación de títulos',
                     '2 submódulos',
                     [
                       {

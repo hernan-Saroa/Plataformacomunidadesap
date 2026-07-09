@@ -142,7 +142,7 @@ function itemMatchesSearch(item: Item, normalizedQuery: string): boolean {
 // ==================== TIPOS ====================
 interface Persona {
   nombre: string;
-  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
+  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT' | 'Email';
   numeroIdentificacion: string;
   apoderado: {
     nombre: string;
@@ -332,6 +332,7 @@ interface TarjetaNoticiaProps {
   onAsociarNoticiaNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Asociar noticia a noticia
   onVerProcesoAsociado?: (procesoId: string) => void; // ✅ NUEVO: Ver proceso asociado
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Editar noticia
+  onReenviar?: (noticia: Noticia) => void; // ✅ NUEVO: Reenviar noticia devuelta
   vistaCompacta: boolean;
   isMobile?: boolean;
   colapsada?: boolean; // NUEVO: Indica si la tarjeta está colapsada
@@ -340,7 +341,7 @@ interface TarjetaNoticiaProps {
   currentUserId?: string; // ✅ NUEVO: ID del usuario actual
 }
 
-function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
+function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, onReenviar, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
   const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
@@ -651,11 +652,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                   }`}
                   onMouseEnter={() => setHoverReenviar(true)}
                   onMouseLeave={() => setHoverReenviar(false)}
-                  onClick={() => {
-                    disciplinaryService.changeNewsStatus(noticia.id, 'EN_VALORACION')
-                      .then(() => toast.success('Noticia reenviada para valoración'))
-                      .catch(() => toast.error('Error al reenviar noticia'));
-                  }}
+                  onClick={() => onReenviar?.(noticia)}
                   title={hoverReenviar ? 'Clic para reenviar a valoración' : 'Noticia devuelta'}
                 >
                   {hoverReenviar ? (
@@ -1876,6 +1873,7 @@ interface ColumnaKanbanProps {
   onVerProcesoAsociado?: (procesoId: string) => void; // ✅ NUEVO
   onVerNoticiaAsociada?: (noticia: Noticia) => void; // ✅ NUEVO: Ver noticia asociada desde proceso
   onEditarNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Editar noticia
+  onReenviarNoticia?: (noticia: Noticia) => void; // ✅ NUEVO: Reenviar noticia devuelta
   onVerDetalles: (proceso: Proceso) => void;
   onAprobarBorrador: (proceso: Proceso) => void;
   onVerExpediente: (proceso: Proceso) => void;
@@ -1916,6 +1914,7 @@ function ColumnaKanban({
   onVerProcesoAsociado, // ✅ NUEVO
   onVerNoticiaAsociada, // ✅ NUEVO
   onEditarNoticia, // ✅ NUEVO: Editar noticia
+  onReenviarNoticia, // ✅ NUEVO: Reenviar noticia devuelta
   onVerDetalles,
   onAprobarBorrador,
   onVerExpediente,
@@ -2267,6 +2266,7 @@ function ColumnaKanban({
               onAsociarNoticiaNoticia={onAsociarNoticiaNoticia} // ✅ NUEVO: Asociar noticia a noticia
               onVerProcesoAsociado={onVerProcesoAsociado} // ✅ NUEVO
               onEditarNoticia={onEditarNoticia} // ✅ NUEVO: Editar noticia
+              onReenviar={onReenviarNoticia} // ✅ NUEVO: Reenviar noticia devuelta
               vistaCompacta={vistaCompacta}
               isMobile={isMobile}
               colapsada={tarjetasColapsadas?.has(noticia.id)}
@@ -2988,8 +2988,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       estadoActual: proceso.estado || 'ACTIVO',
       profesionalAsignado: {
         nombre: abogado,
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+        tipoIdentificacion: 'Email',
+        numeroIdentificacion: (proceso as any).abogadoAsignado?.email || '',
       },
       semaforo,
       diasRestantes,
@@ -3005,7 +3005,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       dependencia: proceso.news?.dependenciaDenunciado || '',
       territorial: proceso.news?.territorial || '',
       fechaHechos: proceso.news?.fechaHechos || '',
-      conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+      conductaSeleccionada: proceso.news?.conductas?.[0] || proceso.news?.conducta || '',
       conductaPersonalizada: '',
       conducta: proceso.news?.conducta || '',
       archivosAdjuntos: (proceso.news?.adjuntos || []).map((url: string, i: number) => ({
@@ -3726,8 +3726,8 @@ export function DashboardKanbanOperativo({
       estadoActual: proceso.estado || 'ACTIVO',
       profesionalAsignado: {
         nombre: abogado,
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+        tipoIdentificacion: 'Email',
+        numeroIdentificacion: (proceso as any).abogadoAsignado?.email || '',
       },
       semaforo,
       diasRestantes,
@@ -3743,7 +3743,7 @@ export function DashboardKanbanOperativo({
       dependencia: proceso.news?.dependenciaDenunciado || '',
       territorial: proceso.news?.territorial || '',
       fechaHechos: proceso.news?.fechaHechos || '',
-      conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+      conductaSeleccionada: proceso.news?.conductas?.[0] || proceso.news?.conducta || '',
       conductaPersonalizada: '',
       conducta: proceso.news?.conducta || '',
       archivosAdjuntos: (proceso.news?.adjuntos || []).map((url: string, i: number) => ({
@@ -3994,6 +3994,12 @@ export function DashboardKanbanOperativo({
           setModalActivo('asignar-profesional');
           return; // No continuar con el movimiento hasta que se asigne el profesional
         }
+
+        // Bloquear avance de etapa por arrastre — requiere aprobación del Auto
+        toast.error('No es posible avanzar de etapa mediante arrastre', {
+          description: 'El cambio de etapa requiere la aprobación del Auto correspondiente. Use el botón de aprobación en el detalle del proceso.'
+        });
+        return;
 
         const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
 
@@ -4582,6 +4588,23 @@ export function DashboardKanbanOperativo({
     setItemSeleccionado(noticia);
     setObservaciones('');
     setModalActivo('devolver-noticia');
+  };
+
+  const handleReenviarNoticia = async (noticia: Noticia) => {
+    try {
+      await disciplinaryService.changeNewsStatus(noticia.id, 'EN_VALORACION');
+      // Solo actualizar estado local si el backend confirmó
+      setItems(prev => prev.map(item => {
+        if (item.id === noticia.id && item.tipo === 'noticia') {
+          return { ...item, estado: 'en-valoracion' as any };
+        }
+        return item;
+      }));
+      toast.success('Noticia reenviada para valoración');
+    } catch (err) {
+      console.error('[DashboardKanban] Error al reenviar noticia:', err);
+      toast.error('Error al reenviar noticia');
+    }
   };
 
   const handleConfirmarDevolucion = async (datos: {
@@ -6104,6 +6127,7 @@ export function DashboardKanbanOperativo({
                           onDrop={handleDropItem}
                           onConvertirNoticia={handleConvertirNoticia}
                           onDevolverNoticia={handleDevolverNoticia}
+                          onReenviarNoticia={handleReenviarNoticia}
                           onDevolverCompetencia={handleDevolverCompetencia}
                           onArchivarNoticia={handleArchivarNoticia}
                           onVerDetallesNoticia={handleVerDetallesNoticia}

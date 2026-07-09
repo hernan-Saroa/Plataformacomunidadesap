@@ -369,20 +369,42 @@ export const documentosService = {
     return { success: true, data: { url: doc?.url_archivo || doc?.url || 'about:blank' } };
   },
 
-  async validarDocumento(id: string): Promise<ServiceResult<any>> {
-    const res = updateDoc(id, { estado: 'validado', fecha_validacion: new Date().toISOString(), validado_por: 'Administrador' });
-    if (res.success && res.data) {
+  async validarDocumento(id: string, validadoPor: string = 'Administrador'): Promise<ServiceResult<any>> {
+    // Persistir en el backend (fuente de verdad). Antes solo se escribía en el
+    // cache local (localStorage), por lo que la aprobación se perdía al recargar.
+    try {
+      await apiClient.put<any>(`${CARPETAS_DIGITALES_ENDPOINT}/documentos/${id}/validate`, {
+        estado: 'validado',
+        validadoPor,
+      });
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'No se pudo validar el documento en el servidor' };
+    }
+    // Sincronizar el cache local para reflejo inmediato en la UI.
+    const res = updateDoc(id, { estado: 'validado', fecha_validacion: new Date().toISOString(), validado_por: validadoPor });
+    if (res.success && res.data?.carpeta_id) {
       await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
     }
-    return res;
+    return res.success ? res : { success: true, data: { id, estado: 'validado' } };
   },
 
-  async rechazarDocumento(id: string, _validadorId?: string, motivo?: string): Promise<ServiceResult<any>> {
+  async rechazarDocumento(id: string, validadorId?: string, motivo?: string): Promise<ServiceResult<any>> {
+    // Persistir el rechazo en el backend (mismo problema que la validación: antes
+    // solo quedaba en localStorage y se perdía al recargar).
+    try {
+      await apiClient.put<any>(`${CARPETAS_DIGITALES_ENDPOINT}/documentos/${id}/validate`, {
+        estado: 'rechazado',
+        validadoPor: validadorId || 'Administrador',
+        comentarios: motivo || 'Rechazado',
+      });
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'No se pudo rechazar el documento en el servidor' };
+    }
     const res = updateDoc(id, { estado: 'rechazado', comentarios: motivo || 'Rechazado' });
-    if (res.success && res.data) {
+    if (res.success && res.data?.carpeta_id) {
       await syncPersonDocumentsToPTABackend(res.data.carpeta_id);
     }
-    return res;
+    return res.success ? res : { success: true, data: { id, estado: 'rechazado' } };
   },
 
   async eliminarTodosLosDocumentos(): Promise<ServiceResult> {

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, AlertCircle, Shield, Loader2, Key } from 'lucide-react';
 import { toast } from 'sonner';
-import { API_MODE, buildApiUrl, getDefaultHeaders } from '../../../config/environment';
+import { API_MODE, CORS_CONFIG, buildApiUrl, getDefaultHeaders } from '../../../config/environment';
 
 export interface FirmaElectronicaMetadata {
   otp: string;
@@ -87,6 +87,7 @@ export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName,
     try {
       const response = await fetch(buildAuthUrl('/signature-otp/request'), {
         method: 'POST',
+        ...CORS_CONFIG,
         headers: getDefaultHeaders(),
         body: JSON.stringify({
           userName,
@@ -176,6 +177,7 @@ export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName,
     try {
       const response = await fetch(buildAuthUrl('/signature-otp/verify'), {
         method: 'POST',
+        ...CORS_CONFIG,
         headers: getDefaultHeaders(),
         body: JSON.stringify({ code: codeIngresado }),
       });

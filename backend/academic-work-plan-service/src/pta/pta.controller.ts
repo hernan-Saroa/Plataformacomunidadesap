@@ -13,6 +13,7 @@ import {
   Req,
   UploadedFile,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -22,6 +23,7 @@ import { extname, join } from 'path';
 import * as fs from 'node:fs';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
+import { PtaAuthGuard } from './auth/pta-auth.guard';
 
 const ensureDir = (dir: string) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -76,8 +78,8 @@ export class PtaController {
   }
 
   @Get('catalogos/territoriales')
-  async getCatalogoTerritoriales() {
-    const data = await this.ptaService.getCatalogoTerritoriales();
+  async getCatalogoTerritoriales(@Query('periodo') periodo?: string) {
+    const data = await this.ptaService.getCatalogoTerritoriales(periodo);
     return { success: true, data, total: data.length };
   }
 
@@ -85,6 +87,27 @@ export class PtaController {
   async getCatalogoCetaps(@Query() query: any) {
     const data = await this.ptaService.getCatalogoCetaps(query);
     return { success: true, data, total: data.length };
+  }
+
+  // CETAPs filtrados por programa (via oferta_cetap_programa)
+  @Get('catalogos/cetaps-por-programa')
+  async getCetapsPorPrograma(@Query() query: any) {
+    const data = await this.ptaService.getCetapsPorPrograma(query);
+    return { success: true, data, total: data.length };
+  }
+
+  // Programas ofertados en un CETAP/Sede (acepta auth.sedes.id_sede)
+  @Get('catalogos/programas-por-sede')
+  async getProgramasPorSede(@Query() query: any) {
+    const data = await this.ptaService.getProgramasPorSede(query);
+    return { success: true, data, total: data.length };
+  }
+
+  // Cupos estimados para una combinación CETAP + Programa
+  @Get('catalogos/oferta-cetap')
+  async getOfertaCetap(@Query() query: any) {
+    const data = await this.ptaService.getOfertaCetapPrograma(query);
+    return { success: true, data };
   }
 
   @Get('catalogos/roles-investigacion')
@@ -124,8 +147,8 @@ export class PtaController {
   }
 
   @Post('catalogos/calcular-horas-programables')
-  calcularHorasProgramables(@Body() body: any) {
-    const total_horas = this.ptaService.calcHorasProgramables({
+  async calcularHorasProgramables(@Body() body: any) {
+    const total_horas = await this.ptaService.calcHorasProgramables({
       tipo_vinculacion: body?.tipo_vinculacion,
       dedicacion: body?.dedicacion,
       semanas_vinculacion: body?.semanas_vinculacion,
@@ -251,8 +274,10 @@ export class PtaController {
   }
 
   @Post(':ptaId/estado')
-  async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any) {
-    const result = await this.ptaService.updatePTAStatus(ptaId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async updateEstado(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    // Las acciones de aprobación/devolución se autorizan server-side con req.ptaAuth.
+    const result = await this.ptaService.updatePTAStatus(ptaId, body || {}, req.ptaAuth);
     return { success: true, ...result };
   }
 
@@ -282,9 +307,18 @@ export class PtaController {
   }
 
   @Post('configuracion')
-  async saveConfiguracion(@Body() body: any) {
+  async saveConfiguracion(@Body() body: any, @Req() req: Request) {
     const rules = body?.rules ?? body;
-    const data = await this.ptaService.saveConfiguracionPTAGlobal(rules);
+    const userId = (req.headers['x-user-id'] as string) || 'admin';
+    const data = await this.ptaService.saveConfiguracionPTAGlobal(rules, userId);
+    return { success: true, data };
+  }
+
+  // Purga manual de PTAs vencidos (no aprobados dentro del plazo configurado).
+  // El barrido también corre de forma automática (perezosa) al listar PTAs.
+  @Post('mantenimiento/purgar-vencidos')
+  async purgarVencidos() {
+    const data = await this.ptaService.purgarPtasVencidos();
     return { success: true, data };
   }
 
@@ -330,8 +364,19 @@ export class PtaController {
   }
 
   @Post(':ptaId/enviar-aprobacion')
-  enviarAprobacion(@Param('ptaId') ptaId: string, @Body() body: any) {
-    return { success: true, data: { ptaId, ...body } };
+  @UseGuards(PtaAuthGuard)
+  async enviarAprobacion(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    // El docente envía su propio PTA a aprobación (estado explícito, sin acción de
+    // aprobador), por lo que no dispara la autorización por nivel; el guard solo
+    // garantiza que exista una sesión válida.
+    const result = await this.ptaService.updatePTAStatus(ptaId, {
+      ...(body || {}),
+      estado: 'Pendiente Jefatura',
+      actorId: body?.actorId || body?.enviado_por || req.ptaAuth?.userId || (req.headers['x-user-id'] as string),
+      actorRol: body?.actorRol || 'Docente',
+      sistemaOrigen: body?.sistemaOrigen || 'portal',
+    }, req.ptaAuth);
+    return { success: true, ...result };
   }
 
   // (implementación real arriba, este stub fue reemplazado)
@@ -552,8 +597,9 @@ export class PtaController {
   }
 
   @Get('dashboard/kpis')
-  getDashboardKpis(@Query() _query: any) {
-    return { success: true, data: null };
+  async getDashboardKpis(@Query() query: any) {
+    const data = await this.ptaService.getDashboardKPIs(query?.periodo);
+    return { success: true, data };
   }
 
   @Get('dashboard/directivo')
@@ -795,8 +841,11 @@ export class PtaController {
   }
 
   @Post(':ptaId/aprobar-componente')
-  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any) {
-    const data = await this.ptaService.aprobarComponente(ptaId, body);
+  @UseGuards(PtaAuthGuard)
+  async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    // La autorización real (qué componentes puede aprobar) proviene de req.ptaAuth,
+    // resuelto server-side desde los permisos del usuario. NO se confía en el body.
+    const data = await this.ptaService.aprobarComponente(ptaId, body, req.ptaAuth);
     return { success: true, data };
   }
 }

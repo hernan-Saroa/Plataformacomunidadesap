@@ -220,8 +220,16 @@ export const rolesService = {
   /**
    * Obtener programas académicos disponibles
    */
-  async getProgramasAcademicos(): Promise<ProgramaAcademico[]> {
-    return apiClient.get<ProgramaAcademico[]>(`${SERVICE_PREFIX}/datos-maestros/programas-academicos`);
+  async getProgramasAcademicos(sedeId?: string): Promise<ProgramaAcademico[]> {
+    const params = sedeId ? { sedeId } : {};
+    return apiClient.get<ProgramaAcademico[]>(`${SERVICE_PREFIX}/datos-maestros/programas-academicos`, params);
+  },
+
+  /**
+   * Obtener usuarios asignados a un rol
+   */
+  async getUsersByRole(roleId: string): Promise<any[]> {
+    return apiClient.get<any[]>(`${SERVICE_PREFIX}/roles/${roleId}/users`);
   },
 };
 

@@ -129,6 +129,16 @@ function mapResponsablesRolDesdeBackend(rol: any): Auditor[] {
 
 const esUUID = esUuidPersona;
 
+function logPlanAnualDebug(...args: unknown[]): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage.getItem('debug:plan-anual') === '1') {
+      console.log(...args);
+    }
+  } catch {
+    /* debug disabled */
+  }
+}
+
 async function limpiarBorradoresWizard(): Promise<void> {
   try {
     localStorage.removeItem('esap:wizard_plan_anual_draft');
@@ -155,6 +165,14 @@ async function sincronizarResponsablesRolesEnBackend(
     const idPerson = idPersonaParaPlanAnual(resp);
     const idPersistido =
       idPerson || String(resp.id || resp.idPerson || resp.idTercero || '').trim() || undefined;
+
+    // S& MODIFICADO: Evitar peticiones redundantes si el responsable del rol no ha cambiado
+    const idPersistidoStr = String(idPerson || idPersistido || '').trim();
+    const idBackendStr = String(rolBackend.responsable_id || '').trim();
+    if (rolBackend.responsable === resp.nombre && idBackendStr === idPersistidoStr) {
+      continue;
+    }
+
     await planAnualApi.updateRol(planId, rolBackend.id, {
       responsable: resp.nombre,
       responsable_id: idPerson || idPersistido,
@@ -1458,6 +1476,58 @@ function mapTareasSeguimientoDesdeBackend(
   }));
 }
 
+function obtenerFirmaComparacionActividad(act: any) {
+  const responsables = (Array.isArray(act.responsables) ? act.responsables : [])
+    .map((r: any) => String(r.id || r.idPerson || r.idTercero || '').trim())
+    .filter(Boolean)
+    .sort();
+
+  const puntosControl = (Array.isArray(act.puntosControl || act.puntos_control) ? (act.puntosControl || act.puntos_control) : [])
+    .map((p: any) => String(p.fecha || '').split('T')[0])
+    .filter(Boolean)
+    .sort();
+
+  const tareas = (Array.isArray(act.tareasSeguimiento || act.tareas_seguimiento) ? (act.tareasSeguimiento || act.tareas_seguimiento) : [])
+    .map((t: any) => {
+      const fl = t.fechaLimite ?? t.fechaEntrega ?? t.fecha_limite ?? t.fecha_entrega;
+      return {
+        desc: String(t.descripcion || '').trim(),
+        limite: fl ? String(fl).split('T')[0] : null,
+        reqAdj: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+        reqObs: !!(t.requiereObservaciones ?? t.requiere_observaciones)
+      };
+    })
+    .sort((a, b) => a.desc.localeCompare(b.desc));
+
+  const configEvidencias = act.configuracionEvidencias || act.configuracion_evidencias || {};
+  const normConfig = {
+    adjuntosRequeridos: configEvidencias.adjuntosRequeridos || 'OPCIONAL',
+    observacionRequerida: configEvidencias.observacionRequerida || 'OPCIONAL',
+    minimoAdjuntos: Number(configEvidencias.minimoAdjuntos || 0),
+    longitudMinimaObservacion: Number(configEvidencias.longitudMinimaObservacion || 0)
+  };
+
+  const requiereAuth = !!(
+    act.requiereAutorizacionJefeOCI ?? 
+    act.requiereVerificacionDirector ?? 
+    act.requiere_verificacion_director
+  );
+
+  return {
+    nombre: String(act.nombre || '').trim(),
+    descripcion: String(act.descripcion || '').trim(),
+    fechaInicio: String(act.fechaInicio || act.fecha_inicio || '').split('T')[0],
+    fechaFin: String(act.fechaFin || act.fecha_fin || '').split('T')[0],
+    fechaCorte: String(act.fechaCorte || act.fecha_corte || '').split('T')[0],
+    frecuenciaPuntosControl: act.frecuenciaPuntosControl || act.frecuencia_puntos_control || 'trimestral',
+    requiereVerificacionDirector: requiereAuth,
+    responsables,
+    puntosControl,
+    tareas,
+    configEvidencias: normConfig
+  };
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -2000,7 +2070,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           // edición/creación/activación solo debe ver planes donde está en el
           // equipo de aprobación. No le interesa ni puede actuar sobre los demás.
           const esSoloComite = puedeAprobarPlan && !puedeEditarPlan && !puedeActivarPlan && !puedeCrearPlan && !esSuperUsuario;
-          console.log('[PlanAnualDefinitivo] Filtro planes:', {
+          logPlanAnualDebug('[PlanAnualDefinitivo] Filtro planes:', {
             esSoloComite,
             puedeAprobarPlan,
             puedeEditarPlan,
@@ -2393,12 +2463,12 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // ═══════════════════════════════════════════════════════════════
       // DEBUG: Resumen completo de lo que se va a enviar al backend
       // ═══════════════════════════════════════════════════════════════
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('🚀 [handleCrearPlan] INICIO - Creando Plan Anual');
-      console.log(`   Vigencia: ${vigencia}`);
-      console.log(`   Jefe OCI: ${jefeOCI.nombre} (id: ${jefeOCI.id})`);
-      console.log(`   Fechas: ${fechaInicio} → ${fechaFin}`);
-      console.log(`   Roles configurados: ${rolesConfig.length}`);
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug('🚀 [handleCrearPlan] INICIO - Creando Plan Anual');
+      logPlanAnualDebug(`   Vigencia: ${vigencia}`);
+      logPlanAnualDebug(`   Jefe OCI: ${jefeOCI.nombre} (id: ${jefeOCI.id})`);
+      logPlanAnualDebug(`   Fechas: ${fechaInicio} → ${fechaFin}`);
+      logPlanAnualDebug(`   Roles configurados: ${rolesConfig.length}`);
       
       /** Solo actividades con checkbox marcado en el wizard (`incluidaEnPlan !== false`). */
       const actividadesTemplateIncluidas = (rc: any) =>
@@ -2416,10 +2486,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         const tareasEnRol = todasActs.reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
         totalTareasEsperadas += tareasEnRol;
         
-        console.log(`   Rol ${rc.numero} "${rc.nombre}": ${actSel} sel + ${actCus} custom = ${totalAct} actividades, ${tareasEnRol} tareas, ${rc.responsables?.length || 0} responsables`);
+        logPlanAnualDebug(`   Rol ${rc.numero} "${rc.nombre}": ${actSel} sel + ${actCus} custom = ${totalAct} actividades, ${tareasEnRol} tareas, ${rc.responsables?.length || 0} responsables`);
       }
-      console.log(`   📊 TOTAL ESPERADO: ${totalActividadesEsperadas} actividades, ${totalTareasEsperadas} tareas`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug(`   📊 TOTAL ESPERADO: ${totalActividadesEsperadas} actividades, ${totalTareasEsperadas} tareas`);
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // responsable_id = id_person (auth.personas), no el UUID de configuracion_profesionales_ocig
       const responsableIdPerson = idPersonaParaPlanAnual(jefeOCI);
@@ -2609,8 +2679,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             }
             const original = originalPorId.get(String(act.id));
             if (original) {
-              const payloadOriginal = construirPayloadActividad(original);
-              if (JSON.stringify(payloadOriginal) === JSON.stringify(payloadNuevo)) {
+              const firmaOriginal = obtenerFirmaComparacionActividad(original);
+              const firmaNueva = obtenerFirmaComparacionActividad(act);
+              if (JSON.stringify(firmaOriginal) === JSON.stringify(firmaNueva)) {
                 actividadesSinCambios++;
                 continue;
               }
@@ -2662,41 +2733,30 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
           await limpiarBorradoresWizard();
           setAñoActual(vigencia);
-          setPlanesListVersion((v) => v + 1);
-          if (opciones?.permanecerEnWizard) {
-            const reloadedResp = await planAnualApi.getById(planAEditar.id);
-            if (reloadedResp.success && reloadedResp.data) {
-              setPlanAEditar(reloadedResp.data);
-            } else {
-              setPlanAEditar((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      vigencia,
-                      estado: 'BORRADOR',
-                      jefeOCI: {
-                        ...jefeOCI,
-                        id: responsableIdPerson,
-                        idPerson: responsableIdPerson,
-                        idTercero: responsableIdPerson,
-                      },
-                      fechaInicio,
-                      fechaFin,
-                      equipoAprobacion: comiteAprobacion || [],
-                      ordenAprobacion: (ordenAprobacion || 'secuencial') as 'secuencial' | 'paralelo',
-                    }
-                  : prev,
-              );
+
+          const tieneNuevasActividades = rolesConfig.some((rc: any) =>
+            (rc.actividadesSeleccionadas || []).some((a: any) => a?.incluidaEnPlan !== false && !esUUID(a?.id)) ||
+            (rc.actividadesCustom || []).some((a: any) => !esUUID(a?.id))
+          );
+
+          // Solo recargar lista y plan si no es un autoguardado silencioso de edición
+          // o si hay nuevas actividades que necesitan resolver sus UUIDs en la interfaz
+          const requiereActualizacionPadre = !opciones?.silencioso || tieneNuevasActividades;
+
+          if (requiereActualizacionPadre) {
+            setPlanesListVersion((v) => v + 1);
+            if (opciones?.permanecerEnWizard) {
+              const reloadedResp = await planAnualApi.getById(planAEditar.id);
+              if (reloadedResp.success && reloadedResp.data) {
+                setPlanAEditar(reloadedResp.data);
+              }
             }
-            if (!opciones?.silencioso) {
-              toast.success('Plan guardado en borrador', {
-                description: 'Puede seguir editando en el asistente. El borrador temporal ya no aparece en inicio.',
-              });
-            }
-          } else {
-            if (!opciones?.silencioso) {
-              toast.success('Plan guardado exitosamente');
-            }
+          }
+
+          if (!opciones?.silencioso) {
+            toast.success('Plan guardado en borrador', {
+              description: 'Puede seguir editando en el asistente. El borrador temporal ya no aparece en inicio.',
+            });
           }
           return true;
         } else {
@@ -2761,7 +2821,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             ...(rolConfig.actividadesCustom || [])
           ];
 
-          console.log(`📦 [handleCrearPlan] Rol ${rolBackend.rol_numero}:`, {
+          logPlanAnualDebug(`📦 [handleCrearPlan] Rol ${rolBackend.rol_numero}:`, {
             actividadesSeleccionadas: (rolConfig.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false).length,
             actividadesCustom: rolConfig.actividadesCustom?.length || 0,
             primeraActividad: todasActividades[0]?.nombre,
@@ -2883,32 +2943,46 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       if (planCreado?.id) {
         await limpiarBorradoresWizard();
         setPlanesListVersion((v) => v + 1);
+        vigenciaContext?.refetch?.();
         if (opciones?.permanecerEnWizard) {
           setAñoActual(vigencia);
-          await abrirWizardConPlan(
-            {
-              id: planCreado.id,
-              vigencia,
-              version: 1,
-              estado: 'BORRADOR',
-              jefeOCI: {
-                ...jefeOCI,
-                id: responsableIdPerson,
-                idPerson: responsableIdPerson,
-                idTercero: responsableIdPerson,
-              },
-              fechaInicio,
-              fechaFin,
-              equipoAprobacion: comiteAprobacion || [],
-              ordenAprobacion: ordenAprobacion || 'secuencial',
-              roles: [],
-            } as PlanAnual,
-            false,
+          const yaEditandoEstePlan = planAEditar && planAEditar.id === planCreado.id;
+          const tieneNuevasActividades = rolesConfig.some((rc: any) =>
+            (rc.actividadesSeleccionadas || []).some((a: any) => a?.incluidaEnPlan !== false && !esUUID(a?.id)) ||
+            (rc.actividadesCustom || []).some((a: any) => !esUUID(a?.id))
           );
-          if (!opciones?.silencioso) {
-            toast.success('Plan creado en borrador', {
-              description: 'Sigue en el asistente. Ya no verá el aviso de borrador temporal en inicio.',
-            });
+
+          if (!yaEditandoEstePlan || tieneNuevasActividades) {
+            await abrirWizardConPlan(
+              {
+                id: planCreado.id,
+                vigencia,
+                version: 1,
+                estado: 'BORRADOR',
+                jefeOCI: {
+                  ...jefeOCI,
+                  id: responsableIdPerson,
+                  idPerson: responsableIdPerson,
+                  idTercero: responsableIdPerson,
+                },
+                fechaInicio,
+                fechaFin,
+                equipoAprobacion: comiteAprobacion || [],
+                ordenAprobacion: ordenAprobacion || 'secuencial',
+                roles: [],
+              } as PlanAnual,
+              false,
+            );
+            if (!opciones?.silencioso) {
+              toast.success('Plan creado en borrador', {
+                description: 'Sigue en el asistente. Ya no verá el aviso de borrador temporal en inicio.',
+              });
+            }
+          } else {
+            // Si ya estábamos editando este plan y no hay nuevas actividades,
+            // simplemente actualizamos el planAEditar sin remount del Wizard
+            const planCompleto = transformarPlanBackendAFicha(planCreado);
+            setPlanAEditar(planCompleto);
           }
           return true;
         }
@@ -2917,14 +2991,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // NO recargamos el plan ni cambiamos la vista aquí, 
       // lo hará el Wizard después de mostrar el Modal de feedback.
 
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`✅ [handleCrearPlan] RESUMEN FINAL:`);
-      console.log(`   Actividades creadas: ${actividadesCreadas}`);
-      console.log(`   Actividades fallidas: ${actividadesFallidas}`);
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug(`✅ [handleCrearPlan] RESUMEN FINAL:`);
+      logPlanAnualDebug(`   Actividades creadas: ${actividadesCreadas}`);
+      logPlanAnualDebug(`   Actividades fallidas: ${actividadesFallidas}`);
       if (erroresPorActividad.length > 0) {
-        console.log(`   Errores:`, erroresPorActividad);
+        logPlanAnualDebug(`   Errores:`, erroresPorActividad);
       }
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logPlanAnualDebug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       if (actividadesFallidas === 0) {
         if (!opciones?.silencioso) {
@@ -3058,6 +3132,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               setDashboardSeccionForzada(null);
               setPlanAEditar(undefined);
               await recargarPlan();
+              vigenciaContext?.refetch?.();
               setVista('dashboard');
             }}
             planesExistentes={planesAnteriores}
@@ -3072,7 +3147,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             key="dashboard"
             plan={planActual}
             onActualizar={setPlanActual}
-            onRefetchPlan={recargarPlan}
+            onRefetchPlan={async () => {
+              await recargarPlan();
+              vigenciaContext?.refetch?.();
+            }}
             onVolver={() => setVista('inicio')}
             onAbrirRol4={() => {
               if (onNavegarModulo) {

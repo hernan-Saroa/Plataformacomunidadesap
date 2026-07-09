@@ -156,7 +156,7 @@ const assertCanMakeFinalReviewDecision = (req: AuthenticatedRequest) => {
   }
 
   throw new ForbiddenException(
-    'Se requieren los permisos minimos de jefe de Registro Academico para emitir la decision final.',
+    'Se requieren los permisos minimos de jefe de Verificación de títulos para emitir la decision final.',
   );
 };
 
@@ -455,7 +455,7 @@ export class GraduationCertificatesController {
    */
   /**
    * POST /academic-registration/api/v1/certificates/autoservicio/buscar-coincidencias
-   * Buscar coincidencias por cédula y similitud de nombre para selección asistida
+   * Buscar coincidencias por documento y similitud de nombre para selección asistida
    */
   @Post('autoservicio/buscar-coincidencias')
   @Public()

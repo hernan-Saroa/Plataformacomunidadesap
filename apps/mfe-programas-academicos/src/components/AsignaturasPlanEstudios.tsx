@@ -103,7 +103,7 @@ const EMPTY_ASIGNATURA: Omit<Asignatura, 'id' | 'programa_id'> = {
 // ═══ Export Helpers ═══
 
 function exportToCSV(asignaturas: Asignatura[], programaNombre: string) {
-  const headers = ['#', 'Codigo', 'Nombre', 'Semestre', 'Creditos', 'Horas', 'Nucleo', 'Modalidad', 'Tipo'];
+  const headers = ['#', 'Código', 'Nombre', 'Semestre', 'Créditos', 'Horas', 'Núcleo', 'Modalidad', 'Tipo'];
   const rows = asignaturas
     .sort((a, b) => (a.semestre || 1) - (b.semestre || 1) || a.nombre.localeCompare(b.nombre))
     .map((a, i) => [
@@ -150,6 +150,7 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
   if (!win) { toast.error('Popup bloqueado. Permite popups para exportar PDF.'); return; }
 
   win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
     <title>Plan de Estudios - ${programaNombre}</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -179,16 +180,16 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
     </div>
     <div class="stats">
       <div class="stat"><div class="value">${asignaturas.length}</div><div class="label">Asignaturas</div></div>
-      <div class="stat"><div class="value">${totalCr}/${totalCreditos}</div><div class="label">Creditos</div></div>
+      <div class="stat"><div class="value">${totalCr}/${totalCreditos}</div><div class="label">Créditos</div></div>
       <div class="stat"><div class="value">${totalH.toLocaleString()}</div><div class="label">Horas</div></div>
       <div class="stat"><div class="value">${bySem.size}</div><div class="label">Semestres</div></div>
     </div>
     ${Array.from(bySem.entries()).sort((a, b) => a[0] - b[0]).map(([sem, asigs]) => {
       const semCr = asigs.reduce((s, a) => s + (a.creditos || 0), 0);
       return `<div class="semester">
-        <h3>Semestre ${sem} — ${asigs.length} asignaturas · ${semCr} creditos</h3>
+        <h3>Semestre ${sem} — ${asigs.length} asignaturas · ${semCr} créditos</h3>
         <table>
-          <thead><tr><th>#</th><th>Codigo</th><th>Asignatura</th><th>Creditos</th><th>Horas</th><th>Horas PTA</th><th>Nucleo</th><th>Modalidad</th></tr></thead>
+          <thead><tr><th>#</th><th>Código</th><th>Asignatura</th><th>Créditos</th><th>Horas</th><th>Horas PTA</th><th>Núcleo</th><th>Modalidad</th></tr></thead>
           <tbody>
             ${asigs.map((a, i) => `<tr>
               <td>${i + 1}</td><td>${a.codigo || '-'}</td><td><strong>${a.nombre}</strong></td>
@@ -202,9 +203,9 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
     }).join('')}
     <div style="margin-top:16px; padding:8px 12px; background:#003DA5; color:white; border-radius:4px; font-size:12px; font-weight:800; display:flex; justify-content:space-between;">
       <span>TOTAL PLAN DE ESTUDIOS</span>
-      <span>${totalCr} creditos · ${totalH.toLocaleString()} horas · ${asignaturas.length} asignaturas</span>
+      <span>${totalCr} créditos · ${totalH.toLocaleString()} horas · ${asignaturas.length} asignaturas</span>
     </div>
-    <div class="footer">ESAP — Escuela Superior de Administracion Publica · Sistema de Gestion Academica</div>
+    <div class="footer">ESAP — Escuela Superior de Administración Pública · Sistema de Gestión Académica</div>
   </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
@@ -232,9 +233,12 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   const [hasChanges, setHasChanges] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [dragState, setDragState] = useState<DragState>({ draggingId: null, overSemestre: null });
-  const [ptaConfig, setPtaConfig] = useState<any>(null);
+
   const exportRef = useRef<HTMLDivElement>(null);
   const draftRestoredRef = useRef(false);
+  // Auto-save timer
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autoSaveCountdown, setAutoSaveCountdown] = useState<number | null>(null);
   const draftStorageKey = `esap.programas.plan-estudios.draft.${programaId}`;
 
   // Close export menu on outside click
@@ -248,31 +252,73 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Load PTA config
+  // Load programa data for Circular 003 HRS PTA calculation
+  const [programaData, setProgramaData] = useState<any>(null);
+  const [ptaRules, setPtaRules] = useState<any>(null);
+
+  // Fetch PTA configuration (criterio multiplicador + horas base por categoría)
   useEffect(() => {
     async function fetchPtaConfig() {
       try {
         const res = await apiClient.get('/pta/api/v1/configuracion');
-        if (res && (res as any).data?.rules?.docencia_por_programa) {
-          setPtaConfig((res as any).data.rules.docencia_por_programa);
-        } else if (res && (res as any).rules?.docencia_por_programa) {
-          setPtaConfig((res as any).rules.docencia_por_programa);
-        }
+        const rules = (res as any)?.data || (res as any)?.rules || res;
+        if (rules) setPtaRules(rules);
       } catch (err) {
-        console.warn('Could not load PTA config for dynamic Hrs PTA', err);
+        console.warn('Could not load PTA config', err);
       }
     }
     fetchPtaConfig();
   }, []);
 
-  const calculateHrsPta = useCallback((creditos: number) => {
-    if (!ptaConfig || !ptaConfig[programaId]) return null;
-    const config = ptaConfig[programaId];
-    if (config.esVariable) {
-      return (creditos || 0) * (config.base || 0) * (config.multiplicador || 1);
+  // Fetch programa data (categoría, horas base, etc.)
+  useEffect(() => {
+    async function fetchProgramaData() {
+      try {
+        const res = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}`);
+        if (res) setProgramaData(res);
+      } catch (err) {
+        console.warn('Could not load programa data for HRS PTA', err);
+      }
     }
-    return (config.base || 0) * (config.multiplicador || 1);
-  }, [ptaConfig, programaId]);
+    if (programaId) fetchProgramaData();
+  }, [programaId]);
+
+  const calculateHrsPta = useCallback((creditos: number, tipoAsignatura?: string) => {
+    if (!programaData) return null;
+
+    // ── Criterio Multiplicador dinámico (desde Config PTA, sección A) ──
+    const criterioMultiplicador = ptaRules?.criterio_multiplicador_docencia || 3;
+
+    const categoria = programaData.categoria_horas_circular003;
+    const horasPregradoCentral = programaData.horasPregradoCentral || programaData.horas_pregrado_central;
+
+    // ── Horas Base dinámicas (desde Config PTA, sección B) ──
+    // Claves reales: docencia_base_maestria, docencia_base_especializacion,
+    // docencia_base_apt, docencia_base_seminario_sc, docencia_base_pregrado_sc
+    let horasBase: number;
+    if (categoria === 'maestria') {
+      horasBase = ptaRules?.docencia_base_maestria || programaData.horasBasePorCredito || programaData.horas_base_por_credito || 12;
+    } else if (categoria === 'especializacion') {
+      horasBase = ptaRules?.docencia_base_especializacion || programaData.horasBasePorCredito || programaData.horas_base_por_credito || 16;
+    } else {
+      horasBase = ptaRules?.docencia_base_apt || programaData.horasBasePorCredito || programaData.horas_base_por_credito || 16;
+    }
+
+    // ── Sede Central: bloque fijo ──
+    if (categoria === 'pregrado_sede_central' || (horasPregradoCentral && horasPregradoCentral > 0)) {
+      // Seminario de Énfasis
+      const bloqueSeminario = ptaRules?.docencia_base_seminario_sc || 128;
+      if (tipoAsignatura && tipoAsignatura.toLowerCase().includes('seminario')) {
+        return bloqueSeminario * criterioMultiplicador;
+      }
+      // Pregrado SC normal (bloque fijo)
+      const bloqueSC = ptaRules?.docencia_base_pregrado_sc || horasPregradoCentral || 64;
+      return bloqueSC * criterioMultiplicador;
+    }
+
+    // ── APT / Especialización / Maestría: créditos × horas_base × criterio ──
+    return (creditos || 0) * horasBase * criterioMultiplicador;
+  }, [programaData, ptaRules]);
 
   // Load
   const loadAsignaturas = useCallback(async () => {
@@ -293,7 +339,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
         };
         // Override with dynamic calculated hrs if config exists
-        const calculated = calculateHrsPta(asig.creditos);
+        const calculated = calculateHrsPta(asig.creditos, asig.tipo);
         if (calculated !== null) {
           asig.horasFijasPta = calculated;
         }
@@ -356,6 +402,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       toast.error('Revisa la asignatura antes de guardar', {
         description: `La asignatura ${invalidIndex + 1} requiere nombre, créditos entre 1 y 20 y un semestre válido.`,
       });
+      autoSaveFailedRef.current = true;
       return;
     }
 
@@ -366,6 +413,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       toast.error('Códigos repetidos', {
         description: 'Cada código de asignatura debe ser único dentro del plan.',
       });
+      autoSaveFailedRef.current = true;
       return;
     }
 
@@ -383,7 +431,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           modalidad: modalidad.charAt(0).toUpperCase() + modalidad.slice(1),
           nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
         };
-        const calculated = calculateHrsPta(normalized.creditos);
+        const calculated = calculateHrsPta(normalized.creditos, normalized.tipo);
         if (calculated !== null) {
           normalized.horasFijasPta = calculated;
         }
@@ -393,16 +441,65 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       setHasChanges(false);
       sessionStorage.removeItem(draftStorageKey);
       toast.success('Plan de estudios guardado', {
-        description: `${asignaturas.length} asignaturas sincronizadas con Oferta Academica (PTA)`,
+        description: `${asignaturas.length} asignaturas sincronizadas con Oferta Académica (PTA)`,
       });
     } catch (err: any) {
       toast.error('Error al guardar plan de estudios', {
         description: err?.message || 'No fue posible guardar el plan de estudios.',
       });
+      autoSaveFailedRef.current = true; // Pausar auto-save tras error
+      throw err; // Propagar para que el auto-save lo detecte
     } finally {
       setSaving(false);
     }
   };
+
+  // ═══ AUTO-SAVE: Solo se activa cuando el usuario edita explícitamente ═══
+  const AUTOSAVE_DELAY = 5000; // 5 segundos después del último cambio
+  const autoSaveCallbackRef = useRef(handleSaveAll);
+  autoSaveCallbackRef.current = handleSaveAll;
+  const autoSaveFailedRef = useRef(false);
+  const [userEdited, setUserEdited] = useState(false); // Solo true cuando el usuario hace un cambio real
+
+  useEffect(() => {
+    // Solo auto-guardar si: 1) el usuario editó, 2) hay cambios, 3) no estamos guardando, 4) no falló antes
+    if (!userEdited || !hasChanges || saving || autoSaveFailedRef.current) return;
+
+    // Clear previous timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Start countdown display
+    setAutoSaveCountdown(5);
+    const countdownInterval = setInterval(() => {
+      setAutoSaveCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(countdownInterval);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Set auto-save timer
+    autoSaveTimerRef.current = setTimeout(async () => {
+      clearInterval(countdownInterval);
+      setAutoSaveCountdown(null);
+      try {
+        await autoSaveCallbackRef.current();
+        setUserEdited(false); // Reset tras guardado exitoso
+      } catch {
+        autoSaveFailedRef.current = true;
+      }
+    }, AUTOSAVE_DELAY);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      clearInterval(countdownInterval);
+      setAutoSaveCountdown(null);
+    };
+  }, [userEdited, hasChanges, saving, asignaturas]);
 
   // Add
   const handleAdd = () => {
@@ -418,7 +515,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       horas: newAsig.horas || newAsig.creditos * 48,
     };
     
-    const calculated = calculateHrsPta(asig.creditos);
+    const calculated = calculateHrsPta(asig.creditos, asig.tipo);
     if (calculated !== null) {
       asig.horasFijasPta = calculated;
     }
@@ -427,6 +524,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     setNewAsig(EMPTY_ASIGNATURA);
     setShowAddForm(false);
     setHasChanges(true);
+    setUserEdited(true); autoSaveFailedRef.current = false; // Activar auto-save
     toast.success(`"${asig.nombre}" agregada al plan de estudios`);
   };
 
@@ -442,6 +540,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
     if (confirmed) {
       setAsignaturas(prev => prev.filter(a => a.id !== id));
       setHasChanges(true);
+      setUserEdited(true); autoSaveFailedRef.current = false;
       toast.info(`"${asig.nombre}" eliminada`);
     }
   };
@@ -453,7 +552,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       const updated = { ...a, [field]: value };
       if (field === 'creditos') {
         updated.horas = Number(value) * 48;
-        const calculated = calculateHrsPta(Number(value));
+        const calculated = calculateHrsPta(Number(value), updated.tipo);
         if (calculated !== null) {
           updated.horasFijasPta = calculated;
         }
@@ -461,6 +560,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       return updated;
     }));
     setHasChanges(true);
+    setUserEdited(true); autoSaveFailedRef.current = false;
   };
 
   // ═══ Drag & Drop handlers (native HTML5 DnD) ═══
@@ -561,15 +661,26 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
             <div>
               <h4 className="font-black text-gray-900 text-sm">Plan de Estudios</h4>
               <p className="text-[11px] text-gray-500">
-                {asignaturas.length} asig. · {porSemestre.size} semestres · {nucleosUnicos.length} nucleos
+                {asignaturas.length} asig. · {porSemestre.size} semestres · {nucleosUnicos.length} núcleos
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {hasChanges && (
-              <span className="text-[11px] text-amber-600 font-bold flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Sin guardar
+              <span className={`text-[11px] font-bold flex items-center gap-1 transition-colors ${
+                autoSaveCountdown !== null ? 'text-blue-600' : 'text-amber-600'
+              }`}>
+                {autoSaveCountdown !== null ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Guardando en {autoSaveCountdown}s...
+                  </>
+                ) : (
+                  <>
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Sin guardar
+                  </>
+                )}
               </span>
             )}
 
@@ -641,11 +752,11 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
         {asignaturas.length > 0 && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-gray-500">Progreso de creditos</span>
+              <span className="text-gray-500">Progreso de créditos</span>
               <span className={`font-black ${
                 creditProgress >= 100 ? 'text-emerald-600' : creditProgress >= 75 ? 'text-blue-600' : 'text-amber-600'
               }`}>
-                {totalCreditosPlan} / {totalCreditos} creditos ({creditProgress.toFixed(0)}%)
+                {totalCreditosPlan} / {totalCreditos} créditos ({creditProgress.toFixed(0)}%)
               </span>
             </div>
             <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
@@ -664,7 +775,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
             <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-1">
               <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{asignaturas.length} asig.</span>
               <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{totalHorasPlan.toLocaleString()} horas</span>
-              <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{nucleosUnicos.length} nucleos</span>
+              <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{nucleosUnicos.length} núcleos</span>
               <span className="flex items-center gap-1"><Grid3X3 className="w-3 h-3" />{porSemestre.size} semestres</span>
             </div>
           </div>
@@ -710,7 +821,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                 );
               })}
             {nucleoStats.size > 8 && (
-              <span className="text-[10px] text-gray-400">+{nucleoStats.size - 8} mas</span>
+              <span className="text-[10px] text-gray-400">+{nucleoStats.size - 8} más</span>
             )}
           </div>
         </div>
@@ -801,12 +912,12 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                   <input
                     value={newAsig.nombre}
                     onChange={e => setNewAsig({ ...newAsig, nombre: e.target.value })}
-                    placeholder="Ej: Fundamentos de Administracion Publica"
+                    placeholder="Ej: Fundamentos de Administración Pública"
                     className="w-full h-11 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#003DA5]"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Codigo</label>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Código</label>
                   <input
                     value={newAsig.codigo}
                     onChange={e => setNewAsig({ ...newAsig, codigo: e.target.value })}
@@ -827,7 +938,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Creditos</label>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Créditos</label>
                   <input
                     type="number"
                     value={newAsig.creditos}
@@ -849,7 +960,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Nucleo</label>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Núcleo</label>
                   <input
                     value={newAsig.nucleoTematico}
                     onChange={e => setNewAsig({ ...newAsig, nucleoTematico: e.target.value })}
@@ -904,7 +1015,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <p className="text-sm font-bold text-gray-500">No hay asignaturas registradas</p>
           <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-            Agrega asignaturas al plan de estudios o espera a que se sincronicen automaticamente desde el catalogo PTA.
+            Agrega asignaturas al plan de estudios o espera a que se sincronicen automáticamente desde el catálogo PTA.
           </p>
           <button
             onClick={() => setShowAddForm(true)}
@@ -952,7 +1063,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                       }`}>
                         {isDropTarget && semAsigs.length === 0 && (
                           <div className="flex items-center justify-center h-16 border-2 border-dashed border-[#003DA5]/30 rounded-lg">
-                            <span className="text-[10px] text-[#003DA5]/60 font-medium">Soltar aqui</span>
+                            <span className="text-[10px] text-[#003DA5]/60 font-medium">Soltar aquí</span>
                           </div>
                         )}
                         {semAsigs

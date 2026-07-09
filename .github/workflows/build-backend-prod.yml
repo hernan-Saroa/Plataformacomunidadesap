@@ -3,7 +3,7 @@ name: Build and Push Backend (PROD)
 on:
   push:
     branches:
-      - main
+      - prod
 
 env:
   REGISTRY: ghcr.io

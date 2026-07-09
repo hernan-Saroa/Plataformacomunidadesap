@@ -10,7 +10,10 @@ interface LegacySyncPlan {
   seccionalByDtCode: Map<string, any | null>;
   sedeByCetapCode: Map<string, any | null>;
   summary: ImportGeograficoResultDto['sincronizacion_legacy'];
+  /** Errores que SÍ deben bloquear la importación (hoy ninguno: reservado). */
   errors: string[];
+  /** Ambigüedades de mapeo legacy resueltas de forma determinista. NO bloquean. */
+  warnings: string[];
 }
 
 @Injectable()
@@ -138,6 +141,31 @@ export class EstructuraImportService {
       cetapsToProcess = cetaps;
     }
 
+    // El catálogo maestro tiene claves únicas ADEMÁS del código:
+    //   - direccion_territorial: nombre y nombre_normalizado (globales)
+    //   - cetap: (id_direccion_territorial, nombre_normalizado)
+    // El upsert solo resuelve conflictos por código, así que una fila con un
+    // código NUEVO pero un nombre que ya existe con otro código rompería la
+    // transacción. En vez de fallar, se OMITEN esas filas duplicadas y se
+    // importan las demás (comportamiento idempotente pedido por el negocio).
+    const conflictScan = await this.filterCatalogNameConflicts(
+      dtToProcess,
+      cetapsToProcess,
+    );
+    dtToProcess = conflictScan.territoriales;
+    cetapsToProcess = conflictScan.cetaps;
+    const conflictSkippedDts = conflictScan.skippedTerritoriales;
+    const conflictSkippedCetaps = conflictScan.skippedCetaps;
+    if (conflictScan.messages.length > 0) {
+      result.advertencias.push(
+        ...conflictScan.messages.map((mensaje) => ({
+          hoja: 'YA_EXISTE_OTRO_CODIGO',
+          mensaje,
+          severity: 'warning' as const,
+        })),
+      );
+    }
+
     const legacyPlan = await this.buildLegacySyncPlan(
       dtToProcess,
       cetapsToProcess,
@@ -146,6 +174,23 @@ export class EstructuraImportService {
     const periodSync = await this.analyzePeriodSync(periodo);
     (result as any).sincronizacion_periodo = periodSync;
 
+    // Las ambigüedades de mapeo contra la estructura legacy (auth.seccionales /
+    // auth.sedes) NO bloquean la importación: el catálogo maestro
+    // (academic_work_plan) es la fuente de verdad y se hace upsert idempotente.
+    // buildLegacySyncPlan ya las resolvió de forma determinista (sin crear
+    // duplicados); aquí solo se informan como advertencias.
+    if (legacyPlan.warnings.length > 0) {
+      result.advertencias.push(
+        ...legacyPlan.warnings.map((message) => ({
+          hoja: 'SINCRONIZACION_LEGACY',
+          mensaje: message,
+          severity: 'warning' as const,
+        })),
+      );
+    }
+
+    // Un error de periodo (p. ej. el periodo no existe) o un error legacy
+    // genuinamente irrecuperable sí bloquean, porque impiden sincronizar.
     if (legacyPlan.errors.length > 0 || periodSync.error) {
       result.success = false;
       result.preview_territoriales = dtToProcess;
@@ -170,7 +215,8 @@ export class EstructuraImportService {
         throw new BadRequestException({
           success: false,
           message:
-            'La estructura nueva es válida, pero existen ambigüedades en la estructura organizacional actual.',
+            periodSync.error ||
+            'No se pudo sincronizar la estructura con la organización actual.',
           errores: result.errores,
         });
       }
@@ -262,12 +308,14 @@ export class EstructuraImportService {
     // Populate result counts
     result.carga.direcciones_territoriales.creados = newDts.length;
     result.carga.direcciones_territoriales.actualizados = modifiedDts.length;
-    result.carga.direcciones_territoriales.omitidos = validation.invalidTerritoriales.length + identicalDts.length;
+    result.carga.direcciones_territoriales.omitidos =
+      validation.invalidTerritoriales.length + identicalDts.length + conflictSkippedDts.length;
     result.carga.cetaps.creados = newCetaps.length;
     result.carga.cetaps.actualizados = modifiedCetaps.length;
-    result.carga.cetaps.omitidos = validation.invalidCetaps.length + identicalCetaps.length;
-    result.omitidas_territoriales = validation.invalidTerritoriales;
-    result.omitidas_cetaps = validation.invalidCetaps;
+    result.carga.cetaps.omitidos =
+      validation.invalidCetaps.length + identicalCetaps.length + conflictSkippedCetaps.length;
+    result.omitidas_territoriales = [...validation.invalidTerritoriales, ...conflictSkippedDts];
+    result.omitidas_cetaps = [...validation.invalidCetaps, ...conflictSkippedCetaps];
 
     // Resumen detallado de duplicados
     (result as any).analisis_duplicados = {
@@ -280,6 +328,51 @@ export class EstructuraImportService {
       cambios_detectados: [...modifiedDts.map((d: any) => ({ tipo: 'DT', codigo: d.codigo_dt, cambios: d._cambios })), ...modifiedCetaps.map((c: any) => ({ tipo: 'CETAP', codigo: c.codigo_cetap, cambios: c._cambios }))],
     };
 
+    // Resumen con LISTAS (para el aviso posterior a la importación): qué se creó,
+    // qué se actualizó y qué se omitió por ya existir con otro código.
+    (result as any).resumen = {
+      nuevos: [
+        ...newDts.map((d: any) => ({ tipo: 'Territorial', codigo: d.codigo_dt, nombre: d.nombre_dt })),
+        ...newCetaps.map((c: any) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
+      ],
+      actualizados: [
+        ...modifiedDts.map((d: any) => ({ tipo: 'Territorial', codigo: d.codigo_dt, nombre: d.nombre_dt })),
+        ...modifiedCetaps.map((c: any) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
+      ],
+      ya_existentes_otro_codigo: [
+        ...conflictSkippedDts.map((d: any) => ({ tipo: 'Territorial', codigo: d.codigo_dt, nombre: d.nombre_dt })),
+        ...conflictSkippedCetaps.map((c: any) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
+      ],
+      identicos: identicalDts.length + identicalCetaps.length,
+      con_error:
+        validation.invalidTerritoriales.length + validation.invalidCetaps.length,
+    };
+
+    // Preview COMPLETO: TODAS las filas del archivo, cada una con su estado, para
+    // que nada "desaparezca" (p. ej. una sede que ya existe bajo otro código) y
+    // las métricas cuadren con lo que se ve en la tabla.
+    //   nuevo | actualizar | identico | ya_existe_otro_codigo | error
+    const tag = (arr: any[], estado: string) =>
+      arr.map((r: any) => ({ ...r, _estado_import: estado }));
+    const previewTerritorialesFull = [
+      ...tag(newDts, 'nuevo'),
+      ...tag(modifiedDts, 'actualizar'),
+      ...tag(conflictSkippedDts, 'ya_existe_otro_codigo'),
+      ...tag(identicalDts, 'identico'),
+      ...tag(validation.invalidTerritoriales, 'error'),
+    ].sort((a: any, b: any) =>
+      String(a.codigo_dt || '').localeCompare(String(b.codigo_dt || ''), 'es'),
+    );
+    const previewCetapsFull = [
+      ...tag(newCetaps, 'nuevo'),
+      ...tag(modifiedCetaps, 'actualizar'),
+      ...tag(conflictSkippedCetaps, 'ya_existe_otro_codigo'),
+      ...tag(identicalCetaps, 'identico'),
+      ...tag(validation.invalidCetaps, 'error'),
+    ].sort((a: any, b: any) =>
+      String(a.codigo_cetap || '').localeCompare(String(b.codigo_cetap || ''), 'es'),
+    );
+
     if (dryRun) {
       // Si TODO es idéntico, bloquear
       if (allIdentical) {
@@ -289,9 +382,9 @@ export class EstructuraImportService {
         result.success = validation.isValid || (skipInvalid && !validation.hasBlockingErrors);
       }
       result.tiempo_ms = Date.now() - startTime;
-      // Siempre mostrar TODOS los datos en el preview
-      result.preview_territoriales = dtToProcess;
-      result.preview_cetaps = cetapsToProcess;
+      // Preview COMPLETO con estado por fila (incluye las que ya existen).
+      result.preview_territoriales = previewTerritorialesFull;
+      result.preview_cetaps = previewCetapsFull;
       return result;
     }
 
@@ -300,8 +393,8 @@ export class EstructuraImportService {
       result.success = true;
       result.tiempo_ms = Date.now() - startTime;
       (result as any).blocked_reason = 'ALL_IDENTICAL';
-      result.preview_territoriales = dtToProcess;
-      result.preview_cetaps = cetapsToProcess;
+      result.preview_territoriales = previewTerritorialesFull;
+      result.preview_cetaps = previewCetapsFull;
       return result;
     }
 
@@ -318,6 +411,7 @@ export class EstructuraImportService {
     let dtUpdatedCount = 0;
     let cetapCreatedCount = 0;
     let cetapUpdatedCount = 0;
+    const legacyNameTruncations: string[] = [];
 
     try {
       await queryRunner.query(
@@ -446,6 +540,15 @@ export class EstructuraImportService {
 
         const matched = legacyPlan.sedeByCetapCode.get(c.codigo_cetap);
         const sedeAct = c.activo ? 'ACTIVO' : 'INACTIVO';
+        // El espejo legacy auth.sedes.nom_sede es varchar(50), más estrecho que
+        // el catálogo maestro cetap.nombre varchar(100). Se recorta solo para el
+        // legacy (el catálogo ya guardó el nombre completo) y se avisa.
+        const nomSedeLegacy = this.truncateForLegacy(c.nombre_cetap, 50);
+        if (nomSedeLegacy !== c.nombre_cetap) {
+          legacyNameTruncations.push(
+            `La sede ${c.codigo_cetap} ("${c.nombre_cetap}") se registró en la estructura organizacional con el nombre recortado a 50 caracteres. El catálogo maestro conserva el nombre completo.`,
+          );
+        }
         let idSede: string;
         if (matched) {
           idSede = String(matched.id_sede);
@@ -467,7 +570,7 @@ export class EstructuraImportService {
              WHERE id_sede = $8`,
             [
               c.codigo_cetap,
-              c.nombre_cetap,
+              nomSedeLegacy,
               idSeccional,
               sedeAct,
               c.latitud,
@@ -489,7 +592,7 @@ export class EstructuraImportService {
             [
               idSede,
               c.codigo_cetap,
-              c.nombre_cetap,
+              nomSedeLegacy,
               idSeccional,
               sedeAct,
               c.latitud,
@@ -515,30 +618,20 @@ export class EstructuraImportService {
       }
 
       // Sincronizar con los periodos académicos.
-      if (periodo) {
-        const periodRows = await queryRunner.query(
-          'SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1',
-          [periodo],
-        );
-        if (periodRows.length === 0) {
-          throw new Error(
-            `El periodo académico "${periodo}" no existe. No se realizó ningún cambio.`,
-          );
-        }
-
-        // Los CETAP del catálogo quedan disponibles (ACTIVOS) en TODOS los periodos,
-        // no solo en el periodo activo. Cada periodo es independiente: solo se INSERTA
-        // cuando la fila no existe (ON CONFLICT DO NOTHING), de modo que NO se pisan
-        // las inactivaciones manuales que ya se hayan hecho en cada periodo.
-        await queryRunner.query(
-          `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
-           SELECT pa.id, c.id, TRUE
-             FROM academic_work_plan.periodo_academico pa
-             CROSS JOIN academic_work_plan.cetap c
-            WHERE c.activo = TRUE
-           ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
-        );
-      }
+      // NOTA: la carga masiva NO depende de un periodo seleccionado. Alimenta el
+      // catálogo maestro y deja cada CETAP activo disponible (ACTIVO) en TODOS los
+      // periodos. Cada periodo es independiente: solo se INSERTA cuando la fila no
+      // existe (ON CONFLICT DO NOTHING), de modo que NO se pisan las
+      // inactivaciones/activaciones manuales hechas por periodo desde la pantalla
+      // de "Activación por Periodo".
+      await queryRunner.query(
+        `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
+         SELECT pa.id, c.id, TRUE
+           FROM academic_work_plan.periodo_academico pa
+           CROSS JOIN academic_work_plan.cetap c
+          WHERE c.activo = TRUE
+         ON CONFLICT (id_periodo_academico, id_cetap) DO NOTHING`,
+      );
 
       const postValidation = await queryRunner.query(
         `SELECT
@@ -577,10 +670,11 @@ export class EstructuraImportService {
     } catch (error: any) {
       this.logger.error(`Error en la transacción de importación geográfica: ${error.message}`, error.stack);
       await queryRunner.rollbackTransaction();
+      const detalle = error?.message || 'error desconocido en la base de datos';
       throw new BadRequestException({
         success: false,
-        message: 'Error al persistir la estructura geográfica en la base de datos.',
-        errores: [error.message],
+        message: `No se pudo guardar la estructura geográfica: ${detalle}`,
+        errores: [detalle],
       });
     } finally {
       await queryRunner.release();
@@ -590,8 +684,129 @@ export class EstructuraImportService {
     result.carga.direcciones_territoriales.actualizados = dtUpdatedCount;
     result.carga.cetaps.creados = cetapCreatedCount;
     result.carga.cetaps.actualizados = cetapUpdatedCount;
+    if (legacyNameTruncations.length > 0) {
+      result.advertencias.push(
+        ...legacyNameTruncations.map((mensaje) => ({
+          hoja: 'SINCRONIZACION_LEGACY',
+          mensaje,
+          severity: 'warning' as const,
+        })),
+      );
+    }
     result.tiempo_ms = Date.now() - startTime;
     return result;
+  }
+
+  /**
+   * Filtra las filas cuyo NOMBRE ya existe en el catálogo maestro bajo un código
+   * distinto (o se repite dentro del mismo archivo), lo que violaría las claves
+   * únicas secundarias:
+   *   - direccion_territorial: UNIQUE(nombre) y UNIQUE(nombre_normalizado)
+   *   - cetap: UNIQUE(id_direccion_territorial, nombre_normalizado)
+   * El upsert solo resuelve conflictos por código, así que estas filas se OMITEN
+   * (en vez de romper toda la transacción) y se importa el resto. La comparación
+   * es EXACTA (trim), igual que los índices únicos de Postgres.
+   */
+  private async filterCatalogNameConflicts(
+    territoriales: any[],
+    cetaps: any[],
+  ): Promise<{
+    territoriales: any[];
+    cetaps: any[];
+    skippedTerritoriales: any[];
+    skippedCetaps: any[];
+    messages: string[];
+  }> {
+    const messages: string[] = [];
+    const key = (v: unknown) => String(v ?? '').trim();
+    // Devuelve el código en conflicto si existe y es distinto del propio.
+    const clashWith = (
+      code: string | undefined,
+      own: string,
+    ): string | null => (code && code !== own ? code : null);
+
+    // ── Territoriales: nombre y nombre_normalizado son únicos (globales) ──
+    const dtRows = await this.dataSource.query(
+      'SELECT codigo, nombre, nombre_normalizado FROM academic_work_plan.direccion_territorial',
+    );
+    const dtNameToCode = new Map<string, string>();
+    const dtNormToCode = new Map<string, string>();
+    for (const r of dtRows) {
+      if (key(r.nombre)) dtNameToCode.set(key(r.nombre), r.codigo);
+      if (key(r.nombre_normalizado)) dtNormToCode.set(key(r.nombre_normalizado), r.codigo);
+    }
+    const keptDts: any[] = [];
+    const skippedTerritoriales: any[] = [];
+    const skippedDtCodes = new Set<string>();
+    const seenDtName = new Map<string, string>();
+    const seenDtNorm = new Map<string, string>();
+    for (const dt of territoriales) {
+      const nameKey = key(dt.nombre_dt);
+      const normKey = key(dt.nombre_normalizado);
+      const clash =
+        clashWith(dtNameToCode.get(nameKey), dt.codigo_dt) ||
+        clashWith(dtNormToCode.get(normKey), dt.codigo_dt) ||
+        clashWith(seenDtName.get(nameKey), dt.codigo_dt) ||
+        clashWith(seenDtNorm.get(normKey), dt.codigo_dt);
+      if (clash) {
+        skippedTerritoriales.push(dt);
+        skippedDtCodes.add(dt.codigo_dt);
+        messages.push(
+          `Territorial "${dt.nombre_dt}" ya existe (código ${clash}). Se conserva la existente; la fila ${dt.codigo_dt} del archivo no crea un duplicado.`,
+        );
+        continue;
+      }
+      seenDtName.set(nameKey, dt.codigo_dt);
+      seenDtNorm.set(normKey, dt.codigo_dt);
+      keptDts.push(dt);
+    }
+
+    // ── CETAPs: (id_direccion_territorial, nombre_normalizado) es único ──
+    const cetapRows = await this.dataSource.query(
+      `SELECT c.codigo, c.nombre_normalizado, dt.codigo AS dt_codigo
+         FROM academic_work_plan.cetap c
+         JOIN academic_work_plan.direccion_territorial dt
+           ON dt.id = c.id_direccion_territorial`,
+    );
+    const cetapKeyToCode = new Map<string, string>();
+    for (const r of cetapRows) {
+      cetapKeyToCode.set(`${r.dt_codigo}||${key(r.nombre_normalizado)}`, r.codigo);
+    }
+    const keptCetaps: any[] = [];
+    const skippedCetaps: any[] = [];
+    const seenCetapKey = new Map<string, string>();
+    for (const c of cetaps) {
+      // Si su territorial fue omitida por conflicto, este CETAP también se omite
+      // (no tendría territorial válida donde colgar).
+      if (skippedDtCodes.has(c.codigo_dt)) {
+        skippedCetaps.push(c);
+        messages.push(
+          `"${c.nombre_cetap}" (${c.codigo_cetap}) no se procesó porque su territorial ${c.codigo_dt} ya existe con otro código.`,
+        );
+        continue;
+      }
+      const k = `${c.codigo_dt}||${key(c.nombre_normalizado)}`;
+      const clash =
+        clashWith(cetapKeyToCode.get(k), c.codigo_cetap) ||
+        clashWith(seenCetapKey.get(k), c.codigo_cetap);
+      if (clash) {
+        skippedCetaps.push(c);
+        messages.push(
+          `"${c.nombre_cetap}" en la territorial ${c.codigo_dt} ya existe (código ${clash}). Se conserva el existente; la fila ${c.codigo_cetap} del archivo no crea un duplicado.`,
+        );
+        continue;
+      }
+      seenCetapKey.set(k, c.codigo_cetap);
+      keptCetaps.push(c);
+    }
+
+    return {
+      territoriales: keptDts,
+      cetaps: keptCetaps,
+      skippedTerritoriales,
+      skippedCetaps,
+      messages,
+    };
   }
 
   private async analyzePeriodSync(
@@ -675,6 +890,7 @@ export class EstructuraImportService {
     const seccionalByDtCode = new Map<string, any | null>();
     const sedeByCetapCode = new Map<string, any | null>();
     const errors: string[] = [];
+    const warnings: string[] = [];
     const selectedSeccionalIds = new Set<string>();
 
     const bySecCode = new Map<string, any>();
@@ -716,8 +932,13 @@ export class EstructuraImportService {
         if (candidates.length === 1) {
           matched = candidates[0];
         } else if (candidates.length > 1) {
-          errors.push(
-            `La territorial ${dt.codigo_dt} (${dt.nombre_dt}) coincide con varias seccionales existentes.`,
+          // No bloquear: elegir de forma determinista (menor id_seccional) para
+          // vincular a una seccional existente y NO crear un duplicado nuevo.
+          matched = [...candidates].sort(
+            (a, b) => Number(a.id_seccional) - Number(b.id_seccional),
+          )[0];
+          warnings.push(
+            `La territorial ${dt.codigo_dt} (${dt.nombre_dt}) coincidía con ${candidates.length} seccionales existentes; se vinculó a la de código "${matched.cod_seccional}" (id ${matched.id_seccional}).`,
           );
         }
       }
@@ -759,8 +980,10 @@ export class EstructuraImportService {
       let matched = sedesByCode.get(cetap.codigo_cetap.toUpperCase()) || null;
 
       if (matched && selectedSedeIds.has(String(matched.id_sede))) {
-        errors.push(
-          `El código ${cetap.codigo_cetap} apunta a una sede ya utilizada por otra fila.`,
+        // No bloquear: los códigos duplicados dentro del archivo ya los filtra
+        // el validador G4 antes de llegar aquí. Se informa por si acaso.
+        warnings.push(
+          `El código ${cetap.codigo_cetap} apuntaba a una sede ya utilizada por otra fila; se omite el remapeo legacy de esta fila.`,
         );
         matched = null;
       }
@@ -779,8 +1002,13 @@ export class EstructuraImportService {
         if (candidates.length === 1) {
           matched = candidates[0];
         } else if (candidates.length > 1) {
-          errors.push(
-            `El CETAP ${cetap.codigo_cetap} (${cetap.nombre_cetap}) coincide con varias sedes existentes.`,
+          // No bloquear: elegir de forma determinista (menor id_sede) para
+          // vincular a una sede existente y NO crear un duplicado nuevo.
+          matched = [...candidates].sort(
+            (a, b) => Number(a.id_sede) - Number(b.id_sede),
+          )[0];
+          warnings.push(
+            `El CETAP ${cetap.codigo_cetap} (${cetap.nombre_cetap}) coincidía con ${candidates.length} sedes existentes; se vinculó a la de código "${matched.cod_sede}" (id ${matched.id_sede}).`,
           );
         } else if (cetap.tipo === 'sede_central') {
           const centralCandidates = sedes.filter(
@@ -823,6 +1051,7 @@ export class EstructuraImportService {
       seccionalByDtCode,
       sedeByCetapCode,
       errors,
+      warnings,
       summary: {
         seccionales: {
           creadas: secCreated,
@@ -870,6 +1099,18 @@ export class EstructuraImportService {
     return name
       .toLocaleLowerCase('es-CO')
       .replace(/(^|\s)\p{L}/gu, (letter) => letter.toLocaleUpperCase('es-CO'));
+  }
+
+  /**
+   * Recorta un texto al máximo permitido por una columna de las tablas legacy
+   * (auth.sedes / auth.seccionales), que son más estrechas que el catálogo
+   * maestro (p. ej. nom_sede varchar(50) vs cetap.nombre varchar(100)). El
+   * catálogo maestro conserva el valor completo; el espejo legacy solo guarda
+   * una versión recortada para no romper la transacción.
+   */
+  private truncateForLegacy(value: unknown, maxLen: number): string {
+    const s = String(value ?? '');
+    return s.length > maxLen ? s.slice(0, maxLen) : s;
   }
 
   private sameLegacyStatus(current: unknown, expected: string): boolean {

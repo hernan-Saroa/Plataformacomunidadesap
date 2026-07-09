@@ -310,8 +310,8 @@ export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExi
           duration: 3500,
         });
       } else if (emailLower === 'registro.academico@esap.edu.co') {
-        toast.success('📚 ¡Bienvenido Registro Académico!', {
-          description: 'Acceso al Módulo de Registro Académico concedido',
+        toast.success('📚 ¡Bienvenido a Verificación de títulos!', {
+          description: 'Acceso al Módulo de Verificación de títulos concedido',
           duration: 3500,
         });
       }
@@ -489,38 +489,77 @@ export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExi
             </div>
 
 
-            <div style={{ marginBottom: '32px' }}>
-	              <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
-	                {isCheckingExistingSession ? 'Validando sesión' : 'Iniciar Sesión'}
-	              </h1>
-	              <p style={{ fontSize: '16px', lineHeight: '1.5' }} className="text-gray-400">
-	                {isCheckingExistingSession ? 'Confirmando si ya tienes una sesión activa' : 'Accede a tu cuenta ESAP'}
-	              </p>
+            <div style={{ marginBottom: '36px' }}>
+              <h1 style={{ fontSize: '30px', lineHeight: '1.2', letterSpacing: '-0.025em' }} className="font-extrabold text-gray-900 mb-2">
+                {isCheckingExistingSession ? 'Validando sesión' : 'Bienvenido'}
+              </h1>
+              <p style={{ fontSize: '15px', lineHeight: '1.6' }} className="text-gray-400">
+                {isCheckingExistingSession
+                  ? 'Confirmando si ya tienes una sesión activa'
+                  : 'Accede a la plataforma integral de la ESAP'}
+              </p>
             </div>
 
             {showMicrosoftLogin && (
-              <div style={{ marginBottom: '24px' }}>
+              <div style={{ marginBottom: '28px' }}>
                 {microsoftLoginError && (
-                  <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    {microsoftLoginError}
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <span>{microsoftLoginError}</span>
                   </div>
                 )}
                 <button
                   type="button"
                   onClick={() => handleSocialLogin('Microsoft')}
 	                  disabled={isLoading || isMicrosoftLoading || isCheckingExistingSession}
-                  style={{ height: '52px', fontSize: '15px', borderRadius: '12px' }}
-                  className="w-full flex items-center justify-center gap-2.5 border-2 border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full group relative overflow-hidden transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    height: '56px',
+                    borderRadius: '14px',
+                    border: '1.5px solid #E2E8F0',
+                    background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#CBD5E1';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#E2E8F0';
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
                 >
-                  <Building2 className="w-5 h-5" />
-                  <span className="font-semibold">
+                  <div className="flex items-center justify-center gap-3">
+                    {/* Microsoft 4-square logo */}
+                    {isMicrosoftLoading || isCheckingExistingSession ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                        <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                        <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                        <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+                      </svg>
+                    )}
+                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#374151', letterSpacing: '-0.01em' }}>
 	                    {isCheckingExistingSession
 	                      ? 'Validando sesión...'
 	                      : isMicrosoftLoading
 	                        ? 'Conectando con Microsoft...'
-	                        : 'Iniciar sesión con Microsoft'}
-                  </span>
+	                        : 'Ingresar con tu cuenta ESAP'}
+                    </span>
+                  </div>
                 </button>
+
+                {/* Trust indicator */}
+                <div className="flex items-center justify-center gap-1.5 mt-3">
+                  <Shield className="w-3 h-3 text-gray-300" />
+                  <span style={{ fontSize: '11px', color: '#9CA3AF', letterSpacing: '0.02em' }}>
+                    Autenticación institucional vía Microsoft Entra ID
+                  </span>
+                </div>
               </div>
             )}
 
@@ -528,27 +567,27 @@ export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExi
               <>
                 <div className="relative" style={{ marginBottom: '28px' }}>
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200" />
+                    <div className="w-full" style={{ height: '1px', background: 'linear-gradient(90deg, transparent, #E5E7EB, transparent)' }} />
                   </div>
                   <div className="relative flex justify-center">
-                    <span style={{ fontSize: '13px' }} className="px-4 bg-white text-gray-400 font-medium">
+                    <span style={{ fontSize: '12px', letterSpacing: '0.04em' }} className="px-4 bg-white text-gray-400 font-medium">
                       {showMicrosoftLogin ? 'O continúa con tu correo' : 'Continúa con tu correo'}
                     </span>
                   </div>
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{ fontSize: '14px', marginBottom: '8px' }} className="block font-semibold text-gray-700">
+                  <div style={{ marginBottom: '22px' }}>
+                    <label style={{ fontSize: '13px', marginBottom: '8px', letterSpacing: '0.03em' }} className="block font-semibold text-gray-500 uppercase">
                       Correo Electrónico
                     </label>
                     <div
-                      className={`flex items-center transition-all ${
+                      className={`flex items-center transition-all duration-200 ${
                         errors.email
-                          ? 'border-red-300 bg-red-50/50 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-100'
-                          : 'border-gray-200 bg-gray-50/60 focus-within:bg-white focus-within:border-[#1e5da8] focus-within:ring-4 focus-within:ring-[#1e5da8]/10'
+                          ? 'border-red-300 bg-red-50/30 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-100'
+                          : 'border-gray-200 bg-gray-50/40 focus-within:bg-white focus-within:border-[#1e5da8] focus-within:ring-4 focus-within:ring-[#1e5da8]/8'
                       }`}
-                      style={{ height: '52px', borderRadius: '12px', borderWidth: '2px', borderStyle: 'solid' }}
+                      style={{ height: '54px', borderRadius: '14px', borderWidth: '1.5px', borderStyle: 'solid' }}
                     >
                       <div className="flex items-center justify-center flex-shrink-0 pointer-events-none" style={{ width: '52px' }}>
                         <Mail style={{ width: '18px', height: '18px' }} className="text-gray-400" />
@@ -571,17 +610,17 @@ export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExi
                     )}
                   </div>
 
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{ fontSize: '14px', marginBottom: '8px' }} className="block font-semibold text-gray-700">
+                  <div style={{ marginBottom: '22px' }}>
+                    <label style={{ fontSize: '13px', marginBottom: '8px', letterSpacing: '0.03em' }} className="block font-semibold text-gray-500 uppercase">
                       Contraseña
                     </label>
                     <div
-                      className={`flex items-center transition-all ${
+                      className={`flex items-center transition-all duration-200 ${
                         errors.password
-                          ? 'border-red-300 bg-red-50/50 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-100'
-                          : 'border-gray-200 bg-gray-50/60 focus-within:bg-white focus-within:border-[#1e5da8] focus-within:ring-4 focus-within:ring-[#1e5da8]/10'
+                          ? 'border-red-300 bg-red-50/30 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-100'
+                          : 'border-gray-200 bg-gray-50/40 focus-within:bg-white focus-within:border-[#1e5da8] focus-within:ring-4 focus-within:ring-[#1e5da8]/8'
                       }`}
-                      style={{ height: '52px', borderRadius: '12px', borderWidth: '2px', borderStyle: 'solid' }}
+                      style={{ height: '54px', borderRadius: '14px', borderWidth: '1.5px', borderStyle: 'solid' }}
                     >
                       <div className="flex items-center justify-center flex-shrink-0 pointer-events-none" style={{ width: '52px' }}>
                         <Lock style={{ width: '18px', height: '18px' }} className="text-gray-400" />
@@ -656,8 +695,26 @@ export function LoginPage({ onLogin, onBackToHome, onExistingSessionCheck, onExi
                   <button
                     type="submit"
 	                    disabled={isLoading || isCheckingExistingSession}
-                    style={{ height: '52px', fontSize: '16px', borderRadius: '12px' }}
-                    className="w-full font-semibold bg-[#1e5da8] hover:bg-[#164078] active:bg-[#0f3562] text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 shadow-lg shadow-[#1e5da8]/25 hover:shadow-xl hover:shadow-[#1e5da8]/35 active:scale-[0.98]"
+                    className="w-full font-semibold text-white transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 active:scale-[0.98]"
+                    style={{
+                      height: '54px',
+                      fontSize: '15px',
+                      borderRadius: '14px',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #1e5da8 0%, #1a4f8f 100%)',
+                      boxShadow: '0 2px 8px rgba(30,93,168,0.25), 0 8px 24px rgba(30,93,168,0.15)',
+                      letterSpacing: '-0.01em',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #164078 0%, #12355f 100%)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(30,93,168,0.3), 0 12px 32px rgba(30,93,168,0.2)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #1e5da8 0%, #1a4f8f 100%)';
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(30,93,168,0.25), 0 8px 24px rgba(30,93,168,0.15)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
                   >
 	                    {isLoading || isCheckingExistingSession ? (
 	                      <>

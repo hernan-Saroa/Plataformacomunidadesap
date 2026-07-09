@@ -151,6 +151,33 @@ function tryHandleControlInternoNotificationInApp(
   }
 }
 
+/**
+ * Intenta manejar in-app las notificaciones del módulo PTA cuyo `url_accion`
+ * sigue el patrón `/pta?ptaId=<id>` emitido por `pta-notifications.service.ts`.
+ * En vez de recargar la página, dispara un CustomEvent que `PtaBackofficeModule`
+ * intercepta para abrir el detalle del PTA directamente.
+ */
+function tryHandlePtaNotificationInApp(
+  url: string,
+  notif: { datos_adicionales?: any },
+): boolean {
+  try {
+    if (!url.startsWith('/pta')) return false;
+    const queryStart = url.indexOf('?');
+    const params = queryStart !== -1 ? new URLSearchParams(url.slice(queryStart + 1)) : null;
+    const ptaId = params?.get('ptaId') || notif.datos_adicionales?.ptaId;
+    if (!ptaId) return false;
+
+    const detail = { ptaId, componente: notif.datos_adicionales?.componente };
+
+    sessionStorage.setItem('pta:pendingOpenDetalle', JSON.stringify(detail));
+    window.dispatchEvent(new CustomEvent('pta:open-detalle', { detail }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function NotificationsPanelV2({
   isOpen,
   onClose
@@ -219,6 +246,9 @@ export function NotificationsPanelV2({
     let handledInApp = tryHandleLegalNotificationInApp(url, notif);
     if (!handledInApp) {
       handledInApp = tryHandleControlInternoNotificationInApp(url, notif);
+    }
+    if (!handledInApp) {
+      handledInApp = tryHandlePtaNotificationInApp(url, notif);
     }
 
     if (!handledInApp) {

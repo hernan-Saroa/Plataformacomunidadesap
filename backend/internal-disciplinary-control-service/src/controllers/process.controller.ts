@@ -1109,11 +1109,30 @@ export class ProcessController {
       return res.redirect(documento.url);
     }
 
-    const rutaCompleta = this.storageService.getFullPath(documento.url);
+    let rutaCompleta = this.storageService.getFullPath(documento.url);
 
-    // Verificar que el archivo existe
+    // Verificar que el archivo existe; si no, buscar por nombre en subdirectorios
     if (!fs.existsSync(rutaCompleta)) {
-      throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);
+      const safeFilename = path.basename(documento.url || documento.filename || '');
+      const uploadsRoot = path.resolve(getUploadRootDir());
+      let fallback: string | null = null;
+      if (safeFilename && fs.existsSync(uploadsRoot)) {
+        outer: for (const entry of fs.readdirSync(uploadsRoot, { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue;
+          const l1 = path.join(uploadsRoot, entry.name, safeFilename);
+          if (fs.existsSync(l1)) { fallback = l1; break; }
+          const l1dir = path.join(uploadsRoot, entry.name);
+          for (const sub of fs.readdirSync(l1dir, { withFileTypes: true })) {
+            if (!sub.isDirectory()) continue;
+            const l2 = path.join(l1dir, sub.name, safeFilename);
+            if (fs.existsSync(l2)) { fallback = l2; break outer; }
+          }
+        }
+      }
+      if (!fallback) {
+        throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);
+      }
+      rutaCompleta = fallback;
     }
 
     // Obtener el nombre original del archivo para la cabecera Content-Disposition
@@ -1341,14 +1360,12 @@ export class ProcessController {
         fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
         territorial: noticia.territorial,
         dependenciaDenunciado: noticia.dependenciaDenunciado,
-        denunciante: typeof noticia.denunciante === 'string' 
-          ? JSON.parse(noticia.denunciante) 
-          : noticia.denunciante,
-        disciplinable: typeof noticia.disciplinable === 'string' 
-          ? JSON.parse(noticia.disciplinable) 
-          : noticia.disciplinable,
+        denunciante: (() => { const d = typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante; return Array.isArray(d) ? d[0] : d; })(),
+        disciplinable: (() => { const d = typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable; return Array.isArray(d) ? d[0] : d; })(),
         hechos: noticia.hechos,
         conductas: noticia.conductas,
+        fechaHechos: noticia.fechaHechos || null,
+        fechaCaducidad: noticia.fechaCaducidad || null,
       };
 
       // 3. Construir el contenido HTML del correo
@@ -1378,7 +1395,7 @@ export class ProcessController {
           for (const adjunto of adjuntos) {
             try {
               const filename = adjunto.includes('/') ? adjunto.split('/').pop()! : adjunto;
-              const filePath = this.storageService.getFullPath(adjunto);
+              const filePath = path.join(getProcessUploadDir(noticia.radicado), filename);
               const fileBuffer = await fsPromises.readFile(filePath);
               zip.file(filename, fileBuffer);
             } catch (adjuntoError) {

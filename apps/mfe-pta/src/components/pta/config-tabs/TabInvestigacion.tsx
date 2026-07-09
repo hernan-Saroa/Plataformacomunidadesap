@@ -6,7 +6,7 @@ type Rol = PTARules['inv_roles'][number];
 type Actividad = PTARules['inv_actividades'][number];
 
 export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; handleChange: (k: keyof PTARules, v: any) => void }) {
-  const renderInputRow = (key: keyof PTARules, label: string, helper: string, isPct: boolean = false, unit: string = "") => (
+  const renderInputRow = (key: keyof PTARules, label: string, helper: string, unit: string = "") => (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-slate-300 transition-colors shadow-sm group gap-4">
       <div className="flex-1">
         <h4 className="text-[13px] font-bold text-slate-800 leading-tight mb-1">{label}</h4>
@@ -15,12 +15,12 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
       <div className="flex items-center gap-2">
         <input
           type="number"
-          value={draft[key] as number}
+          value={(draft[key] as number) ?? ''}
           onChange={(e) => handleChange(key, e.target.value)}
           className="w-24 bg-slate-50 border border-slate-200 text-slate-800 font-bold rounded-lg px-3 py-2 text-center focus:ring-2 focus:ring-purple-500/20 outline-none"
         />
-        {(isPct || unit) && (
-          <span className="text-xs font-bold text-slate-400 min-w-[24px] text-left">{isPct ? '%' : unit}</span>
+        {unit && (
+          <span className="text-xs font-bold text-slate-400 min-w-[24px] text-left">{unit}</span>
         )}
       </div>
     </div>
@@ -58,11 +58,26 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
 
         <div className="space-y-4">
 
-          {/* ── SECCIÓN 1: Roles de Investigación (CRUD) ── */}
+          {/* ── Tope Global ── */}
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-blue-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
                 <span className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">1</span>
+                Tope Global de Investigación
+              </span>
+              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
+            </summary>
+            <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-blue-50/10">
+              {renderInputRow("max_horas_investigacion_global", "Tope Global Investigación (Horas)", "Límite máximo de horas para actividades de investigación. Los topes por rol y actividad se configuran abajo.", "h")}
+              {renderInputRow("max_pct_investigacion", "Máximo % Investigación", "Límite porcentual sobre el PTA total (Circular §2).", "%")}
+            </div>
+          </details>
+
+          {/* ── SECCIÓN 2: Roles de Investigación (CRUD) ── */}
+          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
+            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-blue-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="font-bold text-slate-800 flex items-center gap-3">
+                <span className="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xs">2</span>
                 Roles en Proyectos de Investigación
                 <span className="text-[10px] font-bold text-blue-600 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full">{roles.length} ROLES</span>
               </span>
@@ -71,41 +86,48 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
 
             <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-blue-50/10">
               {roles.map((rol, idx) => (
-                <div key={rol.id} className="flex flex-col xl:flex-row items-start xl:items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-blue-200 transition-colors shadow-sm group gap-4">
-                  <div className="flex-1 w-full">
-                    <input
-                      type="text"
-                      value={rol.nombre}
-                      onChange={e => updateRol(idx, 'nombre', e.target.value)}
-                      placeholder="Nombre del rol..."
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-2 flex-grow focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
-                    />
-                  </div>
-                  <div className="flex items-center gap-3 w-full xl:w-auto xl:justify-end">
-                    <div className="flex items-center gap-2 bg-slate-50 px-2 flex-shrink-0 py-1.5 rounded-lg border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Horas:</span>
-                      <input
-                        type="number"
-                        value={rol.horas_max}
-                        onChange={e => updateRol(idx, 'horas_max', e.target.value)}
-                        className="w-16 bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1 text-center focus:ring-2 focus:ring-blue-500/20 outline-none"
-                      />
-                      <span className="text-xs text-slate-400 font-bold pr-1 border-r border-slate-200 mr-1">h</span>
-                      
-                      <span className="text-[10px] font-bold text-slate-500 uppercase ml-1">Tope:</span>
-                      <input
-                        type="number"
-                        value={rol.pct_max}
-                        onChange={e => updateRol(idx, 'pct_max', e.target.value)}
-                        className="w-16 bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1 text-center focus:ring-2 focus:ring-blue-500/20 outline-none"
-                      />
-                      <span className="text-xs text-slate-400 font-bold">%</span>
-                    </div>
-                    <button onClick={() => removeRol(idx)}
-                      className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 flex shrink-0 items-center justify-center transition-all shadow-sm">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                <div key={rol.id} className="flex items-center gap-2 p-2.5 bg-white border border-slate-100 rounded-xl hover:border-blue-200 transition-colors shadow-sm group">
+                  <input
+                    type="text"
+                    key={`pos-rol-${rol.id}-${idx}`}
+                    defaultValue={idx + 1}
+                    title={`Posición ${idx + 1}`}
+                    onFocus={e => e.target.select()}
+                    onBlur={e => {
+                      const val = parseInt(e.target.value, 10);
+                      const max = roles.length;
+                      const newPos = isNaN(val) ? idx + 1 : Math.max(1, Math.min(max, val));
+                      e.target.value = String(idx + 1);
+                      if (newPos !== idx + 1) {
+                        const arr = [...roles];
+                        const [moved] = arr.splice(idx, 1);
+                        arr.splice(newPos - 1, 0, moved);
+                        handleChange('inv_roles', arr);
+                      }
+                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    className="w-8 h-8 rounded-lg text-white font-black text-xs shrink-0 shadow-sm border-2 border-white/30 outline-none text-center cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 transition-all"
+                    style={{ background: '#6366F1', padding: 0 }}
+                  />
+                  <input
+                    type="text"
+                    value={rol.nombre}
+                    onChange={e => updateRol(idx, 'nombre', e.target.value)}
+                    placeholder="Nombre del rol..."
+                    className="flex-1 min-w-0 bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
+                  />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Horas:</span>
+                  <input type="number" value={rol.horas_max} onChange={e => updateRol(idx, 'horas_max', e.target.value)}
+                    className="w-[70px] bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none shrink-0" />
+                  <span className="text-xs text-slate-400 font-bold shrink-0">h</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Tope:</span>
+                  <input type="number" value={rol.pct_max} onChange={e => updateRol(idx, 'pct_max', e.target.value)}
+                    className="w-[70px] bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none shrink-0" />
+                  <span className="text-xs text-slate-400 font-bold shrink-0">%</span>
+                  <button onClick={() => removeRol(idx)}
+                    className="w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 flex shrink-0 items-center justify-center transition-all shadow-sm">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
 
@@ -116,11 +138,11 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
             </div>
           </details>
 
-          {/* ── SECCIÓN 2: Actividades de Investigación (CRUD) ── */}
+          {/* ── SECCIÓN 3: Actividades de Investigación (CRUD) ── */}
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-amber-50/40 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">2</span>
+                <span className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">3</span>
                 Actividades del Grupo de Investigación
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">{actividades.length} ACTIVIDADES</span>
               </span>
@@ -129,34 +151,47 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
 
             <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-amber-50/10">
               {actividades.map((act, idx) => (
-                <div key={act.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-white border border-slate-100 rounded-xl hover:border-amber-200 transition-colors shadow-sm group gap-4">
-                  <div className="flex-1 w-full">
-                    <input
-                      type="text"
-                      value={act.nombre}
-                      onChange={e => updateAct(idx, 'nombre', e.target.value)}
-                      placeholder="Nombre de la actividad..."
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-500/20 outline-none transition-all"
-                    />
-                  </div>
-                  <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <div className="flex items-center gap-2 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">Horas Máx:</span>
-                      <input
-                        type="number"
-                        value={act.horas_max}
-                        onChange={e => updateAct(idx, 'horas_max', e.target.value)}
-                        className="w-16 bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1 text-center focus:ring-2 focus:ring-amber-500/20 outline-none"
-                      />
-                      <span className="text-xs text-slate-400 font-bold">h</span>
-                    </div>
-                    <button onClick={() => removeAct(idx)}
-                      className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 flex items-center justify-center transition-all shadow-sm shrink-0">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                <div key={act.id} className="flex items-center gap-2 p-2.5 bg-white border border-slate-100 rounded-xl hover:border-amber-200 transition-colors shadow-sm group">
+                  <input
+                    type="text"
+                    key={`pos-inv-${act.id}-${idx}`}
+                    defaultValue={idx + 1}
+                    title={`Posición ${idx + 1}`}
+                    onFocus={e => e.target.select()}
+                    onBlur={e => {
+                      const val = parseInt(e.target.value, 10);
+                      const max = actividades.length;
+                      const newPos = isNaN(val) ? idx + 1 : Math.max(1, Math.min(max, val));
+                      e.target.value = String(idx + 1);
+                      if (newPos !== idx + 1) {
+                        const acts = [...actividades];
+                        const [moved] = acts.splice(idx, 1);
+                        acts.splice(newPos - 1, 0, moved);
+                        handleChange('inv_actividades', acts);
+                      }
+                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    className="w-8 h-8 rounded-lg text-white font-black text-xs shrink-0 shadow-sm border-2 border-white/30 outline-none text-center cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-amber-400 focus:ring-2 focus:ring-offset-1 focus:ring-amber-500 transition-all"
+                    style={{ background: '#F59E0B', padding: 0 }}
+                  />
+                  <input
+                    type="text"
+                    value={act.nombre}
+                    onChange={e => updateAct(idx, 'nombre', e.target.value)}
+                    placeholder="Nombre de la actividad..."
+                    className="flex-1 min-w-0 bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-amber-500/20 outline-none transition-all"
+                  />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Horas Máx:</span>
+                  <input type="number" value={act.horas_max} onChange={e => updateAct(idx, 'horas_max', e.target.value)}
+                    className="w-[70px] bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1.5 text-center focus:ring-2 focus:ring-amber-500/20 outline-none shrink-0" />
+                  <span className="text-xs text-slate-400 font-bold shrink-0">h</span>
+                  <button onClick={() => removeAct(idx)}
+                    className="w-7 h-7 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 flex items-center justify-center transition-all shadow-sm shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
+
 
               <button onClick={addAct}
                 className="flex items-center justify-center gap-2 px-4 py-3 mt-1 rounded-xl border-2 border-dashed border-amber-200 bg-amber-50/50 text-amber-600 font-bold text-[13px] hover:bg-amber-50 hover:border-amber-300 transition-colors w-full">
@@ -165,38 +200,6 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
             </div>
           </details>
 
-          {/* ── SECCIÓN 3: Parámetros numéricos de fomento (existentes) ── */}
-          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
-            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-purple-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
-              <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xs">3</span>
-                Parámetros Numéricos Globales (Tablas 3-4)
-              </span>
-              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
-            </summary>
-            
-            <div className="p-4 border-t border-slate-100 flex flex-col md:grid md:grid-cols-2 gap-3 bg-purple-50/10">
-              {renderInputRow("max_horas_inv_lider", "Líder — Horas Máximas", "Límite absoluto Inv. Líder.", false, "h")}
-              {renderInputRow("max_pct_inv_lider", "Líder — Tope %", "Tope porcentual Inv. Líder.", true)}
-              {renderInputRow("max_horas_inv_coinvestigador", "Coinvestigador — Horas", "Límite absoluto Coinvestigador.", false, "h")}
-              {renderInputRow("max_pct_inv_coinvestigador", "Coinvestigador — Tope %", "Tope porcentual.", true)}
-              {renderInputRow("max_horas_inv_asistente", "Asistente — Horas Máximas", "Límite absoluto Asistente Niv. II.", false, "h")}
-              {renderInputRow("max_pct_inv_asistente", "Asistente — Tope %", "Tope porcentual.", true)}
-              {renderInputRow("max_horas_inv_fomento", "Fomento SNI — Horas Máximas", "Sin proyectos explícitos.", false, "h")}
-              {renderInputRow("max_pct_inv_fomento", "Fomento SNI — Tope %", "Tope porcentual.", true)}
-              {renderInputRow("inv_lider_semillero_max", "Líder Semillero", "Horas max líderes avalados.", false, "h")}
-              {renderInputRow("inv_enlace_territorial_horas", "Enlace Terr. H", "Horas máx. Enlace Territorial.", false, "h")}
-              {renderInputRow("inv_enlace_territorial_pct", "Enlace Terr. %", "Porcentaje máx. Enlace Terr.", true)}
-              {renderInputRow("inv_director_grupo_horas", "Dir. Grupo H", "Horas máx. Director de Grupo SNI.", false, "h")}
-              {renderInputRow("inv_director_grupo_pct", "Dir. Grupo %", "Porcentaje máx.", true)}
-              {renderInputRow("inv_par_propuestas", "Par Eval. Propuestas", "Horas por propuesta.", false, "h")}
-              {renderInputRow("inv_par_resultados", "Par Eval. Resultados", "Horas por resultado.", false, "h")}
-              {renderInputRow("inv_diseno_cursos", "Diseño Cursos", "Horas por curso diseñado.", false, "h")}
-              {renderInputRow("inv_capacitador_cursos", "Capacitador Cursos", "Horas por curso dictado.", false, "h")}
-              {renderInputRow("inv_produccion_articulos", "Prod. Artículos", "Producción científica.", false, "h")}
-              {renderInputRow("inv_produccion_libro", "Prod. Libros", "Construcción de libros.", false, "h")}
-            </div>
-          </details>
 
           {/* ── SECCIÓN 4: Resolución de Investigación ── */}
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>

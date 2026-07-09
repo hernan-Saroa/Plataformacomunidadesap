@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsDateString,
   IsInt,
+  IsNumber,
   IsNotEmpty,
   Min,
   Max,
@@ -12,7 +13,16 @@ import {
   IsUUID,
   IsIn,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { TipoAuditoria, FaseAuditoria, PrioridadAuditoria, EstadoKanban } from '../entities/auditoria.entity';
+
+const toOptionalNumber = ({ value }: { value: unknown }) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number') return value;
+
+  const normalized = String(value).replace(/[^0-9.-]+/g, '');
+  return normalized ? Number(normalized) : undefined;
+};
 
 export class CreateAuditoriaDto {
   @IsString()
@@ -42,6 +52,17 @@ export class CreateAuditoriaDto {
   @IsString()
   @IsNotEmpty()
   responsable: string;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PERIODO AUDITADO
+  // ═══════════════════════════════════════════════════════════════════
+  @IsDateString()
+  @IsOptional()
+  periodoInicio?: string;
+
+  @IsDateString()
+  @IsOptional()
+  periodoFin?: string;
 
   // ═══════════════════════════════════════════════════════════════════
   // CRONOGRAMA DE 3 ETAPAS: Planeación → Ejecución → Comunicación
@@ -109,9 +130,10 @@ export class CreateAuditoriaDto {
   @IsOptional()
   calificacionRiesgo?: string;
 
-  @IsString()
+  @Transform(toOptionalNumber)
+  @IsNumber()
   @IsOptional()
-  presupuestoEstimado?: string;
+  presupuestoEstimado?: number;
 
   @IsOptional()
   auditorLiderId?: string | number;
@@ -198,7 +220,6 @@ export class CreateAuditoriaDto {
   @IsString()
   estadoKanban?: string;
 }
-
 
 
 

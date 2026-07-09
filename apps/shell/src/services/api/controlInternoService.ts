@@ -38,6 +38,8 @@ export interface ProcesoAuditable {
   nombre: string;
   descripcion: string;
   tipo: string;
+  tipoProcesoId?: string;
+  tipoProceso?: TipoProceso;
   macroproceso?: string;
   unidadesAuditables?: { id: string; nombre: string; descripcion?: string }[];
   responsable: string;
@@ -82,6 +84,17 @@ export interface ProcesoAuditable {
   priorizacionAnos: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TipoProceso {
+  id: string;
+  codigo: string;
+  nombre: string;
+  color: string;
+  orden: number;
+  activo: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /**
@@ -183,6 +196,22 @@ export interface AuditoriaProgramada {
   observaciones?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ConflictoDisponibilidadEquipoAuditor {
+  personaId: string;
+  personaNombre: string;
+  auditoriaId: string;
+  auditoriaCodigo: string;
+  auditoriaNombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export interface DisponibilidadEquipoAuditorResponse {
+  disponible: boolean;
+  conflictos: ConflictoDisponibilidadEquipoAuditor[];
+  mensaje?: string;
 }
 
 export interface Hallazgo {
@@ -504,6 +533,42 @@ class ControlInternoService {
   // ==========================================================================
 
   /**
+   * Obtiene los tipos de proceso parametrizados.
+   */
+  async getTiposProceso(soloActivos = true): Promise<TipoProceso[]> {
+    const q = soloActivos ? '' : '?soloActivos=false';
+    return client.get<TipoProceso[]>(`/universo-auditorias/tipos-proceso${q}`);
+  }
+
+  /**
+   * Crea un tipo de proceso.
+   */
+  async createTipoProceso(data: Partial<TipoProceso>): Promise<TipoProceso> {
+    return client.post<TipoProceso>('/universo-auditorias/tipos-proceso', data);
+  }
+
+  /**
+   * Actualiza un tipo de proceso.
+   */
+  async updateTipoProceso(id: string, data: Partial<TipoProceso>): Promise<TipoProceso> {
+    return client.put<TipoProceso>(`/universo-auditorias/tipos-proceso/${id}`, data);
+  }
+
+  /**
+   * Inactiva un tipo de proceso.
+   */
+  async inactivarTipoProceso(id: string): Promise<TipoProceso> {
+    return client.patch<TipoProceso>(`/universo-auditorias/tipos-proceso/${id}/inactivar`, {});
+  }
+
+  /**
+   * Restaura/reactiva los tipos base del sistema.
+   */
+  async seedTiposProcesoDefaults(): Promise<TipoProceso[]> {
+    return client.post<TipoProceso[]>('/universo-auditorias/tipos-proceso/seed-defaults', {});
+  }
+
+  /**
    * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
   async getProcesosAuditables(soloActivos = true): Promise<ProcesoAuditable[]> {
@@ -634,6 +699,14 @@ class ControlInternoService {
   async deleteEvaluacion(id: string): Promise<void> {
     return client.delete(`/universo-auditorias/evaluaciones/${id}`);
   }
+
+  /**
+   * Forzar inclusión o exclusión manual de una evaluación
+   */
+  async patchAuditableManual(id: string, auditableManual: boolean | null): Promise<EvaluacionProceso> {
+    return client.patch<EvaluacionProceso>(`/universo-auditorias/evaluaciones/${id}/auditable`, { auditableManual });
+  }
+
 
   // ==========================================================================
   // PROGRAMA ANUAL
@@ -1764,6 +1837,26 @@ class ControlInternoService {
   }
 
   /**
+   * Descarga un documento general
+   */
+  async downloadDocumento(id: string): Promise<Blob> {
+    let url = id;
+    if (!id.startsWith('http')) {
+      url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/documentos/${id}/download`;
+    }
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: controlInternoDownloadHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error al descargar: ${response.statusText}`);
+    }
+    return response.blob();
+  }
+
+  /**
    * Obtiene versiones de un documento
    */
   async getVersionesDocumento(id: string): Promise<any[]> {
@@ -2089,6 +2182,27 @@ class ControlInternoService {
   }
 
   /**
+   * El auditado crea el borrador inicial del plan de mejoramiento.
+   * Backend: POST /auditorias/auditado/:id/planes-mejoramiento
+   */
+  async crearPlanMejoramientoAuditado(
+    auditoriaId: string,
+    body: {
+      titulo?: string;
+      descripcion?: string;
+      objetivos?: string[];
+      areaResponsable?: string;
+      responsableImplementacion?: string;
+      fechaLimite?: string;
+    } = {},
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/planes-mejoramiento`,
+      body,
+    );
+  }
+
+  /**
    * El auditado actualiza avance u observaciones de una acción (sin rol OCI).
    * Backend: PATCH /auditorias/auditado/:id/planes/:planId/acciones/:accionId
    */
@@ -2306,6 +2420,15 @@ class ControlInternoService {
   /**
    * Crea una nueva auditoría
    */
+  async validarDisponibilidadEquipoAuditor(data: {
+    equipoAuditores: string[];
+    fechaInicio: string;
+    fechaFin: string;
+    excludeAuditoriaId?: string;
+  }): Promise<DisponibilidadEquipoAuditorResponse> {
+    return client.post<DisponibilidadEquipoAuditorResponse>('/auditorias/validar-disponibilidad-equipo', data);
+  }
+
   async createAuditoria(data: any): Promise<any> {
     return client.post<any>('/auditorias', data);
   }

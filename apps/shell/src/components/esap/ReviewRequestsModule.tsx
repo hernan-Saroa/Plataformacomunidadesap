@@ -45,47 +45,12 @@ import { toast } from 'sonner';
 import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
-import { programasService } from '../../services/api/programas.service';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import type { Seccional, Sede } from '../../services/api/types';
 
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
-const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
-const getPeriodCode = (period: any) =>
-  String(
-    period?.codigo ||
-      period?.periodo ||
-      (period?.anio && period?.semestre ? `${period.anio}-${period.semestre}` : ''),
-  ).trim();
-const resolveCatalogPeriod = (periods: any[], storageKey: string) => {
-  // El periodo ACTIVO (en_curso) es el autoritativo para los consumidores:
-  // sus territoriales/sedes/programas son los "correctos". Solo si no hay ninguno
-  // en curso se respeta el último seleccionado y, como último recurso, el más reciente.
-  const activo = periods.find((period) => period?.estado === 'en_curso');
-  if (activo) return activo;
-  const savedPeriodCode = localStorage.getItem(storageKey) || '';
-  return (
-    periods.find((period) => getPeriodCode(period) === savedPeriodCode) ||
-    periods[0] ||
-    null
-  );
-};
-const getPeriodCreationTime = (period: any) => {
-  const value = period?.createdAt || period?.created_at || period?.fechaCreacion;
-  const timestamp = value ? new Date(value).getTime() : Number.NaN;
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-};
-const sortPeriodsByCreation = (periods: any[]) =>
-  [...periods].sort((a, b) => {
-    const creationDifference = getPeriodCreationTime(b) - getPeriodCreationTime(a);
-    if (creationDifference !== 0) return creationDifference;
-    if (Number(b?.anio || 0) !== Number(a?.anio || 0)) {
-      return Number(b?.anio || 0) - Number(a?.anio || 0);
-    }
-    return Number(b?.semestre || 0) - Number(a?.semestre || 0);
-  });
 
 type ApprovalForm = {
   fullName: string;
@@ -144,9 +109,8 @@ export function ReviewRequestsModule({
     numLibro: '',
   });
   const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
-  const [programasOptions, setProgramasOptions] = useState<string[]>([]);
   // Programas que llegan por integración (graduados creados por ese medio en
-  // Registro Académico). Son la fuente del select de programa de este modal.
+  // Verificación de títulos). Son la fuente del select de programa de este modal.
   const [integrationProgramOptions, setIntegrationProgramOptions] = useState<string[]>([]);
   const [isLoadingIntegrationPrograms, setIsLoadingIntegrationPrograms] = useState(true);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
@@ -286,6 +250,7 @@ export function ReviewRequestsModule({
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
+      .replace(/\s+/g, ' ')
       .trim();
 
   const hasCatalogKey = <T,>(catalog: Record<string, T>, key: string) =>
@@ -312,8 +277,27 @@ export function ReviewRequestsModule({
   };
 
   const normalizeName = (value?: string) => {
-    const normalized = (value || '').trim();
+    const normalized = (value || '').trim().replace(/\s+/g, ' ');
     return normalized || '';
+  };
+
+  const normalizeOptionKey = (value?: string | null) =>
+    normalizeKey(value || '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const uniqueSortedNames = (values: Array<string | undefined | null>) => {
+    const byKey = new Map<string, string>();
+
+    values.forEach((value) => {
+      const cleaned = normalizeName(value || '');
+      const key = normalizeOptionKey(cleaned);
+      if (!key || byKey.has(key)) return;
+      byKey.set(key, cleaned);
+    });
+
+    return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b, 'es'));
   };
 
   const isUnavailableCatalogValue = (value?: string | null) => {
@@ -326,9 +310,9 @@ export function ReviewRequestsModule({
     );
   };
 
-  // Un graduado proviene de la integración cuando no fue creado manualmente ni
-  // por carga masiva ni por una solicitud de revisión. normalizeKey ya quita los
-  // acentos, así que basta comparar contra las variantes sin tilde.
+  // Un graduado proviene de integracion cuando no fue creado manualmente ni
+  // por carga masiva ni por una solicitud de revision. El texto exacto del
+  // origen puede cambiar entre local, API y vistas de servidores.
   const isIntegrationSource = (createdBy?: string | null) => {
     const normalized = normalizeKey(createdBy || '');
     if (
@@ -339,14 +323,7 @@ export function ReviewRequestsModule({
     ) {
       return false;
     }
-    return (
-      !normalized ||
-      normalized === 'system' ||
-      normalized === 'sistema' ||
-      normalized === 'registro academico' ||
-      normalized.includes('integracion') ||
-      normalized.includes('integration')
-    );
+    return true;
   };
 
   const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
@@ -414,33 +391,6 @@ export function ReviewRequestsModule({
     }
 
     return { sedes: [], seccionales: [] };
-  };
-
-  const parseSedePeriodStatus = (source: unknown): {
-    idSedesActivas: number[];
-    available: boolean;
-  } => {
-    let current: unknown = source;
-
-    for (let depth = 0; depth < 5; depth += 1) {
-      if (!current || typeof current !== 'object') break;
-      const root = current as {
-        idSedesActivas?: unknown;
-        data?: unknown;
-      };
-
-      if (Array.isArray(root.idSedesActivas)) {
-        return {
-          idSedesActivas: root.idSedesActivas
-            .map((id) => Number(id))
-            .filter((id) => Number.isFinite(id)),
-          available: true,
-        };
-      }
-      current = root.data;
-    }
-
-    return { idSedesActivas: [], available: false };
   };
 
   // Funciones auxiliares
@@ -1112,9 +1062,10 @@ export function ReviewRequestsModule({
 
         const programas = (graduados || [])
           .filter((graduado) => isIntegrationSource(graduado?.createdBy))
-          .map((graduado) =>
-            normalizeName(graduado?.programName || graduado?.degreeTitle),
-          )
+          .flatMap((graduado) => [
+            normalizeName(graduado?.programName),
+            normalizeName(graduado?.degreeTitle),
+          ])
           .filter((programa) => !!programa && !isUnavailableCatalogValue(programa));
 
         const unicos = Array.from(
@@ -1157,128 +1108,17 @@ export function ReviewRequestsModule({
 
     const loadCatalogs = async () => {
       setIsLoadingCatalogs(true);
-      setProgramasOptions([]);
       setStructureCatalogNotice('');
       try {
-        const [estructuraResponse, periodosResponse] = await Promise.all([
-          estructuraService.obtenerEstructura().catch(() => null),
-          estructuraService.obtenerPeriodosAcademicos().catch(() => []),
-        ]);
+        const estructuraResponse = await estructuraService.obtenerEstructura().catch(() => null);
 
         if (!isMounted) return;
 
         const { sedes: sedesMaestras, seccionales: seccionalesMaestras } =
           parseEstructuraCatalog(estructuraResponse);
-        const periodos = Array.isArray(periodosResponse)
-          ? sortPeriodsByCreation(periodosResponse)
-          : [];
-        const periodoEstructura = resolveCatalogPeriod(
-          periodos,
-          ESTRUCTURA_PERIOD_STORAGE_KEY,
-        );
-        const periodoProgramas = resolveCatalogPeriod(
-          periodos,
-          PROGRAMAS_PERIOD_STORAGE_KEY,
-        );
-        const codigoPeriodoEstructura = getPeriodCode(periodoEstructura);
-        const codigoPeriodoProgramas = getPeriodCode(periodoProgramas);
 
-        const loadProgramCatalog = async () => {
-          if (!codigoPeriodoProgramas) return [];
-          const pageSize = 200;
-          const firstPage = await programasService.listar({
-            page: 1,
-            limit: pageSize,
-            periodoAcademico: codigoPeriodoProgramas,
-          });
-          const totalPages = Math.max(
-            1,
-            Math.ceil(Number(firstPage?.total || firstPage?.data?.length || 0) / pageSize),
-          );
-          const extraPages =
-            totalPages > 1
-              ? await Promise.all(
-                  Array.from({ length: totalPages - 1 }, (_, index) =>
-                    programasService
-                      .listar({
-                        page: index + 2,
-                        limit: pageSize,
-                        periodoAcademico: codigoPeriodoProgramas,
-                      })
-                      .catch((error) => {
-                        console.warn(
-                          'No se pudo cargar una página del catálogo de programas:',
-                          error,
-                        );
-                        return null;
-                      }),
-                  ),
-                )
-              : [];
-          return [firstPage, ...extraPages]
-            .flatMap((page) => page?.data || [])
-            .map((programa) => normalizeName(programa?.nombre))
-            .filter(Boolean);
-        };
-
-        const estadoEstructuraPromise: Promise<{
-          value: unknown;
-          error: unknown;
-        }> = codigoPeriodoEstructura
-          ? estructuraService
-              .obtenerEstadoSedesPeriodo(codigoPeriodoEstructura)
-              .then((value) => ({ value, error: null }))
-              .catch((error) => ({ value: null, error }))
-          : Promise.resolve({ value: null, error: null });
-
-        const [estadoEstructuraResult, programasCatalog] = await Promise.all([
-          estadoEstructuraPromise,
-          loadProgramCatalog().catch((error) => {
-            console.error('Error cargando programas del periodo:', error);
-            return [];
-          }),
-        ]);
-
-        const estadoSedes = parseSedePeriodStatus(estadoEstructuraResult.value);
-        const idsSedesActivas = new Set<number>(
-          estadoSedes.idSedesActivas,
-        );
-
-        const useMasterCatalogFallback =
-          !!periodoEstructura && !estadoSedes.available;
-        const sedes = !periodoEstructura
-          ? []
-          : useMasterCatalogFallback
-            ? sedesMaestras
-            : sedesMaestras.filter(
-                (sede) => idsSedesActivas.has(Number(sede?.idSede)),
-              );
-        const idsSeccionales = new Set(
-          sedes
-            .map((sede) => Number(sede.idSeccional))
-            .filter((id) => Number.isFinite(id)),
-        );
-        const seccionales = !periodoEstructura
-          ? []
-          : useMasterCatalogFallback
-            ? seccionalesMaestras
-            : seccionalesMaestras.filter(
-                (seccional) => idsSeccionales.has(Number(seccional.idSeccional)),
-              );
-
-        if (useMasterCatalogFallback) {
-          console.warn(
-            `No se pudo consultar la activación de sedes para ${codigoPeriodoEstructura}; se usará el catálogo maestro de Estructura Organizacional.`,
-            estadoEstructuraResult.error,
-          );
-          setStructureCatalogNotice(
-            `No fue posible consultar la activación del periodo ${codigoPeriodoEstructura}. Se muestra temporalmente el catálogo maestro de Estructura Organizacional.`,
-          );
-        } else if (periodoEstructura && sedes.length === 0) {
-          setStructureCatalogNotice(
-            `El periodo ${codigoPeriodoEstructura} no tiene territoriales o sedes activas en Estructura Organizacional.`,
-          );
-        }
+        const sedes = sedesMaestras;
+        const seccionales = seccionalesMaestras;
 
         const seccionalesList = seccionales
           .map((seccional) => normalizeName(seccional?.nomSeccional))
@@ -1294,11 +1134,11 @@ export function ReviewRequestsModule({
         });
 
         const territorialMap: Record<string, string> = {};
-        const sedesBySeccionalMap: Record<string, Set<string>> = {};
+        const sedesBySeccionalMap: Record<string, string[]> = {};
         seccionales.forEach((seccional) => {
           const seccionalName = normalizeName(seccional?.nomSeccional);
           if (seccionalName) {
-            sedesBySeccionalMap[normalizeKey(seccionalName)] = new Set<string>();
+            sedesBySeccionalMap[normalizeKey(seccionalName)] = [];
           }
         });
 
@@ -1314,27 +1154,22 @@ export function ReviewRequestsModule({
             territorialMap[normalizeKey(sedeName)] = seccionalName;
             const seccionalKey = normalizeKey(seccionalName);
             if (!sedesBySeccionalMap[seccionalKey]) {
-              sedesBySeccionalMap[seccionalKey] = new Set<string>();
+              sedesBySeccionalMap[seccionalKey] = [];
             }
-            sedesBySeccionalMap[seccionalKey].add(sedeName);
+            sedesBySeccionalMap[seccionalKey].push(sedeName);
           }
         });
 
         const sedesBySeccionalCatalog: Record<string, string[]> = {};
-        Object.entries(sedesBySeccionalMap).forEach(([seccionalKey, sedesSet]) => {
-          sedesBySeccionalCatalog[seccionalKey] = Array.from(sedesSet).sort((a, b) =>
-            a.localeCompare(b, 'es'),
-          );
+        Object.entries(sedesBySeccionalMap).forEach(([seccionalKey, sedes]) => {
+          sedesBySeccionalCatalog[seccionalKey] = sedes;
         });
 
         if (!isMounted) return;
 
-        setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort((a, b) => a.localeCompare(b, 'es')));
+        setSeccionalesOptions(seccionalesList);
         setSeccionalBySede(territorialMap);
         setSedesBySeccional(sedesBySeccionalCatalog);
-        setProgramasOptions(
-          Array.from(new Set(programasCatalog)).sort((a, b) => a.localeCompare(b, 'es')),
-        );
 
       } catch (error) {
         console.error('Error cargando catálogos de aprobación:', error);
@@ -1362,10 +1197,7 @@ export function ReviewRequestsModule({
       setCatalogRefreshToken((current) => current + 1);
     };
     const handleStorageChange = (event: StorageEvent) => {
-      if (
-        event.key === ESTRUCTURA_PERIOD_STORAGE_KEY ||
-        event.key === PROGRAMAS_PERIOD_STORAGE_KEY
-      ) {
+      if (event.key === ESTRUCTURA_PERIOD_STORAGE_KEY) {
         refreshCatalogs();
       }
     };
@@ -1385,31 +1217,16 @@ export function ReviewRequestsModule({
         ? ''
         : normalizeName(approvalForm.programName);
 
-      return Array.from(
-        new Set(
-          [currentProgram, ...integrationProgramOptions]
-            .map((programa) => normalizeName(programa))
-            .filter(Boolean),
-        ),
-      ).sort((a, b) => a.localeCompare(b, 'es'));
+      return uniqueSortedNames([currentProgram, ...integrationProgramOptions]);
     },
     [approvalForm.programName, integrationProgramOptions],
   );
-  const selectedProgramIsInCurrentCatalog = useMemo(() => {
-    if (!approvalForm.programName || programasOptions.length === 0) {
-      return false;
-    }
-
-    return programasOptions.some(
-      (programa) => normalizeKey(programa) === normalizeKey(approvalForm.programName),
-    );
-  }, [approvalForm.programName, programasOptions]);
   const selectedProgramAlreadyExists = useMemo(
     () => programAlreadyExistsForGraduate(approvalForm.programName),
     [approvalForm.programName, existingGraduatePrograms],
   );
   const duplicateProgramMessage =
-    'Este programa ya existe para la cédula consultada. Selecciona un programa diferente para cargar la revisión.';
+    'Este programa ya existe para el documento consultado. Selecciona un programa diferente para cargar la revisión.';
 
   const campusOptions = useMemo(() => {
     const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
@@ -1418,9 +1235,7 @@ export function ReviewRequestsModule({
     const baseOptions = hasSelectedSeccionalCatalog
       ? sedesBySeccional[selectedSeccionalKey]
       : [];
-    return Array.from(
-      new Set([approvalForm.campus, ...baseOptions].map(normalizeName).filter(Boolean)),
-    ).sort((a, b) => a.localeCompare(b, 'es'));
+    return [approvalForm.campus, ...baseOptions].map(normalizeName).filter(Boolean);
   }, [
     approvalForm.campus,
     approvalForm.seccionalName,
@@ -1428,22 +1243,14 @@ export function ReviewRequestsModule({
   ]);
 
   const seccionalSelectOptions = useMemo(() => {
-    const options = new Set<string>(seccionalesOptions);
+    const options = [...seccionalesOptions];
     const matchedSeccionalBySede = approvalForm.campus
       ? seccionalBySede[normalizeKey(approvalForm.campus)]
       : '';
-    if (matchedSeccionalBySede) {
-      options.add(matchedSeccionalBySede);
-    }
-    if (approvalForm.seccionalName) {
-      options.add(approvalForm.seccionalName);
-    }
-    const ordered = Array.from(options)
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, 'es'));
-    if (matchedSeccionalBySede) {
-      return [matchedSeccionalBySede, ...ordered.filter((item) => item !== matchedSeccionalBySede)];
-    }
+    const currentOptions = [matchedSeccionalBySede, approvalForm.seccionalName]
+      .map(normalizeName)
+      .filter(Boolean);
+    const ordered = [...currentOptions, ...options].filter(Boolean);
     return ordered;
   }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede, seccionalesOptions]);
 
@@ -3667,13 +3474,6 @@ export function ReviewRequestsModule({
                         {duplicateProgramMessage}
                       </p>
                     )}
-                    {!!approvalForm.programName &&
-                      programasOptions.length > 0 &&
-                      !selectedProgramIsInCurrentCatalog && (
-                        <p className="text-xs leading-5 text-blue-700">
-                          Este programa proviene de una integración y puede conservarse sin reemplazarlo.
-                        </p>
-                      )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
@@ -3729,8 +3529,8 @@ export function ReviewRequestsModule({
                             ? 'Seleccionar territorial'
                             : 'No hay territoriales disponibles'}
                       </option>
-                      {seccionalSelectOptions.map((seccional) => (
-                        <option key={seccional} value={seccional}>
+                      {seccionalSelectOptions.map((seccional, index) => (
+                        <option key={`${seccional}-${index}`} value={seccional}>
                           {seccional}
                         </option>
                       ))}
@@ -3772,8 +3572,8 @@ export function ReviewRequestsModule({
                               : 'No hay sedes para esta territorial'
                             : 'Selecciona primero una territorial'}
                       </option>
-                      {campusOptions.map((sede) => (
-                        <option key={sede} value={sede}>
+                      {campusOptions.map((sede, index) => (
+                        <option key={`${sede}-${index}`} value={sede}>
                           {sede}
                         </option>
                       ))}

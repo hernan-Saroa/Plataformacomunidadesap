@@ -267,6 +267,13 @@ export class AuthController {
       maxAge: 3600 * 1000, // 1 hora en ms (mismo que el JWT)
       path: '/',
     });
+    res.cookie('esap_session_active', 'true', {
+      httpOnly: false, // Accesible por Javascript
+      secure,
+      sameSite: 'lax',
+      maxAge: 3600 * 1000,
+      path: '/',
+    });
   }
 
   private stripAuthTokens<T extends { accessToken?: string; refreshToken?: string }>(
@@ -279,9 +286,15 @@ export class AuthController {
   }
 
   private clearAuthCookie(res: Response, req?: Request): void {
+    const secure = this.shouldUseSecureCookie(req);
     res.clearCookie('esap_access_token', {
       path: '/',
-      secure: this.shouldUseSecureCookie(req),
+      secure,
+      sameSite: 'lax',
+    });
+    res.clearCookie('esap_session_active', {
+      path: '/',
+      secure,
       sameSite: 'lax',
     });
   }

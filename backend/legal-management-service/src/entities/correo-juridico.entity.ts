@@ -45,6 +45,13 @@ export class CorreoJuridico {
     @Column({ length: 20, default: 'CORREO' })
     tipo: string; // JUDICIAL, CORREO, OFICIO
 
+    // Buzón de origen (cuenta de correo desde la que se sincronizó). Permite separar
+    // las dos bandejas: 'JUDICIAL' (tab Judiciales/Oficios) y 'CORREOS' (tab Correos).
+    // Los tabs generales (Respondidos/Urgentes/Enviados/Archivados) muestran ambos y
+    // filtran internamente por este campo.
+    @Column({ length: 20, default: 'JUDICIAL' })
+    buzon: string; // JUDICIAL, CORREOS
+
     @Column({ length: 100, nullable: true })
     categoria: string;
 

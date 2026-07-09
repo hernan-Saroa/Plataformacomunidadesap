@@ -23,6 +23,7 @@ export enum TipoAuditoria {
 }
 
 export enum FaseAuditoria {
+  PLAN_ANUAL = 'plan-anual',
   PLANEACION = 'planeacion',
   EN_CURSO = 'en-curso',
   REVISION = 'revision',
@@ -105,7 +106,7 @@ export class Auditoria {
     type: 'varchar',
     length: 50,
     nullable: false,
-    default: FaseAuditoria.PLANEACION,
+    default: FaseAuditoria.PLAN_ANUAL,
   })
   fase: FaseAuditoria;
 
@@ -235,6 +236,15 @@ export class Auditoria {
   supervisorAsignadoId?: string | null;
 
   // Campos adicionales del formulario
+  @Column({ name: 'periodo_inicio', type: 'date', nullable: true })
+  periodoInicio?: Date;
+
+  @Column({ name: 'periodo_fin', type: 'date', nullable: true })
+  periodoFin?: Date;
+
+  @Column({ name: 'presupuesto_estimado', type: 'numeric', precision: 15, scale: 2, nullable: true })
+  presupuestoEstimado?: number;
+
   @Column({ type: 'text', nullable: true })
   alcance?: string;
 

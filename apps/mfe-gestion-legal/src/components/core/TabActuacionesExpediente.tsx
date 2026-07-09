@@ -6,7 +6,7 @@
  * ✅ Header con botones parametrizables
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail, Eye } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
@@ -19,6 +19,7 @@ import type { ActuacionExpediente } from './expedienteShared';
 import { buildServiceAssetUrl } from '../../../../config/environment';
 import { authService } from '../../../../services/api/authService';
 import { legalService } from '../../../../services/api/legal.service';
+import { requiresSignature, isPreviewableInViewer } from '../../../../utils/fileUtils';
 import { FirmaDigitalActuacion, FirmaData } from './FirmaDigitalActuacion';
 
 // ==================== TIPOS ====================
@@ -133,7 +134,10 @@ export function TabActuacionesExpediente({
     }
   };
 
-  // Helper to check if all associated documents for an actuation are signed
+  // Helper to check if all associated documents that REQUIRE a signature are signed.
+  // Solo PDF y Word requieren firma; Excel, imágenes, video, etc. no la requieren y por
+  // tanto no bloquean la autorización. Si la actuación no tiene ningún documento firmable,
+  // se considera "lista" y el aprobador puede autorizar de una vez.
   const checkAllAssociatedDocsSigned = (act: ActuacionExpediente) => {
     const associatedDocIds = act.metadata?.documentosAsociados || [];
     const resolvedDocs = documentosExpediente.filter(doc => {
@@ -152,7 +156,9 @@ export function TabActuacionesExpediente({
       }
       return false;
     };
-    return resolvedDocs.every(doc => isDocSigned(doc));
+    return resolvedDocs
+      .filter(doc => requiresSignature(doc.nombre))
+      .every(doc => isDocSigned(doc));
   };
 
   const handleSendEmail = async (actuacion: ActuacionExpediente) => {
@@ -402,6 +408,28 @@ export function TabActuacionesExpediente({
       document.body.style.overflow = '';
     };
   }, [modalFirmaActuacion, modalDevolucionActuacion, actuacionDetalle]);
+
+  /**
+   * El modal de devolución se renderiza con createPortal en document.body, es decir,
+   * FUERA del árbol del <DialogContent> (Radix) del expediente. El FocusScope de Radix
+   * atrapa el foco: al escuchar 'focusin' en document, devuelve el foco al diálogo padre
+   * cada vez que se enfoca un elemento externo, lo que impedía escribir en el textarea.
+   * Detenemos la propagación nativa de focusin/focusout desde este modal para que el
+   * listener de Radix en document nunca se dispare mientras el modal está abierto.
+   */
+  const devolucionModalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!modalDevolucionActuacion) return;
+    const el = devolucionModalRef.current;
+    if (!el) return;
+    const stop = (e: Event) => e.stopPropagation();
+    el.addEventListener('focusin', stop);
+    el.addEventListener('focusout', stop);
+    return () => {
+      el.removeEventListener('focusin', stop);
+      el.removeEventListener('focusout', stop);
+    };
+  }, [modalDevolucionActuacion]);
 
   const getFriendlyRoleName = (role: string) => {
     if (role === 'JEFE_GESTION_LEGAL') return 'Jefe de Gestión Legal';
@@ -695,18 +723,15 @@ export function TabActuacionesExpediente({
           </h4>
             <div className="flex items-center gap-2">
               {botonesAccion.map((btn, idx) => {
-                const getBtnClasses = (color: string) => {
-                  if (color === '#003DA5') return 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs';
-                  if (color === '#10B981') return 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs';
-                  if (color === '#7C3AED') return 'bg-violet-600 hover:bg-violet-700 text-white shadow-xs';
-                  if (color === '#EF4444') return 'bg-red-600 hover:bg-red-700 text-white shadow-xs';
-                  return 'bg-slate-700 hover:bg-slate-800 text-white shadow-xs';
-                };
                 const isLocked = lockedButtons.includes(idx);
                 return (
                   <Button
                     key={idx}
-                    className={`h-8 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all ${!isLocked ? 'hover:-translate-y-0.5 active:translate-y-0 hover:shadow-md' : 'opacity-60 cursor-not-allowed pointer-events-none'} border-none ${getBtnClasses(btn.color)}`}
+                    // El color de fondo y el texto blanco se fuerzan por estilo inline para
+                    // garantizar que el botón siempre sea visible, sin importar el color recibido
+                    // (evita que quede blanco/invisible por conflictos de clases utilitarias).
+                    style={{ backgroundColor: btn.color, color: '#FFFFFF' }}
+                    className={`h-8 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 border-none shadow-xs transition-all ${!isLocked ? 'hover:-translate-y-0.5 active:translate-y-0 hover:shadow-md hover:brightness-95' : 'opacity-60 cursor-not-allowed pointer-events-none'}`}
                     onClick={() => handleButtonClick(btn, idx)}
                     disabled={isLocked}
                   >
@@ -969,6 +994,13 @@ export function TabActuacionesExpediente({
                             📝 {actuacion.metadata.observaciones}
                           </span>
                         )}
+
+                        {getEstadoFirma(actuacion) === 'DEVUELTO' && actuacion.metadata?.observacionesDevolucion && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-red-700 italic bg-red-50 border border-red-100 rounded px-2 py-0.5 truncate max-w-[220px] sm:max-w-[320px]" title={actuacion.metadata.observacionesDevolucion}>
+                            <CornerUpLeft className="w-3 h-3 text-red-500 shrink-0" />
+                            Motivo: {actuacion.metadata.observacionesDevolucion}
+                          </span>
+                        )}
                       </div>
 
                       {/* Actions and status on the right */}
@@ -1088,9 +1120,17 @@ export function TabActuacionesExpediente({
           etapaLabel="Autorización de Actuación"
           correoDestino={(authService.getCurrentUser() as any)?.email}
           onVerifyCodigo={async (codigo) => {
-            // Guardamos el OTP ingresado para usarlo al final
+            // Validamos el código contra el OTP real enviado al correo del usuario
+            // activo ANTES de avanzar. Si es incorrecto o expiró, el backend responde
+            // con error y el modal lo muestra (ya no acepta cualquier combinación).
+            const expId = expedienteId || String(modalFirmaActuacion.expedienteId);
+            try {
+              await legalService.verificarOtpActuacion(expId, String(modalFirmaActuacion.id), codigo);
+            } catch (err: any) {
+              throw new Error(err?.response?.data?.message || 'Código incorrecto. Verifica e intenta nuevamente.');
+            }
+            // Guardamos el OTP ya verificado para reutilizarlo al autorizar/firmar al final.
             setOtpArray(codigo.split(''));
-            return Promise.resolve();
           }}
           onFirmaCompleta={handleConfirmarFirmaHash}
           onCancelar={() => setModalFirmaActuacion(null)}
@@ -1101,7 +1141,8 @@ export function TabActuacionesExpediente({
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
           {modalDevolucionActuacion && (
-              <motion.div 
+              <motion.div
+                ref={devolucionModalRef}
                 key="modal-devolucion-backdrop"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -1149,6 +1190,7 @@ export function TabActuacionesExpediente({
                       Observaciones y motivos del rechazo <span className="text-red-500">*</span>
                     </label>
                     <textarea
+                      autoFocus
                       value={observacionesDevolucion}
                       onChange={(e) => setObservacionesDevolucion(e.target.value)}
                       placeholder="Escriba claramente las razones por las cuales no se aprueba esta actuación..."
@@ -1332,7 +1374,7 @@ export function TabActuacionesExpediente({
                                   </div>
                                 </div>
                                 <div className="flex gap-1.5 shrink-0">
-                                  {onPreviewDocument && (
+                                  {onPreviewDocument && isPreviewableInViewer(actuacionDetalle.documentoNombre || 'documento.pdf') && (
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -1379,7 +1421,8 @@ export function TabActuacionesExpediente({
                               return false;
                             };
                             const signed = isDocSigned(doc);
-                            
+                            const requiereFirma = requiresSignature(doc.nombre);
+
                             return (
                               <div key={doc.id || index} className="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100/70 transition-colors">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -1387,14 +1430,16 @@ export function TabActuacionesExpediente({
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2">
                                       <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Documento Asociado #{index + 1}</p>
-                                      <Badge 
+                                      <Badge
                                         className={`text-[9px] font-extrabold px-1.5 py-0 rounded border ${
-                                          signed 
-                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
-                                            : 'bg-amber-50 border-amber-200 text-amber-700'
+                                          !requiereFirma
+                                            ? 'bg-slate-100 border-slate-200 text-slate-500'
+                                            : signed
+                                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                              : 'bg-amber-50 border-amber-200 text-amber-700'
                                         }`}
                                       >
-                                        {signed ? '✓ Firmado' : '⚠ Sin Firmar'}
+                                        {!requiereFirma ? 'No requiere firma' : signed ? '✓ Firmado' : '⚠ Sin Firmar'}
                                       </Badge>
                                     </div>
                                     <p className="text-xs font-bold text-gray-700 truncate" title={doc.nombre}>
@@ -1414,7 +1459,7 @@ export function TabActuacionesExpediente({
                                     </Button>
                                   )}
                                   {(() => {
-                                    const puedeFirmarDoc = !signed && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove();
+                                    const puedeFirmarDoc = !signed && requiresSignature(doc.nombre) && onViewDocument && doc.archivoUrl && getEstadoFirma(actuacionDetalle) === 'PENDIENTE' && isUserAuthorizedToApprove();
                                     const docInfo = {
                                       id: doc.id,
                                       nombre: doc.nombre,
@@ -1442,7 +1487,7 @@ export function TabActuacionesExpediente({
                                         </Button>
                                       );
                                     }
-                                    if (onPreviewDocument && doc.archivoUrl) {
+                                    if (onPreviewDocument && doc.archivoUrl && isPreviewableInViewer(doc.nombre)) {
                                       return (
                                         <Button
                                           size="sm"

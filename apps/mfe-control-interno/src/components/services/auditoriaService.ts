@@ -35,7 +35,7 @@ export interface AuditoriaBackendDTO {
   
   // Campos opcionales
   descripcion?: string;
-  fase?: 'planeacion' | 'ejecucion' | 'informe' | 'seguimiento' | 'cierre';
+  fase?: 'plan-anual' | 'planeacion' | 'ejecucion' | 'informe' | 'seguimiento' | 'cierre';
   progreso?: number;
   prioridad?: 'Alta' | 'Media' | 'Baja';
   areaObjetivo?: string;
@@ -187,7 +187,6 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     
     // Campos opcionales
     descripcion: form.descripcion,
-    fase: 'planeacion',
     progreso: 0,
     prioridad: mapearPrioridad(form.nivelRiesgo),
     areaObjetivo: form.areaObjetivo,
@@ -369,33 +368,8 @@ function mapearPrioridad(nivelRiesgo?: string): 'Alta' | 'Media' | 'Baja' {
  * 'Financiera', 'TI', 'Cumplimiento', 'Operacional', 'Regular', 'Territorial', 'Especial'
  */
 function mapearTipoBackend(tipo: string): string {
-  if (!tipo) return 'Gestión';
-  
-  // Mapeo de tipos frontend a valores válidos DB
-  const map: Record<string, string> = {
-    // Tipos del formulario
-    'regular': 'Regular',
-    'territorial': 'Territorial',
-    'especial': 'Especial',
-    'seguimiento': 'Cumplimiento',
-    // Tipos estándar
-    'gestion': 'Gestión',
-    'gestión': 'Gestión',
-    'control interno': 'Control Interno',
-    'control_interno': 'Control Interno',
-    'academica': 'Académica',
-    'académica': 'Académica',
-    'rrhh': 'RRHH',
-    'recursos humanos': 'RRHH',
-    'financiera': 'Financiera',
-    'ti': 'TI',
-    'tecnologia': 'TI',
-    'cumplimiento': 'Cumplimiento',
-    'operacional': 'Operacional',
-  };
-  
-  const tipoLower = tipo.toLowerCase().trim();
-  return map[tipoLower] || tipo; // Si no hay mapeo, envía el valor original
+  if (!tipo) return 'Regular';
+  return tipo;
 }
 
 function mapearTipoUI(tipo: string): AuditoriaUI['tipo'] {
@@ -423,6 +397,7 @@ function mapearEstadoUI(fase?: string, progreso?: number, estadoKanban?: string)
   // ✅ PRIORIDAD 1: usar estadoKanban si está presente
   if (estadoKanban) {
     const kanbanNorm = estadoKanban.toLowerCase().trim();
+    if (kanbanNorm === 'programa anual' || kanbanNorm === 'plan-anual') return 'PROGRAMADA';
     if (kanbanNorm === 'planeación' || kanbanNorm === 'planeacion' || kanbanNorm === 'plan anual') return 'PROGRAMADA';
     if (kanbanNorm === 'ejecución' || kanbanNorm === 'ejecucion') return 'EN_EJECUCION';
     if (kanbanNorm === 'comunicación' || kanbanNorm === 'comunicacion') return 'COMPLETADA';
@@ -432,6 +407,7 @@ function mapearEstadoUI(fase?: string, progreso?: number, estadoKanban?: string)
   // PRIORIDAD 2: usar fase
   if (fase) {
     const faseNorm = fase.toLowerCase();
+    if (faseNorm === 'plan-anual') return 'PROGRAMADA';
     if (faseNorm === 'cierre' || faseNorm === 'completada' || (progreso && progreso >= 100)) return 'COMPLETADA';
     if (faseNorm === 'ejecucion' || faseNorm === 'en-curso' || faseNorm === 'informe') return 'EN_EJECUCION';
     if (faseNorm === 'planeacion' || faseNorm === 'planeación') return 'PROGRAMADA';
@@ -562,6 +538,9 @@ export const auditoriaService = {
       if (data.fechaInicioComunicacion) updates.fechaInicioComunicacion = formatearFechaISO(data.fechaInicioComunicacion);
       if (data.fechaFin) updates.fechaFin = formatearFechaISO(data.fechaFin);
       if (data.auditorLider) updates.auditorLiderId = data.auditorLider;
+      if (data.auditorAsignado) updates.auditorAsignadoId = data.auditorAsignado;
+      if (data.supervisorAsignado) updates.supervisorAsignadoId = data.supervisorAsignado;
+      if (data.equipoAuditores !== undefined) updates.equipoAuditores = data.equipoAuditores;
       if (data.nivelRiesgo) updates.nivelRiesgo = data.nivelRiesgo;
       
       await controlInternoService.updateAuditoria(id, updates);

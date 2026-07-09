@@ -22,6 +22,44 @@ import { NotificacionesService } from '../notificaciones/notificaciones.service'
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
 
+const COLOMBIA_TIME_ZONE = 'America/Bogota';
+
+function getFechaHoraColombia(): { fecha: Date; hora: string } {
+  const ahora = new Date();
+  const fechaString = new Intl.DateTimeFormat('en-CA', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(ahora);
+  const hora = new Intl.DateTimeFormat('en-GB', {
+    timeZone: COLOMBIA_TIME_ZONE,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(ahora);
+  const [year, month, day] = fechaString.split('-').map(Number);
+
+  return { fecha: new Date(year, month - 1, day, 12), hora };
+}
+
+export interface ConflictoDisponibilidadEquipoAuditor {
+  personaId: string;
+  personaNombre: string;
+  auditoriaId: string;
+  auditoriaCodigo: string;
+  auditoriaNombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+export interface DisponibilidadEquipoAuditorResponse {
+  disponible: boolean;
+  conflictos: ConflictoDisponibilidadEquipoAuditor[];
+  mensaje?: string;
+}
+
 @Injectable()
 export class AuditoriasService {
   constructor(
@@ -206,6 +244,138 @@ export class AuditoriasService {
     const dateStr = String(date);
     const dateOnly = dateStr.split('T')[0];
     return dateOnly || dateStr;
+  }
+
+  private async resolverEquipoAuditorIds(equipoAuditores?: Array<string | number>): Promise<string[]> {
+    const ids = equipoAuditores || [];
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+
+    const resueltos = await Promise.all(
+      ids
+        .filter((personaId) => personaId !== undefined && personaId !== null && String(personaId).trim().length > 0)
+        .map((personaId) => this.mapIdTerceroToIdPerson(personaId)),
+    );
+
+    return Array.from(new Set(resueltos.filter((personaId): personaId is string => !!personaId)));
+  }
+
+  private construirMensajeConflictosEquipoAuditor(conflictos: ConflictoDisponibilidadEquipoAuditor[]): string {
+    const nombres = Array.from(new Set(conflictos.map((conflicto) => conflicto.personaNombre)))
+      .filter(Boolean)
+      .join(', ');
+
+    return `No se puede programar la auditoria porque ${nombres || 'uno o mas auditores adicionales'} ya tiene asignacion en otra auditoria durante las fechas seleccionadas. Ajuste las fechas o retire esas personas del Equipo Auditor Adicional.`;
+  }
+
+  private async consultarConflictosEquipoAuditor(
+    personaIds: string[],
+    fechaInicio: Date,
+    fechaFin: Date,
+    excludeAuditoriaId?: string,
+  ): Promise<ConflictoDisponibilidadEquipoAuditor[]> {
+    const idsValidos = Array.from(new Set(personaIds.filter((id) => id && this.isValidUUID(String(id)))));
+    if (idsValidos.length === 0) return [];
+
+    const params: any[] = [
+      idsValidos,
+      this.serializeDate(fechaInicio),
+      this.serializeDate(fechaFin),
+    ];
+
+    let excludeClause = '';
+    if (excludeAuditoriaId && this.isValidUUID(excludeAuditoriaId)) {
+      params.push(excludeAuditoriaId);
+      excludeClause = `AND a.id <> $${params.length}::uuid`;
+    }
+
+    const rows = await this.auditoriaRepository.query(
+      `
+        SELECT DISTINCT
+          ea.persona_id::text AS "personaId",
+          COALESCE(p.nom_largo, ea.persona_id::text) AS "personaNombre",
+          a.id::text AS "auditoriaId",
+          COALESCE(a.codigo, '') AS "auditoriaCodigo",
+          COALESCE(a.nombre, '') AS "auditoriaNombre",
+          a.fecha_inicio AS "fechaInicio",
+          a.fecha_fin AS "fechaFin"
+        FROM control_interno.equipo_auditor ea
+        INNER JOIN control_interno.auditoria a ON a.id = ea.auditoria_id
+        LEFT JOIN auth.personas p ON p.id_person = ea.persona_id
+        WHERE ea.activo = true
+          AND ea.persona_id = ANY($1::uuid[])
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%jefe%'
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%supervisor%'
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%lider%'
+          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%líder%'
+          AND ea.persona_id IS DISTINCT FROM a.auditor_lider_id
+          AND ea.persona_id IS DISTINCT FROM a.auditor_asignado_id
+          AND ea.persona_id IS DISTINCT FROM a.supervisor_asignado_id
+          AND COALESCE(a.activa, true) = true
+          AND COALESCE(a.archivada, false) = false
+          AND a.fecha_eliminacion IS NULL
+          AND a.fecha_inicio <= $3::date
+          AND a.fecha_fin >= $2::date
+          ${excludeClause}
+        ORDER BY "personaNombre", "fechaInicio"
+      `,
+      params,
+    );
+
+    return rows.map((row: any) => ({
+      personaId: String(row.personaId),
+      personaNombre: row.personaNombre || 'Auditor adicional',
+      auditoriaId: String(row.auditoriaId),
+      auditoriaCodigo: row.auditoriaCodigo || '',
+      auditoriaNombre: row.auditoriaNombre || 'Auditoria sin nombre',
+      fechaInicio: this.serializeDate(row.fechaInicio),
+      fechaFin: this.serializeDate(row.fechaFin),
+    }));
+  }
+
+  public async validarDisponibilidadEquipoAuditor(
+    equipoAuditores: Array<string | number> = [],
+    fechaInicioInput: string | Date,
+    fechaFinInput: string | Date,
+    excludeAuditoriaId?: string,
+  ): Promise<DisponibilidadEquipoAuditorResponse> {
+    const fechaInicio = this.parseDateOnly(fechaInicioInput);
+    const fechaFin = this.parseDateOnly(fechaFinInput);
+
+    if (fechaFin < fechaInicio) {
+      throw new BadRequestException('La fecha de finalizacion debe ser posterior a la fecha de inicio');
+    }
+
+    const personaIds = await this.resolverEquipoAuditorIds(equipoAuditores);
+    const conflictos = await this.consultarConflictosEquipoAuditor(
+      personaIds,
+      fechaInicio,
+      fechaFin,
+      excludeAuditoriaId,
+    );
+
+    return {
+      disponible: conflictos.length === 0,
+      conflictos,
+      mensaje: conflictos.length > 0 ? this.construirMensajeConflictosEquipoAuditor(conflictos) : undefined,
+    };
+  }
+
+  private async asegurarDisponibilidadEquipoAuditorOrThrow(
+    personaIds: string[],
+    fechaInicio: Date,
+    fechaFin: Date,
+    excludeAuditoriaId?: string,
+  ): Promise<void> {
+    const conflictos = await this.consultarConflictosEquipoAuditor(
+      personaIds,
+      fechaInicio,
+      fechaFin,
+      excludeAuditoriaId,
+    );
+
+    if (conflictos.length > 0) {
+      throw new BadRequestException(this.construirMensajeConflictosEquipoAuditor(conflictos));
+    }
   }
 
   /**
@@ -487,6 +657,19 @@ export class AuditoriasService {
       (e) => e.toLowerCase() === estadoNormalizado || e.toLowerCase() === estadoInput.toLowerCase(),
     );
     return estadoDirecto || EstadoKanban.PLANEACION;
+  }
+
+  private mapEstadoKanbanToFase(estadoKanban: EstadoKanban): FaseAuditoria {
+    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
+      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLAN_ANUAL,
+      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
+      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
+      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
+      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
+      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
+    };
+
+    return estadoToFase[estadoKanban] || FaseAuditoria.PLAN_ANUAL;
   }
 
   /**
@@ -1053,6 +1236,13 @@ export class AuditoriasService {
       ? this.parseDateOnly(createDto.fechaInicioComunicacion)
       : undefined;
 
+    const periodoInicio = createDto.periodoInicio
+      ? this.parseDateOnly(createDto.periodoInicio)
+      : undefined;
+    const periodoFin = createDto.periodoFin
+      ? this.parseDateOnly(createDto.periodoFin)
+      : undefined;
+
     // Validar que fechaFin sea posterior a fechaInicio
     if (fechaFin < fechaInicio) {
       throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
@@ -1080,6 +1270,13 @@ export class AuditoriasService {
     }
 
     // Generar código automático
+    const equipoAuditorPersonaIds = await this.resolverEquipoAuditorIds(createDto.equipoAuditores);
+    await this.asegurarDisponibilidadEquipoAuditorOrThrow(
+      equipoAuditorPersonaIds,
+      fechaInicio,
+      fechaFin,
+    );
+
     const yearForCode = createDto.planAnualVigencia || 
                         ((createDto as any).planAnualAño) || 
                         (fechaInicio ? fechaInicio.getFullYear() : new Date().getFullYear());
@@ -1090,6 +1287,11 @@ export class AuditoriasService {
     if (existente) {
       throw new BadRequestException(`Ya existe una auditoría con el código ${codigo}`);
     }
+
+    const estadoKanbanInicial = this.normalizeEstadoKanban(createDto.estadoKanban);
+    const faseInicial = estadoKanbanInicial === EstadoKanban.PLAN_ANUAL
+      ? FaseAuditoria.PLAN_ANUAL
+      : (createDto.fase || this.mapEstadoKanbanToFase(estadoKanbanInicial));
 
     const auditoriaData: any = {
       nombre: createDto.nombre,
@@ -1105,12 +1307,15 @@ export class AuditoriasService {
       fechaInicioEjecucion: fechaInicioEjecucion,
       fechaFinEjecucion: fechaFinEjecucion,
       fechaInicioComunicacion: fechaInicioComunicacion,
-      fase: createDto.fase || FaseAuditoria.PLANEACION,
+      fase: faseInicial,
       prioridad: createDto.prioridad || PrioridadAuditoria.MEDIA,
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
+      periodoInicio: periodoInicio,
+      periodoFin: periodoFin,
+      presupuestoEstimado: createDto.presupuestoEstimado,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
-      estadoKanban: this.normalizeEstadoKanban(createDto.estadoKanban),
+      estadoKanban: estadoKanbanInicial,
     };
 
     // Incluir campos opcionales si tienen valor
@@ -1266,27 +1471,15 @@ export class AuditoriasService {
     }
 
     // Guardar equipo de auditores si se proporciona
-    if (createDto.equipoAuditores && Array.isArray(createDto.equipoAuditores) && createDto.equipoAuditores.length > 0) {
-      const equipoPromises = createDto.equipoAuditores
-        .filter(personaId => personaId)
-        .map(async (personaId) => {
-          // Convertir el ID recibido a UUID usando mapIdTerceroToIdPerson
-          const personaUUID = await this.mapIdTerceroToIdPerson(personaId);
-          
-          if (!personaUUID) {
-            console.warn(`[AuditoriasService.create] No se pudo mapear personaId ${personaId} a UUID`);
-            return null;
-          }
-          
-          return this.equipoRepository.create({
-            auditoriaId: auditoriaGuardada.id,
-            personaId: personaUUID,
-            rol: 'Auditor',
-            activo: true,
-          });
-        });
-
-      const equipo = (await Promise.all(equipoPromises)).filter(e => e !== null);
+    if (equipoAuditorPersonaIds.length > 0) {
+      const equipo = equipoAuditorPersonaIds.map((personaUUID) =>
+        this.equipoRepository.create({
+          auditoriaId: auditoriaGuardada.id,
+          personaId: personaUUID,
+          rol: 'Auditor',
+          activo: true,
+        }),
+      );
 
       if (equipo.length > 0) {
         try {
@@ -1314,14 +1507,11 @@ export class AuditoriasService {
 
     // ✅ Registrar evento de creación en el historial
     try {
-      const ahora = new Date();
-      const fecha = ahora.toISOString().split('T')[0];
-      const hora = ahora.toTimeString().split(' ')[0];
-      
+      const { fecha, hora } = getFechaHoraColombia();
       const historialCreacion = new HistorialAuditoria();
       historialCreacion.auditoriaId = auditoriaGuardada.id;
       historialCreacion.tipoEvento = TipoEvento.CREACION;
-      historialCreacion.fecha = new Date(fecha);
+      historialCreacion.fecha = fecha;
       historialCreacion.hora = hora;
       historialCreacion.usuarioId = usuarioId || null;
       historialCreacion.accion = 'Auditoría creada';
@@ -1345,7 +1535,7 @@ export class AuditoriasService {
   async update(id: string, updateDto: UpdateAuditoriaDto, usuarioId?: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({ 
       where: { id },
-      relations: ['objetivos', 'criterios']
+      relations: ['objetivos', 'criterios', 'equipoAuditores']
     });
 
     if (!auditoria) {
@@ -1394,6 +1584,36 @@ export class AuditoriasService {
     }
 
     // Actualizar campos básicos
+    let equipoAuditorPersonaIdsActualizados: string[] | undefined;
+    if (updateDto.equipoAuditores !== undefined) {
+      equipoAuditorPersonaIdsActualizados = await this.resolverEquipoAuditorIds(updateDto.equipoAuditores);
+    }
+
+    if (
+      updateDto.equipoAuditores !== undefined ||
+      updateDto.fechaInicio !== undefined ||
+      updateDto.fechaFin !== undefined
+    ) {
+      const fechaInicioValidacion = updateDto.fechaInicio
+        ? this.parseDateOnly(updateDto.fechaInicio)
+        : auditoria.fechaInicio;
+      const fechaFinValidacion = updateDto.fechaFin
+        ? this.parseDateOnly(updateDto.fechaFin)
+        : auditoria.fechaFin;
+      const equipoValidacion = equipoAuditorPersonaIdsActualizados !== undefined
+        ? equipoAuditorPersonaIdsActualizados
+        : (auditoria.equipoAuditores || [])
+          .filter((equipo) => equipo.activo && equipo.personaId)
+          .map((equipo) => String(equipo.personaId));
+
+      await this.asegurarDisponibilidadEquipoAuditorOrThrow(
+        equipoValidacion,
+        fechaInicioValidacion,
+        fechaFinValidacion,
+        id,
+      );
+    }
+
     if (updateDto.nombre !== undefined) auditoria.nombre = updateDto.nombre;
     // Permitir actualizar descripción incluso si es string vacío
     if (updateDto.descripcion !== undefined) {
@@ -1425,6 +1645,19 @@ export class AuditoriasService {
       auditoria.fechaInicioComunicacion = updateDto.fechaInicioComunicacion
         ? this.parseDateOnly(updateDto.fechaInicioComunicacion)
         : undefined;
+    }
+    if (updateDto.periodoInicio !== undefined) {
+      auditoria.periodoInicio = updateDto.periodoInicio
+        ? this.parseDateOnly(updateDto.periodoInicio)
+        : undefined;
+    }
+    if (updateDto.periodoFin !== undefined) {
+      auditoria.periodoFin = updateDto.periodoFin
+        ? this.parseDateOnly(updateDto.periodoFin)
+        : undefined;
+    }
+    if (updateDto.presupuestoEstimado !== undefined) {
+      auditoria.presupuestoEstimado = updateDto.presupuestoEstimado;
     }
     if (updateDto.progreso !== undefined) auditoria.progreso = updateDto.progreso;
     if (updateDto.prioridad) auditoria.prioridad = updateDto.prioridad as PrioridadAuditoria;
@@ -1591,6 +1824,7 @@ export class AuditoriasService {
     if (updateDto.fechaInicio || updateDto.fechaFin) cambios.push('Fechas actualizadas');
     if (updateDto.auditorLiderId !== undefined) cambios.push('Auditor líder actualizado');
     if (updateDto.auditorAsignadoId !== undefined) cambios.push('Auditor asignado actualizado');
+    if (updateDto.equipoAuditores !== undefined) cambios.push('Equipo auditor actualizado');
 
     // Crear notificaciones si hay cambios importantes
     if (cambios.length > 0) {
@@ -1662,6 +1896,31 @@ export class AuditoriasService {
     }
 
     // Recargar la auditoría con relaciones actualizadas
+    if (updateDto.equipoAuditores !== undefined) {
+      await this.equipoRepository.update(
+        { auditoriaId: saved.id, activo: true },
+        { activo: false, fechaRetiro: new Date() },
+      );
+
+      const nuevoEquipo = (equipoAuditorPersonaIdsActualizados || []).map((personaUUID) =>
+        this.equipoRepository.create({
+          auditoriaId: saved.id,
+          personaId: personaUUID,
+          rol: 'Auditor',
+          activo: true,
+        }),
+      );
+
+      if (nuevoEquipo.length > 0) {
+        try {
+          await this.equipoRepository.save(nuevoEquipo);
+        } catch (error) {
+          console.error('[AuditoriasService.update] Error al actualizar equipo de auditores:', error);
+          throw new BadRequestException('Error al actualizar el equipo de auditores');
+        }
+      }
+    }
+
     const auditoriaActualizada = await this.auditoriaRepository.findOne({
       where: { id: saved.id },
       relations: ['objetivos', 'criterios', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
@@ -1670,14 +1929,11 @@ export class AuditoriasService {
     // ✅ Registrar evento de actualización en el historial si hay cambios importantes
     if (cambios.length > 0) {
       try {
-        const ahora = new Date();
-        const fecha = ahora.toISOString().split('T')[0];
-        const hora = ahora.toTimeString().split(' ')[0];
-        
+        const { fecha, hora } = getFechaHoraColombia();
         const historialActualizacion = new HistorialAuditoria();
         historialActualizacion.auditoriaId = saved.id;
         historialActualizacion.tipoEvento = TipoEvento.ACTUALIZACION;
-        historialActualizacion.fecha = new Date(fecha);
+        historialActualizacion.fecha = fecha;
         historialActualizacion.hora = hora;
         historialActualizacion.usuarioId = usuarioId || null;
         historialActualizacion.accion = 'Auditoría actualizada';
@@ -1727,6 +1983,7 @@ export class AuditoriasService {
 
     // Estadísticas por fase
     const porFase = [
+      { fase: FaseAuditoria.PLAN_ANUAL, cantidad: 0 },
       { fase: FaseAuditoria.PLANEACION, cantidad: 0 },
       { fase: FaseAuditoria.EN_CURSO, cantidad: 0 },
       { fase: FaseAuditoria.REVISION, cantidad: 0 },
@@ -1818,12 +2075,13 @@ export class AuditoriasService {
     // ✅ Sincronizar estadoKanban con la fase
     // Mapeo de FaseAuditoria -> EstadoKanban
     const faseToEstadoKanban: Record<FaseAuditoria, EstadoKanban> = {
+      [FaseAuditoria.PLAN_ANUAL]: EstadoKanban.PLAN_ANUAL,
       [FaseAuditoria.PLANEACION]: EstadoKanban.PLANEACION,
       [FaseAuditoria.EN_CURSO]: EstadoKanban.EJECUCION,
       [FaseAuditoria.REVISION]: EstadoKanban.COMUNICACION,
       [FaseAuditoria.COMPLETADA]: EstadoKanban.FINALIZADA,
     };
-    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLANEACION;
+    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLAN_ANUAL;
     auditoria.estadoKanban = estadoNuevo;
 
     // Si se completa, asegurar progreso al 100%
@@ -1834,14 +2092,11 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
     
     // ✅ Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
-
+    const { fecha, hora } = getFechaHoraColombia();
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Cambio de estado';
@@ -1874,15 +2129,7 @@ export class AuditoriasService {
     auditoria.estadoKanban = nuevoEstadoKanban;
     
     // Sincronizar la fase del backend (para compatibilidad)
-    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
-      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLANEACION,
-      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
-      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
-      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
-      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
-      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
-    }
-    auditoria.fase = estadoToFase[nuevoEstadoKanban];
+    auditoria.fase = this.mapEstadoKanbanToFase(nuevoEstadoKanban);
     
     // NO PERMITIR cambiar a FINALIZADA sin usar el endpoint específico
     if (nuevoEstadoKanban === EstadoKanban.FINALIZADA) {
@@ -1925,9 +2172,7 @@ export class AuditoriasService {
     
     // ✅ Registrar en el historial (envuelto en try/catch para no bloquear el cambio de estado)
     try {
-      const ahora = new Date();
-      const fecha = ahora.toISOString().split('T')[0];
-      const hora = ahora.toTimeString().slice(0, 5);
+      const { fecha, hora } = getFechaHoraColombia();
 
       // ✅ FIX: Validar que usuarioId sea UUID válido antes de guardarlo en columna uuid
       const uuidSanitizado = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
@@ -1935,7 +2180,7 @@ export class AuditoriasService {
       const historial = new HistorialAuditoria();
       historial.auditoriaId = id;
       historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-      historial.fecha = new Date(fecha);
+      historial.fecha = fecha;
       historial.hora = hora;
       historial.usuarioId = uuidSanitizado;
       historial.nombreUsuario = usuarioNombre || null;
@@ -2002,14 +2247,11 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
 
     // ✅ Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
-
+    const { fecha, hora } = getFechaHoraColombia();
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Finalización de auditoría';
@@ -2089,14 +2331,12 @@ export class AuditoriasService {
     const saved = await this.auditoriaRepository.save(auditoria);
 
     // ✅ Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = (usuarioId && this.isValidUUID(String(usuarioId))) ? String(usuarioId) : null;
     historial.accion = 'Finalización de auditoría';
@@ -2232,11 +2472,12 @@ export class AuditoriasService {
     if (auditoria.finalizadaPorId == null && idTercero != null) auditoria.finalizadaPorId = idTercero;
     const saved = await this.auditoriaRepository.save(auditoria);
 
+    const { fecha, hora } = getFechaHoraColombia();
     const historial = new HistorialAuditoria();
     historial.auditoriaId = id;
     historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
-    historial.fecha = new Date();
-    historial.hora = new Date().toTimeString().slice(0, 5);
+    historial.fecha = fecha;
+    historial.hora = hora;
     const uuidPersona = typeof aprobadoPorId === 'string' ? aprobadoPorId : (idTercero ? await this.mapIdTerceroToIdPerson(idTercero) : null);
     historial.usuarioId = uuidPersona;
     historial.accion = 'Aprobación Informe de Cierre';
@@ -2786,6 +3027,7 @@ export class AuditoriasService {
    */
   private mapFaseToEstadoKanban(fase: FaseAuditoria): string {
     const mapping = {
+      [FaseAuditoria.PLAN_ANUAL]: 'Plan Anual',
       [FaseAuditoria.PLANEACION]: 'Planeación',
       [FaseAuditoria.EN_CURSO]: 'Ejecución',
       [FaseAuditoria.REVISION]: 'Comunicación',
@@ -2922,9 +3164,7 @@ export class AuditoriasService {
       throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
     }
 
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const nota = this.notaRepository.create({
       auditoriaId,
@@ -2932,7 +3172,7 @@ export class AuditoriasService {
       categoria: createDto.categoria,
       importante: createDto.importante || false,
       autorId: autorId || createDto.autorId || 1, // TODO: Obtener del contexto de autenticación
-      fecha: new Date(fecha),
+      fecha,
       hora,
       editada: false,
       activo: true,
@@ -3121,14 +3361,12 @@ export class AuditoriasService {
     await this.auditoriaRepository.save(auditoria);
 
     // Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.APROBACION;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Aprobación de auditoría';
@@ -3164,14 +3402,12 @@ export class AuditoriasService {
     }
 
     // Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.ACTUALIZACION; // Usamos actualizacion para rechazo
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Rechazo de auditoría';
@@ -3207,14 +3443,12 @@ export class AuditoriasService {
     }
 
     // Registrar en el historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.ACTUALIZACION;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     historial.usuarioId = usuarioUuid || null;
     historial.accion = 'Solicitud de modificación';
@@ -3336,14 +3570,12 @@ export class AuditoriasService {
     }
 
     // Registrar en el historial como solicitud pendiente
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historial = new HistorialAuditoria();
     historial.auditoriaId = auditoriaId;
     historial.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
-    historial.fecha = new Date(fecha);
+    historial.fecha = fecha;
     historial.hora = hora;
     const uuidPersona = typeof usuarioIdOrUUID === 'string' ? usuarioIdOrUUID : (usuarioIdTercero ? await this.mapIdTerceroToIdPerson(usuarioIdTercero) : null);
     historial.usuarioId = uuidPersona;
@@ -3491,15 +3723,13 @@ export class AuditoriasService {
     await this.historialRepository.save(solicitudPendiente);
 
     // Actualizar el historial de la solicitud a aprobada
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     // Crear nuevo registro de historial para la aprobación
     const historialAprobacion = new HistorialAuditoria();
     historialAprobacion.auditoriaId = auditoriaId;
     historialAprobacion.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
-    historialAprobacion.fecha = new Date(fecha);
+    historialAprobacion.fecha = fecha;
     historialAprobacion.hora = hora;
     historialAprobacion.usuarioId = historialUsuarioUuid;
     historialAprobacion.accion = 'Aprobación de ampliación de plazo';
@@ -3620,14 +3850,12 @@ export class AuditoriasService {
     await this.historialRepository.save(solicitudPendiente);
 
     // Registrar rechazo en historial
-    const ahora = new Date();
-    const fecha = ahora.toISOString().split('T')[0];
-    const hora = ahora.toTimeString().slice(0, 5);
+    const { fecha, hora } = getFechaHoraColombia();
 
     const historialRechazo = new HistorialAuditoria();
     historialRechazo.auditoriaId = auditoriaId;
     historialRechazo.tipoEvento = TipoEvento.AMPLIACION_PLAZO;
-    historialRechazo.fecha = new Date(fecha);
+    historialRechazo.fecha = fecha;
     historialRechazo.hora = hora;
     historialRechazo.usuarioId = historialUsuarioUuidRechazo;
     historialRechazo.accion = 'Rechazo de ampliación de plazo';
@@ -4274,8 +4502,6 @@ export class AuditoriasService {
     }
   }
 }
-
-
 
 
 

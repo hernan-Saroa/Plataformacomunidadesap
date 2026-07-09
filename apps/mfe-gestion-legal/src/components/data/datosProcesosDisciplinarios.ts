@@ -352,7 +352,7 @@ export const procesosDisciplinariosMock: ProcesoDisciplinario[] = [
     radicado: 'DISC-BOG-2023-00156',
     investigado: 'Oscar Mauricio Delgado',
     cargo: 'Profesional Universitario',
-    dependencia: 'Registro Académico',
+    dependencia: 'Verificación de títulos',
     falta: 'Falsificación de calificaciones académicas',
     descripcion: 'Comprobada alteración de notas en sistema académico para favorecer a estudiantes específicos.',
     gravedad: 'GRAVISIMA',

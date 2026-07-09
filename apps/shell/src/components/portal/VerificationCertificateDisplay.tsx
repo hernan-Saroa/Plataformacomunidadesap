@@ -234,7 +234,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const descargarPdfPorRutaPublica = async (): Promise<Blob> => {
     const publicPdfUrl = getPublicPdfUrl();
     if (!publicPdfUrl) {
-      throw new Error('No se encontr� una ruta p�blica para descargar el certificado.');
+      throw new Error('No se encontró una ruta pública para descargar el certificado.');
     }
 
     const response = await fetch(publicPdfUrl, {
@@ -905,7 +905,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                     <p className="text-xs text-gray-600 leading-relaxed max-w-3xl mx-auto">
                       Para cualquier consulta o verificación adicional, puede contactar directamente con la
                       <strong> Oficina de Registro y Control Académico de ESAP</strong>.
-                      Este documento ha sido generado de forma automatizada por el Sistema de Verificación de Títulos Graduados.
+                      Este documento ha sido generado de forma automatizada por el Sistema de Verificación de títulos Graduados.
                     </p>
                     <div className="flex items-center justify-center gap-2 pt-2">
                       <div className="h-px w-12 bg-gray-300"></div>

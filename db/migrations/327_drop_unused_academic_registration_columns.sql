@@ -1,4 +1,4 @@
--- Retira columnas de registro academico sin flujo vigente en la plataforma.
+-- Retira columnas de verificación de títulos sin flujo vigente en la plataforma.
 -- La revocacion de certificados solo conserva el estado REVOKED; el endpoint
 -- de revocacion no esta implementado y no escribe fecha/motivo.
 -- En firmantes, email y signature_filename no tienen lectura ni escritura

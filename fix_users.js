@@ -35,7 +35,7 @@ async function fixSuperUser() {
     { username: 'auditor@esap.edu.co', nombre: 'Auditor Prueba', doc: '100000002' },
     { username: 'juridico@esap.edu.co', nombre: 'Juridico Prueba', doc: '100000003' },
     { username: 'disciplinario@esap.edu.co', nombre: 'Disciplinario Prueba', doc: '100000004' },
-    { username: 'registro@esap.edu.co', nombre: 'Registro Academico', doc: '100000005' },
+    { username: 'registro@esap.edu.co', nombre: 'Verificación de títulos', doc: '100000005' },
   ];
 
   for (const u of users) {

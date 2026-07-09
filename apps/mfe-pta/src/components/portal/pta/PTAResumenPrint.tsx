@@ -126,9 +126,11 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
 
             {/* Componente Investigación (Si existe) */}
             {(() => {
-              const inv = pta?.investigacion || {};
-              const proyectos = inv.proyectos || [];
-              const actividades = inv.actividades || [];
+              // Normaliza desde el DTO plano (extension_actividades, etc.) o desde la forma agrupada (backoffice)
+              const proyectos = (pta?.investigacion_proyecto?.nombre || pta?.investigacion_proyecto?.rol)
+                ? [pta.investigacion_proyecto]
+                : (pta?.investigacion?.proyectos || []);
+              const actividades = pta?.investigacion_actividades || pta?.investigacion?.actividades || [];
               const hasData = proyectos.length > 0 || actividades.length > 0;
               if (!hasData) return null;
               return (
@@ -174,12 +176,10 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
 
             {/* Componente Extensión (Si existe) */}
             {(() => {
-              const ext = pta?.extension || {};
-              const sectionsExt = ['asesoria', 'consultoria', 'capacitacion', 'comunidad'];
-              const allExtActs: any[] = [];
-              sectionsExt.forEach(sec => {
-                (ext[sec] || []).forEach((a: any) => allExtActs.push({ ...a, seccion: sec }));
-              });
+              // Horas ya vienen premultiplicadas por sección (multiplicador config-driven) desde el guardado.
+              const allExtActs: any[] = Array.isArray(pta?.extension_actividades)
+                ? pta.extension_actividades
+                : (pta?.extension ? (Object.values(pta.extension).flat() as any[]) : []);
               if (allExtActs.length === 0) return null;
               return (
                 <div className="mb-8">
@@ -198,7 +198,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
                         const totalH = a.horas || 0;
                         return (
                           <tr key={idx}>
-                            <td className="border border-gray-200 p-2">{a.nombre_actividad || a.actividad_nombre || a.actividad || 'Actividad'}</td>
+                            <td className="border border-gray-200 p-2">{a.nombre_actividad || a.actividad_nombre || a.actividad || a.nombre || 'Actividad'}</td>
                             <td className="border border-gray-200 p-2 capitalize">{a.seccion || 'Extensión'}</td>
                             <td className="border border-gray-200 p-2 text-center">{(totalH / 16).toFixed(1)}</td>
                             <td className="border border-gray-200 p-2 text-center font-semibold">{totalH}</td>
@@ -213,8 +213,9 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
 
             {/* Componente Complementarias */}
             {(() => {
-              const comp = pta?.complementarias || {};
-              const acts = comp.actividades || [];
+              const acts = Array.isArray(pta?.complementarias)
+                ? pta.complementarias
+                : (pta?.complementarias?.actividades || []);
               if (acts.length === 0) return null;
               return (
                 <div className="mb-8">
@@ -248,8 +249,9 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
 
             {/* Componente Académico-Administrativo */}
             {(() => {
-              const acadAdmin = pta?.acad_admin || pta?.academico_administrativo || {};
-              const acts = acadAdmin.actividades || [];
+              const acts = Array.isArray(pta?.academico_admin)
+                ? pta.academico_admin
+                : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
               if (acts.length === 0) return null;
               return (
                 <div className="mb-8">

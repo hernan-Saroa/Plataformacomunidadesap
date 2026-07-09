@@ -4,7 +4,7 @@
  * 
  * Extensión de permisos detallados para:
  * - Certificados Laborales (65 permisos)
- * - Registro Académico (90 permisos)
+ * - Verificación de títulos (90 permisos)
  * 
  * TOTAL: 155 permisos nuevos granulares
  */

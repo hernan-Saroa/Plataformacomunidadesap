@@ -459,17 +459,27 @@ export function ExpedientesElectronicosWorldClass() {
      setLoading(true);
      setError(null);
      try {
-       // Obtener todos los procesos del backend
-       const procesosBackend = await disciplinaryService.getAllProcesos();
+       // ✅ Filtrar procesos según rol: Jefe/Radicador ven todos, Profesional solo los suyos
+       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+       const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
+       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
+       const currentUserId = authService.getCurrentUser()?.id;
+       const procesosBackend = (esJefe || canViewAll)
+         ? await disciplinaryService.getAllProcesos()
+         : canViewMine ? await disciplinaryService.getMisProcesos(currentUserId as string)
+         : [];
        
        // Obtener noticias radicadas del backend (manejo individual de errores)
+       // ✅ Las noticias radicadas aún no tienen profesional asignado: solo Jefe/Radicador las ven
        let noticiasRadicadasBackend: any[] = [];
-       try {
-         noticiasRadicadasBackend = await apiClient.get<any[]>('/control-disciplinario/api/v1/disciplinary-processes/radicated-news');
-       } catch (newsError) {
-         console.warn('Error cargando noticias radicadas, continuando solo con procesos:', newsError);
-         // Continuamos con un array vacío de noticias para no fallar completamente
-         noticiasRadicadasBackend = [];
+       if (esJefe || canViewAll) {
+         try {
+           noticiasRadicadasBackend = await apiClient.get<any[]>('/control-disciplinario/api/v1/disciplinary-processes/radicated-news');
+         } catch (newsError) {
+           console.warn('Error cargando noticias radicadas, continuando solo con procesos:', newsError);
+           // Continuamos con un array vacío de noticias para no fallar completamente
+           noticiasRadicadasBackend = [];
+         }
        }
        
        // Transformar datos del backend al formato del componente
@@ -491,8 +501,8 @@ export function ExpedientesElectronicosWorldClass() {
            radicado: proceso.radicadoProceso,
            radicadoNoticia: proceso.news?.radicado || undefined,
            estado: estadoMap[proceso.etapaActual] || 'valoracion',
-           nombreDisciplinado: proceso.news?.disciplinable?.nombre || 'Sin nombre',
-           tipoProceso: proceso.news?.hechos?.substring(0, 50) || 'Proceso Disciplinario',
+           nombreDisciplinado: (() => { const d = proceso.news?.disciplinable; return (Array.isArray(d) ? d[0]?.nombre : d?.nombre) || 'Sin nombre'; })(),
+           tipoProceso: proceso.news?.conductas?.[0] || proceso.news?.conducta || 'Proceso Disciplinario',
            responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',
            fechaInicio: proceso.createdAt ? new Date(proceso.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
            totalDocumentos: 0, // Se actualizará al cargar documentos
@@ -505,8 +515,8 @@ export function ExpedientesElectronicosWorldClass() {
            id: noticia.id,
            radicado: noticia.radicadoProceso,
            estado: 'radicada',
-           nombreDisciplinado: noticia.news?.disciplinable?.nombre || 'Sin nombre',
-           tipoProceso: noticia.news?.hechos?.substring(0, 50) || 'Noticia Disciplinaria Inicial',
+           nombreDisciplinado: (() => { const d = noticia.news?.disciplinable; return (Array.isArray(d) ? d[0]?.nombre : d?.nombre) || 'Sin nombre'; })(),
+           tipoProceso: noticia.news?.conductas?.[0] || noticia.news?.conducta || 'Noticia Disciplinaria Inicial',
            responsable: noticia.abogadoAsignadoNombre || 'Sin asignar',
            fechaInicio: noticia.createdAt ? new Date(noticia.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
            totalDocumentos: 0,
@@ -542,12 +552,12 @@ export function ExpedientesElectronicosWorldClass() {
                  id: doc.id,
                  descripcionPrincipal: doc.nombre || doc.descripcion || 'Documento sin descripción',
                  tipologiaDocumental: doc.tipo || 'Documento',
-                 anexos: doc.fileType || 'PDF',
+                 anexos: 'N/A',
                  fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
                  fechaIncorporacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
                  paginaInicio: 1,
                  paginaFinal: doc.tamaño ? Math.ceil(parseInt(doc.tamaño.replace(/[^0-9]/g, '')) / 50) : 1,
-                 formato: doc.fileType?.split('/')[1]?.toUpperCase() || 'PDF',
+                 formato: (() => { const nombre = doc.archivoNombre || doc.nombre || ''; const ext = nombre.includes('.') ? nombre.split('.').pop()?.toUpperCase() : null; if (ext && ext.length <= 5) return ext; const m: Record<string,string> = { 'application/pdf':'PDF','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'DOCX','application/msword':'DOC','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'XLSX','application/vnd.ms-excel':'XLS','image/jpeg':'JPG','image/png':'PNG' }; return m[doc.fileType] || 'PDF'; })(),
                  tamanoKB: doc.tamaño || '0 KB',
                  archivoAcceso: doc.archivoNombre || doc.nombre || 'documento.pdf',
                  tipo: tipoMap[doc.tipo] || 'informes',
@@ -578,12 +588,12 @@ export function ExpedientesElectronicosWorldClass() {
                   id: doc.id,
                   descripcionPrincipal: doc.descripcion || 'Documento sin descripción',
                   tipologiaDocumental: doc.tipo || 'Documento',
-                  anexos: doc.fileType || 'PDF',
+                  anexos: 'N/A',
                   fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
                   fechaIncorporacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
                   paginaInicio: 1,
                   paginaFinal: 1,
-                  formato: doc.fileType?.split('/')[1]?.toUpperCase() || 'PDF',
+                  formato: (() => { const nombre = doc.archivoNombre || doc.nombre || ''; const ext = nombre.includes('.') ? nombre.split('.').pop()?.toUpperCase() : null; if (ext && ext.length <= 5) return ext; const m: Record<string,string> = { 'application/pdf':'PDF','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'DOCX','application/msword':'DOC','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'XLSX','application/vnd.ms-excel':'XLS','image/jpeg':'JPG','image/png':'PNG' }; return m[doc.fileType] || 'PDF'; })(),
                   tamanoKB: doc.tamaño || '0 KB',
                   archivoAcceso: doc.archivoNombre || doc.nombre || 'documento.pdf',
                   tipo: 'queja',
@@ -629,7 +639,8 @@ export function ExpedientesElectronicosWorldClass() {
         
         // Si cargamos procesos pero no noticias, mostrar datos de ejemplo de noticias
         // para que el usuario pueda ver cómo se verían las noticias en estado radicado
-        if (noticiasRadicadasBackend.length === 0 && procesosBackend.length > 0) {
+        // ✅ Solo aplica si el rol tenía permiso de verlas (si no, es intencional, no un fallo de carga)
+        if ((esJefe || canViewAll) && noticiasRadicadasBackend.length === 0 && procesosBackend.length > 0) {
           // Mostrar notificación
           toast.warning('Se cargaron los procesos pero no las noticias radicadas. Mostrando datos de ejemplo.');
           

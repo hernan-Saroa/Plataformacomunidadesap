@@ -26,7 +26,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/certificados\/api\/v\d+\/certificates\/certificados\/[^/]+\/reenviar/i,
     // Variante corta por si se expone sin /certificates
     /^\/certificados\/api\/v\d+\/certificados\/[^/]+\/reenviar/i,
-    // Autoservicio y validacion publica de certificados de grado (registro academico)
+    // Autoservicio y validacion publica de certificados de grado (verificación de títulos)
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/verificar-graduado/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/buscar-coincidencias/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/solicitar-certificado/i,
@@ -56,8 +56,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/control-disciplinario\/api\/v\d+\/documentos\/.+\/preview/i,
     /^\/control-disciplinario\/api\/v\d+\/expediente-compartido\/.+/i,
     /^\/expediente-compartido\/.+/i,
-    
-    
+    // Tracking de correos juridicos (apertura/descarga desde el correo del
+    // destinatario externo, sin sesion en la plataforma => sin JWT)
+    /^\/legal\/api\/v\d+\/correos\/track\/open\/.+/i,
+    /^\/legal\/api\/v\d+\/correos\/track\/download\/.+/i,
+
+
   ];
 
   constructor(private readonly reflector: Reflector) {

@@ -197,6 +197,23 @@ export class Expediente {
     @Column({ type: 'text', nullable: true })
     hechos: string;
 
+    // Múltiples hechos del proceso (uniformación juzgamiento). Se conserva `hechos`
+    // (texto) como representación concatenada para compatibilidad con vistas previas.
+    @Column({ name: 'hechos_list', type: 'jsonb', default: () => "'[]'::jsonb" })
+    hechosList: string[];
+
+    // Origen del proceso (queja, denuncia, de oficio, etc.)
+    @Column({ nullable: true, length: 50 })
+    origen: string;
+
+    // Territorial asociada. Antes vivía dentro de campos_adicionales; ahora tiene
+    // columna propia (indexable/reporteable) con backfill en migración 369.
+    @Column({ nullable: true, length: 150 })
+    territorial: string;
+
+    @Column({ name: 'presunta_conducta', type: 'text', nullable: true })
+    presuntaConducta: string;
+
     @Column({ name: 'campos_adicionales', type: 'jsonb', nullable: true })
     camposAdicionales: Record<string, any>;
 

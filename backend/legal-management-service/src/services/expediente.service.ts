@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { extname, join } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Expediente } from '../entities/expediente.entity';
+import { Actor } from '../entities/actor.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { Documento } from '../entities/documento.entity';
 import { Evidencia } from '../entities/evidencia.entity';
@@ -262,7 +263,10 @@ export class ExpedienteService {
 
         if (huboCambios) {
             expediente.camposAdicionales = camposLimpios;
-            await this.expedienteRepository.save(expediente);
+            // Escribir SOLO la columna camposAdicionales (no save() del entity completo):
+            // al editar, `expediente` llega desde findOne con relaciones cargadas (actors tiene
+            // cascade:true) y un save() las re-guardaría en cascada sin necesidad.
+            await this.expedienteRepository.update(expediente.id, { camposAdicionales: camposLimpios });
         }
     }
 
@@ -451,12 +455,15 @@ export class ExpedienteService {
         }
     }
 
-    async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {
+    async updateExpediente(id: string, data: Partial<Expediente>, actualizadoPor: string = 'Sistema'): Promise<Expediente> {
         // 1. Obtener estado actual
         const currentExpediente = await this.findOne(id);
         if (!currentExpediente) throw new NotFoundException('Expediente no encontrado');
 
         // 2. Detectar cambios relevantes (Etapa / Estado)
+        // Captura para notificación de avance de etapa (solo avances hacia adelante; la
+        // devolución hacia atrás se notifica aparte en devolverActuacion).
+        let nuevoEstadoConfig: any = null;
         if (data.etapaProcesal && data.etapaProcesal !== currentExpediente.etapaProcesal) {
             // Crear actuación automática
             await this.agregarActuacion(id, {
@@ -465,6 +472,19 @@ export class ExpedienteService {
                 fechaActuacion: new Date(),
                 usuarioResponsable: 'Sistema' // O idealmente el usuario del request si se pasa
             });
+
+            // ¿Es un avance hacia adelante? Comparamos el orden configurado de las etapas.
+            const estadosList = await this.getEstadosConfig(currentExpediente);
+            if (estadosList.length > 0) {
+                const ordenados = estadosList
+                    .filter((e: any) => e.activo !== false)
+                    .sort((a: any, b: any) => (a.orden || 0) - (b.orden || 0));
+                const idxActual = this.configService.findEstadoIndex(ordenados, currentExpediente.etapaProcesal);
+                const idxNuevo = this.configService.findEstadoIndex(ordenados, data.etapaProcesal);
+                if (idxActual !== -1 && idxNuevo !== -1 && idxNuevo > idxActual) {
+                    nuevoEstadoConfig = ordenados[idxNuevo];
+                }
+            }
 
             // Auto-autorizar actuaciones pendientes
             try {
@@ -515,9 +535,38 @@ export class ExpedienteService {
         }
 
         // 3. Actualizar
-        await this.expedienteRepository.update(id, data);
+        // Los actors (partes procesales) son una relación, no una columna: TypeORM.update()
+        // no los maneja. Los separamos y, si vienen en el payload, reemplazamos el conjunto
+        // completo (delete + insert) en una transacción para mantener consistencia.
+        const { actors, ...scalarData } = data as Partial<Expediente> & { actors?: Partial<Actor>[] };
+        await this.expedienteRepository.update(id, scalarData);
+
+        if (actors !== undefined && Array.isArray(actors)) {
+            await this.dataSource.transaction(async (manager) => {
+                await manager.delete(Actor, { expediente_id: id });
+                if (actors.length > 0) {
+                    const nuevosActors = actors.map((a) =>
+                        manager.create(Actor, { ...a, expediente_id: id })
+                    );
+                    await manager.save(nuevosActors);
+                }
+            });
+        }
+
         const updated = await this.findOne(id);
         if (!updated) throw new Error('Expediente no encontrado post-update');
+
+        // Persistir como Documentos del expediente los archivos cargados en campos adicionales
+        // al EDITAR (llegan como base64 dentro de camposAdicionales, igual que al crear). Así
+        // aparecen en la pestaña de Documentos. Reemplaza el base64 pesado por metadata liviana.
+        // Solo procesa los que traen `esNuevo: true`, así no duplica los ya persistidos.
+        if (data.camposAdicionales !== undefined) {
+            try {
+                await this.persistirDocumentosCamposAdicionales(updated, actualizadoPor);
+            } catch (err: any) {
+                Logger.warn(`[ExpedienteService] Falló persistencia de documentos de campos adicionales (update): ${err?.message || err}`);
+            }
+        }
 
         // Notificar al nuevo abogado si hubo reasignación
         if (nuevoProfesionalId) {
@@ -538,7 +587,37 @@ export class ExpedienteService {
             });
         }
 
+        // Notificar avance de etapa: al abogado del proceso y al aprobador de la nueva etapa.
+        if (nuevoEstadoConfig) {
+            const esDisciplinario =
+                updated.jurisdiccion === 'DISCIPLINARIO' ||
+                updated.jurisdiccion === 'Disciplinaria' ||
+                updated.tipoProceso === 'DISCIPLINARIO' ||
+                updated.tipoProceso === 'Disciplinario';
+            const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+            await this.legalNotifications.notifyEtapaAvanzada({
+                modulo,
+                radicado: updated.radicado,
+                procesoId: updated.id,
+                etapaNombre: nuevoEstadoConfig.nombre || nuevoEstadoConfig.id || updated.etapaProcesal,
+                abogadoId: updated.abogadoSustanciador || undefined,
+                aprobacionTipo: nuevoEstadoConfig.aprobacionTipo,
+                aprobacionRol: nuevoEstadoConfig.aprobacionRol,
+                aprobacionUsuario: nuevoEstadoConfig.aprobacionUsuario,
+            });
+        }
+
         return updated;
+    }
+
+    /**
+     * Devuelve la lista de estados (etapas Kanban) configurada para el tipo de proceso del
+     * expediente. Delega en ConfigurationsService.getEstadosForExpediente, que aplica el mismo
+     * matching tolerante (id o nombre normalizado) que el frontend.
+     */
+    private async getEstadosConfig(expediente: Expediente): Promise<any[]> {
+        return this.configService.getEstadosForExpediente(expediente);
     }
 
     async findOne(id: string): Promise<Expediente | null> {

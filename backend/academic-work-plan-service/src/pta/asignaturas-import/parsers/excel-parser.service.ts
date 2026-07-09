@@ -30,6 +30,8 @@ export interface ProgramaRow {
   nombre_corto: string;
   nombre_excel_origen: string | null;
   tipo_programa: string;
+  categoria_horas_circular003: string | null;
+  descripcion_categoria_circular003: string | null;
   codigo_facultad: string;
   modalidad_principal: string;
   horas_base_por_credito: number;
@@ -63,6 +65,8 @@ export class ExcelParserService {
     'nombre_corto',
     'nombre_excel_origen',
     'tipo_programa',
+    'categoria_horas_circular003',
+    'descripcion_categoria_circular003',
     'codigo_facultad',
     'nombre_facultad',
     'modalidad_principal',
@@ -201,6 +205,16 @@ export class ExcelParserService {
         ? String(row.nombre_excel_origen).trim()
         : null,
       tipo_programa: String(row.tipo_programa || '').trim(),
+      categoria_horas_circular003:
+        row.categoria_horas_circular003 &&
+        String(row.categoria_horas_circular003).trim() !== ''
+          ? String(row.categoria_horas_circular003).trim().toLowerCase()
+          : null,
+      descripcion_categoria_circular003:
+        row.descripcion_categoria_circular003 &&
+        String(row.descripcion_categoria_circular003).trim() !== ''
+          ? String(row.descripcion_categoria_circular003).trim()
+          : null,
       codigo_facultad: String(row.codigo_facultad || '').trim(),
       modalidad_principal: String(
         row.modalidad_principal || row.modalidad || '',

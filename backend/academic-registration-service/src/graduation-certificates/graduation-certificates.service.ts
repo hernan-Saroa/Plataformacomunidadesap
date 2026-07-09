@@ -824,7 +824,8 @@ export class GraduationCertificatesService {
     graduationDate?: string,
     lastName?: string,
   ) {
-    const normalizedIdNumber = this.normalizeDocumentNumber(idNumber);
+    const documentNumber = this.normalizeAndValidateDocumentNumber(idNumber);
+    const normalizedIdNumber = this.normalizeDocumentNumber(documentNumber);
     const issueDate = idIssueDate
       ? this.normalizeDateString(idIssueDate)
       : null;
@@ -838,7 +839,7 @@ export class GraduationCertificatesService {
       throw new BadRequestException('Fecha de graduación inválida');
     }
 
-    const oracleSync = await this.syncGraduatesFromOracleByIdNumber(idNumber);
+    const oracleSync = await this.syncGraduatesFromOracleByIdNumber(documentNumber);
 
     if (oracleSync.enabled && !oracleSync.found) {
       return {
@@ -860,7 +861,7 @@ export class GraduationCertificatesService {
         { idNumber: normalizedIdNumber },
       );
     } else {
-      where.idNumber = idNumber.trim();
+      where.idNumber = documentNumber;
     }
 
     const lastNameNormalized = lastName ? this.normalizeName(lastName) : '';
@@ -964,13 +965,14 @@ export class GraduationCertificatesService {
   }
 
   /**
-   * AUTOSERVICIO: Buscar coincidencias por cédula y similitud de nombre
+   * AUTOSERVICIO: Buscar coincidencias por documento y similitud de nombre
    */
   async buscarCoincidenciasGraduado(
     idNumber: string,
     graduationDate?: string,
     lastName?: string,
   ) {
+    const documentNumber = this.normalizeAndValidateDocumentNumber(idNumber);
     const gradDate = graduationDate
       ? this.normalizeDateString(graduationDate)
       : null;
@@ -986,14 +988,14 @@ export class GraduationCertificatesService {
       updated: 0,
       unchanged: 0,
     };
-    const mysqlSync = await this.syncGraduatesFromMysqlByIdNumber(idNumber);
+    const mysqlSync = await this.syncGraduatesFromMysqlByIdNumber(documentNumber);
     let oracleSync = disabledSync;
 
     if (!mysqlSync.found) {
-      oracleSync = await this.syncGraduatesFromOracleByIdNumber(idNumber);
+      oracleSync = await this.syncGraduatesFromOracleByIdNumber(documentNumber);
     }
 
-    const graduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    const graduates = await this.findActiveGraduatesByIdNumber(documentNumber);
     const fuente = mysqlSync.found
       ? 'mysql'
       : oracleSync.found
@@ -1047,7 +1049,8 @@ export class GraduationCertificatesService {
     dto: LandingCertificateRequestDto,
     frontendBaseUrl?: string,
   ) {
-    const normalizedIdNumber = (dto.idNumber || '').replace(/\D+/g, '');
+    const documentNumber = this.normalizeAndValidateDocumentNumber(dto.idNumber);
+    const normalizedIdNumber = this.normalizeDocumentNumber(documentNumber);
     const issueDate = dto.idIssueDate
       ? this.normalizeDateString(dto.idIssueDate)
       : null;
@@ -1084,7 +1087,7 @@ export class GraduationCertificatesService {
     }
 
     this.logger.debug(
-      `Solicitud landing: idNumber=${dto.idNumber?.trim()} idIssueDate=${dto.idIssueDate || 'N/A'} normalizada=${issueDate || 'N/A'}`,
+      `Solicitud landing: idNumber=${documentNumber} idIssueDate=${dto.idIssueDate || 'N/A'} normalizada=${issueDate || 'N/A'}`,
     );
 
     const selectedGraduateId = (dto.selectedGraduateId || '').trim();
@@ -1104,9 +1107,8 @@ export class GraduationCertificatesService {
         );
       }
 
-      const selectedDocumentNumber = (graduate.idNumber || '').replace(
-        /\D+/g,
-        '',
+      const selectedDocumentNumber = this.normalizeDocumentNumber(
+        graduate.idNumber,
       );
       if (
         normalizedIdNumber &&
@@ -1118,7 +1120,7 @@ export class GraduationCertificatesService {
         );
       }
     } else {
-      await this.syncGraduatesFromOracleByIdNumber(dto.idNumber);
+      await this.syncGraduatesFromOracleByIdNumber(documentNumber);
 
       const where: any = {
         status: 'ACTIVE',
@@ -1127,11 +1129,11 @@ export class GraduationCertificatesService {
       if (normalizedIdNumber) {
         where.idNumber = Raw(
           (alias) =>
-            `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+            `UPPER(REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '')) = :idNumber`,
           { idNumber: normalizedIdNumber },
         );
       } else {
-        where.idNumber = dto.idNumber.trim();
+        where.idNumber = documentNumber;
       }
 
       graduate = await this.findGraduateMatch(where, {
@@ -1148,7 +1150,7 @@ export class GraduationCertificatesService {
     if (forceManualReview) {
       const requestedProgramName = this.normalizeName(dto.programName || '');
       const activeGraduatesForDocument =
-        await this.findActiveGraduatesByIdNumber(dto.idNumber);
+        await this.findActiveGraduatesByIdNumber(documentNumber);
       const existingProgramNames = (
         activeGraduatesForDocument.length
           ? activeGraduatesForDocument
@@ -1173,20 +1175,20 @@ export class GraduationCertificatesService {
     if (!graduate || forceManualReview) {
       if (!graduate) {
         this.logger.warn(
-          `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate || 'N/A'}`,
+          `Graduado no encontrado para idNumber=${documentNumber} idIssueDate=${issueDate || 'N/A'}`,
         );
       } else {
         this.logger.warn(
-          `Solicitud de revision manual forzada para idNumber=${dto.idNumber?.trim()} graduateId=${graduate.id}`,
+          `Solicitud de revision manual forzada para idNumber=${documentNumber} graduateId=${graduate.id}`,
         );
       }
 
       await this.expireOverdueManualReviewRequests();
       const activeManualReview =
-        await this.findActiveManualReviewRequestByIdNumber(dto.idNumber);
+        await this.findActiveManualReviewRequestByIdNumber(documentNumber);
       if (activeManualReview) {
         throw new ConflictException(
-          'Ya registramos una solicitud de revisión manual para esta cédula y todavía se encuentra en proceso.',
+          'Ya registramos una solicitud de revisión manual para este documento y todavía se encuentra en proceso.',
         );
       }
     }
@@ -1210,7 +1212,7 @@ export class GraduationCertificatesService {
       requestNumber,
       requesterType: normalizedRequesterType,
       graduateId: requestGraduate?.id,
-      idNumber: dto.idNumber,
+      idNumber: documentNumber,
       idIssueDate,
       fullName:
         this.getPreferredGraduateFullName(requestGraduate) ||
@@ -2152,25 +2154,7 @@ export class GraduationCertificatesService {
     }
     this.validateGraduateTextLength(fullName, 'El nombre del graduado', 255);
 
-    const idNumber = (payload.idNumber || '').trim();
-    if (!idNumber) {
-      throw new BadRequestException('El numero de documento es obligatorio.');
-    }
-    if (!/^\d+$/.test(idNumber)) {
-      throw new BadRequestException(
-        'El numero de documento solo debe contener digitos.',
-      );
-    }
-    if (idNumber.length < 5 || idNumber.length > 20) {
-      throw new BadRequestException(
-        'El numero de documento debe tener entre 5 y 20 digitos.',
-      );
-    }
-    if (/^0+$/.test(idNumber)) {
-      throw new BadRequestException(
-        'El numero de documento no puede estar compuesto solo por ceros.',
-      );
-    }
+    const idNumber = this.normalizeAndValidateDocumentNumber(payload.idNumber);
 
     const programName = (
       payload.programName ||
@@ -2350,6 +2334,31 @@ export class GraduationCertificatesService {
       .toUpperCase();
   }
 
+  private normalizeAndValidateDocumentNumber(value?: string | null): string {
+    const idNumber = (value || '').trim();
+
+    if (!idNumber) {
+      throw new BadRequestException('El numero de documento es obligatorio.');
+    }
+    if (!/^[A-Za-z0-9]+$/.test(idNumber)) {
+      throw new BadRequestException(
+        'El numero de documento solo debe contener letras y numeros.',
+      );
+    }
+    if (idNumber.length < 5 || idNumber.length > 20) {
+      throw new BadRequestException(
+        'El numero de documento debe tener entre 5 y 20 caracteres.',
+      );
+    }
+    if (/^0+$/.test(idNumber)) {
+      throw new BadRequestException(
+        'El numero de documento no puede estar compuesto solo por ceros.',
+      );
+    }
+
+    return idNumber.toUpperCase();
+  }
+
   private tokenizeName(value: string): string[] {
     return this.normalizeName(value)
       .split(' ')
@@ -2467,7 +2476,7 @@ export class GraduationCertificatesService {
           this.normalizeDateString(graduate.graduationDate) ===
           options.gradDate,
       );
-      // Si la fecha de grado no coincide exactamente, conservar candidatos por cédula.
+      // Si la fecha de grado no coincide exactamente, conservar candidatos por documento.
       if (gradDateMatches.length) {
         candidates = gradDateMatches;
       }
@@ -2516,7 +2525,7 @@ export class GraduationCertificatesService {
       return null;
     }
 
-    // Si existe mas de un graduado con la misma cédula y no hay ningún
+    // Si existe mas de un graduado con el mismo documento y no hay ningún
     // criterio adicional que permita desempatar, devolver null para revisión manual.
     if (scored.length > 1 && bestScore === 0) {
       return null;
@@ -3075,7 +3084,7 @@ export class GraduationCertificatesService {
                     <tr><td style="height:4px;background-color:#818CF8;font-size:0;line-height:0;">&nbsp;</td></tr>
                     <tr><td style="padding:22px 28px 18px 28px;">
                       <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                        <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                        <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                         <td align="right"><span style="background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Verificación de Título</span></td>
                       </tr></table>
                     </td></tr>
@@ -3228,7 +3237,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Aviso de solicitud</span></td>
                     </tr></table>
                   </td></tr>
@@ -3373,7 +3382,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Aviso de solicitud</span></td>
                     </tr></table>
                   </td></tr>
@@ -4174,7 +4183,7 @@ export class GraduationCertificatesService {
   }
 
   /**
-   * ADMIN: Buscar graduado por cédula
+   * ADMIN: Buscar graduado por documento
    */
   async obtenerSoporteSolicitanteRevisionParaDescarga(requestId: string) {
     const request = await this.requestRepository.findOne({
@@ -5361,7 +5370,7 @@ export class GraduationCertificatesService {
 
     if (duplicatedGraduate) {
       throw new BadRequestException(
-        'Este programa ya existe para la cédula consultada. Selecciona un programa diferente para cargar la revisión.',
+        'Este programa ya existe para el documento consultado. Selecciona un programa diferente para cargar la revisión.',
       );
     }
   }
@@ -6067,7 +6076,7 @@ export class GraduationCertificatesService {
       `Iniciamos la revisión de tu solicitud ${requestNumber}.\n` +
       `Documento consultado: ${idNumber || 'No informado'}.\n` +
       `Fecha de actualización: ${formattedUpdateDate}.\n\n` +
-      `El equipo de Registro Académico se encuentra validando la información. Te notificaremos el siguiente avance al mismo correo.`;
+      `El equipo de Verificación de títulos se encuentra validando la información. Te notificaremos el siguiente avance al mismo correo.`;
 
     const safeRequesterName = safe(requesterName);
     const safeRequestNumber = safe(requestNumber);
@@ -6084,7 +6093,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Revisión iniciada</span></td>
                     </tr></table>
                   </td></tr>
@@ -6094,7 +6103,7 @@ export class GraduationCertificatesService {
             <tr>
               <td style="padding:32px 28px 8px 28px;">
                 <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Iniciamos la revisión de tu solicitud</h1>
-                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeRequesterName}</strong>, el equipo de Registro Académico inició la validación de la información consultada.</p>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeRequesterName}</strong>, el equipo de Verificación de títulos inició la validación de la información consultada.</p>
                 <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
                   <tr><td style="padding:16px 20px;">
                     <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Estado de la solicitud</p>
@@ -6184,7 +6193,7 @@ export class GraduationCertificatesService {
                   <tr><td style="height:4px;background-color:#FCA5A5;font-size:0;line-height:0;">&nbsp;</td></tr>
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Verificación de títulos</div></td>
                       <td align="right"><span style="background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Solicitud rechazada</span></td>
                     </tr></table>
                   </td></tr>

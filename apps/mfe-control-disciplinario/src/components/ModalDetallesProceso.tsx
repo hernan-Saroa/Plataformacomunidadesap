@@ -13,7 +13,7 @@ import {
   Archive, Mail, FileCheck, History, Download, Upload, Search,
   Bell, Share2, ExternalLink, AlertTriangle, User, Briefcase,
   Calendar, Clock, ChevronRight, ChevronDown, ChevronUp, Plus,
-  CheckCircle, AlertCircle, ClipboardList, MessageSquare, Printer,
+  CheckCircle, AlertCircle, ClipboardList, MessageSquare,
   Eye, Image, FileArchive, ZoomIn,
   MapPin, Building2, Phone, Paperclip, Gavel, FileWarning, Users,
   Loader2, XCircle, HardDrive, Shield,
@@ -238,9 +238,10 @@ function getApoderadoCelular(apoderado?: Apoderado): string {
 }
 
 const SEMAFORO: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  verde:    { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7', label: 'Al día'      },
-  amarillo: { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', label: 'Por vencer'  },
-  rojo:     { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5', label: 'Vencido'     },
+  verde:     { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7', label: 'Al día'      },
+  amarillo:  { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', label: 'Por vencer'  },
+  rojo:      { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5', label: 'Vencido'     },
+  archivado: { bg: '#DBEAFE', text: '#1E40AF', border: '#93C5FD', label: 'Archivado'   },
 };
 
 const ETAPA_COLOR: Record<string, { bg: string; text: string }> = {
@@ -3027,14 +3028,10 @@ export function ModalDetallesProceso({
     handleFilesSelected(e.dataTransfer.files);
   }, [handleFilesSelected]);
 
-  const pct             = Math.min(proceso.porcentajeTiempo, 100);
-  const diasTranscurridos = pct < 100
-    ? Math.max(0, Math.round(proceso.diasRestantes * pct / (100 - pct)))
-    : Math.max(0, -proceso.diasRestantes);
-  const sc              = SEMAFORO[proceso.semaforo] ?? SEMAFORO.rojo;
-  const ec              = etapaColor(proceso.etapaActual);
-  const barColor        = proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444';
   const isArchivado     = proceso.estadoActual === 'ARCHIVADO' || proceso.estadoActual === 'CERRADO' || proceso.etapaActual === 'Archivo';
+  const sc              = isArchivado ? SEMAFORO.archivado : (SEMAFORO[proceso.semaforo] ?? SEMAFORO.rojo);
+  const ec              = etapaColor(proceso.etapaActual);
+  const barColor        = isArchivado ? '#3B82F6' : (proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#EF4444');
 
   const TODOS_ARCHIVOS = archivosBackend;
   const ultimaActuacionActual = actuaciones[0]?.descripcion || proceso.ultimaActuacion;
@@ -3904,25 +3901,22 @@ export function ModalDetallesProceso({
             </button>
           </div>
 
-          {/* ══ BARRA PROGRESO ══ */}
+          {/* ══ SEMÁFORO DE TIEMPO ══ */}
           <div className="px-5 py-2.5 border-b border-gray-100 flex-shrink-0">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-bold text-gray-600">Progreso del Proceso</span>
-              <span className="text-[11px] font-black" style={{ color: proceso.porcentajeTiempo > 100 ? '#EF4444' : '#2962FF' }}>
-                {proceso.porcentajeTiempo}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-              <motion.div className="h-full rounded-full" style={{ backgroundColor: barColor }}
-                initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }} />
-            </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-gray-400">{diasTranscurridos} días transcurridos</span>
-              <span className="text-[10px] font-semibold"
-                style={{ color: proceso.diasRestantes < 0 ? '#EF4444' : '#6B7280' }}>
-                {proceso.diasRestantes < 0
-                  ? `${Math.abs(proceso.diasRestantes)}d vencido`
-                  : `${proceso.diasRestantes}d restantes`}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: barColor }} />
+                <span className="text-[13px] font-black" style={{ color: isArchivado ? sc.text : (proceso.diasRestantes < 0 ? '#EF4444' : sc.text) }}>
+                  {isArchivado
+                    ? 'Proceso archivado'
+                    : proceso.diasRestantes < 0
+                      ? `${Math.abs(proceso.diasRestantes)} días vencido`
+                      : `${proceso.diasRestantes} días restantes`}
+                </span>
+              </div>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border"
+                style={{ backgroundColor: sc.bg, borderColor: sc.border, color: sc.text }}>
+                {sc.label}
               </span>
             </div>
           </div>
@@ -4922,7 +4916,7 @@ export function ModalDetallesProceso({
                                     <p className="text-[10px] text-gray-700 mt-1 leading-relaxed">{h.motivo}</p>
                                     <div className="flex items-center gap-3 mt-1">
                                       <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
-                                        <Calendar className="w-2.5 h-2.5" />{new Date(h.fecha).toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                        <Calendar className="w-2.5 h-2.5" />{formatFechaActuacion(h.fecha)}
                                       </span>
                                       <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
                                         <User className="w-2.5 h-2.5" />{h.responsable}
@@ -4947,7 +4941,9 @@ export function ModalDetallesProceso({
                       </span>
                       <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold"
                         style={{ backgroundColor: sc.bg, borderColor: sc.border, color: sc.text }}>
-                        <span className="font-black">{proceso.diasRestantes}d</span> restantes
+                        {isArchivado
+                          ? 'Archivado'
+                          : <><span className="font-black">{proceso.diasRestantes}d</span> restantes</>}
                       </span>
                       {cantDenunciados > 0 && (
                         <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-orange-200 bg-orange-50 text-xs font-bold text-orange-700">
@@ -6133,9 +6129,8 @@ export function ModalDetallesProceso({
 
             <div className="flex items-center gap-1.5">
               {[
-                { label: 'Notificar', icon: <Bell    className="w-3.5 h-3.5" />, fn: () => toast.info('Notificar',           { description: proceso.numeroProceso }) },
-                { label: 'Compartir', icon: <Share2  className="w-3.5 h-3.5" />, fn: () => toast.info('Compartir')           },
-                { label: 'PDF',       icon: <Printer className="w-3.5 h-3.5" />, fn: () => toast.success('Generando PDF...') },
+                { label: 'Notificar', icon: <Bell   className="w-3.5 h-3.5" />, fn: () => toast.info('Notificar', { description: proceso.numeroProceso }) },
+                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => toast.info('Compartir') },
               ].map(({ label, icon, fn }) => (
                 <button key={label} onClick={fn}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-white hover:border-gray-400 transition-all">

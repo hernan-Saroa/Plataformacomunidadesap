@@ -327,7 +327,16 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const [recomendacionesFuturas, setRecomendacionesFuturas] = useState('');
   const [loadingInformeCierre, setLoadingInformeCierre] = useState(false);
   const [informeCierreAprobado, setInformeCierreAprobado] = useState(false);
-  const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
+  // const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
+  const estadoAuditoriaNormalizado = String(estadoAuditoriaProp || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const auditoriaFinalizada =
+    readOnly ||
+    estadoAuditoriaNormalizado.includes('finalizada') ||
+    estadoAuditoriaNormalizado.includes('completada');
+  const enSeguimiento = soloSeguimiento || pasamosASeguimiento || estadoAuditoriaNormalizado.includes('seguimiento');
   const planCompleto = planCreado && (planEstadisticas?.porcentajeAvance ?? 0) >= 100;
 
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
@@ -458,6 +467,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
         observacionesControversia: x.observacionesControversia,
         controversiaTurno: x.controversiaTurno,
         documentoControversiaNombre: x.documentoControversiaNombre,
+        documentoControversiaUrl: x.documentoControversiaUrl,
         decisionAuditor: x.decisionAuditor,
         fundamentacionTecnica: x.fundamentacionTecnica,
         fechaDecision: x.fechaDecision,
@@ -949,7 +959,38 @@ export const ComunicacionAuditoriaModule: React.FC<{
   // NOTA: las acciones `aceptarHallazgo` y `presentarControversia` son del AUDITADO
   // y se invocan desde el Portal Transaccional (MisAuditoriasControlInterno.tsx).
   // El backoffice del auditor NO las expone — solo consume sus resultados (estado del
+  // Función para descargar el documento de la controversia (si se subió con la controversia,
+  // la lógica puede variar, asumiendo que el backend retorna la URL o el ID del documento en la data del 
   // hallazgo + argumentos + documento adjunto) para luego tomar la decisión.
+
+  const fixEncoding = (str: string) => {
+    if (!str) return str;
+    try {
+      return decodeURIComponent(escape(str));
+    } catch (e) {
+      return str;
+    }
+  };
+
+  const handleDescargarDocumentoControversia = async (url: string, nombre: string) => {
+    try {
+      toast.loading('Descargando documento...', { id: 'descarga-doc' });
+      const safeUrl = encodeURI(url);
+      const blob = await controlInternoService.downloadDocumento(safeUrl);
+      const windowUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = windowUrl;
+      a.download = fixEncoding(nombre) || 'Documento_Controversia';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(windowUrl);
+      toast.success('Documento descargado con éxito', { id: 'descarga-doc' });
+    } catch (error) {
+      console.error('Error descargando documento:', error);
+      toast.error('No se pudo descargar el documento', { id: 'descarga-doc' });
+    }
+  };
 
   const handleDecisionAuditor = async (hallazgoId: string, tipoDecision: 'ratificado' | 'modificado' | 'retirado' | 'devolver', fundamentacion: string) => {
     if (!fundamentacion?.trim()) {
@@ -1011,6 +1052,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
   };
 
   const handleFinalizarComunicacion = useCallback(async () => {
+    if (auditoriaFinalizada) {
+      return;
+    }
+
     if (!puedeAvanzar) {
       toast.error('Debe completar todas las secciones antes de finalizar');
       return;
@@ -1032,14 +1077,15 @@ export const ComunicacionAuditoriaModule: React.FC<{
       setSeccionActual(5);
       onComunicacionCompletada?.();
     }
-  }, [puedeAvanzar, useAPI, id, onComunicacionCompletada]);
+  }, [auditoriaFinalizada, puedeAvanzar, useAPI, id, onComunicacionCompletada]);
 
   // Autoguardar el avance a Seguimiento cuando se cumplan las condiciones (Plan creado y finalizado)
   useEffect(() => {
+    if (auditoriaFinalizada) return;
     if (puedeAvanzar && !enSeguimiento && !pasamosASeguimiento) {
       handleFinalizarComunicacion();
     }
-  }, [puedeAvanzar, enSeguimiento, pasamosASeguimiento, handleFinalizarComunicacion]);
+  }, [auditoriaFinalizada, puedeAvanzar, enSeguimiento, pasamosASeguimiento, handleFinalizarComunicacion]);
 
   // ====================================
   // RENDER
@@ -1432,7 +1478,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
         </div>
 
         {/* BOTÓN FINALIZAR - solo cuando aún no está en Seguimiento y no es vista solo Seguimiento */}
-        {!enSeguimiento && !soloSeguimiento && (
+        {!auditoriaFinalizada && !enSeguimiento && !soloSeguimiento && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1770,6 +1816,35 @@ const SeccionGestionHallazgos: React.FC<{
   const enControversia = hallazgos.filter(h => h.estado === 'en-controversia');
   const conDecision = hallazgos.filter(h => ['ratificado', 'modificado', 'retirado'].includes(h.estado || ''));
 
+  const fixEncoding = (str: string) => {
+    if (!str) return str;
+    try {
+      return decodeURIComponent(escape(str));
+    } catch (e) {
+      return str;
+    }
+  };
+
+  const handleDescargarDocumentoControversia = async (url: string, nombre: string) => {
+    try {
+      toast.loading('Descargando documento...', { id: 'descarga-doc' });
+      const safeUrl = encodeURI(url);
+      const blob = await controlInternoService.downloadDocumento(safeUrl);
+      const windowUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = windowUrl;
+      a.download = fixEncoding(nombre) || 'Documento_Controversia';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(windowUrl);
+      toast.success('Documento descargado con éxito', { id: 'descarga-doc' });
+    } catch (error) {
+      console.error('Error descargando documento:', error);
+      toast.error('No se pudo descargar el documento', { id: 'descarga-doc' });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <CardSIGL>
@@ -1795,7 +1870,7 @@ const SeccionGestionHallazgos: React.FC<{
         </div>
       </CardSIGL>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="space-y-6">
         {hallazgos.map((hallazgo) => {
           const estado = hallazgo.estado || 'notificado';
           const pendiente = estado === 'notificado';
@@ -1803,71 +1878,144 @@ const SeccionGestionHallazgos: React.FC<{
           const conDec = ['ratificado', 'modificado', 'retirado'].includes(estado);
 
           return (
-            <CardSIGL key={hallazgo.id}>
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-3 gap-2">
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm font-medium text-gray-500">{hallazgo.codigo || hallazgo.id}</span>
-                    <h4 className="font-semibold text-gray-900 mt-1 truncate" title={hallazgo.titulo || hallazgo.descripcion}>{hallazgo.titulo || hallazgo.descripcion?.substring(0, 60)}</h4>
+            <CardSIGL key={hallazgo.id} className="overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <div className="bg-white p-5 lg:p-6 border-b border-gray-100">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-5">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-3 py-1 rounded-md bg-gray-100 text-gray-700 font-bold text-xs tracking-widest uppercase border border-gray-200 shadow-sm">
+                        {hallazgo.codigo || hallazgo.id}
+                      </span>
+                    </div>
+                    <h4 className="text-lg lg:text-xl font-bold text-gray-900 leading-tight">
+                      {hallazgo.titulo || (hallazgo.descripcion ? hallazgo.descripcion.substring(0, 90) + '...' : 'Hallazgo sin título')}
+                    </h4>
                   </div>
                   <BadgeSIGL variant={
                     conDec ? (estado === 'retirado' ? 'success' : estado === 'ratificado' ? 'danger' : 'info') :
                     enControv ? 'warning' : pendiente ? 'default' : 'success'
-                  } className="flex-shrink-0">
+                  } className="flex-shrink-0 text-sm px-4 py-1.5 shadow-sm font-semibold rounded-full">
                     {estado === 'notificado' ? 'Pendiente respuesta' : estado.replace('-', ' ')}
                   </BadgeSIGL>
                 </div>
-                <p className="text-sm text-gray-600 mb-2 line-clamp-2" title={hallazgo.descripcion}>{hallazgo.descripcion}</p>
-                {hallazgo.criterioIncumplido && (
-                  <p className="text-xs text-gray-500 truncate" title={hallazgo.criterioIncumplido}>Criterio: {hallazgo.criterioIncumplido}</p>
-                )}
 
+                {/* Content */}
+                <div className="space-y-4">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed shadow-inner">
+                    {hallazgo.descripcion}
+                  </div>
+                  
+                  {hallazgo.criterioIncumplido && (
+                    <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50/50 border border-blue-100 text-sm text-gray-700">
+                      <div className="p-1 bg-blue-100 rounded text-blue-600 shrink-0">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      </div>
+                      <p className="mt-0.5"><span className="font-bold text-gray-900">Criterio:</span> {hallazgo.criterioIncumplido}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Status & History Section */}
+              <div className="bg-gray-50/80 p-5 lg:p-6">
                 {pendiente && (
-                  <div className="mt-4 p-3 rounded border border-amber-200 bg-amber-50 flex items-start gap-2">
-                    <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-amber-900 leading-snug">
-                      <span className="font-medium">Esperando respuesta del área auditada.</span>
-                      {' '}Tiene 5 días hábiles desde la notificación para aceptar el hallazgo o
-                      presentar controversia con argumentos y documento adjunto desde su Portal Transaccional.
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-xl border border-amber-200 bg-amber-50 shadow-sm">
+                    <div className="p-3 bg-amber-100 rounded-full shrink-0 shadow-inner">
+                      <Clock className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <div className="text-sm text-amber-900 flex-1">
+                      <span className="font-bold text-base block mb-1">Esperando respuesta del área auditada</span>
+                      Tiene <span className="font-semibold">5 días hábiles</span> desde la notificación para aceptar el hallazgo o presentar controversia con argumentos y documento adjunto desde su Portal Transaccional.
                     </div>
                   </div>
                 )}
 
-                {enControv && !conDec && (
-                  <div className="mt-4">
-                    {(hallazgo.observacionesControversia || hallazgo.argumentosControversia) && (
-                      <div className="bg-amber-50 border border-amber-200 rounded p-3 mb-3">
-                        <p className="text-sm font-medium text-amber-800">Historial de la controversia:</p>
-                        <p className="text-sm text-amber-900 whitespace-pre-wrap">{hallazgo.observacionesControversia || hallazgo.argumentosControversia}</p>
-                        {hallazgo.documentoControversiaNombre && (
-                          <p className="text-xs text-amber-700 mt-1">Doc: {hallazgo.documentoControversiaNombre}</p>
-                        )}
-                      </div>
-                    )}
+                {(hallazgo.observacionesControversia || hallazgo.argumentosControversia || hallazgo.documentoControversiaNombre) && (
+                  <div className={`bg-white border rounded-xl p-5 shadow-sm ${pendiente ? 'mt-4 border-gray-200' : 'border-amber-200'}`}>
+                    <h5 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2 border-b pb-3">
+                      <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      Historial de la controversia
+                    </h5>
+                    
+                    <div className="space-y-4">
+                      {/* {hallazgo.argumentosControversia && (
+                        <div className="relative pl-4 border-l-2 border-amber-300">
+                          <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Argumentos del área auditada</span>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{hallazgo.argumentosControversia}</p>
+                        </div>
+                      )} */}
+                      {hallazgo.observacionesControversia && (
+                        <div className="relative pl-4 border-l-2 border-blue-300">
+                          {/* <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block mb-1">Observaciones del auditor (Devolución)</span> */}
+                          <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-1">Observaciones</span>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{hallazgo.observacionesControversia}</p>
+                        </div>
+                      )}
+                      {hallazgo.documentoControversiaNombre && (
+                        <div className="pt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-green-50 shadow-sm"
+                            onClick={() => {
+                              if (hallazgo.documentoControversiaUrl) {
+                                handleDescargarDocumentoControversia(hallazgo.documentoControversiaUrl, fixEncoding(hallazgo.documentoControversiaNombre) || 'documento');
+                              } else {
+                                toast.error('El enlace del documento no está disponible.');
+                              }
+                            }}
+                          >
+                            <Download className="w-4 h-4 mr-2 text-gray-500" />
+                            <span className="truncate max-w-[200px] sm:max-w-xs">{fixEncoding(hallazgo.documentoControversiaNombre)}</span>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {enControv && (
+                  <div className="mt-5">
                     {hallazgo.controversiaTurno === 'auditado' ? (
-                      <div className="p-3 rounded border border-blue-200 bg-blue-50 flex items-start gap-2">
-                        <Clock className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm text-blue-900 leading-snug">
-                          <span className="font-medium">Esperando respuesta del área auditada (devolución con observaciones).</span>
+                      <div className="flex items-center gap-3 p-4 rounded-xl border border-blue-200 bg-blue-50 shadow-sm">
+                        <div className="p-2 bg-blue-100 rounded-full shrink-0">
+                          <Clock className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div className="text-sm text-blue-900">
+                          <span className="font-bold">Esperando respuesta del área auditada</span> (devolución con observaciones).
                         </div>
                       </div>
                     ) : (
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onDecisionAuditor(hallazgo.id)} disabled={loading}>
-                        Decisión del auditor
-                      </Button>
+                      <div className="flex justify-end">
+                        <Button className="bg-green-600 hover:bg-green-700 text-white shadow-md font-medium px-6" onClick={() => onDecisionAuditor(hallazgo.id)} disabled={loading}>
+                          Tomar Decisión sobre Controversia
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}
 
                 {conDec && hallazgo.fundamentacionTecnica && (
-                  <div className={`mt-4 p-3 rounded border ${
-                    estado === 'ratificado' ? 'bg-red-50 border-red-200' :
-                    estado === 'retirado' ? 'bg-green-50 border-green-200' : 'bg-violet-50 border-violet-200'
+                  <div className={`mt-5 p-5 rounded-xl border shadow-sm ${
+                    estado === 'ratificado' ? 'bg-red-50/50 border-red-200' :
+                    estado === 'retirado' ? 'bg-green-50/50 border-green-200' : 'bg-violet-50/50 border-violet-200'
                   }`}>
-                    <p className="text-sm font-medium">Decisión: {estado}</p>
-                    <p className="text-sm mt-1">{hallazgo.fundamentacionTecnica}</p>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`font-bold text-sm uppercase tracking-wider ${
+                        estado === 'ratificado' ? 'text-red-800' : estado === 'retirado' ? 'text-green-800' : 'text-violet-800'
+                      }`}>
+                        Decisión Final: {estado}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-800 bg-white p-4 rounded-lg border border-gray-100 shadow-sm leading-relaxed">
+                      {hallazgo.fundamentacionTecnica}
+                    </p>
                     {hallazgo.fechaDecision && (
-                      <p className="text-xs mt-1 opacity-75">{new Date(hallazgo.fechaDecision).toLocaleString()}</p>
+                      <p className="text-xs mt-3 text-gray-500 flex items-center justify-end gap-1.5 font-medium">
+                        <Clock className="w-3.5 h-3.5" />
+                        {new Date(hallazgo.fechaDecision).toLocaleString()}
+                      </p>
                     )}
                   </div>
                 )}
@@ -2177,7 +2325,7 @@ const SeccionPlanMejoramiento: React.FC<{
             <p className="text-gray-600 mb-4">
               Con los hallazgos de esta auditoría debe crear un Plan de Mejoramiento. Las <strong>acciones correctivas</strong> para cada hallazgo se formularán en el módulo de Planes.
             </p>
-            {hallazgosCount > 0 ? (
+            {/* {hallazgosCount > 0 ? (
               <Button
                 onClick={onCrearPlanMejoramiento}
                 className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
@@ -2189,7 +2337,7 @@ const SeccionPlanMejoramiento: React.FC<{
               <p className="text-amber-700 text-sm">
                 No hay hallazgos vinculados a esta auditoría. Gestione los hallazgos en la sección anterior.
               </p>
-            )}
+            )} */}
           </div>
         </CardSIGL>
       )}
@@ -3136,4 +3284,3 @@ const ModalPreviewInforme: React.FC<{
 };
 
 export default ComunicacionAuditoriaModule;
-

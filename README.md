@@ -93,7 +93,7 @@ Esta es una plataforma de gestión para la comunidad ESAP, construida con una ar
 - MFE Gestión Personas: 3104
 - MFE Auditoría: 3105
 - MFE Reportes: 3106
-- MFE Registro Académico: 3107
+- MFE Verificación de títulos: 3107
 - MFE Certificados Laborales: 3108
 - MFE Firma Electrónica: 3109
 - MFE Control Interno: 3110

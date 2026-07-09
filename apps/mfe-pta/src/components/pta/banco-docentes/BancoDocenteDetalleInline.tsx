@@ -127,11 +127,12 @@ export function BancoDocenteDetalleInline({ docente, onClose, onEdit }: Props) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['personales', 'rund']));
   const [checklist, setChecklist] = useState<any[]>([]);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
+  const docenteId = docente?.id;
 
   useEffect(() => {
-    if (docente?.id) {
+    if (docenteId) {
       setLoadingChecklist(true);
-      getRUNDDocente(docente.id)
+      getRUNDDocente(docenteId)
         .then((res) => {
           if (res.success && res.data) {
             setChecklist(Array.isArray(res.data) ? res.data : []);
@@ -140,7 +141,7 @@ export function BancoDocenteDetalleInline({ docente, onClose, onEdit }: Props) {
         .catch(() => {})
         .finally(() => setLoadingChecklist(false));
     }
-  }, [docente]);
+  }, [docenteId]);
 
   const toggleSection = useCallback((id: string) => {
     setExpandedSections(prev => {
