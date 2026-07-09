@@ -1679,18 +1679,18 @@ export class PtaService {
       if (comentarioConcertacion) {
         // 1) Restringido por permiso → siempre su(s) componente(s) asignado(s), haya
         //    editado o no (esto reemplaza al botón "Devolver a secas").
-        // 2) Sin restricción de permiso + hubo cambios de contenido → los componentes
-        //    que realmente cambiaron.
-        // 3) Sin restricción de permiso + SIN cambios de contenido → el componente de
-        //    la sección que el revisor tenía abierta al guardar (guardar sin editar
-        //    también debe devolver algo, no quedarse sin efecto).
-        const componenteActivo = coalesceString(input?._concertacion_componente_activo);
+        // 2) Sin restricción de permiso → la selección explícita que hizo el admin en
+        //    el formulario (checkboxes de componente), unida a los que sí cambiaron de
+        //    contenido. Antes se adivinaba por la pestaña que tenía abierta, lo que
+        //    podía fallar en silencio (guardaba, pero no devolvía nada) si no coincidía
+        //    con lo que realmente quería devolver.
+        const componentesSeleccionados = Array.isArray(input?._concertacion_componentes)
+          ? input._concertacion_componentes.map((k: any) => String(k)).filter((k: string) => COMPONENT_APPROVAL_KEY_SET.has(k))
+          : [];
         const componentesModificados = this.detectComponentesModificados(datosAnterioresSave, input);
         const componentesCambiados = allowedComponentKeys.length > 0
           ? allowedComponentKeys
-          : componentesModificados.length > 0
-            ? componentesModificados
-            : (componenteActivo && COMPONENT_APPROVAL_KEY_SET.has(componenteActivo) ? [componenteActivo] : []);
+          : Array.from(new Set([...componentesSeleccionados, ...componentesModificados]));
         if (componentesCambiados.length > 0) {
           const devolucionResult = await this.registrarDevolucionPorConcertacion(
             saved.id,

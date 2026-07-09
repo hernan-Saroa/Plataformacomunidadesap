@@ -530,6 +530,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // afectados — el docente debe ver qué se devolvió y por qué, igual que en el flujo de
   // devolución por componente.
   const [comentarioConcertacion, setComentarioConcertacion] = useState('');
+  // Selección explícita del/los componente(s) a devolver cuando el revisor NO tiene
+  // permiso restringido (aprueba todo / sin restricción): evita adivinar por la pestaña
+  // abierta, que podía no coincidir con lo que realmente se quería devolver.
+  const [componentesSeleccionadosDevolver, setComponentesSeleccionadosDevolver] = useState<string[]>([]);
   // Respuesta obligatoria del docente al reenviar un componente devuelto: por qué lo
   // reenvía / qué corrigió. El revisor la ve junto a su comentario original al volver
   // a concertar/aprobar ese componente.
@@ -2049,26 +2053,29 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     // "Concertar": editar y guardar como revisor/admin equivale a devolver al docente
-    // el/los componente(s) modificados — se exige el comentario que verá el docente.
+    // el/los componente(s) seleccionados — se exige el comentario que verá el docente.
     if (isAdminEdit && currentPtaId && !comentarioConcertacion.trim()) {
       toast.error('Debe ingresar un comentario para el docente antes de guardar.');
+      setSaving(false);
+      return;
+    }
+    // Sin restricción de permiso y con más de un componente disponible: exige elegir
+    // explícitamente cuáles se devuelven (no se adivina por la pestaña abierta).
+    if (isAdminEdit && currentPtaId && !isAdminComponentRestricted && adminEditableComponentKeysNow.length > 1
+      && componentesSeleccionadosDevolver.length === 0) {
+      toast.error('Selecciona qué componente(s) estás devolviendo.');
       setSaving(false);
       return;
     }
 
     const isReenvio = originalEstado === 'Devuelto' && enviar;
 
-    // Sección/componente que el revisor tiene abierto al guardar. Es el respaldo que
-    // usa el backend cuando "Concertar" se guarda SIN cambios de contenido y el revisor
-    // no está restringido a un componente por permiso: se devuelve el componente que
-    // estaba viendo, en vez de no hacer nada.
-    const seccionActivaComponente = isAdminEdit
-      ? (activeSection === 'docencia' ? 'academica'
-        : activeSection === 'investigacion' ? 'investigacion'
-        : activeSection === 'complementarias' ? 'complementarias'
-        : activeSection === 'extension' ? componentKeyForExtensionSubsection(extSubseccion)
-        : undefined)
-      : undefined;
+    // Componente(s) a devolver cuando el revisor no tiene permiso restringido: la
+    // selección explícita del admin, o el único componente disponible si no hay
+    // ambigüedad.
+    const componentesConcertacionSeleccionados = isAdminEdit && !isAdminComponentRestricted
+      ? (adminEditableComponentKeysNow.length <= 1 ? adminEditableComponentKeysNow : componentesSeleccionadosDevolver)
+      : [];
 
     const payload = {
       id: currentPtaId || undefined,
@@ -2087,7 +2094,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       _comentario_concertacion: isAdminEdit ? (comentarioConcertacion.trim() || undefined) : undefined,
       _concertacion_actor_id: isAdminEdit ? concertacionActorId : undefined,
       _concertacion_actor_nombre: isAdminEdit ? concertacionActorNombre : undefined,
-      _concertacion_componente_activo: seccionActivaComponente,
+      _concertacion_componentes: componentesConcertacionSeleccionados,
       asignaturas: asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== ''),
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
@@ -2475,15 +2482,45 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       </div>
 
       {/* Comentario de Concertación — editar y guardar como revisor/admin equivale a
-          devolver al docente el/los componente(s) que se modifiquen: este comentario
-          es el que el docente verá en el banner de devolución de su PTA. */}
+          devolver al docente el/los componente(s) seleccionados, con este comentario.
+          Si el revisor tiene permiso restringido a ciertos componentes, se devuelven
+          esos automáticamente. Si no (aprueba todo / sin restricción), debe elegir
+          explícitamente cuáles — evita adivinar por la pestaña que tenga abierta, que
+          podía fallar en silencio si no coincidía con lo que realmente quería devolver. */}
       {isAdminEdit && ptaId && (
         <div className="mb-5 p-4 rounded-xl bg-blue-50 border border-blue-200">
+          {!isAdminComponentRestricted && adminEditableComponentKeysNow.length > 1 && (
+            <div className="mb-3">
+              <label className="block text-[13px] font-bold text-blue-900 mb-1.5">
+                ¿Qué componente(s) estás devolviendo? (obligatorio)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {adminEditableComponentKeysNow.map(key => {
+                  const checked = componentesSeleccionadosDevolver.includes(key);
+                  return (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-semibold cursor-pointer ${checked ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-blue-300 text-blue-800'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-blue-600"
+                        checked={checked}
+                        onChange={e => setComponentesSeleccionadosDevolver(prev =>
+                          e.target.checked ? [...prev, key] : prev.filter(k => k !== key))}
+                      />
+                      {componentLabel(key)}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <label className="block text-[13px] font-bold text-blue-900 mb-1.5">
             Comentario para el docente (obligatorio)
           </label>
           <p className="text-[12px] text-blue-700 mb-2">
-            Al guardar, los componentes que edites se devolverán al docente con este comentario para que los corrija y reenvíe.
+            Al guardar, el/los componente(s) {isAdminComponentRestricted || adminEditableComponentKeysNow.length <= 1 ? 'que edites' : 'seleccionados arriba'} se devolverán al docente con este comentario para que los corrija y reenvíe.
           </p>
           <textarea
             value={comentarioConcertacion}
