@@ -23,6 +23,23 @@ const BROKEN_SPANISH_REPAIRS: Array<[RegExp, string]> = [
   [/\bG[eé]nero\b/gi, 'Género'],
 ];
 
+const SIMPLE_MOJIBAKE_REPAIRS: Array<[RegExp, string]> = [
+  [/ÃƒÂ±/g, '\u00f1'],
+  [/Ã±/g, '\u00f1'],
+  [/ÃƒÂ¡/g, '\u00e1'],
+  [/Ã¡/g, '\u00e1'],
+  [/ÃƒÂ©/g, '\u00e9'],
+  [/Ã©/g, '\u00e9'],
+  [/ÃƒÂ­/g, '\u00ed'],
+  [/Ã­/g, '\u00ed'],
+  [/ÃƒÂ³/g, '\u00f3'],
+  [/Ã³/g, '\u00f3'],
+  [/ÃƒÂº/g, '\u00fa'],
+  [/Ãº/g, '\u00fa'],
+  [/ÃƒÂ‘/g, '\u00d1'],
+  [/Ã‘/g, '\u00d1'],
+];
+
 function looksLikeMojibake(value: string): boolean {
   return MOJIBAKE_PATTERN.test(value);
 }
@@ -36,6 +53,9 @@ function preserveCase(template: string, source: string): string {
 
 function repairKnownBrokenSpanish(value: string): string {
   let result = value;
+  for (const [pattern, replacement] of SIMPLE_MOJIBAKE_REPAIRS) {
+    result = result.replace(pattern, replacement);
+  }
   for (const [pattern, replacement] of BROKEN_SPANISH_REPAIRS) {
     result = result.replace(pattern, (match) => preserveCase(replacement, match));
   }

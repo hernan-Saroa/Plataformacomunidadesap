@@ -81,6 +81,12 @@ function parseMaybeDate(value: any): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function formatDateOnly(value: any): string | null {
+  const date = parseMaybeDate(value);
+  if (!date) return null;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
 function splitFullName(fullName: string | null) {
   const tokens = (fullName || '').split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return { primer_nombre: null, segundo_nombre: null, primer_apellido: null, segundo_apellido: null };
@@ -201,22 +207,21 @@ function computeEdad(fechaNacimiento: any, edadFallback?: any): number | null {
   const fecha = parseMaybeDate(fechaNacimiento);
   if (!fecha) return parseMaybeInt(edadFallback);
   const today = new Date();
-  let age = today.getFullYear() - fecha.getFullYear();
-  const m = today.getMonth() - fecha.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < fecha.getDate())) age -= 1;
+  let age = today.getUTCFullYear() - fecha.getUTCFullYear();
+  const m = today.getUTCMonth() - fecha.getUTCMonth();
+  if (m < 0 || (m === 0 && today.getUTCDate() < fecha.getUTCDate())) age -= 1;
   return age >= 0 ? age : parseMaybeInt(edadFallback);
 }
 
 function computeRangoEdad(edad: any, fallback?: any): string | null {
   const v = parseMaybeInt(edad);
   if (v === null) return toCleanString(fallback);
-  if (v <= 35) return 'Menor de 35 aÃ±os';
-  if (v <= 45) return 'De 36 a 45 aÃ±os';
-  if (v <= 55) return 'De 46 a 55 aÃ±os';
-  if (v <= 65) return 'De 56 a 65 aÃ±os';
-  return 'Mayor de 65 aÃ±os';
+  if (v <= 35) return 'Menor de 35 a\u00f1os';
+  if (v <= 45) return 'De 36 a 45 a\u00f1os';
+  if (v <= 55) return 'De 46 a 55 a\u00f1os';
+  if (v <= 65) return 'De 56 a 65 a\u00f1os';
+  return 'Mayor de 65 a\u00f1os';
 }
-
 export function categorizarSituacion(texto: string | null): string {
   const t = (texto || '').toLowerCase().trim();
   if (!t || t === 'no aplica' || t === 'servicio activo') return 'Servicio Activo';
@@ -590,7 +595,7 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
     puntaje_salarial: docente.puntajeSalarial ?? null,
     genero: persona?.genero ?? null,
     sexo_biologico: sexoBiologico,
-    nacimiento: fechaNacimiento,
+    nacimiento: formatDateOnly(fechaNacimiento),
     edad,
     rango_edad: rangoEdad,
     horas_programables: docente.horasAsignables ?? 0,
@@ -672,13 +677,13 @@ function buildAuthBancoDocenteResponse(row: any) {
     puntaje_salarial: row.puntaje_salarial ?? null,
     genero: row.genero ?? null,
     sexo_biologico: sexoBiologico,
-    nacimiento: fechaNacimiento,
+    nacimiento: formatDateOnly(fechaNacimiento),
     edad,
     rango_edad: rangoEdad,
     horas_programables: row.horas_programables ?? 0,
-    estado: row.estado || (row.activo ? 'ACTIVO' : 'INACTIVO'),
+    estado: row.estado_efectivo || row.estado || (row.activo ? 'ACTIVO' : 'INACTIVO'),
     email,
-    activo: row.activo,
+    activo: row.activo_efectivo ?? row.activo,
     roles: row.roles || ['DOCENTE'],
     period_carga: row.periodo_carga || row.periodoCarga || null,
     periodoCarga: row.periodo_carga || row.periodoCarga || null,
@@ -865,6 +870,15 @@ export class BancoDocentesService implements OnModuleInit {
           u.id_user AS usuario_id,
           u.username,
           u.is_active AS activo,
+          CASE
+            WHEN UPPER(COALESCE(NULLIF(TRIM(d.estado), ''), CASE WHEN COALESCE(u.is_active, true) THEN 'ACTIVO' ELSE 'INACTIVO' END)) IN ('INACTIVO', 'RETIRADO', 'RETIRADO_DOCENTE', 'TERMINADO', 'DESVINCULADO') THEN false
+            WHEN UPPER(COALESCE(NULLIF(TRIM(d.estado), ''), CASE WHEN COALESCE(u.is_active, true) THEN 'ACTIVO' ELSE 'INACTIVO' END)) = 'ACTIVO' THEN true
+            ELSE COALESCE(u.is_active, true)
+          END AS activo_efectivo,
+          CASE
+            WHEN UPPER(COALESCE(NULLIF(TRIM(d.estado), ''), CASE WHEN COALESCE(u.is_active, true) THEN 'ACTIVO' ELSE 'INACTIVO' END)) IN ('INACTIVO', 'RETIRADO', 'RETIRADO_DOCENTE', 'TERMINADO', 'DESVINCULADO') THEN 'INACTIVO'
+            ELSE 'ACTIVO'
+          END AS estado_efectivo,
           u.created_at,
           u.updated_at,
           p.id_person AS persona_id,
@@ -970,8 +984,11 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     if (filters.estado) {
-      params.push(String(filters.estado).toUpperCase() === 'ACTIVO');
-      conditions.push(`activo = $${params.length}`);
+      const estado = String(filters.estado).trim().toUpperCase();
+      if (estado === 'ACTIVO' || estado === 'INACTIVO') {
+        params.push(estado);
+        conditions.push(`estado_efectivo = $${params.length}`);
+      }
     }
 
     if (filters.periodoCarga) {
@@ -1745,7 +1762,7 @@ export class BancoDocentesService implements OnModuleInit {
       ${baseSql}
       SELECT
         COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE activo = true)::int AS activos,
+        COUNT(*) FILTER (WHERE activo_efectivo = true)::int AS activos,
         COALESCE(SUM(COALESCE(horas_programables, 0)), 0)::int AS total_horas,
         COALESCE(ROUND(AVG(COALESCE(horas_programables, 0))::numeric, 1), 0)::float AS promedio_horas
       FROM auth_docentes
@@ -2910,7 +2927,7 @@ export class BancoDocentesService implements OnModuleInit {
             { campo: 'NOMBRE_COMPLETO', valor: p.nom_largo || null, editable: false },
             { campo: 'DOCUMENTO_IDENTIDAD', valor: p.num_identificacion || null, editable: false },
             { campo: 'TIPO_DOCUMENTO', valor: p.tip_identificacion || null, editable: false },
-            { campo: 'FECHA_NACIMIENTO', valor: p.fec_nacimiento || null, editable: false },
+            { campo: 'FECHA_NACIMIENTO', valor: formatDateOnly(p.fec_nacimiento), editable: false },
             { campo: 'GENERO', valor: p.gen_tercero || null, editable: false },
             { campo: 'SEXO_BIOLOGICO', valor: sexoBiologico, editable: false },
             { campo: 'EDAD', valor: edad, editable: false },

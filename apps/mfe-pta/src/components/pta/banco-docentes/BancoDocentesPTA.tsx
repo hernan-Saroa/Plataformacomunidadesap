@@ -30,6 +30,13 @@ const BADGE_STYLES: Record<string, { background: string; color: string }> = {
   INACTIVO: { background: '#fee2e2', color: '#dc2626' },
 };
 
+function getDocenteEstadoKey(docente: any): 'ACTIVO' | 'INACTIVO' {
+  const estado = String(docente?.estado || '').trim().toUpperCase();
+  if (['INACTIVO', 'RETIRADO', 'RETIRADO_DOCENTE', 'TERMINADO', 'DESVINCULADO'].includes(estado)) return 'INACTIVO';
+  if (estado === 'ACTIVO') return 'ACTIVO';
+  return docente?.activo === false ? 'INACTIVO' : 'ACTIVO';
+}
+
 function Badge({ label, code }: { label: string; code: string }) {
   const { background, color } = BADGE_STYLES[code] || { background: '#f1f5f9', color: '#475569' };
   return (
@@ -220,8 +227,17 @@ export function BancoDocentesPTA() {
         getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
       ]);
       if (res.success && res.data) {
-        setDocentes(res.data.items || res.data.data || []);
-        setTotal(res.data.total || 0);
+        const apiItems = res.data.items || res.data.data || [];
+        const normalizedItems = apiItems.map((docente: any) => ({
+          ...docente,
+          estado: getDocenteEstadoKey(docente),
+          activo: getDocenteEstadoKey(docente) === 'ACTIVO',
+        }));
+        const visibleItems = filterEstado
+          ? normalizedItems.filter((docente: any) => getDocenteEstadoKey(docente) === filterEstado)
+          : normalizedItems;
+        setDocentes(visibleItems);
+        setTotal(res.data.total || visibleItems.length);
         setPages(res.data.pages || 1);
       }
       if (listStatsRes.success && listStatsRes.data) setListStats(listStatsRes.data);
@@ -503,7 +519,7 @@ export function BancoDocentesPTA() {
               <option value="HC">Hora Cátedra</option>
             </select>
             <select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#0f172a', background: '#f8fafc' }}>
-              <option value="">Todas las categorías</option>
+              <option value="">Todos los estados</option>
               <option value="ACTIVO">Activo</option>
               <option value="INACTIVO">Inactivo</option>
             </select>
@@ -683,7 +699,7 @@ export function BancoDocentesPTA() {
                         {/* ── Celda ESTADO — Badge con icono estilo Personas ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle' }}>
                           {(() => {
-                            const isActive = (d.estado || '').toUpperCase() === 'ACTIVO';
+                            const isActive = getDocenteEstadoKey(d) === 'ACTIVO';
                             return (
                               <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -748,16 +764,16 @@ export function BancoDocentesPTA() {
                             {hasPermission('banco-docentes.rund.manage') && (
                               <button
                                 onClick={() => handleToggleEstado(d.docente_id || d.id)}
-                                title={d.estado === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
+                                title={getDocenteEstadoKey(d) === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
                                 style={{
                                   width: 32, height: 32, borderRadius: 8,
-                                  border: `1px solid ${d.estado === 'ACTIVO' ? '#FCA5A5' : '#BBF7D0'}`,
-                                  background: d.estado === 'ACTIVO' ? '#FEF2F2' : '#F0FDF4',
+                                  border: `1px solid ${getDocenteEstadoKey(d) === 'ACTIVO' ? '#FCA5A5' : '#BBF7D0'}`,
+                                  background: getDocenteEstadoKey(d) === 'ACTIVO' ? '#FEF2F2' : '#F0FDF4',
                                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   transition: 'all 0.15s',
                                 }}
                               >
-                                {d.estado === 'ACTIVO'
+                                {getDocenteEstadoKey(d) === 'ACTIVO'
                                   ? <ToggleRight size={14} color="#DC2626" />
                                   : <ToggleLeft size={14} color="#059669" />
                                 }
