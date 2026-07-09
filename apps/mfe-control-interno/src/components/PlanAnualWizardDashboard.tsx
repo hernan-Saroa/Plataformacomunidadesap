@@ -1702,6 +1702,7 @@ function ResponsableTareaPicker({
 
 interface WizardCreacionProps {
   planAEditar?: PlanAnual;
+  pasoInicial?: number;
   /** Mismo asistente que edición, sin persistir cambios (solo consulta). */
   soloLectura?: boolean;
   /** Permiso approve/activate/super — muestra acceso rápido a la pestaña Aprobación del dashboard. */
@@ -1735,7 +1736,7 @@ interface WizardCreacionProps {
   onCargarPlanBorrador?: (plan: PlanAnual) => void | Promise<void>;
 }
 
-export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprobacion = false, onIrAAprobacion, onCancelar, onCrear, onGuardarBorrador, onTerminado, planesExistentes = [], onCargarPlanBorrador }: WizardCreacionProps) {
+export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, puedeIrAAprobacion = false, onIrAAprobacion, onCancelar, onCrear, onGuardarBorrador, onTerminado, planesExistentes = [], onCargarPlanBorrador }: WizardCreacionProps) {
   // x Cargar borrador de localStorage
   const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
   const draftStr = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
@@ -1765,7 +1766,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       }))
     }));
 
-  const [paso, setPaso] = useState(draft?.paso || 1);
+  const [paso, setPaso] = useState(pasoInicial || draft?.paso || 1);
   const [lastSaved, setLastSaved] = useState<Date | null>(draft ? new Date() : null);
   const [rolAEliminar, setRolAEliminar] = useState<RolConfig | null>(null);
   /** Indica si el último guardado llegó al backend (solo «Nuevo plan») */
@@ -2751,11 +2752,34 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     return false;
   };
 
-  const avanzarPaso = () => {
+  const avanzarPaso = async () => {
     if (!enModoSoloConsulta) {
       if (paso === 1 && !validarPaso1()) return;
       if (paso === 2 && !validarPaso2()) return;
     }
+
+    if (paso === 1 && !planAEditar && onGuardarBorrador) {
+      setIsSubmitting(true);
+      try {
+        const ok = await onGuardarBorrador(
+          vigencia,
+          jefeSeleccionado!,
+          rolesConfig,
+          fechaInicio,
+          fechaFin,
+          comiteAprobacion,
+          ordenAprobacion,
+          { silencioso: true }
+        );
+        if (!ok) return; // Si falla la creación, no avanzamos de paso
+      } catch (e) {
+        console.error('Error al crear plan al avanzar paso:', e);
+        return;
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
     setPaso(paso + 1);
   };
 
@@ -3294,17 +3318,28 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                   type="button"
                   onClick={avanzarPaso} 
                   disabled={
+                    isSubmitting ||
                     (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || vigenciaEstaBloqueada(vigencia) || (!!planBorradorVigenciaActual && !planAEditar) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
                     (paso === 2 && rolesConfig.some(r => r.activo !== false && (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
                   }
                   className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
+                    isSubmitting ||
                     (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || vigenciaEstaBloqueada(vigencia) || (!!planBorradorVigenciaActual && !planAEditar) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
                     (paso === 2 && rolesConfig.some(r => r.activo !== false && (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                       : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
                   }`}
                 >
-                  Siguiente <ArrowRight className="w-4 h-4" />
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      Creando...
+                    </>
+                  ) : (
+                    <>
+                      Siguiente <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               ) : (
                 <button 

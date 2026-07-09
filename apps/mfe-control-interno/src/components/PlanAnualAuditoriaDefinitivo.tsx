@@ -1443,6 +1443,36 @@ function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[
   });
 }
 
+function normalizarFechaTarea(fecha: unknown): string {
+  if (fecha == null || fecha === '') return '';
+  let year = 2020;
+  let month = 1;
+  let day = 1;
+  if (typeof fecha === 'string') {
+    const trimmed = fecha.trim();
+    const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+      year = parseInt(iso[1], 10);
+      month = parseInt(iso[2], 10);
+      day = parseInt(iso[3], 10);
+    } else {
+      const dt = new Date(trimmed.includes('T') ? trimmed : `${trimmed.slice(0, 10)}T12:00:00`);
+      if (Number.isNaN(dt.getTime())) return '';
+      year = dt.getFullYear();
+      month = dt.getMonth() + 1;
+      day = dt.getDate();
+    }
+  } else if (fecha instanceof Date) {
+    if (Number.isNaN(fecha.getTime())) return '';
+    year = fecha.getFullYear();
+    month = fecha.getMonth() + 1;
+    day = fecha.getDate();
+  } else {
+    return '';
+  }
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 /** Tareas con puntoControlId alineado a los cortes de la actividad (BD o por índice). */
 function mapTareasSeguimientoDesdeBackend(
   tareasRaw: unknown,
@@ -1457,15 +1487,15 @@ function mapTareasSeguimientoDesdeBackend(
     responsables: t.responsables || [],
     fechaLimite: (() => {
       const raw = t.fechaLimite ?? t.fecha_limite ?? t.fechaEntrega ?? t.fecha_entrega;
-      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+      return raw != null && raw !== '' ? normalizarFechaTarea(raw) : undefined;
     })(),
     fechaEntrega: (() => {
       const raw = t.fechaEntrega ?? t.fecha_entrega ?? t.fechaLimite ?? t.fecha_limite;
-      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+      return raw != null && raw !== '' ? normalizarFechaTarea(raw) : undefined;
     })(),
     fechaCompletada: (() => {
       const raw = t.fechaCompletada ?? t.fecha_completada;
-      return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigencia) : undefined;
+      return raw != null && raw !== '' ? normalizarFechaTarea(raw) : undefined;
     })(),
     completadaPor: t.completadaPor || t.completada_por || undefined,
     requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
@@ -1489,7 +1519,7 @@ function obtenerFirmaComparacionActividad(act: any) {
 
   const tareas = (Array.isArray(act.tareasSeguimiento || act.tareas_seguimiento) ? (act.tareasSeguimiento || act.tareas_seguimiento) : [])
     .map((t: any) => {
-      const fl = t.fechaLimite ?? t.fechaEntrega ?? t.fecha_limite ?? t.fecha_entrega;
+      const fl = t.fechaEntrega ?? t.fechaLimite ?? t.fecha_entrega ?? t.fecha_limite;
       const respIds = (Array.isArray(t.responsables) ? t.responsables : [])
         .map((r: any) => `${r.id || r.idPerson || r.idTercero || ''}-${r.nombre || ''}`.trim().toLowerCase())
         .filter(Boolean)
@@ -1556,6 +1586,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     puedeAprobarPlan || puedeActivarPlan || puedeEditarPlan || esSuperUsuario;
   const [wizardSoloLectura, setWizardSoloLectura] = useState(false);
   const [dashboardSeccionForzada, setDashboardSeccionForzada] = useState<'gestion' | 'aprobar' | null>(null);
+  const [wizardPasoInicial, setWizardPasoInicial] = useState<number | undefined>(undefined);
   const limpiarSeccionForzadaDashboard = useCallback(() => setDashboardSeccionForzada(null), []);
 
   useEffect(() => {
@@ -2286,11 +2317,19 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     });
   };
 
-  const abrirWizardConPlan = async (plan: PlanAnual, soloLectura: boolean) => {
+  const abrirWizardConPlan = async (plan: PlanAnual, soloLectura: boolean, pasoInicial?: number) => {
     setDashboardSeccionForzada(null);
     setWizardSoloLectura(soloLectura);
+    setWizardPasoInicial(pasoInicial);
     try {
-      const resp = await planAnualApi.getById(plan.id);
+      let resp = await planAnualApi.getById(plan.id);
+
+      // S& MODIFICADO: Reintentar tras una pequeña espera si el plan se acaba de crear y la base de datos laggea
+      if (!resp?.success || !resp.data) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        resp = await planAnualApi.getById(plan.id);
+      }
+
       if (!resp?.success || !resp.data) {
         toast.error('No se pudo cargar el plan completo para edición');
         setPlanAEditar(plan);
@@ -2300,10 +2339,28 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
       let planBackend: any = resp.data;
       // Fallback: algunos backends devuelven getById sin actividades anidadas.
-      const rolesGetById = Array.isArray(planBackend?.roles) ? planBackend.roles : [];
-      const sinActividades =
+      let rolesGetById = Array.isArray(planBackend?.roles) ? planBackend.roles : [];
+      let sinActividades =
         rolesGetById.length === 0 ||
         rolesGetById.every((r: any) => !Array.isArray(r?.actividades) || r.actividades.length === 0);
+
+      // S& MODIFICADO: Reintentar si el plan se cargó pero la base de datos aún no terminó de indexar las actividades insertadas
+      if (sinActividades && plan.id) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        const retryResp = await planAnualApi.getById(plan.id);
+        if (retryResp?.success && retryResp.data) {
+          const retryRoles = Array.isArray(retryResp.data.roles) ? retryResp.data.roles : [];
+          const retrySinActividades =
+            retryRoles.length === 0 ||
+            retryRoles.every((r: any) => !Array.isArray(r?.actividades) || r.actividades.length === 0);
+          if (!retrySinActividades) {
+            planBackend = retryResp.data;
+            rolesGetById = retryRoles;
+            sinActividades = false;
+          }
+        }
+      }
+
       if (sinActividades && plan.vigencia) {
         const byYear = await planAnualApi.getByYear(plan.vigencia);
         if (byYear?.success && byYear.data) {
@@ -2977,6 +3034,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 roles: [],
               } as PlanAnual,
               false,
+              2,
             );
             if (!opciones?.silencioso) {
               toast.success('Plan creado en borrador', {
@@ -3112,6 +3170,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           <WizardCreacion
             key={`wizard-sesion-${wizardSesionKey}-${planAEditar?.id ?? 'nuevo'}-${wizardSoloLectura ? 'ro' : 'rw'}`}
             planAEditar={planAEditar}
+            pasoInicial={wizardPasoInicial}
             soloLectura={wizardSoloLectura}
             puedeIrAAprobacion={wizardSoloLectura && puedeIrAAprobacion}
             onIrAAprobacion={
