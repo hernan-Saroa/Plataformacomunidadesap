@@ -142,6 +142,10 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
   ext_gobierno: 'REVISION_DOCENTE_N2',
 };
 
+// Estados que indican devolución PARCIAL (uno o más componentes devueltos, el resto
+// puede seguir aprobado) — a diferencia del estado legacy 'Devuelto' (todo el PTA).
+const REVISION_DOCENTE_STATES = new Set(Object.values(COMPONENT_REVISION_STATE));
+
 type ExtensionCatalogActivity = {
   id: string;
   nombre: string;
@@ -1537,6 +1541,7 @@ export class PtaService {
 
     let saved: PlanTrabajoAcademicoEntity;
     let estadoAnteriorSave: string | null = null;
+    let datosAnterioresSave: any = null;
 
     if (id) {
       const existing = await this.ptaRepo.findOne({ where: { id } });
@@ -1544,6 +1549,7 @@ export class PtaService {
         saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, id, version: 1 }));
       } else {
         estadoAnteriorSave = existing.estado;
+        datosAnterioresSave = existing.datosEstructurados;
         saved = await this.ptaRepo.save({ ...existing, ...patch });
       }
     } else {
@@ -1584,6 +1590,43 @@ export class PtaService {
       sistemaOrigen: isAdminEdit ? 'backoffice' : 'portal',
       mensaje: tipoAccionSave === 'CREACION' ? 'PTA creado' : tipoAccionSave === 'CAMBIO_ESTADO' ? `Estado: ${estadoAnteriorSave} → ${saved.estado}` : 'PTA guardado',
     });
+
+    // "Concertar" (edición admin sobre un PTA existente, sin cambio de estado): editar y
+    // enviar es, en la práctica, una devolución del/los componente(s) afectados al
+    // docente. Se marca cada componente modificado como 'devuelto' con el comentario
+    // del revisor, igual que en la pestaña de Aprobación, para que el docente vea qué
+    // se devolvió y por qué, y solo pueda corregir eso. Requiere comentario explícito:
+    // si no llega, se preserva el comportamiento anterior (edición silenciosa), para no
+    // afectar otros llamadores de savePTA que no envíen este campo nuevo.
+    if (isAdminEdit && id && estadoAnteriorSave !== null && estado === estadoAnteriorSave) {
+      const comentarioConcertacion = coalesceString(input?._comentario_concertacion, input?.comentario_concertacion);
+      if (comentarioConcertacion) {
+        // 1) Restringido por permiso → siempre su(s) componente(s) asignado(s), haya
+        //    editado o no (esto reemplaza al botón "Devolver a secas").
+        // 2) Sin restricción de permiso + hubo cambios de contenido → los componentes
+        //    que realmente cambiaron.
+        // 3) Sin restricción de permiso + SIN cambios de contenido → el componente de
+        //    la sección que el revisor tenía abierta al guardar (guardar sin editar
+        //    también debe devolver algo, no quedarse sin efecto).
+        const componenteActivo = coalesceString(input?._concertacion_componente_activo);
+        const componentesModificados = this.detectComponentesModificados(datosAnterioresSave, input);
+        const componentesCambiados = allowedComponentKeys.length > 0
+          ? allowedComponentKeys
+          : componentesModificados.length > 0
+            ? componentesModificados
+            : (componenteActivo && COMPONENT_APPROVAL_KEY_SET.has(componenteActivo) ? [componenteActivo] : []);
+        if (componentesCambiados.length > 0) {
+          const devolucionResult = await this.registrarDevolucionPorConcertacion(
+            saved.id,
+            componentesCambiados,
+            comentarioConcertacion,
+            coalesceString(input?._concertacion_actor_id) || undefined,
+            coalesceString(input?._concertacion_actor_nombre) || 'Revisor',
+          );
+          if (devolucionResult) saved = devolucionResult;
+        }
+      }
+    }
 
     // Consumir la solicitud aprobada que habilitó este segundo PTA: pasa a 'gestionada'
     // para que `tienePermisoEspecial` (que solo cuenta 'aprobado') se limpie y el docente
@@ -1886,8 +1929,14 @@ export class PtaService {
       (!isPendingRoleApprovalState(existing.estado) ||
         (existing.estado === 'PENDIENTE_APROBACION' && estadoFinal === 'Pendiente Jefatura'));
     if (debeInicializarAprobacionesJefatura && !parallelApprovalResult) {
+      // Reenvío tras devolución PARCIAL (solo algunos componentes devueltos): se
+      // conservan las aprobaciones ya otorgadas a otros componentes y solo se
+      // vuelven a revisar los que el revisor devolvió. Esto permite aprobar y
+      // devolver varios componentes de forma independiente sin que un reenvío
+      // obligue a re-aprobar todo el PTA de nuevo.
+      const veniaDeDevolucionParcial = REVISION_DOCENTE_STATES.has(existing.estado);
       await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
-      await this.resetComponentApprovalWorkflow(ptaId);
+      await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial);
     }
 
     const estadoAnterior = existing.estado;
@@ -2012,13 +2061,133 @@ export class PtaService {
     await this.initAprobacionesJefatura(ptaId, datosEstructurados);
   }
 
-  private async resetComponentApprovalWorkflow(ptaId: string) {
-    await this.ptaComponentApprovalRepo.delete({
-      ptaId,
-      // Incluye claves legacy (academicas_admin) para limpiar filas de PTAs no migrados.
-      componente: In([...COMPONENT_APPROVAL_KEYS, ...LEGACY_COMPONENT_APPROVAL_KEYS]),
-    } as any);
+  private async resetComponentApprovalWorkflow(ptaId: string, soloComponentesDevueltos = false) {
+    const componentKeys = [...COMPONENT_APPROVAL_KEYS, ...LEGACY_COMPONENT_APPROVAL_KEYS];
+    if (soloComponentesDevueltos) {
+      // Solo se re-revisan los componentes que estaban devueltos; los componentes
+      // ya aprobados conservan su fila (no se borran, no vuelven a pendiente).
+      const devueltos = await this.ptaComponentApprovalRepo.find({
+        where: { ptaId, componente: In(componentKeys), estado: 'devuelto' },
+      });
+      if (devueltos.length > 0) {
+        await this.ptaComponentApprovalRepo.delete({ id: In(devueltos.map(item => item.id)) } as any);
+      }
+    } else {
+      await this.ptaComponentApprovalRepo.delete({
+        ptaId,
+        // Incluye claves legacy (academicas_admin) para limpiar filas de PTAs no migrados.
+        componente: In(componentKeys),
+      } as any);
+    }
     await this.getComponentesAprobacion(ptaId);
+  }
+
+  /** Compara datosEstructurados antes/después de una edición y devuelve las claves de
+   * componente cuyo contenido cambió. Usado por "Concertar" (edición admin sin
+   * restricción de componente) para saber qué marcar como devuelto. */
+  private detectComponentesModificados(oldData: any, newData: any): string[] {
+    const old = oldData && typeof oldData === 'object' ? oldData : {};
+    const neu = newData && typeof newData === 'object' ? newData : {};
+    const eq = (a: any, b: any) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    const changed: string[] = [];
+
+    if (!eq(old.asignaturas, neu.asignaturas)) changed.push('academica');
+    if (!eq(old.investigacion_proyecto, neu.investigacion_proyecto) ||
+      !eq(old.investigacion_actividades, neu.investigacion_actividades)) {
+      changed.push('investigacion');
+    }
+
+    const extBySeccion = (data: any, secciones: string[]) =>
+      (Array.isArray(data?.extension_actividades) ? data.extension_actividades : [])
+        .filter((a: any) => secciones.includes(normalizeExtensionSectionKey(a?.seccion)));
+    const EXT_SECTIONS: Record<string, string[]> = {
+      ext_capacitacion: ['capacitacion'],
+      ext_procesos: ['seleccion'],
+      ext_fortalecimiento: ['fortalecimiento'],
+      ext_gobierno: ['alto_gobierno'],
+    };
+    for (const [key, secciones] of Object.entries(EXT_SECTIONS)) {
+      if (!eq(extBySeccion(old, secciones), extBySeccion(neu, secciones))) {
+        changed.push(key);
+      }
+    }
+
+    const oldComp = this.readComplementariasSecciones(old);
+    const newComp = this.readComplementariasSecciones(neu);
+    if (!eq(oldComp.docencia, newComp.docencia) || !eq(oldComp.aadm, newComp.aadm)) {
+      changed.push('complementarias');
+    }
+
+    return changed;
+  }
+
+  /** "Concertar" (edición admin + envío) equivale a devolver el/los componente(s)
+   * afectados al docente con el comentario del revisor: reutiliza el mismo modelo de
+   * aprobación por componente que ya usa la pestaña de Aprobación (PtaComponentApproval
+   * en estado 'devuelto'), para que el docente vea el mismo banner y quede restringido
+   * a corregir solo eso. No repite las validaciones de permisos de aprobarComponente:
+   * la autorización de "Concertar" ya se resuelve en el guardado (isAdminEdit +
+   * _allowed_component_keys), igual que el resto de esta acción. */
+  private async registrarDevolucionPorConcertacion(
+    ptaId: string,
+    componentesCambiados: string[],
+    comentario: string,
+    actorId?: string,
+    actorNombre?: string,
+  ): Promise<PlanTrabajoAcademicoEntity | null> {
+    const existingPta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!existingPta) return null;
+
+    const ahora = new Date();
+    for (const componente of componentesCambiados) {
+      let approval = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } });
+      if (!approval) {
+        approval = this.ptaComponentApprovalRepo.create({ ptaId, componente, estado: 'pendiente' });
+      }
+      approval.estado = 'devuelto';
+      approval.aprobadorId = actorId || null;
+      approval.aprobadorNombre = actorNombre || 'Revisor (Concertación)';
+      approval.comentarios = comentario;
+      approval.fechaAprobacion = ahora;
+      await this.ptaComponentApprovalRepo.save(approval);
+    }
+
+    const estadoAnterior = existingPta.estado;
+    const hayN1 = componentesCambiados.some(c => COMPONENT_REVISION_STATE[c] === 'REVISION_DOCENTE_N1');
+    const nuevoEstadoPta = hayN1 ? 'REVISION_DOCENTE_N1' : 'REVISION_DOCENTE_N2';
+
+    existingPta.estado = nuevoEstadoPta;
+    existingPta.version = (existingPta.version || 1) + 1;
+    existingPta.motivoDevolucion = `Concertación — componente(s) devuelto(s) (${componentesCambiados.join(', ')}): ${comentario}`;
+    const saved = await this.ptaRepo.save(existingPta);
+
+    await this.historialRepo.save(this.historialRepo.create({
+      ptaId,
+      estadoAnterior,
+      estadoNuevo: nuevoEstadoPta,
+      actorId: actorId || 'Administrador',
+      actorRol: actorNombre || 'Revisor',
+      tipoAccion: 'DEVOLUCION_COMPONENTE',
+      comentarios: comentario,
+      snapshotPta: existingPta.datosEstructurados ?? null,
+      version: saved.version,
+    }));
+
+    await this.logEvento({
+      ptaId,
+      tipo: 'cambio_estado',
+      docenteId: existingPta.docenteId,
+      docenteNombre: coalesceString((existingPta.datosEstructurados as any)?.docente_nombre),
+      estadoAnterior,
+      estadoNuevo: nuevoEstadoPta,
+      actor: actorId,
+      actorRol: actorNombre,
+      sistemaOrigen: 'backoffice',
+      mensaje: `Concertación: componente(s) ${componentesCambiados.join(', ')} devuelto(s). Estado general: ${nuevoEstadoPta}`,
+      metadata: { componentes: componentesCambiados, comentario },
+    });
+
+    return saved;
   }
 
   private async registerJefaturaTerritorialApproval(
