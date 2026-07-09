@@ -22,6 +22,7 @@ import { COMPONENT_PERMISSION } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 
 type SavePtaInput = Record<string, any>;
+type ComponentResponseMap = Record<string, string>;
 
 function coalesceString(...values: unknown[]): string | null {
   for (const value of values) {
@@ -2012,8 +2013,9 @@ export class PtaService {
       // obligue a re-aprobar todo el PTA de nuevo.
       const veniaDeDevolucionParcial = REVISION_DOCENTE_STATES.has(existing.estado);
       const respuestaDocenteReenvio = coalesceString(body?.comentario_docente, body?.respuesta_docente);
+      const respuestasDocentePorComponente = this.readRespuestasDocentePorComponente(body);
       await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
-      await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio);
+      await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio, respuestasDocentePorComponente);
     }
 
     const estadoAnterior = existing.estado;
@@ -2138,7 +2140,30 @@ export class PtaService {
     await this.initAprobacionesJefatura(ptaId, datosEstructurados);
   }
 
-  private async resetComponentApprovalWorkflow(ptaId: string, soloComponentesDevueltos = false, respuestaDocente?: string | null) {
+  private readRespuestasDocentePorComponente(body: any): ComponentResponseMap {
+    const source =
+      body?.respuestas_docente_componentes ??
+      body?.respuestasDocenteComponentes ??
+      body?.respuesta_docente_componentes ??
+      body?.respuestaDocentePorComponente ??
+      body?.comentarios_docente_componentes;
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+
+    return Object.entries(source).reduce<ComponentResponseMap>((acc, [componentKey, rawValue]) => {
+      const value = typeof rawValue === 'object' && rawValue !== null
+        ? coalesceString((rawValue as any).respuesta, (rawValue as any).comentario, (rawValue as any).observaciones)
+        : coalesceString(rawValue);
+      if (componentKey && value) acc[componentKey] = value;
+      return acc;
+    }, {});
+  }
+
+  private async resetComponentApprovalWorkflow(
+    ptaId: string,
+    soloComponentesDevueltos = false,
+    respuestaDocente?: string | null,
+    respuestasDocentePorComponente: ComponentResponseMap = {},
+  ) {
     const componentKeys = [...COMPONENT_APPROVAL_KEYS, ...LEGACY_COMPONENT_APPROVAL_KEYS];
     if (soloComponentesDevueltos) {
       // Solo se re-revisan los componentes que estaban devueltos; los componentes
@@ -2151,7 +2176,7 @@ export class PtaService {
       });
       for (const row of devueltos) {
         row.estado = 'pendiente';
-        row.respuestaDocente = respuestaDocente || null;
+        row.respuestaDocente = respuestasDocentePorComponente[row.componente] || respuestaDocente || null;
         await this.ptaComponentApprovalRepo.save(row);
       }
     } else {

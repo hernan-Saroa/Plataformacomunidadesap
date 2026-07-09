@@ -451,6 +451,8 @@ export async function updatePTAStatus(
     aprobarTodas?: boolean;
     aprobador_id?: string;
     aprobador_nombre?: string;
+    comentario_docente?: string;
+    respuestas_docente_componentes?: Record<string, string>;
   },
 ) {
   try {
