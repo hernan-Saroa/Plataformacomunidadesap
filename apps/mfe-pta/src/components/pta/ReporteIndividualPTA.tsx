@@ -96,7 +96,10 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
   const _isAadm = (c: any) => c?.seccion === 'academico_administrativas'
     || (c?.seccion == null && c?.consumeTotalidad !== undefined);
   const _compDocencia = _rawComp.filter((c: any) => !_isAadm(c));
-  const acadAdminActividades = [..._rawComp.filter((c: any) => _isAadm(c)), ..._legacyAadm];
+  const _compAadm = _rawComp.filter((c: any) => _isAadm(c));
+  // Dedup: si complementarias ya trae la sección AADM se usa esa; el array legacy
+  // academico_admin solo aplica a PTAs viejos (evita duplicar en el reporte).
+  const acadAdminActividades = _compAadm.length > 0 ? _compAadm : _legacyAadm;
   // Todo es "Actividades Complementarias": una sola lista (a la docencia + AADM).
   const complementarias = [..._compDocencia, ...acadAdminActividades];
 

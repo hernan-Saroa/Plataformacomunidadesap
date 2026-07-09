@@ -219,7 +219,10 @@ export function PTAResumenPrint({ pta, onClose, userPersonId }: PTAResumenPrintP
               const legacy = Array.isArray(pta?.academico_admin)
                 ? pta.academico_admin
                 : (pta?.acad_admin?.actividades || pta?.academico_administrativo?.actividades || []);
-              const acts = [...rawComp, ...legacy];
+              // Dedup: el array legacy solo se agrega si complementarias NO trae la sección AADM.
+              const hasAadmInComp = rawComp.some((c: any) => c?.seccion === 'academico_administrativas'
+                || (c?.seccion == null && c?.consumeTotalidad !== undefined));
+              const acts = hasAadmInComp ? rawComp : [...rawComp, ...legacy];
               if (acts.length === 0) return null;
               return (
                 <div className="mb-8">
