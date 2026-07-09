@@ -117,6 +117,10 @@ interface PTAFormProps {
   jefaturaTerritorialId?: string; // bloquear asignaturas de otras territoriales
   allowedComponentKeys?: string[];
   componentEditScopeLabel?: string;
+  // Identidad del revisor que concerta (edita+envía) — queda como aprobador/autor del
+  // comentario en la devolución del componente que resulte de "Concertar".
+  concertacionActorId?: string;
+  concertacionActorNombre?: string;
 }
 
 interface AsignaturaItem {
@@ -487,6 +491,7 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   ext_gobierno: 'extension',
   complementarias: 'complementarias',
 };
+const ALL_COMPONENT_KEYS = Object.keys(COMPONENT_TO_FORM_SECTION) as PTAComponentKey[];
 
 // Etiquetas legibles por componente (para banners de devolución, etc.).
 const COMPONENT_LABEL: Record<string, string> = {
@@ -518,8 +523,13 @@ function componentKeyForExtensionSubsection(section: string): PTAComponentKey {
   return EXT_SUBSECTION_TO_COMPONENT[section] || 'ext_fortalecimiento';
 }
 
-export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel }: PTAFormProps) {
+export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel, concertacionActorId, concertacionActorNombre }: PTAFormProps) {
   const [saving, setSaving] = useState(false);
+  // Comentario obligatorio al "Concertar" (editar y enviar como admin/revisor): editar y
+  // mandar un PTA de un docente es, en la práctica, devolver el/los componente(s)
+  // afectados — el docente debe ver qué se devolvió y por qué, igual que en el flujo de
+  // devolución por componente.
+  const [comentarioConcertacion, setComentarioConcertacion] = useState('');
   const savingRef = useRef(false);
   const handleSaveRef = useRef<((enviar?: boolean, silent?: boolean) => Promise<void>) | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -644,14 +654,37 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   );
   const isAdminComponentRestricted = isAdminEdit && adminAllowedComponentKeys.length > 0;
 
-  // Restricción de edición por componente. Aplica a: (a) admin con edición limitada;
-  // (b) docente corrigiendo una devolución → solo puede editar los componentes devueltos.
+  // Componentes ya resueltos (aprobados o devueltos) — dejan de ser editables en el
+  // modal de "Concertar" en cuanto se resuelven, sin esperar a que el botón "Concertar"
+  // desaparezca (nunca desaparece mientras quede algo pendiente para el revisor).
+  const componentesResueltos = useMemo(
+    () => new Set(
+      (componentesAprobacion || [])
+        .filter(c => ['aprobado', 'devuelto'].includes(String(c?.estado || '').toLowerCase()))
+        .map(c => String(c?.componente || '')),
+    ),
+    [componentesAprobacion],
+  );
+  // Lo editable AHORA para un admin/revisor = su alcance de permiso (o todos los
+  // componentes, si no tiene restricción de permiso) menos lo ya resuelto.
+  const adminEditableComponentKeysNow = useMemo(() => {
+    if (!isAdminEdit) return [];
+    const base = adminAllowedComponentKeys.length > 0 ? adminAllowedComponentKeys : ALL_COMPONENT_KEYS;
+    return base.filter(key => !componentesResueltos.has(key));
+  }, [isAdminEdit, adminAllowedComponentKeys, componentesResueltos]);
+
+  // Restricción de edición por componente. Aplica a: (a) admin/revisor → su alcance de
+  // permiso menos lo ya resuelto; (b) docente corrigiendo una devolución → solo puede
+  // editar los componentes devueltos.
   const restrictedComponentKeys = useMemo(() => {
-    if (isAdminComponentRestricted) return adminAllowedComponentKeys;
+    if (isAdminEdit) return adminEditableComponentKeysNow;
     if (esDevolucionComponentes) return devueltoComponentKeys;
     return [];
-  }, [isAdminComponentRestricted, adminAllowedComponentKeys, esDevolucionComponentes, devueltoComponentKeys]);
-  const isComponentRestricted = restrictedComponentKeys.length > 0;
+  }, [isAdminEdit, adminEditableComponentKeysNow, esDevolucionComponentes, devueltoComponentKeys]);
+  // En modo admin SIEMPRE se filtra por lo editable ahora (puede ser un array vacío si
+  // ya se resolvió todo lo que le correspondía a este revisor) — a diferencia del resto
+  // de casos, donde un array vacío significa "sin restricción".
+  const isComponentRestricted = isAdminEdit ? true : restrictedComponentKeys.length > 0;
 
   const allowedComponentKeySet = useMemo(
     () => new Set(restrictedComponentKeys),
@@ -2003,7 +2036,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
+    // "Concertar": editar y guardar como revisor/admin equivale a devolver al docente
+    // el/los componente(s) modificados — se exige el comentario que verá el docente.
+    if (isAdminEdit && currentPtaId && !comentarioConcertacion.trim()) {
+      toast.error('Debe ingresar un comentario para el docente antes de guardar.');
+      setSaving(false);
+      return;
+    }
+
     const isReenvio = originalEstado === 'Devuelto' && enviar;
+
+    // Sección/componente que el revisor tiene abierto al guardar. Es el respaldo que
+    // usa el backend cuando "Concertar" se guarda SIN cambios de contenido y el revisor
+    // no está restringido a un componente por permiso: se devuelve el componente que
+    // estaba viendo, en vez de no hacer nada.
+    const seccionActivaComponente = isAdminEdit
+      ? (activeSection === 'docencia' ? 'academica'
+        : activeSection === 'investigacion' ? 'investigacion'
+        : activeSection === 'complementarias' ? 'complementarias'
+        : activeSection === 'extension' ? componentKeyForExtensionSubsection(extSubseccion)
+        : undefined)
+      : undefined;
 
     const payload = {
       id: currentPtaId || undefined,
@@ -2019,6 +2072,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       estado: isAdminEdit ? estado : (enviar ? estado : 'Borrador'),
       _adminEdit: isAdminEdit || undefined,
       _allowed_component_keys: isAdminComponentRestricted ? adminAllowedComponentKeys : undefined,
+      _comentario_concertacion: isAdminEdit ? (comentarioConcertacion.trim() || undefined) : undefined,
+      _concertacion_actor_id: isAdminEdit ? concertacionActorId : undefined,
+      _concertacion_actor_nombre: isAdminEdit ? concertacionActorNombre : undefined,
+      _concertacion_componente_activo: seccionActivaComponente,
       asignaturas: asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== ''),
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
@@ -2381,7 +2438,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   ? 'Revisar PTA — Aprobado con modificaciones'
                   : originalEstado === 'Devuelto'
                     ? 'Corregir PTA Devuelto'
-                    : 'Editar PTA'
+                    : isAdminEdit
+                      ? (isAdminComponentRestricted ? 'Concertar componente' : 'Concertar PTA')
+                      : 'Editar PTA'
               : 'Crear Nuevo PTA'}
           </h1>
           <p className="text-[13px] text-gray-500 mt-2 font-medium">Periodo {periodo} • {dedicacion}</p>
@@ -2397,6 +2456,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           )}
         </div>
       </div>
+
+      {/* Comentario de Concertación — editar y guardar como revisor/admin equivale a
+          devolver al docente el/los componente(s) que se modifiquen: este comentario
+          es el que el docente verá en el banner de devolución de su PTA. */}
+      {isAdminEdit && ptaId && (
+        <div className="mb-5 p-4 rounded-xl bg-blue-50 border border-blue-200">
+          <label className="block text-[13px] font-bold text-blue-900 mb-1.5">
+            Comentario para el docente (obligatorio)
+          </label>
+          <p className="text-[12px] text-blue-700 mb-2">
+            Al guardar, los componentes que edites se devolverán al docente con este comentario para que los corrija y reenvíe.
+          </p>
+          <textarea
+            value={comentarioConcertacion}
+            onChange={e => setComentarioConcertacion(e.target.value)}
+            rows={2}
+            placeholder="Ej: Ajustar horas de la asignatura X, no coinciden con el catálogo."
+            className="w-full rounded-lg border border-blue-300 px-3 py-2 text-[13px] text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+      )}
 
       {/* Firma digital del docente — requerida antes de cada envío y enviar código de aprobación por email */}
       {showFirmaDocente && (
@@ -2721,8 +2801,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       )}
 
       {/* Banner: Revisión docente post-aprobación parcial (flujo legacy: aprobado, confirma para avanzar).
-          Se oculta cuando en realidad es una devolución por componente. */}
-      {isEnRevisionDocente && !esDevolucionComponentes && (
+          Solo aplica a la vista del docente: se oculta en modo admin ("Concertar") y
+          cuando en realidad es una devolución por componente. */}
+      {!isAdminEdit && isEnRevisionDocente && !esDevolucionComponentes && (
         <div className="flex flex-col gap-3 p-4 rounded-xl mb-5 bg-violet-50 border border-violet-200">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="w-5 h-5 text-violet-600 shrink-0 mt-0.5" />
@@ -2761,8 +2842,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         </div>
       )}
 
-      {/* Devuelto alert */}
-      {originalEstado === 'Devuelto' && !isEnRevisionDocente && (
+      {/* Devuelto alert (vista docente) */}
+      {!isAdminEdit && originalEstado === 'Devuelto' && !isEnRevisionDocente && (
         <div className="flex items-start gap-3 p-4 rounded-xl mb-5 bg-amber-50 border border-amber-200">
           <RotateCcw className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div>
