@@ -1369,7 +1369,7 @@ function VistaArbolSeccionalesSedes({
                           </div>
 
                           {modo === 'catalogo' && (
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-1">
                             {canEdit && (
                               <button
                                 onClick={() => onEditarSeccional(seccional)}
@@ -1516,7 +1516,7 @@ function VistaArbolSeccionalesSedes({
 
                                     {/* Botones de accion para Sede — solo en Catálogo */}
                                     {modo === 'catalogo' && (
-                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <div className="flex items-center gap-1">
                                         <button
                                           onClick={() => onEditarSede(sede)}
                                           className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors"
