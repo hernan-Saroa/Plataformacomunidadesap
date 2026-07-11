@@ -23,7 +23,7 @@ import {
   Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
   Shield, ChevronRight, ExternalLink, ListChecks,
-  FlaskConical, Globe, Briefcase, X, Award, Users, Paperclip,
+  FlaskConical, Globe, Briefcase, X, Award, Users, Paperclip, Lock,
 } from 'lucide-react';
 import {
   getPTAsByDocente, getPTAById, enviarAprobacionPTA,
@@ -44,6 +44,7 @@ import { VerificacionQRPublicaPTA } from '../../pta/VerificacionQRPublicaPTA';
 import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 
 interface PortalDocentePTAProps {
   onBack: () => void;
@@ -661,6 +662,11 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     { key: 'v14_certificado', label: 'Firmados', icon: Shield },
   ];
 
+  // El seguimiento (Documentos y Soportes) se habilita cuando el PTA vigente
+  // tiene la totalidad de sus componentes aprobados. La pestaña sigue siendo
+  // navegable: dentro se muestra el aviso con el estado de cada componente.
+  const seguimientoBloqueado = ptas.length > 0 && !ptaHabilitadoParaSeguimiento(ptas[0]);
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-5">
@@ -752,6 +758,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 isActive ? 'text-[#003DA5]' : 'text-gray-400'
               }`} />
               <span>{v.label}</span>
+              {v.key === 'v12_adjuntos' && seguimientoBloqueado && (
+                <Lock style={{ width: 11, height: 11, color: '#D97706', flexShrink: 0 }} aria-label="Disponible tras la aprobación del PTA" />
+              )}
               {isActive && <div className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-[#003DA5]" />}
             </button>
           );
