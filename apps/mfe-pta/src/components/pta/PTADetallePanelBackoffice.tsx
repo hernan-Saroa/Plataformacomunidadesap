@@ -544,11 +544,20 @@ function SectionCollapsible({ title, icon: Icon, color, count, children, default
             {count}
           </span>
         )}
-        <ChevronDown style={{
-          width: 14, height: 14, color: '#9CA3AF',
-          transform: open ? 'rotate(180deg)' : 'rotate(0)',
-          transition: 'transform 0.2s',
-        }} />
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+          padding: '3px 9px', borderRadius: 999,
+          background: open ? `${color}15` : '#F3F4F6',
+          color: open ? color : '#4B5563',
+          fontSize: '0.66rem', fontWeight: 700, whiteSpace: 'nowrap',
+        }}>
+          {open ? 'Ocultar' : 'Desplegar'}
+          <ChevronDown style={{
+            width: 12, height: 12,
+            transform: open ? 'rotate(180deg)' : 'rotate(0)',
+            transition: 'transform 0.2s',
+          }} />
+        </span>
       </button>
       <AnimatePresence>
         {open && (
