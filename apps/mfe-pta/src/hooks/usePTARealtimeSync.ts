@@ -182,6 +182,16 @@ export function usePTARealtimeSync(options: UsePTARealtimeSyncOptions): PTASyncS
     if (!enabled) return;
     mountedRef.current = true;
 
+    // Baseline: solo interesan eventos DESDE que este cliente empezó a escuchar. Sin
+    // esto, el primer fetch disparado por un cambio de counter no tenía `since` (aún
+    // no se había pedido ningún evento) y el backend devolvía las últimas 50 filas de
+    // TODA la tabla de eventos (getRecentEvents con since vacío) — inundando de golpe
+    // con un toast por cada una la primera vez que se detectaba cualquier cambio, en
+    // vez de mostrar solo lo nuevo desde que se abrió la pantalla.
+    if (!lastEventTimestampRef.current) {
+      lastEventTimestampRef.current = new Date().toISOString();
+    }
+
     // Initial check with a small delay to let the app settle
     const initialDelay = setTimeout(() => {
       if (mountedRef.current) checkForUpdates();
