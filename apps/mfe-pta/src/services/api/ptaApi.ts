@@ -623,10 +623,10 @@ export async function getPTAUserData(userId: string) {
 export async function savePTAUserData(
   userId: string,
   data: {
-    pinned_pta_ids?: string[];
-    saved_tags?: string[];
+    tags?: Record<string, Array<{ label: string; color: string }>>;
     notes?: Record<string, string>;
-    favorite_views?: string[];
+    pinned?: string[];
+    priorityOrder?: string[];
   },
 ) {
   try {

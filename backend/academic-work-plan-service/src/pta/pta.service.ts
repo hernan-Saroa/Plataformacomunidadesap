@@ -3106,24 +3106,38 @@ export class PtaService {
     } catch { /* non-critical */ }
   }
 
+  // Contrato del frontend (mfe-pta): tags = Record<ptaId, {label,color}[]>,
+  // notes = Record<ptaId, string>, pinned = string[], priorityOrder = string[].
+  // Se aceptan también las claves legacy (saved_tags, pinned_pta_ids, favorite_views).
+  private normalizeUserDataRow(row: Partial<PtaUserDataEntity>) {
+    const tags = row.tags && typeof row.tags === 'object' && !Array.isArray(row.tags) ? row.tags : {};
+    const notes = row.notes && typeof row.notes === 'object' && !Array.isArray(row.notes) ? row.notes : {};
+    const pinned = Array.isArray(row.pinned) ? row.pinned : [];
+    const priorityOrder = Array.isArray(row.priority) ? row.priority : [];
+    return {
+      tags,
+      notes,
+      pinned,
+      priorityOrder,
+      // alias legacy
+      pinned_pta_ids: pinned,
+      favorite_views: priorityOrder,
+    };
+  }
+
   async getPTAUserData(userId: string) {
     const row = await this.userDataRepo.findOne({ where: { userId } });
     if (!row) return null;
-    return {
-      pinned_pta_ids: Array.isArray(row.pinned) ? row.pinned : [],
-      saved_tags: Array.isArray(row.tags) ? row.tags : [],
-      notes: row.notes && typeof row.notes === 'object' ? row.notes : {},
-      favorite_views: Array.isArray(row.priority) ? row.priority : [],
-    };
+    return this.normalizeUserDataRow(row);
   }
 
   async savePTAUserData(userId: string, data: any) {
     const existing = await this.userDataRepo.findOne({ where: { userId } });
     const next = {
-      pinned: data?.pinned_pta_ids ?? existing?.pinned ?? [],
-      tags: data?.saved_tags ?? existing?.tags ?? [],
+      tags: data?.tags ?? data?.saved_tags ?? existing?.tags ?? {},
       notes: data?.notes ?? existing?.notes ?? {},
-      priority: data?.favorite_views ?? existing?.priority ?? [],
+      pinned: data?.pinned ?? data?.pinned_pta_ids ?? existing?.pinned ?? [],
+      priority: data?.priorityOrder ?? data?.favorite_views ?? existing?.priority ?? [],
     };
 
     const saved = await this.userDataRepo.save(
@@ -3132,12 +3146,7 @@ export class PtaService {
         : this.userDataRepo.create({ userId, ...next }),
     );
 
-    return {
-      pinned_pta_ids: Array.isArray(saved.pinned) ? saved.pinned : [],
-      saved_tags: Array.isArray(saved.tags) ? saved.tags : [],
-      notes: saved.notes && typeof saved.notes === 'object' ? saved.notes : {},
-      favorite_views: Array.isArray(saved.priority) ? saved.priority : [],
-    };
+    return this.normalizeUserDataRow(saved);
   }
 
   async seedPTAs() {
