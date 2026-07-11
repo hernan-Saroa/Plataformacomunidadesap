@@ -263,11 +263,12 @@ export async function getCetapsPorPrograma(programaId: string, territorialId?: s
 }
 
 /** Cupos estimados para CETAP + Programa - DINÁMICO */
-export async function getOfertaCetap(cetapId: string, programaId: string) {
+export async function getOfertaCetap(cetapId: string, programaId: string, periodo?: string) {
   try {
     const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/oferta-cetap`, {
       cetap_id: cetapId,
       programa_id: programaId,
+      ...(periodo ? { periodo } : {}),
     });
     const normalized = normalizeResult<any>(raw, { cupos_estimados: null });
     return { success: normalized.success, data: normalized.data };
