@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { EntityManager, Like, QueryFailedError, Repository } from 'typeorm';
+import { EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { ProgramaAcademico } from './programa.entity';
 import { Asignatura } from './asignatura.entity';
 import { CreateProgramaDto, UpdateProgramaDto } from './programa.dto';
@@ -56,6 +56,87 @@ export class ProgramasService {
     return this.programaPeriodoColumn;
   }
 
+  private async applyPeriodoScope(qb: any, periodoAcademico?: string) {
+    if (!periodoAcademico) return;
+    const tienePeriodoColumna = await this.hasProgramaPeriodoColumn();
+    if (tienePeriodoColumna) {
+      qb.andWhere(`(
+        EXISTS (
+          SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+          JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
+          WHERE ocp.id_programa = p.id
+            AND ocp.activa = TRUE
+            AND pa.codigo = :periodo
+        )
+        OR p.id_periodo_academico = (
+          SELECT pa2.id FROM academic_work_plan.periodo_academico pa2
+          WHERE pa2.codigo = :periodo
+          LIMIT 1
+        )
+        OR (
+          p.id_periodo_academico IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp_any
+            WHERE ocp_any.id_programa = p.id AND ocp_any.activa = TRUE
+          )
+          AND EXISTS (
+            SELECT 1 FROM academic_work_plan.periodo_academico pa3
+            WHERE pa3.codigo = :periodo AND pa3.estado = 'en_curso'
+          )
+        )
+      )`, { periodo: periodoAcademico });
+      return;
+    }
+
+    qb.andWhere(`(
+      EXISTS (
+        SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
+        JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
+        WHERE ocp.id_programa = p.id
+          AND ocp.activa = TRUE
+          AND pa.codigo = :periodo
+      )
+      OR NOT EXISTS (
+        SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp_any
+        WHERE ocp_any.id_programa = p.id AND ocp_any.activa = TRUE
+      )
+    )`, { periodo: periodoAcademico });
+  }
+
+  async obtenerOpcionesFiltros(periodoAcademico?: string) {
+    const params: any[] = [];
+    const periodJoin = periodoAcademico
+      ? `JOIN academic_work_plan.periodo_academico pa
+           ON pa.id = ocp.id_periodo_academico AND pa.codigo = $1`
+      : '';
+    if (periodoAcademico) params.push(periodoAcademico);
+    const cetaps = await this.programaRepo.query(
+      `SELECT DISTINCT c.id::text AS value, c.nombre AS label
+       FROM academic_work_plan.oferta_cetap_programa ocp
+       ${periodJoin}
+       JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+       WHERE ocp.activa = TRUE AND c.activo = TRUE
+       ORDER BY c.nombre ASC`,
+      params,
+    );
+
+    return {
+      // Catálogos posibles del negocio; no se reducen a los valores de la página
+      // o del periodo actual, porque eso produciría selects con una sola opción.
+      niveles: [
+        'Pregrado', 'Técnico Profesional', 'Tecnológico',
+        'Especialización', 'Maestría', 'Doctorado',
+      ].map(value => ({ value, label: value })),
+      modalidades: ['Presencial', 'Distancia', 'Mixto']
+        .map(value => ({ value, label: value })),
+      cetaps,
+      estados: [
+        { value: 'ACTIVO', label: 'Activo' },
+        { value: 'INACTIVO', label: 'Inactivo' },
+      ],
+    };
+  }
+
   async listarProgramas(filtros: ProgramasFiltroDto) {
     const {
       search,
@@ -71,6 +152,11 @@ export class ProgramasService {
     if (nivelFormacion) {
       const nfMap: Record<string, string> = {
         'pregrado': 'pregrado',
+        'profesional universitario': 'pregrado',
+        'técnico profesional': 'tecnico_profesional',
+        'tecnico profesional': 'tecnico_profesional',
+        'tecnológico': 'tecnologico',
+        'tecnologico': 'tecnologico',
         'especialización': 'especializacion',
         'especializacion': 'especializacion',
         'maestría': 'maestria',
@@ -91,11 +177,9 @@ export class ProgramasService {
     }
 
     if (estado) {
-      where.activo = estado === 'ACTIVO';
-    }
-
-    if (search) {
-      where.nombre = Like(`%${search}%`);
+      const estadoNormalizado = String(estado).trim().toUpperCase();
+      if (estadoNormalizado === 'ACTIVO') where.activo = true;
+      if (estadoNormalizado === 'INACTIVO') where.activo = false;
     }
 
     const qb = this.programaRepo.createQueryBuilder('p');
@@ -103,64 +187,32 @@ export class ProgramasService {
     if (where.tipo) qb.andWhere('p.tipo = :tipo', { tipo: where.tipo });
     if (where.modalidad) qb.andWhere('p.modalidad = :modalidad', { modalidad: where.modalidad });
     if (where.activo !== undefined) qb.andWhere('p.activo = :activo', { activo: where.activo });
-    if (search) qb.andWhere('p.nombre ILIKE :search', { search: `%${search}%` });
-
-    if (filtros.periodoAcademico) {
-      const tienePeriodoColumna = await this.hasProgramaPeriodoColumn();
-      if (tienePeriodoColumna) {
-        // Con la migración 359 aplicada: un programa pertenece a un período si
-        //  (a) tiene una oferta activa en ese período, o
-        //  (b) fue creado para ese período (id_periodo_academico), o
-        //  (c) es un programa heredado/sin período propio y sin ofertas: en ese
-        //      caso solo se muestra en el período ACTIVO (en_curso), nunca en los
-        //      demás. Así un programa no aparece en períodos a los que no pertenece.
-        qb.andWhere(`(
-          EXISTS (
-            SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
-            JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
-            WHERE ocp.id_programa = p.id
-              AND ocp.activa = TRUE
-              AND pa.codigo = :periodo
-          )
-          OR p.id_periodo_academico = (
-            SELECT pa2.id FROM academic_work_plan.periodo_academico pa2
-            WHERE pa2.codigo = :periodo
-            LIMIT 1
-          )
-          OR (
-            p.id_periodo_academico IS NULL
-            AND NOT EXISTS (
-              SELECT 1
-              FROM academic_work_plan.oferta_cetap_programa ocp_any
-              WHERE ocp_any.id_programa = p.id
-                AND ocp_any.activa = TRUE
-            )
-            AND EXISTS (
-              SELECT 1 FROM academic_work_plan.periodo_academico pa3
-              WHERE pa3.codigo = :periodo
-                AND pa3.estado = 'en_curso'
-            )
-          )
-        )`, { periodo: filtros.periodoAcademico });
-      } else {
-        // Sin la migración aún: comportamiento original (no rompe el listado).
-        qb.andWhere(`(
-          EXISTS (
-            SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp
-            JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
-            WHERE ocp.id_programa = p.id
-              AND ocp.activa = TRUE
-              AND pa.codigo = :periodo
-          )
-          OR NOT EXISTS (
-            SELECT 1
-            FROM academic_work_plan.oferta_cetap_programa ocp_any
-            WHERE ocp_any.id_programa = p.id
-              AND ocp_any.activa = TRUE
-          )
-        )`, { periodo: filtros.periodoAcademico });
-      }
+    if (search?.trim()) {
+      qb.andWhere(`(
+        p.nombre ILIKE :search
+        OR p.codigo ILIKE :search
+        OR p.nombre_corto ILIKE :search
+        OR p.nombre_excel ILIKE :search
+        OR EXISTS (
+          SELECT 1 FROM academic_work_plan.facultad f
+          WHERE f.id = p.id_facultad AND f.nombre ILIKE :search
+        )
+      )`, { search: `%${search.trim()}%` });
     }
+
+    if (filtros.sede) {
+      qb.andWhere(`EXISTS (
+        SELECT 1 FROM academic_work_plan.oferta_cetap_programa ocp_sede
+        JOIN academic_work_plan.cetap c_sede ON c_sede.id = ocp_sede.id_cetap
+        JOIN academic_work_plan.periodo_academico pa_sede ON pa_sede.id = ocp_sede.id_periodo_academico
+        WHERE ocp_sede.id_programa = p.id
+          AND ocp_sede.activa = TRUE
+          AND (c_sede.id::text = :sede OR LOWER(c_sede.nombre) = LOWER(:sede))
+          AND (:periodoSede::text IS NULL OR pa_sede.codigo = :periodoSede)
+      )`, { sede: String(filtros.sede), periodoSede: filtros.periodoAcademico || null });
+    }
+
+    await this.applyPeriodoScope(qb, filtros.periodoAcademico);
 
     qb.orderBy('p.nombre', 'ASC');
     qb.skip((page - 1) * limit);
