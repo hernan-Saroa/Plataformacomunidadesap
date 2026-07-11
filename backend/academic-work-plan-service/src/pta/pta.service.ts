@@ -1637,7 +1637,6 @@ export class PtaService {
 
     let saved: PlanTrabajoAcademicoEntity;
     let estadoAnteriorSave: string | null = null;
-    let datosAnterioresSave: any = null;
 
     if (id) {
       const existing = await this.ptaRepo.findOne({ where: { id } });
@@ -1645,7 +1644,6 @@ export class PtaService {
         saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, id, version: 1 }));
       } else {
         estadoAnteriorSave = existing.estado;
-        datosAnterioresSave = existing.datosEstructurados;
         saved = await this.ptaRepo.save({ ...existing, ...patch });
       }
     } else {
@@ -1697,20 +1695,21 @@ export class PtaService {
     if (isAdminEdit && id && estadoAnteriorSave !== null && estado === estadoAnteriorSave) {
       const comentarioConcertacion = coalesceString(input?._comentario_concertacion, input?.comentario_concertacion);
       if (comentarioConcertacion) {
-        // 1) Restringido por permiso → siempre su(s) componente(s) asignado(s), haya
-        //    editado o no (esto reemplaza al botón "Devolver a secas").
-        // 2) Sin restricción de permiso → la selección explícita que hizo el admin en
-        //    el formulario (checkboxes de componente), unida a los que sí cambiaron de
-        //    contenido. Antes se adivinaba por la pestaña que tenía abierta, lo que
-        //    podía fallar en silencio (guardaba, pero no devolvía nada) si no coincidía
-        //    con lo que realmente quería devolver.
+        // Qué componentes se devuelven al docente. La fuente de verdad es SIEMPRE una
+        // selección explícita, nunca una heurística:
+        //   1) Restringido por permiso → su(s) componente(s) asignado(s) (server-side).
+        //   2) Sin restricción de permiso → los que el admin marcó en los checkboxes
+        //      del formulario (_concertacion_componentes).
+        // NO se infieren componentes por "diff de contenido": el formulario re-serializa
+        // todo el PTA al guardar, así que un componente intacto (p.ej. Docencia ya
+        // aprobada) puede aparecer como "cambiado" por diferencias de serialización y
+        // terminaba reabriéndose a 'devuelto' sin que el revisor lo pidiera.
         const componentesSeleccionados = Array.isArray(input?._concertacion_componentes)
           ? input._concertacion_componentes.map((k: any) => String(k)).filter((k: string) => COMPONENT_APPROVAL_KEY_SET.has(k))
           : [];
-        const componentesModificados = this.detectComponentesModificados(datosAnterioresSave, input);
         const componentesCambiados = allowedComponentKeys.length > 0
           ? allowedComponentKeys
-          : Array.from(new Set([...componentesSeleccionados, ...componentesModificados]));
+          : componentesSeleccionados;
         if (componentesCambiados.length > 0) {
           const devolucionResult = await this.registrarDevolucionPorConcertacion(
             saved.id,
@@ -2213,45 +2212,6 @@ export class PtaService {
       } as any);
     }
     await this.getComponentesAprobacion(ptaId);
-  }
-
-  /** Compara datosEstructurados antes/después de una edición y devuelve las claves de
-   * componente cuyo contenido cambió. Usado por "Concertar" (edición admin sin
-   * restricción de componente) para saber qué marcar como devuelto. */
-  private detectComponentesModificados(oldData: any, newData: any): string[] {
-    const old = oldData && typeof oldData === 'object' ? oldData : {};
-    const neu = newData && typeof newData === 'object' ? newData : {};
-    const eq = (a: any, b: any) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-    const changed: string[] = [];
-
-    if (!eq(old.asignaturas, neu.asignaturas)) changed.push('academica');
-    if (!eq(old.investigacion_proyecto, neu.investigacion_proyecto) ||
-      !eq(old.investigacion_actividades, neu.investigacion_actividades)) {
-      changed.push('investigacion');
-    }
-
-    const extBySeccion = (data: any, secciones: string[]) =>
-      (Array.isArray(data?.extension_actividades) ? data.extension_actividades : [])
-        .filter((a: any) => secciones.includes(normalizeExtensionSectionKey(a?.seccion)));
-    const EXT_SECTIONS: Record<string, string[]> = {
-      ext_capacitacion: ['capacitacion'],
-      ext_procesos: ['seleccion'],
-      ext_fortalecimiento: ['fortalecimiento'],
-      ext_gobierno: ['alto_gobierno'],
-    };
-    for (const [key, secciones] of Object.entries(EXT_SECTIONS)) {
-      if (!eq(extBySeccion(old, secciones), extBySeccion(neu, secciones))) {
-        changed.push(key);
-      }
-    }
-
-    const oldComp = this.readComplementariasSecciones(old);
-    const newComp = this.readComplementariasSecciones(neu);
-    if (!eq(oldComp.docencia, newComp.docencia) || !eq(oldComp.aadm, newComp.aadm)) {
-      changed.push('complementarias');
-    }
-
-    return changed;
   }
 
   /** "Concertar" (edición admin + envío) equivale a devolver el/los componente(s)
