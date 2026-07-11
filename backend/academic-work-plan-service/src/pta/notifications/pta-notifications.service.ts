@@ -245,6 +245,71 @@ export class PtaNotificationsService {
   }
 
   /**
+   * Notifica al profesor (creador del PTA) que su PTA fue enviado a aprobación.
+   * Confirmación de envío (bandeja in-app + correo) para que el docente sepa que
+   * su plan salió de Borrador y está en manos de los aprobadores. Best-effort.
+   */
+  async notifyProfesorPtaEnviadoAprobacion(opts: {
+    ptaId: string;
+    docenteId: string | null | undefined;
+    periodo?: string | null;
+    componentes?: string[];
+  }): Promise<boolean> {
+    if (!opts.docenteId) return false;
+    const prof = await this.resolveUser(opts.docenteId);
+    if (!prof) {
+      this.logger.warn(
+        `PTA ${opts.ptaId}: no se resolvió el profesor (${opts.docenteId}) para notificar el envío a aprobación`,
+      );
+      return false;
+    }
+
+    const periodoTxt = opts.periodo ? ` (${opts.periodo})` : '';
+    const comps = Array.from(new Set((opts.componentes || []).filter(Boolean)));
+    const labels = comps.map((c) => this.componentLabel(c)).join(', ');
+    const titulo = 'Tu PTA fue enviado a aprobación';
+    const mensaje = `Tu PTA${periodoTxt} fue enviado correctamente y está pendiente de la revisión de los aprobadores.`;
+    // 'pta' hace que el portal abra el módulo "Mi PTA" del docente in-app
+    // (ver PortalTransaccional: mapa navbarNavigateTo -> {type:'pta'}).
+    const url = 'pta';
+
+    await this.createInApp({
+      id_usuario_destinatario: prof.idUser,
+      tipo_notificacion: 'pta_enviado_aprobacion',
+      titulo,
+      mensaje,
+      categoria: 'PTA',
+      prioridad: 'Media',
+      icono: 'paper-plane',
+      color: '#2563EB',
+      tiene_accion: true,
+      texto_boton_accion: 'Ver mi PTA',
+      url_accion: url,
+      datos_adicionales: { ptaId: opts.ptaId, componentes: comps, periodo: opts.periodo ?? null },
+    });
+
+    if (prof.email) {
+      const linkAbsoluto = `${this.resolvePublicAppUrl()}/?view=portal`;
+      const componentesHtml = labels
+        ? `<p>Componentes enviados a revisión: <strong>${this.escapeHtml(labels)}</strong>.</p>`
+        : '';
+      const html = `
+        <p>Hola ${this.escapeHtml(prof.nombre || '')},</p>
+        <p>${this.escapeHtml(mensaje)}</p>
+        ${componentesHtml}
+        <p>Te avisaremos a medida que cada componente sea aprobado o devuelto.</p>
+        <p><a href="${linkAbsoluto}">Ver mi PTA</a></p>
+      `;
+      void this.sendEmail(prof.email, titulo, mensaje, html);
+    }
+
+    this.logger.log(
+      `PTA ${opts.ptaId}: profesor ${prof.idUser} notificado del envío a aprobación${prof.email ? ' (in-app + correo)' : ' (solo in-app: sin email)'}`,
+    );
+    return true;
+  }
+
+  /**
    * Notifica al profesor (creador del PTA) que uno de sus componentes fue aprobado.
    * Texto: "Esta componente ha sido aprobada por [Nombre del aprobador]".
    */

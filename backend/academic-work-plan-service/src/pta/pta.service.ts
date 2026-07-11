@@ -2076,8 +2076,15 @@ export class PtaService {
             componentes: pendientes,
           });
         }
+        // Confirmación al profesor: su PTA salió de Borrador y está en aprobación.
+        await this.ptaNotifications.notifyProfesorPtaEnviadoAprobacion({
+          ptaId,
+          docenteId: existing.docenteId,
+          periodo: coalesceString((existing as any).periodo, (ds as any)?.periodo),
+          componentes: pendientes,
+        });
       } catch (error: any) {
-        this.logger.warn(`No se pudo notificar a aprobadores del PTA ${ptaId}: ${error?.message}`);
+        this.logger.warn(`No se pudo notificar el envío a aprobación del PTA ${ptaId}: ${error?.message}`);
       }
     }
 
@@ -4071,8 +4078,10 @@ export class PtaService {
 
     this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email || 'docente sin correo'}: ${code}`);
 
-    // En modo mock no intentamos enviar correo (cualquier código sirve igual).
-    if (!this.MOCK_FIRMA_OTP && docente.email) {
+    // El correo con el código SIEMPRE se intenta enviar cuando hay email registrado
+    // (aunque MOCK_FIRMA_OTP esté activo). El mock solo relaja la *validación* del
+    // código, no debe impedir que el docente reciba el OTP en su correo.
+    if (docente.email) {
       try {
         await this.sendFirmaOtpEmail({
           to: docente.email,
@@ -4099,6 +4108,66 @@ export class PtaService {
       verificationId,
       expiresAt: expiresAt.toISOString(),
       email: docente.email ? this.maskEmail(docente.email) : 'correo no registrado',
+      devCode: code,
+    };
+  }
+
+  /**
+   * Solicita un OTP de firma para el APROBADOR/CONCERTADOR que va a avalar el PTA.
+   * A diferencia del OTP de docente, el firmante NO es el dueño del PTA sino el
+   * usuario autenticado que oprime "Aprobar" (Jefatura, Decanatura, Gestión
+   * Profesoral, etc.), por eso se resuelve con adminEdit (sin exigir rol DOCENTE)
+   * y se envía el código al correo de ESE usuario. La clave del OTP incluye el
+   * userId para que no colisione con el OTP del docente sobre el mismo PTA.
+   */
+  async requestFirmaAprobadorOtp(payload: {
+    ptaId?: string | null;
+    userId?: string | null;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+  }) {
+    const userId = coalesceString(payload?.userId);
+    if (!userId) throw new BadRequestException('userId es requerido para enviar el código de firma del aprobador.');
+
+    const aprobador = await this.fetchAuthDocenteInfo(userId, { adminEdit: true });
+    if (!aprobador.email && !this.MOCK_FIRMA_OTP) {
+      throw new BadRequestException('El aprobador no tiene correo registrado para enviar el código de validación.');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const ptaId = coalesceString(payload?.ptaId);
+    const verificationId = ptaId ? `pta:${ptaId}:aprobador:${userId}` : `aprobador:${userId}`;
+
+    this.logger.log(`🔑 [PRUEBAS] Código de firma (aprobador) generado para ${aprobador.email || 'aprobador sin correo'}: ${code}`);
+
+    if (aprobador.email) {
+      try {
+        await this.sendFirmaOtpEmail({
+          to: aprobador.email,
+          code,
+          fullName: aprobador.fullName,
+          periodo: payload?.periodo,
+          etapaLabel: payload?.etapaLabel,
+          expiresAt,
+        });
+      } catch (emailError) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(`⚠️  [DEV] Email de firma OTP (aprobador) falló — código OTP para ${aprobador.email}: ${code}`);
+          this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
+        } else {
+          throw emailError;
+        }
+      }
+    }
+
+    this.otpStore.set(verificationId, { code, expiresAt });
+
+    return {
+      verificationId,
+      expiresAt: expiresAt.toISOString(),
+      email: aprobador.email ? this.maskEmail(aprobador.email) : 'correo no registrado',
       devCode: code,
     };
   }

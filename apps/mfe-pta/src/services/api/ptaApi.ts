@@ -559,6 +559,26 @@ export async function requestPTAFirmaDocenteCode(data: {
   }
 }
 
+export async function requestPTAFirmaAprobadorCode(data: {
+  ptaId?: string;
+  userId: string;
+  periodo?: string;
+  etapaLabel?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/firma-aprobador/request-code`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      ...asObject(raw),
+      success: normalized.success,
+      data: normalized.data,
+    };
+  } catch (error) {
+    console.error('[mfe-pta][requestPTAFirmaAprobadorCode] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
 export async function verifyPTAFirmaDocenteCode(data: {
   verificationId: string;
   code: string;
