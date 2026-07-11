@@ -27,7 +27,7 @@ import {
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
   getPTAById,
 } from '../../services/api/ptaApi';
-import { apiClient, getBaseURL } from '../../../../shell/src/services/api';
+import { apiClient } from '../../../../shell/src/services/api';
 import { usePTARealtimeSync } from '../../hooks/usePTARealtimeSync';
 import { PTASyncIndicator } from './PTASyncIndicator';
 import {
@@ -46,6 +46,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 // ✅ ELIMINADO - DashboardCargaMasivaPTA (la carga masiva se hace desde Gestión Personas - fuente única de verdad)
 import { ProgramacionAcademica } from './ProgramacionAcademica';
 import { MesaConcertacion } from './MesaConcertacion';
+import { esAdjuntoEvidencia, agruparEvidenciasPorJustificacion } from './shared/evidenciasJustificacion';
+import { resolvePtaFileUrl } from './shared/ptaFiles';
 import { PermisosPTAProvider, SelectorRolPTA, usePermisosPTA } from './PermisosPTAContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
@@ -281,22 +283,7 @@ function SortableHeader({ label, field, sortBy, sortDir, onSort }: {
 
 // ═══ Solicitudes PTA — Vista Admin ═══════════════════════════════════
 
-/**
- * Construye la URL pública (vía API Gateway) de un archivo servido por el microservicio PTA.
- * El gateway expone los estáticos del servicio en /pta/uploads/... (ruta pública) y los reenvía
- * a /uploads/... del backend. Usa la MISMA base que las llamadas API (getBaseURL), por lo que
- * funciona en cualquier entorno. Antes se armaba con http://localhost:5000 hardcodeado —un puerto
- * inexistente en este entorno— y por eso fallaba con ERR_CONNECTION_REFUSED.
- */
-function resolvePtaFileUrl(raw?: string | null): string {
-  const value = String(raw || '').trim();
-  if (!value) return '#';
-  if (/^https?:\/\//i.test(value)) return value; // ya es absoluta
-  const base = (getBaseURL() || '').replace(/\/$/, '');
-  if (value.startsWith('/pta/')) return `${base}${value}`;          // ya trae el prefijo de servicio
-  if (value.startsWith('/uploads')) return `${base}/pta${value}`;   // /uploads/... → /pta/uploads/...
-  return `${base}/pta/${value.replace(/^\/+/, '')}`;
-}
+// resolvePtaFileUrl ahora vive en shared/ptaFiles.ts (se usa también en el portal docente).
 
 function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
@@ -613,11 +600,18 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
 
   const periodos = useMemo(() => [...new Set(ptasData.map((p: any) => p.periodo))].sort().reverse(), [ptasData]);
 
-  const revisar = async (ptaId: string, evidenciaId: string, decision: 'aprobado' | 'rechazado') => {
+  // Revisa una justificación completa: el documento principal y sus soportes
+  // adjuntos reciben la misma decisión (los adjuntos son 0h — no afectan avance).
+  const revisar = async (ptaId: string, evidenciaId: string, decision: 'aprobado' | 'rechazado', adjuntosIds: string[] = []) => {
     setProcesando(evidenciaId);
     const res = await revisarEvidenciaPTA(ptaId, evidenciaId, { decision, revisado_por: aprobadorNombre, comentario: comentario[evidenciaId] || '' });
     if (res.success) {
-      toast.success(decision === 'aprobado' ? 'Documento aprobado' : 'Documento rechazado');
+      for (const adjId of adjuntosIds) {
+        try {
+          await revisarEvidenciaPTA(ptaId, adjId, { decision, revisado_por: aprobadorNombre, comentario: 'Soporte de la justificación principal' });
+        } catch { /* el principal ya quedó revisado; el adjunto se puede reintentar */ }
+      }
+      toast.success(decision === 'aprobado' ? 'Justificación aprobada' : 'Justificación rechazada');
       load();
     } else { toast.error('Error al procesar'); }
     setProcesando(null);
@@ -635,7 +629,9 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
     return (p.evidencias || []).some((e: any) => getEstadoRevisionDocumento(e) === filtroEstadoRev);
   });
 
-  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + (p.evidencias || []).filter(isDocumentoPendiente).length, 0);
+  // Los adjuntos de soporte (0h) siguen la decisión de su documento principal:
+  // no se cuentan como pendientes propios.
+  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + (p.evidencias || []).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e)).length, 0);
 
   return (
     <div style={{ padding: '0 0 40px' }}>
@@ -683,7 +679,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filteredPtas.map((pta: any) => {
-            const evsPendientes = (pta.evidencias || []).filter(isDocumentoPendiente);
+            const evsPendientes = (pta.evidencias || []).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e));
             const isOpen = selectedPtaId === pta.pta_id;
             return (
               <div key={pta.pta_id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${evsPendientes.length > 0 ? '#FDE68A' : '#E5E7EB'}`, overflow: 'hidden' }}>
@@ -741,7 +737,8 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                             <p style={{ fontSize: '0.68rem', color: '#9CA3AF', margin: '2px 0 0' }}>El docente aún no ha subido evidencias para esta PTA</p>
                           </div>
                         )}
-                        {(pta.evidencias || []).map((ev: any) => {
+                        {agruparEvidenciasPorJustificacion(pta.evidencias || []).map((grupo: { main: any; adjuntos: any[] }) => {
+                          const ev = grupo.main;
                           const comp = COMPONENTES_SEG.find(c => c.key === ev.componente_pta);
                           const estadoRev = getEstadoRevisionDocumento(ev);
                           const isPendiente = estadoRev === 'pendiente';
@@ -754,6 +751,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                   <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                                     {comp && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>{comp.label}</span>}
                                     {ev.horas_avance > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF' }}>{ev.horas_avance}h</span>}
+                                    {grupo.adjuntos.length > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#F1F5F9', color: '#475569' }}>+{grupo.adjuntos.length} soporte{grupo.adjuntos.length > 1 ? 's' : ''}</span>}
                                     <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: estadoRev === 'aprobado' ? '#D1FAE5' : estadoRev === 'rechazado' ? '#FEE2E2' : '#FEF3C7', color: estadoRev === 'aprobado' ? '#065F46' : estadoRev === 'rechazado' ? '#991B1B' : '#92400E' }}>
                                       {estadoRev === 'aprobado' ? '✓ Aprobado' : estadoRev === 'rechazado' ? '✗ Rechazado' : '⏳ Pendiente'}
                                     </span>
@@ -804,7 +802,45 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                   </div>
                                 </div>
                               </div>
-                              {/* Acciones de revisión */}
+                              {/* Soportes adicionales de la misma justificación */}
+                              {grupo.adjuntos.length > 0 && (
+                                <div style={{ marginTop: 8, marginLeft: 26, borderLeft: '2px solid #E2E8F0', paddingLeft: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <div style={{ fontSize: '0.58rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    Soportes adicionales ({grupo.adjuntos.length}) — siguen la decisión del documento principal
+                                  </div>
+                                  {grupo.adjuntos.map((adj: any) => {
+                                    const extAdj = (adj.tipo_archivo || adj.nombre?.split('.').pop() || '').toLowerCase();
+                                    const hasRealFileAdj = !!(adj.storage_url && adj.storage_url.startsWith('/uploads'));
+                                    const canPreviewAdj = hasRealFileAdj && ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extAdj);
+                                    const fileUrlAdj = resolvePtaFileUrl(adj.storage_url || adj.storage_path || '');
+                                    return (
+                                      <div key={adj.id} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
+                                        <FileText style={{ width: 12, height: 12, color: '#94A3B8', flexShrink: 0 }} />
+                                        <span style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>{adj.nombre}</span>
+                                        {canPreviewAdj && (
+                                          <button
+                                            onClick={(e2) => { e2.stopPropagation(); setPreviewFile({ url: fileUrlAdj, nombre: adj.nombre, tipo: extAdj }); }}
+                                            style={{ padding: '2px 8px', borderRadius: 5, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1E40AF', fontSize: '0.6rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}
+                                          >
+                                            <Eye style={{ width: 10, height: 10 }} /> Ver
+                                          </button>
+                                        )}
+                                        <a
+                                          href={fileUrlAdj}
+                                          download={adj.nombre}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={e2 => e2.stopPropagation()}
+                                          style={{ padding: '2px 8px', borderRadius: 5, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.6rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none', flexShrink: 0 }}
+                                        >
+                                          <Download style={{ width: 10, height: 10 }} /> Descargar
+                                        </a>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {/* Acciones de revisión (aplican a la justificación completa) */}
                               {isPendiente && (
                                 <div style={{ marginTop: 10, display: 'flex', gap: 6, alignItems: 'flex-end' }}>
                                   <input
@@ -814,15 +850,17 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                     style={{ flex: 1, padding: '5px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.72rem', outline: 'none' }}
                                   />
                                   <button
-                                    onClick={() => revisar(pta.pta_id, ev.id, 'aprobado')}
+                                    onClick={() => revisar(pta.pta_id, ev.id, 'aprobado', grupo.adjuntos.map((a: any) => a.id))}
                                     disabled={procesando === ev.id}
+                                    title={grupo.adjuntos.length > 0 ? 'Aprueba la justificación y sus soportes adjuntos' : 'Aprobar documento'}
                                     style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: '#059669', color: 'white', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, opacity: procesando === ev.id ? 0.6 : 1 }}
                                   >
                                     <CheckCircle style={{ width: 12, height: 12 }} /> Aprobar
                                   </button>
                                   <button
-                                    onClick={() => revisar(pta.pta_id, ev.id, 'rechazado')}
+                                    onClick={() => revisar(pta.pta_id, ev.id, 'rechazado', grupo.adjuntos.map((a: any) => a.id))}
                                     disabled={procesando === ev.id}
+                                    title={grupo.adjuntos.length > 0 ? 'Rechaza la justificación y sus soportes adjuntos' : 'Rechazar documento'}
                                     style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: '#DC2626', color: 'white', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, opacity: procesando === ev.id ? 0.6 : 1 }}
                                   >
                                     <XCircle style={{ width: 12, height: 12 }} /> Rechazar

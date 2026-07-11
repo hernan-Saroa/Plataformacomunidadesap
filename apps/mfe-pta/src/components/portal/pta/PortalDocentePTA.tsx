@@ -23,7 +23,7 @@ import {
   Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
   Shield, ChevronRight, ExternalLink, ListChecks,
-  FlaskConical, Globe, Briefcase, X, Award,
+  FlaskConical, Globe, Briefcase, X, Award, Users, Paperclip, Lock,
 } from 'lucide-react';
 import {
   getPTAsByDocente, getPTAById, enviarAprobacionPTA,
@@ -44,6 +44,7 @@ import { VerificacionQRPublicaPTA } from '../../pta/VerificacionQRPublicaPTA';
 import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 
 interface PortalDocentePTAProps {
   onBack: () => void;
@@ -95,6 +96,168 @@ function timeAgo(d: string): string {
   if (hrs < 24) return `hace ${hrs}h`;
   const days = Math.floor(hrs / 24);
   return days < 7 ? `hace ${days}d` : new Date(d).toLocaleDateString('es-CO');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// V06 (detalle): helpers visuales de las secciones por componente.
+// Estilos inline: el index.css es un snapshot precompilado de Tailwind y
+// no genera clases nuevas (arbitrarias como grid-cols-[...] no existen).
+// ═══════════════════════════════════════════════════════════════════════
+
+/** 'YYYY-MM-DD' → 'DD/MM/YYYY' sin desfase de zona horaria. */
+function fmtFechaCorta(iso?: string): string | null {
+  if (!iso || typeof iso !== 'string') return null;
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+function rangoFechas(inicio?: string, fin?: string): string | null {
+  const i = fmtFechaCorta(inicio);
+  const f = fmtFechaCorta(fin);
+  if (i && f) return `${i} — ${f}`;
+  return i || f;
+}
+
+const MODALIDAD_LABELS: Record<string, string> = { PRESENCIAL: 'Presencial', VIRTUAL: 'Virtual', MIXTA: 'Mixta', DISTANCIA: 'Distancia' };
+
+// Alineado con DEFAULT_EXT_SECCIONES (PTAForm) y las secciones de Complementarias.
+const SECCION_LABELS: Record<string, string> = {
+  capacitacion: 'Dirección de Capacitación',
+  seleccion: 'Dirección de Procesos de Selección',
+  fortalecimiento: 'Fortalecimiento y Apoyo a la Gestión Estatal',
+  alto_gobierno: 'Escuela de Alto Gobierno',
+  laboratorio_innovacion: 'Fortalecimiento y Apoyo a la Gestión Estatal',
+  investigacion_aplicada: 'Fortalecimiento y Apoyo a la Gestión Estatal',
+  complementarias_docencia: 'Complementarias de docencia',
+  academico_administrativas: 'Académico-administrativas',
+};
+
+const prettySeccion = (s?: string) =>
+  s ? (SECCION_LABELS[s] || s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ')) : '';
+
+/** Chip informativo (dato puntual del ítem). No renderiza valores vacíos. */
+function DetalleChip({ icon: Icon, label, value, color }: { icon?: any; label?: string; value: any; color?: string }) {
+  if (value === null || value === undefined || value === '' || value === 0) return null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: '0.66rem', color: '#475569', fontWeight: 600, maxWidth: '100%' }}>
+      {Icon && <Icon size={11} color={color || '#94A3B8'} style={{ flexShrink: 0 }} />}
+      {label && <span style={{ color: '#94A3B8', fontWeight: 700, whiteSpace: 'nowrap' }}>{label}</span>}
+      <span style={{ overflowWrap: 'anywhere' }}>{value}</span>
+    </span>
+  );
+}
+
+/** Pill de horas con el color del componente. */
+function HorasBadge({ horas, color }: { horas: number; color: string }) {
+  return (
+    <span style={{ padding: '4px 12px', borderRadius: 999, background: `${color}14`, color, border: `1px solid ${color}33`, fontSize: '0.74rem', fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0 }}>
+      {horas}h
+    </span>
+  );
+}
+
+/** Estado real de aprobación de un componente, desde el DTO enriquecido del backend
+ *  (componentes_estado). Devuelve null si no aplica (Borrador o sin datos). */
+function getEstadoComponente(pta: any, key: string): string | null {
+  if (!pta) return null;
+  if (['Aprobado', 'En Firme', 'Finalizado'].includes(pta.estado)) return 'aprobado';
+  if (pta.estado === 'Borrador') return null;
+  const arr = Array.isArray(pta.componentes_estado) ? pta.componentes_estado : [];
+  return arr.find((c: any) => c?.key === key)?.estado || null;
+}
+
+const ESTADO_COMPONENTE_CFG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+  aprobado: { label: 'Aprobado', color: '#047857', bg: '#D1FAE5', icon: CheckCircle2 },
+  devuelto: { label: 'Devuelto', color: '#B91C1C', bg: '#FEE2E2', icon: RotateCcw },
+  pendiente: { label: 'Pendiente', color: '#92400E', bg: '#FEF3C7', icon: Clock },
+};
+
+/** Chip de estado de aprobación del componente (header de sección). */
+function EstadoComponenteChip({ estado }: { estado?: string | null }) {
+  if (!estado) return null;
+  const cfg = ESTADO_COMPONENTE_CFG[estado] || ESTADO_COMPONENTE_CFG.pendiente;
+  const Icon = cfg.icon;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background: cfg.bg, color: cfg.color, fontSize: '0.62rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+      <Icon size={11} /> {cfg.label}
+    </span>
+  );
+}
+
+/** Tarjeta de sección con header tintado por el color del componente.
+ *  textColor: tono para textos/badges cuando el color base es muy claro (ej. amarillo). */
+function DetalleSeccion({ icon: Icon, color, textColor, titulo, subtitulo, count, countLabel, totalHoras, estadoComponente, children }: { icon: any; color: string; textColor?: string; titulo: string; subtitulo?: string; count?: number; countLabel?: string; totalHoras?: number; estadoComponente?: string | null; children: any }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #E5E7EB', overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,0.04)', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '12px 16px', background: `${color}0A`, borderBottom: `1px solid ${color}22`, borderLeft: `4px solid ${color}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon size={16} color={color} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#111827', lineHeight: 1.2 }}>{titulo}</div>
+            {subtitulo && <div style={{ fontSize: '0.64rem', color: '#6B7280', fontWeight: 600, marginTop: 1 }}>{subtitulo}</div>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <EstadoComponenteChip estado={estadoComponente} />
+          {count != null && (
+            <span style={{ padding: '3px 10px', borderRadius: 999, background: '#fff', border: '1px solid #E5E7EB', fontSize: '0.64rem', fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>
+              {count} {countLabel}
+            </span>
+          )}
+          {Number(totalHoras) > 0 && <HorasBadge horas={Number(totalHoras)} color={textColor || color} />}
+        </div>
+      </div>
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Tarjeta de ítem dentro de una sección (borde izquierdo con el color del componente). */
+function ItemDetalle({ color, children }: { color: string; children: any }) {
+  return <div style={{ border: '1px solid #E8EAED', borderLeft: `3px solid ${color}`, borderRadius: 12, padding: '12px 14px', background: '#FDFDFD', minWidth: 0 }}>{children}</div>;
+}
+
+/** Sub-encabezado para agrupar ítems por sección dentro de un componente. */
+function SubSeccionHeader({ label, count, color }: { label: string; count: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0' }}>
+      <span style={{ fontSize: '0.6rem', fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
+      <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#9CA3AF' }}>({count})</span>
+      <div style={{ flex: 1, height: 1, background: '#E5E7EB' }} />
+    </div>
+  );
+}
+
+/** Nota de observaciones dentro de un ítem. */
+function ObservacionesNota({ texto }: { texto?: string }) {
+  if (!texto) return null;
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 8, padding: '7px 10px', borderRadius: 8, background: '#F9FAFB', border: '1px dashed #E5E7EB' }}>
+      <Info size={11} color="#9CA3AF" style={{ flexShrink: 0, marginTop: 2 }} />
+      <span style={{ fontSize: '0.66rem', color: '#6B7280', lineHeight: 1.5, overflowWrap: 'anywhere' }}>{texto}</span>
+    </div>
+  );
+}
+
+/** Chip de resolución/soporte: enlaza al archivo si hay URL. */
+function ResolucionChip({ nombre, url }: { nombre?: string; url?: string }) {
+  if (!nombre && !url) return null;
+  const contenido = (
+    <>
+      <Paperclip size={11} color="#64748B" style={{ flexShrink: 0 }} />
+      <span style={{ color: '#94A3B8', fontWeight: 700, whiteSpace: 'nowrap' }}>Resolución</span>
+      <span style={{ overflowWrap: 'anywhere' }}>{nombre || 'Ver archivo'}</span>
+    </>
+  );
+  const estilo: any = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: '0.66rem', color: '#475569', fontWeight: 600, maxWidth: '100%' };
+  if (url) {
+    return <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...estilo, textDecoration: 'none', cursor: 'pointer' }}>{contenido}</a>;
+  }
+  return <span style={estilo}>{contenido}</span>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -490,7 +653,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     return <PTAForm onBack={() => { setVista('v01_dashboard'); setEditPtaId(null); loadPtas(); }} userPersonId={userPersonId} ptaId={editPtaId} />;
   }
   if (vista === 'v09_imprimir' && selectedPtaId) {
-    return <PTAResumenPrint pta={selectedPta} onClose={() => setVista('v01_dashboard')} userPersonId={userPersonId} />;
+    return <PTAResumenPrint pta={selectedPta} onClose={() => setVista('v01_dashboard')} userPersonId={userPersonId} userName={userName} />;
   }
 
   const VISTAS_NAV = [
@@ -498,6 +661,11 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     { key: 'v12_adjuntos', label: 'Documentos y Soportes', icon: FileText },
     { key: 'v14_certificado', label: 'Firmados', icon: Shield },
   ];
+
+  // El seguimiento (Documentos y Soportes) se habilita cuando el PTA vigente
+  // tiene la totalidad de sus componentes aprobados. La pestaña sigue siendo
+  // navegable: dentro se muestra el aviso con el estado de cada componente.
+  const seguimientoBloqueado = ptas.length > 0 && !ptaHabilitadoParaSeguimiento(ptas[0]);
 
   return (
     <div>
@@ -590,6 +758,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 isActive ? 'text-[#003DA5]' : 'text-gray-400'
               }`} />
               <span>{v.label}</span>
+              {v.key === 'v12_adjuntos' && seguimientoBloqueado && (
+                <Lock style={{ width: 11, height: 11, color: '#D97706', flexShrink: 0 }} aria-label="Disponible tras la aprobación del PTA" />
+              )}
               {isActive && <div className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-[#003DA5]" />}
             </button>
           );
@@ -1039,128 +1210,219 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
               {/* Las actividades académico-administrativas se muestran dentro de
                   "Complementarias" (son una sección de Complementarias). */}
 
-              {/* Asignaturas */}
-              {selectedPta.asignaturas?.length > 0 && (
-                <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
-                  <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#003DA5]" /> Docencia — Asignaturas ({selectedPta.asignaturas.length})
-                  </h4>
-                  {/* Scrollable table on mobile */}
-                  <div className="overflow-x-auto -mx-1">
-                    <div className="min-w-[360px]">
-                      <div className="grid grid-cols-[1fr_50px_40px_50px] gap-1 px-1 pb-1.5 border-b border-gray-200">
-                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide">Asignatura</span>
-                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide text-center">Créd.</span>
-                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide text-center">Sem.</span>
-                        <span className="text-[0.55rem] sm:text-[0.6rem] font-bold text-gray-400 uppercase tracking-wide text-right">Horas</span>
-                      </div>
-                      {selectedPta.asignaturas.map((a: any, i: number) => (
-                        <div key={i} className={`grid grid-cols-[1fr_50px_40px_50px] gap-1 px-1 py-2 ${i < selectedPta.asignaturas.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                          <div className="min-w-0">
-                            <span className="text-[0.72rem] sm:text-[0.78rem] font-medium text-gray-700 block truncate">{a.nombre || a.asignatura_nombre}</span>
-                            {a.nucleo_tematico && <div className="text-[0.55rem] text-gray-400 truncate">{a.nucleo_tematico}</div>}
+              {/* Docencia — Asignaturas (detalle completo por asignatura) */}
+              {selectedPta.asignaturas?.length > 0 && (() => {
+                const asigs = selectedPta.asignaturas;
+                const totalDoc = Number(selectedPta.horas_docencia ?? 0)
+                  || asigs.reduce((s: number, a: any) => s + Number(a.total_horas || a.horas || 0), 0);
+                return (
+                  <DetalleSeccion
+                    icon={BookOpen}
+                    color={PTA_COLORS.DOCENCIA}
+                    titulo="Docencia"
+                    subtitulo="Asignaturas del plan de trabajo"
+                    count={asigs.length}
+                    countLabel={asigs.length === 1 ? 'asignatura' : 'asignaturas'}
+                    totalHoras={totalDoc}
+                    estadoComponente={getEstadoComponente(selectedPta, 'academica')}
+                  >
+                    {asigs.map((a: any, i: number) => (
+                      <ItemDetalle key={i} color={PTA_COLORS.DOCENCIA}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                            {a.nucleo_tematico && <div style={{ fontSize: '0.64rem', color: '#6B7280', fontWeight: 600, marginTop: 2 }}>{a.nucleo_tematico}</div>}
                           </div>
-                          <span className="text-center text-[0.72rem] sm:text-[0.78rem] text-gray-500">{a.creditos || 0}</span>
-                          <span className="text-center text-[0.72rem] sm:text-[0.78rem] text-gray-500">{a.semestre || '-'}</span>
-                          <span className="text-right text-[0.72rem] sm:text-[0.78rem] font-bold text-[#003DA5]">{a.total_horas || a.horas || 0}h</span>
+                          <HorasBadge horas={Number(a.total_horas || a.horas || 0)} color={PTA_COLORS.DOCENCIA} />
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          <DetalleChip label="Programa" value={a.programa_nombre} />
+                          <DetalleChip icon={MapPin} label="CETAP" value={a.cetap_nombre} color={PTA_COLORS.DOCENCIA} />
+                          <DetalleChip label="Territorial" value={a.territorial_nombre} />
+                          <DetalleChip label="Modalidad" value={MODALIDAD_LABELS[a.modalidad] || a.modalidad} />
+                          <DetalleChip label="Créditos" value={a.creditos} />
+                          <DetalleChip label="Semestre" value={a.semestre} />
+                          <DetalleChip icon={Users} label="Estudiantes" value={a.total_estudiantes} color={PTA_COLORS.DOCENCIA} />
+                          <DetalleChip icon={Clock} label="Horas base" value={a.horas_base ? `${a.horas_base}h` : null} color={PTA_COLORS.DOCENCIA} />
+                          <DetalleChip label="% del PTA" value={Number(a.porcentaje_pta) > 0 ? `${a.porcentaje_pta}%` : null} />
+                          <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(a.fecha_inicio, a.fecha_fin)} color={PTA_COLORS.DOCENCIA} />
+                        </div>
+                        <ObservacionesNota texto={a.observaciones} />
+                      </ItemDetalle>
+                    ))}
+                  </DetalleSeccion>
+                );
+              })()}
 
-              {/* Investigación — Proyecto y Actividades */}
+              {/* Investigación — Proyecto y Actividades (detalle completo) */}
               {(() => {
                 const proy = selectedPta.investigacion_proyecto;
                 const invActs = Array.isArray(selectedPta.investigacion_actividades) ? selectedPta.investigacion_actividades : [];
                 const tieneProy = proy && (proy.nombre || proy.rol || proy.codigo || Number(proy.horas_solicitadas) > 0);
                 if (!tieneProy && invActs.length === 0) return null;
+                const colorInv = PTA_COLORS.INVESTIGACION;
+                // Igual que el backend (toPtaDto): horas del proyecto o, en su defecto, suma de actividades.
+                const totalInv = Number(selectedPta.horas_investigacion ?? 0)
+                  || Number(proy?.horas_solicitadas || 0)
+                  || invActs.reduce((s: number, a: any) => s + Number(a.horas_total ?? a.horas ?? 0), 0);
+                const partes = [tieneProy ? 'Proyecto' : null, invActs.length > 0 ? `${invActs.length} ${invActs.length === 1 ? 'actividad' : 'actividades'}` : null].filter(Boolean);
                 return (
-                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
-                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: PTA_COLORS.INVESTIGACION }} /> Investigación
-                    </h4>
+                  <DetalleSeccion
+                    icon={FlaskConical}
+                    color={colorInv}
+                    titulo="Investigación"
+                    subtitulo={partes.join(' · ')}
+                    totalHoras={totalInv}
+                    estadoComponente={getEstadoComponente(selectedPta, 'investigacion')}
+                  >
                     {tieneProy && (
-                      <div className="bg-violet-50/50 rounded-xl border border-violet-100 p-3 mb-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-[0.78rem] sm:text-[0.84rem] font-extrabold text-gray-900 leading-tight">{proy.nombre || 'Proyecto de investigación'}</div>
-                            {proy.rol && <div className="text-[0.62rem] sm:text-[0.68rem] text-violet-700 font-bold mt-1">{proy.rol}</div>}
+                      <ItemDetalle color={colorInv}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{proy.nombre || 'Proyecto de investigación'}</div>
+                            {proy.rol && (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                                <Award size={11} color={colorInv} />
+                                <span style={{ fontSize: '0.64rem', fontWeight: 800, color: colorInv, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{proy.rol}</span>
+                              </div>
+                            )}
                           </div>
-                          <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 text-[0.68rem] font-black shrink-0">{Number(proy.horas_solicitadas || 0)}h</span>
+                          <HorasBadge horas={Number(proy.horas_solicitadas || 0)} color={colorInv} />
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2 text-[0.66rem] sm:text-[0.72rem] text-gray-600">
-                          {proy.codigo && <div><span className="text-gray-400 font-bold">Código: </span>{proy.codigo}</div>}
-                          {proy.grupo && <div><span className="text-gray-400 font-bold">Grupo: </span>{proy.grupo}</div>}
-                          {proy.linea && <div><span className="text-gray-400 font-bold">Línea: </span>{proy.linea}</div>}
-                          {proy.resolucion_nombre && <div><span className="text-gray-400 font-bold">Resolución: </span>{proy.resolucion_nombre}</div>}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          <DetalleChip label="Código" value={proy.codigo} />
+                          <DetalleChip label="Grupo" value={proy.grupo} />
+                          <DetalleChip label="Línea" value={proy.linea} />
+                          <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(proy.fecha_inicio, proy.fecha_fin)} color={colorInv} />
+                          <ResolucionChip nombre={proy.resolucion_nombre} url={proy.resolucion_archivo_url} />
                         </div>
-                      </div>
+                      </ItemDetalle>
                     )}
-                    {invActs.length > 0 && (
-                      <div className="space-y-2">
-                        {invActs.map((a: any, idx: number) => (
-                          <div key={a.id || a.actividad_id || idx} className="bg-white rounded-xl border border-gray-100 p-3 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-[0.74rem] sm:text-[0.8rem] font-semibold text-gray-800 leading-tight">{a.nombre || a.actividad_nombre || a.actividad_id || 'Actividad'}</div>
-                              {a.descripcion && <div className="text-[0.64rem] text-gray-500 mt-1 leading-relaxed">{a.descripcion}</div>}
-                            </div>
-                            <span className="px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 text-[0.66rem] font-black shrink-0">{Number(a.horas_total ?? a.horas ?? 0)}h</span>
+                    {invActs.length > 0 && tieneProy && (
+                      <SubSeccionHeader label="Actividades de investigación" count={invActs.length} color={colorInv} />
+                    )}
+                    {invActs.map((a: any, idx: number) => (
+                      <ItemDetalle key={a.id || a.actividad_id || idx} color={colorInv}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#1F2937', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{a.nombre || a.actividad_nombre || a.actividad_id || 'Actividad'}</div>
+                            {a.descripcion && <div style={{ fontSize: '0.66rem', color: '#6B7280', marginTop: 3, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{a.descripcion}</div>}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                          <HorasBadge horas={Number(a.horas_total ?? a.horas ?? 0)} color={colorInv} />
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                          <DetalleChip label="Cantidad" value={Number(a.cantidad) > 0 ? a.cantidad : null} />
+                          <DetalleChip label="Horas unitarias" value={Number(a.horas_unitarias) > 0 ? `${a.horas_unitarias}h` : null} />
+                          <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(a.fecha_inicio, a.fecha_fin)} color={colorInv} />
+                          <ResolucionChip nombre={a.resolucion_nombre} url={a.resolucion_archivo_url} />
+                        </div>
+                      </ItemDetalle>
+                    ))}
+                  </DetalleSeccion>
                 );
               })()}
 
-              {/* Extensión — Actividades */}
+              {/* Extensión — Actividades agrupadas por dirección/sección */}
               {(() => {
                 const extActs = Array.isArray(selectedPta.extension_actividades) ? selectedPta.extension_actividades : [];
                 if (extActs.length === 0) return null;
-                return (
-                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
-                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: PTA_COLORS.EXTENSION }} /> Extensión — Actividades ({extActs.length})
-                    </h4>
-                    <div className="space-y-2">
-                      {extActs.map((e: any, idx: number) => (
-                        <div key={e.id || e.actividad_id || idx} className="bg-white rounded-xl border border-gray-100 p-3 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-[0.74rem] sm:text-[0.8rem] font-semibold text-gray-800 leading-tight">{e.nombre || e.actividad_nombre || e.actividad_id || 'Actividad de extensión'}</div>
-                            {e.seccion && <div className="text-[0.6rem] text-emerald-700 font-bold mt-1">{e.seccion}</div>}
-                            {e.descripcion && <div className="text-[0.64rem] text-gray-500 mt-1 leading-relaxed">{e.descripcion}</div>}
-                          </div>
-                          <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[0.66rem] font-black shrink-0">{Number(e.horas ?? e.horas_ejecutadas ?? 0)}h</span>
-                        </div>
-                      ))}
+                const colorExt = PTA_COLORS.EXTENSION;
+                const totalExt = Number(selectedPta.horas_extension ?? 0)
+                  || extActs.reduce((s: number, e: any) => s + Number(e.horas ?? e.horas_ejecutadas ?? 0), 0);
+                // Agrupa por sección preservando el orden de aparición.
+                const grupos: Array<{ seccion: string; items: any[] }> = [];
+                for (const e of extActs) {
+                  const sec = String(e.seccion || '');
+                  const g = grupos.find(x => x.seccion === sec);
+                  if (g) g.items.push(e); else grupos.push({ seccion: sec, items: [e] });
+                }
+                const renderAct = (e: any, idx: number) => (
+                  <ItemDetalle key={e.id || e.actividad_id || idx} color={colorExt}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#1F2937', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{e.nombre || e.actividad_nombre || e.actividad_id || 'Actividad de extensión'}</div>
+                        {e.descripcion && <div style={{ fontSize: '0.66rem', color: '#6B7280', marginTop: 3, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{e.descripcion}</div>}
+                      </div>
+                      <HorasBadge horas={Number(e.horas ?? e.horas_ejecutadas ?? 0)} color={colorExt} />
                     </div>
-                  </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                      <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(e.fecha_inicio, e.fecha_fin)} color={colorExt} />
+                    </div>
+                  </ItemDetalle>
+                );
+                return (
+                  <DetalleSeccion
+                    icon={Globe}
+                    color={colorExt}
+                    titulo="Extensión"
+                    subtitulo="Actividades de extensión universitaria"
+                    count={extActs.length}
+                    countLabel={extActs.length === 1 ? 'actividad' : 'actividades'}
+                    totalHoras={totalExt}
+                    estadoComponente={getEstadoComponente(selectedPta, 'extension')}
+                  >
+                    {grupos.length > 1 || (grupos.length === 1 && grupos[0].seccion)
+                      ? grupos.map(g => (
+                          <div key={g.seccion || 'sin_seccion'} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <SubSeccionHeader label={prettySeccion(g.seccion) || 'Otras actividades'} count={g.items.length} color={colorExt} />
+                            {g.items.map(renderAct)}
+                          </div>
+                        ))
+                      : extActs.map(renderAct)}
+                  </DetalleSeccion>
                 );
               })()}
 
-              {/* Complementarias — Actividades */}
+              {/* Complementarias — agrupadas por sub-sección (docencia / académico-administrativas) */}
               {(() => {
                 const comps = Array.isArray(selectedPta.complementarias) ? selectedPta.complementarias : [];
                 if (comps.length === 0) return null;
-                return (
-                  <div className="bg-white rounded-2xl border border-gray-200/60 p-4 sm:p-5 lg:p-6 mb-4 shadow-sm">
-                    <h4 className="text-[0.82rem] sm:text-[0.88rem] font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: PTA_COLORS.COMPLEMENTARIAS }} /> Complementarias ({comps.length})
-                    </h4>
-                    <div className="space-y-2">
-                      {comps.map((c: any, idx: number) => (
-                        <div key={c.id || c.actividad_id || idx} className="bg-white rounded-xl border border-gray-100 p-3 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-[0.74rem] sm:text-[0.8rem] font-semibold text-gray-800 leading-tight">{c.nombre || c.actividad_nombre || c.actividad_id || 'Actividad complementaria'}</div>
-                            {c.descripcion && <div className="text-[0.64rem] text-gray-500 mt-1 leading-relaxed">{c.descripcion}</div>}
-                          </div>
-                          <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[0.66rem] font-black shrink-0">{Number(c.horas ?? 0)}h</span>
-                        </div>
-                      ))}
+                const colorComp = PTA_COLORS.COMPLEMENTARIAS;
+                // El amarillo puro es ilegible sobre fondo claro: texto en tono ámbar oscuro.
+                const textComp = '#A16207';
+                const totalComp = Number(selectedPta.horas_complementarias ?? 0)
+                  || comps.reduce((s: number, c: any) => s + Number(c.horas ?? 0), 0);
+                const grupos: Array<{ seccion: string; items: any[] }> = [];
+                for (const c of comps) {
+                  const sec = String(c.seccion || 'complementarias_docencia');
+                  const g = grupos.find(x => x.seccion === sec);
+                  if (g) g.items.push(c); else grupos.push({ seccion: sec, items: [c] });
+                }
+                const renderComp = (c: any, idx: number) => (
+                  <ItemDetalle key={c.id || c.actividad_id || idx} color={colorComp}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#1F2937', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{c.nombre || c.actividad_nombre || c.actividad_id || 'Actividad complementaria'}</div>
+                        {c.descripcion && <div style={{ fontSize: '0.66rem', color: '#6B7280', marginTop: 3, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{c.descripcion}</div>}
+                      </div>
+                      <HorasBadge horas={Number(c.horas ?? 0)} color={textComp} />
                     </div>
-                  </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                      <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(c.fecha_inicio, c.fecha_fin)} color={textComp} />
+                    </div>
+                  </ItemDetalle>
+                );
+                return (
+                  <DetalleSeccion
+                    icon={Briefcase}
+                    color={colorComp}
+                    textColor={textComp}
+                    titulo="Complementarias"
+                    subtitulo="Incluye actividades académico-administrativas"
+                    count={comps.length}
+                    countLabel={comps.length === 1 ? 'actividad' : 'actividades'}
+                    totalHoras={totalComp}
+                    estadoComponente={getEstadoComponente(selectedPta, 'complementarias')}
+                  >
+                    {grupos.length > 1 || comps.some((c: any) => c.seccion)
+                      ? grupos.map(g => (
+                          <div key={g.seccion} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <SubSeccionHeader label={prettySeccion(g.seccion)} count={g.items.length} color={textComp} />
+                            {g.items.map(renderComp)}
+                          </div>
+                        ))
+                      : comps.map(renderComp)}
+                  </DetalleSeccion>
                 );
               })()}
 
@@ -1256,6 +1518,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   isParcial={!['Aprobado', 'En Firme', 'Finalizado'].includes(selectedPta.estado)}
                   certificadoId={selectedPta.certificado_qr}
                   signedAt={selectedPta.signed_at || selectedPta.updated_at}
+                  componentesAprobacion={componentApprovalsByPta[selectedPta.id] || []}
                 />
               )}
             </div>

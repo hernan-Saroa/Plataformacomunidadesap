@@ -15,6 +15,11 @@ export class ProgramasController {
     return this.programasService.listarProgramas(query);
   }
 
+  @Get('filtros/opciones')
+  obtenerOpcionesFiltros(@Query('periodoAcademico') periodoAcademico?: string) {
+    return this.programasService.obtenerOpcionesFiltros(periodoAcademico);
+  }
+
   @Get(':id')
   obtener(@Param('id') id: string) {
     return this.programasService.obtenerPrograma(id);

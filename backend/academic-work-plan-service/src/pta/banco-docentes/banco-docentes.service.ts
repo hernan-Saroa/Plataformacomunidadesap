@@ -964,7 +964,7 @@ export class BancoDocentesService implements OnModuleInit {
     `;
   }
 
-  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; estado?: string; search?: string; periodoCarga?: string }, params: any[]) {
+  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string }, params: any[]) {
     const conditions: string[] = [];
 
     if (filters.territorial) {
@@ -991,6 +991,15 @@ export class BancoDocentesService implements OnModuleInit {
       }
     }
 
+    if (filters.vinculacion) {
+      params.push(filters.vinculacion);
+      const idx = params.length;
+      conditions.push(`(
+        vinculacion_codigo = $${idx}
+        OR LOWER(vinculacion) = LOWER($${idx})
+      )`);
+    }
+
     if (filters.periodoCarga) {
       params.push(filters.periodoCarga);
       conditions.push(`periodo_carga = $${params.length}`);
@@ -1013,7 +1022,7 @@ export class BancoDocentesService implements OnModuleInit {
     return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   }
 
-  async list(filters: { territorial?: string; dedicacion?: string; estado?: string; search?: string; periodoCarga?: string; page?: number; limit?: number }) {
+  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; page?: number; limit?: number }) {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
@@ -1753,7 +1762,7 @@ export class BancoDocentesService implements OnModuleInit {
     return result;
   }
 
-  async getStats(filters?: { territorial?: string; dedicacion?: string; estado?: string; periodoCarga?: string }) {
+  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string }) {
     const baseSql = this.authDocentesBaseSql();
     const params: any[] = [];
     const whereClause = filters ? this.buildAuthDocentesFilters(filters, params) : '';
@@ -1817,11 +1826,14 @@ export class BancoDocentesService implements OnModuleInit {
     const porVinculacion = await this.dataSource.query(`
       ${baseSql}
       SELECT
-        COALESCE(NULLIF(TRIM(vinculacion_codigo), ''), 'Sin vinculación') AS vinculacion,
+        COALESCE(NULLIF(TRIM(vinculacion_codigo), ''), 'SIN_VINCULACION') AS vinculacion_codigo,
+        COALESCE(NULLIF(TRIM(vinculacion), ''), NULLIF(TRIM(vinculacion_codigo), ''), 'Sin vinculación') AS vinculacion,
         COUNT(*)::int AS total
       FROM auth_docentes
       ${v.w}
-      GROUP BY COALESCE(NULLIF(TRIM(vinculacion_codigo), ''), 'Sin vinculación')
+      GROUP BY
+        COALESCE(NULLIF(TRIM(vinculacion_codigo), ''), 'SIN_VINCULACION'),
+        COALESCE(NULLIF(TRIM(vinculacion), ''), NULLIF(TRIM(vinculacion_codigo), ''), 'Sin vinculación')
       ORDER BY total DESC
     `, v.p);
 
