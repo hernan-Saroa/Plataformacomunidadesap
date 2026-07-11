@@ -3157,16 +3157,43 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               <ExportadorReportesPTA
                 data={filteredPtas}
                 columns={[
-                  { key: 'id', label: 'ID' },
                   { key: 'docente_nombre', label: 'Docente' },
+                  { key: 'docente_identificacion', label: 'Identificación' },
+                  { key: 'territorial', label: 'Territorial' },
+                  { key: 'programa', label: 'Programa' },
                   { key: 'dedicacion', label: 'Dedicación' },
-                  { key: 'estado', label: 'Estado' },
+                  { key: 'estado', label: 'Estado', formatter: (v: any) => String(v ?? '').replace(/_/g, ' ') },
                   { key: 'periodo', label: 'Periodo' },
-                  { key: 'total_horas_programadas', label: 'Horas Prog.' },
-                  { key: 'horas_a_programar', label: 'Horas Disp.' },
+                  { key: 'total_horas_programadas', label: 'Horas Programadas' },
+                  { key: 'horas_a_programar', label: 'Horas Disponibles' },
+                  {
+                    key: 'avance_pct', label: 'Avance %',
+                    formatter: (_v: any, row: any) => {
+                      const disp = Number(row?.horas_a_programar || 0);
+                      const tot = Number(row?.total_horas_programadas || 0);
+                      return disp > 0 ? `${Math.round((tot / disp) * 100)}%` : '0%';
+                    },
+                  },
+                  { key: 'horas_docencia', label: 'Docencia (h)' },
+                  { key: 'horas_investigacion', label: 'Investigación (h)' },
+                  { key: 'horas_extension', label: 'Extensión (h)' },
+                  { key: 'horas_complementarias', label: 'Complementarias (h)' },
+                  { key: 'num_asignaturas', label: 'Asignaturas' },
+                  {
+                    key: 'updated_at', label: 'Última actualización',
+                    formatter: (v: any) => (v ? new Date(v).toLocaleString('es-CO') : ''),
+                  },
+                  { key: 'id', label: 'ID' },
                 ]}
+                subtitle={[
+                  `Período ${filtroPeriodo}`,
+                  filtroEstado ? `Filtro: ${filtroEstado}` : '',
+                  filtroEstadoRegistro ? `Estado: ${filtroEstadoRegistro}` : '',
+                  searchQuery.trim() ? `Búsqueda: "${searchQuery.trim()}"` : '',
+                  filtroTags.length > 0 ? `Etiquetas: ${filtroTags.join(', ')}` : '',
+                ].filter(Boolean).join(' · ')}
                 filename="ptas_gestion"
-                title="Exportar Reporte"
+                title="Plan de Trabajo Académico — Gestión de PTAs"
                 variant="compact"
               />
             }
