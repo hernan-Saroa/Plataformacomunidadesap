@@ -1450,18 +1450,20 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                       <p style={{ fontSize: '0.78rem', color: '#9CA3AF', textAlign: 'center', padding: 20 }}>Sin mensajes. Inicia la conversación.</p>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       value={concertMsg}
                       onChange={e => setConcertMsg(e.target.value)}
                       placeholder="Escribe tu mensaje..."
                       onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviarMensajeConcertacion()}
-                      style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: '1px solid #DDD6FE', fontSize: '0.85rem', outline: 'none' }}
+                      className="flex-1 min-w-0 rounded-xl border border-violet-300 bg-white px-3.5 py-2.5 text-[0.85rem] font-medium text-slate-800 shadow-sm placeholder:text-slate-400 hover:border-violet-400 hover:shadow-md focus:outline-none focus:border-violet-500 focus:ring-4 focus:ring-violet-500/15 transition-all duration-200"
                     />
                     <button
+                      type="button"
                       onClick={enviarMensajeConcertacion}
                       disabled={sendingMsg || !concertMsg.trim()}
-                      style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7C3AED', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: sendingMsg || !concertMsg.trim() ? 0.5 : 1 }}
+                      aria-label="Enviar mensaje de concertación"
+                      className="flex items-center justify-center rounded-xl border-none bg-violet-600 px-4 py-2.5 text-white shadow-sm hover:bg-violet-700 hover:shadow-md active:scale-95 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:ring-offset-1 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed disabled:active:scale-100 transition-all duration-200"
                     >
                       <Send style={{ width: 14, height: 14 }} />
                     </button>

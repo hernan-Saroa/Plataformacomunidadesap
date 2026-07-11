@@ -2554,7 +2554,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             onChange={e => setComentarioConcertacion(e.target.value)}
             rows={2}
             placeholder="Ej: Ajustar horas de la asignatura X, no coinciden con el catálogo."
-            className="w-full rounded-lg border border-blue-300 px-3 py-2 text-[13px] text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full rounded-xl border border-blue-300 bg-white px-3 py-2 text-[13px] font-medium text-slate-800 shadow-sm placeholder:text-slate-400 hover:border-blue-400 hover:shadow-md focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 transition-all duration-200 resize-y"
           />
         </div>
       )}
@@ -2875,7 +2875,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         }}
                         rows={2}
                         placeholder="Explica que corregiste en este componente, o por que lo reenvias asi..."
-                        className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm placeholder:text-slate-400 hover:border-amber-400 hover:shadow-md focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all duration-200 resize-y"
                       />
                     </div>
                   </div>
@@ -3355,7 +3355,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   type="button"
                                   onClick={() => handleRemoveAsig(asig.id)}
                                   title="Eliminar Asignatura"
-                                  className="w-8 h-8 rounded-lg border border-transparent bg-slate-50 text-slate-400 cursor-pointer flex items-center justify-center hover:text-red-600 hover:bg-red-50 hover:border-red-200 active:scale-95 transition-all outline-none group-hover:border-slate-200 focus:ring-2 focus:ring-red-500/50"
+                                  aria-label={`Eliminar Asignatura ${idx + 1}`}
+                                  className="w-8 h-8 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:text-red-700 hover:bg-red-100 hover:border-red-300 hover:shadow-md active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-500/40 focus:ring-offset-1"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -3380,12 +3381,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               ) : cetapsCargadosAsig ? (
                                 <div className="flex flex-col">
                                   <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
-                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] text-slate-400 italic min-h-[36px] flex items-center">Sin CETAPs</div>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-[12px] text-slate-500 italic min-h-[36px] flex items-center shadow-sm">Sin CETAPs</div>
                                 </div>
                               ) : tIdAsig ? (
                                 <div className="flex flex-col">
                                   <label className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">CETAP</label>
-                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] text-slate-400 italic min-h-[36px] flex items-center">Cargando...</div>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-[12px] text-slate-500 italic min-h-[36px] flex items-center shadow-sm">Cargando...</div>
                                 </div>
                               ) : (
                                 <div className="flex flex-col hidden md:flex">
@@ -3480,7 +3481,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               {asig.asignatura_id && (
                                 <div className="flex flex-col">
                                   <span className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">Modalidad</span>
-                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[12px] font-semibold text-slate-600 min-h-[36px] flex items-center shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)]">
+                                  <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-[12px] font-semibold text-slate-700 min-h-[36px] flex items-center shadow-sm">
                                     {displayModalidad === 'PRESENCIAL' ? 'Presencial'
                                      : displayModalidad === 'VIRTUAL' ? 'Virtual'
                                      : displayModalidad === 'MIXTA' ? 'Mixta'
@@ -3645,8 +3646,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           ) : (
                             <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
                               isEditable
-                                ? 'border-purple-300 bg-purple-50/30 hover:bg-purple-50 cursor-pointer'
-                                : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                                ? 'border-purple-300 bg-white shadow-sm hover:border-purple-400 hover:bg-purple-50/40 hover:shadow-md cursor-pointer'
+                                : 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
                             }`}>
                               <FileUp className="w-4 h-4 text-purple-400" />
                               <span className="text-xs text-purple-500 font-medium">
@@ -3730,8 +3731,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         {invActividades.map((act, idx) => (
                           <div key={act.id} className="flex flex-col gap-2 p-3 rounded-lg border border-purple-200 bg-purple-50/30 relative">
                             {isEditable && (
-                              <button onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
-                                className="absolute top-2 right-2 w-6 h-6 rounded border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-500">
+                              <button type="button" onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
+                                title={`Eliminar Actividad ${idx + 1}`}
+                                aria-label={`Eliminar Actividad ${idx + 1}`}
+                                className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
@@ -3748,7 +3751,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={e => setInvActividades(prev => prev.map(a =>
                                     a.id === act.id ? { ...a, nombre: e.target.value, actividad_id: 'LIBRE_' + act.id } : a
                                   ))}
-                                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:bg-gray-50 disabled:text-gray-500"
+                                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white shadow-sm hover:border-purple-300 focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/15 disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all"
                                 />
                               </div>
                               <div>
@@ -3770,7 +3773,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                       a.id === act.id ? { ...a, horas_total: val, horas_unitarias: val, cantidad: 1 } : a
                                     ));
                                   }}
-                                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:bg-gray-50 text-right font-bold text-purple-700"
+                                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white shadow-sm hover:border-purple-300 focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/15 disabled:bg-slate-100 disabled:border-slate-200 disabled:shadow-none text-right font-bold text-purple-700 transition-all"
                                 />
                               </div>
                             </div>
@@ -3828,7 +3831,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     </div>
                                   ) : (
                                     <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
-                                      isEditable ? 'border-purple-300 bg-purple-50/30 hover:bg-purple-50 cursor-pointer' : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                                      isEditable ? 'border-purple-300 bg-white shadow-sm hover:border-purple-400 hover:bg-purple-50/40 hover:shadow-md cursor-pointer' : 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
                                     }`}>
                                       <FileUp className="w-4 h-4 text-purple-400" />
                                       <span className="text-xs text-purple-500 font-medium">
@@ -3860,8 +3863,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         {invActividades.map(act => (
                           <div key={act.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
                             {isEditable && (
-                              <button onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
-                                className="absolute top-2 right-2 w-6 h-6 rounded border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-500 text-xs">
+                              <button type="button" onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
+                                title="Eliminar Actividad de Investigación"
+                                aria-label="Eliminar Actividad de Investigación"
+                                className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40 text-xs">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
@@ -3921,7 +3926,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     </div>
                                   ) : (
                                     <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
-                                      isEditable ? 'border-purple-300 bg-purple-50/30 hover:bg-purple-50 cursor-pointer' : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                                    isEditable ? 'border-purple-300 bg-white shadow-sm hover:border-purple-400 hover:bg-purple-50/40 hover:shadow-md cursor-pointer' : 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'
                                     }`}>
                                       <FileUp className="w-4 h-4 text-purple-400" />
                                       <span className="text-xs text-purple-500 font-medium">
@@ -4047,8 +4052,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         return (
                           <div key={ext.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
                             {isEditable && (
-                              <button onClick={() => setExtActividades(prev => prev.filter(e => e.id !== ext.id))}
-                                className="absolute top-2 right-2 w-6 h-6 rounded border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-500">
+                              <button type="button" onClick={() => setExtActividades(prev => prev.filter(e => e.id !== ext.id))}
+                                title="Eliminar Actividad de Extensión"
+                                aria-label="Eliminar Actividad de Extensión"
+                                className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
@@ -4137,7 +4144,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                             value={(ext.items_cantidades || {})[iIdx] ?? 0}
                                             disabled={!isEditable}
                                             onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
-                                            className="w-16 text-center border border-amber-200 rounded-md px-2 py-1 text-[12px] font-bold text-amber-700 focus:ring-2 focus:ring-amber-500/20 outline-none bg-white" />
+                                            className="w-16 text-center border border-amber-300 rounded-md px-2 py-1 text-[12px] font-bold text-amber-700 shadow-sm hover:border-amber-400 focus:ring-4 focus:ring-amber-500/15 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all" />
                                           <span className="text-[11px] font-semibold text-amber-700 min-w-[36px] text-right">
                                             = {((ext.items_cantidades || {})[iIdx] ?? 0)}h
                                           </span>
@@ -4149,7 +4156,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                             value={(ext.items_cantidades || {})[iIdx] ?? (item.min ?? 0)}
                                             disabled={!isEditable}
                                             onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
-                                            className="w-16 text-center border border-indigo-200 rounded-md px-2 py-1 text-[12px] font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white" />
+                                            className="w-16 text-center border border-indigo-300 rounded-md px-2 py-1 text-[12px] font-bold text-indigo-700 shadow-sm hover:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all" />
                                           <span className="text-[11px] font-semibold text-indigo-700 min-w-[36px] text-right">
                                             = {((ext.items_cantidades || {})[iIdx] ?? (item.min ?? 0))}h
                                           </span>
@@ -4160,7 +4167,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                             value={(ext.items_cantidades || {})[iIdx] || 0}
                                             disabled={!isEditable}
                                             onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
-                                            className="w-16 text-center border border-sky-200 rounded-md px-2 py-1 text-[12px] font-bold text-sky-700 focus:ring-2 focus:ring-sky-500/20 outline-none bg-white" />
+                                            className="w-16 text-center border border-sky-300 rounded-md px-2 py-1 text-[12px] font-bold text-sky-700 shadow-sm hover:border-sky-400 focus:ring-4 focus:ring-sky-500/15 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all" />
                                           <span className="text-[11px] text-slate-400">
                                             uds. (×{item.horas}h)
                                           </span>
@@ -4292,8 +4299,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         return (
                           <div key={comp.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
                             {isEditable && (
-                              <button onClick={() => setComplementarias(prev => prev.filter(c => c.id !== comp.id))}
-                                className="absolute top-2 right-2 w-6 h-6 rounded border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-500">
+                              <button type="button" onClick={() => setComplementarias(prev => prev.filter(c => c.id !== comp.id))}
+                                title="Eliminar Actividad Complementaria"
+                                aria-label="Eliminar Actividad Complementaria"
+                                className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
@@ -4413,8 +4422,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         return (
                           <div key={comp.id} className={`flex flex-col gap-2 p-3 rounded-lg border relative ${comp.consumeTotalidad ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200 bg-gray-50/50'}`}>
                             {isEditable && (
-                              <button onClick={() => setAcademicoAdmin(prev => prev.filter(c => c.id !== comp.id))}
-                                className="absolute top-2 right-2 w-6 h-6 rounded border border-gray-200 bg-white text-gray-400 cursor-pointer flex items-center justify-center hover:text-red-500">
+                              <button type="button" onClick={() => setAcademicoAdmin(prev => prev.filter(c => c.id !== comp.id))}
+                                title="Eliminar Actividad Académico-Administrativa"
+                                aria-label="Eliminar Actividad Académico-Administrativa"
+                                className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
@@ -4649,7 +4660,7 @@ function FormSelect({ label, value, onChange, options, disabled, placeholder }: 
       <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">{label}</label>
       <div className="relative group">
         <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-          className="w-full px-3 py-2 rounded-xl border border-transparent bg-gray-50/80 hover:bg-gray-100/60 focus:bg-white focus:border-blue-400/50 focus:ring-4 focus:ring-blue-500/10 text-[12px] font-semibold text-gray-700 outline-none disabled:bg-gray-50/50 disabled:text-gray-400 transition-all duration-300 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] cursor-pointer appearance-none min-h-[36px]">
+          className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white hover:border-blue-300 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 text-[12px] font-semibold text-slate-800 outline-none disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200 shadow-sm cursor-pointer appearance-none min-h-[36px]">
           {placeholder && <option value="" disabled className="text-gray-400">{placeholder}</option>}
           {options.map(o => <option key={o.value} value={o.value} className="text-gray-900 font-medium">{o.label}</option>)}
         </select>
@@ -4667,7 +4678,7 @@ function FormInput({ label, value, onChange, disabled, type = 'text', placeholde
     <div className="flex flex-col">
       <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} placeholder={placeholder} min={min} max={max} step={step}
-        className="w-full px-3 py-2 rounded-xl border border-transparent bg-gray-50/80 hover:bg-gray-100/60 focus:bg-white focus:border-blue-400/50 focus:ring-4 focus:ring-blue-500/10 text-[12px] font-semibold text-gray-700 outline-none disabled:bg-gray-50/50 disabled:text-gray-400 transition-all duration-300 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] placeholder:text-gray-400 min-h-[36px]" />
+        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white hover:border-blue-300 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 text-[12px] font-semibold text-slate-800 outline-none disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-600 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200 shadow-sm placeholder:text-slate-400 min-h-[36px]" />
     </div>
   );
 }
@@ -4676,7 +4687,7 @@ function ReadonlyField({ label, value, color }: { label: string; value: string; 
   return (
     <div className="flex flex-col">
       <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">{label}</label>
-      <div className="w-full px-3 py-2 rounded-xl border border-transparent bg-gray-50/40 text-[12px] font-semibold text-gray-700 flex items-center min-h-[36px] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] cursor-not-allowed select-none transition-all"
+      <div className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-[12px] font-semibold text-slate-700 flex items-center min-h-[36px] shadow-sm cursor-not-allowed select-none transition-all"
         style={{ color: color || '#374151' }}>
         {value}
       </div>
