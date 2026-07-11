@@ -1409,6 +1409,14 @@ export class PtaService {
           console.error('[getPTAById] Error resolving nucleo tematico names:', err);
         }
       }
+
+      // Los cupos pertenecen a la oferta CETAP + programa del periodo, no al
+      // borrador del PTA. Al abrir un PTA siempre se devuelve el valor vigente,
+      // incluso si la asignatura fue guardada antes de que cambiaran los cupos.
+      dto.asignaturas = await this.syncAsignaturasCupos(
+        dto.asignaturas,
+        coalesceString(dto.periodo, pta.periodo),
+      );
     }
 
     return {
@@ -1504,6 +1512,16 @@ export class PtaService {
 
     const periodo = coalesceString(input?.periodo) || '2026-1';
     let estado = coalesceString(input?.estado) || 'BORRADOR';
+
+    // No confiar en el total enviado por el navegador: puede venir de un
+    // borrador abierto antes de una modificación de cupos. La oferta académica
+    // es la fuente única y se vuelve a consultar antes de validar/persistir.
+    if (Array.isArray(input?.asignaturas)) {
+      input = {
+        ...input,
+        asignaturas: await this.syncAsignaturasCupos(input.asignaturas, periodo),
+      };
+    }
 
     // Normalize state case
     if (estado.toLowerCase() === 'borrador') estado = 'Borrador';
@@ -2769,33 +2787,83 @@ export class PtaService {
     return { deleted: true };
   }
 
-  // ── Cierre de PTAs al poner "en curso" un nuevo período académico ───────────
-  // Cuando un período se activa (estado 'en_curso'), todos los PTA de períodos
-  // anteriores pasan a 'Terminado' (solo lectura / observación), incluso los que
-  // están en seguimiento. No se tocan los que ya están en un estado terminal.
+  // ── Cierre reversible de PTAs por cambio de período académico ───────────────
+  // El estado funcional se conserva antes de mostrar el PTA como 'Terminado'.
+  // Así, si el período vuelve a activarse, el flujo continúa exactamente donde
+  // estaba (Borrador, aprobación, concertación, seguimiento, etc.).
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
     const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
-    const qb = this.ptaRepo
-      .createQueryBuilder()
-      .update(PlanTrabajoAcademicoEntity)
-      .set({ estado: 'Terminado', updatedAt: () => 'NOW()' })
-      .where('estado NOT IN (:...terminales)', { terminales });
-
-    // No finalizar los PTA del propio período recién creado (si llegaran a existir).
-    if (codigo) {
-      qb.andWhere('(periodo IS DISTINCT FROM :codigo)', { codigo });
-    }
-
-    const result = await qb.execute();
-    const finalizados = result.affected || 0;
+    const rows = await this.ptaRepo.manager.query(
+      `
+      UPDATE academic_work_plan."PlanTrabajoAcademico"
+      SET estado = 'Terminado',
+          "estadoAntesCierrePeriodo" = estado,
+          "cerradoPorPeriodo" = NULLIF($1, '')
+      WHERE estado <> ALL($2::text[])
+        AND ($1 = '' OR periodo IS DISTINCT FROM $1)
+      RETURNING id
+      `,
+      [codigo, terminales],
+    );
+    const finalizados = Array.isArray(rows) ? rows.length : 0;
     if (finalizados > 0) {
       this.logger.log(
         `[Período ${codigo || 'nuevo'}] ${finalizados} PTA(s) pasaron a 'Terminado' (solo lectura).`,
       );
     }
     return { finalizados };
+  }
+
+  /**
+   * Restaura los PTA del periodo que vuelve a estar en curso. El fallback desde
+   * datosEstructurados repara también cierres hechos por la versión anterior,
+   * que sobrescribía `estado` sin guardar una copia explícita.
+   */
+  async restaurarPtasPorReactivacionPeriodo(codigoPeriodo?: string | null): Promise<{ restaurados: number }> {
+    const codigo = coalesceString(codigoPeriodo);
+    if (!codigo) return { restaurados: 0 };
+
+    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
+    const rows = await this.ptaRepo.manager.query(
+      `
+      WITH restaurables AS (
+        SELECT p.id,
+          COALESCE(
+            NULLIF(p."estadoAntesCierrePeriodo", ''),
+            (
+              SELECT NULLIF(h."estadoNuevo", '')
+              FROM academic_work_plan."HistorialEstadoPTA" h
+              WHERE h."ptaId" = p.id
+              ORDER BY h."createdAt" DESC
+              LIMIT 1
+            ),
+            NULLIF(p."datosEstructurados"->>'estado', '')
+          ) AS estado_restaurado
+        FROM academic_work_plan."PlanTrabajoAcademico" p
+        WHERE p.periodo = $1
+          AND p.estado IN ('Terminado', 'TERMINADO')
+      )
+      UPDATE academic_work_plan."PlanTrabajoAcademico" p
+      SET estado = r.estado_restaurado,
+          "estadoAntesCierrePeriodo" = NULL,
+          "cerradoPorPeriodo" = NULL
+      FROM restaurables r
+      WHERE p.id = r.id
+        AND r.estado_restaurado IS NOT NULL
+        AND r.estado_restaurado <> ALL($2::text[])
+      RETURNING p.id
+      `,
+      [codigo, terminales],
+    );
+    const restaurados = Array.isArray(rows) ? rows.length : 0;
+    if (restaurados > 0) {
+      this.logger.log(
+        `[Período ${codigo}] ${restaurados} PTA(s) recuperaron su estado anterior.`,
+      );
+    }
+    return { restaurados };
   }
 
   // ── Límite de aprobación: PTAs no aprobados dentro del plazo se eliminan ─────
@@ -3497,6 +3565,7 @@ export class PtaService {
   async getOfertaCetapPrograma(query?: any) {
     const cetapId = coalesceString(query?.cetap_id, query?.cetapId);
     const programaId = coalesceString(query?.programa_id, query?.programaId);
+    const periodo = coalesceString(query?.periodo, query?.periodo_codigo, query?.periodoCodigo);
 
     if (!cetapId || !programaId) {
       return { cupos_estimados: null };
@@ -3507,20 +3576,77 @@ export class PtaService {
       SELECT ocp.cupos_estimados
       FROM academic_work_plan.oferta_cetap_programa ocp
       JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+      JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
       WHERE ocp.id_programa::text = $2
         AND ocp.activa = true
+        AND ($3::text IS NULL OR pa.codigo = $3)
         AND (
           c.id::text = $1
           OR c.codigo IN (SELECT s.cod_sede FROM auth.sedes s WHERE s.id_sede::text = $1)
         )
+      ORDER BY COALESCE(ocp.updated_at, ocp.created_at) DESC
       LIMIT 1
       `,
-      [cetapId, programaId],
+      [cetapId, programaId, periodo],
     );
 
     return {
       cupos_estimados: rows.length > 0 ? rows[0].cupos_estimados : null,
     };
+  }
+
+  /**
+   * Refresca únicamente el dato derivado `total_estudiantes` de las asignaturas
+   * PTA. Si una fila legacy no tiene CETAP/programa, o ya no existe una oferta
+   * activa para el periodo, se conserva intacta para no dañar el borrador.
+   */
+  private async syncAsignaturasCupos(asignaturas: any[], periodo?: string | null): Promise<any[]> {
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return asignaturas;
+
+    const requests = new Map<string, Promise<number | null>>();
+    const getCupos = (cetapId: string, programaId: string) => {
+      const key = `${cetapId}::${programaId}::${periodo || ''}`;
+      let request = requests.get(key);
+      if (!request) {
+        request = this.getOfertaCetapPrograma({
+          cetap_id: cetapId,
+          programa_id: programaId,
+          periodo,
+        })
+          .then(result => {
+            const cupos = Number(result?.cupos_estimados);
+            return Number.isInteger(cupos) && cupos > 0 ? cupos : null;
+          })
+          .catch((error: any) => {
+            this.logger.warn(
+              `No se pudieron sincronizar cupos PTA para CETAP ${cetapId} y programa ${programaId}: ${error?.message || error}`,
+            );
+            return null;
+          });
+        requests.set(key, request);
+      }
+      return request;
+    };
+
+    return Promise.all(asignaturas.map(async (asignatura: any) => {
+      const cetapId = coalesceLookupKey(
+        asignatura?.cetap_id,
+        asignatura?.cetapId,
+        asignatura?.sede_id,
+        asignatura?.sedeId,
+      );
+      const programaId = coalesceLookupKey(
+        asignatura?.programa_id,
+        asignatura?.programaId,
+        asignatura?.programa?.id,
+      );
+      if (!cetapId || !programaId) return asignatura;
+
+      const cupos = await getCupos(cetapId, programaId);
+      return cupos == null
+        ? asignatura
+        : { ...asignatura, total_estudiantes: cupos };
+    }));
   }
 
   async getDocentesDisponibles(query?: any) {

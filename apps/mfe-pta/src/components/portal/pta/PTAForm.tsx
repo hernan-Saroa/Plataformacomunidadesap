@@ -1529,7 +1529,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         // para la combinación (CETAP, Programa). Es la fuente única y dinámica.
         const cetapForOferta = updated.cetap_id;
         if (value && cetapForOferta) {
-          getOfertaCetap(String(cetapForOferta), String(value))
+          getOfertaCetap(String(cetapForOferta), String(value), periodo)
             .then(res => {
               const cupos = Number(res?.data?.cupos_estimados);
               if (Number.isFinite(cupos) && cupos > 0) {

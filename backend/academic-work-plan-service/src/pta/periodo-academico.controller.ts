@@ -240,13 +240,14 @@ export class PeriodoAcademicoController {
           }
         }
 
-        // Al poner este período "en curso", todos los PTA de períodos anteriores
-        // pasan a 'Terminado' (solo lectura), incluso los que estaban en seguimiento.
-        // Best-effort: no debe impedir la activación del período si algo falla.
+        // Reactivar un período recupera primero el estado funcional de sus PTAs;
+        // después, los PTAs de los demás períodos quedan en cierre reversible.
+        // Best-effort: un fallo de sincronización no bloquea la gestión del periodo.
         try {
+          await this.ptaService.restaurarPtasPorReactivacionPeriodo(period.codigo);
           await this.ptaService.finalizarPtasPorNuevoPeriodo(period.codigo);
         } catch (e) {
-          console.warn('No se pudieron finalizar los PTA al activar el período:', (e as any)?.message);
+          console.warn('No se pudieron sincronizar los PTA al activar el período:', (e as any)?.message);
         }
       }
     }
