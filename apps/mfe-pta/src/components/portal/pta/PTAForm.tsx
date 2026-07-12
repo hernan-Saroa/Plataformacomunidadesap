@@ -198,13 +198,14 @@ interface ComplementariaItem {
   fecha_fin: string;
 }
 
-type HourConstraintMode = 'fixed' | 'range' | 'upto' | 'exclusive';
+type HourConstraintMode = 'fixed' | 'range' | 'upto' | 'exclusive' | 'percentage';
 
 interface HourConstraint {
   min: number;
   max: number;
   editable: boolean;
   mode: HourConstraintMode;
+  percentage?: number;
 }
 
 const FIXED_COMPLEMENTARIA_IDS = new Set(['COMP_01', 'COMP_02', 'COMP_03', 'COMP_04', 'COMP_05']);
@@ -224,9 +225,47 @@ function buildHourConstraint(min: number, max: number, editable: boolean, mode: 
   return { min: safeMin, max: safeMax, editable: true, mode };
 }
 
-function getComplementariaConstraint(activity: any, rules?: any): HourConstraint {
+function getPTAPercentage(activity: any): number {
+  const parsed = Number(activity?.porcentaje_pta);
+  return Number.isFinite(parsed) ? Math.min(100, Math.max(1, parsed)) : 1;
+}
+
+function getPercentageHours(activity: any, horasAProgramar: number): number {
+  return Math.round(Math.max(0, Number(horasAProgramar) || 0) * getPTAPercentage(activity) / 100);
+}
+
+function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number): HourConstraint | null {
+  const configuredType = String(activity?.tipo || '').trim().toLowerCase();
+  if (configuredType === 'porcentaje') {
+    const percentage = getPTAPercentage(activity);
+    const hours = getPercentageHours(activity, Number(horasAProgramar) || 0);
+    return { ...buildHourConstraint(hours, hours, false, 'percentage'), percentage };
+  }
+  const configuredMax = Number(activity?.max_horas);
+  if (!Number.isFinite(configuredMax) || configuredMax <= 0) return null;
+
+  if (configuredType === 'fija') {
+    return buildHourConstraint(configuredMax, configuredMax, false, 'fixed');
+  }
+  if (configuredType === 'intervalo') {
+    return buildHourConstraint(
+      getPositiveRuleNumber(activity?.min_horas, 1),
+      configuredMax,
+      true,
+      'range',
+    );
+  }
+  if (configuredType === 'hasta') {
+    return buildHourConstraint(1, configuredMax, true, 'upto');
+  }
+  return null;
+}
+
+function getComplementariaConstraint(activity: any, rules?: any, horasAProgramar?: number): HourConstraint {
   const id = String(activity?.id || activity?.actividad_id || '');
   const fallbackMax = getPositiveRuleNumber(activity?.max_horas, Number(activity?.horas) || 0);
+  const configuredConstraint = getConfiguredActivityConstraint(activity, horasAProgramar);
+  if (configuredConstraint) return configuredConstraint;
 
   if (FIXED_COMPLEMENTARIA_IDS.has(id)) {
     return buildHourConstraint(fallbackMax, fallbackMax, false, 'fixed');
@@ -269,6 +308,9 @@ function getAcademicoAdminConstraint(activity: any, rules: any, horasAProgramar:
     return buildHourConstraint(horasAProgramar, horasAProgramar, false, 'exclusive');
   }
 
+  const configuredConstraint = getConfiguredActivityConstraint(activity, horasAProgramar);
+  if (configuredConstraint) return configuredConstraint;
+
   // Nota: el máximo por actividad configurado en la Configuración de Reglas (catalogMax,
   // proveniente de aadm_actividades[].max_horas) manda. Los campos escalares legacy
   // (aadm_misiones_horas, comp_doc_*) solo se usan como fallback cuando el catálogo no trae valor.
@@ -310,6 +352,8 @@ function getAcademicoAdminConstraint(activity: any, rules: any, horasAProgramar:
 
 function getConstraintLabel(constraint: HourConstraint): string {
   if (constraint.mode === 'exclusive') return '100% PTA';
+  if (constraint.mode === 'percentage') return `${constraint.percentage}% PTA = ${constraint.max}h`;
+  if (constraint.mode === 'fixed') return `fija ${constraint.max}h`;
   if (constraint.mode === 'range') return `${constraint.min}-${constraint.max}h`;
   if (constraint.editable) return `máx ${constraint.max}h`;
   return `${constraint.max}h`;
@@ -340,6 +384,9 @@ function getConstraintErrorMessage(nombre: string, horas: number, constraint: Ho
 
   if (!constraint.editable) {
     if (horas !== constraint.max) {
+      if (constraint.mode === 'percentage') {
+        return `La actividad "${nombre}" corresponde al ${constraint.percentage}% del PTA (${constraint.max}h).`;
+      }
       return `La actividad "${nombre}" debe registrarse con ${constraint.max}h exactas.`;
     }
     return null;
@@ -437,12 +484,38 @@ const ROLES_INVESTIGACION_HORAS: Record<string, number> = {
 // Fallback sincrónico que coincide con los defaults del backend (pta.service.ts).
 // Elimina la race condition: el formulario conoce el multiplicador x2 de capacitación
 // desde el primer render, antes de que responda la API.
-const DEFAULT_EXT_SECCIONES: Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number }> = [
+type ExtensionSectionConfig = {
+  key: string;
+  label: string;
+  color: string;
+  orden: number;
+  multiplicador?: number;
+  columnas?: string[];
+};
+
+const DEFAULT_EXT_SECCIONES: ExtensionSectionConfig[] = [
   { key: 'capacitacion',         label: '3.1.1. Dirección de Capacitación', color: '#059669', orden: 1, multiplicador: 2 },
   { key: 'seleccion',            label: '3.1.2. Dirección de Procesos de Selección', color: '#0284C7', orden: 2, multiplicador: 1 },
   { key: 'fortalecimiento',      label: '3.1.3. Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', color: '#7C3AED', orden: 3, multiplicador: 1 },
   { key: 'alto_gobierno',        label: '3.2. Escuela de Alto Gobierno', color: '#B45309', orden: 4, multiplicador: 1 },
 ];
+
+const EXT_ITEMS_COLUMN_KEY = '_items_';
+
+/**
+ * La presencia histórica de `items: []` no basta para afirmar que una actividad
+ * tiene desglose. Las configuraciones nuevas pueden declarar explícitamente una
+ * tabla de solo columna raíz mediante `columnas: []`.
+ */
+function extensionActivityUsesItems(section: ExtensionSectionConfig | undefined, activity: any): boolean {
+  if (Array.isArray(section?.columnas)) return section.columnas.includes(EXT_ITEMS_COLUMN_KEY);
+  return Array.isArray(activity?.items);
+}
+
+function getRootActivityHourType(activity: any): 'fija' | 'hasta' | 'intervalo' | 'porcentaje' {
+  const type = String(activity?.tipo || 'hasta').toLowerCase();
+  return type === 'fija' || type === 'intervalo' || type === 'porcentaje' ? type : 'hasta';
+}
 
 const EXT_SECTION_ALIASES: Record<string, string> = {
   laboratorio_innovacion: 'fortalecimiento',
@@ -469,8 +542,9 @@ const DEFAULT_COMP_SECCIONES = [
 ];
 
 // Aplana una actividad de comp_actividades_v2 (config) al shape plano que consumen los
-// dropdowns/constraints del docente: { id, nombre, max_horas, min_horas, consumeTotalidad }.
-function flattenCompV2Catalog(arr: any[]): any[] {
+// dropdowns/constraints del docente. El tipo es indispensable para distinguir una
+// cantidad fija de un máximo editable.
+function flattenCompV2Catalog(arr: any[], fullPTAFromPercentage = false): any[] {
   return (Array.isArray(arr) ? arr : []).map((a: any) => ({
     id: a.id,
     nombre: a.nombre,
@@ -478,7 +552,11 @@ function flattenCompV2Catalog(arr: any[]): any[] {
       ? null
       : (a.max_horas ?? (Array.isArray(a.items) && a.items.length ? Math.max(...a.items.map((i: any) => Number(i.horas || 0))) : 0)),
     min_horas: a.min_horas,
-    consumeTotalidad: !!a.consumeTotalidad,
+    tipo: a.tipo,
+    porcentaje_pta: a.porcentaje_pta,
+    consumeTotalidad: !!a.consumeTotalidad || (
+      fullPTAFromPercentage && String(a.tipo || '').toLowerCase() === 'porcentaje' && getPTAPercentage(a) === 100
+    ),
   }));
 }
 
@@ -562,7 +640,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [cetapsMap, setCetapsMap] = useState<Record<string, any[]>>({});
   const [actInvestigacion, setActInvestigacion] = useState<any[]>([]);
   const [actExtension, setActExtension] = useState<any>(null);
-  const [extSecciones, setExtSecciones] = useState<Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number }>>(DEFAULT_EXT_SECCIONES);
+  const [extSecciones, setExtSecciones] = useState<ExtensionSectionConfig[]>(DEFAULT_EXT_SECCIONES);
   const [actComplementarias, setActComplementarias] = useState<any[]>([]);
   const [actAcadAdmin, setActAcadAdmin] = useState<any[]>([]);
   const [rolesInvestigacion, setRolesInvestigacion] = useState<any[]>([]);
@@ -780,12 +858,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const normalized: Record<string, any[]> = {};
         Object.entries(actExt.data).forEach(([key, val]) => {
           const sectionKey = normalizeExtensionSectionKey(key);
-          const acts = key === 'capacitacion'
-            ? (val as any[])
-            : (val as any[]).map((a: any) => ({
-              ...a,
-              items: a.items || []
-            }));
+          // No inferir el modelo por la sección ni fabricar `items: []`.
+          // La presencia de `items` es el discriminador compatible con datos legacy.
+          const acts = Array.isArray(val) ? val : [];
           normalized[sectionKey] = [...(normalized[sectionKey] || []), ...acts];
         });
         // De-duplicar actividades por id dentro de cada sección. Distintas claves de
@@ -810,7 +885,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       // catálogo legacy por endpoint como respaldo.
       const compV2 = (config.success && config.data?.comp_actividades_v2) || {};
       const compFromV2 = flattenCompV2Catalog(compV2[COMP_SECCION_DOCENCIA]);
-      const aadmFromV2 = flattenCompV2Catalog(compV2[COMP_SECCION_AADM]);
+      const aadmFromV2 = flattenCompV2Catalog(compV2[COMP_SECCION_AADM], true);
       const compData = compFromV2.length > 0 ? compFromV2 : (actComp.success && Array.isArray(actComp.data) ? actComp.data : []);
       const aadmData = aadmFromV2.length > 0 ? aadmFromV2 : (actAcad.success && Array.isArray(actAcad.data) ? actAcad.data : []);
       setActComplementarias(compData);
@@ -832,7 +907,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const mult = (s.multiplicador != null && Number(s.multiplicador) > 0)
             ? Number(s.multiplicador)
             : (def.multiplicador || 1);
-          return { ...def, color: s.color || def.color, columnas: s.columnas || (def as any).columnas, multiplicador: mult };
+          return {
+            ...def,
+            color: s.color || def.color,
+            // Un arreglo vacío es significativo: describe una tabla simple sin filas.
+            columnas: Array.isArray(s.columnas) ? s.columnas : def.columnas,
+            multiplicador: mult,
+          };
         });
         const sorted = merged.sort((a: any, b: any) => (a.orden ?? 0) - (b.orden ?? 0));
         setExtSecciones(sorted);
@@ -891,11 +972,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const baseAct = sectionKey === e.seccion ? e : { ...e, seccion: sectionKey };
         if (baseAct !== e) changed = true;
         const cat = (actExtension[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
-        if (cat && Array.isArray(cat.items) && cat.items.length > 0) {
+        const section = extSecciones.find(s => s.key === sectionKey);
+        if (cat && extensionActivityUsesItems(section, cat) && Array.isArray(cat.items) && cat.items.length > 0) {
           const newCantidades = baseAct.items_cantidades || {};
           const totalHoras = cat.items.reduce((sum: number, item: any, i: number) => {
             const tipo = (item.tipo || 'fija').toLowerCase();
             if (tipo === 'fija') return sum + (item.horas || 0);
+            if (tipo === 'porcentaje') return sum + getPercentageHours(item, horasAProgramar);
             if (tipo === 'hasta') return sum + Math.min(item.horas || 0, Math.max(0, Number(newCantidades[i]) || 0));
             // 'intervalo': el valor ES las horas (acotado a [min, max]); NO se multiplica
             // por item.horas (eso daba totales absurdos, p.ej. 40 × 120 = 4800h).
@@ -908,11 +991,72 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             return { ...baseAct, horas: totalHoras, horas_ejecutadas: totalHoras };
           }
         }
+        if (cat && !extensionActivityUsesItems(section, cat)) {
+          const mult = Math.max(1, Number(section?.multiplicador) || 1);
+          const type = getRootActivityHourType(cat);
+          const maxPta = type === 'porcentaje'
+            ? getPercentageHours(cat, horasAProgramar)
+            : Math.max(1, Number(cat.max_horas) || 1);
+          const minPta = type === 'intervalo'
+            ? Math.min(maxPta, Math.max(1, Number(cat.min_horas) || 1))
+            : (type === 'fija' ? maxPta : 1);
+          const maxExec = maxPta / mult;
+          const minExec = minPta / mult;
+          const savedExec = Number(baseAct.horas_ejecutadas ?? (Number(baseAct.horas) / mult));
+          let nextExec = Number.isFinite(savedExec) ? savedExec : 0;
+          if (type === 'fija' || type === 'porcentaje') nextExec = maxExec;
+          else if (nextExec <= 0) nextExec = type === 'intervalo' ? minExec : maxExec;
+          else nextExec = Math.min(maxExec, Math.max(type === 'intervalo' ? minExec : 0, nextExec));
+          const nextHours = nextExec * mult;
+          if (baseAct.horas_ejecutadas !== nextExec || baseAct.horas !== nextHours || baseAct.items_cantidades) {
+            changed = true;
+            return { ...baseAct, horas_ejecutadas: nextExec, horas: nextHours, items_cantidades: undefined };
+          }
+        }
         return baseAct;
       });
       return changed ? next : prev;
     });
-  }, [actExtension, extActividades]);
+  }, [actExtension, extActividades, extSecciones, horasAProgramar]);
+
+  // Reconciliar borradores creados antes de que el portal conservara `tipo`.
+  // Una regla fija nunca debe permanecer con el valor parcial que dejó el antiguo
+  // comportamiento de "hasta".
+  useEffect(() => {
+    if (actComplementarias.length > 0) {
+      setComplementarias(previous => {
+        let changed = false;
+        const next = previous.map(item => {
+          const catalog = actComplementarias.find((activity: any) => activity.id === item.actividad_id);
+          if (!catalog) return item;
+          const constraint = getComplementariaConstraint(catalog, ptaRules, horasAProgramar);
+          if ((constraint.mode === 'fixed' || constraint.mode === 'percentage') && Number(item.horas) !== constraint.max) {
+            changed = true;
+            return { ...item, horas: constraint.max };
+          }
+          return item;
+        });
+        return changed ? next : previous;
+      });
+    }
+
+    if (actAcadAdmin.length > 0) {
+      setAcademicoAdmin(previous => {
+        let changed = false;
+        const next = previous.map(item => {
+          const catalog = actAcadAdmin.find((activity: any) => activity.id === item.actividad_id);
+          if (!catalog) return item;
+          const constraint = getAcademicoAdminConstraint(catalog, ptaRules, horasAProgramar);
+          if ((constraint.mode === 'fixed' || constraint.mode === 'percentage') && Number(item.horas) !== constraint.max) {
+            changed = true;
+            return { ...item, horas: constraint.max };
+          }
+          return item;
+        });
+        return changed ? next : previous;
+      });
+    }
+  }, [actComplementarias, actAcadAdmin, ptaRules, horasAProgramar]);
 
   const loadingCetapsRef = useRef<Set<string>>(new Set());
 
@@ -1413,11 +1557,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     complementarias.forEach(comp => {
       if (!comp.actividad_id) return;
       const cat = actComplementarias.find((a: any) => a.id === comp.actividad_id) || comp;
-      const error = getConstraintErrorMessage(comp.nombre || cat.nombre || comp.actividad_id, Number(comp.horas || 0), getComplementariaConstraint(cat, ptaRules));
+      const error = getConstraintErrorMessage(comp.nombre || cat.nombre || comp.actividad_id, Number(comp.horas || 0), getComplementariaConstraint(cat, ptaRules, horasAProgramar));
       if (error) warns.push(error);
     });
     return warns;
-  }, [hCompOrdinary, maxCompLimit, complementarias, actComplementarias, ptaRules, actividadTotalidad]);
+  }, [hCompOrdinary, maxCompLimit, complementarias, actComplementarias, ptaRules, actividadTotalidad, horasAProgramar]);
 
   // ═══ VALIDACIONES ACADÉMICO ADMINISTRATIVAS ═══════════════════════════
   const acadWarnings = useMemo(() => {
@@ -1696,8 +1840,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === value);
         if (cat) {
           updated.nombre = cat.nombre;
-          // Detectar si es una etapa con ítems jerárquicos
-          if (Array.isArray(cat.items) && cat.items.length > 0) {
+          // La estructura de columnas de la sección manda. `items: []` puede ser
+          // solo un vestigio del modelo de edición y no implica que existan filas.
+          if (extensionActivityUsesItems(secConfig, cat) && Array.isArray(cat.items)) {
             // Pre-inicializar cantidades: las fijas vienen del backoffice, las demás en 0
             const initCantidades: Record<number, number> = {};
             let totalHorasInit = 0;
@@ -1706,6 +1851,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               if (tipo === 'fija') {
                 initCantidades[i] = it.horas || 0;
                 totalHorasInit += it.horas || 0;
+              } else if (tipo === 'porcentaje') {
+                const percentageHours = getPercentageHours(it, horasAProgramar);
+                initCantidades[i] = percentageHours;
+                totalHorasInit += percentageHours;
               } else if (tipo === 'hasta') {
                 initCantidades[i] = 0; // docente ajusta dentro del rango
               } else if (tipo === 'intervalo') {
@@ -1719,13 +1868,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             updated.horas_ejecutadas = totalHorasInit;
             updated.horas = totalHorasInit;
           } else {
-            // Actividad plana (modelo anterior)
-            const totalCatalogo = cat.max_horas || 0;
-            const maxEjecucion = tieneMultiplicador ? totalCatalogo / mult : totalCatalogo;
-            let valEjec = maxEjecucion;
-            let valHoras = tieneMultiplicador ? totalCatalogo : maxEjecucion;
+            // Tabla simple de columna raíz: las horas viven directamente en el bloque.
+            const rootType = getRootActivityHourType(cat);
+            const maxPta = rootType === 'porcentaje'
+              ? getPercentageHours(cat, horasAProgramar)
+              : Math.max(1, Number(cat.max_horas) || 1);
+            const minPta = rootType === 'intervalo'
+              ? Math.min(maxPta, Math.max(1, Number(cat.min_horas) || 1))
+              : (rootType === 'fija' ? maxPta : 1);
+            let valHoras = rootType === 'intervalo' ? minPta : maxPta;
+            let valEjec = tieneMultiplicador ? valHoras / mult : valHoras;
             
-            if (valHoras > remainingLimit) {
+            if (valHoras > remainingLimit && rootType !== 'porcentaje') {
               valHoras = remainingLimit;
               valEjec = tieneMultiplicador ? valHoras / mult : valHoras;
             }
@@ -1737,6 +1891,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             
             updated.horas_ejecutadas = valEjec;
             updated.horas = valHoras;
+            updated.items_cantidades = undefined;
           }
         }
       }
@@ -1746,17 +1901,26 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (val < 1 && value !== '') val = 1; // Ni negativos ni 0
         
         const cat = (actExtension?.[updated.seccion] || []).find((c: any) => c.id === updated.actividad_id);
+        const defaultMaxPta = cat && getRootActivityHourType(cat) === 'porcentaje'
+          ? getPercentageHours(cat, horasAProgramar)
+          : (cat?.max_horas || 0);
         const defaultMax = cat
-          ? (tieneMultiplicador ? (cat.max_horas || 0) / mult : (cat.max_horas || 0))
+          ? (tieneMultiplicador ? defaultMaxPta / mult : defaultMaxPta)
           : 0;
+        const rootType = getRootActivityHourType(cat);
+        const defaultMin = cat
+          ? (tieneMultiplicador ? (cat.min_horas || 1) / mult : (cat.min_horas || 1))
+          : 1;
         
         if (defaultMax > 0 && val > defaultMax) {
           val = defaultMax; // No mayor al default del catálogo
         }
+        if ((rootType === 'fija' || rootType === 'porcentaje') && defaultMax > 0) val = defaultMax;
+        if (rootType === 'intervalo' && value !== '' && val < defaultMin) val = defaultMin;
         
         let valHoras = tieneMultiplicador ? val * mult : val;
         
-        if (valHoras > remainingLimit) {
+        if (valHoras > remainingLimit && rootType !== 'porcentaje') {
           valHoras = remainingLimit;
           val = tieneMultiplicador ? valHoras / mult : valHoras;
         }
@@ -1771,13 +1935,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (val < 1 && value !== '') val = 1; // Ni negativos ni 0
         
         const cat = (actExtension?.[updated.seccion] || []).find((c: any) => c.id === updated.actividad_id);
-        const defaultMax = cat ? (cat.max_horas || 0) : 0;
+        const defaultMax = cat
+          ? (getRootActivityHourType(cat) === 'porcentaje' ? getPercentageHours(cat, horasAProgramar) : (cat.max_horas || 0))
+          : 0;
+        const rootType = getRootActivityHourType(cat);
+        const defaultMin = cat ? (cat.min_horas || 1) : 1;
         
         if (defaultMax > 0 && val > defaultMax) {
           val = defaultMax; // No mayor al default del catálogo
         }
+        if ((rootType === 'fija' || rootType === 'porcentaje') && defaultMax > 0) val = defaultMax;
+        if (rootType === 'intervalo' && value !== '' && val < defaultMin) val = defaultMin;
         
-        if (val > remainingLimit) {
+        if (val > remainingLimit && rootType !== 'porcentaje') {
           val = remainingLimit; // No superar lo permitido
         }
         
@@ -1800,6 +1970,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       
       const item = cat.items[itemIdx];
       const itemTipo = (item.tipo || 'fija').toLowerCase();
+      if (itemTipo === 'porcentaje') return baseAct;
       let cleanedVal = Math.max(itemTipo === 'intervalo' ? (item.min ?? 0) : 0, val);
       if (itemTipo === 'hasta' || itemTipo === 'intervalo') {
         cleanedVal = Math.min(item.horas || 0, cleanedVal);
@@ -1809,6 +1980,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const totalHoras = cat.items.reduce((sum: number, it: any, i: number) => {
         const tipo = (it.tipo || 'fija').toLowerCase();
         if (tipo === 'fija') return sum + (it.horas || 0);
+        if (tipo === 'porcentaje') return sum + getPercentageHours(it, horasAProgramar);
         if (tipo === 'hasta' || tipo === 'intervalo') return sum + (newCantidades[i] || 0);
         const qty = newCantidades[i] || 0;
         return sum + (qty * (it.horas || 0));
@@ -1842,7 +2014,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             .reduce((sum, x) => sum + (x.horas || 0), 0);
           const remainingLimit = isSindicato ? Infinity : Math.max(0, maxCompLimit - otherOrdinarySum);
           const trueRemainingLimit = remainingLimit;
-          const constraint = getComplementariaConstraint(cat, ptaRules);
+          const constraint = getComplementariaConstraint(cat, ptaRules, horasAProgramar);
           const suggestedHours = getInitialConstraintValue(constraint);
 
           updated.nombre = cat.nombre;
@@ -1857,7 +2029,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (field === 'horas') {
         const cat = actComplementarias.find(ac => ac.id === updated.actividad_id);
         if (cat) {
-          const constraint = getComplementariaConstraint(cat, ptaRules);
+          const constraint = getComplementariaConstraint(cat, ptaRules, horasAProgramar);
           const isSindicato = String(cat.nombre).toUpperCase().includes('SINDICATO');
           const otherOrdinarySum = prev
             .filter(x => x.id !== id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
@@ -4047,8 +4219,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       {extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === currentExtSubseccion).map(ext => {
                         const extSectionKey = normalizeExtensionSectionKey(ext.seccion);
                         const catExt = (actExtension?.[extSectionKey] || []).find((c: any) => c.id === ext.actividad_id);
-                        const hasItemsExt = catExt && Array.isArray(catExt.items) && catExt.items.length > 0;
-                        const secMult = extSecciones.find(s => s.key === extSectionKey)?.multiplicador || 1;
+                        const sectionConfig = extSecciones.find(s => s.key === extSectionKey);
+                        const hasItemsExt = Boolean(catExt && extensionActivityUsesItems(sectionConfig, catExt));
+                        const extCatalogItems = Array.isArray(catExt?.items) ? catExt.items : [];
+                        const secMult = sectionConfig?.multiplicador || 1;
+                        const rootHourType = getRootActivityHourType(catExt);
                         return (
                           <div key={ext.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
                             {isEditable && (
@@ -4062,22 +4237,51 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             {/* Selector de Actividad / Etapa */}
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
-                                <FormSelect label="Actividad / Etapa" value={ext.actividad_id} disabled={!isEditable}
+                                <FormSelect
+                                  label={Array.isArray(sectionConfig?.columnas) && !sectionConfig.columnas.includes(EXT_ITEMS_COLUMN_KEY) ? 'Actividad' : 'Actividad / Etapa'}
+                                  value={ext.actividad_id}
+                                  disabled={!isEditable}
                                   onChange={v => handleExtActChange(ext.id, 'actividad_id', v)}
                                   options={getExtCatalog(currentExtSubseccion).map((a: any) => {
-                                    const hasItems = Array.isArray(a.items) && a.items.length > 0;
+                                    const optionSection = extSecciones.find(s => s.key === normalizeExtensionSectionKey(currentExtSubseccion));
+                                    const hasItems = extensionActivityUsesItems(optionSection, a);
                                     if (hasItems) {
+                                      if (!Array.isArray(a.items) || a.items.length === 0) {
+                                        return { value: a.id, label: `${a.nombre} (sin filas configuradas)` };
+                                      }
+                                      const totalPercentage = a.items.reduce((sum: number, it: any) =>
+                                        it.tipo === 'porcentaje' ? sum + getPTAPercentage(it) : sum, 0);
                                       const totalHorasItems = a.items.reduce((s: number, it: any) => {
+                                        if (it.tipo === 'porcentaje') return s + getPercentageHours(it, horasAProgramar);
                                         if (it.tipo === 'fija' || it.tipo === 'hasta') return s + (it.horas || 0);
                                         return s + (it.horas || 0); // por_unidad: 1 unidad base
                                       }, 0);
-                                      return { value: a.id, label: `${a.nombre} (máx ${a.max_horas || totalHorasItems}h)` };
+                                      const itemSummary = totalPercentage > 0
+                                        ? `${totalPercentage}% PTA = ${totalHorasItems}h${a.items.some((it: any) => it.tipo !== 'porcentaje') ? ' con otras filas' : ''}`
+                                        : `máx ${a.max_horas || totalHorasItems}h`;
+                                      return { value: a.id, label: `${a.nombre} (${itemSummary})` };
                                     }
+                                    const type = getRootActivityHourType(a);
+                                    const maxPta = type === 'porcentaje'
+                                      ? getPercentageHours(a, horasAProgramar)
+                                      : Math.max(1, Number(a.max_horas) || 1);
+                                    const minPta = Math.min(maxPta, Math.max(1, Number(a.min_horas) || 1));
+                                    const maxExec = secMult > 1 ? maxPta / secMult : maxPta;
+                                    const minExec = secMult > 1 ? minPta / secMult : minPta;
+                                    const typeLabel = type === 'fija'
+                                      ? `fija ${maxExec}h`
+                                      : type === 'porcentaje'
+                                        ? `${getPTAPercentage(a)}% PTA = ${maxPta}h`
+                                      : type === 'intervalo'
+                                        ? `${minExec}–${maxExec}h`
+                                        : `hasta ${maxExec}h`;
                                     return {
                                       value: a.id,
-                                      label: secMult > 1
-                                        ? `${a.nombre} (máx ${Math.floor((a.max_horas || 0) / secMult)} ejec. = ${a.max_horas || 0}h PTA)`
-                                        : `${a.nombre} (${a.max_horas || 0}h)`,
+                                      label: type === 'porcentaje'
+                                        ? `${a.nombre} (${typeLabel})`
+                                        : secMult > 1
+                                        ? `${a.nombre} (${typeLabel} ejec. = ${maxPta}h PTA)`
+                                        : `${a.nombre} (${typeLabel})`,
                                     };
                                   })}
                                   placeholder="Seleccionar..." />
@@ -4085,14 +4289,20 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               {/* Para actividades PLANAS (sin items): mostrar inputs de horas como antes */}
                               {!hasItemsExt && (() => {
                                 if (secMult > 1) {
-                                  const maxEjecCat = catExt?.max_horas ? Math.floor(catExt.max_horas / secMult) : undefined;
+                                  const configuredPtaHours = rootHourType === 'porcentaje'
+                                    ? getPercentageHours(catExt, horasAProgramar)
+                                    : Number(catExt?.max_horas || 0);
+                                  const maxEjecCat = configuredPtaHours > 0 ? configuredPtaHours / secMult : undefined;
+                                  const minEjecCat = rootHourType === 'intervalo'
+                                    ? Math.max(1, Number(catExt?.min_horas) || 1) / secMult
+                                    : (rootHourType === 'fija' ? maxEjecCat : 0);
                                   const maxEjecSec = Math.floor(maxExtLimit / secMult);
                                   const maxEjec = maxEjecCat !== undefined ? Math.min(maxEjecCat, maxEjecSec) : maxEjecSec;
                                   return (
                                     <>
                                       <div className="w-24">
-                                        <FormInput label="Horas Ejec." type="number" value={ext.horas_ejecutadas || 0}
-                                          min={0} max={maxEjec} disabled={!isEditable}
+                                        <FormInput label={rootHourType === 'porcentaje' ? `${getPTAPercentage(catExt)}% PTA` : 'Horas Ejec.'} type="number" value={ext.horas_ejecutadas || 0}
+                                          min={minEjecCat} max={maxEjec} disabled={!isEditable || rootHourType === 'fija' || rootHourType === 'porcentaje'}
                                           onChange={v => handleExtActChange(ext.id, 'horas_ejecutadas', Number(v))} />
                                       </div>
                                       <div className="w-28">
@@ -4104,8 +4314,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 return (
                                   <>
                                     <div className="w-24">
-                                      <FormInput label="Horas" type="number" value={ext.horas} disabled={!isEditable}
-                                        min={0} max={catExt?.max_horas || maxExtLimit}
+                                      <FormInput label="Horas" type="number" value={ext.horas}
+                                        min={rootHourType === 'porcentaje'
+                                          ? getPercentageHours(catExt, horasAProgramar)
+                                          : rootHourType === 'intervalo' ? (catExt?.min_horas || 1) : (rootHourType === 'fija' ? (catExt?.max_horas || 1) : 0)}
+                                        max={rootHourType === 'porcentaje' ? getPercentageHours(catExt, horasAProgramar) : (catExt?.max_horas || maxExtLimit)}
+                                        disabled={!isEditable || rootHourType === 'fija' || rootHourType === 'porcentaje'}
                                         onChange={v => handleExtActChange(ext.id, 'horas', Number(v))} />
                                     </div>
                                     <div className="w-28">
@@ -4128,12 +4342,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wide">Desglose de ítems</span>
                                 </div>
                                 <div className="p-3 space-y-2">
-                                  {catExt.items.map((item: any, iIdx: number) => {
+                                  {extCatalogItems.length === 0 && (
+                                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+                                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                                      Esta etapa no tiene filas configuradas y no permite asignar horas hasta que se parametrice.
+                                    </div>
+                                  )}
+                                  {extCatalogItems.map((item: any, iIdx: number) => {
                                     const itemTipo = (item.tipo || 'fija').toLowerCase();
                                     return (
                                     <div key={iIdx} className="flex items-center gap-3">
                                       <span className="flex-1 text-[12px] text-slate-600">{item.nombre}</span>
-                                      {itemTipo === 'fija' ? (
+                                      {itemTipo === 'porcentaje' ? (
+                                        <span className="px-2.5 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-bold">
+                                          {getPTAPercentage(item)}% PTA = {getPercentageHours(item, horasAProgramar)}h
+                                        </span>
+                                      ) : itemTipo === 'fija' ? (
                                         <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
                                           {item.horas}h fija
                                         </span>
@@ -4180,12 +4404,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     );
                                   })}
                                   {/* Fila de total */}
-                                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                                    <span className="text-[11px] font-bold text-slate-500">Total PTA:</span>
-                                    <span className="px-3 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[13px] font-bold border border-sky-200">
-                                      {ext.horas}h
-                                    </span>
-                                  </div>
+                                  {extCatalogItems.length > 0 && (
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                      <span className="text-[11px] font-bold text-slate-500">Total PTA:</span>
+                                      <span className="px-3 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[13px] font-bold border border-sky-200">
+                                        {ext.horas}h
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -4294,7 +4520,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <div className="flex flex-col gap-2">
                       {complementarias.map(comp => {
                         const compCat = actComplementarias.find((a: any) => a.id === comp.actividad_id) || comp;
-                        const compConstraint = getComplementariaConstraint(compCat, ptaRules);
+                        const compConstraint = getComplementariaConstraint(compCat, ptaRules, horasAProgramar);
 
                         return (
                           <div key={comp.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
@@ -4313,7 +4539,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   options={actComplementarias
                                     .filter(a => {
                                       const isSindicato = String(a.nombre).toUpperCase().includes('SINDICATO');
-                                      const optionConstraint = getComplementariaConstraint(a, ptaRules);
+                                      const optionConstraint = getComplementariaConstraint(a, ptaRules, horasAProgramar);
                                       const otherOrdinarySum = complementarias
                                         .filter(x => x.id !== comp.id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
                                         .reduce((sum, x) => sum + (x.horas || 0), 0);
@@ -4323,7 +4549,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                       if (comp.actividad_id === a.id) return true;
                                       return canSelectWithRemaining(optionConstraint, trueRemainingLimit);
                                     })
-                                    .map(a => ({ value: a.id, label: `${a.nombre} (${getConstraintLabel(getComplementariaConstraint(a, ptaRules))})` }))}
+                                    .map(a => ({ value: a.id, label: `${a.nombre} (${getConstraintLabel(getComplementariaConstraint(a, ptaRules, horasAProgramar))})` }))}
                                   placeholder="Seleccionar actividad..." />
                               </div>
                               <div className="w-28">
@@ -4338,7 +4564,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     onChange={v => handleCompChange(comp.id, 'horas', Number(v))}
                                   />
                                 ) : (
-                                  <ReadonlyField label="Horas" value={`${comp.horas}h`} color={PTA_COLORS.COMPLEMENTARIAS} />
+                                  <ReadonlyField
+                                    label={compConstraint.mode === 'percentage' ? `${compConstraint.percentage}% PTA` : 'Horas'}
+                                    value={`${comp.horas}h`}
+                                    color={PTA_COLORS.COMPLEMENTARIAS}
+                                  />
                                 )}
                               </div>
                             </div>

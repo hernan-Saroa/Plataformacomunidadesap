@@ -190,6 +190,9 @@ function normalizeExtensionSections(raw: any): any[] {
       ...section,
       color: previous?.color || section.color,
       columnas: Array.isArray(previous?.columnas) ? previous.columnas : (section as any).columnas,
+      columna_raiz_nombre: previous?.columna_raiz_nombre || (section as any).columna_raiz_nombre || 'Componente',
+      columna_raiz_habilitada: previous?.columna_raiz_habilitada ?? (section as any).columna_raiz_habilitada ?? true,
+      columna_items_nombre: previous?.columna_items_nombre || (section as any).columna_items_nombre || 'Actividad / Ítem',
       // El multiplicador (×Factor) es configurable por el admin y debe persistir en guardado/lectura.
       multiplicador: Number.isFinite(savedMult) && savedMult > 0 ? savedMult : section.multiplicador,
     };
@@ -800,8 +803,52 @@ export class PtaService {
   }
 
   private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
-    const { aadm: compAadm } = this.readComplementariasSecciones(body);
+    const { all: allComp, aadm: compAadm } = this.readComplementariasSecciones(body);
     const tieneTotalidad = compAadm.some((a: any) => a?.consumeTotalidad === true);
+
+    // Las reglas porcentuales son autoritativas también en servidor. El frontend
+    // calcula el valor para facilitar la edición, pero una petición no puede enviar
+    // una cantidad distinta al porcentaje configurado sobre las horas reales del PTA.
+    const expectedPercentageHours = (activity: any): number | null => {
+      if (String(activity?.tipo || '').toLowerCase() !== 'porcentaje') return null;
+      const percentage = Math.min(100, Math.max(1, Number(activity?.porcentaje_pta) || 1));
+      return Math.round(horasAProgramar * percentage / 100);
+    };
+    const assertPercentageHours = (label: string, submitted: any, configured: any) => {
+      const expected = expectedPercentageHours(configured);
+      if (expected === null) return;
+      const actual = Number(submitted) || 0;
+      if (actual !== expected) {
+        const percentage = Math.min(100, Math.max(1, Number(configured?.porcentaje_pta) || 1));
+        throw new BadRequestException(
+          `La actividad ${label} corresponde al ${percentage}% del PTA y debe registrar ${expected}h.`,
+        );
+      }
+    };
+
+    const extCatalog = rules?.ext_actividades && typeof rules.ext_actividades === 'object'
+      ? rules.ext_actividades
+      : {};
+    for (const activity of (Array.isArray(body?.extension_actividades) ? body.extension_actividades : [])) {
+      const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+      const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        assertPercentageHours(configured?.nombre || activity?.nombre || 'de extensión', activity?.horas, configured);
+      }
+    }
+
+    const compCatalog = rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      ? rules.comp_actividades_v2
+      : {};
+    for (const activity of allComp) {
+      const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
+      const configured = (Array.isArray(compCatalog?.[sectionKey]) ? compCatalog[sectionKey] : [])
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        assertPercentageHours(configured?.nombre || activity?.nombre || 'complementaria', activity?.horas, configured);
+      }
+    }
 
     if (!tieneTotalidad && horas.total === 0) {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
@@ -3903,7 +3950,7 @@ export class PtaService {
 
   // Aplana una actividad de comp_actividades_v2 al shape plano que consume el catálogo
   // ({ id, nombre, max_horas, min_horas?, consumeTotalidad }).
-  private flattenCompV2Activity(a: any): any {
+  private flattenCompV2Activity(a: any, fullPTAFromPercentage = false): any {
     const itemHours = Array.isArray(a?.items)
       ? a.items.map((it: any) => Number(it?.horas || 0)).filter((n: number) => Number.isFinite(n))
       : [];
@@ -3913,14 +3960,22 @@ export class PtaService {
       nombre: a?.nombre,
       max_horas: a?.consumeTotalidad ? null : maxHoras,
       min_horas: a?.min_horas,
-      consumeTotalidad: Boolean(a?.consumeTotalidad),
+      tipo: a?.tipo ?? a?.items?.[0]?.tipo,
+      porcentaje_pta: a?.porcentaje_pta ?? a?.items?.[0]?.porcentaje_pta,
+      consumeTotalidad: Boolean(a?.consumeTotalidad) || (
+        fullPTAFromPercentage &&
+        String(a?.tipo || '').toLowerCase() === 'porcentaje' &&
+        Math.min(100, Math.max(1, Number(a?.porcentaje_pta) || 1)) === 100
+      ),
     };
   }
 
   private flattenCompV2Section(rules: any, sectionKey: string): any[] {
     const v2 = rules?.comp_actividades_v2;
     const arr = v2 && typeof v2 === 'object' ? v2[sectionKey] : null;
-    return Array.isArray(arr) ? arr.map((a: any) => this.flattenCompV2Activity(a)) : [];
+    return Array.isArray(arr)
+      ? arr.map((a: any) => this.flattenCompV2Activity(a, sectionKey === 'academico_administrativas'))
+      : [];
   }
 
   async getCatalogoActividadesComplementarias() {
