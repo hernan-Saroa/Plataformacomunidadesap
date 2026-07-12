@@ -1,6 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Users, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Columns3, Tag, Lock } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Users, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Tag, Lock } from 'lucide-react';
 import { PTARules, ExtItem } from '../ConfiguracionReglasPTA';
+import { BuilderSurfaceStyles } from './BuilderSurfaceStyles';
+import { DetailColumnModal } from './DetailColumnModal';
+import { HourLimitControl } from './HourLimitControl';
 
 type ExtSeccion = PTARules['ext_secciones'][number];
 type ExtActividad = PTARules['ext_actividades'][string][number];
@@ -9,6 +12,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   const [open1, setOpen1] = useState(true);   // Tope Global accordion
   const [open2, setOpen2] = useState(true);   // Secciones y Actividades accordion
   const [seccionActiva, setSeccionActiva] = useState<string>('capacitacion'); // pestaña activa
+  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
   
   // ── Drag & Drop State ──
   const [draggedActIdx, setDraggedActIdx] = useState<number | null>(null);
@@ -28,8 +32,6 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   // ── Modal \"Agregar columna\" ──
   const [colModal, setColModal] = useState<{ secKey: string; actIdx: number } | null>(null);
   const [colNombre, setColNombre] = useState('Evidencia');
-  const colInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (colModal && colInputRef.current) { colInputRef.current.focus(); colInputRef.current.select(); } }, [colModal]);
 
   const handleDragStart = (e: React.DragEvent, secKey: string, idx: number) => {
     setDraggedSecKey(secKey);
@@ -96,17 +98,38 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
       items: act.items || []
     }));
   };
+  const setExclusiveBlock = (secKey: string, targetKey: string, expanded: boolean) => {
+    setExpandedBlocks(prev => {
+      const next = { ...prev };
+      actsDeSeccion(secKey).forEach(activity => { next[`${secKey}:${activity.id}`] = false; });
+      next[targetKey] = expanded;
+      return next;
+    });
+  };
 
   const updateAct = (secKey: string, idx: number, field: string, val: any) => {
     const stringFields = ['nombre', 'id', 'linea'];
-    const next = actsDeSeccion(secKey).map((a, i) =>
+    const currentActs = actsDeSeccion(secKey);
+    if (field === 'id') {
+      const oldKey = `${secKey}:${currentActs[idx]?.id}`;
+      const newKey = `${secKey}:${val}`;
+      setExpandedBlocks(prev => {
+        if (!(oldKey in prev) || oldKey === newKey) return prev;
+        const nextState = { ...prev, [newKey]: prev[oldKey] };
+        delete nextState[oldKey];
+        return nextState;
+      });
+    }
+    const next = currentActs.map((a, i) =>
       i === idx ? { ...a, [field]: stringFields.includes(field) ? val : Number(val) } : a
     );
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
   };
   const addAct = (secKey: string) => {
-    const next = [{ id: `ACT_${Date.now()}`, nombre: 'Nueva etapa', items: [] }, ...actsDeSeccion(secKey)];
+    const newId = `ACT_${Date.now()}`;
+    const next = [{ id: newId, nombre: 'Nueva etapa', items: [] }, ...actsDeSeccion(secKey)];
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
+    setExclusiveBlock(secKey, `${secKey}:${newId}`, true);
   };
   const removeAct = (secKey: string, idx: number) => {
     const next = actsDeSeccion(secKey).filter((_, i) => i !== idx);
@@ -209,26 +232,17 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     if (!cols.includes(ITEMS_KEY)) return [ITEMS_KEY, ...cols];
     return cols;
   };
-  // Check if a section has configured data (items, column values, meta)
-  const seccionTieneDatos = (secKey: string): boolean => {
-    const acts = actsDeSeccion(secKey);
-    return acts.some(a => {
-      const hasItems = (a.items || []).length > 0;
-      const hasColVals = Object.values(a.columnas_valores || {}).some((v: any) => Array.isArray(v) && v.length > 0);
-      const hasColMeta = Object.values(a.columnas_meta || {}).some((v: any) => Array.isArray(v) && v.length > 0);
-      return hasItems || hasColVals || hasColMeta;
-    });
-  };
-
+  const seccionTieneDatos = (secKey: string): boolean => actsDeSeccion(secKey).some(activity =>
+    (activity.items || []).length > 0
+    || Object.values(activity.columnas_valores || {}).some((values: any) => Array.isArray(values) && values.length > 0)
+    || Object.values(activity.columnas_meta || {}).some((values: any) => Array.isArray(values) && values.length > 0),
+  );
   // Reordenar columnas arrastrando
   const reorderColumnas = (secKey: string, fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx) return;
-    // Block reorder if data exists
-    if (seccionTieneDatos(secKey)) {
-      alert('⚠️ No se puede cambiar el orden de las columnas cuando ya hay actividades, líneas o evidencias configuradas.\n\nPara cambiar el orden, primero elimine todas las actividades y valores de esta sección.');
-      return;
-    }
     const cols = [...getSeccionColumnas(secKey)];
+    const touchesHierarchy = fromIdx === 0 || toIdx === 0 || cols[fromIdx] === ITEMS_KEY || cols[toIdx] === ITEMS_KEY;
+    if (seccionTieneDatos(secKey) && touchesHierarchy) return;
     const [moved] = cols.splice(fromIdx, 1);
     cols.splice(toIdx, 0, moved);
     const newSecs = secciones.map(s => s.key === secKey ? { ...s, columnas: cols } : s);
@@ -377,7 +391,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   );
 
   return (
-    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="pta-config-builder space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <BuilderSurfaceStyles />
       <section>
         <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
@@ -521,21 +536,22 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                       <button onClick={() => addAct(sec.key)}
                         className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border-none text-white text-xs font-bold shadow-sm"
                         style={{ background: sec.color }}>
-                        <Plus className="w-3.5 h-3.5" /> Agregar actividad
+                        <Plus className="w-3.5 h-3.5" /> Agregar bloque principal
                       </button>
                     </div>
 
                     {/* ── Columnas de la sección (configuración compartida) ── */}
                     {(() => {
                       const secCols = getSeccionColumnas(sec.key);
-                      const isLocked = seccionTieneDatos(sec.key);
+                      const hasConfiguredData = seccionTieneDatos(sec.key);
                       const firstCol = secCols.find(c => !!c) || '';
                       const firstIsItems = firstCol === ITEMS_KEY;
                       return (
+                        <>
                         <div className="mb-3 px-1 space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
                             {secCols.length > 0 && (
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Columnas:</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Estructura editable:</span>
                             )}
                             {/* Help badge: which column controls hours */}
                             {secCols.length > 1 && (
@@ -543,18 +559,19 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                 ⚡ La 1ª columna ({firstIsItems ? 'Actividad/Ítem' : firstCol}) controla las horas
                               </span>
                             )}
-                            {isLocked && (
-                              <span className="text-[9px] bg-red-50 text-red-500 border border-red-200 rounded-full px-2 py-0.5 font-medium flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" /> Orden bloqueado (hay datos configurados)
+                            {hasConfiguredData && (
+                              <span className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-blue-700">
+                                <Lock className="h-2.5 w-2.5" /> Jerarquía protegida · detalles arrastrables
                               </span>
                             )}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                           {secCols.map((colName, ci) => {
                             const isItemsChip = colName === ITEMS_KEY;
-                            const isLocked = seccionTieneDatos(sec.key);
+                            const isLocked = hasConfiguredData && (ci === 0 || isItemsChip);
                             return (
                             <div key={`col-chip-${ci}`}
+                              title="Arrastra para cambiar la posición de esta columna"
                               draggable={!isLocked}
                               onDragStart={e => { if (isLocked) { e.preventDefault(); return; } setDragColIdx(ci); setDragColSecKey(sec.key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', colName); }}
                               onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragColSecKey === sec.key) setDragOverColIdx(ci); }}
@@ -569,6 +586,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                       ? 'bg-violet-50 border border-violet-200 hover:border-violet-300 hover:shadow-sm'
                                       : 'bg-blue-50 border border-blue-200 hover:border-blue-300 hover:shadow-sm'
                               }`}>
+                              <span className={`flex w-4 h-4 items-center justify-center rounded-full bg-white/80 text-[9px] font-black ${isItemsChip ? 'text-violet-600' : 'text-blue-600'}`}>{ci + 1}</span>
                               {isLocked ? (
                                 <Lock className={`w-3 h-3 ${isItemsChip ? 'text-violet-300' : 'text-blue-300'} shrink-0`} />
                               ) : (
@@ -606,7 +624,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                           })}
                           <button onClick={() => setColModal({ secKey: sec.key, actIdx: -1 })}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-dashed border-blue-300 text-blue-500 text-[11px] font-semibold hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 transition-colors">
-                            <Plus className="w-3 h-3" /> Columna
+                            <Plus className="w-3 h-3" /> Agregar columna de detalle
                           </button>
                           </div>
                           {/* Help guide */}
@@ -619,6 +637,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                             </div>
                           )}
                         </div>
+                        </>
                       );
                     })()}
                     {actsDeSeccion(sec.key).length === 0 ? (
@@ -632,6 +651,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                           if (!act) return null;
                           const isEtapa = Array.isArray(act.items);
                           const hasItems = isEtapa && (act.items?.length ?? 0) > 0;
+                          const blockKey = `${sec.key}:${act.id}`;
+                          const blockExpanded = expandedBlocks[blockKey] ?? aIdx === 0;
                           return (
                             <div 
                               key={act.id} 
@@ -641,18 +662,21 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                               onDragLeave={handleDragLeave}
                               onDrop={(e) => handleDrop(e, sec.key, aIdx)}
                               onDragEnd={handleDragEnd}
-                              className={`border rounded-xl overflow-hidden shadow-sm transition-all bg-white
+                              className={`config-block-card border-2 rounded-2xl overflow-hidden transition-all bg-white
                                 ${draggedActIdx === aIdx && draggedSecKey === sec.key ? 'opacity-40 border-dashed border-blue-400' : ''}
-                                ${dragOverActIdx === aIdx && draggedSecKey === sec.key ? 'border-blue-500 shadow-blue-500/20 shadow-md scale-[1.01]' : 'border-slate-200'}
+                                ${dragOverActIdx === aIdx && draggedSecKey === sec.key ? 'border-blue-500 shadow-blue-500/20 shadow-lg scale-[1.01]' : blockExpanded ? 'border-violet-300 shadow-lg shadow-violet-900/5' : 'border-slate-200 shadow-sm hover:border-violet-200 hover:shadow-md'}
                               `}
                             >
                               {/* ── Cabecera de la Etapa ── */}
-                              <div className="flex flex-row items-center gap-3 p-3 bg-slate-50 border-b border-slate-100">
+                              <div className={`flex flex-row items-center gap-3 p-3 transition-colors ${blockExpanded ? 'bg-gradient-to-r from-violet-50 via-white to-blue-50 border-b border-violet-100' : 'bg-slate-50'}`}>
+                                <div className="flex h-10 w-7 shrink-0 cursor-grab items-center justify-center rounded-lg border border-violet-200 bg-white text-violet-400 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 active:cursor-grabbing" title="Arrastra para cambiar el orden del bloque">
+                                  <GripVertical className="h-4 w-4" />
+                                </div>
                                 <input
                                   type="text"
                                   key={`pos-${act.id}-${aIdx}`}
                                   defaultValue={aIdx + 1}
-                                  title={`Posición ${aIdx + 1}`}
+                                  title={`Orden ${aIdx + 1}: escribe otra posición o arrastra el control lateral`}
                                   onFocus={e => e.target.select()}
                                   onBlur={e => {
                                     const val = parseInt(e.target.value, 10);
@@ -699,6 +723,12 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                     </div>
                                   </div>
                                 )}
+                                <div className="shrink-0">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Filas</span>
+                                  <div className="flex h-[34px] min-w-[58px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-extrabold text-slate-700">
+                                    {(act.items || []).length}
+                                  </div>
+                                </div>
                                 {/* Total Horas (from whichever column is first) */}
                                 {(() => {
                                   const secCols = getSeccionColumnas(sec.key) || [];
@@ -730,6 +760,15 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                     </div>
                                   ) : null;
                                 })()}
+                                <button
+                                  type="button"
+                                  onClick={() => setExclusiveBlock(sec.key, blockKey, !blockExpanded)}
+                                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 text-[11px] font-bold text-violet-700 shadow-sm transition-all hover:border-violet-300 hover:bg-violet-50"
+                                  title={blockExpanded ? 'Cerrar bloque' : 'Editar este bloque'}
+                                >
+                                  <ChevronDown className={`h-4 w-4 transition-transform ${blockExpanded ? 'rotate-180' : ''}`} />
+                                  {blockExpanded ? 'Cerrar' : 'Editar'}
+                                </button>
                                 {/* Eliminar etapa */}
                                 <button onClick={() => removeAct(sec.key, aIdx)}
                                   className="w-9 h-9 shrink-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all shadow-sm self-end">
@@ -739,6 +778,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
 
 
 
+                              {blockExpanded && (
+                              <div className="config-block-body bg-slate-100/70 p-3">
                               {/* ── Bloques ordenados según columnas de la sección ── */}
                               {(() => {
                                 try {
@@ -771,7 +812,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                               const itemDragKey = `${sec.key}:${aIdx}`;
                                               const itemColVals = item.col_valores || {};
                                               return (
-                                              <div key={iIdx} className="space-y-1">
+                                              <div key={iIdx} className="config-activity-entry space-y-2">
                                                 {/* ── Item row with tipo ── */}
                                                 <div
                                                   draggable
@@ -779,7 +820,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                   onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; if (dragItemKey === itemDragKey) setDragOverItemIdx(iIdx); }}
                                                   onDrop={e => { e.preventDefault(); e.stopPropagation(); if (dragItemIdx !== null && dragItemKey === itemDragKey) { reorderItems(sec.key, aIdx, dragItemIdx, iIdx); } setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
                                                   onDragEnd={() => { setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
-                                                  className={`flex flex-row items-center gap-2 p-2 rounded-lg border transition-all select-none ${
+                                                  className={`config-activity-main-row flex flex-row items-center gap-2 p-2 rounded-lg border transition-all select-none ${
                                                     dragItemIdx === iIdx && dragItemKey === itemDragKey
                                                       ? 'opacity-40 scale-[0.98] bg-violet-50 border-violet-200'
                                                       : dragOverItemIdx === iIdx && dragItemKey === itemDragKey && dragItemIdx !== iIdx
@@ -794,38 +835,15 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                       className="w-full bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none cursor-text" />
                                                   </div>
                                                   {showItemHoras && (
-                                                    <div className="w-24 shrink-0">
-                                                      <select value={item.tipo}
-                                                        onChange={e => updateItem(sec.key, aIdx, iIdx, 'tipo', e.target.value)}
-                                                        className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] rounded-md px-1.5 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none">
-                                                        <option value="fija">🟢 Fija</option>
-                                                        <option value="hasta">🕒 Hasta</option>
-                                                        <option value="intervalo">📊 Intervalo</option>
-                                                      </select>
-                                                    </div>
-                                                  )}
-                                                  {showItemHoras && (
-                                                    item.tipo === 'intervalo' ? (
-                                                      <div className="shrink-0 flex items-center gap-1">
-                                                        <input type="number" value={(item as any).horas_min ?? 0} min={0} step={1}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas_min', e.target.value)}
-                                                          className="w-16 bg-white border border-blue-200 text-blue-700 font-bold text-[11px] rounded-md px-1 py-1.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none"
-                                                          title="Mínimo" />
-                                                        <span className="text-[9px] text-slate-400 font-bold">—</span>
-                                                        <input type="number" value={item.horas ?? ''} min={0} step={1}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas', e.target.value)}
-                                                          className="w-16 bg-white border border-amber-200 text-amber-700 font-bold text-[11px] rounded-md px-1 py-1.5 text-center focus:ring-2 focus:ring-amber-500/20 outline-none"
-                                                          title="Máximo" />
-                                                        <span className="text-[10px] text-amber-500 font-bold">h</span>
-                                                      </div>
-                                                    ) : (
-                                                      <div className="w-20 shrink-0 flex items-center gap-1">
-                                                        <input type="number" value={item.horas} min={0} step={1}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas', e.target.value)}
-                                                          className="w-16 bg-white border border-amber-200 text-amber-700 font-bold text-[12px] rounded-md px-1.5 py-1.5 text-center focus:ring-2 focus:ring-amber-500/20 outline-none" />
-                                                        <span className="text-[10px] text-amber-500 font-bold">h</span>
-                                                      </div>
-                                                    )
+                                                    <HourLimitControl
+                                                      type={item.tipo}
+                                                      hours={item.horas}
+                                                      minHours={(item as any).horas_min}
+                                                      onTypeChange={value => updateItem(sec.key, aIdx, iIdx, 'tipo', value)}
+                                                      onHoursChange={value => updateItem(sec.key, aIdx, iIdx, 'horas', value)}
+                                                      onMinHoursChange={value => updateItem(sec.key, aIdx, iIdx, 'horas_min', value)}
+                                                      compact
+                                                    />
                                                   )}
                                                   <button onClick={() => removeItem(sec.key, aIdx, iIdx)}
                                                     className="w-7 h-7 shrink-0 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-300 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all">
@@ -837,7 +855,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                   const scVals = itemColVals[sc] || [];
                                                   return (
                                                     <div key={`${iIdx}-${sc}`} className="ml-8 mr-2">
-                                                      <div className="border border-slate-100 rounded-md overflow-hidden bg-white">
+                                                      <div className="config-detail-panel overflow-hidden">
                                                         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50/60 border-b border-slate-100">
                                                           <Tag className="w-2.5 h-2.5 text-slate-300 shrink-0" />
                                                           <span className="flex-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">{sc}</span>
@@ -941,43 +959,15 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                             className="w-full bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-blue-500/20 outline-none" />
                                                         </div>
                                                         {horasEn === 'linea' && (
-                                                          <>
-                                                            <div className="w-24 shrink-0">
-                                                              <span className="text-[9px] font-bold text-slate-400 uppercase block mb-0.5">Tipo</span>
-                                                              <select value={m.tipo || 'hasta'}
-                                                                onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'tipo', e.target.value)}
-                                                                className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] rounded-md px-1.5 py-1.5 focus:ring-2 focus:ring-amber-500/20 outline-none">
-                                                                <option value="hasta">🕒 Hasta</option>
-                                                                <option value="fija">🟢 Fija</option>
-                                                                <option value="intervalo">📊 Intervalo</option>
-                                                              </select>
-                                                            </div>
-                                                            {(m.tipo || 'hasta') === 'intervalo' ? (
-                                                              <div className="shrink-0">
-                                                                <span className="text-[9px] font-bold text-slate-400 uppercase block mb-0.5">Horas (min — máx)</span>
-                                                                <div className="flex items-center gap-1">
-                                                                  <input type="number" value={(m as any).horas_min || 0} min={0} step={1}
-                                                                    onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas_min', e.target.value)}
-                                                                    className="w-16 bg-white border border-blue-200 text-blue-700 font-bold text-[12px] rounded-md px-1.5 py-1.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none" />
-                                                                  <span className="text-[9px] text-slate-400 font-bold">—</span>
-                                                                  <input type="number" value={m.horas ?? ''} min={0} step={1}
-                                                                    onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas', e.target.value)}
-                                                                    className="w-16 bg-white border border-amber-200 text-amber-700 font-bold text-[12px] rounded-md px-1.5 py-1.5 text-center focus:ring-2 focus:ring-amber-500/20 outline-none" />
-                                                                  <span className="text-[10px] text-amber-500 font-bold">h</span>
-                                                                </div>
-                                                              </div>
-                                                            ) : (
-                                                              <div className="w-24 shrink-0">
-                                                                <span className="text-[9px] font-bold text-slate-400 uppercase block mb-0.5">Horas</span>
-                                                                <div className="flex items-center gap-1">
-                                                                  <input type="number" value={m.horas ?? ''} min={0} step={1}
-                                                                    onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas', e.target.value)}
-                                                                    className="w-16 bg-white border border-amber-200 text-amber-700 font-bold text-[12px] rounded-md px-1.5 py-1.5 text-center focus:ring-2 focus:ring-amber-500/20 outline-none" />
-                                                                  <span className="text-[10px] text-amber-500 font-bold">h</span>
-                                                                </div>
-                                                              </div>
-                                                            )}
-                                                          </>
+                                                          <HourLimitControl
+                                                            type={m.tipo || 'hasta'}
+                                                            hours={m.horas}
+                                                            minHours={(m as any).horas_min}
+                                                            onTypeChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'tipo', value)}
+                                                            onHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas', value)}
+                                                            onMinHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas_min', value)}
+                                                            compact
+                                                          />
                                                         )}
                                                         <button onClick={() => removeValorColumna(sec.key, aIdx, colName, valIdx)}
                                                           className="w-6 h-6 shrink-0 flex items-center justify-center rounded text-slate-300 hover:text-red-500 transition-colors self-end">
@@ -1020,42 +1010,23 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                               const globalIdx = myItemIndices[localIdx];
                                                               const itemColVals = item.col_valores || {};
                                                               return (
-                                                                <div key={globalIdx} className="space-y-1">
-                                                                  <div className="flex items-center gap-2 p-1.5 rounded-md bg-white border border-slate-100 hover:border-slate-200 transition-all">
+                                                                <div key={globalIdx} className="config-activity-entry space-y-2">
+                                                                  <div className="config-activity-main-row flex items-center gap-2 p-1.5 rounded-md border transition-all">
                                                                     <GripVertical className="w-3 h-3 text-slate-300 shrink-0 cursor-grab" />
                                                                     <input type="text" value={item.nombre}
                                                                       onChange={e => updateItem(sec.key, aIdx, globalIdx, 'nombre', e.target.value)}
                                                                       placeholder="Nombre de la actividad..."
                                                                       className="flex-1 bg-transparent border-none text-slate-700 text-[11px] px-1 py-0.5 focus:ring-0 outline-none" />
                                                                     {horasEn === 'actividad' && (
-                                                                      <>
-                                                                        <select value={item.tipo || 'fija'}
-                                                                          onChange={e => updateItem(sec.key, aIdx, globalIdx, 'tipo', e.target.value)}
-                                                                          className="w-20 shrink-0 bg-white border border-slate-200 text-slate-700 text-[10px] rounded px-1 py-1 focus:ring-1 focus:ring-violet-500/20 outline-none">
-                                                                          <option value="fija">🟢 Fija</option>
-                                                                          <option value="hasta">🕒 Hasta</option>
-                                                                          <option value="intervalo">📊 Intervalo</option>
-                                                                        </select>
-                                                                        {(item.tipo || 'fija') === 'intervalo' ? (
-                                                                          <div className="shrink-0 flex items-center gap-0.5">
-                                                                            <input type="number" value={(item as any).horas_min || 0} min={0} step={1}
-                                                                              onChange={e => updateItem(sec.key, aIdx, globalIdx, 'horas_min', e.target.value)}
-                                                                              className="w-14 bg-white border border-blue-200 text-blue-700 font-bold text-[10px] rounded px-1 py-1 text-center focus:ring-1 focus:ring-blue-500/20 outline-none" />
-                                                                            <span className="text-[8px] text-slate-400 font-bold">—</span>
-                                                                            <input type="number" value={item.horas ?? ''} min={0} step={1}
-                                                                              onChange={e => updateItem(sec.key, aIdx, globalIdx, 'horas', e.target.value)}
-                                                                              className="w-14 bg-white border border-amber-200 text-amber-700 font-bold text-[10px] rounded px-1 py-1 text-center focus:ring-1 focus:ring-amber-500/20 outline-none" />
-                                                                            <span className="text-[9px] text-amber-500 font-bold">h</span>
-                                                                          </div>
-                                                                        ) : (
-                                                                          <div className="w-16 shrink-0 flex items-center gap-0.5">
-                                                                            <input type="number" value={item.horas ?? ''} min={0} step={1}
-                                                                              onChange={e => updateItem(sec.key, aIdx, globalIdx, 'horas', e.target.value)}
-                                                                              className="w-14 bg-white border border-amber-200 text-amber-700 font-bold text-[11px] rounded px-1 py-1 text-center focus:ring-1 focus:ring-amber-500/20 outline-none" />
-                                                                            <span className="text-[9px] text-amber-500 font-bold">h</span>
-                                                                          </div>
-                                                                        )}
-                                                                      </>
+                                                                      <HourLimitControl
+                                                                        type={item.tipo || 'fija'}
+                                                                        hours={item.horas}
+                                                                        minHours={(item as any).horas_min}
+                                                                        onTypeChange={value => updateItem(sec.key, aIdx, globalIdx, 'tipo', value)}
+                                                                        onHoursChange={value => updateItem(sec.key, aIdx, globalIdx, 'horas', value)}
+                                                                        onMinHoursChange={value => updateItem(sec.key, aIdx, globalIdx, 'horas_min', value)}
+                                                                        compact
+                                                                      />
                                                                     )}
                                                                     <button onClick={() => removeItem(sec.key, aIdx, globalIdx)}
                                                                       className="w-5 h-5 shrink-0 flex items-center justify-center rounded text-slate-300 hover:text-red-500 transition-colors">
@@ -1066,7 +1037,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                                   {subCols3.map(sc => {
                                                                     const scVals = itemColVals[sc] || [];
                                                                     return (
-                                                                      <div key={`${globalIdx}-${sc}`} className="ml-6 mr-1">
+                                                                      <div key={`${globalIdx}-${sc}`} className="config-detail-panel ml-6 mr-1">
                                                                         <div className="border border-slate-100 rounded-md overflow-hidden bg-white">
                                                                           <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-50/60 border-b border-slate-100">
                                                                             <Tag className="w-2 h-2 text-slate-300 shrink-0" />
@@ -1152,6 +1123,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                   return null;
                                 }
                               })()}
+                              </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1166,91 +1139,14 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
         </div>
       </section>
 
-      {/* ═══ Modal: Agregar columna ═══ */}
-      {colModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center"
-          onClick={() => { setColModal(null); setColNombre('Evidencia'); }}>
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" style={{ animation: 'fadeIn .2s ease-out' }} />
-          {/* Card */}
-          <div className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden"
-            onClick={e => e.stopPropagation()}
-            style={{ animation: 'slideUp .25s ease-out' }}>
-            {/* Header */}
-            <div className="px-6 py-4 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)' }}>
-              <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center">
-                <Columns3 className="w-5 h-5 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-white font-bold text-[15px] leading-tight">Nueva Columna</h3>
-                <p className="text-white/70 text-[11px] mt-0.5">Se aplicará a todas las actividades de la sección</p>
-              </div>
-              <button onClick={() => { setColModal(null); setColNombre('Evidencia'); }}
-                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-all">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="px-6 py-5">
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Nombre de la columna
-              </label>
-              <input
-                ref={colInputRef}
-                type="text"
-                value={colNombre}
-                onChange={e => setColNombre(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmAddColumna(); if (e.key === 'Escape') { setColModal(null); setColNombre('Evidencia'); } }}
-                placeholder="Ej: Evidencia, Línea, Observaciones..."
-                className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-800 text-[14px] font-semibold focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10 outline-none transition-all placeholder:text-slate-300 placeholder:font-normal"
-              />
-
-              {/* Quick picks */}
-              <div className="mt-4">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sugerencias rápidas</span>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {['Evidencia', 'Línea', 'Observaciones', 'Requisitos', 'Responsable', 'Producto'].map(name => (
-                    <button key={name}
-                      onClick={() => setColNombre(name)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all border ${
-                        colNombre === name
-                          ? 'bg-[#003DA5] text-white border-[#003DA5] shadow-md shadow-blue-500/20'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-[#003DA5]/40 hover:text-[#003DA5] hover:bg-blue-50/50'
-                      }`}>
-                      <Tag className="w-3 h-3" />
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button onClick={() => { setColModal(null); setColNombre('Evidencia'); }}
-                className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
-                Cancelar
-              </button>
-              <button onClick={confirmAddColumna}
-                disabled={!colNombre.trim()}
-                className="px-6 py-2.5 rounded-xl text-[13px] font-bold text-white shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
-                style={{ background: colNombre.trim() ? 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)' : '#94A3B8' }}>
-                <span className="flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Agregar columna
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Animations */}
-          <style>{`
-            @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-            @keyframes slideUp { from { opacity: 0; transform: translateY(20px) scale(0.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
-          `}</style>
-        </div>
-      )}
+      <DetailColumnModal
+        open={!!colModal}
+        value={colNombre}
+        existingColumns={colModal ? getSeccionColumnas(colModal.secKey).filter(column => column !== ITEMS_KEY) : []}
+        onChange={setColNombre}
+        onClose={() => { setColModal(null); setColNombre('Evidencia'); }}
+        onConfirm={confirmAddColumna}
+      />
     </div>
   );
 }

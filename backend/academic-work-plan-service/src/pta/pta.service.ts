@@ -1409,6 +1409,14 @@ export class PtaService {
           console.error('[getPTAById] Error resolving nucleo tematico names:', err);
         }
       }
+
+      // Los cupos pertenecen a la oferta CETAP + programa del periodo, no al
+      // borrador del PTA. Al abrir un PTA siempre se devuelve el valor vigente,
+      // incluso si la asignatura fue guardada antes de que cambiaran los cupos.
+      dto.asignaturas = await this.syncAsignaturasCupos(
+        dto.asignaturas,
+        coalesceString(dto.periodo, pta.periodo),
+      );
     }
 
     return {
@@ -1504,6 +1512,16 @@ export class PtaService {
 
     const periodo = coalesceString(input?.periodo) || '2026-1';
     let estado = coalesceString(input?.estado) || 'BORRADOR';
+
+    // No confiar en el total enviado por el navegador: puede venir de un
+    // borrador abierto antes de una modificación de cupos. La oferta académica
+    // es la fuente única y se vuelve a consultar antes de validar/persistir.
+    if (Array.isArray(input?.asignaturas)) {
+      input = {
+        ...input,
+        asignaturas: await this.syncAsignaturasCupos(input.asignaturas, periodo),
+      };
+    }
 
     // Normalize state case
     if (estado.toLowerCase() === 'borrador') estado = 'Borrador';
@@ -1619,7 +1637,6 @@ export class PtaService {
 
     let saved: PlanTrabajoAcademicoEntity;
     let estadoAnteriorSave: string | null = null;
-    let datosAnterioresSave: any = null;
 
     if (id) {
       const existing = await this.ptaRepo.findOne({ where: { id } });
@@ -1627,7 +1644,6 @@ export class PtaService {
         saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, id, version: 1 }));
       } else {
         estadoAnteriorSave = existing.estado;
-        datosAnterioresSave = existing.datosEstructurados;
         saved = await this.ptaRepo.save({ ...existing, ...patch });
       }
     } else {
@@ -1679,20 +1695,21 @@ export class PtaService {
     if (isAdminEdit && id && estadoAnteriorSave !== null && estado === estadoAnteriorSave) {
       const comentarioConcertacion = coalesceString(input?._comentario_concertacion, input?.comentario_concertacion);
       if (comentarioConcertacion) {
-        // 1) Restringido por permiso → siempre su(s) componente(s) asignado(s), haya
-        //    editado o no (esto reemplaza al botón "Devolver a secas").
-        // 2) Sin restricción de permiso → la selección explícita que hizo el admin en
-        //    el formulario (checkboxes de componente), unida a los que sí cambiaron de
-        //    contenido. Antes se adivinaba por la pestaña que tenía abierta, lo que
-        //    podía fallar en silencio (guardaba, pero no devolvía nada) si no coincidía
-        //    con lo que realmente quería devolver.
+        // Qué componentes se devuelven al docente. La fuente de verdad es SIEMPRE una
+        // selección explícita, nunca una heurística:
+        //   1) Restringido por permiso → su(s) componente(s) asignado(s) (server-side).
+        //   2) Sin restricción de permiso → los que el admin marcó en los checkboxes
+        //      del formulario (_concertacion_componentes).
+        // NO se infieren componentes por "diff de contenido": el formulario re-serializa
+        // todo el PTA al guardar, así que un componente intacto (p.ej. Docencia ya
+        // aprobada) puede aparecer como "cambiado" por diferencias de serialización y
+        // terminaba reabriéndose a 'devuelto' sin que el revisor lo pidiera.
         const componentesSeleccionados = Array.isArray(input?._concertacion_componentes)
           ? input._concertacion_componentes.map((k: any) => String(k)).filter((k: string) => COMPONENT_APPROVAL_KEY_SET.has(k))
           : [];
-        const componentesModificados = this.detectComponentesModificados(datosAnterioresSave, input);
         const componentesCambiados = allowedComponentKeys.length > 0
           ? allowedComponentKeys
-          : Array.from(new Set([...componentesSeleccionados, ...componentesModificados]));
+          : componentesSeleccionados;
         if (componentesCambiados.length > 0) {
           const devolucionResult = await this.registrarDevolucionPorConcertacion(
             saved.id,
@@ -2076,8 +2093,15 @@ export class PtaService {
             componentes: pendientes,
           });
         }
+        // Confirmación al profesor: su PTA salió de Borrador y está en aprobación.
+        await this.ptaNotifications.notifyProfesorPtaEnviadoAprobacion({
+          ptaId,
+          docenteId: existing.docenteId,
+          periodo: coalesceString((existing as any).periodo, (ds as any)?.periodo),
+          componentes: pendientes,
+        });
       } catch (error: any) {
-        this.logger.warn(`No se pudo notificar a aprobadores del PTA ${ptaId}: ${error?.message}`);
+        this.logger.warn(`No se pudo notificar el envío a aprobación del PTA ${ptaId}: ${error?.message}`);
       }
     }
 
@@ -2188,45 +2212,6 @@ export class PtaService {
       } as any);
     }
     await this.getComponentesAprobacion(ptaId);
-  }
-
-  /** Compara datosEstructurados antes/después de una edición y devuelve las claves de
-   * componente cuyo contenido cambió. Usado por "Concertar" (edición admin sin
-   * restricción de componente) para saber qué marcar como devuelto. */
-  private detectComponentesModificados(oldData: any, newData: any): string[] {
-    const old = oldData && typeof oldData === 'object' ? oldData : {};
-    const neu = newData && typeof newData === 'object' ? newData : {};
-    const eq = (a: any, b: any) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-    const changed: string[] = [];
-
-    if (!eq(old.asignaturas, neu.asignaturas)) changed.push('academica');
-    if (!eq(old.investigacion_proyecto, neu.investigacion_proyecto) ||
-      !eq(old.investigacion_actividades, neu.investigacion_actividades)) {
-      changed.push('investigacion');
-    }
-
-    const extBySeccion = (data: any, secciones: string[]) =>
-      (Array.isArray(data?.extension_actividades) ? data.extension_actividades : [])
-        .filter((a: any) => secciones.includes(normalizeExtensionSectionKey(a?.seccion)));
-    const EXT_SECTIONS: Record<string, string[]> = {
-      ext_capacitacion: ['capacitacion'],
-      ext_procesos: ['seleccion'],
-      ext_fortalecimiento: ['fortalecimiento'],
-      ext_gobierno: ['alto_gobierno'],
-    };
-    for (const [key, secciones] of Object.entries(EXT_SECTIONS)) {
-      if (!eq(extBySeccion(old, secciones), extBySeccion(neu, secciones))) {
-        changed.push(key);
-      }
-    }
-
-    const oldComp = this.readComplementariasSecciones(old);
-    const newComp = this.readComplementariasSecciones(neu);
-    if (!eq(oldComp.docencia, newComp.docencia) || !eq(oldComp.aadm, newComp.aadm)) {
-      changed.push('complementarias');
-    }
-
-    return changed;
   }
 
   /** "Concertar" (edición admin + envío) equivale a devolver el/los componente(s)
@@ -2762,33 +2747,83 @@ export class PtaService {
     return { deleted: true };
   }
 
-  // ── Cierre de PTAs al poner "en curso" un nuevo período académico ───────────
-  // Cuando un período se activa (estado 'en_curso'), todos los PTA de períodos
-  // anteriores pasan a 'Terminado' (solo lectura / observación), incluso los que
-  // están en seguimiento. No se tocan los que ya están en un estado terminal.
+  // ── Cierre reversible de PTAs por cambio de período académico ───────────────
+  // El estado funcional se conserva antes de mostrar el PTA como 'Terminado'.
+  // Así, si el período vuelve a activarse, el flujo continúa exactamente donde
+  // estaba (Borrador, aprobación, concertación, seguimiento, etc.).
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
     const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
-    const qb = this.ptaRepo
-      .createQueryBuilder()
-      .update(PlanTrabajoAcademicoEntity)
-      .set({ estado: 'Terminado', updatedAt: () => 'NOW()' })
-      .where('estado NOT IN (:...terminales)', { terminales });
-
-    // No finalizar los PTA del propio período recién creado (si llegaran a existir).
-    if (codigo) {
-      qb.andWhere('(periodo IS DISTINCT FROM :codigo)', { codigo });
-    }
-
-    const result = await qb.execute();
-    const finalizados = result.affected || 0;
+    const rows = await this.ptaRepo.manager.query(
+      `
+      UPDATE academic_work_plan."PlanTrabajoAcademico"
+      SET estado = 'Terminado',
+          "estadoAntesCierrePeriodo" = estado,
+          "cerradoPorPeriodo" = NULLIF($1, '')
+      WHERE estado <> ALL($2::text[])
+        AND ($1 = '' OR periodo IS DISTINCT FROM $1)
+      RETURNING id
+      `,
+      [codigo, terminales],
+    );
+    const finalizados = Array.isArray(rows) ? rows.length : 0;
     if (finalizados > 0) {
       this.logger.log(
         `[Período ${codigo || 'nuevo'}] ${finalizados} PTA(s) pasaron a 'Terminado' (solo lectura).`,
       );
     }
     return { finalizados };
+  }
+
+  /**
+   * Restaura los PTA del periodo que vuelve a estar en curso. El fallback desde
+   * datosEstructurados repara también cierres hechos por la versión anterior,
+   * que sobrescribía `estado` sin guardar una copia explícita.
+   */
+  async restaurarPtasPorReactivacionPeriodo(codigoPeriodo?: string | null): Promise<{ restaurados: number }> {
+    const codigo = coalesceString(codigoPeriodo);
+    if (!codigo) return { restaurados: 0 };
+
+    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
+    const rows = await this.ptaRepo.manager.query(
+      `
+      WITH restaurables AS (
+        SELECT p.id,
+          COALESCE(
+            NULLIF(p."estadoAntesCierrePeriodo", ''),
+            (
+              SELECT NULLIF(h."estadoNuevo", '')
+              FROM academic_work_plan."HistorialEstadoPTA" h
+              WHERE h."ptaId" = p.id
+              ORDER BY h."createdAt" DESC
+              LIMIT 1
+            ),
+            NULLIF(p."datosEstructurados"->>'estado', '')
+          ) AS estado_restaurado
+        FROM academic_work_plan."PlanTrabajoAcademico" p
+        WHERE p.periodo = $1
+          AND p.estado IN ('Terminado', 'TERMINADO')
+      )
+      UPDATE academic_work_plan."PlanTrabajoAcademico" p
+      SET estado = r.estado_restaurado,
+          "estadoAntesCierrePeriodo" = NULL,
+          "cerradoPorPeriodo" = NULL
+      FROM restaurables r
+      WHERE p.id = r.id
+        AND r.estado_restaurado IS NOT NULL
+        AND r.estado_restaurado <> ALL($2::text[])
+      RETURNING p.id
+      `,
+      [codigo, terminales],
+    );
+    const restaurados = Array.isArray(rows) ? rows.length : 0;
+    if (restaurados > 0) {
+      this.logger.log(
+        `[Período ${codigo}] ${restaurados} PTA(s) recuperaron su estado anterior.`,
+      );
+    }
+    return { restaurados };
   }
 
   // ── Límite de aprobación: PTAs no aprobados dentro del plazo se eliminan ─────
@@ -3071,24 +3106,38 @@ export class PtaService {
     } catch { /* non-critical */ }
   }
 
+  // Contrato del frontend (mfe-pta): tags = Record<ptaId, {label,color}[]>,
+  // notes = Record<ptaId, string>, pinned = string[], priorityOrder = string[].
+  // Se aceptan también las claves legacy (saved_tags, pinned_pta_ids, favorite_views).
+  private normalizeUserDataRow(row: Partial<PtaUserDataEntity>) {
+    const tags = row.tags && typeof row.tags === 'object' && !Array.isArray(row.tags) ? row.tags : {};
+    const notes = row.notes && typeof row.notes === 'object' && !Array.isArray(row.notes) ? row.notes : {};
+    const pinned = Array.isArray(row.pinned) ? row.pinned : [];
+    const priorityOrder = Array.isArray(row.priority) ? row.priority : [];
+    return {
+      tags,
+      notes,
+      pinned,
+      priorityOrder,
+      // alias legacy
+      pinned_pta_ids: pinned,
+      favorite_views: priorityOrder,
+    };
+  }
+
   async getPTAUserData(userId: string) {
     const row = await this.userDataRepo.findOne({ where: { userId } });
     if (!row) return null;
-    return {
-      pinned_pta_ids: Array.isArray(row.pinned) ? row.pinned : [],
-      saved_tags: Array.isArray(row.tags) ? row.tags : [],
-      notes: row.notes && typeof row.notes === 'object' ? row.notes : {},
-      favorite_views: Array.isArray(row.priority) ? row.priority : [],
-    };
+    return this.normalizeUserDataRow(row);
   }
 
   async savePTAUserData(userId: string, data: any) {
     const existing = await this.userDataRepo.findOne({ where: { userId } });
     const next = {
-      pinned: data?.pinned_pta_ids ?? existing?.pinned ?? [],
-      tags: data?.saved_tags ?? existing?.tags ?? [],
+      tags: data?.tags ?? data?.saved_tags ?? existing?.tags ?? {},
       notes: data?.notes ?? existing?.notes ?? {},
-      priority: data?.favorite_views ?? existing?.priority ?? [],
+      pinned: data?.pinned ?? data?.pinned_pta_ids ?? existing?.pinned ?? [],
+      priority: data?.priorityOrder ?? data?.favorite_views ?? existing?.priority ?? [],
     };
 
     const saved = await this.userDataRepo.save(
@@ -3097,12 +3146,7 @@ export class PtaService {
         : this.userDataRepo.create({ userId, ...next }),
     );
 
-    return {
-      pinned_pta_ids: Array.isArray(saved.pinned) ? saved.pinned : [],
-      saved_tags: Array.isArray(saved.tags) ? saved.tags : [],
-      notes: saved.notes && typeof saved.notes === 'object' ? saved.notes : {},
-      favorite_views: Array.isArray(saved.priority) ? saved.priority : [],
-    };
+    return this.normalizeUserDataRow(saved);
   }
 
   async seedPTAs() {
@@ -3490,6 +3534,7 @@ export class PtaService {
   async getOfertaCetapPrograma(query?: any) {
     const cetapId = coalesceString(query?.cetap_id, query?.cetapId);
     const programaId = coalesceString(query?.programa_id, query?.programaId);
+    const periodo = coalesceString(query?.periodo, query?.periodo_codigo, query?.periodoCodigo);
 
     if (!cetapId || !programaId) {
       return { cupos_estimados: null };
@@ -3500,20 +3545,77 @@ export class PtaService {
       SELECT ocp.cupos_estimados
       FROM academic_work_plan.oferta_cetap_programa ocp
       JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+      JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
       WHERE ocp.id_programa::text = $2
         AND ocp.activa = true
+        AND ($3::text IS NULL OR pa.codigo = $3)
         AND (
           c.id::text = $1
           OR c.codigo IN (SELECT s.cod_sede FROM auth.sedes s WHERE s.id_sede::text = $1)
         )
+      ORDER BY COALESCE(ocp.updated_at, ocp.created_at) DESC
       LIMIT 1
       `,
-      [cetapId, programaId],
+      [cetapId, programaId, periodo],
     );
 
     return {
       cupos_estimados: rows.length > 0 ? rows[0].cupos_estimados : null,
     };
+  }
+
+  /**
+   * Refresca únicamente el dato derivado `total_estudiantes` de las asignaturas
+   * PTA. Si una fila legacy no tiene CETAP/programa, o ya no existe una oferta
+   * activa para el periodo, se conserva intacta para no dañar el borrador.
+   */
+  private async syncAsignaturasCupos(asignaturas: any[], periodo?: string | null): Promise<any[]> {
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return asignaturas;
+
+    const requests = new Map<string, Promise<number | null>>();
+    const getCupos = (cetapId: string, programaId: string) => {
+      const key = `${cetapId}::${programaId}::${periodo || ''}`;
+      let request = requests.get(key);
+      if (!request) {
+        request = this.getOfertaCetapPrograma({
+          cetap_id: cetapId,
+          programa_id: programaId,
+          periodo,
+        })
+          .then(result => {
+            const cupos = Number(result?.cupos_estimados);
+            return Number.isInteger(cupos) && cupos > 0 ? cupos : null;
+          })
+          .catch((error: any) => {
+            this.logger.warn(
+              `No se pudieron sincronizar cupos PTA para CETAP ${cetapId} y programa ${programaId}: ${error?.message || error}`,
+            );
+            return null;
+          });
+        requests.set(key, request);
+      }
+      return request;
+    };
+
+    return Promise.all(asignaturas.map(async (asignatura: any) => {
+      const cetapId = coalesceLookupKey(
+        asignatura?.cetap_id,
+        asignatura?.cetapId,
+        asignatura?.sede_id,
+        asignatura?.sedeId,
+      );
+      const programaId = coalesceLookupKey(
+        asignatura?.programa_id,
+        asignatura?.programaId,
+        asignatura?.programa?.id,
+      );
+      if (!cetapId || !programaId) return asignatura;
+
+      const cupos = await getCupos(cetapId, programaId);
+      return cupos == null
+        ? asignatura
+        : { ...asignatura, total_estudiantes: cupos };
+    }));
   }
 
   async getDocentesDisponibles(query?: any) {
@@ -4071,8 +4173,10 @@ export class PtaService {
 
     this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email || 'docente sin correo'}: ${code}`);
 
-    // En modo mock no intentamos enviar correo (cualquier código sirve igual).
-    if (!this.MOCK_FIRMA_OTP && docente.email) {
+    // El correo con el código SIEMPRE se intenta enviar cuando hay email registrado
+    // (aunque MOCK_FIRMA_OTP esté activo). El mock solo relaja la *validación* del
+    // código, no debe impedir que el docente reciba el OTP en su correo.
+    if (docente.email) {
       try {
         await this.sendFirmaOtpEmail({
           to: docente.email,
@@ -4099,6 +4203,66 @@ export class PtaService {
       verificationId,
       expiresAt: expiresAt.toISOString(),
       email: docente.email ? this.maskEmail(docente.email) : 'correo no registrado',
+      devCode: code,
+    };
+  }
+
+  /**
+   * Solicita un OTP de firma para el APROBADOR/CONCERTADOR que va a avalar el PTA.
+   * A diferencia del OTP de docente, el firmante NO es el dueño del PTA sino el
+   * usuario autenticado que oprime "Aprobar" (Jefatura, Decanatura, Gestión
+   * Profesoral, etc.), por eso se resuelve con adminEdit (sin exigir rol DOCENTE)
+   * y se envía el código al correo de ESE usuario. La clave del OTP incluye el
+   * userId para que no colisione con el OTP del docente sobre el mismo PTA.
+   */
+  async requestFirmaAprobadorOtp(payload: {
+    ptaId?: string | null;
+    userId?: string | null;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+  }) {
+    const userId = coalesceString(payload?.userId);
+    if (!userId) throw new BadRequestException('userId es requerido para enviar el código de firma del aprobador.');
+
+    const aprobador = await this.fetchAuthDocenteInfo(userId, { adminEdit: true });
+    if (!aprobador.email && !this.MOCK_FIRMA_OTP) {
+      throw new BadRequestException('El aprobador no tiene correo registrado para enviar el código de validación.');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const ptaId = coalesceString(payload?.ptaId);
+    const verificationId = ptaId ? `pta:${ptaId}:aprobador:${userId}` : `aprobador:${userId}`;
+
+    this.logger.log(`🔑 [PRUEBAS] Código de firma (aprobador) generado para ${aprobador.email || 'aprobador sin correo'}: ${code}`);
+
+    if (aprobador.email) {
+      try {
+        await this.sendFirmaOtpEmail({
+          to: aprobador.email,
+          code,
+          fullName: aprobador.fullName,
+          periodo: payload?.periodo,
+          etapaLabel: payload?.etapaLabel,
+          expiresAt,
+        });
+      } catch (emailError) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(`⚠️  [DEV] Email de firma OTP (aprobador) falló — código OTP para ${aprobador.email}: ${code}`);
+          this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
+        } else {
+          throw emailError;
+        }
+      }
+    }
+
+    this.otpStore.set(verificationId, { code, expiresAt });
+
+    return {
+      verificationId,
+      expiresAt: expiresAt.toISOString(),
+      email: aprobador.email ? this.maskEmail(aprobador.email) : 'correo no registrado',
       devCode: code,
     };
   }

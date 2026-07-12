@@ -171,15 +171,20 @@ function normalizeDocumentNumber(value: unknown): string | null {
   return text.replace(/[\s.-]+/g, '');
 }
 
+function formatDateOnlyUtc(date: Date): string | null {
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
 function parseExcelDate(value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (value instanceof Date) return formatDateOnlyUtc(value);
 
   if (typeof value === 'number') {
     const parsed = XLSX.SSF.parse_date_code(value);
     if (!parsed) return null;
     const date = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, parsed.H || 0, parsed.M || 0, parsed.S || 0));
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    return formatDateOnlyUtc(date);
   }
 
   const text = String(value).trim();
@@ -188,17 +193,17 @@ function parseExcelDate(value: unknown): string | null {
   const ddmmyyyyMatch = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
   if (ddmmyyyyMatch) {
     const date = new Date(Date.UTC(Number(ddmmyyyyMatch[3]), Number(ddmmyyyyMatch[2]) - 1, Number(ddmmyyyyMatch[1])));
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    return formatDateOnlyUtc(date);
   }
 
   const yyyymmddMatch = text.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
   if (yyyymmddMatch) {
     const date = new Date(Date.UTC(Number(yyyymmddMatch[1]), Number(yyyymmddMatch[2]) - 1, Number(yyyymmddMatch[3])));
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    return formatDateOnlyUtc(date);
   }
 
   const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return formatDateOnlyUtc(parsed);
 }
 
 function parseNumeric(value: unknown): number | null {
@@ -331,14 +336,13 @@ function computeEdad(fechaNacimientoIso: string | null, edadFallback: number | n
 
 function computeRangoEdad(edad: number | null, fallback?: string | null): string | null {
   if (edad === null) return fallback || null;
-  if (edad <= 25) return 'Hasta 25 años';
-  if (edad <= 35) return 'De 26 a 35 años';
-  if (edad <= 45) return 'De 36 a 45 años';
-  if (edad <= 55) return 'De 46 a 55 años';
-  if (edad <= 65) return 'De 56 a 65 años';
-  return '66 años o más';
+  if (edad <= 25) return 'Hasta 25 a\u00f1os';
+  if (edad <= 35) return 'De 26 a 35 a\u00f1os';
+  if (edad <= 45) return 'De 36 a 45 a\u00f1os';
+  if (edad <= 55) return 'De 46 a 55 a\u00f1os';
+  if (edad <= 65) return 'De 56 a 65 a\u00f1os';
+  return '66 a\u00f1os o m\u00e1s';
 }
-
 function deriveHorasAsignables(dedicacion: string | null, explicitValue: number | null): number | null {
   if (explicitValue !== null && explicitValue >= 0) return Math.trunc(explicitValue);
   if (dedicacion === 'Medio Tiempo') return 400;

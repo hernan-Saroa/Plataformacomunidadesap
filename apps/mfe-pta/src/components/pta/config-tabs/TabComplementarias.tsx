@@ -1,6 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Calculator, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Columns3, Tag, Lock, Info } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Calculator, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Tag, Lock, Info } from 'lucide-react';
 import { PTARules, ExtItem } from '../ConfiguracionReglasPTA';
+import { BuilderSurfaceStyles } from './BuilderSurfaceStyles';
+import { DetailColumnModal } from './DetailColumnModal';
+import { HourLimitControl } from './HourLimitControl';
 
 type CompSeccion = PTARules['comp_secciones'][number];
 type CompActividad = PTARules['comp_actividades_v2'][string][number];
@@ -10,6 +13,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   const [open2, setOpen2] = useState(true);   // Secciones y Actividades accordion
   const secciones: CompSeccion[] = draft.comp_secciones || [];
   const [seccionActiva, setSeccionActiva] = useState<string>(() => secciones[0]?.key || '');
+  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 
   // ── Drag & Drop State ──
   const [draggedActIdx, setDraggedActIdx] = useState<number | null>(null);
@@ -27,8 +31,6 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   // ── Modal "Agregar columna" ──
   const [colModal, setColModal] = useState<{ secKey: string; actIdx: number } | null>(null);
   const [colNombre, setColNombre] = useState('Evidencia');
-  const colInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (colModal && colInputRef.current) { colInputRef.current.focus(); colInputRef.current.select(); } }, [colModal]);
 
   // ── Activity Drag Handlers ──
   const handleDragStart = (e: React.DragEvent, secKey: string, idx: number) => {
@@ -78,16 +80,37 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     const raw = (actividades as any)[key] || [];
     return raw.map((act: any) => ({ ...act, items: act.items || [] }));
   };
+  const setExclusiveBlock = (secKey: string, targetKey: string, expanded: boolean) => {
+    setExpandedBlocks(prev => {
+      const next = { ...prev };
+      actsDeSeccion(secKey).forEach(activity => { next[`${secKey}:${activity.id}`] = false; });
+      next[targetKey] = expanded;
+      return next;
+    });
+  };
   const updateAct = (secKey: string, idx: number, field: string, val: any) => {
     const stringFields = ['nombre', 'id', 'linea'];
-    const next = actsDeSeccion(secKey).map((a, i) =>
+    const currentActs = actsDeSeccion(secKey);
+    if (field === 'id') {
+      const oldKey = `${secKey}:${currentActs[idx]?.id}`;
+      const newKey = `${secKey}:${val}`;
+      setExpandedBlocks(prev => {
+        if (!(oldKey in prev) || oldKey === newKey) return prev;
+        const nextState = { ...prev, [newKey]: prev[oldKey] };
+        delete nextState[oldKey];
+        return nextState;
+      });
+    }
+    const next = currentActs.map((a, i) =>
       i === idx ? { ...a, [field]: stringFields.includes(field) ? val : Number(val) } : a
     );
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
   };
   const addAct = (secKey: string) => {
-    const next = [{ id: `COMP_${Date.now()}`, nombre: 'Nueva actividad', items: [] }, ...actsDeSeccion(secKey)];
+    const newId = `COMP_${Date.now()}`;
+    const next = [{ id: newId, nombre: 'Nueva actividad', items: [] }, ...actsDeSeccion(secKey)];
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
+    setExclusiveBlock(secKey, `${secKey}:${newId}`, true);
   };
   const removeAct = (secKey: string, idx: number) => {
     const next = actsDeSeccion(secKey).filter((_, i) => i !== idx);
@@ -184,22 +207,16 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     if (!cols.includes(ITEMS_KEY)) return [ITEMS_KEY, ...cols];
     return cols;
   };
-  const seccionTieneDatos = (secKey: string): boolean => {
-    const acts = actsDeSeccion(secKey);
-    return acts.some(a => {
-      const hasItems = (a.items || []).length > 0;
-      const hasColVals = Object.values(a.columnas_valores || {}).some((v: any) => Array.isArray(v) && v.length > 0);
-      const hasColMeta = Object.values(a.columnas_meta || {}).some((v: any) => Array.isArray(v) && v.length > 0);
-      return hasItems || hasColVals || hasColMeta;
-    });
-  };
+  const seccionTieneDatos = (secKey: string): boolean => actsDeSeccion(secKey).some(activity =>
+    (activity.items || []).length > 0
+    || Object.values(activity.columnas_valores || {}).some((values: any) => Array.isArray(values) && values.length > 0)
+    || Object.values(activity.columnas_meta || {}).some((values: any) => Array.isArray(values) && values.length > 0),
+  );
   const reorderColumnas = (secKey: string, fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx) return;
-    if (seccionTieneDatos(secKey)) {
-      alert('⚠️ No se puede cambiar el orden de las columnas cuando ya hay actividades configuradas.\n\nPara cambiar el orden, primero elimine todas las actividades y valores de esta sección.');
-      return;
-    }
     const cols = [...getSeccionColumnas(secKey)];
+    const touchesHierarchy = fromIdx === 0 || toIdx === 0 || cols[fromIdx] === ITEMS_KEY || cols[toIdx] === ITEMS_KEY;
+    if (seccionTieneDatos(secKey) && touchesHierarchy) return;
     const [moved] = cols.splice(fromIdx, 1);
     cols.splice(toIdx, 0, moved);
     const newSecs = secciones.map(s => s.key === secKey ? { ...s, columnas: cols } : s);
@@ -271,12 +288,13 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
   };
-  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas' | 'horas_en', val: any) => {
+  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas' | 'horas_min' | 'horas_en', val: any) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
     const meta = [...(act.columnas_meta?.[colName] || [])];
     while (meta.length <= valIdx) meta.push({ tipo: 'hasta', horas: 0 });
-    meta[valIdx] = { ...meta[valIdx], [field]: field === 'horas' ? (val === '' ? '' : Number(val)) : val };
+    const isNumeric = field === 'horas' || field === 'horas_min';
+    meta[valIdx] = { ...meta[valIdx], [field]: isNumeric ? (val === '' ? '' : Number(val)) : val };
     const updated = { ...act, columnas_meta: { ...(act.columnas_meta || {}), [colName]: meta } };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
@@ -320,7 +338,8 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   );
 
   return (
-    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="pta-config-builder space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <BuilderSurfaceStyles />
       <section>
         <div className="mb-6">
           <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
@@ -489,38 +508,41 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                       <button onClick={() => addAct(sec.key)}
                         className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border-none text-white text-xs font-bold shadow-sm"
                         style={{ background: sec.color }}>
-                        <Plus className="w-3.5 h-3.5" /> Agregar actividad
+                        <Plus className="w-3.5 h-3.5" /> Agregar bloque principal
                       </button>
                     </div>
 
                     {/* ── Columnas de la sección ── */}
                     {(() => {
                       const secCols = getSeccionColumnas(sec.key);
-                      const isLocked = seccionTieneDatos(sec.key);
+                      const hasConfiguredData = seccionTieneDatos(sec.key);
                       const firstCol = secCols.find(c => !!c) || '';
                       const firstIsItems = firstCol === ITEMS_KEY;
                       return (
+                        <>
                         <div className="mb-3 px-1 space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
                             {secCols.length > 0 && (
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Columnas:</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Estructura editable:</span>
                             )}
                             {secCols.length > 1 && (
                               <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
                                 ⚡ La 1ª columna ({firstIsItems ? 'Actividad/Ítem' : firstCol}) controla las horas
                               </span>
                             )}
-                            {isLocked && (
-                              <span className="text-[9px] bg-red-50 text-red-500 border border-red-200 rounded-full px-2 py-0.5 font-medium flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" /> Orden bloqueado (hay datos configurados)
+                            {hasConfiguredData && (
+                              <span className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-blue-700">
+                                <Lock className="h-2.5 w-2.5" /> Jerarquía protegida · detalles arrastrables
                               </span>
                             )}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                           {secCols.map((colName, ci) => {
                             const isItemsChip = colName === ITEMS_KEY;
+                            const isLocked = hasConfiguredData && (ci === 0 || isItemsChip);
                             return (
                             <div key={`col-chip-${ci}`}
+                              title="Arrastra para cambiar la posición de esta columna"
                               draggable={!isLocked}
                               onDragStart={e => { if (isLocked) { e.preventDefault(); return; } setDragColIdx(ci); setDragColSecKey(sec.key); e.dataTransfer.effectAllowed = 'move'; }}
                               onDragOver={e => { e.preventDefault(); if (dragColSecKey === sec.key) setDragOverColIdx(ci); }}
@@ -535,6 +557,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                       ? 'bg-violet-50 border border-violet-200 hover:border-violet-300'
                                       : 'bg-blue-50 border border-blue-200 hover:border-blue-300'
                               }`}>
+                              <span className={`flex w-4 h-4 items-center justify-center rounded-full bg-white/80 text-[9px] font-black ${isItemsChip ? 'text-violet-600' : 'text-blue-600'}`}>{ci + 1}</span>
                               {isLocked ? (
                                 <Lock className={`w-3 h-3 ${isItemsChip ? 'text-violet-300' : 'text-blue-300'} shrink-0`} />
                               ) : (
@@ -565,7 +588,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                           })}
                           <button onClick={() => { setColModal({ secKey: sec.key, actIdx: 0 }); setColNombre('Evidencia'); }}
                             className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-400 text-[11px] font-semibold hover:border-blue-400 hover:text-blue-600 transition-colors bg-white">
-                            <Plus className="w-3 h-3" /> Columna
+                            <Plus className="w-3 h-3" /> Agregar columna de detalle
                           </button>
                           </div>
                           {secCols.length > 0 && (
@@ -576,6 +599,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                             </div>
                           )}
                         </div>
+                        </>
                       );
                     })()}
 
@@ -591,6 +615,8 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                           if (!act) return null;
                           const isEtapa = Array.isArray(act.items);
                           const hasItems = isEtapa && (act.items?.length ?? 0) > 0;
+                          const blockKey = `${sec.key}:${act.id}`;
+                          const blockExpanded = expandedBlocks[blockKey] ?? aIdx === 0;
                           return (
                             <div key={act.id} draggable
                               onDragStart={(e) => handleDragStart(e, sec.key, aIdx)}
@@ -598,17 +624,20 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                               onDragLeave={handleDragLeave}
                               onDrop={(e) => handleDrop(e, sec.key, aIdx)}
                               onDragEnd={handleDragEnd}
-                              className={`border rounded-xl overflow-hidden shadow-sm transition-all bg-white
+                              className={`config-block-card border-2 rounded-2xl overflow-hidden transition-all bg-white
                                 ${draggedActIdx === aIdx && draggedSecKey === sec.key ? 'opacity-40 border-dashed border-blue-400' : ''}
-                                ${dragOverActIdx === aIdx && draggedSecKey === sec.key ? 'border-blue-500 shadow-blue-500/20 shadow-md scale-[1.01]' : 'border-slate-200'}
+                                ${dragOverActIdx === aIdx && draggedSecKey === sec.key ? 'border-blue-500 shadow-blue-500/20 shadow-lg scale-[1.01]' : blockExpanded ? 'border-violet-300 shadow-lg shadow-violet-900/5' : 'border-slate-200 shadow-sm hover:border-violet-200 hover:shadow-md'}
                               `}>
                               {/* ── Cabecera de Actividad ── */}
-                              <div className="flex flex-row items-center gap-3 p-3 bg-slate-50 border-b border-slate-100">
+                              <div className={`flex flex-row items-center gap-3 p-3 transition-colors ${blockExpanded ? 'bg-gradient-to-r from-violet-50 via-white to-blue-50 border-b border-violet-100' : 'bg-slate-50'}`}>
+                                <div className="flex h-10 w-7 shrink-0 cursor-grab items-center justify-center rounded-lg border border-violet-200 bg-white text-violet-400 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 active:cursor-grabbing" title="Arrastra para cambiar el orden del bloque">
+                                  <GripVertical className="h-4 w-4" />
+                                </div>
                                 <input
                                   type="text"
                                   key={`pos-${act.id}-${aIdx}`}
                                   defaultValue={aIdx + 1}
-                                  title={`Posición ${aIdx + 1}`}
+                                  title={`Orden ${aIdx + 1}: escribe otra posición o arrastra el control lateral`}
                                   onFocus={e => e.target.select()}
                                   onBlur={e => {
                                     const val = parseInt(e.target.value, 10);
@@ -641,6 +670,12 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                     placeholder="Nombre de la actividad..."
                                     className="w-full bg-white border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none" />
                                 </div>
+                                <div className="shrink-0">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Filas</span>
+                                  <div className="flex h-[34px] min-w-[58px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-extrabold text-slate-700">
+                                    {(act.items || []).length}
+                                  </div>
+                                </div>
                                 {/* Total Horas */}
                                 {(() => {
                                   const total = (act.items || []).reduce((sum: number, item: any) => sum + (Number(item.horas) || 0), 0);
@@ -653,12 +688,23 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                     </div>
                                   ) : null;
                                 })()}
+                                <button
+                                  type="button"
+                                  onClick={() => setExclusiveBlock(sec.key, blockKey, !blockExpanded)}
+                                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 text-[11px] font-bold text-violet-700 shadow-sm transition-all hover:border-violet-300 hover:bg-violet-50"
+                                  title={blockExpanded ? 'Cerrar bloque' : 'Editar este bloque'}
+                                >
+                                  <ChevronDown className={`h-4 w-4 transition-transform ${blockExpanded ? 'rotate-180' : ''}`} />
+                                  {blockExpanded ? 'Cerrar' : 'Editar'}
+                                </button>
                                 <button onClick={() => removeAct(sec.key, aIdx)}
                                   className="w-9 h-9 shrink-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all shadow-sm self-end">
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
 
+                              {blockExpanded && (
+                              <div className="config-block-body bg-slate-100/70 p-3">
                               {/* ── Columnas content ── */}
                               {(() => {
                                 try {
@@ -686,13 +732,13 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                             {(act.items || []).map((item, iIdx) => {
                                               const itemDragKey = `${sec.key}:${aIdx}`;
                                               return (
-                                              <div key={iIdx} className="space-y-1">
+                                              <div key={iIdx} className="config-activity-entry space-y-2">
                                                 <div draggable
                                                   onDragStart={e => { e.stopPropagation(); setDragItemIdx(iIdx); setDragItemKey(itemDragKey); e.dataTransfer.effectAllowed = 'move'; }}
                                                   onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dragItemKey === itemDragKey) setDragOverItemIdx(iIdx); }}
                                                   onDrop={e => { e.preventDefault(); e.stopPropagation(); if (dragItemIdx !== null && dragItemKey === itemDragKey) { reorderItems(sec.key, aIdx, dragItemIdx, iIdx); } setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
                                                   onDragEnd={() => { setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
-                                                  className={`flex flex-row items-center gap-2 p-2 rounded-lg border transition-all select-none ${
+                                                  className={`config-activity-main-row flex flex-row items-center gap-2 p-2 rounded-lg border transition-all select-none ${
                                                     dragItemIdx === iIdx && dragItemKey === itemDragKey
                                                       ? 'opacity-40 scale-[0.98] bg-violet-50 border-violet-200'
                                                       : dragOverItemIdx === iIdx && dragItemKey === itemDragKey && dragItemIdx !== iIdx
@@ -707,36 +753,15 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                                       className="w-full bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none" />
                                                   </div>
                                                   {showItemHoras && (
-                                                    <div className="w-24 shrink-0">
-                                                      <select value={item.tipo}
-                                                        onChange={e => updateItem(sec.key, aIdx, iIdx, 'tipo', e.target.value)}
-                                                        className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] rounded-md px-1.5 py-1.5 outline-none">
-                                                        <option value="fija">🟢 Fija</option>
-                                                        <option value="hasta">🕒 Hasta</option>
-                                                        <option value="intervalo">📊 Intervalo</option>
-                                                      </select>
-                                                    </div>
-                                                  )}
-                                                  {showItemHoras && (
-                                                    item.tipo === 'intervalo' ? (
-                                                      <div className="shrink-0 flex items-center gap-1">
-                                                        <input type="number" value={(item as any).horas_min ?? ''} min={0}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas_min', e.target.value)}
-                                                          className="w-14 bg-white border border-blue-200 text-blue-700 font-bold text-[11px] rounded-md px-1 py-1.5 text-center outline-none" title="Mínimo" />
-                                                        <span className="text-[9px] text-slate-400 font-bold">—</span>
-                                                        <input type="number" value={item.horas ?? ''} min={0}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas', e.target.value)}
-                                                          className="w-14 bg-white border border-amber-200 text-amber-700 font-bold text-[11px] rounded-md px-1 py-1.5 text-center outline-none" title="Máximo" />
-                                                        <span className="text-[9px] text-amber-500 font-bold">h</span>
-                                                      </div>
-                                                    ) : (
-                                                      <div className="shrink-0 flex items-center gap-1">
-                                                        <input type="number" value={item.horas ?? ''} min={0}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas', e.target.value)}
-                                                          className="w-16 bg-white border border-slate-200 text-slate-700 font-bold text-[12px] rounded-md px-2 py-1.5 text-center outline-none" />
-                                                        <span className="text-[9px] text-amber-500 font-bold">h</span>
-                                                      </div>
-                                                    )
+                                                    <HourLimitControl
+                                                      type={item.tipo}
+                                                      hours={item.horas}
+                                                      minHours={(item as any).horas_min}
+                                                      onTypeChange={value => updateItem(sec.key, aIdx, iIdx, 'tipo', value)}
+                                                      onHoursChange={value => updateItem(sec.key, aIdx, iIdx, 'horas', value)}
+                                                      onMinHoursChange={value => updateItem(sec.key, aIdx, iIdx, 'horas_min', value)}
+                                                      compact
+                                                    />
                                                   )}
                                                   <button onClick={() => removeItem(sec.key, aIdx, iIdx)}
                                                     className="w-7 h-7 shrink-0 flex items-center justify-center rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all">
@@ -752,7 +777,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                                     const itemColVals = item.col_valores || {};
                                                     const vals = itemColVals[subCol] || [];
                                                     return (
-                                                      <div key={subCol} className="ml-8 space-y-1">
+                                                      <div key={subCol} className="config-detail-panel ml-8 space-y-1">
                                                         <div className="flex items-center justify-between">
                                                           <span className="text-[10px] font-bold text-blue-500 uppercase flex items-center gap-1">
                                                             <Tag className="w-2.5 h-2.5" /> {subCol}
@@ -826,19 +851,15 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                                   placeholder={`${colName}...`}
                                                   className="flex-1 bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-blue-500/20 outline-none" />
                                                 {isFirst && (
-                                                  <>
-                                                    <select value={(meta as any).tipo || 'hasta'}
-                                                      onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'tipo', e.target.value)}
-                                                      className="bg-white border border-slate-200 text-[11px] rounded-md px-1 py-1.5 outline-none">
-                                                      <option value="fija">🟢 Fija</option>
-                                                      <option value="hasta">🕒 Hasta</option>
-                                                      <option value="intervalo">📊 Intervalo</option>
-                                                    </select>
-                                                    <input type="number" value={(meta as any).horas ?? ''} min={0}
-                                                      onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'horas', e.target.value)}
-                                                      className="w-16 bg-white border border-amber-200 text-amber-700 font-bold text-[12px] rounded-md px-2 py-1.5 text-center outline-none" />
-                                                    <span className="text-[10px] text-amber-500 font-bold">h</span>
-                                                  </>
+                                                  <HourLimitControl
+                                                    type={(meta as any).tipo || 'hasta'}
+                                                    hours={(meta as any).horas}
+                                                    minHours={(meta as any).horas_min}
+                                                    onTypeChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'tipo', value)}
+                                                    onHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'horas', value)}
+                                                    onMinHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'horas_min', value)}
+                                                    compact
+                                                  />
                                                 )}
                                                 <button onClick={() => removeValorColumna(sec.key, aIdx, colName, vIdx)}
                                                   className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors">
@@ -869,22 +890,20 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                                       {childItems.map((cItem: any, ciIdx: number) => {
                                                         const realIdx = (act.items || []).indexOf(cItem);
                                                         return (
-                                                          <div key={ciIdx} className="flex items-center gap-2 p-1.5 rounded-lg bg-violet-50/30 border border-violet-100">
+                                                          <div key={ciIdx} className="config-activity-entry config-activity-main-row flex items-center gap-2 p-1.5 rounded-lg border">
                                                             <input type="text" value={cItem.nombre}
                                                               onChange={e => updateItem(sec.key, aIdx, realIdx, 'nombre', e.target.value)}
                                                               placeholder="Nombre..."
                                                               className="flex-1 bg-white border border-slate-200 text-slate-700 text-[11px] rounded-md px-2 py-1 outline-none" />
-                                                            <select value={cItem.tipo}
-                                                              onChange={e => updateItem(sec.key, aIdx, realIdx, 'tipo', e.target.value)}
-                                                              className="bg-white border border-slate-200 text-[10px] rounded-md px-1 py-1 outline-none">
-                                                              <option value="fija">🟢 Fija</option>
-                                                              <option value="hasta">🕒 Hasta</option>
-                                                              <option value="intervalo">📊 Intervalo</option>
-                                                            </select>
-                                                            <input type="number" value={cItem.horas ?? ''} min={0}
-                                                              onChange={e => updateItem(sec.key, aIdx, realIdx, 'horas', e.target.value)}
-                                                              className="w-14 bg-white border border-amber-200 text-amber-700 font-bold text-[11px] rounded-md px-1 py-1 text-center outline-none" />
-                                                            <span className="text-[9px] text-amber-500 font-bold">h</span>
+                                                            <HourLimitControl
+                                                              type={cItem.tipo}
+                                                              hours={cItem.horas}
+                                                              minHours={(cItem as any).horas_min}
+                                                              onTypeChange={value => updateItem(sec.key, aIdx, realIdx, 'tipo', value)}
+                                                              onHoursChange={value => updateItem(sec.key, aIdx, realIdx, 'horas', value)}
+                                                              onMinHoursChange={value => updateItem(sec.key, aIdx, realIdx, 'horas_min', value)}
+                                                              compact
+                                                            />
                                                             <button onClick={() => removeItem(sec.key, aIdx, realIdx)}
                                                               className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-red-500">
                                                               <X className="w-3 h-3" />
@@ -909,6 +928,8 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                 });
                                 } catch { return null; }
                               })()}
+                              </div>
+                              )}
                             </div>
                           );
                         })}
@@ -924,34 +945,14 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
         </div>
       </section>
 
-      {/* ── Modal: Agregar Columna ── */}
-      {colModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm space-y-4 animate-in zoom-in-95 duration-200">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Columns3 className="w-4 h-4 text-blue-500" /> Agregar Columna
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Escribe el nombre de la columna (ej: Evidencia, Línea, Componente).
-            </p>
-            <input ref={colInputRef} type="text" value={colNombre}
-              onChange={e => setColNombre(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') confirmAddColumna(); if (e.key === 'Escape') setColModal(null); }}
-              placeholder="Nombre de la columna..."
-              className="w-full bg-white border border-slate-200 text-slate-800 font-semibold text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 outline-none" />
-            <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setColModal(null)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-semibold hover:bg-slate-50 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={confirmAddColumna}
-                className="px-4 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm">
-                Agregar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DetailColumnModal
+        open={!!colModal}
+        value={colNombre}
+        existingColumns={colModal ? getSeccionColumnas(colModal.secKey).filter(column => column !== ITEMS_KEY) : []}
+        onChange={setColNombre}
+        onClose={() => { setColModal(null); setColNombre('Evidencia'); }}
+        onConfirm={confirmAddColumna}
+      />
     </div>
   );
 }
