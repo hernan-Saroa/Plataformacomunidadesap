@@ -26,14 +26,10 @@ import { Permissions } from '@esap-mfe/shared-types';
 
 type TipoCreacion = 'seccional' | 'sede';
 
-// Estado del diálogo de confirmación de eliminación.
-// - confirm-*         : borrado PERMANENTE del catálogo maestro (cascada).
-// - remove-*-periodo  : quitar SOLO de un periodo (no toca el catálogo ni otros periodos).
+// Estado del diálogo de eliminación permanente, disponible solo en Catálogo Maestro.
 type ConfirmDeleteState =
   | { kind: 'confirm-seccional'; seccional: Seccional; sedesCount: number }
-  | { kind: 'confirm-sede'; sede: Sede }
-  | { kind: 'remove-seccional-periodo'; seccional: Seccional; periodo: string }
-  | { kind: 'remove-sede-periodo'; sede: Sede; periodo: string };
+  | { kind: 'confirm-sede'; sede: Sede };
 
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
@@ -430,23 +426,6 @@ export function EstructuraOrganizacionalModule() {
     abrirConfirmacion({ kind: 'confirm-sede', sede });
   };
 
-  // Quitar SOLO del periodo actual (vista "Activación por Periodo").
-  const handleQuitarSeccionalDePeriodo = (seccional: Seccional) => {
-    if (!periodo) {
-      toast.error('Seleccione un periodo académico primero');
-      return;
-    }
-    abrirConfirmacion({ kind: 'remove-seccional-periodo', seccional, periodo });
-  };
-
-  const handleQuitarSedeDePeriodo = (sede: Sede) => {
-    if (!periodo) {
-      toast.error('Seleccione un periodo académico primero');
-      return;
-    }
-    abrirConfirmacion({ kind: 'remove-sede-periodo', sede, periodo });
-  };
-
   // Ejecuta la acción confirmada en el diálogo.
   const ejecutarEliminacion = async () => {
     if (!confirmState) return;
@@ -465,25 +444,6 @@ export function EstructuraOrganizacionalModule() {
         await estructuraService.eliminarSede(confirmState.sede.idSede);
         toast.success('Sede eliminada exitosamente');
         cargarDatos();
-      } else if (confirmState.kind === 'remove-seccional-periodo') {
-        // Quitar SOLO del periodo: no toca el catálogo maestro ni otros periodos.
-        await estructuraService.quitarSeccionalDePeriodo(
-          confirmState.seccional.idSeccional,
-          confirmState.periodo,
-        );
-        toast.success(
-          `Territorial "${confirmState.seccional.nomSeccional}" quitada del periodo ${confirmState.periodo}`,
-        );
-        await applyPeriodFilter();
-      } else if (confirmState.kind === 'remove-sede-periodo') {
-        await estructuraService.quitarSedeDePeriodo(
-          confirmState.sede.idSede,
-          confirmState.periodo,
-        );
-        toast.success(
-          `Sede "${confirmState.sede.nomSede}" quitada del periodo ${confirmState.periodo}`,
-        );
-        await applyPeriodFilter();
       }
     } catch (error: any) {
       console.error('Error eliminando:', error);
@@ -1004,8 +964,8 @@ export function EstructuraOrganizacionalModule() {
                 estadisticas={estadisticas}
                 onEditarSeccional={() => {}}
                 onEditarSede={() => {}}
-                onEliminarSeccional={handleQuitarSeccionalDePeriodo}
-                onEliminarSede={handleQuitarSedeDePeriodo}
+                onEliminarSeccional={() => {}}
+                onEliminarSede={() => {}}
                 activeSedeIds={activeSedeIds}
                 periodo={periodo}
                 onToggleActive={handleToggleSedePeriodStatus}
@@ -1039,26 +999,16 @@ export function EstructuraOrganizacionalModule() {
         editItem={editItem}
       />
 
-      {/* Diálogo de confirmación de eliminación / quitar de periodo */}
+      {/* Diálogo de confirmación de eliminación en Catálogo Maestro */}
       <ConfirmationDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={ejecutarEliminacion}
-        // Quitar de un periodo NO es destructivo permanente -> warning. Borrar del
-        // catálogo maestro sí lo es -> danger.
-        variant={
-          confirmState?.kind === 'remove-seccional-periodo' || confirmState?.kind === 'remove-sede-periodo'
-            ? 'warning'
-            : 'danger'
-        }
+        variant="danger"
         title={
           confirmState?.kind === 'confirm-seccional'
             ? (confirmState.sedesCount > 0 ? 'Eliminar seccional y sus sedes' : 'Eliminar seccional')
-            : confirmState?.kind === 'confirm-sede'
-              ? 'Eliminar sede'
-              : confirmState?.kind === 'remove-seccional-periodo'
-                ? 'Quitar seccional del periodo'
-                : 'Quitar sede del periodo'
+            : 'Eliminar sede'
         }
         description={
           confirmState?.kind === 'confirm-seccional'
@@ -1067,18 +1017,12 @@ export function EstructuraOrganizacionalModule() {
                 : `¿Estás seguro de eliminar la seccional "${confirmState.seccional.nomSeccional}"?`)
             : confirmState?.kind === 'confirm-sede'
               ? `¿Estás seguro de eliminar la sede "${confirmState.sede.nomSede}"?`
-              : confirmState?.kind === 'remove-seccional-periodo'
-                ? `Se quitará la territorial "${confirmState.seccional.nomSeccional}" y sus sedes SOLO del periodo ${confirmState.periodo}. Seguirá existiendo en el catálogo maestro y en los demás periodos.`
-                : confirmState?.kind === 'remove-sede-periodo'
-                  ? `Se quitará la sede "${confirmState.sede.nomSede}" SOLO del periodo ${confirmState.periodo}. Seguirá existiendo en el catálogo maestro y en los demás periodos.`
-                  : ''
+              : ''
         }
         confirmText={
           confirmState?.kind === 'confirm-seccional' && confirmState.sedesCount > 0
             ? 'Sí, eliminar todo'
-            : confirmState?.kind === 'remove-seccional-periodo' || confirmState?.kind === 'remove-sede-periodo'
-              ? 'Sí, quitar del periodo'
-              : 'Sí, eliminar'
+            : 'Sí, eliminar'
         }
         cancelText="Cancelar"
       />
@@ -1369,7 +1313,7 @@ function VistaArbolSeccionalesSedes({
                           </div>
 
                           {modo === 'catalogo' && (
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-1">
                             {canEdit && (
                               <button
                                 onClick={() => onEditarSeccional(seccional)}
@@ -1410,16 +1354,6 @@ function VistaArbolSeccionalesSedes({
                             </button>
                           )}
 
-                          {/* Quitar la territorial SOLO de este periodo — solo en Periodo */}
-                          {modo === 'periodo' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onEliminarSeccional(seccional); }}
-                              className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0 cursor-pointer"
-                              title={`Quitar "${seccional.nomSeccional}" de este periodo`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
                         </div>
 
                         {/* Sedes de esta seccional */}
@@ -1502,21 +1436,12 @@ function VistaArbolSeccionalesSedes({
                                             }`}
                                           />
                                         </button>
-                                        {/* Quitar la sede SOLO de este periodo */}
-                                        <button
-                                          type="button"
-                                          onClick={() => onEliminarSede(sede)}
-                                          className="ml-1 p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
-                                          title={`Quitar "${sede.nomSede}" de este periodo`}
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
                                       </div>
                                     )}
 
                                     {/* Botones de accion para Sede — solo en Catálogo */}
                                     {modo === 'catalogo' && (
-                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <div className="flex items-center gap-1">
                                         <button
                                           onClick={() => onEditarSede(sede)}
                                           className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors"

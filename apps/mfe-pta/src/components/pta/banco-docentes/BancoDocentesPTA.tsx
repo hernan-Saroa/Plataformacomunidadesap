@@ -6,7 +6,7 @@ import {
   Filter, ExternalLink, MapPin, ArrowRight, RotateCcw, ChevronDown
 } from 'lucide-react';
 import {
-  getBancoDocentes, getBancoDocenteStats, toggleBancoDocenteEstado, bulkUploadBancoDocentes
+  getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, toggleBancoDocenteEstado, bulkUploadBancoDocentes
 } from '../../../services/api/ptaApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
@@ -15,13 +15,6 @@ import { BancoDocentesBulkUpload } from './BancoDocentesBulkUpload';
 import { TableroInvitacionesRUND } from './TableroInvitacionesRUND';
 import { useAuth } from '../../../contexts/AuthContext';
 
-const TERRITORIALES_FILTER = [
-  'Sede Central', 'Antioquia', 'Atlántico', 'Bogotá D.C.', 'Bolívar-Córdoba-Sucre',
-  'Boyacá-Casanare', 'Cauca-Nariño', 'Cesar-La Guajira', 'Chocó',
-  'Cundinamarca-Meta', 'Huila-Caquetá', 'Magdalena', 'Norte de Santander',
-  'Quindío-Risaralda-Caldas', 'Santander', 'Tolima', 'Valle del Cauca-Cauca',
-];
-
 const BADGE_STYLES: Record<string, { background: string; color: string }> = {
   TC:       { background: '#dbeafe', color: '#1d4ed8' },
   MT:       { background: '#fef3c7', color: '#b45309' },
@@ -29,6 +22,30 @@ const BADGE_STYLES: Record<string, { background: string; color: string }> = {
   ACTIVO:   { background: '#dcfce7', color: '#15803d' },
   INACTIVO: { background: '#fee2e2', color: '#dc2626' },
 };
+
+const DEDICACION_FILTER_OPTIONS = [
+  { value: 'TC', label: 'Tiempo Completo' },
+  { value: 'MT', label: 'Medio Tiempo' },
+  { value: 'HC', label: 'Hora Cátedra' },
+];
+const VINCULACION_FILTER_OPTIONS = [
+  { value: 'OCASIONAL', label: 'Ocasional' },
+  { value: 'CARRERA', label: 'Carrera' },
+  { value: 'CATEDRA', label: 'Hora Cátedra' },
+  { value: 'VISITANTE', label: 'Visitante' },
+  { value: 'ESPECIAL', label: 'Especial' },
+];
+const ESTADO_FILTER_OPTIONS = [
+  { value: 'ACTIVO', label: 'Activo' },
+  { value: 'INACTIVO', label: 'Inactivo' },
+];
+
+function getDocenteEstadoKey(docente: any): 'ACTIVO' | 'INACTIVO' {
+  const estado = String(docente?.estado || '').trim().toUpperCase();
+  if (['INACTIVO', 'RETIRADO', 'RETIRADO_DOCENTE', 'TERMINADO', 'DESVINCULADO'].includes(estado)) return 'INACTIVO';
+  if (estado === 'ACTIVO') return 'ACTIVO';
+  return docente?.activo === false ? 'INACTIVO' : 'ACTIVO';
+}
 
 function Badge({ label, code }: { label: string; code: string }) {
   const { background, color } = BADGE_STYLES[code] || { background: '#f1f5f9', color: '#475569' };
@@ -138,7 +155,9 @@ export function BancoDocentesPTA() {
   const [search, setSearch] = useState('');
   const [filterTerritorial, setFilterTerritorial] = useState('');
   const [filterDedicacion, setFilterDedicacion] = useState('');
+  const [filterVinculacion, setFilterVinculacion] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [territorialFilterOptions, setTerritorialFilterOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [filterPeriodo, setFilterPeriodo] = useState('');
   const [periodoDropdownOpen, setPeriodoDropdownOpen] = useState(false);
   const [periodoSearch, setPeriodoSearch] = useState('');
@@ -201,11 +220,40 @@ export function BancoDocentesPTA() {
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
+  // Las territoriales provienen del catálogo organizacional porque sus IDs y
+  // nombres son dinámicos. Los demás filtros usan catálogos válidos del negocio.
+  useEffect(() => {
+    let cancelled = false;
+    getCatalogoTerritoriales()
+      .then((response) => {
+        if (!cancelled && response.success) {
+          setTerritorialFilterOptions((response.data || [])
+            .map((item: any) => ({ value: String(item.id || ''), label: String(item.nombre || '') }))
+            .filter((item: any) => item.value && item.label)
+            .sort((a: any, b: any) => a.label.localeCompare(b.label, 'es')));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTerritorialFilterOptions([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    setSearch('');
+    setFilterTerritorial('');
+    setFilterDedicacion('');
+    setFilterVinculacion('');
+    setFilterEstado('');
+    setPage(1);
+  }, [filterPeriodo]);
+
   // ── Navegar al listado con filtro preseleccionado ─────────────────────────
   const navigateToListado = (filters: { territorial?: string; dedicacion?: string; estado?: string }) => {
     // Limpiar todos los filtros del listado primero
     setFilterTerritorial(filters.territorial || '');
     setFilterDedicacion(filters.dedicacion || '');
+    setFilterVinculacion('');
     setFilterEstado(filters.estado || '');
     setSearch('');
     setPage(1);
@@ -216,12 +264,21 @@ export function BancoDocentesPTA() {
     setLoading(true);
     try {
       const [res, listStatsRes] = await Promise.all([
-        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
-        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50, periodoCarga: filterPeriodo || undefined }),
+        getBancoDocenteStats({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, vinculacion: filterVinculacion || undefined, estado: filterEstado || undefined, periodoCarga: filterPeriodo || undefined }),
       ]);
       if (res.success && res.data) {
-        setDocentes(res.data.items || res.data.data || []);
-        setTotal(res.data.total || 0);
+        const apiItems = res.data.items || res.data.data || [];
+        const normalizedItems = apiItems.map((docente: any) => ({
+          ...docente,
+          estado: getDocenteEstadoKey(docente),
+          activo: getDocenteEstadoKey(docente) === 'ACTIVO',
+        }));
+        const visibleItems = filterEstado
+          ? normalizedItems.filter((docente: any) => getDocenteEstadoKey(docente) === filterEstado)
+          : normalizedItems;
+        setDocentes(visibleItems);
+        setTotal(res.data.total || visibleItems.length);
         setPages(res.data.pages || 1);
       }
       if (listStatsRes.success && listStatsRes.data) setListStats(listStatsRes.data);
@@ -230,9 +287,9 @@ export function BancoDocentesPTA() {
     } finally {
       setLoading(false);
     }
-  }, [filterTerritorial, filterDedicacion, filterEstado, search, page, filterPeriodo]);
+  }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, search, page, filterPeriodo]);
 
-  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterEstado, filterPeriodo]);
+  useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterVinculacion, filterEstado, filterPeriodo]);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => { loadData(1); setPage(1); }, 400);
@@ -486,29 +543,33 @@ export function BancoDocentesPTA() {
           )}
 
           {/* Filters */}
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 220px', border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 12px', background: '#f8fafc' }}>
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-2.5"
+            style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', flexWrap: 'wrap' }}
+          >
+            <div className="sm:col-span-2 lg:flex-1 lg:min-w-[240px]" style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e2e8f0', borderRadius: 8, padding: '7px 12px', background: '#f8fafc' }}>
               <Search size={14} color="#94a3b8" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, documento o co..." style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.82rem', color: '#0f172a', width: '100%' }} />
-              {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}><X size={12} /></button>}
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, documento o correo..." aria-label="Buscar docentes por nombre, documento o correo" style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.78rem', color: '#0f172a', width: '100%', minWidth: 0 }} />
+              {search && <button onClick={() => setSearch('')} aria-label="Limpiar búsqueda" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}><X size={12} /></button>}
             </div>
-            <select value={filterTerritorial} onChange={(e) => setFilterTerritorial(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#0f172a', background: '#f8fafc' }}>
+            <select className="w-full lg:w-[165px]" value={filterTerritorial} onChange={(e) => setFilterTerritorial(e.target.value)} aria-label="Filtrar docentes por territorial" style={{ flex: '0 1 165px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
               <option value="">Todas las territoriales</option>
-              {TERRITORIALES_FILTER.map((t) => <option key={t} value={t}>{t}</option>)}
+              {territorialFilterOptions.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            <select value={filterDedicacion} onChange={(e) => setFilterDedicacion(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#0f172a', background: '#f8fafc' }}>
+            <select className="w-full lg:w-[165px]" value={filterDedicacion} onChange={(e) => setFilterDedicacion(e.target.value)} aria-label="Filtrar docentes por dedicación" style={{ flex: '0 1 165px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
               <option value="">Todas las dedicaciones</option>
-              <option value="TC">Tiempo Completo</option>
-              <option value="MT">Medio Tiempo</option>
-              <option value="HC">Hora Cátedra</option>
+              {DEDICACION_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            <select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.8rem', color: '#0f172a', background: '#f8fafc' }}>
-              <option value="">Todas las categorías</option>
-              <option value="ACTIVO">Activo</option>
-              <option value="INACTIVO">Inactivo</option>
+            <select className="w-full lg:w-[165px]" value={filterVinculacion} onChange={(e) => setFilterVinculacion(e.target.value)} aria-label="Filtrar docentes por vinculación" style={{ flex: '0 1 165px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
+                <option value="">Todas las vinculaciones</option>
+              {VINCULACION_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            {(filterTerritorial || filterDedicacion || filterEstado || search || filterPeriodo) && (
-              <button onClick={() => { setSearch(''); setFilterTerritorial(''); setFilterDedicacion(''); setFilterEstado(''); setFilterPeriodo(''); }} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '7px 12px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fff1f2', cursor: 'pointer', fontSize: '0.78rem', color: '#dc2626' }}>
+            <select className="w-full lg:w-[130px]" value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} aria-label="Filtrar docentes por estado" style={{ flex: '0 1 130px', padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#0f172a', background: '#f8fafc', minWidth: 0 }}>
+              <option value="">Todos los estados</option>
+              {ESTADO_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            {(filterTerritorial || filterDedicacion || filterVinculacion || filterEstado || search) && (
+              <button className="sm:col-span-2 lg:col-span-1 lg:w-auto justify-center" onClick={() => { setSearch(''); setFilterTerritorial(''); setFilterDedicacion(''); setFilterVinculacion(''); setFilterEstado(''); setPage(1); }} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '7px 10px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fff1f2', cursor: 'pointer', fontSize: '0.74rem', color: '#dc2626', whiteSpace: 'nowrap' }}>
                 <X size={12} /> Limpiar
               </button>
             )}
@@ -683,7 +744,7 @@ export function BancoDocentesPTA() {
                         {/* ── Celda ESTADO — Badge con icono estilo Personas ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle' }}>
                           {(() => {
-                            const isActive = (d.estado || '').toUpperCase() === 'ACTIVO';
+                            const isActive = getDocenteEstadoKey(d) === 'ACTIVO';
                             return (
                               <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -748,16 +809,16 @@ export function BancoDocentesPTA() {
                             {hasPermission('banco-docentes.rund.manage') && (
                               <button
                                 onClick={() => handleToggleEstado(d.docente_id || d.id)}
-                                title={d.estado === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
+                                title={getDocenteEstadoKey(d) === 'ACTIVO' ? 'Inactivar docente' : 'Activar docente'}
                                 style={{
                                   width: 32, height: 32, borderRadius: 8,
-                                  border: `1px solid ${d.estado === 'ACTIVO' ? '#FCA5A5' : '#BBF7D0'}`,
-                                  background: d.estado === 'ACTIVO' ? '#FEF2F2' : '#F0FDF4',
+                                  border: `1px solid ${getDocenteEstadoKey(d) === 'ACTIVO' ? '#FCA5A5' : '#BBF7D0'}`,
+                                  background: getDocenteEstadoKey(d) === 'ACTIVO' ? '#FEF2F2' : '#F0FDF4',
                                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   transition: 'all 0.15s',
                                 }}
                               >
-                                {d.estado === 'ACTIVO'
+                                {getDocenteEstadoKey(d) === 'ACTIVO'
                                   ? <ToggleRight size={14} color="#DC2626" />
                                   : <ToggleLeft size={14} color="#059669" />
                                 }

@@ -418,6 +418,20 @@ export class PtaController {
     return { success: true, ...data };
   }
 
+  // Firma del aprobador/concertador: envía el OTP al correo del usuario que aprueba.
+  @Post('firma-aprobador/request-code')
+  async requestFirmaAprobadorCode(@Body() body: any, @Req() req: Request) {
+    // Fallback al usuario autenticado (x-user-id) cuando el front no envía userId.
+    const userId = body?.userId || (req.headers['x-user-id'] as string) || '';
+    const data = await this.ptaService.requestFirmaAprobadorOtp({
+      ptaId: body?.ptaId,
+      userId,
+      periodo: body?.periodo,
+      etapaLabel: body?.etapaLabel,
+    });
+    return { success: true, message: 'Código enviado al correo registrado.', data };
+  }
+
   @Post(':id/generate-otp')
   generateOtp(@Param('id') id: string) {
     const data = this.ptaService.generateOtp(id);

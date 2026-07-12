@@ -46,6 +46,14 @@ export class PlanTrabajoAcademicoEntity {
   @Column({ name: 'tipoVinculacion', type: 'text', nullable: true })
   tipoVinculacion: string | null;
 
+  /** Estado funcional conservado mientras el periodo del PTA está cerrado. */
+  @Column({ name: 'estadoAntesCierrePeriodo', type: 'text', nullable: true })
+  estadoAntesCierrePeriodo: string | null;
+
+  /** Periodo cuya activación produjo el cierre reversible del PTA. */
+  @Column({ name: 'cerradoPorPeriodo', type: 'text', nullable: true })
+  cerradoPorPeriodo: string | null;
+
   @Column({ name: 'createdAt', type: 'timestamp' })
   createdAt: Date;
 
