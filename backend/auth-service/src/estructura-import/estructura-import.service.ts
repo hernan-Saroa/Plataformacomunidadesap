@@ -150,19 +150,13 @@ export class EstructuraImportService {
       dtToProcess,
       cetapsToProcess,
     );
-    dtToProcess = conflictScan.territoriales;
-    cetapsToProcess = conflictScan.cetaps;
-    const conflictSkippedDts = conflictScan.skippedTerritoriales;
-    const conflictSkippedCetaps = conflictScan.skippedCetaps;
-    if (conflictScan.messages.length > 0) {
-      result.advertencias.push(
-        ...conflictScan.messages.map((mensaje) => ({
-          hoja: 'YA_EXISTE_OTRO_CODIGO',
-          mensaje,
-          severity: 'warning' as const,
-        })),
-      );
-    }
+    // IMPORTANTE: los conflictos de nombre pertenecen al espejo técnico de
+    // academic_work_plan, no al catálogo propio de Estructura Organizacional.
+    // No se eliminan filas del archivo ni se muestran como "ya existentes":
+    // el espejo seguro se procesa por separado y, más adelante, el mapping
+    // reutiliza por identidad (territorial + nombre) la fila técnica existente.
+    const catalogDtsToProcess = conflictScan.territoriales;
+    const catalogCetapsToProcess = conflictScan.cetaps;
 
     const legacyPlan = await this.buildLegacySyncPlan(
       dtToProcess,
@@ -203,52 +197,89 @@ export class EstructuraImportService {
     }
 
     // Clasificar DTs: nuevos, modificados, idénticos
-    const newDts: any[] = [];
-    const modifiedDts: any[] = [];
-    const identicalDts: any[] = [];
-    for (const dt of dtToProcess) {
+    const catalogNewDts: any[] = [];
+    const catalogModifiedDts: any[] = [];
+    for (const dt of catalogDtsToProcess) {
       const existing = existingDtMap.get(dt.codigo_dt);
       if (!existing) {
-        newDts.push(dt);
+        catalogNewDts.push(dt);
       } else {
         const hasChange =
           existing.nombre !== dt.nombre_dt ||
           existing.nombre_normalizado !== dt.nombre_normalizado ||
           existing.orden_visualizacion !== dt.orden_visualizacion ||
           existing.activo !== dt.activo;
-        if (hasChange) modifiedDts.push({ ...dt, _cambios: this.diffFields(existing, dt, 'dt') });
-        else identicalDts.push(dt);
+        if (hasChange) catalogModifiedDts.push(dt);
       }
     }
 
     // Clasificar CETAPs: nuevos, modificados, idénticos
-    const newCetaps: any[] = [];
-    const modifiedCetaps: any[] = [];
-    const identicalCetaps: any[] = [];
-    for (const c of cetapsToProcess) {
+    const catalogNewCetaps: any[] = [];
+    const catalogModifiedCetaps: any[] = [];
+    for (const c of catalogCetapsToProcess) {
       const existing = existingCetapMap.get(c.codigo_cetap);
       if (!existing) {
-        newCetaps.push(c);
+        catalogNewCetaps.push(c);
       } else {
         const hasChange =
           existing.nombre !== c.nombre_cetap ||
           existing.nombre_normalizado !== c.nombre_normalizado ||
           existing.tipo !== c.tipo ||
           existing.activo !== c.activo;
-        if (hasChange) modifiedCetaps.push({ ...c, _cambios: this.diffFields(existing, c, 'cetap') });
-        else identicalCetaps.push(c);
+        if (hasChange) catalogModifiedCetaps.push(c);
       }
     }
 
+    // La clasificación que ve el usuario pertenece exclusivamente a las tablas
+    // del módulo Estructura Organizacional. El espejo de otros módulos no decide
+    // si una fila es nueva, actualizable o idéntica.
+    const newDts: any[] = [];
+    const modifiedDts: any[] = [];
+    const identicalDts: any[] = [];
+    for (const dt of dtToProcess) {
+      const existing = legacyPlan.seccionalByDtCode.get(dt.codigo_dt);
+      if (!existing) {
+        newDts.push(dt);
+        continue;
+      }
+      const hasChange =
+        String(existing.cod_seccional || '').trim() !== dt.codigo_dt ||
+        String(existing.nom_seccional || '').trim() !== this.formatLegacyTerritorialName(dt.nombre_dt);
+      if (hasChange) modifiedDts.push({ ...dt, _cambios: ['Datos de la territorial se sincronizarán con el archivo'] });
+      else identicalDts.push(dt);
+    }
+
+    const newCetaps: any[] = [];
+    const modifiedCetaps: any[] = [];
+    const identicalCetaps: any[] = [];
+    for (const c of cetapsToProcess) {
+      const existing = legacyPlan.sedeByCetapCode.get(c.codigo_cetap);
+      if (!existing) {
+        newCetaps.push(c);
+        continue;
+      }
+      const targetSeccional = legacyPlan.seccionalByDtCode.get(c.codigo_dt);
+      const expectedStatus = c.activo ? 'ACTIVO' : 'INACTIVO';
+      const hasChange =
+        String(existing.cod_sede || '').trim() !== c.codigo_cetap ||
+        String(existing.nom_sede || '').trim() !== this.truncateForLegacy(c.nombre_cetap, 50) ||
+        (targetSeccional && String(existing.id_seccional) !== String(targetSeccional.id_seccional)) ||
+        !this.sameLegacyStatus(existing.sede_act, expectedStatus) ||
+        !this.sameNullableNumber(existing.num_latitud, c.latitud) ||
+        !this.sameNullableNumber(existing.num_longitud, c.longitud);
+      if (hasChange) modifiedCetaps.push({ ...c, _cambios: ['Datos de la sede se sincronizarán con el archivo'] });
+      else identicalCetaps.push(c);
+    }
+
     const previewTerritorialesFull = [
-      ...newDts.map((dt) => ({ ...dt, estado_importacion: 'nuevo' })),
-      ...modifiedDts.map((dt) => ({ ...dt, estado_importacion: 'modificado' })),
-      ...identicalDts.map((dt) => ({ ...dt, estado_importacion: 'identico' })),
+      ...newDts.map((dt) => ({ ...dt, estado_importacion: 'nuevo', _estado_import: 'nuevo' })),
+      ...modifiedDts.map((dt) => ({ ...dt, estado_importacion: 'modificado', _estado_import: 'actualizar' })),
+      ...identicalDts.map((dt) => ({ ...dt, estado_importacion: 'identico', _estado_import: 'identico' })),
     ];
     const previewCetapsFull = [
-      ...newCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'nuevo' })),
-      ...modifiedCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'modificado' })),
-      ...identicalCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'identico' })),
+      ...newCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'nuevo', _estado_import: 'nuevo' })),
+      ...modifiedCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'modificado', _estado_import: 'actualizar' })),
+      ...identicalCetaps.map((cetap) => ({ ...cetap, estado_importacion: 'identico', _estado_import: 'identico' })),
     ];
 
     let allIdentical = false;
@@ -256,13 +287,13 @@ export class EstructuraImportService {
     result.carga.direcciones_territoriales.creados = newDts.length;
     result.carga.direcciones_territoriales.actualizados = modifiedDts.length;
     result.carga.direcciones_territoriales.omitidos =
-      validation.invalidTerritoriales.length + identicalDts.length + conflictSkippedDts.length;
+      validation.invalidTerritoriales.length + identicalDts.length;
     result.carga.cetaps.creados = newCetaps.length;
     result.carga.cetaps.actualizados = modifiedCetaps.length;
     result.carga.cetaps.omitidos =
-      validation.invalidCetaps.length + identicalCetaps.length + conflictSkippedCetaps.length;
-    result.omitidas_territoriales = [...validation.invalidTerritoriales, ...conflictSkippedDts];
-    result.omitidas_cetaps = [...validation.invalidCetaps, ...conflictSkippedCetaps];
+      validation.invalidCetaps.length + identicalCetaps.length;
+    result.omitidas_territoriales = [...validation.invalidTerritoriales];
+    result.omitidas_cetaps = [...validation.invalidCetaps];
 
     // Resumen detallado de duplicados
     (result as any).analisis_duplicados = {
@@ -275,19 +306,12 @@ export class EstructuraImportService {
     };
 
     if (legacyPlan.errors.length === 0 && !periodSync.error) {
-      const legacyHasChanges =
-        legacyPlan.summary.seccionales.creadas > 0 ||
-        legacyPlan.summary.seccionales.actualizadas > 0 ||
-        legacyPlan.summary.sedes.creadas > 0 ||
-        legacyPlan.summary.sedes.actualizadas > 0;
-
       allIdentical =
         (identicalDts.length > 0 || identicalCetaps.length > 0) &&
         newDts.length === 0 &&
         newCetaps.length === 0 &&
         modifiedDts.length === 0 &&
         modifiedCetaps.length === 0 &&
-        !legacyHasChanges &&
         !periodSync.required;
 
       (result as any).analisis_duplicados.todo_identico = allIdentical;
@@ -401,18 +425,18 @@ export class EstructuraImportService {
     }
 
     // Solo procesar nuevos y modificados (no idénticos)
-    const dtsToUpsert = [...newDts, ...modifiedDts];
-    const cetapsToUpsert = [...newCetaps, ...modifiedCetaps];
+    const dtsToUpsert = [...catalogNewDts, ...catalogModifiedDts];
+    const cetapsToUpsert = [...catalogNewCetaps, ...catalogModifiedCetaps];
 
     // 3. Ejecutar transacción con las filas válidas
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
-    let dtCreatedCount = 0;
-    let dtUpdatedCount = 0;
-    let cetapCreatedCount = 0;
-    let cetapUpdatedCount = 0;
+    const dtCreatedCount = newDts.length;
+    const dtUpdatedCount = modifiedDts.length;
+    const cetapCreatedCount = newCetaps.length;
+    const cetapUpdatedCount = modifiedCetaps.length;
     const legacyNameTruncations: string[] = [];
 
     try {
@@ -422,7 +446,6 @@ export class EstructuraImportService {
 
       // a. Insertar/Actualizar Direcciones Territoriales (solo nuevos y modificados)
       for (const dt of dtsToUpsert) {
-        const isNew = !existingDtMap.has(dt.codigo_dt);
         const SQL = `
           INSERT INTO academic_work_plan.direccion_territorial (
             codigo, nombre, nombre_normalizado, orden_visualizacion, activo
@@ -443,8 +466,6 @@ export class EstructuraImportService {
           dt.activo
         ]);
 
-        if (isNew) dtCreatedCount++;
-        else dtUpdatedCount++;
       }
 
       const legacySeccionalIdByDt = new Map<string, string>();
@@ -482,10 +503,32 @@ export class EstructuraImportService {
       }
 
       // Obtener los IDs de DTs insertadas/actualizadas para mapear
-      const dtRows = await queryRunner.query('SELECT id, codigo FROM academic_work_plan.direccion_territorial');
-      const dtIdMap = new Map<string, string>();
+      const dtRows = await queryRunner.query(
+        'SELECT id, codigo, nombre_normalizado FROM academic_work_plan.direccion_territorial',
+      );
+      const dtByCode = new Map<string, any>();
+      const dtByName = new Map<string, any>();
       for (const row of dtRows) {
-        dtIdMap.set(row.codigo, row.id);
+        dtByCode.set(String(row.codigo || '').trim(), row);
+        dtByName.set(String(row.nombre_normalizado || '').trim(), row);
+      }
+      const dtIdMap = new Map<string, string>();
+      for (const dt of dtToProcess) {
+        const exact = dtByCode.get(dt.codigo_dt);
+        const sameName = dtByName.get(dt.nombre_normalizado);
+        const resolved = exact?.nombre_normalizado === dt.nombre_normalizado
+          ? exact
+          : (sameName || exact);
+        if (!resolved) {
+          throw new Error(`No se pudo resolver el espejo territorial ${dt.codigo_dt}.`);
+        }
+        dtIdMap.set(dt.codigo_dt, String(resolved.id));
+        await queryRunner.query(
+          `UPDATE academic_work_plan.direccion_territorial
+              SET activo = $1, orden_visualizacion = $2, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $3`,
+          [dt.activo, dt.orden_visualizacion, resolved.id],
+        );
       }
 
       // b. Insertar CETAPs (solo nuevos y modificados)
@@ -522,8 +565,47 @@ export class EstructuraImportService {
           c.activo
         ]);
 
-        if (!existingCetapMap.has(c.codigo_cetap)) cetapCreatedCount++;
-        else cetapUpdatedCount++;
+      }
+
+      // Resolver cada código del archivo contra el espejo por identidad. Si el
+      // espejo conserva otro código histórico, se reutiliza su ID sin cambiarlo
+      // ni duplicarlo; la sede propia de Estructura mantiene el código del Excel.
+      const catalogCetapRows = await queryRunner.query(
+        `SELECT c.id, c.codigo, c.nombre_normalizado, c.id_direccion_territorial
+           FROM academic_work_plan.cetap c`,
+      );
+      const cetapByCode = new Map<string, any>();
+      const cetapByDtAndName = new Map<string, any>();
+      for (const row of catalogCetapRows) {
+        cetapByCode.set(String(row.codigo || '').trim(), row);
+        cetapByDtAndName.set(
+          `${row.id_direccion_territorial}::${String(row.nombre_normalizado || '').trim()}`,
+          row,
+        );
+      }
+      const catalogCetapIdByIncomingCode = new Map<string, string>();
+      for (const c of cetapsToProcess) {
+        const dtId = dtIdMap.get(c.codigo_dt);
+        const exact = cetapByCode.get(c.codigo_cetap);
+        const sameName = dtId
+          ? cetapByDtAndName.get(`${dtId}::${c.nombre_normalizado}`)
+          : null;
+        const exactMatchesIdentity =
+          exact &&
+          String(exact.id_direccion_territorial) === String(dtId) &&
+          String(exact.nombre_normalizado || '').trim() === c.nombre_normalizado;
+        const resolved = exactMatchesIdentity ? exact : (sameName || exact);
+        if (!resolved) {
+          throw new Error(`No se pudo resolver el espejo del CETAP ${c.codigo_cetap}.`);
+        }
+        catalogCetapIdByIncomingCode.set(c.codigo_cetap, String(resolved.id));
+        await queryRunner.query(
+          `UPDATE academic_work_plan.cetap
+              SET activo = $1, tipo = $2, latitud = $3, longitud = $4,
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE id = $5`,
+          [c.activo, c.tipo, c.latitud, c.longitud, resolved.id],
+        );
       }
 
       let nextSedeId = await this.getNextLegacyId(
@@ -541,6 +623,10 @@ export class EstructuraImportService {
         }
 
         const matched = legacyPlan.sedeByCetapCode.get(c.codigo_cetap);
+        const catalogCetapId = catalogCetapIdByIncomingCode.get(c.codigo_cetap);
+        if (!catalogCetapId) {
+          throw new Error(`No se pudo mapear la sede ${c.codigo_cetap} con su espejo técnico.`);
+        }
         const sedeAct = c.activo ? 'ACTIVO' : 'INACTIVO';
         // El espejo legacy auth.sedes.nom_sede es varchar(50), más estrecho que
         // el catálogo maestro cetap.nombre varchar(100). Se recorta solo para el
@@ -606,16 +692,13 @@ export class EstructuraImportService {
         await queryRunner.query(
           `INSERT INTO auth.sede_cetap_mapping (
              id_sede, id_cetap, origen, created_at, updated_at
-           )
-           SELECT $1, cetap.id, 'official', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-             FROM academic_work_plan.cetap cetap
-            WHERE cetap.codigo = $2
+           ) VALUES ($1, $2, 'official', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
            ON CONFLICT (id_sede)
            DO UPDATE SET
              id_cetap = EXCLUDED.id_cetap,
              origen = 'official',
              updated_at = CURRENT_TIMESTAMP`,
-          [idSede, c.codigo_cetap],
+          [idSede, catalogCetapId],
         );
       }
 
@@ -654,28 +737,27 @@ export class EstructuraImportService {
           const activoEnPeriodo = c.activo && dtActivo;
           await queryRunner.query(
             `INSERT INTO academic_work_plan.periodo_cetap (id_periodo_academico, id_cetap, activo)
-             SELECT $1, id, $2 FROM academic_work_plan.cetap WHERE codigo = $3
+             VALUES ($1, $2, $3)
              ON CONFLICT (id_periodo_academico, id_cetap)
              DO UPDATE SET activo = EXCLUDED.activo, updated_at = CURRENT_TIMESTAMP`,
-            [periodoId, activoEnPeriodo, c.codigo_cetap],
+            [periodoId, catalogCetapIdByIncomingCode.get(c.codigo_cetap), activoEnPeriodo],
           );
         }
       }
 
       const postValidation = await queryRunner.query(
         `SELECT
-           (SELECT COUNT(DISTINCT codigo)
-              FROM academic_work_plan.direccion_territorial
-             WHERE codigo = ANY($1::text[])) AS catalog_dts,
-           (SELECT COUNT(DISTINCT codigo)
-              FROM academic_work_plan.cetap
-             WHERE codigo = ANY($2::text[])) AS catalog_cetaps,
            (SELECT COUNT(DISTINCT cod_seccional)
               FROM auth.seccionales
              WHERE cod_seccional = ANY($1::text[])) AS legacy_dts,
            (SELECT COUNT(DISTINCT cod_sede)
               FROM auth.sedes
-             WHERE cod_sede = ANY($2::text[])) AS legacy_cetaps`,
+             WHERE cod_sede = ANY($2::text[])) AS legacy_cetaps,
+           (SELECT COUNT(DISTINCT sede.cod_sede)
+              FROM auth.sedes sede
+              INNER JOIN auth.sede_cetap_mapping mapping
+                      ON mapping.id_sede = sede.id_sede
+             WHERE sede.cod_sede = ANY($2::text[])) AS mapped_cetaps`,
         [
           dtToProcess.map((dt) => dt.codigo_dt),
           cetapsToProcess.map((cetap) => cetap.codigo_cetap),
@@ -683,10 +765,11 @@ export class EstructuraImportService {
       );
       const post = postValidation[0] || {};
       if (
-        Number(post.catalog_dts) !== dtToProcess.length ||
-        Number(post.catalog_cetaps) !== cetapsToProcess.length ||
+        dtIdMap.size !== dtToProcess.length ||
+        catalogCetapIdByIncomingCode.size !== cetapsToProcess.length ||
         Number(post.legacy_dts) !== dtToProcess.length ||
-        Number(post.legacy_cetaps) !== cetapsToProcess.length
+        Number(post.legacy_cetaps) !== cetapsToProcess.length ||
+        Number(post.mapped_cetaps) !== cetapsToProcess.length
       ) {
         throw new Error(
           'La verificación final de sincronización no coincidió con el archivo. Se revirtieron todos los cambios.',
@@ -713,6 +796,19 @@ export class EstructuraImportService {
     result.carga.direcciones_territoriales.actualizados = dtUpdatedCount;
     result.carga.cetaps.creados = cetapCreatedCount;
     result.carga.cetaps.actualizados = cetapUpdatedCount;
+    (result as any).resumen = {
+      nuevos: [
+        ...newDts.map((dt) => ({ tipo: 'Territorial', codigo: dt.codigo_dt, nombre: dt.nombre_dt })),
+        ...newCetaps.map((c) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
+      ],
+      actualizados: [
+        ...modifiedDts.map((dt) => ({ tipo: 'Territorial', codigo: dt.codigo_dt, nombre: dt.nombre_dt })),
+        ...modifiedCetaps.map((c) => ({ tipo: 'Sede', codigo: c.codigo_cetap, nombre: c.nombre_cetap })),
+      ],
+      identicos: identicalDts.length + identicalCetaps.length,
+      ya_existentes_otro_codigo: [],
+      con_error: validation.invalidTerritoriales.length + validation.invalidCetaps.length,
+    };
     if (legacyNameTruncations.length > 0) {
       result.advertencias.push(
         ...legacyNameTruncations.map((mensaje) => ({
@@ -772,10 +868,13 @@ export class EstructuraImportService {
 
     // Obtener estado actual en el periodo
     const currentPeriodStatus = await this.dataSource.query(
-      `SELECT c.codigo, pc.activo 
-       FROM academic_work_plan.periodo_cetap pc
-       INNER JOIN academic_work_plan.cetap c ON c.id = pc.id_cetap
-       WHERE pc.id_periodo_academico = $1`,
+      `SELECT sede.cod_sede AS codigo, pc.activo
+         FROM auth.sedes sede
+         INNER JOIN auth.sede_cetap_mapping mapping
+                 ON mapping.id_sede = sede.id_sede
+         INNER JOIN academic_work_plan.periodo_cetap pc
+                 ON pc.id_cetap = mapping.id_cetap
+        WHERE pc.id_periodo_academico = $1`,
       [periodoId],
     );
 

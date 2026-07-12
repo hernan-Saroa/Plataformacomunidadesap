@@ -114,13 +114,13 @@ export function computeBancoDocenteAgeRange(edad: unknown, fallback?: unknown): 
   const numericAge = parseInteger(edad);
   if (numericAge === null) {
     return cleanBancoDocenteText(fallback)
-      ?.replace(/\banos\b/gi, 'años')
-      .replace(/\bmas\b/gi, 'más') || null;
+      ?.replace(/\banos\b/gi, 'a\u00f1os')
+      .replace(/\bmas\b/gi, 'm\u00e1s') || null;
   }
-  if (numericAge <= 25) return 'Hasta 25 años';
-  if (numericAge <= 35) return 'De 26 a 35 años';
-  if (numericAge <= 45) return 'De 36 a 45 años';
-  if (numericAge <= 55) return 'De 46 a 55 años';
-  if (numericAge <= 65) return 'De 56 a 65 años';
-  return '66 años o más';
+  if (numericAge <= 25) return 'Hasta 25 a\u00f1os';
+  if (numericAge <= 35) return 'De 26 a 35 a\u00f1os';
+  if (numericAge <= 45) return 'De 36 a 45 a\u00f1os';
+  if (numericAge <= 55) return 'De 46 a 55 a\u00f1os';
+  if (numericAge <= 65) return 'De 56 a 65 a\u00f1os';
+  return '66 a\u00f1os o m\u00e1s';
 }

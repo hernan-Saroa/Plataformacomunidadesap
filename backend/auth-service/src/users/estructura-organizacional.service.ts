@@ -594,12 +594,15 @@ export class EstructuraOrganizacionalService {
 
   /**
    * Limpieza de una sede DENTRO de una transacción ya abierta: elimina la sede del
-   * catálogo maestro (auth.sedes) y desactiva su CETAP espejo en el plan académico,
-   * incluyendo su oferta y su activación por periodo (periodo_cetap).
+   * catálogo maestro propio de Estructura (auth.sedes) y desactiva únicamente su
+   * disponibilidad por periodo. El CETAP académico y sus ofertas se conservan:
+   * representan la relación Programa-CETAP, no la disponibilidad operativa.
    *
    * Se reutiliza tanto en el borrado individual de una sede como en el borrado en
    * cascada de una seccional, para garantizar EXACTAMENTE el mismo comportamiento
-   * en ambos casos y no dejar activaciones de periodo huérfanas.
+   * en ambos casos y no dejar activaciones de periodo huérfanas. Si la sede se
+   * importa otra vez, el mapeo por identidad reutiliza el CETAP académico y sus
+   * programas quedan disponibles nuevamente en el flujo PTA.
    */
   private async removeSedeInTransaction(
     queryRunner: QueryRunner,
@@ -627,14 +630,6 @@ export class EstructuraOrganizacionalService {
     }
 
     if (cetapId) {
-      await queryRunner.query(
-        'UPDATE academic_work_plan.cetap SET activo = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-        [cetapId],
-      );
-      await queryRunner.query(
-        'UPDATE academic_work_plan.oferta_cetap_programa SET activa = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id_cetap = $1',
-        [cetapId],
-      );
       await queryRunner.query(
         'UPDATE academic_work_plan.periodo_cetap SET activo = FALSE WHERE id_cetap = $1',
         [cetapId],

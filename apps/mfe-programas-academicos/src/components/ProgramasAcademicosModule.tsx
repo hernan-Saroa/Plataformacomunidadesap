@@ -45,6 +45,16 @@ import type { ProgramaAcademicoDTO } from '../../services/api/programas.service'
 
 // Usar la interfaz del servicio actualizado
 type ProgramaAcademico = ProgramaAcademicoDTO;
+type FilterOption = { value: string; label: string };
+type ProgramFilterOptions = {
+  niveles: FilterOption[];
+  modalidades: FilterOption[];
+  cetaps: FilterOption[];
+  estados: FilterOption[];
+};
+const EMPTY_FILTER_OPTIONS: ProgramFilterOptions = {
+  niveles: [], modalidades: [], cetaps: [], estados: [],
+};
 const PROGRAMAS_PERIOD_STORAGE_KEY = 'esap.periodo.programas-academicos';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
 const getPeriodCode = (period: any) =>
@@ -79,10 +89,14 @@ export function ProgramasAcademicosModule() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [nivelFilter, setNivelFilter] = useState<string>('all');
   const [modalidadFilter, setModalidadFilter] = useState<string>('all');
   const [sedeFilter, setSedeFilter] = useState<string>('all');
   const [estadoFilter, setEstadoFilter] = useState<string>('all');
+  const [filterOptions, setFilterOptions] = useState<ProgramFilterOptions>(EMPTY_FILTER_OPTIONS);
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false);
+  const [hasLoadedPrograms, setHasLoadedPrograms] = useState(false);
   const [expandedProgramaId, setExpandedProgramaId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -145,6 +159,30 @@ export function ProgramasAcademicosModule() {
     }
   }, [periodoSeleccionadoPA]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!periodoSeleccionadoPA) {
+      setFilterOptions(EMPTY_FILTER_OPTIONS);
+      return;
+    }
+    let cancelled = false;
+    setFilterOptionsLoading(true);
+    apiClient.get<ProgramFilterOptions>('/auth/api/v1/programas-academicos/filtros/opciones', {
+      periodoAcademico: periodoSeleccionadoPA,
+    }).then((options) => {
+      if (!cancelled) setFilterOptions({ ...EMPTY_FILTER_OPTIONS, ...(options || {}) });
+    }).catch(() => {
+      if (!cancelled) setFilterOptions(EMPTY_FILTER_OPTIONS);
+    }).finally(() => {
+      if (!cancelled) setFilterOptionsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [periodoSeleccionadoPA, refreshTrigger]);
+
   // Cargar datos del backend
   useEffect(() => {
     const loadProgramas = async () => {
@@ -162,7 +200,7 @@ export function ProgramasAcademicosModule() {
         setLoading(true);
         setError(null);
         console.log('[FRONTEND DEBUG] Fetching programas with params:', {
-          search: searchQuery,
+          search: debouncedSearch,
           nivelFormacion: nivelFilter,
           modalidad: modalidadFilter,
           sede: sedeFilter,
@@ -173,7 +211,7 @@ export function ProgramasAcademicosModule() {
           _t: Date.now()
         });
         const response = await apiClient.get('/auth/api/v1/programas-academicos', {
-          search: searchQuery || undefined,
+          search: debouncedSearch || undefined,
           nivelFormacion: nivelFilter !== 'all' ? nivelFilter : undefined,
           modalidad: modalidadFilter !== 'all' ? modalidadFilter : undefined,
           sede: sedeFilter !== 'all' ? sedeFilter : undefined,
@@ -208,11 +246,12 @@ export function ProgramasAcademicosModule() {
         toast.error('Error al cargar los programas');
       } finally {
         setLoading(false);
+        setHasLoadedPrograms(true);
       }
     };
 
     loadProgramas();
-  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, periodoSeleccionadoPA, periodosCargadosPA, currentPage, refreshTrigger]);
+  }, [debouncedSearch, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, periodoSeleccionadoPA, periodosCargadosPA, currentPage, refreshTrigger]);
 
 
 
@@ -228,11 +267,6 @@ export function ProgramasAcademicosModule() {
     totalEstudiantes: programas.reduce((sum, p) => sum + (p.estudiantesActivos || 0), 0),
     totalGraduados: programas.reduce((sum, p) => sum + (p.graduados || 0), 0),
   };
-
-  // Filtros únicos
-  const niveles = Array.from(new Set(programas.map(p => p.nivelFormacion).filter(Boolean)));
-  const modalidades = Array.from(new Set(programas.map(p => p.modalidad).filter(Boolean)));
-  const sedes = Array.from(new Set(programas.map(p => p.sede).filter(Boolean)));
 
   // Los datos ya vienen filtrados y paginados del backend
   const filteredProgramas = programas;
@@ -342,7 +376,14 @@ export function ProgramasAcademicosModule() {
     setEstadoFilter('all');
   };
 
-  const hasActiveFilters = searchQuery || nivelFilter !== 'all' || modalidadFilter !== 'all' || sedeFilter !== 'all' || estadoFilter !== 'all';
+  const activeFilterCount = [
+    Boolean(searchQuery.trim()),
+    nivelFilter !== 'all',
+    modalidadFilter !== 'all',
+    sedeFilter !== 'all',
+    estadoFilter !== 'all',
+  ].filter(Boolean).length;
+  const hasActiveFilters = activeFilterCount > 0;
 
   const handleCloseModal = () => {
     setShowCreateModal(false);
@@ -356,7 +397,7 @@ export function ProgramasAcademicosModule() {
   const isListLikeView =
     activeView !== 'importar-asignaturas' && activeView !== 'periodos-academicos';
 
-  if (loading && isListLikeView) {
+  if (loading && !hasLoadedPrograms && isListLikeView) {
     return (
       <Container4K className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
@@ -431,7 +472,13 @@ export function ProgramasAcademicosModule() {
                           return (
                             <button
                               key={idx}
-                              onClick={() => { setPeriodoSeleccionadoPA(codigo); setShowPeriodoDropdownPA(false); }}
+                              onClick={() => {
+                                setPeriodoSeleccionadoPA(codigo);
+                                clearAllFilters();
+                                setCurrentPage(1);
+                                setExpandedProgramaId(null);
+                                setShowPeriodoDropdownPA(false);
+                              }}
                               className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between transition-colors ${
                                 codigo === periodoSeleccionadoPA ? 'bg-[#EBF0FA] text-[#003DA5] font-bold' : 'hover:bg-gray-50 text-gray-700'
                               }`}
@@ -550,20 +597,22 @@ export function ProgramasAcademicosModule() {
         className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
       >
         {/* Compact search & filters bar */}
-        <div className="px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 relative">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-2.5" style={{ flexWrap: 'wrap' }}>
+            <div className="relative sm:col-span-2 lg:flex-1 lg:min-w-[240px]" style={{ flex: '1 1 240px', minWidth: 0 }}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
               <input
                 type="text"
                 placeholder="Buscar por nombre, código o facultad..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 focus:border-[#003DA5]/30 transition-all placeholder:text-gray-300"
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                aria-label="Buscar programas por nombre, código o facultad"
+                className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-100 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 focus:border-[#003DA5]/30 transition-all placeholder:text-gray-300"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
+                  aria-label="Limpiar búsqueda"
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-200 rounded transition-colors"
                 >
                   <X className="w-3.5 h-3.5 text-gray-400" />
@@ -572,48 +621,64 @@ export function ProgramasAcademicosModule() {
             </div>
             <select
               value={nivelFilter}
-              onChange={(e) => setNivelFilter(e.target.value)}
-              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
+              onChange={(e) => { setNivelFilter(e.target.value); setCurrentPage(1); }}
+              aria-label="Filtrar por nivel de formación"
+              disabled={filterOptionsLoading}
+              style={{ flex: '0 1 135px' }}
+              className="w-full lg:w-[135px] min-w-0 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-[11px] font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all disabled:opacity-60"
             >
-              <option value="all">Nivel</option>
-              {niveles.map(nivel => (
-                <option key={nivel} value={nivel}>{nivel}</option>
+              <option value="all">Todos los niveles</option>
+              {filterOptions.niveles.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
             <select
               value={modalidadFilter}
-              onChange={(e) => setModalidadFilter(e.target.value)}
-              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
+              onChange={(e) => { setModalidadFilter(e.target.value); setCurrentPage(1); }}
+              aria-label="Filtrar por modalidad"
+              disabled={filterOptionsLoading}
+              style={{ flex: '0 1 150px' }}
+              className="w-full lg:w-[150px] min-w-0 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-[11px] font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all disabled:opacity-60"
             >
-              <option value="all">Modalidad</option>
-              {modalidades.map(mod => (
-                <option key={mod} value={mod}>{mod}</option>
+              <option value="all">Todas las modalidades</option>
+              {filterOptions.modalidades.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
             <select
               value={sedeFilter}
-              onChange={(e) => setSedeFilter(e.target.value)}
-              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
+              onChange={(e) => { setSedeFilter(e.target.value); setCurrentPage(1); }}
+              aria-label="Filtrar por CETAP"
+              disabled={filterOptionsLoading}
+              style={{ flex: '0 1 175px' }}
+              className="w-full lg:w-[175px] min-w-0 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-[11px] font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all disabled:opacity-60"
             >
-              <option value="all">CETAP</option>
-              {sedes.map(sede => (
-                <option key={sede} value={sede}>{sede}</option>
+              <option value="all">Todos los CETAP</option>
+              {filterOptions.cetaps.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
             <select
               value={estadoFilter}
-              onChange={(e) => setEstadoFilter(e.target.value)}
-              className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all"
+              onChange={(e) => { setEstadoFilter(e.target.value); setCurrentPage(1); }}
+              aria-label="Filtrar por estado"
+              disabled={filterOptionsLoading}
+              style={{ flex: '0 1 135px' }}
+              className="w-full lg:w-[135px] min-w-0 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-[11px] font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003DA5]/15 cursor-pointer transition-all disabled:opacity-60"
             >
-              <option value="all">Estado</option>
-              <option value="Activo">Activo</option>
-              <option value="Inactivo">Inactivo</option>
-              <option value="En Trámite">En Trámite</option>
-              <option value="Suspendido">Suspendido</option>
+              <option value="all">Todos los estados</option>
+              {filterOptions.estados.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
             {hasActiveFilters && (
-              <button onClick={clearAllFilters} className="text-[10px] font-bold text-[#003DA5] hover:underline whitespace-nowrap">
-                Limpiar
+              <button
+                onClick={() => { clearAllFilters(); setCurrentPage(1); }}
+                style={{ flex: '0 0 auto' }}
+                className="sm:col-span-2 lg:col-span-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold text-[#003DA5] bg-blue-50 hover:bg-blue-100 whitespace-nowrap transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                Limpiar ({activeFilterCount})
               </button>
             )}
           </div>
@@ -621,10 +686,15 @@ export function ProgramasAcademicosModule() {
 
 
           {/* Table info bar */}
-          <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
+          <div className="px-4 sm:px-6 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2 bg-gray-50/30">
             <p className="text-xs text-gray-400">
               Mostrando <span className="font-semibold text-gray-600">{paginatedProgramas.length}</span> de <span className="font-semibold text-gray-600">{pagination?.total || 0}</span> programas
             </p>
+            {loading && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#003DA5]">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Actualizando resultados
+              </span>
+            )}
           </div>
 
           <div className="hidden lg:block overflow-x-auto">

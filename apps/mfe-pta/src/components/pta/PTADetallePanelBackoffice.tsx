@@ -30,7 +30,7 @@ import {
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { PTAForm } from '../portal/pta/PTAForm';
@@ -544,11 +544,20 @@ function SectionCollapsible({ title, icon: Icon, color, count, children, default
             {count}
           </span>
         )}
-        <ChevronDown style={{
-          width: 14, height: 14, color: '#9CA3AF',
-          transform: open ? 'rotate(180deg)' : 'rotate(0)',
-          transition: 'transform 0.2s',
-        }} />
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+          padding: '3px 9px', borderRadius: 999,
+          background: open ? `${color}15` : '#F3F4F6',
+          color: open ? color : '#4B5563',
+          fontSize: '0.66rem', fontWeight: 700, whiteSpace: 'nowrap',
+        }}>
+          {open ? 'Ocultar' : 'Desplegar'}
+          <ChevronDown style={{
+            width: 12, height: 12,
+            transform: open ? 'rotate(180deg)' : 'rotate(0)',
+            transition: 'transform 0.2s',
+          }} />
+        </span>
       </button>
       <AnimatePresence>
         {open && (
@@ -703,6 +712,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
   }, [pta?.id]);
 
+  // Etiquetas legibles de componente para el correo/modal de firma OTP.
+  const COMPONENTE_LABELS_FIRMA: Record<string, string> = {
+    academica: 'Docencia', investigacion: 'Investigación',
+    ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
+    ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
+    complementarias: 'Complementarias', academicas_admin: 'Acad. Admin.',
+  };
+
   const handleAprobarComponente = async (componente: string, estado: 'aprobado' | 'devuelto') => {
     const canApprove = puedeAprobar && puedeActuarSobreComponentes && isComponentAuthorized(componente);
     if (!canApprove) {
@@ -715,6 +732,24 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       return;
     }
 
+    // Aprobar un componente exige firma con OTP: se envía el código al correo del
+    // aprobador y, al validarlo en el modal, se ejecuta la aprobación real.
+    // (La devolución no requiere OTP.)
+    if (estado === 'aprobado') {
+      const label = COMPONENTE_LABELS_FIRMA[componente] || componente;
+      const ok = await solicitarOtpFirmaAprobador(`Aprobación de componente: ${label}`);
+      if (!ok) return;
+      setFirmaAccion({ tipo: 'componente', componente });
+      setShowFirmaDigital(true);
+      return;
+    }
+
+    await ejecutarAprobacionComponente(componente, estado);
+  };
+
+  // Ejecuta la aprobación/devolución real del componente contra el backend.
+  const ejecutarAprobacionComponente = async (componente: string, estado: 'aprobado' | 'devuelto') => {
+    const comentarios = comentariosComponente[componente] || '';
     setProcesandoAprobacionComponente(prev => ({ ...prev, [componente]: true }));
     try {
       const res = await aprobarComponente(pta.id, {
@@ -871,6 +906,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [procesandoDevolucion, setProcesandoDevolucion] = useState(false);
   const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
+  // OTP de firma del aprobador: verificationId + correo enmascarado donde se envió.
+  const [firmaVerificationId, setFirmaVerificationId] = useState('');
+  const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
+  const [solicitandoFirmaCode, setSolicitandoFirmaCode] = useState(false);
+  // Qué acción ejecutará el modal de firma al validarse el OTP: aprobar un
+  // componente puntual (flujo real de concertación) o la aprobación global del PTA.
+  const [firmaAccion, setFirmaAccion] = useState<{ tipo: 'componente'; componente: string } | { tipo: 'pta' } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -922,14 +964,51 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
   };
 
+  // Solicita el OTP de firma al correo del aprobador que oprimió el botón y abre
+  // el modal de firma. Devuelve true si el código se envió y el modal debe abrirse.
+  const solicitarOtpFirmaAprobador = async (etapaLabel: string): Promise<boolean> => {
+    if (solicitandoFirmaCode) return false;
+    setSolicitandoFirmaCode(true);
+    try {
+      const res = await requestPTAFirmaAprobadorCode({
+        ptaId: pta.id,
+        userId: actorId || '',
+        periodo: pta.periodo || '',
+        etapaLabel,
+      });
+      if (!res.success || !res.data?.verificationId) {
+        throw new Error((res as any).message || 'No se pudo enviar el código de validación.');
+      }
+      setFirmaVerificationId(res.data.verificationId);
+      setFirmaCorreoDestino(res.data.email || 'tu correo institucional');
+      if (res.data.devCode) {
+        console.log('🔑 [PRUEBAS] Código OTP de firma (aprobador):', res.data.devCode);
+        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { duration: Infinity });
+      }
+      toast.success('Código de validación enviado a tu correo registrado.');
+      return true;
+    } catch (error: any) {
+      setFirmaVerificationId('');
+      setFirmaCorreoDestino('');
+      toast.error(error?.message || 'No se pudo enviar el código de validación.');
+      return false;
+    } finally {
+      setSolicitandoFirmaCode(false);
+    }
+  };
+
   const handleAprobar = async () => {
     if (!puedeAprobarNivelActual) {
       toast.error('No tienes permiso para aprobar este nivel del PTA');
       return;
     }
 
-    // La aprobación de Gestión Profesoral requiere firma digital antes de registrar el aval.
+    // Aprobación global del PTA que requiere firma digital: se envía OTP al correo
+    // del aprobador antes de abrir el modal de firma.
     if (nivelAprobacion === 3 && !isSuperUser && ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(pta.estado)) {
+      const ok = await solicitarOtpFirmaAprobador('Aprobación del PTA');
+      if (!ok) return;
+      setFirmaAccion({ tipo: 'pta' });
       setShowFirmaDigital(true);
       return;
     }
@@ -963,8 +1042,27 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     onAprobar();
   };
 
+  // Valida el OTP ingresado por el aprobador contra el código enviado a su correo.
+  const verificarCodigoFirmaAprobador = async (codigo: string) => {
+    if (!firmaVerificationId) throw new Error('No hay código activo. Vuelve a intentar la aprobación.');
+    const res = await verifyPTAFirmaDocenteCode({ verificationId: firmaVerificationId, code: codigo });
+    if (!res.success) {
+      throw new Error((res as any).message || 'Código incorrecto. Verifica e intenta nuevamente.');
+    }
+  };
+
   const handleFirmaCompleta = async (firmaData: FirmaData) => {
     setShowFirmaDigital(false);
+    setFirmaVerificationId('');
+    setFirmaCorreoDestino('');
+    const accion = firmaAccion;
+    setFirmaAccion(null);
+
+    // Flujo real: la firma confirma la aprobación de UN componente concreto.
+    if (accion?.tipo === 'componente') {
+      await ejecutarAprobacionComponente(accion.componente, 'aprobado');
+      return;
+    }
 
     if (!puedeAprobarNivelActual) {
       toast.error('No tienes permiso para aprobar este nivel del PTA');
@@ -3482,19 +3580,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           docenteNombre={pta.docente_nombre || pta.nombre_docente || ''}
           periodo={pta.periodo || ''}
           totalHoras={pta.total_horas_programadas || pta.horas_a_programar || 0}
-          firmanteNombre={rolLabel}
-          firmanteCargo={
-            pta.estado === 'Pendiente Jefatura' ? 'Jefatura de Programa' :
-            pta.estado === 'Pendiente Decanatura' ? 'Decanatura' :
-            'Gestión Profesoral'
-          }
+          firmanteNombre={actorNombre || rolLabel}
+          firmanteCargo={rolLabel}
           etapaLabel={
-            pta.estado === 'Pendiente Jefatura' ? 'Aprobación N1' :
-            pta.estado === 'Pendiente Decanatura' ? 'Aprobación N2' :
-            'Aprobación final N3'
+            firmaAccion?.tipo === 'componente'
+              ? `Aprobación de componente: ${COMPONENTE_LABELS_FIRMA[firmaAccion.componente] || firmaAccion.componente}`
+              : 'Aprobación del PTA'
           }
+          correoDestino={firmaCorreoDestino}
+          onVerifyCodigo={verificarCodigoFirmaAprobador}
           onFirmaCompleta={handleFirmaCompleta}
-          onCancelar={() => setShowFirmaDigital(false)}
+          onCancelar={() => { setShowFirmaDigital(false); setFirmaVerificationId(''); setFirmaCorreoDestino(''); setFirmaAccion(null); }}
         />,
         document.body
       )}
