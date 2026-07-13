@@ -431,33 +431,69 @@ function getConstraintErrorMessage(nombre: string, horas: number, constraint: Ho
 
 // ═══ MOTOR DE CÁLCULO FRONTEND (réplica Excel) ═══════════════════
 
-function calcHorasBase(asigNombre: string, programaTipo: string, creditos: number, rules?: any, programaId?: string): number {
-  // Override por programa (Matriz Paramétrica — TabDocencia). Si el admin configuró este
-  // programa específico, su base manda sobre los defaults por categoría.
-  const progCfg = programaId ? rules?.docencia_por_programa?.[String(programaId)] : undefined;
+// Resuelve el id de programa disponible (desde el objeto programa o desde la asignatura).
+function resolveProgramaId(prog: any, asigCat: any): string | undefined {
+  if (prog?.id != null) return String(prog.id);
+  if (asigCat?.programaId != null) return String(asigCat.programaId);
+  if (asigCat?.programa_real_id != null) return String(asigCat.programa_real_id);
+  return undefined;
+}
+
+// Distingue Pregrado Territorial (APT → por crédito) de Sede Central (AP/EP → bloque fijo).
+// Señales robustas del propio programa: código APT*, nombre con "territorial" o modalidad a distancia.
+function esPregradoTerritorial(prog: any, asigCat: any): boolean {
+  const codigo = String(prog?.codigo || asigCat?.programa_codigo || '').toUpperCase();
+  const nombre = String(prog?.nombre || asigCat?.programa_nombre || '').toLowerCase();
+  const modalidad = String(prog?.modalidad || asigCat?.programa_modalidad || '').toLowerCase();
+  return codigo.startsWith('APT') || nombre.includes('territorial') || modalidad === 'distancia';
+}
+
+// ═══ MOTOR DE CÁLCULO — 100% parametrizado desde la config del backoffice (ptaRules) ═══
+// Las horas base y el multiplicador se toman SIEMPRE de ptaRules (Tabla 1 Circular 003).
+// La entidad `programa` solo se usa para CATEGORIZAR (nivel + Sede Central vs Territorial),
+// nunca para aportar valores numéricos.
+function calcHorasBase(asigCat: any, prog: any, rules?: any): number {
+  const creditos = Number(asigCat?.creditos) || 3;
+  const excepcion = String(asigCat?.tipo ?? asigCat?.tipo_excepcion ?? '');
+  const nombre = String(asigCat?.nombre || '');
+
+  // 1) Seminario de Énfasis → bloque fijo de config (por excepción; nombre como respaldo)
+  if (excepcion === 'seminario_enfasis' || nombre.includes('Seminario De Énfasis')) {
+    return Number(rules?.docencia_base_seminario_sc) || 128;
+  }
+
+  // 2) Override por programa parametrizado en config (Matriz Paramétrica — docencia_por_programa)
+  const programaId = resolveProgramaId(prog, asigCat);
+  const progCfg = programaId ? rules?.docencia_por_programa?.[programaId] : undefined;
   if (progCfg && Number(progCfg.base) > 0) {
     return progCfg.esVariable ? creditos * Number(progCfg.base) : Number(progCfg.base);
   }
-  // Seminario Sede Central: bloque fijo (128h default)
-  if (asigNombre.includes('Seminario De Énfasis')) return rules?.docencia_base_seminario_sc || 128;
-  // Pregrado Sede Central (AP/EP): bloque fijo (64h default)
-  if (programaTipo === 'AP' || programaTipo === 'EP') return rules?.docencia_base_pregrado_sc || 64;
-  // Maestría: base por crédito (12h/cr default)
-  if (programaTipo === 'Maestría' || programaTipo === 'MAESTRIA') return creditos * (rules?.docencia_base_maestria || 12);
-  // Especialización: base por crédito (16h/cr default)
-  if (programaTipo === 'Especialización' || programaTipo === 'ESPECIALIZACION') return creditos * (rules?.docencia_base_especializacion || 16);
-  // APT / Pregrado Territorial y cualquier otro: base por crédito (16h/cr default)
-  return creditos * (rules?.docencia_base_apt || 16);
+
+  // 3) Categoría según nivel del programa → valor de config (Tabla 1)
+  const nivel = String(prog?.tipo || asigCat?.programa_nivel || '').toLowerCase();
+  if (nivel === 'maestria') return creditos * (Number(rules?.docencia_base_maestria) || 12);
+  if (nivel === 'especializacion') return creditos * (Number(rules?.docencia_base_especializacion) || 16);
+  if (nivel === 'pregrado') {
+    return esPregradoTerritorial(prog, asigCat)
+      ? creditos * (Number(rules?.docencia_base_apt) || 16)      // Territorial (APT) → por crédito
+      : (Number(rules?.docencia_base_pregrado_sc) || 64);        // Sede Central (AP/EP) → bloque fijo
+  }
+  // 4) Cualquier otro → APT/Otros por crédito
+  return creditos * (Number(rules?.docencia_base_apt) || 16);
 }
 
-function calcTotalHoras(asigNombre: string, horasBase: number, rules?: any, programaId?: string): number {
-  if (asigNombre === 'Opciones De Grado AP') return 20;
-  if (asigNombre === 'Seminario De Opciones De Grado APT') return 144;
-  // Multiplicador por programa (Matriz Paramétrica) si existe; si no, el global de config.
-  const progCfg = programaId ? rules?.docencia_por_programa?.[String(programaId)] : undefined;
+function calcTotalHoras(asigCat: any, horasBase: number, rules?: any, prog?: any): number {
+  const nombre = String(asigCat?.nombre || '');
+  const excepcion = String(asigCat?.tipo ?? asigCat?.tipo_excepcion ?? '');
+  // Excepciones con total fijo (Circular 003) — por excepción; nombre como respaldo
+  if (excepcion === 'opciones_grado_ap' || nombre === 'Opciones De Grado AP') return 20;
+  if (excepcion === 'seminario_opciones_apt' || nombre === 'Seminario De Opciones De Grado APT' || nombre === 'Seminario Opciones APT') return 144;
+  // Multiplicador SIEMPRE desde config: override por programa si existe; si no, el global.
+  const programaId = resolveProgramaId(prog, asigCat);
+  const progCfg = programaId ? rules?.docencia_por_programa?.[programaId] : undefined;
   const mult = (progCfg && Number(progCfg.multiplicador) > 0)
     ? Number(progCfg.multiplicador)
-    : (rules?.criterio_multiplicador_docencia || 3);
+    : (Number(rules?.criterio_multiplicador_docencia) || 3);
   return horasBase * mult;
 }
 
@@ -2138,11 +2174,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             if (rawMod.includes('virtual')) mappedMod = 'VIRTUAL';
             else if (rawMod.includes('mixta')) mappedMod = 'MIXTA';
             updated.modalidad = mappedMod;
-          // Calcular horas según fórmulas Excel (ahora ligadas al motor de configuración)
+          // Calcular horas: base y multiplicador salen SIEMPRE de la config (ptaRules); el
+          // programa solo se usa para categorizar (nivel + Sede Central vs Territorial).
           const prog = programas.find(p => p.id === updated.programa_id);
-          const progTipo = prog?.tipo || 'APT';
-          updated.horas_base = calcHorasBase(asigCat.nombre, progTipo, asigCat.creditos || 3, ptaRules, updated.programa_id);
-          updated.total_horas = calcTotalHoras(asigCat.nombre, updated.horas_base, ptaRules, updated.programa_id);
+          updated.horas_base = calcHorasBase(asigCat, prog, ptaRules);
+          updated.total_horas = calcTotalHoras(asigCat, updated.horas_base, ptaRules, prog);
           updated.porcentaje_pta = horasAProgramar > 0
             ? Number(((updated.total_horas / horasAProgramar) * 100).toFixed(1)) : 0;
         }
