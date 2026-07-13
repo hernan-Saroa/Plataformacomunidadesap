@@ -14,6 +14,8 @@ import React from 'react';
 import { Printer, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
+import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 
 interface PTAResumenPrintProps {
   pta: any;
@@ -32,12 +34,15 @@ const ESTADO_PRINT: Record<string, { label: string; color: string; bg: string }>
   'PENDIENTE_APROBACION': { label: 'Pendiente de Aprobación', color: '#92400E', bg: '#FEF3C7' },
   'Aprobado': { label: 'Aprobado', color: '#047857', bg: '#D1FAE5' },
   'En Firme': { label: 'En Firme — Firmado y Radicado', color: '#065F46', bg: '#D1FAE5' },
-  'Finalizado': { label: 'Finalizado', color: '#14532D', bg: '#DCFCE7' },
+  'Finalizado': { label: 'Finalizado', color: '#5B21B6', bg: '#EDE9FE' },
   'Terminado': { label: 'Terminado', color: '#374151', bg: '#E5E7EB' },
   'Rechazado': { label: 'Rechazado', color: '#991B1B', bg: '#FEE2E2' },
   'Devuelto': { label: 'Devuelto — Corrección requerida', color: '#9A3412', bg: '#FFF7ED' },
 };
-const estadoDocCfg = (e?: string) => ESTADO_PRINT[e || ''] || { label: e?.replace(/_/g, ' ') || '—', color: '#4B5563', bg: '#F3F4F6' };
+const estadoDocCfg = (e?: string) => {
+  const visual = getPtaStatusVisual(e);
+  return { ...visual, label: ESTADO_PRINT[e || '']?.label || visual.label };
+};
 
 const SECCION_PRINT_LABELS: Record<string, string> = {
   capacitacion: 'Dirección de Capacitación',
@@ -369,17 +374,30 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                       </tr>
                     </thead>
                     <tbody>
-                      {extActs.map((a: any, i: number) => (
+                      {extActs.map((a: any, i: number) => {
+                        const selection = getExtensionSelectionInfo(a);
+                        return (
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
                             <div style={{ fontWeight: 700 }}>{a.nombre_actividad || a.actividad_nombre || a.actividad || a.nombre || 'Actividad'}</div>
+                            {selection && (
+                              <div style={{ marginTop: 4, padding: '4px 7px', borderLeft: `3px solid ${PTA_COLORS.EXTENSION}`, background: `${PTA_COLORS.EXTENSION}0A` }}>
+                                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#475569' }}>{selection.etiqueta}: {selection.nombre}</div>
+                                {selection.detalles.map((detail, detailIndex) => (
+                                  <div key={`${detail.nombre}-${detailIndex}`} style={{ marginTop: 2, fontSize: '0.61rem', color: '#64748B', lineHeight: 1.35 }}>
+                                    {detail.nombre}{detail.valores.map(value => ` · ${value.columna ? `${value.columna}: ` : ''}${value.valor}`).join('')}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             {a.descripcion && <div style={SUB}>{a.descripcion}</div>}
                           </td>
                           <td style={TD}>{seccionPrintLabel(a.seccion) || 'Extensión'}</td>
                           <td style={TDC}>{rangoF(a.fecha_inicio, a.fecha_fin)}</td>
                           <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.EXTENSION }}>{Number(a.horas || 0)}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       <tr>
                         <td colSpan={3} style={{ ...TD, fontWeight: 800, textAlign: 'right', background: '#F9FAFB' }}>TOTAL EXTENSIÓN</td>
                         <td style={{ ...TDC, fontWeight: 900, background: '#F9FAFB', color: PTA_COLORS.EXTENSION }}>{horasExt}</td>

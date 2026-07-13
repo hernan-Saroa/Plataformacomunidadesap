@@ -38,6 +38,8 @@ import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
 import { PTA_COLORS } from './shared/ptaColors';
+import { getExtensionSelectionInfo } from './shared/extensionSelection';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import {
   PTA_COMPONENT_KEYS,
   PTA_COMPONENT_LEVELS,
@@ -115,15 +117,16 @@ function getResponsableRoleLabel(key: string): string {
 }
 
 function getStatusConfig(estado: string) {
+  const visual = getPtaStatusVisual(estado);
   const found = FLUJO_COMPLETO.find(f => f.key === estado);
-  if (found) return found;
-  if (estado === 'PENDIENTE_APROBACION') return { key: estado, label: 'Pendiente Aprobación', short: 'Pend.', color: '#B45309', bg: '#FEF3C7' };
-  if (estado === 'Rechazado') return { key: estado, label: 'Rechazado', short: 'Rech.', color: '#991B1B', bg: '#FEE2E2' };
-  if (estado === 'Devuelto') return { key: estado, label: 'Devuelto', short: 'Dev.', color: '#9A3412', bg: '#FFF7ED' };
-  if (estado === 'ESCALADO_SNA') return { key: estado, label: 'Escalado SNA', short: 'SNA', color: '#991B1B', bg: '#FEE2E2' };
-  if (estado === 'OBJETADO_DOCENTE') return { key: estado, label: 'Objetado', short: 'Obj.', color: '#991B1B', bg: '#FEE2E2' };
-  if (estado === 'MODIFICADO_DOCENTE') return { key: estado, label: 'Modificado', short: 'Mod.', color: '#1E40AF', bg: '#DBEAFE' };
-  return { key: estado, label: estado?.replace(/_/g, ' ') || estado, short: estado?.substring(0, 4) || '', color: '#6B7280', bg: '#F3F4F6' };
+  return {
+    key: estado,
+    label: found?.label || visual.label,
+    short: found?.short || visual.label.substring(0, 5),
+    color: visual.color,
+    bg: visual.bg,
+    border: visual.border,
+  };
 }
 
 function getNextStateLabel(current: string, hayModificaciones = false): string {
@@ -2672,7 +2675,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669', marginBottom: 4, textTransform: 'uppercase' }}>
                         {LABELS[sec]}
                       </div>
-                      {acts.map((a: any, i: number) => (
+                      {acts.map((a: any, i: number) => {
+                        const selection = getExtensionSelectionInfo(a);
+                        return (
                         <div key={i} style={{
                           padding: '7px 10px', borderRadius: 6, background: '#FAFAFA',
                           border: '1px solid #F3F4F6', marginBottom: 3,
@@ -2681,6 +2686,19 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre}</span>
                             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{a.horas}h</span>
                           </div>
+                          {selection && (
+                            <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                              <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#166534' }}>{selection.etiqueta}: {selection.nombre}</div>
+                              {selection.detalles.map((detail, detailIndex) => (
+                                <div key={`${detail.nombre}-${detailIndex}`} style={{ marginTop: 3, paddingLeft: 7, borderLeft: '2px solid #86EFAC', fontSize: '0.64rem', color: '#475569', lineHeight: 1.4 }}>
+                                  {detail.nombre && <strong>{detail.nombre}</strong>}
+                                  {detail.valores.map((value, valueIndex) => (
+                                    <div key={`${value.columna}-${valueIndex}`}>{value.columna && <strong>{value.columna}: </strong>}{value.valor}</div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {a.descripcion && (
                             <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
                           )}
@@ -2691,7 +2709,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -3252,19 +3271,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   >
                     <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
                   </button>
-                  {pta.estado !== 'Aprobado' && (
-                    <button
-                      onClick={() => setActiveTab('componentes')}
-                      style={{
-                        flex: 1, padding: '11px 14px', borderRadius: 10,
-                        border: '1px solid #BFDBFE', background: '#EFF6FF',
-                        color: '#003DA5', fontWeight: 600, fontSize: '0.82rem',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      }}
-                    >
-                      <Layers style={{ width: 13, height: 13 }} /> Concertar
-                    </button>
-                  )}
                   <div style={{
                     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.72rem', color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center',
@@ -3291,19 +3297,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 >
                   <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
                 </button>
-                {pta.estado !== 'Aprobado' && (
-                  <button
-                    onClick={() => setActiveTab('componentes')}
-                    style={{
-                      padding: '7px 14px', borderRadius: 8,
-                      border: '1px solid #BFDBFE', background: '#EFF6FF',
-                      color: '#003DA5', fontWeight: 600, fontSize: '0.78rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                    }}
-                  >
-                    <Layers style={{ width: 13, height: 13 }} /> Concertar
-                  </button>
-                )}
               </div>
 
               {isPendiente && puedeAprobarNivelActual && (

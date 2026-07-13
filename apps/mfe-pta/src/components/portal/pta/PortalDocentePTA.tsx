@@ -45,6 +45,8 @@ import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
+import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
+import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 
 interface PortalDocentePTAProps {
   onBack: () => void;
@@ -73,7 +75,7 @@ const ESTADO_CONFIG: Record<string, { bg: string; color: string; border: string;
   'Pendiente Gestión Profesoral': { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A', label: 'Pendiente de Aprobación' },
   'Aprobado': { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7', label: 'Aprobado' },
   'En Firme': { bg: '#047857', color: '#FFFFFF', border: '#059669', label: 'En Firme — Firmado y Radicado' },
-  'Finalizado': { bg: '#DCFCE7', color: '#14532D', border: '#22C55E', label: 'Finalizado' },
+  'Finalizado': { bg: '#EDE9FE', color: '#5B21B6', border: '#A78BFA', label: 'Finalizado' },
   // Cerrado por apertura de un nuevo período académico: solo lectura / observación.
   'Terminado': { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB', label: 'Terminado (solo lectura)' },
   'Rechazado': { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5', label: 'Rechazado' },
@@ -84,7 +86,11 @@ const ESTADO_CONFIG: Record<string, { bg: string; color: string; border: string;
   'REVISION_DOCENTE_N3': { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'Revisión — Corrección solicitada' },
 };
 
-const getEstadoCfg = (estado: string) => ESTADO_CONFIG[estado] || { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB', label: estado?.replace(/_/g, ' ') || estado };
+const getEstadoCfg = (estado: string) => {
+  const visual = getPtaStatusVisual(estado);
+  const configured = ESTADO_CONFIG[estado];
+  return { ...visual, label: configured?.label || visual.label };
+};
 
 function timeAgo(d: string): string {
   const now = Date.now();
@@ -1336,7 +1342,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   const g = grupos.find(x => x.seccion === sec);
                   if (g) g.items.push(e); else grupos.push({ seccion: sec, items: [e] });
                 }
-                const renderAct = (e: any, idx: number) => (
+                const renderAct = (e: any, idx: number) => {
+                  const selection = getExtensionSelectionInfo(e);
+                  return (
                   <ItemDetalle key={e.id || e.actividad_id || idx} color={colorExt}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
@@ -1345,11 +1353,36 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                       </div>
                       <HorasBadge horas={Number(e.horas ?? e.horas_ejecutadas ?? 0)} color={colorExt} />
                     </div>
+                    {selection && (
+                      <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 9, background: `${colorExt}0A`, border: `1px solid ${colorExt}24` }}>
+                        <div style={{ fontSize: '0.59rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {selection.etiqueta} seleccionada
+                        </div>
+                        <div style={{ marginTop: 2, fontSize: '0.72rem', fontWeight: 750, color: '#334155', lineHeight: 1.4 }}>
+                          {selection.nombre}
+                        </div>
+                        {selection.detalles.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 7 }}>
+                            {selection.detalles.map((detail, detailIndex) => (
+                              <div key={`${detail.nombre}-${detailIndex}`} style={{ paddingLeft: 9, borderLeft: `2px solid ${colorExt}40` }}>
+                                {detail.nombre && <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', lineHeight: 1.35 }}>{detail.nombre}</div>}
+                                {detail.valores.map((value, valueIndex) => (
+                                  <div key={`${value.columna}-${valueIndex}`} style={{ fontSize: '0.62rem', color: '#64748B', lineHeight: 1.4, marginTop: 2 }}>
+                                    {value.columna && <strong>{value.columna}: </strong>}{value.valor}
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(e.fecha_inicio, e.fecha_fin)} color={colorExt} />
                     </div>
                   </ItemDetalle>
-                );
+                  );
+                };
                 return (
                   <DetalleSeccion
                     icon={Globe}

@@ -1,9 +1,12 @@
 import React, { useState, useCallback } from 'react';
-import { Users, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Tag, Lock } from 'lucide-react';
+import { Users, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Tag, Lock, CircleHelp } from 'lucide-react';
 import { PTARules, ExtItem } from '../ConfiguracionReglasPTA';
 import { BuilderSurfaceStyles } from './BuilderSurfaceStyles';
+import { DetailColumnChain } from './DetailColumnChain';
 import { DetailColumnModal } from './DetailColumnModal';
 import { HourLimitControl } from './HourLimitControl';
+import { toast } from 'sonner';
+import { createSectionActivityId } from './activityId';
 
 type ExtSeccion = PTARules['ext_secciones'][number];
 type ExtActividad = PTARules['ext_actividades'][string][number];
@@ -92,23 +95,18 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   // ── ext_actividades CRUD ──────────────────────────────────────────
   const actsDeSeccion = (key: string): ExtActividad[] => {
     const raw = (actividades as any)[key] || [];
-    if (key === 'capacitacion') return raw;
-    return raw.map((act: any) => ({
-      ...act,
-      items: act.items || []
-    }));
+    // La presencia de `items` discrimina el modelo. No convertir una actividad
+    // plana legacy en jerárquica ni confundir `items: []` con una actividad plana.
+    return Array.isArray(raw) ? raw : [];
   };
-  const setExclusiveBlock = (secKey: string, targetKey: string, expanded: boolean) => {
-    setExpandedBlocks(prev => {
-      const next = { ...prev };
-      actsDeSeccion(secKey).forEach(activity => { next[`${secKey}:${activity.id}`] = false; });
-      next[targetKey] = expanded;
-      return next;
-    });
+  // Despliegue independiente: abrir un bloque no cierra los demás.
+  const setBlockExpanded = (targetKey: string, expanded: boolean) => {
+    setExpandedBlocks(prev => ({ ...prev, [targetKey]: expanded }));
   };
 
   const updateAct = (secKey: string, idx: number, field: string, val: any) => {
     const stringFields = ['nombre', 'id', 'linea'];
+    const optionalNumberFields = ['max_horas', 'min_horas', 'porcentaje_pta'];
     const currentActs = actsDeSeccion(secKey);
     if (field === 'id') {
       const oldKey = `${secKey}:${currentActs[idx]?.id}`;
@@ -120,16 +118,62 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
         return nextState;
       });
     }
+    const normalizedValue = stringFields.includes(field)
+      ? val
+      : optionalNumberFields.includes(field) && val === ''
+        ? undefined
+        : Number(val);
     const next = currentActs.map((a, i) =>
-      i === idx ? { ...a, [field]: stringFields.includes(field) ? val : Number(val) } : a
+      i === idx ? { ...a, [field]: normalizedValue } : a
     );
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
   };
-  const addAct = (secKey: string) => {
-    const newId = `ACT_${Date.now()}`;
-    const next = [{ id: newId, nombre: 'Nueva etapa', items: [] }, ...actsDeSeccion(secKey)];
+  // Tipo de horas del bloque (estructura de solo columna raíz): normaliza
+  // min/máx igual que los ítems al cambiar entre fija/hasta/intervalo.
+  const updateActTipo = (secKey: string, idx: number, tipo: string) => {
+    const currentActs = actsDeSeccion(secKey);
+    const act: any = currentActs[idx];
+    let patch: any;
+    if (tipo === 'intervalo') {
+      const currentMin = Number(act?.min_horas);
+      const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
+      const currentMax = Number(act?.max_horas);
+      const nextMax = Number.isFinite(currentMax) && currentMax > nextMin ? currentMax : Math.max(2, nextMin + 1);
+      patch = { tipo, min_horas: nextMin, max_horas: nextMax };
+    } else if (tipo === 'porcentaje') {
+      const currentPercentage = Number(act?.porcentaje_pta);
+      patch = {
+        tipo,
+        porcentaje_pta: Number.isFinite(currentPercentage)
+          ? Math.min(100, Math.max(1, currentPercentage))
+          : 1,
+      };
+    } else {
+      const currentMax = Number(act?.max_horas);
+      patch = { tipo, max_horas: Number.isFinite(currentMax) && currentMax > 0 ? currentMax : 1 };
+    }
+    const next = currentActs.map((a, i) => i === idx ? { ...a, ...patch } : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
-    setExclusiveBlock(secKey, `${secKey}:${newId}`, true);
+  };
+  const addAct = (secKey: string) => {
+    const section = secciones.find(item => item.key === secKey);
+    const existingIds = Object.values(actividades)
+      .flatMap(sectionActivities => Array.isArray(sectionActivities) ? sectionActivities : [])
+      .map(activity => String(activity?.id || ''));
+    const generated = createSectionActivityId({
+      sectionKey: secKey,
+      sectionLabel: section?.label,
+      existingIds,
+      sectionItemCount: actsDeSeccion(secKey).length,
+    });
+    const newId = generated.id;
+    // Con estructura de solo columna raíz el bloque nace con horas válidas
+    // (nunca vacío ni en 0): Hasta 1h por defecto.
+    const rootOnlyDefaults = getSeccionColumnas(secKey).length === 0 ? { tipo: 'hasta', max_horas: 1 } : {};
+    // El bloque nuevo se agrega al final, debajo de los ya configurados.
+    const next = [...actsDeSeccion(secKey), { id: newId, nombre: 'Nueva etapa', items: [], ...rootOnlyDefaults }];
+    handleChange('ext_actividades', { ...actividades, [secKey]: next });
+    setBlockExpanded(`${secKey}:${newId}`, true);
   };
   const removeAct = (secKey: string, idx: number) => {
     const next = actsDeSeccion(secKey).filter((_, i) => i !== idx);
@@ -140,7 +184,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   const addItem = (secKey: string, actIdx: number, insertAt?: number, parentColIdx?: number) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
-    const newItem: ExtItem = { nombre: '', tipo: 'fija', horas: 0, parent_col_idx: parentColIdx };
+    const newItem: ExtItem = { nombre: '', tipo: 'fija', horas: 1, parent_col_idx: parentColIdx };
     const items = [...(act.items || [])];
     if (insertAt !== undefined && insertAt >= 0 && insertAt <= items.length) {
       items.splice(insertAt, 0, newItem);
@@ -154,11 +198,35 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   const updateItem = (secKey: string, actIdx: number, itemIdx: number, field: keyof ExtItem, val: any) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
-    const newItems = (act.items || []).map((it, ii) =>
-      ii === itemIdx
-        ? { ...it, [field]: field === 'nombre' || field === 'tipo' || field === 'unidad' ? val : (val === '' ? '' : Number(val)) }
-        : it
-    );
+    const newItems = (act.items || []).map((it, ii) => {
+      if (ii !== itemIdx) return it;
+      if (field === 'tipo') {
+        const nextType = val as ExtItem['tipo'];
+        if (nextType === 'intervalo') {
+          const currentMin = Number(it.horas_min);
+          const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
+          const currentMax = Number(it.horas);
+          const nextMax = Number.isFinite(currentMax) && currentMax > nextMin ? currentMax : Math.max(2, nextMin + 1);
+          return { ...it, tipo: nextType, horas_min: nextMin, horas: nextMax };
+        }
+        if (nextType === 'porcentaje') {
+          const currentPercentage = Number(it.porcentaje_pta);
+          return {
+            ...it,
+            tipo: nextType,
+            porcentaje_pta: Number.isFinite(currentPercentage)
+              ? Math.min(100, Math.max(1, currentPercentage))
+              : 1,
+          };
+        }
+        const currentHours = Number(it.horas);
+        return { ...it, tipo: nextType, horas: Number.isFinite(currentHours) && currentHours > 0 ? currentHours : 1 };
+      }
+      return {
+        ...it,
+        [field]: field === 'nombre' || field === 'unidad' ? val : (val === '' ? '' : Number(val)),
+      };
+    });
     const updated = { ...act, items: newItems };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
@@ -184,52 +252,42 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
   };
-  // ── Per-item column values (evidencias per activity) ──
-  const addItemColVal = (secKey: string, actIdx: number, itemIdx: number, colName: string) => {
+  // ── Reemplazo puntual de un ítem (usado por las columnas de detalle en escalera) ──
+  const replaceItem = (secKey: string, actIdx: number, itemIdx: number, nextItem: ExtItem) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
     const items = [...(act.items || [])];
-    const item = { ...items[itemIdx] };
-    const cv = { ...(item.col_valores || {}) };
-    cv[colName] = [...(cv[colName] || []), ''];
-    item.col_valores = cv;
-    items[itemIdx] = item;
-    const next = acts.map((a, i) => i === actIdx ? { ...a, items } : a);
-    handleChange('ext_actividades', { ...actividades, [secKey]: next });
-  };
-  const updateItemColVal = (secKey: string, actIdx: number, itemIdx: number, colName: string, valIdx: number, val: string) => {
-    const acts = actsDeSeccion(secKey);
-    const act = acts[actIdx];
-    const items = [...(act.items || [])];
-    const item = { ...items[itemIdx] };
-    const cv = { ...(item.col_valores || {}) };
-    cv[colName] = (cv[colName] || []).map((v: string, i: number) => i === valIdx ? val : v);
-    item.col_valores = cv;
-    items[itemIdx] = item;
-    const next = acts.map((a, i) => i === actIdx ? { ...a, items } : a);
-    handleChange('ext_actividades', { ...actividades, [secKey]: next });
-  };
-  const removeItemColVal = (secKey: string, actIdx: number, itemIdx: number, colName: string, valIdx: number) => {
-    const acts = actsDeSeccion(secKey);
-    const act = acts[actIdx];
-    const items = [...(act.items || [])];
-    const item = { ...items[itemIdx] };
-    const cv = { ...(item.col_valores || {}) };
-    cv[colName] = (cv[colName] || []).filter((_: string, i: number) => i !== valIdx);
-    item.col_valores = cv;
-    items[itemIdx] = item;
+    items[itemIdx] = nextItem;
     const next = acts.map((a, i) => i === actIdx ? { ...a, items } : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
   };
   // ── Columnas a nivel de sección ────────────────────────────────────────
   const ITEMS_KEY = '_items_'; // sentinel for the Actividad/Ítem block
+  // Máximo de columnas creadas con "Agregar columna". La columna raíz y el
+  // nivel de actividades no cuentan (con ellas el total llega a 7).
+  const MAX_CUSTOM_COLUMNS = 5;
+  const getStructureLabels = (secKey: string) => {
+    const section = secciones.find(s => s.key === secKey);
+    return {
+      root: section?.columna_raiz_nombre || 'Componente',
+      rootEnabled: section?.columna_raiz_habilitada !== false,
+      items: section?.columna_items_nombre || 'Actividad / Ítem',
+    };
+  };
+  const updateStructureLabel = (secKey: string, field: 'columna_raiz_nombre' | 'columna_items_nombre', value: string) => {
+    if (!value.trim()) return;
+    handleChange('ext_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, [field]: value } : section,
+    ));
+  };
   const getSeccionColumnas = (secKey: string): string[] => {
     const sec = secciones.find(s => s.key === secKey);
     const raw = sec?.columnas;
     // Ensure cols is always a clean array of strings
     const cols = Array.isArray(raw) ? raw.filter((c): c is string => typeof c === 'string' && c.length > 0) : [];
-    // Auto-include _items_ if not present (migration/first time)
-    if (!cols.includes(ITEMS_KEY)) return [ITEMS_KEY, ...cols];
+    // Legacy configs did not persist `columnas`; keep their activity level.
+    // Once the array exists explicitly, respect it (including deliberate removal).
+    if (!Array.isArray(raw)) return [ITEMS_KEY];
     return cols;
   };
   const seccionTieneDatos = (secKey: string): boolean => actsDeSeccion(secKey).some(activity =>
@@ -241,8 +299,12 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   const reorderColumnas = (secKey: string, fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx) return;
     const cols = [...getSeccionColumnas(secKey)];
-    const touchesHierarchy = fromIdx === 0 || toIdx === 0 || cols[fromIdx] === ITEMS_KEY || cols[toIdx] === ITEMS_KEY;
-    if (seccionTieneDatos(secKey) && touchesHierarchy) return;
+    if (seccionTieneDatos(secKey)) {
+      toast.error('No se puede cambiar la jerarquía mientras tenga datos', {
+        description: 'Elimina primero los valores y actividades que usan estas columnas. Así se evita asociar información al nivel equivocado.',
+      });
+      return;
+    }
     const [moved] = cols.splice(fromIdx, 1);
     cols.splice(toIdx, 0, moved);
     const newSecs = secciones.map(s => s.key === secKey ? { ...s, columnas: cols } : s);
@@ -251,29 +313,110 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
 
   // Agregar columna a la sección
   const addColumnaSeccion = (secKey: string, nombre: string) => {
+    const labels = getStructureLabels(secKey);
+    const columns = getSeccionColumnas(secKey);
+    if (columns.filter(column => column !== ITEMS_KEY).length >= MAX_CUSTOM_COLUMNS) {
+      toast.error(`Se admiten máximo ${MAX_CUSTOM_COLUMNS} columnas adicionales`, {
+        description: 'La columna raíz y el nivel de actividades no cuentan dentro de este límite.',
+      });
+      return false;
+    }
+    if ([labels.root, labels.items, ...columns.filter(column => column !== ITEMS_KEY)]
+      .some(column => column.trim().toLocaleLowerCase() === nombre.trim().toLocaleLowerCase())) {
+      toast.error('Ya existe una columna con ese nombre');
+      return false;
+    }
     const newSecs = secciones.map(s => {
       if (s.key !== secKey) return s;
-      const existing = s.columnas || [];
-      // Ensure _items_ is in the list
-      const base = existing.includes(ITEMS_KEY) ? existing : [ITEMS_KEY, ...existing];
+      const base = Array.isArray(s.columnas) ? s.columnas : [ITEMS_KEY];
       return { ...s, columnas: [...base, nombre] };
     });
     handleChange('ext_secciones', newSecs);
+    return true;
   };
   // Eliminar columna de la sección (y limpiar valores de todas las actividades)
   const removeColumnaSeccion = (secKey: string, colName: string) => {
+    const isUsed = actsDeSeccion(secKey).some(activity =>
+      (activity.columnas_valores?.[colName] || []).some(value => String(value || '').trim())
+      || (activity.columnas_meta?.[colName] || []).length > 0
+      || (activity.items || []).some(item => (item.col_valores?.[colName] || []).some(value => String(value || '').trim())),
+    );
+    if (isUsed) {
+      toast.error(`La columna “${colName}” está siendo utilizada`, {
+        description: 'Elimina sus valores de todos los bloques antes de quitarla de la estructura.',
+      });
+      return;
+    }
     const newSecs = secciones.map(s =>
       s.key === secKey ? { ...s, columnas: (s.columnas || []).filter(c => c !== colName) } : s
     );
     handleChange('ext_secciones', newSecs);
+    // La columna de detalle siguiente en la cadena apuntaba sus padres a la
+    // columna eliminada: se limpian para volver al emparejamiento por orden.
+    const oldCols = getSeccionColumnas(secKey);
+    const itemsPosition = oldCols.indexOf(ITEMS_KEY);
+    const chainCols = itemsPosition >= 0 ? oldCols.slice(itemsPosition + 1) : [];
+    const chainPosition = chainCols.indexOf(colName);
+    const nextChainCol = chainPosition >= 0 && chainPosition + 1 < chainCols.length ? chainCols[chainPosition + 1] : null;
     // Limpiar valores de esa columna en todas las actividades de la sección
     const acts = actsDeSeccion(secKey);
     const cleaned = acts.map(a => {
       const cv = { ...(a.columnas_valores || {}) };
+      const cm = { ...(a.columnas_meta || {}) };
       delete cv[colName];
-      return { ...a, columnas_valores: cv };
+      delete cm[colName];
+      const items = Array.isArray(a.items) ? a.items.map(item => {
+        const itemValues = { ...(item.col_valores || {}) };
+        delete itemValues[colName];
+        const itemParents = { ...(item.col_parents || {}) };
+        delete itemParents[colName];
+        if (nextChainCol) delete itemParents[nextChainCol];
+        return { ...item, col_valores: itemValues, col_parents: itemParents };
+      }) : undefined;
+      return {
+        ...a,
+        columnas_valores: cv,
+        columnas_meta: cm,
+        ...(items ? { items } : {}),
+      };
     });
     handleChange('ext_actividades', { ...actividades, [secKey]: cleaned });
+  };
+  const removeItemsColumn = (secKey: string) => {
+    const hasItems = actsDeSeccion(secKey).some(activity => (activity.items || []).length > 0);
+    if (hasItems) {
+      toast.error(`La columna “${getStructureLabels(secKey).items}” está siendo utilizada`, {
+        description: 'Elimina primero todas las actividades de los bloques; después podrás quitar este nivel.',
+      });
+      return;
+    }
+    handleChange('ext_secciones', secciones.map(section =>
+      section.key === secKey
+        ? { ...section, columnas: getSeccionColumnas(secKey).filter(column => column !== ITEMS_KEY) }
+        : section,
+    ));
+  };
+  const restoreItemsColumn = (secKey: string) => {
+    const columns = getSeccionColumnas(secKey);
+    handleChange('ext_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, columnas: [...columns, ITEMS_KEY] } : section,
+    ));
+  };
+  const removeRootColumn = (secKey: string) => {
+    if (actsDeSeccion(secKey).length > 0) {
+      toast.error(`La columna “${getStructureLabels(secKey).root}” está siendo utilizada`, {
+        description: 'Elimina primero todos los bloques principales de esta sección.',
+      });
+      return;
+    }
+    handleChange('ext_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, columna_raiz_habilitada: false } : section,
+    ));
+  };
+  const restoreRootColumn = (secKey: string) => {
+    handleChange('ext_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, columna_raiz_habilitada: true } : section,
+    ));
   };
   // Renombrar columna en la sección
   const renameColumnaSeccion = (secKey: string, oldName: string, newName: string) => {
@@ -286,11 +429,34 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const acts = actsDeSeccion(secKey);
     const updated = acts.map(a => {
       const cv = { ...(a.columnas_valores || {}) };
-      if (cv[oldName]) {
+      const cm = { ...(a.columnas_meta || {}) };
+      if (Object.prototype.hasOwnProperty.call(cv, oldName)) {
         cv[newName] = cv[oldName];
         delete cv[oldName];
       }
-      return { ...a, columnas_valores: cv };
+      if (Object.prototype.hasOwnProperty.call(cm, oldName)) {
+        cm[newName] = cm[oldName];
+        delete cm[oldName];
+      }
+      const items = Array.isArray(a.items) ? a.items.map(item => {
+        const itemValues = { ...(item.col_valores || {}) };
+        if (Object.prototype.hasOwnProperty.call(itemValues, oldName)) {
+          itemValues[newName] = itemValues[oldName];
+          delete itemValues[oldName];
+        }
+        const itemParents = { ...(item.col_parents || {}) };
+        if (Object.prototype.hasOwnProperty.call(itemParents, oldName)) {
+          itemParents[newName] = itemParents[oldName];
+          delete itemParents[oldName];
+        }
+        return { ...item, col_valores: itemValues, col_parents: itemParents };
+      }) : undefined;
+      return {
+        ...a,
+        columnas_valores: cv,
+        columnas_meta: cm,
+        ...(items ? { items } : {}),
+      };
     });
     handleChange('ext_actividades', { ...actividades, [secKey]: updated });
   };
@@ -322,7 +488,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const updated = {
       ...act,
       columnas_valores: { ...(act.columnas_valores || {}), [colName]: [...vals, ''] },
-      columnas_meta: { ...(act.columnas_meta || {}), [colName]: [...meta, { tipo: 'hasta', horas: 0 }] },
+      columnas_meta: { ...(act.columnas_meta || {}), [colName]: [...meta, { tipo: 'hasta', horas: 1 }] },
     };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
@@ -335,14 +501,45 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
   };
-  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas' | 'horas_min' | 'horas_en', val: any) => {
+  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas' | 'horas_min' | 'horas_en' | 'porcentaje_pta', val: any) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
     const meta = [...(act.columnas_meta?.[colName] || [])];
     // Ensure meta array is long enough
-    while (meta.length <= valIdx) meta.push({ tipo: 'hasta', horas: 0 });
-    const isNumeric = field === 'horas' || field === 'horas_min';
-    meta[valIdx] = { ...meta[valIdx], [field]: isNumeric ? (val === '' ? '' : Number(val) || 0) : val };
+    while (meta.length <= valIdx) meta.push({ tipo: 'hasta', horas: 1 });
+    const isNumeric = field === 'horas' || field === 'horas_min' || field === 'porcentaje_pta';
+    const currentMeta = meta[valIdx] || { tipo: 'hasta', horas: 1 };
+    if (field === 'tipo' && val === 'intervalo') {
+      const currentMin = Number((currentMeta as any).horas_min);
+      const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
+      const currentMax = Number(currentMeta.horas);
+      const nextMax = Number.isFinite(currentMax) && currentMax > nextMin ? currentMax : Math.max(2, nextMin + 1);
+      meta[valIdx] = { ...currentMeta, tipo: 'intervalo', horas_min: nextMin, horas: nextMax };
+    } else if (field === 'tipo' && val === 'porcentaje') {
+      const currentPercentage = Number((currentMeta as any).porcentaje_pta);
+      meta[valIdx] = {
+        ...currentMeta,
+        tipo: 'porcentaje',
+        porcentaje_pta: Number.isFinite(currentPercentage)
+          ? Math.min(100, Math.max(1, currentPercentage))
+          : 1,
+      };
+    } else if (field === 'tipo') {
+      const currentHours = Number(currentMeta.horas);
+      meta[valIdx] = {
+        ...currentMeta,
+        tipo: val,
+        horas: Number.isFinite(currentHours) && currentHours > 0 ? currentHours : 1,
+      };
+    } else {
+      const numericValue = val === '' ? '' : Number(val) || 0;
+      meta[valIdx] = {
+        ...currentMeta,
+        [field]: field === 'porcentaje_pta' && numericValue !== ''
+          ? Math.min(100, Math.max(1, numericValue))
+          : isNumeric ? numericValue : val,
+      };
+    }
     const updated = { ...act, columnas_meta: { ...(act.columnas_meta || {}), [colName]: meta } };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
@@ -364,9 +561,10 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   // Modal confirm — now adds column to section, not activity
   const confirmAddColumna = useCallback(() => {
     if (colModal && colNombre.trim()) {
-      addColumnaSeccion(colModal.secKey, colNombre.trim());
-      setColModal(null);
-      setColNombre('Evidencia');
+      if (addColumnaSeccion(colModal.secKey, colNombre.trim())) {
+        setColModal(null);
+        setColNombre('Evidencia');
+      }
     }
   }, [colModal, colNombre]);
 
@@ -533,7 +731,13 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                         <span className="text-sm font-bold text-slate-700">Actividades de {sec.label}</span>
                         <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{actsDeSeccion(sec.key).length} actividades</span>
                       </div>
-                      <button onClick={() => addAct(sec.key)}
+                      <button onClick={() => {
+                        if (!getStructureLabels(sec.key).rootEnabled) {
+                          toast.error('Agrega primero una columna raíz para crear bloques principales');
+                          return;
+                        }
+                        addAct(sec.key);
+                      }}
                         className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border-none text-white text-xs font-bold shadow-sm"
                         style={{ background: sec.color }}>
                         <Plus className="w-3.5 h-3.5" /> Agregar bloque principal
@@ -546,6 +750,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                       const hasConfiguredData = seccionTieneDatos(sec.key);
                       const firstCol = secCols.find(c => !!c) || '';
                       const firstIsItems = firstCol === ITEMS_KEY;
+                      const structureLabels = getStructureLabels(sec.key);
+                      const reachedColumnLimit = secCols.filter(column => column !== ITEMS_KEY).length >= MAX_CUSTOM_COLUMNS;
                       return (
                         <>
                         <div className="mb-3 px-1 space-y-1.5">
@@ -556,7 +762,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                             {/* Help badge: which column controls hours */}
                             {secCols.length > 1 && (
                               <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
-                                ⚡ La 1ª columna ({firstIsItems ? 'Actividad/Ítem' : firstCol}) controla las horas
+                                ⚡ El primer nivel editable ({firstIsItems ? structureLabels.items : firstCol}) controla las horas
                               </span>
                             )}
                             {hasConfiguredData && (
@@ -566,14 +772,49 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                             )}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
+                          {structureLabels.rootEnabled && <div
+                            className="flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 py-1 pl-1.5 pr-2 shadow-sm"
+                            title="Columna raíz: corresponde al nombre de cada bloque principal"
+                          >
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] font-black text-indigo-700">1</span>
+                            <Lock className="h-3 w-3 shrink-0 text-indigo-400" />
+                            <Globe className="h-3 w-3 shrink-0 text-indigo-500" />
+                            <input
+                              type="text"
+                              value={structureLabels.root}
+                              onChange={event => updateStructureLabel(sec.key, 'columna_raiz_nombre', event.target.value)}
+                              className="min-w-[72px] max-w-[130px] border-none bg-transparent text-[11px] font-bold text-indigo-800 outline-none"
+                              style={{ width: `${Math.max(72, structureLabels.root.length * 7)}px` }}
+                              aria-label="Nombre de la columna raíz"
+                            />
+                            <span className="rounded bg-indigo-100 px-1 text-[8px] font-bold uppercase text-indigo-600">Raíz</span>
+                            <button
+                              type="button"
+                              onClick={() => removeRootColumn(sec.key)}
+                              className="config-column-delete"
+                              title={`Eliminar columna ${structureLabels.root}`}
+                              aria-label={`Eliminar columna ${structureLabels.root}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>}
                           {secCols.map((colName, ci) => {
                             const isItemsChip = colName === ITEMS_KEY;
-                            const isLocked = hasConfiguredData && (ci === 0 || isItemsChip);
+                            const isLocked = hasConfiguredData;
+                            const itemsPosition = secCols.indexOf(ITEMS_KEY);
+                            const columnRole = itemsPosition < 0 || ci < itemsPosition ? 'Agrupa' : 'Detalle';
                             return (
                             <div key={`col-chip-${ci}`}
                               title="Arrastra para cambiar la posición de esta columna"
-                              draggable={!isLocked}
-                              onDragStart={e => { if (isLocked) { e.preventDefault(); return; } setDragColIdx(ci); setDragColSecKey(sec.key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', colName); }}
+                              draggable
+                              onDragStart={e => {
+                                if (isLocked) {
+                                  e.preventDefault();
+                                  toast.error('Esta columna está en uso', { description: 'Vacía los valores de la jerarquía antes de cambiar su posición.' });
+                                  return;
+                                }
+                                setDragColIdx(ci); setDragColSecKey(sec.key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', colName);
+                              }}
                               onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragColSecKey === sec.key) setDragOverColIdx(ci); }}
                               onDrop={e => { e.preventDefault(); if (dragColIdx !== null && dragColSecKey === sec.key) { reorderColumnas(sec.key, dragColIdx, ci); } setDragColIdx(null); setDragOverColIdx(null); setDragColSecKey(null); }}
                               onDragEnd={() => { setDragColIdx(null); setDragOverColIdx(null); setDragColSecKey(null); }}
@@ -586,7 +827,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                       ? 'bg-violet-50 border border-violet-200 hover:border-violet-300 hover:shadow-sm'
                                       : 'bg-blue-50 border border-blue-200 hover:border-blue-300 hover:shadow-sm'
                               }`}>
-                              <span className={`flex w-4 h-4 items-center justify-center rounded-full bg-white/80 text-[9px] font-black ${isItemsChip ? 'text-violet-600' : 'text-blue-600'}`}>{ci + 1}</span>
+                              <span className={`flex w-4 h-4 items-center justify-center rounded-full bg-white/80 text-[9px] font-black ${isItemsChip ? 'text-violet-600' : 'text-blue-600'}`}>{ci + (structureLabels.rootEnabled ? 2 : 1)}</span>
                               {isLocked ? (
                                 <Lock className={`w-3 h-3 ${isItemsChip ? 'text-violet-300' : 'text-blue-300'} shrink-0`} />
                               ) : (
@@ -595,7 +836,26 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                               {isItemsChip ? (
                                 <>
                                   <Globe className="w-3 h-3 text-violet-400 shrink-0" />
-                                  <span className="text-[11px] font-semibold text-violet-700 px-0.5">Actividad / Ítem</span>
+                                  <input
+                                    type="text"
+                                    draggable={false}
+                                    value={structureLabels.items}
+                                    onChange={event => updateStructureLabel(sec.key, 'columna_items_nombre', event.target.value)}
+                                    className="min-w-[80px] max-w-[130px] border-none bg-transparent px-0.5 text-[11px] font-semibold text-violet-700 outline-none"
+                                    style={{ width: `${Math.max(80, structureLabels.items.length * 7)}px` }}
+                                    onMouseDown={event => event.stopPropagation()}
+                                    aria-label="Nombre de la columna de actividades"
+                                  />
+                                  <span className="rounded bg-violet-100 px-1 text-[8px] font-bold uppercase text-violet-600">Filas</span>
+                                  <button
+                                    type="button"
+                                    onClick={event => { event.stopPropagation(); removeItemsColumn(sec.key); }}
+                                    className="config-column-delete"
+                                    title={`Eliminar nivel ${structureLabels.items}`}
+                                    aria-label={`Eliminar nivel ${structureLabels.items}`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
                                 </>
                               ) : (
                                 <>
@@ -613,8 +873,11 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                     style={{ width: `${Math.max(40, colName.length * 7)}px` }}
                                     onMouseDown={e => e.stopPropagation()}
                                   />
+                                  <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-blue-600">{columnRole}</span>
                                   <button onClick={() => removeColumnaSeccion(sec.key, colName)}
-                                    className="w-5 h-5 rounded flex items-center justify-center text-blue-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                    className="config-column-delete"
+                                    title={`Eliminar columna ${colName}`}
+                                    aria-label={`Eliminar columna ${colName}`}>
                                     <X className="w-3 h-3" />
                                   </button>
                                 </>
@@ -622,15 +885,42 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                             </div>
                             );
                           })}
-                          <button onClick={() => setColModal({ secKey: sec.key, actIdx: -1 })}
+                          {!structureLabels.rootEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => restoreRootColumn(sec.key)}
+                              className="flex items-center gap-1 rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:border-indigo-400 hover:bg-indigo-100"
+                            >
+                              <Plus className="h-3 w-3" /> Agregar columna raíz
+                            </button>
+                          )}
+                          {!secCols.includes(ITEMS_KEY) && (
+                            <button
+                              type="button"
+                              onClick={() => restoreItemsColumn(sec.key)}
+                              className="flex items-center gap-1 rounded-lg border border-dashed border-violet-300 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:border-violet-400 hover:bg-violet-100"
+                            >
+                              <Plus className="h-3 w-3" /> Agregar nivel de actividades
+                            </button>
+                          )}
+                          <button onClick={() => {
+                            if (reachedColumnLimit) {
+                              toast.error(`Se admiten máximo ${MAX_CUSTOM_COLUMNS} columnas adicionales`);
+                              return;
+                            }
+                            setColModal({ secKey: sec.key, actIdx: -1 });
+                          }}
+                            disabled={reachedColumnLimit}
+                            title={reachedColumnLimit ? `Máximo ${MAX_CUSTOM_COLUMNS} columnas adicionales alcanzado` : 'Agregar otro nivel o detalle a la jerarquía'}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-dashed border-blue-300 text-blue-500 text-[11px] font-semibold hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 transition-colors">
-                            <Plus className="w-3 h-3" /> Agregar columna de detalle
+                            <Plus className="w-3 h-3" /> Agregar columna
                           </button>
                           </div>
                           {/* Help guide */}
                           {secCols.length > 0 && (
                             <div className="text-[9px] text-slate-400 leading-relaxed pl-1 border-l-2 border-slate-200 ml-1">
-                              💡 <b>Orden importa:</b> La primera columna (ej. Línea) define la jerarquía y recibe las horas.
+                              <b>Jerarquía:</b> {[...(structureLabels.rootEnabled ? [structureLabels.root] : []), ...secCols.map(column => column === ITEMS_KEY ? structureLabels.items : column)].join(' → ')}.
+                              {' '}Las columnas posteriores a {structureLabels.items} se anidan en cascada dentro de cada actividad: cada columna vive dentro de los valores de la anterior.
                               {secCols.length > 1 && !firstIsItems && ' Puede elegir si las horas van en la Línea o en cada Actividad.'}
                               {firstIsItems && ' Cada actividad tiene su propio tipo y horas.'}
                               {' '} • <b>Tipos:</b> 🟢 Fija (exacta), 🕒 Hasta (máximo), 📊 Intervalo (min—máx).
@@ -652,10 +942,13 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                           const isEtapa = Array.isArray(act.items);
                           const hasItems = isEtapa && (act.items?.length ?? 0) > 0;
                           const blockKey = `${sec.key}:${act.id}`;
-                          const blockExpanded = expandedBlocks[blockKey] ?? aIdx === 0;
+                          // Estructura de solo columna raíz: el bloque es la actividad
+                          // misma y sus horas se configuran directamente en la fila.
+                          const isRootOnly = getSeccionColumnas(sec.key).length === 0;
+                          const blockExpanded = !isRootOnly && (expandedBlocks[blockKey] ?? aIdx === 0);
                           return (
-                            <div 
-                              key={act.id} 
+                            <div
+                              key={act.id}
                               draggable
                               onDragStart={(e) => handleDragStart(e, sec.key, aIdx)}
                               onDragOver={(e) => handleDragOver(e, sec.key, aIdx)}
@@ -704,74 +997,123 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                 {/* Nombre etapa */}
                                 <div className="flex-1 min-w-0">
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                                    {isEtapa ? 'Etapa' : 'Nombre'}
+                                    {getStructureLabels(sec.key).root}
                                   </span>
                                   <input type="text" value={act.nombre}
                                     onChange={e => updateAct(sec.key, aIdx, 'nombre', e.target.value)}
-                                    placeholder={isEtapa ? 'Nombre de la etapa...' : 'Nombre de la actividad...'}
+                                    placeholder={`Valor de ${getStructureLabels(sec.key).root.toLocaleLowerCase()}...`}
                                     className="w-full bg-white border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none" />
                                 </div>
-                                {/* Máx total (solo para actividades planas sin items) */}
-                                {!isEtapa && (
-                                  <div className="shrink-0">
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Máx.</span>
-                                    <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-slate-200 h-[34px]">
-                                      <input type="number" value={(act as any).max_horas ?? ''}
+                                {/* Solo el modelo plano (sin propiedad items) usa un tope de bloque. */}
+                                {!isEtapa && !isRootOnly && (
+                                  <div
+                                    className="w-32 shrink-0"
+                                    title="Límite local para este bloque cuando no tiene filas. Si queda sin tope, solo se aplica el límite global de Extensión."
+                                  >
+                                    <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase text-slate-500">
+                                      Tope bloque <CircleHelp className="h-3 w-3 text-blue-500" />
+                                    </span>
+                                    <div className={`flex h-[34px] items-center gap-1 rounded-lg border bg-white px-2 py-1 ${(act as any).max_horas === undefined ? 'border-dashed border-amber-300' : 'border-slate-200'}`}>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={(act as any).max_horas ?? ''}
+                                        placeholder="Sin tope"
+                                        aria-label={`Tope del bloque ${act.nombre}`}
                                         onChange={e => updateAct(sec.key, aIdx, 'max_horas', e.target.value)}
-                                        className="w-20 bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-md px-2 py-1 text-center focus:ring-2 focus:ring-violet-500/20 outline-none" />
-                                      <span className="text-xs text-slate-400 font-bold">h</span>
+                                        className={`min-w-0 flex-1 bg-white border border-slate-200 font-bold text-[12px] rounded-md px-1.5 py-1 text-center focus:ring-2 focus:ring-violet-500/20 outline-none ${(act as any).max_horas === undefined ? 'text-amber-700 placeholder:text-amber-500' : 'text-slate-800'}`}
+                                      />
+                                      {(act as any).max_horas !== undefined && <span className="text-xs font-bold text-slate-400">h</span>}
                                     </div>
                                   </div>
                                 )}
+                                {!isRootOnly && (
                                 <div className="shrink-0">
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Filas</span>
                                   <div className="flex h-[34px] min-w-[58px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-extrabold text-slate-700">
                                     {(act.items || []).length}
                                   </div>
                                 </div>
-                                {/* Total Horas (from whichever column is first) */}
-                                {(() => {
+                                )}
+                                {/* Horas directas del bloque cuando la estructura es solo columna raíz */}
+                                {isRootOnly ? (
+                                  <div className="shrink-0">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Horas</span>
+                                    <HourLimitControl
+                                      type={(act as any).tipo || 'hasta'}
+                                      hours={(act as any).tipo === 'porcentaje' ? ((act as any).porcentaje_pta ?? 1) : ((act as any).max_horas ?? 1)}
+                                      minHours={(act as any).min_horas ?? 1}
+                                      onTypeChange={value => updateActTipo(sec.key, aIdx, value)}
+                                      onHoursChange={value => (act as any).tipo === 'porcentaje'
+                                        ? updateAct(sec.key, aIdx, 'porcentaje_pta', Math.min(100, Math.max(1, Number(value) || 1)))
+                                        : updateAct(sec.key, aIdx, 'max_horas', value === '' ? 1 : Math.max(1, Number(value) || 1))}
+                                      onMinHoursChange={value => updateAct(sec.key, aIdx, 'min_horas', value === '' ? 1 : Math.max(1, Number(value) || 1))}
+                                      compact
+                                    />
+                                  </div>
+                                ) : (() => {
                                   const secCols = getSeccionColumnas(sec.key) || [];
                                   const fc = secCols.find(c => !!c) || '';
                                   let total = 0;
+                                  let totalPercentage = 0;
                                   if (fc === ITEMS_KEY) {
-                                    total = (act.items || []).reduce((sum: number, item: any) => sum + (Number(item.horas) || 0), 0);
+                                    total = (act.items || []).reduce((sum: number, item: any) => {
+                                      if (item.tipo === 'porcentaje') {
+                                        totalPercentage += Math.min(100, Math.max(1, Number(item.porcentaje_pta) || 1));
+                                        return sum;
+                                      }
+                                      return sum + (Number(item.horas) || 0);
+                                    }, 0);
                                   } else if (fc) {
                                     const metaArr2 = act.columnas_meta?.[fc] || [];
                                     const allItems2 = act.items || [];
                                     metaArr2.forEach((m2: any, vIdx2: number) => {
                                       const horasEn2 = m2?.horas_en || 'linea';
                                       if (horasEn2 === 'linea') {
-                                        total += Number(m2?.horas) || 0;
+                                        if (m2?.tipo === 'porcentaje') {
+                                          totalPercentage += Math.min(100, Math.max(1, Number(m2?.porcentaje_pta) || 1));
+                                        } else {
+                                          total += Number(m2?.horas) || 0;
+                                        }
                                       } else {
                                         // Sum horas from items belonging to this first-col value
                                         total += allItems2
                                           .filter((it2: any) => it2.parent_col_idx === vIdx2 || (it2.parent_col_idx === undefined && vIdx2 === 0))
-                                          .reduce((s: number, it2: any) => s + (Number(it2.horas) || 0), 0);
+                                          .reduce((s: number, it2: any) => {
+                                            if (it2.tipo === 'porcentaje') {
+                                              totalPercentage += Math.min(100, Math.max(1, Number(it2.porcentaje_pta) || 1));
+                                              return s;
+                                            }
+                                            return s + (Number(it2.horas) || 0);
+                                          }, 0);
                                       }
                                     });
                                   }
-                                  return total > 0 || isEtapa ? (
+                                  return total > 0 || totalPercentage > 0 || isEtapa ? (
                                     <div className="shrink-0">
                                       <span className="text-[10px] font-bold text-[#003DA5] uppercase block mb-1">Total Horas</span>
                                       <div className="flex items-center justify-center bg-blue-50/50 border border-blue-200 text-[#003DA5] font-extrabold text-[13px] rounded-lg px-3 py-1.5 h-[34px] min-w-[70px]">
-                                        {total}h
+                                        {totalPercentage > 0 ? `${totalPercentage}% PTA${total > 0 ? ` + ${total}h` : ''}` : `${total}h`}
                                       </div>
                                     </div>
                                   ) : null;
                                 })()}
+                                {!isRootOnly && (
                                 <button
                                   type="button"
-                                  onClick={() => setExclusiveBlock(sec.key, blockKey, !blockExpanded)}
+                                  onClick={() => setBlockExpanded(blockKey, !blockExpanded)}
                                   className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 text-[11px] font-bold text-violet-700 shadow-sm transition-all hover:border-violet-300 hover:bg-violet-50"
                                   title={blockExpanded ? 'Cerrar bloque' : 'Editar este bloque'}
                                 >
                                   <ChevronDown className={`h-4 w-4 transition-transform ${blockExpanded ? 'rotate-180' : ''}`} />
                                   {blockExpanded ? 'Cerrar' : 'Editar'}
                                 </button>
+                                )}
                                 {/* Eliminar etapa */}
                                 <button onClick={() => removeAct(sec.key, aIdx)}
-                                  className="w-9 h-9 shrink-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all shadow-sm self-end">
+                                  className="config-block-delete self-end"
+                                  title={`Eliminar bloque ${act.nombre}`}
+                                  aria-label={`Eliminar bloque ${act.nombre}`}>
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
@@ -803,14 +1145,13 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                           <div className="p-3 pt-2 space-y-1">
                                             <div className="flex flex-row gap-2 px-1 mb-1">
                                               <span className="w-3.5 shrink-0" />
-                                              <span className="flex-1 text-[10px] font-bold text-slate-400 uppercase">Actividad / Ítem</span>
+                                              <span className="flex-1 text-[10px] font-bold text-slate-500 uppercase">{getStructureLabels(sec.key).items}</span>
                                               {showItemHoras && <span className="w-24 shrink-0 text-[10px] font-bold text-slate-400 uppercase">Tipo</span>}
                                               {showItemHoras && <span className="w-20 shrink-0 text-[10px] font-bold text-slate-400 uppercase">Horas</span>}
                                               <span className="w-7 shrink-0" />
                                             </div>
                                             {(act.items || []).map((item, iIdx) => {
                                               const itemDragKey = `${sec.key}:${aIdx}`;
-                                              const itemColVals = item.col_valores || {};
                                               return (
                                               <div key={iIdx} className="config-activity-entry space-y-2">
                                                 {/* ── Item row with tipo ── */}
@@ -837,55 +1178,33 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                   {showItemHoras && (
                                                     <HourLimitControl
                                                       type={item.tipo}
-                                                      hours={item.horas}
+                                                      hours={item.tipo === 'porcentaje' ? (item.porcentaje_pta ?? 1) : item.horas}
                                                       minHours={(item as any).horas_min}
                                                       onTypeChange={value => updateItem(sec.key, aIdx, iIdx, 'tipo', value)}
-                                                      onHoursChange={value => updateItem(sec.key, aIdx, iIdx, 'horas', value)}
+                                                      onHoursChange={value => item.tipo === 'porcentaje'
+                                                        ? updateItem(sec.key, aIdx, iIdx, 'porcentaje_pta', Math.min(100, Math.max(1, Number(value) || 1)))
+                                                        : updateItem(sec.key, aIdx, iIdx, 'horas', value)}
                                                       onMinHoursChange={value => updateItem(sec.key, aIdx, iIdx, 'horas_min', value)}
                                                       compact
                                                     />
                                                   )}
                                                   <button onClick={() => removeItem(sec.key, aIdx, iIdx)}
-                                                    className="w-7 h-7 shrink-0 flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-300 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all">
+                                                    className="config-inline-delete"
+                                                    title="Eliminar actividad"
+                                                    aria-label="Eliminar actividad">
                                                     <Trash2 className="w-3 h-3" />
                                                   </button>
                                                 </div>
-                                                {/* ── Per-item sub-columns (Evidencia, etc.) ── */}
-                                                {subCols.map(sc => {
-                                                  const scVals = itemColVals[sc] || [];
-                                                  return (
-                                                    <div key={`${iIdx}-${sc}`} className="ml-8 mr-2">
-                                                      <div className="config-detail-panel overflow-hidden">
-                                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50/60 border-b border-slate-100">
-                                                          <Tag className="w-2.5 h-2.5 text-slate-300 shrink-0" />
-                                                          <span className="flex-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">{sc}</span>
-                                                          <button onClick={() => addItemColVal(sec.key, aIdx, iIdx, sc)}
-                                                            className="text-[9px] text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-0.5 transition-colors">
-                                                            <Plus className="w-2.5 h-2.5" /> Agregar
-                                                          </button>
-                                                        </div>
-                                                        {scVals.length > 0 ? (
-                                                          <div className="p-1.5 space-y-1">
-                                                            {scVals.map((sv: string, svIdx: number) => (
-                                                              <div key={svIdx} className="flex items-center gap-1.5">
-                                                                <input type="text" value={sv} draggable={false}
-                                                                  onChange={e => updateItemColVal(sec.key, aIdx, iIdx, sc, svIdx, e.target.value)}
-                                                                  placeholder={`${sc}...`}
-                                                                  className="flex-1 bg-white border border-slate-200 text-slate-600 text-[11px] rounded px-2 py-1 focus:ring-2 focus:ring-blue-500/20 outline-none" />
-                                                                <button onClick={() => removeItemColVal(sec.key, aIdx, iIdx, sc, svIdx)}
-                                                                  className="w-5 h-5 shrink-0 flex items-center justify-center rounded text-slate-300 hover:text-red-500 transition-colors">
-                                                                  <X className="w-2.5 h-2.5" />
-                                                                </button>
-                                                              </div>
-                                                            ))}
-                                                          </div>
-                                                        ) : (
-                                                          <div className="px-2 py-1 text-[10px] text-slate-300 italic">Sin {sc.toLowerCase()}</div>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                  );
-                                                })}
+                                                {/* ── Columnas de detalle anidadas en escalera ── */}
+                                                {subCols.length > 0 && (
+                                                  <div className="ml-8 mr-2">
+                                                    <DetailColumnChain
+                                                      item={item}
+                                                      chain={subCols}
+                                                      onItemChange={next => replaceItem(sec.key, aIdx, iIdx, next)}
+                                                    />
+                                                  </div>
+                                                )}
                                               </div>
                                               );
                                             })}
@@ -902,7 +1221,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                   }
                                   // ─ Skip columns that are rendered as sub-columns inside items ─
                                   const itemsPos2 = secCols.indexOf(ITEMS_KEY);
-                                  if (itemsPos2 >= 0 && secCols.indexOf(colName) > itemsPos2 && colName !== firstColName) {
+                                  if (isEtapa && itemsPos2 >= 0 && secCols.indexOf(colName) > itemsPos2 && colName !== firstColName) {
                                     return null; // already rendered inside each item
                                   }
                                   // ─ Bloque columna normal ─
@@ -934,7 +1253,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                               /* ── First col: each value is a CONTAINER with nested items ── */
                                               <>
                                                 {vals.map((val, valIdx) => {
-                                                  const m = metaArr[valIdx] || { tipo: 'hasta', horas: 0 };
+                                                  const m = metaArr[valIdx] || { tipo: 'hasta', horas: 1 };
                                                   const horasEn = (m as any).horas_en || 'linea'; // 'linea' | 'actividad'
                                                   // Items belonging to this first-col value
                                                   const allItems = act.items || [];
@@ -961,16 +1280,20 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                         {horasEn === 'linea' && (
                                                           <HourLimitControl
                                                             type={m.tipo || 'hasta'}
-                                                            hours={m.horas}
+                                                            hours={m.tipo === 'porcentaje' ? ((m as any).porcentaje_pta ?? 1) : m.horas}
                                                             minHours={(m as any).horas_min}
                                                             onTypeChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'tipo', value)}
-                                                            onHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas', value)}
+                                                            onHoursChange={value => m.tipo === 'porcentaje'
+                                                              ? updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'porcentaje_pta', value)
+                                                              : updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas', value)}
                                                             onMinHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas_min', value)}
                                                             compact
                                                           />
                                                         )}
                                                         <button onClick={() => removeValorColumna(sec.key, aIdx, colName, valIdx)}
-                                                          className="w-6 h-6 shrink-0 flex items-center justify-center rounded text-slate-300 hover:text-red-500 transition-colors self-end">
+                                                          className="config-inline-delete self-end"
+                                                          title={`Eliminar valor de ${colName}`}
+                                                          aria-label={`Eliminar valor de ${colName}`}>
                                                           <Trash2 className="w-3 h-3" />
                                                         </button>
                                                       </div>
@@ -1003,12 +1326,11 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                       </div>
                                                       {/* ── Nested items (activities) for this value ── */}
                                                       <div className="px-3 py-2">
-                                                        <span className="text-[9px] font-bold text-violet-400 uppercase tracking-wider">Actividad / Ítem</span>
+                                                        <span className="text-[9px] font-bold text-violet-500 uppercase tracking-wider">{getStructureLabels(sec.key).items}</span>
                                                         {myItems.length > 0 && (
                                                           <div className="mt-1 space-y-1">
                                                             {myItems.map((item: any, localIdx: number) => {
                                                               const globalIdx = myItemIndices[localIdx];
-                                                              const itemColVals = item.col_valores || {};
                                                               return (
                                                                 <div key={globalIdx} className="config-activity-entry space-y-2">
                                                                   <div className="config-activity-main-row flex items-center gap-2 p-1.5 rounded-md border transition-all">
@@ -1020,55 +1342,33 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                                     {horasEn === 'actividad' && (
                                                                       <HourLimitControl
                                                                         type={item.tipo || 'fija'}
-                                                                        hours={item.horas}
+                                                                        hours={item.tipo === 'porcentaje' ? (item.porcentaje_pta ?? 1) : item.horas}
                                                                         minHours={(item as any).horas_min}
                                                                         onTypeChange={value => updateItem(sec.key, aIdx, globalIdx, 'tipo', value)}
-                                                                        onHoursChange={value => updateItem(sec.key, aIdx, globalIdx, 'horas', value)}
+                                                                        onHoursChange={value => item.tipo === 'porcentaje'
+                                                                          ? updateItem(sec.key, aIdx, globalIdx, 'porcentaje_pta', Math.min(100, Math.max(1, Number(value) || 1)))
+                                                                          : updateItem(sec.key, aIdx, globalIdx, 'horas', value)}
                                                                         onMinHoursChange={value => updateItem(sec.key, aIdx, globalIdx, 'horas_min', value)}
                                                                         compact
                                                                       />
                                                                     )}
                                                                     <button onClick={() => removeItem(sec.key, aIdx, globalIdx)}
-                                                                      className="w-5 h-5 shrink-0 flex items-center justify-center rounded text-slate-300 hover:text-red-500 transition-colors">
+                                                                      className="config-inline-delete"
+                                                                      title="Eliminar actividad"
+                                                                      aria-label="Eliminar actividad">
                                                                       <Trash2 className="w-2.5 h-2.5" />
                                                                     </button>
                                                                   </div>
-                                                                  {/* ── Per-item sub-columns (Evidencia, etc.) ── */}
-                                                                  {subCols3.map(sc => {
-                                                                    const scVals = itemColVals[sc] || [];
-                                                                    return (
-                                                                      <div key={`${globalIdx}-${sc}`} className="config-detail-panel ml-6 mr-1">
-                                                                        <div className="border border-slate-100 rounded-md overflow-hidden bg-white">
-                                                                          <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-50/60 border-b border-slate-100">
-                                                                            <Tag className="w-2 h-2 text-slate-300 shrink-0" />
-                                                                            <span className="flex-1 text-[8px] font-bold text-slate-400 uppercase tracking-wider">{sc}</span>
-                                                                            <button onClick={() => addItemColVal(sec.key, aIdx, globalIdx, sc)}
-                                                                              className="text-[8px] text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-0.5 transition-colors">
-                                                                              <Plus className="w-2 h-2" /> Agregar
-                                                                            </button>
-                                                                          </div>
-                                                                          {scVals.length > 0 ? (
-                                                                            <div className="p-1 space-y-0.5">
-                                                                              {scVals.map((sv: string, svIdx: number) => (
-                                                                                <div key={svIdx} className="flex items-center gap-1">
-                                                                                  <input type="text" value={sv}
-                                                                                    onChange={e => updateItemColVal(sec.key, aIdx, globalIdx, sc, svIdx, e.target.value)}
-                                                                                    placeholder={`${sc}...`}
-                                                                                    className="flex-1 bg-white border border-slate-200 text-slate-600 text-[10px] rounded px-1.5 py-0.5 focus:ring-1 focus:ring-blue-500/20 outline-none" />
-                                                                                  <button onClick={() => removeItemColVal(sec.key, aIdx, globalIdx, sc, svIdx)}
-                                                                                    className="w-4 h-4 shrink-0 flex items-center justify-center rounded text-slate-300 hover:text-red-500 transition-colors">
-                                                                                    <X className="w-2 h-2" />
-                                                                                  </button>
-                                                                                </div>
-                                                                              ))}
-                                                                            </div>
-                                                                          ) : (
-                                                                            <div className="px-2 py-0.5 text-[9px] text-slate-300 italic">Sin {sc.toLowerCase()}</div>
-                                                                          )}
-                                                                        </div>
-                                                                      </div>
-                                                                    );
-                                                                  })}
+                                                                  {/* ── Columnas de detalle anidadas en escalera ── */}
+                                                                  {subCols3.length > 0 && (
+                                                                    <div className="ml-6 mr-1">
+                                                                      <DetailColumnChain
+                                                                        item={item}
+                                                                        chain={subCols3}
+                                                                        onItemChange={next => replaceItem(sec.key, aIdx, globalIdx, next)}
+                                                                      />
+                                                                    </div>
+                                                                  )}
                                                                 </div>
                                                               );
                                                             })}
@@ -1104,7 +1404,9 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                       className="w-full bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-blue-500/20 outline-none" />
                                                   </div>
                                                   <button onClick={() => removeValorColumna(sec.key, aIdx, colName, valIdx)}
-                                                    className="w-6 h-6 shrink-0 flex items-center justify-center rounded text-slate-300 hover:text-red-500 transition-colors">
+                                                    className="config-inline-delete"
+                                                    title={`Eliminar valor de ${colName}`}
+                                                    aria-label={`Eliminar valor de ${colName}`}>
                                                     <Trash2 className="w-3 h-3" />
                                                   </button>
                                                 </div>
@@ -1142,7 +1444,11 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
       <DetailColumnModal
         open={!!colModal}
         value={colNombre}
-        existingColumns={colModal ? getSeccionColumnas(colModal.secKey).filter(column => column !== ITEMS_KEY) : []}
+        existingColumns={colModal ? [
+          getStructureLabels(colModal.secKey).root,
+          getStructureLabels(colModal.secKey).items,
+          ...getSeccionColumnas(colModal.secKey).filter(column => column !== ITEMS_KEY),
+        ] : []}
         onChange={setColNombre}
         onClose={() => { setColModal(null); setColNombre('Evidencia'); }}
         onConfirm={confirmAddColumna}

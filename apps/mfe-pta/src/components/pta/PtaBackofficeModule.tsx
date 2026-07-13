@@ -64,6 +64,7 @@ import {
   type PTAComponentKey,
   hasAnyComponentApprovalData,
 } from './shared/ptaComponentPermissions';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import '../../styles/pta-world-class.css';
 
 // ══ Lazy-loaded components (code splitting — loaded only when their tab/view is active) ══
@@ -121,6 +122,7 @@ const ESTADOS_REGISTRO_FILTRO = [
   { key: 'Pendiente Gestión Profesoral', label: 'Pendiente G. Profesoral' },
   { key: 'Aprobado', label: 'Aprobados' },
   { key: 'En Firme', label: 'En Firme' },
+  { key: 'Finalizado', label: 'Finalizados' },
   { key: 'Rechazado', label: 'Rechazados' },
   { key: 'Devuelto', label: 'Devueltos' },
 ];
@@ -137,6 +139,7 @@ const ESTADOS_REGISTRO_OPTIONS = [
   { key: 'CONCERTADO', label: 'Concertado' },
   { key: 'ESCALADO_SNA', label: 'Escalado SNA' },
   { key: 'RESUELTO_SNA', label: 'Resuelto SNA' },
+  { key: 'AJUSTE_REQUERIDO', label: 'Ajuste requerido' },
   { key: 'PENDIENTE_APROBACION', label: 'Pendiente aprobación' },
   { key: 'Pendiente Jefatura', label: 'Pendiente Jefatura' },
   { key: 'Pendiente Decanatura', label: 'Pendiente Decanatura' },
@@ -145,6 +148,7 @@ const ESTADOS_REGISTRO_OPTIONS = [
   { key: 'En Firme', label: 'En Firme' },
   { key: 'RADICADO', label: 'Radicado' },
   { key: 'EN_EJECUCION', label: 'En ejecución' },
+  { key: 'Finalizado', label: 'Finalizado' },
   { key: 'Terminado', label: 'Terminado' },
   { key: 'Rechazado', label: 'Rechazado' },
   { key: 'Devuelto', label: 'Devuelto' },
@@ -191,33 +195,7 @@ function sortPeriodsByCreation(periods: any[]) {
 }
 
 function getStatusConfig(estado: string) {
-  switch (estado) {
-    case 'BORRADOR': 
-    case 'Borrador': return { bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' };
-    case 'PROPUESTO_POR_DIRECCION': return { bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' };
-    case 'NOTIFICADO_DOCENTE': return { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' };
-    case 'EN_CONCERTACION': 
-    case 'OBJETADO_DOCENTE': 
-    case 'MODIFICADO_DOCENTE': return { bg: '#F3E8FF', color: '#6B21A8', border: '#DDD6FE' };
-    case 'CONCERTADO': return { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7' };
-    case 'ESCALADO_SNA': return { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5' };
-    case 'PENDIENTE_APROBACION':
-    case 'Pendiente Jefatura': return { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' };
-    case 'Pendiente Decanatura': return { bg: '#DBEAFE', color: '#1E40AF', border: '#93C5FD' };
-    case 'Pendiente Gestión Profesoral': return { bg: '#E0E7FF', color: '#3730A3', border: '#A5B4FC' };
-    case 'Aprobado':
-    case 'APROBADO': return { bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7' };
-    case 'Finalizado':
-    case 'FINALIZADO': return { bg: '#DCFCE7', color: '#14532D', border: '#22C55E' };
-    case 'En Firme':
-    case 'EN_FIRME':
-    case 'RADICADO': return { bg: '#047857', color: '#FFFFFF', border: '#059669' };
-    case 'Rechazado': return { bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5' };
-    case 'Devuelto': return { bg: '#FFF7ED', color: '#9A3412', border: '#FDBA74' };
-    case 'Terminado':
-    case 'TERMINADO': return { bg: '#E5E7EB', color: '#374151', border: '#D1D5DB' };
-    default: return { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' };
-  }
+  return getPtaStatusVisual(estado);
 }
 
 function getNextState(current: string): string {
