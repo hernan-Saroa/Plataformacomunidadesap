@@ -230,6 +230,13 @@ function getPTAPercentage(activity: any): number {
   return Number.isFinite(parsed) ? Math.min(100, Math.max(1, parsed)) : 1;
 }
 
+function isFullPTAActivity(activity: any): boolean {
+  return Boolean(activity?.consumeTotalidad) || (
+    String(activity?.tipo || '').trim().toLowerCase() === 'porcentaje' &&
+    getPTAPercentage(activity) === 100
+  );
+}
+
 function getPercentageHours(activity: any, horasAProgramar: number): number {
   return Math.round(Math.max(0, Number(horasAProgramar) || 0) * getPTAPercentage(activity) / 100);
 }
@@ -304,7 +311,7 @@ function getAcademicoAdminConstraint(activity: any, rules: any, horasAProgramar:
   const id = String(activity?.id || activity?.actividad_id || '');
   const catalogMax = Number(activity?.max_horas);
 
-  if (activity?.consumeTotalidad) {
+  if (isFullPTAActivity(activity)) {
     return buildHourConstraint(horasAProgramar, horasAProgramar, false, 'exclusive');
   }
 
@@ -517,6 +524,34 @@ function getRootActivityHourType(activity: any): 'fija' | 'hasta' | 'intervalo' 
   return type === 'fija' || type === 'intervalo' || type === 'porcentaje' ? type : 'hasta';
 }
 
+/**
+ * Horas que una actividad de extensión necesita reservar apenas se selecciona.
+ * Sirve para no ofrecer configuraciones exactas/porcentuales que ya no caben en
+ * el saldo del componente. Los topes "hasta" y por unidad pueden comenzar en 0.
+ */
+function getExtensionInitialRequiredHours(
+  activity: any,
+  section: ExtensionSectionConfig | undefined,
+  horasAProgramar: number,
+): number {
+  if (extensionActivityUsesItems(section, activity)) {
+    if (!Array.isArray(activity?.items)) return 0;
+    return activity.items.reduce((total: number, item: any) => {
+      const type = String(item?.tipo || 'fija').toLowerCase();
+      if (type === 'porcentaje') return total + getPercentageHours(item, horasAProgramar);
+      if (type === 'fija') return total + Math.max(0, Number(item?.horas) || 0);
+      if (type === 'intervalo') return total + Math.max(0, Number(item?.min) || 0);
+      return total;
+    }, 0);
+  }
+
+  const type = getRootActivityHourType(activity);
+  if (type === 'porcentaje') return getPercentageHours(activity, horasAProgramar);
+  if (type === 'fija') return Math.max(0, Number(activity?.max_horas) || 0);
+  if (type === 'intervalo') return Math.max(1, Number(activity?.min_horas) || 1);
+  return 1;
+}
+
 const EXT_SECTION_ALIASES: Record<string, string> = {
   laboratorio_innovacion: 'fortalecimiento',
   investigacion_aplicada: 'fortalecimiento',
@@ -554,9 +589,7 @@ function flattenCompV2Catalog(arr: any[], fullPTAFromPercentage = false): any[] 
     min_horas: a.min_horas,
     tipo: a.tipo,
     porcentaje_pta: a.porcentaje_pta,
-    consumeTotalidad: !!a.consumeTotalidad || (
-      fullPTAFromPercentage && String(a.tipo || '').toLowerCase() === 'porcentaje' && getPTAPercentage(a) === 100
-    ),
+    consumeTotalidad: !!a.consumeTotalidad || (fullPTAFromPercentage && isFullPTAActivity(a)),
   }));
 }
 
@@ -1047,9 +1080,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const catalog = actAcadAdmin.find((activity: any) => activity.id === item.actividad_id);
           if (!catalog) return item;
           const constraint = getAcademicoAdminConstraint(catalog, ptaRules, horasAProgramar);
-          if ((constraint.mode === 'fixed' || constraint.mode === 'percentage') && Number(item.horas) !== constraint.max) {
+          const consumesFullPTA = isFullPTAActivity(catalog);
+          if (
+            ((constraint.mode === 'fixed' || constraint.mode === 'percentage' || constraint.mode === 'exclusive') && Number(item.horas) !== constraint.max) ||
+            Boolean(item.consumeTotalidad) !== consumesFullPTA ||
+            item.nombre !== catalog.nombre
+          ) {
             changed = true;
-            return { ...item, horas: constraint.max };
+            return {
+              ...item,
+              nombre: catalog.nombre,
+              horas: constraint.editable ? item.horas : constraint.max,
+              consumeTotalidad: consumesFullPTA,
+            };
           }
           return item;
         });
@@ -1428,21 +1471,72 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return hInvestigacion_raw;
   }, [hInvestigacion_raw, invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
 
+  // La dedicación exclusiva prevalece sobre la bolsa no docente; Docencia mantiene
+  // su cálculo independiente y puede producir carga adicional/prorrateo.
+  const actividadTotalidadGuardada = academicoAdmin.find(item => {
+    const catalog = actAcadAdmin.find((activity: any) => activity.id === item.actividad_id);
+    return isFullPTAActivity(catalog || item);
+  });
+  const actividadTotalidadCatalogo = actividadTotalidadGuardada
+    ? actAcadAdmin.find((activity: any) => activity.id === actividadTotalidadGuardada.actividad_id)
+    : undefined;
+  const actividadTotalidad = actividadTotalidadGuardada
+    ? {
+        ...actividadTotalidadGuardada,
+        nombre: actividadTotalidadCatalogo?.nombre || actividadTotalidadGuardada.nombre,
+        horas: horasAProgramar,
+        consumeTotalidad: true,
+      }
+    : undefined;
+  const hasFullPTAActivity = Boolean(actividadTotalidad);
+
+  // El 100% reemplaza la bolsa conjunta de Investigación, Extensión y
+  // Complementarias. Docencia es independiente y se conserva. La limpieza es
+  // deliberada para que no queden formularios parciales ocultos en el borrador.
+  useEffect(() => {
+    if (!actividadTotalidadGuardada) return;
+
+    setInvProyecto(previous => {
+      const alreadyEmpty = !previous.nombre && !previous.codigo && !previous.grupo && !previous.linea &&
+        !previous.rol && !previous.horas_solicitadas && !previous.resolucion_nombre &&
+        !previous.resolucion_archivo && !previous.resolucion_archivo_url;
+      return alreadyEmpty ? previous : {
+        nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0,
+        fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null,
+        resolucion_archivo_url: '',
+      };
+    });
+    setInvActividades(previous => previous.length > 0 ? [] : previous);
+    setExtActividades(previous => previous.length > 0 ? [] : previous);
+    setComplementarias(previous => previous.length > 0 ? [] : previous);
+    setAcademicoAdmin(previous => {
+      const selected = previous.find(item => item.id === actividadTotalidadGuardada.id);
+      if (!selected) return previous;
+      const catalog = actAcadAdmin.find((activity: any) => activity.id === selected.actividad_id);
+      const normalized = {
+        ...selected,
+        nombre: catalog?.nombre || selected.nombre,
+        horas: horasAProgramar,
+        consumeTotalidad: true,
+      };
+      const isAlreadyNormalized = previous.length === 1 &&
+        previous[0].id === normalized.id && previous[0].nombre === normalized.nombre &&
+        Number(previous[0].horas) === horasAProgramar && previous[0].consumeTotalidad === true;
+      return isAlreadyNormalized ? previous : [normalized];
+    });
+  }, [actividadTotalidadGuardada?.id, actAcadAdmin, horasAProgramar]);
+
   const docProrr = hDocencia;
-  const invProrr = hInvestigacion;
-  const extProrr = hExtension;
-  const compProrr = hComplementarias;
-  const acadProrr = hAcademicoAdmin;
+  const invProrr = hasFullPTAActivity ? 0 : hInvestigacion;
+  const extProrr = hasFullPTAActivity ? 0 : hExtension;
+  const compProrr = hasFullPTAActivity ? 0 : hComplementarias;
+  const acadProrr = hasFullPTAActivity ? horasAProgramar : hAcademicoAdmin;
 
   const totalHoras = docProrr + invProrr + extProrr + compProrr + acadProrr;
   const horasRestantes = horasAProgramar - totalHoras;
   const porcentaje = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
   // Horas por encima del límite programable (0 si no hay exceso).
   const horasExceso = Math.max(0, totalHoras - horasAProgramar);
-
-  // Actividad de la sección académico-administrativa que consume el 100% del PTA.
-  // Ya NO bloquea la vista; solo se usa para exención de validaciones de envío.
-  const actividadTotalidad = academicoAdmin.find(a => a.consumeTotalidad);
 
   const hasDocencia = asignaturas.length > 0;
 
@@ -1465,7 +1559,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
   const maxDocenciaLimit = getPositiveRuleNumber(ptaRules?.max_horas_docencia_global ?? ptaRules?.horas_base_carrera_003, 800);
   const maxExtGlobalHours = getPositiveRuleNumber(ptaRules?.max_horas_extension_global ?? ptaRules?.ext_max_horas_enlace, 200);
-  const maxExtLimit = maxExtGlobalHours;
+  const maxExtLimit = Math.min(
+    maxExtGlobalHours,
+    horasAProgramar * (getPositiveRuleNumber(ptaRules?.max_pct_extension, 25) / 100),
+  );
   // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
   const maxInvLimit = getPositiveRuleNumber(ptaRules?.max_horas_investigacion_global, 400);
   // Límite Complementarias: mínimo entre el tope absoluto (ej. 200h) y el porcentaje
@@ -1569,11 +1666,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     academicoAdmin.forEach(a => {
       const cat = actAcadAdmin.find((ac: any) => ac.id === a.actividad_id) || a;
       const constraint = getAcademicoAdminConstraint(cat, ptaRules, horasAProgramar);
-      const error = getConstraintErrorMessage(a.nombre || cat.nombre || a.actividad_id, Number(a.horas || 0), constraint);
+      const activityHours = isFullPTAActivity(cat) ? horasAProgramar : Number(a.horas || 0);
+      const error = getConstraintErrorMessage(cat.nombre || a.nombre || a.actividad_id, activityHours, constraint);
       const isMisiones = cat?.nombre?.includes('Misiones');
       if (error) warns.push(error);
-      if ((a.consumeTotalidad || isMisiones) && (!a.descripcion || a.descripcion.trim().length < 3)) {
-        warns.push(`La actividad "${a.nombre}" requiere obligatoriamente el Número de Acto Administrativo o Comunicación Oficial en el soporte.`);
+      if ((isFullPTAActivity(cat) || isMisiones) && (!a.descripcion || a.descripcion.trim().length < 3)) {
+        warns.push(`La actividad "${cat?.nombre || a.nombre}" requiere obligatoriamente el Número de Acto Administrativo o Comunicación Oficial en el soporte.`);
       }
     });
     if (!actividadTotalidad && hAcademicoAdmin > maxAadmLimit) {
@@ -1727,6 +1825,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const tieneProyecto = !!(invProyecto.nombre && invProyecto.nombre.trim());
 
   const handleAddInvActividad = () => {
+    if (hasFullPTAActivity) return;
     // Validar tope general (con o sin rol) antes de dejar agregar fila
     if (invProyecto.rol) {
       const maxRol = rolesHorasMap[invProyecto.rol] || Infinity;
@@ -1810,6 +1909,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // ═══ HANDLERS: EXTENSIÓN ═══════════════════════════════════════════
 
   const handleAddExtActividad = (seccion: string) => {
+    if (hasFullPTAActivity) return;
     setExtActividades(prev => [...prev, {
       id: Date.now(), seccion, actividad_id: '', nombre: '', horas: 0, horas_ejecutadas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
@@ -1992,6 +2092,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // ═══ HANDLERS: COMPLEMENTARIAS ═════════════════════════════════════
 
   const handleAddComplementaria = () => {
+    if (hasFullPTAActivity) return;
+    if (maxCompLimit - hComplementarias - hAcademicoAdmin <= 0) {
+      toast.info('La bolsa de Complementarias ya no tiene horas disponibles.');
+      return;
+    }
     if (complementarias.length >= 17) {
       toast.error('Máximo 17 actividades complementarias por PTA');
       return;
@@ -2012,7 +2117,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const otherOrdinarySum = prev
             .filter(x => x.id !== id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
             .reduce((sum, x) => sum + (x.horas || 0), 0);
-          const remainingLimit = isSindicato ? Infinity : Math.max(0, maxCompLimit - otherOrdinarySum);
+          const remainingLimit = isSindicato
+            ? Infinity
+            : Math.max(0, maxCompLimit - hAcademicoAdmin - otherOrdinarySum);
           const trueRemainingLimit = remainingLimit;
           const constraint = getComplementariaConstraint(cat, ptaRules, horasAProgramar);
           const suggestedHours = getInitialConstraintValue(constraint);
@@ -2034,7 +2141,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const otherOrdinarySum = prev
             .filter(x => x.id !== id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
             .reduce((sum, x) => sum + (x.horas || 0), 0);
-          const remainingLimit = isSindicato ? Infinity : Math.max(0, maxCompLimit - otherOrdinarySum);
+          const remainingLimit = isSindicato
+            ? Infinity
+            : Math.max(0, maxCompLimit - hAcademicoAdmin - otherOrdinarySum);
           const trueRemainingLimit = remainingLimit;
           const boundedConstraint = constraint.editable && canSelectWithRemaining(constraint, trueRemainingLimit)
             ? { ...constraint, max: Math.min(constraint.max, trueRemainingLimit) }
@@ -2050,6 +2159,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // ═══ HANDLERS: ACADEMICO ADMINISTRATIVO ═══════════════════════════
 
   const handleAddAcademicoAdmin = () => {
+    if (hasFullPTAActivity) return;
+    if (Math.min(
+      maxAadmLimit - hAcademicoAdmin,
+      maxCompLimit - hComplementarias - hAcademicoAdmin,
+    ) <= 0) {
+      toast.info('La bolsa de Complementarias ya no tiene horas disponibles.');
+      return;
+    }
     setAcademicoAdmin(prev => [...prev, {
       id: Date.now(), actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
@@ -2062,20 +2179,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const otherAcadSum = prev
         .filter(x => x.id !== id)
         .reduce((sum, x) => sum + (x.horas || 0), 0);
-      const acadRemainingLimit = Math.max(0, maxAadmLimit - otherAcadSum);
+      const acadRemainingLimit = Math.max(0, Math.min(
+        maxAadmLimit - otherAcadSum,
+        maxCompLimit - hComplementarias - otherAcadSum,
+      ));
       if (field === 'actividad_id') {
         const cat = actAcadAdmin.find((ac: any) => ac.id === value);
         if (cat) {
           const constraint = getAcademicoAdminConstraint(cat, ptaRules, horasAProgramar);
           const suggestedHours = getInitialConstraintValue(constraint);
+          const consumesFullPTA = isFullPTAActivity(cat);
 
           updated.nombre = cat.nombre;
-          updated.consumeTotalidad = cat.consumeTotalidad || false;
+          updated.consumeTotalidad = consumesFullPTA;
           updated.horas = constraint.editable && canSelectWithRemaining(constraint, acadRemainingLimit)
             ? Math.min(suggestedHours, acadRemainingLimit)
             : suggestedHours;
-          // Una actividad del 100% ya NO limpia ni bloquea las demás secciones: solo
-          // consume las horas de la bolsa y el prorrateo existente maneja el excedente.
+          // No se eliminan datos de las demás secciones: mientras esta actividad esté
+          // seleccionada, su dedicación exclusiva prevalece en el total efectivo.
         } else {
           updated.nombre = '';
           updated.horas = 0;
@@ -2085,7 +2206,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (field === 'horas') {
         const cat = actAcadAdmin.find((ac: any) => ac.id === updated.actividad_id);
         if (cat) {
-          const constraint = getAcademicoAdminConstraint({ ...cat, consumeTotalidad: updated.consumeTotalidad }, ptaRules, horasAProgramar);
+          const constraint = getAcademicoAdminConstraint(cat, ptaRules, horasAProgramar);
           const boundedConstraint = constraint.editable && canSelectWithRemaining(constraint, acadRemainingLimit)
             ? { ...constraint, max: Math.min(constraint.max, acadRemainingLimit) }
             : constraint;
@@ -2139,7 +2260,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   }, [asignaturas, defaultTerritorial]);
 
   const validarComposicionParaEnvio = useCallback(() => {
-    const tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
+    const tieneTotalidad = hasFullPTAActivity;
     if (tieneTotalidad) return true;
 
     if (hComplementarias <= 0) {
@@ -2155,7 +2276,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     return true;
-  }, [academicoAdmin, hComplementarias, hInvestigacion, hExtension]);
+  }, [hasFullPTAActivity, hComplementarias, hInvestigacion, hExtension]);
 
   const handleSave = async (enviar = false, silent = false) => {
     setSaving(true);
@@ -2163,7 +2284,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (!silent) { autoSaveCountdownRef.current = 120; setAutoSaveCountdown(120); }
 
     // Validación mínima docencia: al menos 1 asignatura con catálogo seleccionado
-    const _tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
+    const _tieneTotalidad = hasFullPTAActivity;
     const _asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
     if (enviar && !_tieneTotalidad && _asignaturasValidas.length === 0) {
       toast.error(asignaturas.length > 0
@@ -2310,7 +2431,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           .map(c => ({ ...c, seccion: COMP_SECCION_DOCENCIA })),
         ...academicoAdmin
           .filter(c => (c.actividad_id && c.actividad_id !== '') || (c.nombre && c.horas > 0))
-          .map(c => ({ ...c, seccion: COMP_SECCION_AADM })),
+          .map(c => {
+            const catalog = actAcadAdmin.find((activity: any) => activity.id === c.actividad_id);
+            const consumesFullPTA = isFullPTAActivity(catalog || c);
+            return {
+              ...c,
+              nombre: catalog?.nombre || c.nombre,
+              horas: consumesFullPTA ? horasAProgramar : c.horas,
+              consumeTotalidad: consumesFullPTA,
+              seccion: COMP_SECCION_AADM,
+            };
+          }),
       ],
       // Se envía vacío explícito para que el backend borre cualquier academico_admin previo.
       academico_admin: [],
@@ -2426,7 +2557,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const isEditable = isAdminEdit || estado === 'Borrador' || originalEstado === 'Devuelto' || isEnRevisionDocente;
 
   const validateEnvioDocente = useCallback(() => {
-    const tieneTotalidad = academicoAdmin.some(a => a.consumeTotalidad);
+    const tieneTotalidad = hasFullPTAActivity;
 
     const asignaturasValidas = asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== '');
     if (!tieneTotalidad && asignaturasValidas.length === 0) {
@@ -2494,7 +2625,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     return true;
-  }, [academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
+  }, [hasFullPTAActivity, academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, invWarnings, extWarnings, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -2611,11 +2742,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     (CAMPOS_POR_SECCION[key] || []).some(f => camposModificados[f]);
 
   const allSections = [
-    { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: hDocencia, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: `${maxDocenciaLimit}h`, excede: docExcede, bloqueada: !!actividadTotalidad, modificada: seccionModificada('docencia') },
-    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: hInvestigacion, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${Math.round(maxInvLimit)}h`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
-    { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: hExtension, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${maxExtLimit}h`, excede: extExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('extension') },
+    { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: docProrr, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: `${maxDocenciaLimit}h`, excede: docExcede, bloqueada: false, modificada: seccionModificada('docencia') },
+    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: invProrr, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${Math.round(maxInvLimit)}h`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
+    { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: extProrr, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${maxExtLimit}h`, excede: extExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('extension') },
     //{ key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${maxCompLimit}h`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
-    { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length + academicoAdmin.length, hours: hComplementarias + hAcademicoAdmin, prorr: compProrr + acadProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede || acadExcede, bloqueada: false, modificada: seccionModificada('complementarias') },
+    { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length + academicoAdmin.length, hours: compProrr + acadProrr, prorr: compProrr + acadProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede || acadExcede, bloqueada: false, modificada: seccionModificada('complementarias') },
   ];
   const sections = isComponentRestricted
     ? allSections.filter(s => canEditFormSection(s.key))
@@ -3253,7 +3384,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <div className="w-full bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-[0_2px_12px_rgb(0,0,0,0.03)] p-1.5">
                 <div className="flex flex-wrap gap-1">
                   {sections.map(s => (
-                    <button key={s.key} onClick={() => setActiveSection(s.key)}
+                    <button key={s.key} disabled={s.bloqueada} onClick={() => { if (!s.bloqueada) setActiveSection(s.key); }}
                       className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border-none text-[12px] transition-all duration-200 cursor-pointer relative ${
                         activeVisibleSection === s.key
                           ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-bold text-gray-900'
@@ -4224,6 +4355,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const extCatalogItems = Array.isArray(catExt?.items) ? catExt.items : [];
                         const secMult = sectionConfig?.multiplicador || 1;
                         const rootHourType = getRootActivityHourType(catExt);
+                        const otherExtensionHours = extActividades
+                          .filter(item => item.id !== ext.id)
+                          .reduce((sum, item) => sum + (Number(item.horas) || 0), 0);
+                        const availableExtensionHours = Math.max(0, maxExtLimit - otherExtensionHours);
                         return (
                           <div key={ext.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
                             {isEditable && (
@@ -4242,7 +4377,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   value={ext.actividad_id}
                                   disabled={!isEditable}
                                   onChange={v => handleExtActChange(ext.id, 'actividad_id', v)}
-                                  options={getExtCatalog(currentExtSubseccion).map((a: any) => {
+                                  options={getExtCatalog(currentExtSubseccion).filter((a: any) => {
+                                    // Una selección ya guardada siempre permanece visible para poder
+                                    // corregirla. Las nuevas opciones solo se ofrecen si su reserva
+                                    // mínima cabe en el saldo actual de Extensión.
+                                    if (String(a?.id) === String(ext.actividad_id)) return true;
+                                    const optionSection = extSecciones.find(
+                                      s => s.key === normalizeExtensionSectionKey(currentExtSubseccion),
+                                    );
+                                    return getExtensionInitialRequiredHours(a, optionSection, horasAProgramar)
+                                      <= availableExtensionHours;
+                                  }).map((a: any) => {
                                     const optionSection = extSecciones.find(s => s.key === normalizeExtensionSectionKey(currentExtSubseccion));
                                     const hasItems = extensionActivityUsesItems(optionSection, a);
                                     if (hasItems) {
@@ -4495,8 +4640,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 <SectionHeader title="Actividades Complementarias a la Docencia" subtitle={`${hComplementarias}h programadas (máx ${maxCompLimit}h — ${ptaRules?.max_pct_complementarias || 25}% o ${ptaRules?.max_horas_complementarias_global ?? 200}h global, máx 17 act.)`}
                   color={PTA_COLORS.COMPLEMENTARIAS} icon={Briefcase} excede={compExcede}
                   action={(() => {
-                    if (!isEditable || complementarias.length >= 17) return undefined;
-                    const cupoComp = Math.max(0, maxCompLimit - hComplementarias);
+                    if (!isEditable || hasFullPTAActivity || complementarias.length >= 17) return undefined;
+                    const cupoComp = Math.max(0, maxCompLimit - hComplementarias - hAcademicoAdmin);
                     // Solo ocultar si se alcanzó el tope de complementarias; excedente total es sólo informativo.
                     if (cupoComp <= 0) return undefined;
                     return { label: 'Agregar Actividad', onClick: handleAddComplementaria };
@@ -4543,7 +4688,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                       const otherOrdinarySum = complementarias
                                         .filter(x => x.id !== comp.id && !String(x.nombre).toUpperCase().includes('SINDICATO'))
                                         .reduce((sum, x) => sum + (x.horas || 0), 0);
-                                      const remainingLimit = isSindicato ? Infinity : Math.max(0, maxCompLimit - otherOrdinarySum);
+                                      const remainingLimit = isSindicato
+                                        ? Infinity
+                                        : Math.max(0, maxCompLimit - hAcademicoAdmin - otherOrdinarySum);
                                       const trueRemainingLimit = remainingLimit;
 
                                       if (comp.actividad_id === a.id) return true;
@@ -4605,9 +4752,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <SectionHeader
                   title="Actividades Académico-Administrativas"
-                  subtitle={`${hAcademicoAdmin}h programadas (topes definidos por actividad y soporte)`}
+                  subtitle={`${acadProrr}h programadas (topes definidos por actividad y soporte)`}
                   color={PTA_COLORS.ACAD_ADMIN} icon={Shield} excede={acadExcede}
-                  action={isEditable ? { label: 'Agregar Actividad', onClick: handleAddAcademicoAdmin } : undefined} />
+                  action={isEditable && !hasFullPTAActivity && Math.min(
+                    maxAadmLimit - hAcademicoAdmin,
+                    maxCompLimit - hComplementarias - hAcademicoAdmin,
+                  ) > 0 ? { label: 'Agregar Actividad', onClick: handleAddAcademicoAdmin } : undefined} />
 
                 {!hasDocencia && (
                   <div className="mx-4 md:mx-6 mt-3 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm flex items-start gap-2.5">
@@ -4635,7 +4785,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                       <div>
                         <p className="font-bold mb-0.5">Actividad de dedicación exclusiva (100%)</p>
-                        <p className="text-xs text-blue-800">«{actividadTotalidad.nombre}» consume el 100% del PTA ({horasAProgramar}h). Puedes seguir agregando actividades; el prorrateo ajustará automáticamente el excedente.</p>
+                        <p className="text-xs text-blue-800">«{actividadTotalidad.nombre}» ocupa el 100% de la bolsa de Investigación, Extensión y Complementarias ({horasAProgramar}h). Esas actividades incompatibles se limpiaron; Docencia permanece independiente y sus horas se suman como carga adicional.</p>
                       </div>
                     </div>
                   )}
@@ -4648,9 +4798,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       {academicoAdmin.map(comp => {
                         const acadCat = actAcadAdmin.find((a: any) => a.id === comp.actividad_id) || comp;
                         const acadConstraint = getAcademicoAdminConstraint(acadCat, ptaRules, horasAProgramar);
+                        const acadConsumesFullPTA = isFullPTAActivity(acadCat);
 
                         return (
-                          <div key={comp.id} className={`flex flex-col gap-2 p-3 rounded-lg border relative ${comp.consumeTotalidad ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200 bg-gray-50/50'}`}>
+                          <div key={comp.id} className={`flex flex-col gap-2 p-3 rounded-lg border relative ${acadConsumesFullPTA ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200 bg-gray-50/50'}`}>
                             {isEditable && (
                               <button type="button" onClick={() => setAcademicoAdmin(prev => prev.filter(c => c.id !== comp.id))}
                                 title="Eliminar Actividad Académico-Administrativa"
@@ -4666,12 +4817,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   options={actAcadAdmin
                                     .filter((a: any) => {
                                       // Sin docencia solo se permiten actividades de dedicación exclusiva (100%).
-                                      if (!hasDocencia && !a.consumeTotalidad) return false;
-                                      // Sin más condiciones: se muestran todas las actividades configuradas
-                                      // (el prorrateo/validación se encargan del exceso, no se bloquea la vista).
-                                      return true;
+                                      const isFull = isFullPTAActivity(a);
+                                      if (!hasDocencia && !isFull) return false;
+                                      if (isFull || comp.actividad_id === a.id) return true;
+                                      const otherAcadSum = academicoAdmin
+                                        .filter(item => item.id !== comp.id)
+                                        .reduce((sum, item) => sum + (item.horas || 0), 0);
+                                      const remaining = Math.max(0, Math.min(
+                                        maxAadmLimit - otherAcadSum,
+                                        maxCompLimit - hComplementarias - otherAcadSum,
+                                      ));
+                                      return canSelectWithRemaining(
+                                        getAcademicoAdminConstraint(a, ptaRules, horasAProgramar),
+                                        remaining,
+                                      );
                                     })
-                                    .map((a: any) => ({ value: a.id, label: a.consumeTotalidad ? `⚠ ${a.nombre} (100% PTA)` : `${a.nombre} (${getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar))})` }))}
+                                    .map((a: any) => ({ value: a.id, label: isFullPTAActivity(a) ? `⚠ ${a.nombre} (100% PTA)` : `${a.nombre} (${getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar))})` }))}
                                   placeholder="Seleccionar actividad..." />
                               </div>
                               <div className="w-32">
@@ -4686,17 +4847,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     onChange={v => handleAcadChange(comp.id, 'horas', Number(v))}
                                   />
                                 ) : (
-                                  <ReadonlyField label="Horas" value={comp.consumeTotalidad ? `${horasAProgramar}h (100%)` : `${comp.horas}h`} color={comp.consumeTotalidad ? '#B45309' : PTA_COLORS.ACAD_ADMIN} />
+                                  <ReadonlyField label="Horas" value={acadConsumesFullPTA ? `${horasAProgramar}h (100%)` : `${comp.horas}h`} color={acadConsumesFullPTA ? '#B45309' : PTA_COLORS.ACAD_ADMIN} />
                                 )}
                               </div>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-2">
                               <div className="flex-1">
                                 <FormInput
-                                  label={(comp.consumeTotalidad || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? "Número de Acto Administrativo / Comunicación Oficial *" : "Descripción"}
+                                  label={(acadConsumesFullPTA || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? "Número de Acto Administrativo / Comunicación Oficial *" : "Descripción"}
                                   type="text" value={comp.descripcion} disabled={!isEditable}
-                                  placeholder={(comp.consumeTotalidad || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? "Requerido: Escriba el radicado de soporte..." : "Solo letras..."}
-                                  onChange={v => handleAcadChange(comp.id, 'descripcion', (comp.consumeTotalidad || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? v : v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]/g, ''))} />
+                                  placeholder={(acadConsumesFullPTA || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? "Requerido: Escriba el radicado de soporte..." : "Solo letras..."}
+                                  onChange={v => handleAcadChange(comp.id, 'descripcion', (acadConsumesFullPTA || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? v : v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]/g, ''))} />
                               </div>
                               <div className="w-36">
                                 <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!isEditable}

@@ -688,6 +688,24 @@ export class PtaService {
     const sumComp = compDocencia.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
     const sumAcad = compAadm.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
+    // Una actividad académico-administrativa de dedicación exclusiva sustituye la
+    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia conserva
+    // su cálculo independiente y puede generar horas adicionales/prorrateo.
+    const exclusiveActivities = compAadm.filter((activity: any) => activity?.consumeTotalidad === true);
+    if (exclusiveActivities.length > 0) {
+      const exclusiveHours = Math.max(
+        ...exclusiveActivities.map((activity: any) => Number(activity?.horas) || 0),
+      );
+      return {
+        sumDocencia,
+        sumInv: 0,
+        sumExt: 0,
+        sumComp: 0,
+        sumAcad: exclusiveHours,
+        total: sumDocencia + exclusiveHours,
+      };
+    }
+
     const total = sumDocencia + sumInv + sumExt + sumComp + sumAcad;
     return { sumDocencia, sumInv, sumExt, sumComp, sumAcad, total };
   }
@@ -829,7 +847,7 @@ export class PtaService {
     const extCatalog = rules?.ext_actividades && typeof rules.ext_actividades === 'object'
       ? rules.ext_actividades
       : {};
-    for (const activity of (Array.isArray(body?.extension_actividades) ? body.extension_actividades : [])) {
+    for (const activity of (tieneTotalidad ? [] : (Array.isArray(body?.extension_actividades) ? body.extension_actividades : []))) {
       const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
       const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
         .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
@@ -842,6 +860,7 @@ export class PtaService {
       ? rules.comp_actividades_v2
       : {};
     for (const activity of allComp) {
+      if (tieneTotalidad && activity?.consumeTotalidad !== true) continue;
       const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
       const configured = (Array.isArray(compCatalog?.[sectionKey]) ? compCatalog[sectionKey] : [])
         .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
@@ -863,12 +882,18 @@ export class PtaService {
       this.getPositiveRuleNumber(rules, 'horas_base_carrera_003', 800),
     );
     const maxInvestigacion = this.getPositiveRuleNumber(rules, 'max_horas_investigacion_global', 400);
-    const maxExtension = this.getPositiveRuleNumber(
-      rules,
-      'max_horas_extension_global',
-      this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+    const maxExtension = Math.min(
+      this.getPositiveRuleNumber(
+        rules,
+        'max_horas_extension_global',
+        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+      ),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
     );
-    const maxComplementarias = this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200);
+    const maxComplementarias = Math.min(
+      this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_complementarias', 25) / 100),
+    );
 
     const assertComponentLimit = (label: string, value: number, limit: number) => {
       if (value > limit) {
@@ -879,7 +904,7 @@ export class PtaService {
     assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
-    assertComponentLimit('Complementarias', horas.sumComp, maxComplementarias);
+    assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
     const asignaturas = Array.isArray(body?.asignaturas)
       ? body.asignaturas.filter((a: any) => a?.asignatura_id)
