@@ -174,6 +174,101 @@ function normalizeExtensionSectionKey(section: unknown): string {
   return EXTENSION_SECTION_ALIASES[key] || 'fortalecimiento';
 }
 
+const EXTENSION_ITEMS_COLUMN_KEY = '_items_';
+
+function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[] {
+  if (!detailColumns.length) return [];
+  const primaryColumn = detailColumns[0];
+  const primaryValues = Array.isArray(item?.col_valores?.[primaryColumn])
+    ? item.col_valores[primaryColumn]
+    : [];
+  const groups = primaryValues.map((value: any) => {
+    const name = String(value || '').trim();
+    return name ? { name, values: [] as Array<{ column: string; value: string }> } : null;
+  });
+
+  for (let columnIndex = 1; columnIndex < detailColumns.length; columnIndex += 1) {
+    const column = detailColumns[columnIndex];
+    const values = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+    const parentIndexes = Array.isArray(item?.col_parents?.[column]) ? item.col_parents[column] : [];
+    values.forEach((rawValue: any, valueIndex: number) => {
+      const value = String(rawValue || '').trim();
+      if (!value) return;
+      let primaryIndex = Number(parentIndexes[valueIndex] ?? valueIndex);
+      for (let parentColumnIndex = columnIndex - 1; parentColumnIndex > 0; parentColumnIndex -= 1) {
+        const parentColumn = detailColumns[parentColumnIndex];
+        const ancestors = Array.isArray(item?.col_parents?.[parentColumn]) ? item.col_parents[parentColumn] : [];
+        primaryIndex = Number(ancestors[primaryIndex] ?? primaryIndex);
+      }
+      if (!Number.isInteger(primaryIndex) || primaryIndex < 0 || primaryIndex >= groups.length) return;
+      groups[primaryIndex]?.values.push({ column, value });
+    });
+  }
+  return groups.filter((group): group is NonNullable<typeof group> => Boolean(group));
+}
+
+function getExtensionCatalogHourRows(activity: any, section: any): any[] {
+  const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
+  if (columns && columns.length > 0 && columns[0] !== EXTENSION_ITEMS_COLUMN_KEY) {
+    const controllingColumn = columns[0];
+    const itemsPosition = columns.indexOf(EXTENSION_ITEMS_COLUMN_KEY);
+    const detailColumns = itemsPosition >= 0 ? columns.slice(itemsPosition + 1) : [];
+    const values = Array.isArray(activity?.columnas_valores?.[controllingColumn])
+      ? activity.columnas_valores[controllingColumn]
+      : [];
+    const metadata = Array.isArray(activity?.columnas_meta?.[controllingColumn])
+      ? activity.columnas_meta[controllingColumn]
+      : [];
+    const items = Array.isArray(activity?.items) ? activity.items : [];
+    const rows: any[] = [];
+    const rowCount = Math.max(values.length, metadata.length);
+    const decorateItem = (item: any) => ({
+      ...item,
+      _detailValues: detailColumns.flatMap((column: string) => {
+        const columnValues = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+        return columnValues
+          .filter((value: any) => String(value || '').trim())
+          .map((value: any) => ({ column, value: String(value) }));
+      }),
+    });
+    for (let index = 0; index < rowCount; index += 1) {
+      const meta = metadata[index] || {};
+      const rowName = String(values[index] || meta?.nombre || `Fila ${index + 1}`);
+      const childItems = items
+        .filter((item: any) => Number(item?.parent_col_idx ?? 0) === index)
+        .map(decorateItem);
+      if (String(meta?.horas_en || 'linea') === 'actividad') {
+        childItems.forEach((item: any) => rows.push({
+          ...item,
+          nombre: `${rowName} — ${String(item?.nombre || 'Actividad')}`,
+          _detailGroups: [{ name: String(item?.nombre || 'Actividad'), values: item._detailValues || [] }],
+        }));
+      } else {
+        rows.push({
+          ...meta,
+          nombre: rowName,
+          _detailGroups: childItems.map((item: any) => ({
+            name: String(item?.nombre || 'Actividad'),
+            values: item._detailValues || [],
+          })),
+        });
+      }
+    }
+    return rows;
+  }
+  if (columns && columns.length === 0) return [];
+  if (Array.isArray(activity?.items)) {
+    const detailColumns = columns && columns[0] === EXTENSION_ITEMS_COLUMN_KEY
+      ? columns.slice(1)
+      : [];
+    return activity.items.map((item: any) => ({
+      ...item,
+      _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+    }));
+  }
+  return [];
+}
+
 function normalizeExtensionSections(raw: any): any[] {
   const savedByKey = new Map<string, any>();
   if (Array.isArray(raw)) {
@@ -190,6 +285,9 @@ function normalizeExtensionSections(raw: any): any[] {
       ...section,
       color: previous?.color || section.color,
       columnas: Array.isArray(previous?.columnas) ? previous.columnas : (section as any).columnas,
+      columna_raiz_nombre: previous?.columna_raiz_nombre || (section as any).columna_raiz_nombre || 'Componente',
+      columna_raiz_habilitada: previous?.columna_raiz_habilitada ?? (section as any).columna_raiz_habilitada ?? true,
+      columna_items_nombre: previous?.columna_items_nombre || (section as any).columna_items_nombre || 'Actividad / Ítem',
       // El multiplicador (×Factor) es configurable por el admin y debe persistir en guardado/lectura.
       multiplicador: Number.isFinite(savedMult) && savedMult > 0 ? savedMult : section.multiplicador,
     };
@@ -685,6 +783,24 @@ export class PtaService {
     const sumComp = compDocencia.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
     const sumAcad = compAadm.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
+    // Una actividad académico-administrativa de dedicación exclusiva sustituye la
+    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia conserva
+    // su cálculo independiente y puede generar horas adicionales/prorrateo.
+    const exclusiveActivities = compAadm.filter((activity: any) => activity?.consumeTotalidad === true);
+    if (exclusiveActivities.length > 0) {
+      const exclusiveHours = Math.max(
+        ...exclusiveActivities.map((activity: any) => Number(activity?.horas) || 0),
+      );
+      return {
+        sumDocencia,
+        sumInv: 0,
+        sumExt: 0,
+        sumComp: 0,
+        sumAcad: exclusiveHours,
+        total: sumDocencia + exclusiveHours,
+      };
+    }
+
     const total = sumDocencia + sumInv + sumExt + sumComp + sumAcad;
     return { sumDocencia, sumInv, sumExt, sumComp, sumAcad, total };
   }
@@ -800,8 +916,115 @@ export class PtaService {
   }
 
   private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
-    const { aadm: compAadm } = this.readComplementariasSecciones(body);
+    const { all: allComp, aadm: compAadm } = this.readComplementariasSecciones(body);
     const tieneTotalidad = compAadm.some((a: any) => a?.consumeTotalidad === true);
+
+    // Las reglas porcentuales son autoritativas también en servidor. El frontend
+    // calcula el valor para facilitar la edición, pero una petición no puede enviar
+    // una cantidad distinta al porcentaje configurado sobre las horas reales del PTA.
+    const expectedPercentageHours = (activity: any): number | null => {
+      if (String(activity?.tipo || '').toLowerCase() !== 'porcentaje') return null;
+      const percentage = Math.min(100, Math.max(1, Number(activity?.porcentaje_pta) || 1));
+      return Math.round(horasAProgramar * percentage / 100);
+    };
+    const assertPercentageHours = (label: string, submitted: any, configured: any) => {
+      const expected = expectedPercentageHours(configured);
+      if (expected === null) return;
+      const actual = Number(submitted) || 0;
+      if (actual !== expected) {
+        const percentage = Math.min(100, Math.max(1, Number(configured?.porcentaje_pta) || 1));
+        throw new BadRequestException(
+          `La actividad ${label} corresponde al ${percentage}% del PTA y debe registrar ${expected}h.`,
+        );
+      }
+    };
+
+    const extCatalog = rules?.ext_actividades && typeof rules.ext_actividades === 'object'
+      ? rules.ext_actividades
+      : {};
+    const extensionSections = normalizeExtensionSections(rules?.ext_secciones);
+    const extensionComponentLimit = Math.min(
+      this.getPositiveRuleNumber(
+        rules,
+        'max_horas_extension_global',
+        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+      ),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
+    );
+    const configuredRowHours = (row: any): number => {
+      const type = String(row?.tipo || 'fija').toLowerCase();
+      if (type === 'porcentaje') return expectedPercentageHours(row) || 0;
+      if (type === 'fija') return Math.max(0, Number(row?.horas) || 0);
+      if (type === 'intervalo') return Math.max(0, Number(row?.min ?? row?.horas_min) || 0);
+      return 0;
+    };
+    for (const activity of (tieneTotalidad ? [] : (Array.isArray(body?.extension_actividades) ? body.extension_actividades : []))) {
+      const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+      const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        assertPercentageHours(configured?.nombre || activity?.nombre || 'de extensión', activity?.horas, configured);
+        const section = extensionSections.find((item: any) => item?.key === sectionKey);
+        const allConfiguredRows = getExtensionCatalogHourRows(configured, section);
+        const configuredRows = allConfiguredRows
+          .map((row: any, index: number) => ({ row, index }))
+          .filter(({ row }: any) => {
+            const type = String(row?.tipo || 'fija').toLowerCase();
+            if (type === 'porcentaje') return (expectedPercentageHours(row) || 0) > 0;
+            return Number(row?.horas) > 0;
+          });
+        const mandatoryHours = configuredRows.reduce(
+          (sum: number, entry: any) => sum + configuredRowHours(entry.row),
+          0,
+        );
+        const requiresRowSelection = configuredRows.length > 1
+          && mandatoryHours > extensionComponentLimit;
+        if (requiresRowSelection) {
+          const selectedRowIndex = Number(activity?.fila_seleccionada);
+          if (!Number.isInteger(selectedRowIndex)
+            || selectedRowIndex < 0
+            || selectedRowIndex >= allConfiguredRows.length
+            || !configuredRows.some((entry: any) => entry.index === selectedRowIndex)) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} requiere seleccionar una de sus filas horarias.`,
+            );
+          }
+          const selectedRow = allConfiguredRows[selectedRowIndex];
+          const type = String(selectedRow?.tipo || 'fija').toLowerCase();
+          const submittedHours = Number(activity?.horas) || 0;
+          const maxHours = type === 'porcentaje'
+            ? (expectedPercentageHours(selectedRow) || 0)
+            : Math.max(0, Number(selectedRow?.horas) || 0);
+          const minHours = type === 'intervalo'
+            ? Math.max(0, Number(selectedRow?.min ?? selectedRow?.horas_min) || 0)
+            : 0;
+          if ((type === 'fija' || type === 'porcentaje') && submittedHours !== maxHours) {
+            throw new BadRequestException(
+              `La fila ${selectedRow?.nombre || selectedRowIndex + 1} debe registrar exactamente ${maxHours}h.`,
+            );
+          }
+          if ((type === 'hasta' || type === 'intervalo')
+            && (submittedHours < minHours || submittedHours > maxHours)) {
+            throw new BadRequestException(
+              `La fila ${selectedRow?.nombre || selectedRowIndex + 1} debe registrar entre ${minHours}h y ${maxHours}h.`,
+            );
+          }
+        }
+      }
+    }
+
+    const compCatalog = rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      ? rules.comp_actividades_v2
+      : {};
+    for (const activity of allComp) {
+      if (tieneTotalidad && activity?.consumeTotalidad !== true) continue;
+      const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
+      const configured = (Array.isArray(compCatalog?.[sectionKey]) ? compCatalog[sectionKey] : [])
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        assertPercentageHours(configured?.nombre || activity?.nombre || 'complementaria', activity?.horas, configured);
+      }
+    }
 
     if (!tieneTotalidad && horas.total === 0) {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
@@ -816,12 +1039,18 @@ export class PtaService {
       this.getPositiveRuleNumber(rules, 'horas_base_carrera_003', 800),
     );
     const maxInvestigacion = this.getPositiveRuleNumber(rules, 'max_horas_investigacion_global', 400);
-    const maxExtension = this.getPositiveRuleNumber(
-      rules,
-      'max_horas_extension_global',
-      this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+    const maxExtension = Math.min(
+      this.getPositiveRuleNumber(
+        rules,
+        'max_horas_extension_global',
+        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+      ),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
     );
-    const maxComplementarias = this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200);
+    const maxComplementarias = Math.min(
+      this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_complementarias', 25) / 100),
+    );
 
     const assertComponentLimit = (label: string, value: number, limit: number) => {
       if (value > limit) {
@@ -832,7 +1061,7 @@ export class PtaService {
     assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
-    assertComponentLimit('Complementarias', horas.sumComp, maxComplementarias);
+    assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
     const asignaturas = Array.isArray(body?.asignaturas)
       ? body.asignaturas.filter((a: any) => a?.asignatura_id)
@@ -973,8 +1202,83 @@ export class PtaService {
     return `${unique[0]} +${unique.length - 1}`;
   }
 
+  /**
+   * Completa la selección jerárquica de Extensión con textos legibles para las
+   * vistas posteriores al envío. Los PTAs recientes ya guardan esta instantánea;
+   * para registros anteriores se reconstruye desde fila_seleccionada + catálogo.
+   */
+  private async enrichExtensionSelections(dtos: any[]): Promise<void> {
+    if (!dtos.some(dto => Array.isArray(dto?.extension_actividades) && dto.extension_actividades.length > 0)) return;
+
+    const [catalogBySection, sections] = await Promise.all([
+      this.getCatalogoActividadesExtension(),
+      this.getCatalogoSeccionesExtension(),
+    ]);
+    const sectionByKey = new Map(
+      (Array.isArray(sections) ? sections : []).map((section: any) => [
+        normalizeExtensionSectionKey(section?.key),
+        section,
+      ]),
+    );
+
+    for (const dto of dtos) {
+      const activities = Array.isArray(dto?.extension_actividades) ? dto.extension_actividades : [];
+      dto.extension_actividades = activities.map((activity: any) => {
+        const selectedIndex = Number(activity?.fila_seleccionada);
+        if (!Number.isInteger(selectedIndex) || selectedIndex < 0) return activity;
+
+        const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+        const section = sectionByKey.get(sectionKey);
+        const catalog = Array.isArray(catalogBySection?.[sectionKey]) ? catalogBySection[sectionKey] : [];
+        const catalogActivity = catalog.find((item: any) =>
+          String(item?.id || '') === String(activity?.actividad_id || activity?.id || ''),
+        );
+        const selectedRow = catalogActivity
+          ? getExtensionCatalogHourRows(catalogActivity, section)[selectedIndex]
+          : null;
+        if (!selectedRow && activity?.fila_seleccionada_nombre) return activity;
+        if (!selectedRow) return activity;
+
+        const firstColumn = String(section?.columnas?.[0] || '').trim();
+        const selectionLabel = firstColumn === EXTENSION_ITEMS_COLUMN_KEY
+          ? String(section?.columna_items_nombre || 'Actividad / Ítem').trim()
+          : (!firstColumn || /^_.*_$/.test(firstColumn) ? 'Opción del bloque' : firstColumn);
+        const details = Array.isArray(selectedRow?._detailGroups)
+          ? selectedRow._detailGroups
+              .map((group: any) => ({
+                nombre: String(group?.name || group?.nombre || '').trim(),
+                valores: (Array.isArray(group?.values) ? group.values : [])
+                  .map((value: any) => ({
+                    columna: String(value?.column || value?.columna || '').trim(),
+                    valor: String(value?.value || value?.valor || '').trim(),
+                  }))
+                  .filter((value: any) => value.valor),
+              }))
+              .filter((group: any) => group.nombre || group.valores.length > 0)
+          : [];
+
+        return {
+          ...activity,
+          fila_seleccionada_nombre: activity?.fila_seleccionada_nombre || String(selectedRow?.nombre || '').trim(),
+          fila_seleccionada_etiqueta: activity?.fila_seleccionada_etiqueta || selectionLabel,
+          fila_seleccionada_detalles: Array.isArray(activity?.fila_seleccionada_detalles)
+            && activity.fila_seleccionada_detalles.length > 0
+            ? activity.fila_seleccionada_detalles
+            : details,
+        };
+      });
+    }
+  }
+
   private async enrichPtaSummaries(dtos: any[]): Promise<any[]> {
     if (!dtos.length) return dtos;
+
+    // Aditivo y tolerante a configuraciones legacy: nunca bloquea la consulta del PTA.
+    try {
+      await this.enrichExtensionSelections(dtos);
+    } catch (err: any) {
+      this.logger.warn(`Detalle de selección de Extensión omitido: ${err?.message || err}`);
+    }
 
     const programaKeys = new Set<string>();
     const territorialKeys = new Set<string>();
@@ -3903,7 +4207,7 @@ export class PtaService {
 
   // Aplana una actividad de comp_actividades_v2 al shape plano que consume el catálogo
   // ({ id, nombre, max_horas, min_horas?, consumeTotalidad }).
-  private flattenCompV2Activity(a: any): any {
+  private flattenCompV2Activity(a: any, fullPTAFromPercentage = false): any {
     const itemHours = Array.isArray(a?.items)
       ? a.items.map((it: any) => Number(it?.horas || 0)).filter((n: number) => Number.isFinite(n))
       : [];
@@ -3913,14 +4217,22 @@ export class PtaService {
       nombre: a?.nombre,
       max_horas: a?.consumeTotalidad ? null : maxHoras,
       min_horas: a?.min_horas,
-      consumeTotalidad: Boolean(a?.consumeTotalidad),
+      tipo: a?.tipo ?? a?.items?.[0]?.tipo,
+      porcentaje_pta: a?.porcentaje_pta ?? a?.items?.[0]?.porcentaje_pta,
+      consumeTotalidad: Boolean(a?.consumeTotalidad) || (
+        fullPTAFromPercentage &&
+        String(a?.tipo || '').toLowerCase() === 'porcentaje' &&
+        Math.min(100, Math.max(1, Number(a?.porcentaje_pta) || 1)) === 100
+      ),
     };
   }
 
   private flattenCompV2Section(rules: any, sectionKey: string): any[] {
     const v2 = rules?.comp_actividades_v2;
     const arr = v2 && typeof v2 === 'object' ? v2[sectionKey] : null;
-    return Array.isArray(arr) ? arr.map((a: any) => this.flattenCompV2Activity(a)) : [];
+    return Array.isArray(arr)
+      ? arr.map((a: any) => this.flattenCompV2Activity(a, sectionKey === 'academico_administrativas'))
+      : [];
   }
 
   async getCatalogoActividadesComplementarias() {

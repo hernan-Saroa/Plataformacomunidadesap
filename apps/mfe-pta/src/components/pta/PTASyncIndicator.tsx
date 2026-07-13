@@ -20,6 +20,7 @@ import {
   Clock, Eye, Wifi, WifiOff, Bell, ExternalLink,
 } from 'lucide-react';
 import type { PTASyncEvent, PTASyncState } from '../../hooks/usePTARealtimeSync';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 interface PTASyncIndicatorProps {
   syncState: PTASyncState;
@@ -301,6 +302,7 @@ export function PTASyncIndicator({
                 ) : (
                   unreadEvents.map((event) => {
                     const { Icon, color, bg } = getEventIcon(event.tipo);
+                    const stateVisual = getPtaStatusVisual(event.estado_nuevo);
                     return (
                       <button
                         key={event.id}
@@ -333,8 +335,9 @@ export function PTASyncIndicator({
                             </span>
                             <span style={{
                               padding: '1px 6px', borderRadius: 5,
-                              background: event.estado_nuevo === 'Aprobado' ? '#D1FAE5' : event.estado_nuevo === 'Rechazado' ? '#FEE2E2' : '#EFF6FF',
-                              color: event.estado_nuevo === 'Aprobado' ? '#065F46' : event.estado_nuevo === 'Rechazado' ? '#991B1B' : '#1E40AF',
+                              background: stateVisual.bg,
+                              color: stateVisual.color,
+                              border: `1px solid ${stateVisual.border}`,
                               fontSize: '0.62rem', fontWeight: 700, flexShrink: 0,
                             }}>
                               {getEstadoLabel(event.estado_nuevo)}
