@@ -184,6 +184,15 @@ interface ExtensionActividad {
   fecha_inicio: string;
   fecha_fin: string;
   items_cantidades?: Record<number, number>; // índice del ítem → cantidad (para tipo 'por_unidad')
+  fila_seleccionada?: number; // fila horaria elegida cuando el bloque padre no cabe completo en Extensión
+  fila_seleccionada_nombre?: string;
+  fila_seleccionada_etiqueta?: string;
+  fila_seleccionada_detalles?: ExtensionSelectionDetail[];
+}
+
+interface ExtensionSelectionDetail {
+  nombre: string;
+  valores: Array<{ columna: string; valor: string }>;
 }
 
 interface ComplementariaItem {
@@ -223,6 +232,17 @@ function buildHourConstraint(min: number, max: number, editable: boolean, mode: 
 
   const safeMin = safeMax > 0 ? Math.min(Math.max(1, Number(min) || 1), safeMax) : 0;
   return { min: safeMin, max: safeMax, editable: true, mode };
+}
+
+function getConfiguredExtensionLimit(rules: any, horasAProgramar: number): number {
+  const absoluteLimit = getPositiveRuleNumber(
+    rules?.max_horas_extension_global ?? rules?.ext_max_horas_enlace,
+    200,
+  );
+  return Math.min(
+    absoluteLimit,
+    horasAProgramar * (getPositiveRuleNumber(rules?.max_pct_extension, 25) / 100),
+  );
 }
 
 function getPTAPercentage(activity: any): number {
@@ -498,6 +518,8 @@ type ExtensionSectionConfig = {
   orden: number;
   multiplicador?: number;
   columnas?: string[];
+  columna_raiz_nombre?: string;
+  columna_items_nombre?: string;
 };
 
 const DEFAULT_EXT_SECCIONES: ExtensionSectionConfig[] = [
@@ -508,6 +530,45 @@ const DEFAULT_EXT_SECCIONES: ExtensionSectionConfig[] = [
 ];
 
 const EXT_ITEMS_COLUMN_KEY = '_items_';
+
+function getExtensionRowDisplayLabel(section: ExtensionSectionConfig | undefined): string {
+  const firstColumn = String(section?.columnas?.[0] || '').trim();
+  if (firstColumn === EXT_ITEMS_COLUMN_KEY) {
+    return String(section?.columna_items_nombre || 'Actividad / Ítem').trim();
+  }
+  // Las claves rodeadas por guiones bajos son metadatos internos y nunca deben
+  // filtrarse a las etiquetas visibles del formulario docente.
+  if (!firstColumn || /^_.*_$/.test(firstColumn)) return 'Opción del bloque';
+  return firstColumn;
+}
+
+function getExtensionRowSnapshot(row: any, section: ExtensionSectionConfig | undefined) {
+  if (!row) {
+    return {
+      fila_seleccionada_nombre: undefined,
+      fila_seleccionada_etiqueta: undefined,
+      fila_seleccionada_detalles: undefined,
+    };
+  }
+  const details: ExtensionSelectionDetail[] = Array.isArray(row?._detailGroups)
+    ? row._detailGroups
+        .map((group: any) => ({
+          nombre: String(group?.name || group?.nombre || '').trim(),
+          valores: (Array.isArray(group?.values) ? group.values : [])
+            .map((value: any) => ({
+              columna: String(value?.column || value?.columna || '').trim(),
+              valor: String(value?.value || value?.valor || '').trim(),
+            }))
+            .filter((value: any) => value.valor),
+        }))
+        .filter((group: ExtensionSelectionDetail) => group.nombre || group.valores.length > 0)
+    : [];
+  return {
+    fila_seleccionada_nombre: String(row?.nombre || '').trim() || undefined,
+    fila_seleccionada_etiqueta: getExtensionRowDisplayLabel(section),
+    fila_seleccionada_detalles: details,
+  };
+}
 
 /**
  * La presencia histórica de `items: []` no basta para afirmar que una actividad
@@ -524,32 +585,216 @@ function getRootActivityHourType(activity: any): 'fija' | 'hasta' | 'intervalo' 
   return type === 'fija' || type === 'intervalo' || type === 'porcentaje' ? type : 'hasta';
 }
 
+function hasConfiguredCatalogHours(activity: any, horasAProgramar: number): boolean {
+  if (!activity || typeof activity !== 'object') return false;
+  if (isFullPTAActivity(activity)) return horasAProgramar > 0;
+  if (String(activity.tipo || '').toLowerCase() === 'porcentaje') {
+    return getPercentageHours(activity, horasAProgramar) > 0;
+  }
+  return [activity.max_horas, activity.horas_max, activity.horas]
+    .some(value => Number.isFinite(Number(value)) && Number(value) > 0);
+}
+
+function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[] {
+  if (!detailColumns.length) return [];
+  const primaryColumn = detailColumns[0];
+  const primaryValues = Array.isArray(item?.col_valores?.[primaryColumn])
+    ? item.col_valores[primaryColumn]
+    : [];
+  const groups = primaryValues.map((value: any) => {
+    const name = String(value || '').trim();
+    return name ? { name, values: [] as Array<{ column: string; value: string }> } : null;
+  });
+
+  for (let columnIndex = 1; columnIndex < detailColumns.length; columnIndex += 1) {
+    const column = detailColumns[columnIndex];
+    const values = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+    const parentIndexes = Array.isArray(item?.col_parents?.[column]) ? item.col_parents[column] : [];
+    values.forEach((rawValue: any, valueIndex: number) => {
+      const value = String(rawValue || '').trim();
+      if (!value) return;
+      let primaryIndex = Number(parentIndexes[valueIndex] ?? valueIndex);
+      for (let parentColumnIndex = columnIndex - 1; parentColumnIndex > 0; parentColumnIndex -= 1) {
+        const parentColumn = detailColumns[parentColumnIndex];
+        const ancestors = Array.isArray(item?.col_parents?.[parentColumn]) ? item.col_parents[parentColumn] : [];
+        primaryIndex = Number(ancestors[primaryIndex] ?? primaryIndex);
+      }
+      if (!Number.isInteger(primaryIndex) || primaryIndex < 0 || primaryIndex >= groups.length) return;
+      groups[primaryIndex]?.values.push({ column, value });
+    });
+  }
+
+  // Configuraciones de una sola columna de detalle conservan esa información
+  // como grupos; si no hay valores primarios no se inventa contenido.
+  return groups.filter((group): group is NonNullable<typeof group> => Boolean(group));
+}
+
 /**
- * Horas que una actividad de extensión necesita reservar apenas se selecciona.
- * Sirve para no ofrecer configuraciones exactas/porcentuales que ya no caben en
- * el saldo del componente. Los topes "hasta" y por unidad pueden comenzar en 0.
+ * Convierte la jerarquía editable del constructor en las filas que realmente
+ * gobiernan las horas en el formulario docente. Si la primera columna es una
+ * Línea (u otra dimensión), sus metadatos son la fuente de verdad; si las horas
+ * viven en Actividad/Ítem, se toman únicamente los ítems asociados a esa fila.
  */
-function getExtensionInitialRequiredHours(
+function getExtensionConfiguredHourRows(
+  activity: any,
+  section: ExtensionSectionConfig | undefined,
+): any[] {
+  const normalizeRow = (row: any, name?: string) => ({
+    ...row,
+    nombre: name || row?.nombre || 'Actividad',
+    min: row?.min ?? row?.horas_min,
+  });
+  const columns = section?.columnas;
+
+  if (Array.isArray(columns) && columns.length > 0 && columns[0] !== EXT_ITEMS_COLUMN_KEY) {
+    const controllingColumn = columns[0];
+    const itemsPosition = columns.indexOf(EXT_ITEMS_COLUMN_KEY);
+    const detailColumns = itemsPosition >= 0 ? columns.slice(itemsPosition + 1) : [];
+    const values = Array.isArray(activity?.columnas_valores?.[controllingColumn])
+      ? activity.columnas_valores[controllingColumn]
+      : [];
+    const metadata = Array.isArray(activity?.columnas_meta?.[controllingColumn])
+      ? activity.columnas_meta[controllingColumn]
+      : [];
+    const items = Array.isArray(activity?.items) ? activity.items : [];
+    const rowCount = Math.max(values.length, metadata.length);
+    const rows: any[] = [];
+    const decorateItem = (item: any) => ({
+      ...item,
+      _detailValues: detailColumns.flatMap(column => {
+        const columnValues = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+        return columnValues
+          .filter((value: any) => String(value || '').trim())
+          .map((value: any) => ({ column, value: String(value) }));
+      }),
+    });
+
+    for (let index = 0; index < rowCount; index += 1) {
+      const valueName = String(values[index] || `${controllingColumn} ${index + 1}`);
+      const meta = metadata[index] || {};
+      const childItems = items
+        .filter((item: any) => (item?.parent_col_idx === undefined ? 0 : Number(item.parent_col_idx)) === index)
+        .map(decorateItem);
+      if (String(meta?.horas_en || 'linea') === 'actividad') {
+        childItems.forEach((item: any) => rows.push({
+          ...normalizeRow(item, `${valueName} — ${item?.nombre || 'Actividad'}`),
+          _detailGroups: [{ name: item?.nombre || 'Actividad', values: item._detailValues || [] }],
+        }));
+      } else {
+        rows.push({
+          ...normalizeRow(meta, valueName),
+          _detailGroups: childItems.map((item: any) => ({
+            name: item?.nombre || 'Actividad',
+            values: item._detailValues || [],
+          })),
+        });
+      }
+    }
+    return rows;
+  }
+
+  if (Array.isArray(columns) && columns.length === 0) return [];
+  if (Array.isArray(activity?.items)) {
+    const detailColumns = Array.isArray(columns) && columns[0] === EXT_ITEMS_COLUMN_KEY
+      ? columns.slice(1)
+      : [];
+    return activity.items.map((item: any) => ({
+      ...normalizeRow(item),
+      _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+    }));
+  }
+  return [];
+}
+
+function hasExtensionConfiguredHours(
   activity: any,
   section: ExtensionSectionConfig | undefined,
   horasAProgramar: number,
-): number {
-  if (extensionActivityUsesItems(section, activity)) {
-    if (!Array.isArray(activity?.items)) return 0;
-    return activity.items.reduce((total: number, item: any) => {
-      const type = String(item?.tipo || 'fija').toLowerCase();
-      if (type === 'porcentaje') return total + getPercentageHours(item, horasAProgramar);
-      if (type === 'fija') return total + Math.max(0, Number(item?.horas) || 0);
-      if (type === 'intervalo') return total + Math.max(0, Number(item?.min) || 0);
-      return total;
-    }, 0);
-  }
+): boolean {
+  const rows = getExtensionConfiguredHourRows(activity, section);
+  if (rows.length > 0) return rows.some(row => hasConfiguredCatalogHours(row, horasAProgramar));
+  if (Array.isArray(section?.columnas) && section.columnas.length > 0) return false;
+  return hasConfiguredCatalogHours(activity, horasAProgramar);
+}
 
-  const type = getRootActivityHourType(activity);
-  if (type === 'porcentaje') return getPercentageHours(activity, horasAProgramar);
-  if (type === 'fija') return Math.max(0, Number(activity?.max_horas) || 0);
-  if (type === 'intervalo') return Math.max(1, Number(activity?.min_horas) || 1);
-  return 1;
+function getExtensionRowInitialHours(row: any, horasAProgramar: number): number {
+  const type = String(row?.tipo || 'fija').toLowerCase();
+  if (type === 'porcentaje') return getPercentageHours(row, horasAProgramar);
+  if (type === 'fija') return Math.max(0, Number(row?.horas) || 0);
+  if (type === 'intervalo') return Math.max(0, Number(row?.min ?? row?.horas_min) || 0);
+  return 0;
+}
+
+function extensionRowCanFit(row: any, horasAProgramar: number, maxExtensionHours: number): boolean {
+  if (!hasConfiguredCatalogHours(row, horasAProgramar)) return false;
+  const type = String(row?.tipo || 'fija').toLowerCase();
+  if (type === 'fija' || type === 'porcentaje') {
+    return getExtensionRowInitialHours(row, horasAProgramar) <= maxExtensionHours;
+  }
+  if (type === 'intervalo') {
+    return getExtensionRowInitialHours(row, horasAProgramar) <= maxExtensionHours;
+  }
+  return maxExtensionHours > 0;
+}
+
+/**
+ * Un bloque jerárquico no puede precargar todas sus filas como obligatorias si
+ * esa suma ya supera por sí sola el tope del componente. En ese caso las filas
+ * se convierten en alternativas para el docente y debe elegir una explícitamente.
+ */
+function extensionRequiresRowSelection(
+  activity: any,
+  section: ExtensionSectionConfig | undefined,
+  horasAProgramar: number,
+  maxExtensionHours: number,
+): boolean {
+  if (!extensionActivityUsesItems(section, activity)) return false;
+  const rows = getExtensionConfiguredHourRows(activity, section)
+    .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
+  if (rows.length <= 1) return false;
+  const mandatoryInitialHours = rows.reduce(
+    (sum, row) => sum + getExtensionRowInitialHours(row, horasAProgramar),
+    0,
+  );
+  return mandatoryInitialHours > Math.max(0, maxExtensionHours);
+}
+
+function getEffectiveExtensionRows(
+  activity: any,
+  section: ExtensionSectionConfig | undefined,
+  selectedRow: number | undefined,
+  horasAProgramar: number,
+  maxExtensionHours: number,
+): any[] {
+  const rows = getExtensionConfiguredHourRows(activity, section);
+  if (!extensionRequiresRowSelection(activity, section, horasAProgramar, maxExtensionHours)) return rows;
+  return Number.isInteger(selectedRow) && selectedRow! >= 0 && selectedRow! < rows.length
+    ? [rows[selectedRow!]]
+    : [];
+}
+
+function getInitialExtensionRowsState(rows: any[], horasAProgramar: number): {
+  items_cantidades: Record<number, number>;
+  total: number;
+} {
+  const items_cantidades: Record<number, number> = {};
+  let total = 0;
+  rows.forEach((row, index) => {
+    const type = String(row?.tipo || 'fija').toLowerCase();
+    if (type === 'fija') {
+      items_cantidades[index] = Math.max(0, Number(row?.horas) || 0);
+      total += items_cantidades[index];
+    } else if (type === 'porcentaje') {
+      items_cantidades[index] = getPercentageHours(row, horasAProgramar);
+      total += items_cantidades[index];
+    } else if (type === 'intervalo') {
+      items_cantidades[index] = Math.max(0, Number(row?.min ?? row?.horas_min) || 0);
+      total += items_cantidades[index];
+    } else {
+      items_cantidades[index] = 0;
+    }
+  });
+  return { items_cantidades, total };
 }
 
 const EXT_SECTION_ALIASES: Record<string, string> = {
@@ -575,6 +820,35 @@ const DEFAULT_COMP_SECCIONES = [
   { key: COMP_SECCION_DOCENCIA, label: 'ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA', color: PTA_COLORS.COMPLEMENTARIAS, orden: 1 },
   { key: COMP_SECCION_AADM, label: 'ACTIVIDADES ACADÉMICO-ADMINISTRATIVAS', color: PTA_COLORS.ACAD_ADMIN, orden: 2 },
 ];
+
+type RepeatedEntryTone = 'investigacion' | 'extension' | 'complementarias' | 'academico';
+
+function repeatedEntryCardClass(index: number, tone: RepeatedEntryTone): string {
+  const alternating = index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70';
+  const toneBorder: Record<RepeatedEntryTone, string> = {
+    investigacion: 'border-purple-200 border-l-purple-500',
+    extension: 'border-slate-200 border-l-sky-500',
+    complementarias: 'border-amber-200 border-l-amber-500',
+    academico: 'border-blue-200 border-l-blue-600',
+  };
+  return `flex flex-col gap-3 p-3.5 md:p-4 rounded-xl border border-l-4 ${alternating} ${toneBorder[tone]} relative shadow-[0_2px_8px_rgba(15,23,42,0.06)] hover:shadow-[0_5px_16px_rgba(15,23,42,0.10)] transition-all duration-200`;
+}
+
+function RepeatedEntryHeader({ index, label, color }: { index: number; label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-2.5 min-h-7 pr-10 pb-2 border-b border-slate-200/80">
+      <span
+        className="inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold text-white shadow-sm"
+        style={{ backgroundColor: color }}
+      >
+        {index + 1}
+      </span>
+      <span className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-slate-600">
+        {label}
+      </span>
+    </div>
+  );
+}
 
 // Aplana una actividad de comp_actividades_v2 (config) al shape plano que consumen los
 // dropdowns/constraints del docente. El tipo es indispensable para distinguir una
@@ -945,6 +1219,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             color: s.color || def.color,
             // Un arreglo vacío es significativo: describe una tabla simple sin filas.
             columnas: Array.isArray(s.columnas) ? s.columnas : def.columnas,
+            columna_raiz_nombre: s.columna_raiz_nombre || def.columna_raiz_nombre,
+            columna_items_nombre: s.columna_items_nombre || def.columna_items_nombre,
             multiplicador: mult,
           };
         });
@@ -998,6 +1274,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // cuando el catálogo de actividades de extensión o la lista de actividades del docente terminen de cargar.
   useEffect(() => {
     if (!actExtension) return;
+    const configuredExtensionLimit = getConfiguredExtensionLimit(ptaRules, horasAProgramar);
     setExtActividades(prev => {
       let changed = false;
       const next = prev.map(e => {
@@ -1006,9 +1283,45 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (baseAct !== e) changed = true;
         const cat = (actExtension[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
         const section = extSecciones.find(s => s.key === sectionKey);
-        if (cat && extensionActivityUsesItems(section, cat) && Array.isArray(cat.items) && cat.items.length > 0) {
+        const requiresRowSelection = Boolean(cat && extensionRequiresRowSelection(
+          cat,
+          section,
+          horasAProgramar,
+          configuredExtensionLimit,
+        ));
+        const configuredRows = cat
+          ? getEffectiveExtensionRows(
+              cat,
+              section,
+              baseAct.fila_seleccionada,
+              horasAProgramar,
+              configuredExtensionLimit,
+            )
+          : [];
+        if (requiresRowSelection && configuredRows.length === 0) {
+          if (baseAct.horas !== 0 || baseAct.horas_ejecutadas !== 0 || baseAct.items_cantidades
+            || baseAct.fila_seleccionada_nombre || baseAct.fila_seleccionada_etiqueta
+            || baseAct.fila_seleccionada_detalles) {
+            changed = true;
+            return {
+              ...baseAct,
+              horas: 0,
+              horas_ejecutadas: 0,
+              items_cantidades: undefined,
+              ...getExtensionRowSnapshot(null, section),
+            };
+          }
+          return baseAct;
+        }
+        if (cat && extensionActivityUsesItems(section, cat) && configuredRows.length > 0) {
+          const selectionSnapshot = Number.isInteger(baseAct.fila_seleccionada)
+            ? getExtensionRowSnapshot(configuredRows[0], section)
+            : {};
+          const snapshotChanged = Object.keys(selectionSnapshot).some((key) =>
+            JSON.stringify((baseAct as any)[key]) !== JSON.stringify((selectionSnapshot as any)[key]),
+          );
           const newCantidades = baseAct.items_cantidades || {};
-          const totalHoras = cat.items.reduce((sum: number, item: any, i: number) => {
+          const totalHoras = configuredRows.reduce((sum: number, item: any, i: number) => {
             const tipo = (item.tipo || 'fija').toLowerCase();
             if (tipo === 'fija') return sum + (item.horas || 0);
             if (tipo === 'porcentaje') return sum + getPercentageHours(item, horasAProgramar);
@@ -1019,9 +1332,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             const qty = Math.max(0, Number(newCantidades[i]) || 0);
             return sum + (qty * (item.horas || 0));
           }, 0);
-          if (baseAct.horas !== totalHoras || baseAct.horas_ejecutadas !== totalHoras) {
+          if (baseAct.horas !== totalHoras || baseAct.horas_ejecutadas !== totalHoras || snapshotChanged) {
             changed = true;
-            return { ...baseAct, horas: totalHoras, horas_ejecutadas: totalHoras };
+            return { ...baseAct, ...selectionSnapshot, horas: totalHoras, horas_ejecutadas: totalHoras };
           }
         }
         if (cat && !extensionActivityUsesItems(section, cat)) {
@@ -1050,7 +1363,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       });
       return changed ? next : prev;
     });
-  }, [actExtension, extActividades, extSecciones, horasAProgramar]);
+  }, [actExtension, extActividades, extSecciones, horasAProgramar, ptaRules]);
 
   // Reconciliar borradores creados antes de que el portal conservara `tipo`.
   // Una regla fija nunca debe permanecer con el valor parcial que dejó el antiguo
@@ -1445,10 +1758,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   }, [ptaRules, rolesInvestigacion]);
 
   const actividadesParaDropdown: any[] = useMemo(() => {
-    if (ptaRules?.inv_actividades?.length)
-      return ptaRules.inv_actividades.map((a: any) => ({ ...a, max_horas: a.horas_max }));
-    return actInvestigacion;
-  }, [ptaRules, actInvestigacion]);
+    const configured = ptaRules?.inv_actividades?.length
+      ? ptaRules.inv_actividades.map((a: any) => ({ ...a, max_horas: a.horas_max }))
+      : actInvestigacion;
+    return configured.filter((activity: any) => hasConfiguredCatalogHours(activity, horasAProgramar));
+  }, [ptaRules, actInvestigacion, horasAProgramar]);
 
   // Mapa nombre→horas_max para lookup rápido
   const rolesHorasMap = useMemo((): Record<string, number> => {
@@ -1558,11 +1872,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
   const maxDocenciaLimit = getPositiveRuleNumber(ptaRules?.max_horas_docencia_global ?? ptaRules?.horas_base_carrera_003, 800);
-  const maxExtGlobalHours = getPositiveRuleNumber(ptaRules?.max_horas_extension_global ?? ptaRules?.ext_max_horas_enlace, 200);
-  const maxExtLimit = Math.min(
-    maxExtGlobalHours,
-    horasAProgramar * (getPositiveRuleNumber(ptaRules?.max_pct_extension, 25) / 100),
-  );
+  const maxExtLimit = getConfiguredExtensionLimit(ptaRules, horasAProgramar);
   // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
   const maxInvLimit = getPositiveRuleNumber(ptaRules?.max_horas_investigacion_global, 400);
   // Límite Complementarias: mínimo entre el tope absoluto (ej. 200h) y el porcentaje
@@ -1682,10 +1992,37 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // ═══ VALIDACIONES EXTENSIÓN ═══════════════════════════════════════════
   const extWarnings = useMemo(() => {
-    // Reservado para validaciones propias de extension.
     const warns: string[] = [];
+    if (hasFullPTAActivity) return warns;
+    extActividades.forEach(activity => {
+      if (!activity.actividad_id) return;
+      const sectionKey = normalizeExtensionSectionKey(activity.seccion);
+      const section = extSecciones.find(item => item.key === sectionKey);
+      const catalogActivity = (actExtension?.[sectionKey] || [])
+        .find((item: any) => item.id === activity.actividad_id);
+      if (!catalogActivity || !extensionRequiresRowSelection(
+        catalogActivity,
+        section,
+        horasAProgramar,
+        maxExtLimit,
+      )) return;
+      const rows = getExtensionConfiguredHourRows(catalogActivity, section);
+      if (!Number.isInteger(activity.fila_seleccionada)
+        || activity.fila_seleccionada! < 0
+        || activity.fila_seleccionada! >= rows.length) {
+        const columnLabel = getExtensionRowDisplayLabel(section);
+        warns.push(`Selecciona una ${columnLabel.toLowerCase()} dentro de "${catalogActivity.nombre}".`);
+      }
+    });
     return warns;
-  }, [hExtension, maxExtLimit]);
+  }, [
+    hasFullPTAActivity,
+    extActividades,
+    extSecciones,
+    actExtension,
+    horasAProgramar,
+    maxExtLimit,
+  ]);
 
   // ═══ VALIDACIONES INVESTIGACIÓN (Circular 003 - Tablas 3 y 4) ═══════════
   const invWarnings = useMemo(() => {
@@ -1910,8 +2247,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const handleAddExtActividad = (seccion: string) => {
     if (hasFullPTAActivity) return;
+    const normalizedSection = normalizeExtensionSectionKey(seccion);
+    const sectionConfig = extSecciones.find(section => section.key === normalizedSection);
+    const hasConfiguredOptions = (actExtension?.[normalizedSection] || [])
+      .some((activity: any) => hasExtensionConfiguredHours(activity, sectionConfig, horasAProgramar));
+    if (!hasConfiguredOptions) {
+      toast.info('Esta sección todavía no tiene actividades con horas configuradas.');
+      return;
+    }
     setExtActividades(prev => [...prev, {
-      id: Date.now(), seccion, actividad_id: '', nombre: '', horas: 0, horas_ejecutadas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
+      id: Date.now(), seccion: normalizedSection, actividad_id: '', nombre: '', horas: 0, horas_ejecutadas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
   };
 
@@ -1940,33 +2285,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === value);
         if (cat) {
           updated.nombre = cat.nombre;
+          updated.fila_seleccionada = undefined;
+          updated.fila_seleccionada_nombre = undefined;
+          updated.fila_seleccionada_etiqueta = undefined;
+          updated.fila_seleccionada_detalles = undefined;
           // La estructura de columnas de la sección manda. `items: []` puede ser
           // solo un vestigio del modelo de edición y no implica que existan filas.
-          if (extensionActivityUsesItems(secConfig, cat) && Array.isArray(cat.items)) {
-            // Pre-inicializar cantidades: las fijas vienen del backoffice, las demás en 0
-            const initCantidades: Record<number, number> = {};
-            let totalHorasInit = 0;
-            cat.items.forEach((it: any, i: number) => {
-              const tipo = (it.tipo || 'fija').toLowerCase();
-              if (tipo === 'fija') {
-                initCantidades[i] = it.horas || 0;
-                totalHorasInit += it.horas || 0;
-              } else if (tipo === 'porcentaje') {
-                const percentageHours = getPercentageHours(it, horasAProgramar);
-                initCantidades[i] = percentageHours;
-                totalHorasInit += percentageHours;
-              } else if (tipo === 'hasta') {
-                initCantidades[i] = 0; // docente ajusta dentro del rango
-              } else if (tipo === 'intervalo') {
-                initCantidades[i] = it.min ?? 0; // inicia en el mínimo del intervalo
-                totalHorasInit += it.min ?? 0;
-              } else {
-                initCantidades[i] = 0; // por_unidad: inicia en 0 unidades
-              }
-            });
-            updated.items_cantidades = initCantidades;
-            updated.horas_ejecutadas = totalHorasInit;
-            updated.horas = totalHorasInit;
+          const configuredRows = getExtensionConfiguredHourRows(cat, secConfig);
+          if (extensionActivityUsesItems(secConfig, cat) && configuredRows.length > 0) {
+            const requiresRowSelection = extensionRequiresRowSelection(
+              cat,
+              secConfig,
+              horasAProgramar,
+              maxExtLimit,
+            );
+            const initialState = getInitialExtensionRowsState(
+              requiresRowSelection ? [] : configuredRows,
+              horasAProgramar,
+            );
+            updated.items_cantidades = initialState.items_cantidades;
+            updated.horas_ejecutadas = initialState.total;
+            updated.horas = initialState.total;
           } else {
             // Tabla simple de columna raíz: las horas viven directamente en el bloque.
             const rootType = getRootActivityHourType(cat);
@@ -1994,6 +2333,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             updated.items_cantidades = undefined;
           }
         }
+      }
+
+      if (field === 'fila_seleccionada') {
+        const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === updated.actividad_id);
+        const selectedRow = value === '' || value === null || value === undefined
+          ? undefined
+          : Number(value);
+        updated.fila_seleccionada = Number.isInteger(selectedRow) ? selectedRow : undefined;
+        const selectedRows = cat
+          ? getEffectiveExtensionRows(cat, secConfig, updated.fila_seleccionada, horasAProgramar, maxExtLimit)
+          : [];
+        Object.assign(updated, getExtensionRowSnapshot(selectedRows[0], secConfig));
+        const initialState = getInitialExtensionRowsState(selectedRows, horasAProgramar);
+        updated.items_cantidades = selectedRows.length > 0 ? initialState.items_cantidades : undefined;
+        updated.horas_ejecutadas = initialState.total;
+        updated.horas = initialState.total;
       }
 
       if (field === 'horas_ejecutadas') {
@@ -2066,9 +2421,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const sectionKey = normalizeExtensionSectionKey(e.seccion);
       const baseAct = sectionKey === e.seccion ? e : { ...e, seccion: sectionKey };
       const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
-      if (!cat || !Array.isArray(cat.items)) return baseAct;
+      const section = extSecciones.find(item => item.key === sectionKey);
+      const configuredRows = cat
+        ? getEffectiveExtensionRows(
+            cat,
+            section,
+            baseAct.fila_seleccionada,
+            horasAProgramar,
+            maxExtLimit,
+          )
+        : [];
+      if (!cat || configuredRows.length === 0) return baseAct;
       
-      const item = cat.items[itemIdx];
+      const item = configuredRows[itemIdx];
       const itemTipo = (item.tipo || 'fija').toLowerCase();
       if (itemTipo === 'porcentaje') return baseAct;
       let cleanedVal = Math.max(itemTipo === 'intervalo' ? (item.min ?? 0) : 0, val);
@@ -2077,7 +2442,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       }
       
       const newCantidades = { ...(baseAct.items_cantidades || {}), [itemIdx]: cleanedVal };
-      const totalHoras = cat.items.reduce((sum: number, it: any, i: number) => {
+      const totalHoras = configuredRows.reduce((sum: number, it: any, i: number) => {
         const tipo = (it.tipo || 'fija').toLowerCase();
         if (tipo === 'fija') return sum + (it.horas || 0);
         if (tipo === 'porcentaje') return sum + getPercentageHours(it, horasAProgramar);
@@ -3583,7 +3948,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   {asignaturas.length === 0 ? (
                     <EmptyState icon={BookOpen} text="Sin asignaturas" sub="Agrega asignaturas usando los dropdowns en cascada" />
                   ) : (
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-4">
                       {asignaturas.map((asig, idx) => {
                         const isComplete = !!asig.asignatura_id;
                         const tieneConflicto = docenciaConflictIds.has(asig.id);
@@ -3613,7 +3978,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 : bloqueadaPorTerritorial
                                   ? 'border-gray-200 bg-gray-50/80 opacity-75'
                                   : isComplete
-                                    ? 'border-slate-200 bg-white shadow-sm border-l-4 border-l-emerald-500 hover:shadow-md hover:border-slate-300'
+                                    ? `border-slate-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} shadow-[0_2px_10px_rgba(15,23,42,0.07)] border-l-4 border-l-emerald-500 hover:shadow-md hover:border-slate-300`
                                     : 'border-blue-200 bg-blue-50/30 shadow-[0_0_0_3px_rgba(59,130,246,0.08)]'
                             }`}>
 
@@ -4030,9 +4395,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         small />
                     ) : tieneProyecto ? (
                       /* ── MODO LIBRE: nombre + horas directo ── */
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-3">
                         {invActividades.map((act, idx) => (
-                          <div key={act.id} className="flex flex-col gap-2 p-3 rounded-lg border border-purple-200 bg-purple-50/30 relative">
+                          <div key={act.id} className={repeatedEntryCardClass(idx, 'investigacion')}>
+                            <RepeatedEntryHeader index={idx} label="Actividad de investigación" color={PTA_COLORS.INVESTIGACION} />
                             {isEditable && (
                               <button type="button" onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
                                 title={`Eliminar Actividad ${idx + 1}`}
@@ -4162,9 +4528,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       </div>
                     ) : (
                       /* ── MODO CATÁLOGO: dropdown de actividades ── */
-                      <div className="flex flex-col gap-2">
-                        {invActividades.map(act => (
-                          <div key={act.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
+                      <div className="flex flex-col gap-3">
+                        {invActividades.map((act, idx) => (
+                          <div key={act.id} className={repeatedEntryCardClass(idx, 'investigacion')}>
+                            <RepeatedEntryHeader index={idx} label="Actividad de investigación" color={PTA_COLORS.INVESTIGACION} />
                             {isEditable && (
                               <button type="button" onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
                                 title="Eliminar Actividad de Investigación"
@@ -4328,9 +4695,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     </div>
                     {isEditable && (() => {
                       const extRemaining = maxExtLimit - hExtension;
+                      const hasConfiguredOptions = getExtCatalog(currentExtSubseccion)
+                        .some((activity: any) => hasExtensionConfiguredHours(activity, secActual, horasAProgramar));
                       // Solo ocultar si se alcanzó el tope de extensión; el excedente
                       // del PTA total es informativo pero no bloquea agregar actividades.
-                      if (extRemaining <= 0) return null;
+                      if (extRemaining <= 0 || !hasConfiguredOptions) return null;
                       return (
                         <button onClick={() => handleAddExtActividad(currentExtSubseccion)}
                           className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-none text-white text-xs font-semibold cursor-pointer shrink-0" style={{ background: PTA_COLORS.EXTENSION }}>
@@ -4346,21 +4715,41 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   {extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === currentExtSubseccion).length === 0 ? (
                     <EmptyState icon={Globe} text={`Sin actividades de ${visibleExtSecciones.find(s => s.key === currentExtSubseccion)?.label}`} small />
                   ) : (
-                    <div className="flex flex-col gap-2">
-                      {extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === currentExtSubseccion).map(ext => {
+                    <div className="flex flex-col gap-3">
+                      {extActividades.filter(e => normalizeExtensionSectionKey(e.seccion) === currentExtSubseccion).map((ext, extIdx) => {
                         const extSectionKey = normalizeExtensionSectionKey(ext.seccion);
                         const catExt = (actExtension?.[extSectionKey] || []).find((c: any) => c.id === ext.actividad_id);
                         const sectionConfig = extSecciones.find(s => s.key === extSectionKey);
                         const hasItemsExt = Boolean(catExt && extensionActivityUsesItems(sectionConfig, catExt));
-                        const extCatalogItems = Array.isArray(catExt?.items) ? catExt.items : [];
+                        const allExtCatalogItems = catExt ? getExtensionConfiguredHourRows(catExt, sectionConfig) : [];
+                        const requiresRowSelection = Boolean(catExt && extensionRequiresRowSelection(
+                          catExt,
+                          sectionConfig,
+                          horasAProgramar,
+                          maxExtLimit,
+                        ));
+                        const extCatalogItems = catExt
+                          ? getEffectiveExtensionRows(
+                              catExt,
+                              sectionConfig,
+                              ext.fila_seleccionada,
+                              horasAProgramar,
+                              maxExtLimit,
+                            )
+                          : [];
                         const secMult = sectionConfig?.multiplicador || 1;
                         const rootHourType = getRootActivityHourType(catExt);
-                        const otherExtensionHours = extActividades
-                          .filter(item => item.id !== ext.id)
-                          .reduce((sum, item) => sum + (Number(item.horas) || 0), 0);
-                        const availableExtensionHours = Math.max(0, maxExtLimit - otherExtensionHours);
                         return (
-                          <div key={ext.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
+                          <div
+                            key={ext.id}
+                            className={repeatedEntryCardClass(extIdx, 'extension')}
+                            style={{ borderLeftColor: sectionConfig?.color || PTA_COLORS.EXTENSION }}
+                          >
+                            <RepeatedEntryHeader
+                              index={extIdx}
+                              label="Actividad de extensión"
+                              color={sectionConfig?.color || PTA_COLORS.EXTENSION}
+                            />
                             {isEditable && (
                               <button type="button" onClick={() => setExtActividades(prev => prev.filter(e => e.id !== ext.id))}
                                 title="Eliminar Actividad de Extensión"
@@ -4378,32 +4767,36 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   disabled={!isEditable}
                                   onChange={v => handleExtActChange(ext.id, 'actividad_id', v)}
                                   options={getExtCatalog(currentExtSubseccion).filter((a: any) => {
-                                    // Una selección ya guardada siempre permanece visible para poder
-                                    // corregirla. Las nuevas opciones solo se ofrecen si su reserva
-                                    // mínima cabe en el saldo actual de Extensión.
-                                    if (String(a?.id) === String(ext.actividad_id)) return true;
                                     const optionSection = extSecciones.find(
                                       s => s.key === normalizeExtensionSectionKey(currentExtSubseccion),
                                     );
-                                    return getExtensionInitialRequiredHours(a, optionSection, horasAProgramar)
-                                      <= availableExtensionHours;
+                                    // La disponibilidad del catálogo depende de que la configuración
+                                    // tenga horas reales. El saldo restante se controla al editar y al
+                                    // enviar; no debe ocultar una estructura normativa válida completa.
+                                    return hasExtensionConfiguredHours(a, optionSection, horasAProgramar);
                                   }).map((a: any) => {
                                     const optionSection = extSecciones.find(s => s.key === normalizeExtensionSectionKey(currentExtSubseccion));
                                     const hasItems = extensionActivityUsesItems(optionSection, a);
                                     if (hasItems) {
-                                      if (!Array.isArray(a.items) || a.items.length === 0) {
-                                        return { value: a.id, label: `${a.nombre} (sin filas configuradas)` };
-                                      }
-                                      const totalPercentage = a.items.reduce((sum: number, it: any) =>
+                                      const configuredRows = getExtensionConfiguredHourRows(a, optionSection);
+                                      const chooseSingleRow = extensionRequiresRowSelection(
+                                        a,
+                                        optionSection,
+                                        horasAProgramar,
+                                        maxExtLimit,
+                                      );
+                                      const totalPercentage = configuredRows.reduce((sum: number, it: any) =>
                                         it.tipo === 'porcentaje' ? sum + getPTAPercentage(it) : sum, 0);
-                                      const totalHorasItems = a.items.reduce((s: number, it: any) => {
+                                      const totalHorasItems = configuredRows.reduce((s: number, it: any) => {
                                         if (it.tipo === 'porcentaje') return s + getPercentageHours(it, horasAProgramar);
                                         if (it.tipo === 'fija' || it.tipo === 'hasta') return s + (it.horas || 0);
                                         return s + (it.horas || 0); // por_unidad: 1 unidad base
                                       }, 0);
-                                      const itemSummary = totalPercentage > 0
-                                        ? `${totalPercentage}% PTA = ${totalHorasItems}h${a.items.some((it: any) => it.tipo !== 'porcentaje') ? ' con otras filas' : ''}`
-                                        : `máx ${a.max_horas || totalHorasItems}h`;
+                                      const itemSummary = chooseSingleRow
+                                        ? `selecciona una ${getExtensionRowDisplayLabel(optionSection).toLowerCase()}`
+                                        : totalPercentage > 0
+                                          ? `${totalPercentage}% PTA = ${totalHorasItems}h${configuredRows.some((it: any) => it.tipo !== 'porcentaje') ? ' con otras filas' : ''}`
+                                          : `máx ${a.max_horas || totalHorasItems}h`;
                                       return { value: a.id, label: `${a.nombre} (${itemSummary})` };
                                     }
                                     const type = getRootActivityHourType(a);
@@ -4431,6 +4824,38 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   })}
                                   placeholder="Seleccionar..." />
                               </div>
+                              {requiresRowSelection && (
+                                <div className="flex-1 min-w-[260px]">
+                                  <FormSelect
+                                    label={getExtensionRowDisplayLabel(sectionConfig)}
+                                    value={ext.fila_seleccionada === undefined ? '' : String(ext.fila_seleccionada)}
+                                    disabled={!isEditable}
+                                    onChange={v => handleExtActChange(ext.id, 'fila_seleccionada', v)}
+                                    options={allExtCatalogItems
+                                      .map((row: any, rowIndex: number) => ({ row, rowIndex }))
+                                      .filter(({ row }) => extensionRowCanFit(row, horasAProgramar, maxExtLimit))
+                                      .map(({ row, rowIndex }) => {
+                                        const type = String(row?.tipo || 'fija').toLowerCase();
+                                        const maxHours = type === 'porcentaje'
+                                          ? getPercentageHours(row, horasAProgramar)
+                                          : Math.max(0, Number(row?.horas) || 0);
+                                        const minHours = Math.max(0, Number(row?.min ?? row?.horas_min) || 0);
+                                        const hoursLabel = type === 'fija'
+                                          ? `${maxHours}h fijas`
+                                          : type === 'porcentaje'
+                                            ? `${getPTAPercentage(row)}% PTA = ${maxHours}h`
+                                            : type === 'intervalo'
+                                              ? `${minHours}–${maxHours}h`
+                                              : `hasta ${maxHours}h`;
+                                        return {
+                                          value: String(rowIndex),
+                                          label: `${row.nombre} (${hoursLabel})`,
+                                        };
+                                      })}
+                                    placeholder="Seleccionar una opción..."
+                                  />
+                                </div>
+                              )}
                               {/* Para actividades PLANAS (sin items): mostrar inputs de horas como antes */}
                               {!hasItemsExt && (() => {
                                 if (secMult > 1) {
@@ -4490,14 +4915,32 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   {extCatalogItems.length === 0 && (
                                     <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
                                       <AlertTriangle className="h-4 w-4 shrink-0" />
-                                      Esta etapa no tiene filas configuradas y no permite asignar horas hasta que se parametrice.
+                                      {requiresRowSelection
+                                        ? `Selecciona una ${getExtensionRowDisplayLabel(sectionConfig).toLowerCase()} para asignar únicamente sus horas.`
+                                        : 'Esta etapa no tiene filas configuradas y no permite asignar horas hasta que se parametrice.'}
                                     </div>
                                   )}
                                   {extCatalogItems.map((item: any, iIdx: number) => {
                                     const itemTipo = (item.tipo || 'fija').toLowerCase();
                                     return (
-                                    <div key={iIdx} className="flex items-center gap-3">
-                                      <span className="flex-1 text-[12px] text-slate-600">{item.nombre}</span>
+                                    <div key={iIdx} className="flex items-start gap-3">
+                                      <div className="flex-1 min-w-0 text-[12px] text-slate-600">
+                                        <span className="font-semibold text-slate-700">{item.nombre}</span>
+                                        {Array.isArray(item._detailGroups) && item._detailGroups.length > 0 && (
+                                          <div className="mt-1.5 space-y-1 rounded-md border border-slate-100 bg-slate-50/70 px-2 py-1.5">
+                                            {item._detailGroups.map((group: any, groupIndex: number) => (
+                                              <div key={groupIndex} className="text-[10px] leading-relaxed text-slate-500">
+                                                <span className="font-semibold text-slate-600">{group.name}</span>
+                                                {Array.isArray(group.values) && group.values.map((detail: any, detailIndex: number) => (
+                                                  <span key={detailIndex} className="ml-1">
+                                                    · <span className="font-medium text-violet-600">{detail.column}:</span> {detail.value}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
                                       {itemTipo === 'porcentaje' ? (
                                         <span className="px-2.5 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-bold">
                                           {getPTAPercentage(item)}% PTA = {getPercentageHours(item, horasAProgramar)}h
@@ -4662,13 +5105,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   {complementarias.length === 0 ? (
                     <EmptyState icon={Briefcase} text="Sin actividades complementarias" sub={`Selecciona del catálogo normativo (${actComplementarias.length} actividades disponibles)`} />
                   ) : (
-                    <div className="flex flex-col gap-2">
-                      {complementarias.map(comp => {
+                    <div className="flex flex-col gap-3">
+                      {complementarias.map((comp, compIdx) => {
                         const compCat = actComplementarias.find((a: any) => a.id === comp.actividad_id) || comp;
                         const compConstraint = getComplementariaConstraint(compCat, ptaRules, horasAProgramar);
 
                         return (
-                          <div key={comp.id} className="flex flex-col gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50/50 relative">
+                          <div key={comp.id} className={repeatedEntryCardClass(compIdx, 'complementarias')}>
+                            <RepeatedEntryHeader
+                              index={compIdx}
+                              label="Actividad complementaria"
+                              color={PTA_COLORS.COMPLEMENTARIAS}
+                            />
                             {isEditable && (
                               <button type="button" onClick={() => setComplementarias(prev => prev.filter(c => c.id !== comp.id))}
                                 title="Eliminar Actividad Complementaria"
@@ -4683,6 +5131,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleCompChange(comp.id, 'actividad_id', v)}
                                   options={actComplementarias
                                     .filter(a => {
+                                      if (!hasConfiguredCatalogHours(a, horasAProgramar)) return false;
                                       const isSindicato = String(a.nombre).toUpperCase().includes('SINDICATO');
                                       const optionConstraint = getComplementariaConstraint(a, ptaRules, horasAProgramar);
                                       const otherOrdinarySum = complementarias
@@ -4794,14 +5243,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <EmptyState icon={Shield} text="Sin actividades académico-administrativas"
                       sub="Comisiones, año sabático, cargos directivos, misiones profesorales, acreditación y organización doctoral" />
                   ) : (
-                    <div className="flex flex-col gap-2">
-                      {academicoAdmin.map(comp => {
+                    <div className="flex flex-col gap-3">
+                      {academicoAdmin.map((comp, acadIdx) => {
                         const acadCat = actAcadAdmin.find((a: any) => a.id === comp.actividad_id) || comp;
                         const acadConstraint = getAcademicoAdminConstraint(acadCat, ptaRules, horasAProgramar);
                         const acadConsumesFullPTA = isFullPTAActivity(acadCat);
 
                         return (
-                          <div key={comp.id} className={`flex flex-col gap-2 p-3 rounded-lg border relative ${acadConsumesFullPTA ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200 bg-gray-50/50'}`}>
+                          <div
+                            key={comp.id}
+                            className={acadConsumesFullPTA
+                              ? 'flex flex-col gap-3 p-3.5 md:p-4 rounded-xl border border-l-4 border-amber-300 border-l-amber-500 bg-amber-50/70 relative shadow-[0_2px_8px_rgba(15,23,42,0.06)] hover:shadow-[0_5px_16px_rgba(15,23,42,0.10)] transition-all duration-200'
+                              : repeatedEntryCardClass(acadIdx, 'academico')}
+                          >
+                            <RepeatedEntryHeader
+                              index={acadIdx}
+                              label="Actividad académico-administrativa"
+                              color={acadConsumesFullPTA ? '#D97706' : PTA_COLORS.ACAD_ADMIN}
+                            />
                             {isEditable && (
                               <button type="button" onClick={() => setAcademicoAdmin(prev => prev.filter(c => c.id !== comp.id))}
                                 title="Eliminar Actividad Académico-Administrativa"
@@ -4816,6 +5275,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleAcadChange(comp.id, 'actividad_id', v)}
                                   options={actAcadAdmin
                                     .filter((a: any) => {
+                                      if (!hasConfiguredCatalogHours(a, horasAProgramar)) return false;
                                       // Sin docencia solo se permiten actividades de dedicación exclusiva (100%).
                                       const isFull = isFullPTAActivity(a);
                                       if (!hasDocencia && !isFull) return false;

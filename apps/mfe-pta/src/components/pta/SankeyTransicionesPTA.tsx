@@ -19,6 +19,7 @@ import {
   Loader2, RefreshCw, Target, TrendingUp, Zap,
   GitBranch, Maximize2, Minimize2,
 } from 'lucide-react';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 // ═══ Types ══════════════════════════════════════════════════════════
 
@@ -82,10 +83,16 @@ const ESTADO_CONFIG: Record<string, { label: string; color: string; bg: string; 
   'CONCERTADO':                   { label: 'Concertado',          color: '#065F46', bg: '#D1FAE5', fase: 'Concertacion' },
   'ESCALADO_SNA':                 { label: 'Escalado SNA',        color: '#991B1B', bg: '#FEF2F2', fase: 'Arbitraje' },
   'RESUELTO_SNA':                 { label: 'Resuelto SNA',        color: '#065F46', bg: '#D1FAE5', fase: 'Arbitraje' },
+  'AJUSTE_REQUERIDO':             { label: 'Ajuste Requerido',    color: '#9A3412', bg: '#FFF7ED', fase: 'Excepcional' },
   'Pendiente Jefatura':           { label: 'Pend. Jefatura',      color: '#92400E', bg: '#FEF3C7', fase: 'Aprobacion' },
   'Pendiente Decanatura':         { label: 'Pend. Decanatura',    color: '#1E40AF', bg: '#DBEAFE', fase: 'Aprobacion' },
   'Pendiente Gestión Profesoral': { label: 'Pend. G. Profesoral', color: '#3730A3', bg: '#E0E7FF', fase: 'Aprobacion' },
   'Aprobado':                     { label: 'Aprobado',            color: '#065F46', bg: '#D1FAE5', fase: 'Final' },
+  'En Firme':                     { label: 'En Firme',            color: '#0F766E', bg: '#F0FDFA', fase: 'Final' },
+  'RADICADO':                     { label: 'Radicado',            color: '#1E3A8A', bg: '#DBEAFE', fase: 'Final' },
+  'EN_EJECUCION':                 { label: 'En Ejecucion',        color: '#0E7490', bg: '#ECFEFF', fase: 'Final' },
+  'Finalizado':                   { label: 'Finalizado',          color: '#5B21B6', bg: '#EDE9FE', fase: 'Final' },
+  'Terminado':                    { label: 'Terminado',           color: '#334155', bg: '#E2E8F0', fase: 'Final' },
   'Rechazado':                    { label: 'Rechazado',           color: '#991B1B', bg: '#FEE2E2', fase: 'Final' },
   'Devuelto':                     { label: 'Devuelto',            color: '#9A3412', bg: '#FFF7ED', fase: 'Excepcional' },
   'CERRADO_INACTIVIDAD':          { label: 'Cerrado',             color: '#6B7280', bg: '#F3F4F6', fase: 'Final' },
@@ -102,7 +109,15 @@ const FASE_COLORS: Record<string, string> = {
   'Excepcional': '#9A3412',
 };
 
-const getCfg = (e: string) => ESTADO_CONFIG[e] || { label: e.replace(/_/g, ' '), color: '#6B7280', bg: '#F3F4F6', fase: 'Otro' };
+const getCfg = (e: string) => {
+  const visual = getPtaStatusVisual(e);
+  const configured = ESTADO_CONFIG[e];
+  return {
+    ...visual,
+    label: configured?.label || visual.label,
+    fase: configured?.fase || 'Otro',
+  };
+};
 
 // ═══ Sankey Computation ═════════════════════════════════════════════
 
