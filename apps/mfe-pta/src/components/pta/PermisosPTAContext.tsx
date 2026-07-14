@@ -109,6 +109,7 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.notificaciones_config': 'preferencias_notificaciones',
   'pta.backoffice.pre_aprobacion_sni_snpi': 'pre_aprobacion_sni_snpi',
   'pta.backoffice.banco_docentes': 'banco_docentes', // ✅ Nuevo permiso
+  'pta.backoffice.solicitudes': 'solicitudes_pta', // HU-12: gestión de solicitudes (creación/modificación PTA)
   'pta.backoffice.config_reglas': 'config_reglas',
   'pta.approve.academica': 'gestion',
   'pta.approve.investigacion': 'gestion',

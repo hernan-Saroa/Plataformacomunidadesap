@@ -845,6 +845,12 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
       // We verify success by checking for the returned id (UUID from RundSoporteCampo insert),
       // or fallback to a truthy res that isn't an error object.
       const isSuccess = !!(res?.id || (res && !res.error && res !== false));
+      // HU-06: el backend rechaza archivos de tipo/contenido incorrecto devolviendo
+      // { success:false, error }. apiClient desenvuelve, así que el motivo llega en res.error.
+      if (!isSuccess && res?.error) {
+        toast.error(res.error);
+        return;
+      }
       if (isSuccess) {
         toast.success(`Documento "${file.name}" cargado exitosamente en RUND.`);
         const docenteNombreClean = nombreCompleto.replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase();

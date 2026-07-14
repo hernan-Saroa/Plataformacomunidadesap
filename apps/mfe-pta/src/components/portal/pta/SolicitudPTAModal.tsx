@@ -14,6 +14,11 @@ interface SolicitudPTAModalProps {
   docenteEmail?: string;
   onClose: () => void;
   onSuccess: () => void;
+  // HU-12: 'modificacion' reabre un PTA existente (R01→R02); requiere el ptaId objetivo
+  // y un PDF de resolución obligatorio. Por defecto 'creacion' (segundo PTA legacy).
+  modo?: 'creacion' | 'modificacion';
+  ptaId?: string;
+  ptaLabel?: string;
 }
 
 const CASOS = [
@@ -22,8 +27,9 @@ const CASOS = [
   { key: 'caso_3', label: 'Otro caso', desc: 'Tengo un motivo diferente que requiere aprobación del administrador.', icon: HelpCircle, color: '#6B21A8' },
 ] as const;
 
-export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onClose, onSuccess }: SolicitudPTAModalProps) {
-  const [caso, setCaso] = useState('');
+export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onClose, onSuccess, modo = 'creacion', ptaId, ptaLabel }: SolicitudPTAModalProps) {
+  const esModificacion = modo === 'modificacion';
+  const [caso, setCaso] = useState(esModificacion ? 'modificacion_pta' : '');
   const [casoLibre, setCasoLibre] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const [archivos, setArchivos] = useState<File[]>([]);
@@ -33,6 +39,10 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
 
   const wordCount = justificacion.trim().split(/\s+/).filter(Boolean).length;
   const casoInfo = CASOS.find(c => c.key === caso);
+  // En modificación el PDF de resolución es obligatorio; el "caso" ya está fijado.
+  const puedeEnviar = esModificacion
+    ? (wordCount >= 50 && archivos.length >= 1)
+    : (!!caso && wordCount >= 50);
 
   const handleAddFiles = (files: FileList) => {
     const newFiles = Array.from(files).filter(f => {
@@ -44,9 +54,10 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
   };
 
   const handleSubmit = async () => {
-    if (!caso) { toast.error('Selecciona un caso'); return; }
-    if (caso === 'caso_3' && !casoLibre.trim()) { toast.error('Describe tu caso'); return; }
+    if (!esModificacion && !caso) { toast.error('Selecciona un caso'); return; }
+    if (!esModificacion && caso === 'caso_3' && !casoLibre.trim()) { toast.error('Describe tu caso'); return; }
     if (wordCount < 50) { toast.error(`La justificacion debe tener al menos 50 palabras (${wordCount}/50)`); return; }
+    if (esModificacion && archivos.length < 1) { toast.error('Debes adjuntar el PDF de la resolución que soporta la modificación'); return; }
 
     setSubmitting(true);
     let archivosData: any[] = [];
@@ -59,11 +70,12 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
       docenteId,
       docenteNombre,
       docenteEmail,
-      caso,
-      razon: casoInfo?.label || caso,
+      caso: esModificacion ? 'modificacion_pta' : caso,
+      razon: esModificacion ? `Modificación de PTA${ptaLabel ? ` (${ptaLabel})` : ''}` : (casoInfo?.label || caso),
       justificacion,
-      casoLibre: caso === 'caso_3' ? casoLibre : undefined,
+      casoLibre: !esModificacion && caso === 'caso_3' ? casoLibre : undefined,
       archivos: archivosData,
+      ...(esModificacion ? { tipoSolicitud: 'modificacion', ptaId } : {}),
     });
 
     setSubmitting(false);
@@ -89,8 +101,14 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#111827', margin: 0 }}>Solicitar creacion de nuevo PTA</h3>
-            <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '4px 0 0' }}>Esta solicitud sera revisada por el administrador del sistema</p>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#111827', margin: 0 }}>
+              {esModificacion ? 'Solicitar modificación del PTA' : 'Solicitar creacion de nuevo PTA'}
+            </h3>
+            <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '4px 0 0' }}>
+              {esModificacion
+                ? 'Al aprobarse, tu PTA se reabrirá para editarlo y reenviarlo como una nueva versión (R02), conservando la versión actual.'
+                : 'Esta solicitud sera revisada por el administrador del sistema'}
+            </p>
           </div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <X style={{ width: 16, height: 16, color: '#6B7280' }} />
@@ -105,7 +123,18 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
           </div>
         ) : (
           <div style={{ padding: '20px 24px' }}>
-            {/* Paso 1: Seleccionar caso */}
+            {/* Banner de modificación (reemplaza la selección de caso) */}
+            {esModificacion && (
+              <div style={{ marginBottom: 20, padding: '12px 14px', borderRadius: 12, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <RotateCcw style={{ width: 18, height: 18, color: '#2563EB', flexShrink: 0, marginTop: 1 }} />
+                <p style={{ fontSize: '0.75rem', color: '#1E40AF', margin: 0, lineHeight: 1.45 }}>
+                  Estás solicitando modificar tu PTA {ptaLabel ? <strong>{ptaLabel}</strong> : 'vigente'}. Si el administrador aprueba, el PTA volverá a estado editable y, al reenviarlo, pasará de nuevo por el flujo de aprobación como una nueva versión.
+                </p>
+              </div>
+            )}
+
+            {/* Paso 1: Seleccionar caso (solo en creación) */}
+            {!esModificacion && (
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 8 }}>Motivo de la solicitud *</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -135,9 +164,10 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
                 })}
               </div>
             </div>
+            )}
 
             {/* Caso libre */}
-            {caso === 'caso_3' && (
+            {!esModificacion && caso === 'caso_3' && (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Describe tu caso *</label>
                 <input
@@ -167,7 +197,7 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
             {/* Archivos */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
-                Documentos de soporte (maximo 5 PDFs)
+                {esModificacion ? 'Resolución de soporte (PDF obligatorio) *' : 'Documentos de soporte (maximo 5 PDFs)'}
               </label>
               {archivos.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
@@ -205,11 +235,11 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, onCl
             {/* Submit */}
             <button
               onClick={handleSubmit}
-              disabled={submitting || !caso || wordCount < 50}
+              disabled={submitting || !puedeEnviar}
               style={{
                 width: '100%', padding: '12px 18px', borderRadius: 12, border: 'none',
-                background: !caso || wordCount < 50 ? '#D1D5DB' : '#003DA5',
-                color: 'white', fontSize: '0.88rem', fontWeight: 700, cursor: !caso || wordCount < 50 ? 'not-allowed' : 'pointer',
+                background: !puedeEnviar ? '#D1D5DB' : '#003DA5',
+                color: 'white', fontSize: '0.88rem', fontWeight: 700, cursor: !puedeEnviar ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 opacity: submitting ? 0.7 : 1,
               }}

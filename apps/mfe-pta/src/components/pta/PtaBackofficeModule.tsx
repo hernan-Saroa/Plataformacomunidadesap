@@ -325,8 +325,23 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
       resueltoPor: aprobadorNombre,
     });
     setProcesando(null);
-    if (res.success) { toast.success(decision === 'aprobado' ? 'Solicitud aprobada' : 'Solicitud denegada'); load(); }
-    else toast.error(res.message || 'Error');
+    if (res.success) {
+      // HU-12: cuando la solicitud aprobada es de MODIFICACIÓN, el backend reabre el
+      // PTA (Borrador) y devuelve `ptaReabierto`. Sin este aviso explícito, el toast
+      // genérico "Solicitud aprobada" no decía qué pasó con el PTA ni dónde verificarlo.
+      const ptaReabierto = (res.data as any)?.ptaReabierto;
+      if (decision === 'aprobado' && ptaReabierto) {
+        toast.success(
+          `Solicitud aprobada — PTA reabierto para el docente (Borrador, R${String(ptaReabierto.version).padStart(2, '0')}). Ya puede editarlo y reenviarlo.`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success(decision === 'aprobado' ? 'Solicitud aprobada' : 'Solicitud denegada');
+      }
+      load();
+    } else {
+      toast.error(res.message || 'Error');
+    }
   };
 
   const updateForm = (id: string, field: string, value: any) => {
@@ -339,6 +354,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
     caso_1: { label: 'Otra territorial', color: '#003DA5' },
     caso_2: { label: 'Rehacer PTA', color: '#D97706' },
     caso_3: { label: 'Otro caso', color: '#6B21A8' },
+    modificacion_pta: { label: 'Modificar PTA vigente', color: '#2563EB' },
   };
 
   return (
@@ -378,20 +394,29 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
             const isOpen = expandedId === sol.id;
             const casoLabel = CASO_LABELS[sol.caso] || { label: sol.caso, color: '#6B7280' };
             const isPendiente = sol.estado === 'pendiente';
+            // 'gestionada' = aprobada y ya aplicada (p.ej. modificación que reabrió el PTA);
+            // se muestra como positiva, no como denegada.
+            const esPositiva = sol.estado === 'aprobado' || sol.estado === 'gestionada';
             const form = resForm[sol.id] || {};
             const archivos = Array.isArray(sol.archivos) ? sol.archivos : [];
 
             return (
-              <div key={sol.id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${isPendiente ? '#FDE68A' : sol.estado === 'aprobado' ? '#6EE7B7' : '#FCA5A5'}`, overflow: 'hidden' }}>
+              <div key={sol.id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${isPendiente ? '#FDE68A' : esPositiva ? '#6EE7B7' : '#FCA5A5'}`, overflow: 'hidden' }}>
                 {/* Header */}
                 <div onClick={() => setExpandedId(isOpen ? null : sol.id)}
                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', cursor: 'pointer', background: isOpen ? '#FAFAFA' : 'white' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>{sol.docenteNombre || sol.docente?.persona?.nombreCompleto || 'Docente'}</div>
                     <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {/* HU-12: distingue solicitudes de modificación (R01→R02) de las de creación */}
+                      {sol.tipoSolicitud === 'modificacion' ? (
+                        <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: '#EFF6FF', color: '#2563EB' }}>Modificación (R02)</span>
+                      ) : (
+                        <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: '#F3F4F6', color: '#4B5563' }}>Creación</span>
+                      )}
                       <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: `${casoLabel.color}15`, color: casoLabel.color }}>{casoLabel.label}</span>
-                      <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: isPendiente ? '#FEF3C7' : sol.estado === 'aprobado' ? '#D1FAE5' : '#FEE2E2', color: isPendiente ? '#92400E' : sol.estado === 'aprobado' ? '#065F46' : '#991B1B' }}>
-                        {isPendiente ? 'Pendiente' : sol.estado === 'aprobado' ? 'Aprobada' : 'Denegada'}
+                      <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: isPendiente ? '#FEF3C7' : esPositiva ? '#D1FAE5' : '#FEE2E2', color: isPendiente ? '#92400E' : esPositiva ? '#065F46' : '#991B1B' }}>
+                        {isPendiente ? 'Pendiente' : sol.estado === 'gestionada' ? 'Gestionada' : sol.estado === 'aprobado' ? 'Aprobada' : 'Denegada'}
                       </span>
                       <span style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>{new Date(sol.createdAt).toLocaleDateString('es-CO')}</span>
                     </div>
@@ -407,7 +432,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
                         {/* Info docente */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
                           <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
-                            <strong>Territorial:</strong> {sol.docente?.territorial?.nombre || 'N/A'}
+                            <strong>Territorial:</strong> {sol.territorialNombre || sol.docente?.territorial?.nombre || 'N/A'}
                           </div>
                           <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
                             <strong>Email:</strong> {sol.docenteEmail || sol.docente?.correoInstitucional || 'N/A'}
@@ -444,9 +469,9 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
 
                         {/* Resolución anterior */}
                         {sol.estado !== 'pendiente' && sol.resolucionMotivo && (
-                          <div style={{ padding: '8px 12px', borderRadius: 8, background: sol.estado === 'aprobado' ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${sol.estado === 'aprobado' ? '#BBF7D0' : '#FECACA'}`, marginBottom: 10 }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: sol.estado === 'aprobado' ? '#065F46' : '#991B1B' }}>
-                              {sol.estado === 'aprobado' ? 'Aprobada' : 'Denegada'} por {sol.resueltoPor} — {sol.resolucionFecha ? new Date(sol.resolucionFecha).toLocaleDateString('es-CO') : ''}
+                          <div style={{ padding: '8px 12px', borderRadius: 8, background: esPositiva ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${esPositiva ? '#BBF7D0' : '#FECACA'}`, marginBottom: 10 }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: esPositiva ? '#065F46' : '#991B1B' }}>
+                              {esPositiva ? (sol.tipoSolicitud === 'modificacion' ? 'Aprobada (PTA reabierto para R02)' : 'Aprobada') : 'Denegada'} por {sol.resueltoPor} — {sol.resolucionFecha ? new Date(sol.resolucionFecha).toLocaleDateString('es-CO') : ''}
                             </div>
                             <p style={{ fontSize: '0.75rem', color: '#4B5563', margin: '4px 0 0' }}>{sol.resolucionMotivo}</p>
                           </div>

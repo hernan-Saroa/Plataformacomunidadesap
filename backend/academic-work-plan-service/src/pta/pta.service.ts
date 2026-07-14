@@ -148,6 +148,13 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
 // puede seguir aprobado) — a diferencia del estado legacy 'Devuelto' (todo el PTA).
 const REVISION_DOCENTE_STATES = new Set(Object.values(COMPONENT_REVISION_STATE));
 
+// HU-12: estados "cerrados" desde los que se puede solicitar una modificación
+// (reapertura R01→R02). Un PTA en borrador/en revisión no requiere modificación formal.
+const MODIFIABLE_PTA_STATES = new Set([
+  'Aprobado', 'APROBADO',
+  'Terminado', 'TERMINADO',
+]);
+
 type ExtensionCatalogActivity = {
   id: string;
   nombre: string;
@@ -2731,15 +2738,62 @@ export class PtaService {
 
   async crearSolicitudPTA(body: any) {
     const resolvedDocenteId = await this.resolveDocenteId(coalesceString(body?.docenteId, body?.docente_id) || '');
+    const tipoSolicitud = coalesceString(body?.tipoSolicitud, body?.tipo_solicitud) === 'modificacion'
+      ? 'modificacion'
+      : 'creacion';
+    const ptaId = coalesceString(body?.ptaId, body?.pta_id);
+    const justificacion = coalesceString(body?.justificacion) || '';
+    const archivos = Array.isArray(body?.archivos) ? body.archivos : (body?.archivos ? [body.archivos] : []);
+
+    // HU-12: la solicitud de MODIFICACIÓN (R01→R02) exige un PTA objetivo válido,
+    // justificación y un PDF de resolución obligatorio.
+    if (tipoSolicitud === 'modificacion') {
+      if (!ptaId) {
+        throw new BadRequestException('Debe indicar el PTA que desea modificar.');
+      }
+      const ptaObjetivo = await this.ptaRepo.findOne({ where: { id: ptaId } });
+      if (!ptaObjetivo) {
+        throw new NotFoundException('El PTA a modificar no existe.');
+      }
+      if (!MODIFIABLE_PTA_STATES.has(ptaObjetivo.estado)) {
+        throw new BadRequestException(
+          `Solo se puede solicitar modificación de un PTA cerrado (Aprobado/Terminado). Estado actual: ${ptaObjetivo.estado}.`,
+        );
+      }
+      if (!justificacion.trim()) {
+        throw new BadRequestException('La justificación de la modificación es obligatoria.');
+      }
+      const tieneResolucion = archivos.some((a: any) => {
+        const nombre = String(a?.nombre || a?.name || '').toLowerCase();
+        const tipo = String(a?.tipo || a?.type || '').toLowerCase();
+        return nombre.endsWith('.pdf') || tipo.includes('pdf');
+      });
+      if (!tieneResolucion) {
+        throw new BadRequestException('Debe adjuntar el PDF de la resolución que soporta la modificación.');
+      }
+    }
+
+    // Email del docente: usar el que envía el cliente o, si no vino, resolverlo del
+    // registro Docente (correo institucional/alternativo) para que no salga "N/A".
+    let docenteEmail = coalesceString(body?.docenteEmail, body?.docente_email);
+    if (!docenteEmail && resolvedDocenteId) {
+      try {
+        const d = await this.docenteRepo.findOne({ where: { id: resolvedDocenteId } as any });
+        docenteEmail = coalesceString((d as any)?.correoInstitucional, (d as any)?.correoAlternativo);
+      } catch { /* best-effort */ }
+    }
+
     const entity = this.solicitudRepo.create({
       docenteId: resolvedDocenteId,
       docenteNombre: coalesceString(body?.docenteNombre, body?.docente_nombre) || '',
-      docenteEmail: coalesceString(body?.docenteEmail, body?.docente_email) as any,
-      caso: coalesceString(body?.caso) || '',
+      docenteEmail: docenteEmail as any,
+      caso: coalesceString(body?.caso) || (tipoSolicitud === 'modificacion' ? 'modificacion_pta' : ''),
       razon: coalesceString(body?.razon) || '',
-      justificacion: coalesceString(body?.justificacion) || '',
+      justificacion,
       casoLibre: coalesceString(body?.casoLibre, body?.caso_libre) as any,
-      archivos: body?.archivos ?? null,
+      tipoSolicitud,
+      ptaId: (ptaId || null) as any,
+      archivos: archivos.length > 0 ? archivos : null,
       estado: 'pendiente',
     });
 
@@ -2763,15 +2817,120 @@ export class PtaService {
     const existing = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
     if (!existing) throw new NotFoundException('Solicitud no encontrada');
 
-    existing.estado = coalesceString(body?.decision) === 'aprobado' ? 'aprobado' : coalesceString(body?.decision) === 'denegado' ? 'denegado' : existing.estado;
+    const decision = coalesceString(body?.decision);
+    const nuevoEstado = decision === 'aprobado' ? 'aprobado' : decision === 'denegado' ? 'denegado' : existing.estado;
+    existing.estado = nuevoEstado;
     existing.resolucionMotivo = coalesceString(body?.motivo) as any;
     existing.resolucionAccion = coalesceString(body?.accion) as any;
     existing.territorialNueva = coalesceString(body?.territorialNueva) as any;
     existing.horasPtaOriginal = body?.horasPtaOriginal ?? existing.horasPtaOriginal;
     existing.horasPtaNuevo = body?.horasPtaNuevo ?? existing.horasPtaNuevo;
     existing.resueltoPor = coalesceString(body?.resueltoPor) as any;
+    // Se registra la fecha de resolución (antes quedaba null y rompía el orden por fecha).
+    existing.resolucionFecha = new Date();
     await this.solicitudRepo.save(existing);
-    return existing;
+
+    // HU-12: al APROBAR una solicitud de MODIFICACIÓN, se reabre el PTA (R01) para que
+    // el docente lo edite; al reenviarlo por el flujo normal quedará como R02, con R01
+    // preservado como snapshot inmutable. La solicitud se marca 'gestionada' para que no
+    // vuelva a disparar la reapertura ni habilite un PTA extra.
+    // `ptaReabierto` viaja en la respuesta para que el frontend confirme explícitamente
+    // qué pasó (antes el admin veía un toast genérico "Solicitud aprobada" sin ninguna
+    // indicación de que el PTA había sido reabierto para el docente).
+    let ptaReabierto: { id: string; estado: string; version: number } | undefined;
+    if (nuevoEstado === 'aprobado' && existing.tipoSolicitud === 'modificacion' && existing.ptaId) {
+      try {
+        const ptaActualizado = await this.reabrirPtaParaModificacion(existing);
+        existing.estado = 'gestionada';
+        await this.solicitudRepo.save(existing);
+        ptaReabierto = { id: ptaActualizado.id, estado: ptaActualizado.estado, version: ptaActualizado.version };
+
+        // Notificar al docente (in-app + correo): sin esto, la reapertura ocurre en
+        // silencio y nadie se entera de que ya puede editar y reenviar su PTA.
+        try {
+          await this.ptaNotifications.notifyProfesorPtaReabiertoParaModificacion({
+            ptaId: ptaActualizado.id,
+            docenteId: ptaActualizado.docenteId,
+            nuevaVersion: ptaActualizado.version,
+            resueltoPor: existing.resueltoPor,
+          });
+        } catch (notifErr: any) {
+          this.logger.warn(`No se pudo notificar al docente la reapertura del PTA ${ptaActualizado.id}: ${notifErr?.message || notifErr}`);
+        }
+      } catch (e: any) {
+        this.logger.error(`No se pudo reabrir el PTA ${existing.ptaId} para modificación: ${e?.message || e}`);
+        throw e;
+      }
+    }
+
+    return { ...existing, ptaReabierto };
+  }
+
+  /**
+   * HU-12 — Reabre un PTA cerrado (R01) para modificación. Congela la versión vigente
+   * como snapshot inmutable en el historial y deja el PTA editable (Borrador) para que
+   * el docente lo corrija y lo reenvíe por el flujo de aprobación normal (→ R02).
+   * NO crea una fila nueva: versiona el mismo PTA.
+   */
+  private async reabrirPtaParaModificacion(solicitud: SolicitudPtaEntity) {
+    const pta = await this.ptaRepo.findOne({ where: { id: solicitud.ptaId as string } });
+    if (!pta) throw new NotFoundException('El PTA a modificar no existe.');
+
+    const estadoAnterior = pta.estado;
+    const versionCongelada = pta.version || 1;
+
+    // 1) Congelar R01 como snapshot inmutable (queda visible en Trazabilidad y permite
+    //    ver/reimprimir la versión anterior aunque el PTA se siga editando).
+    await this.historialRepo.save(this.historialRepo.create({
+      ptaId: pta.id,
+      estadoAnterior,
+      estadoNuevo: estadoAnterior,
+      actorId: solicitud.resueltoPor || 'sistema',
+      actorRol: 'Administrador',
+      tipoAccion: 'VERSION_CONGELADA',
+      comentarios: `Versión R${String(versionCongelada).padStart(2, '0')} congelada para modificación aprobada. Motivo: ${solicitud.resolucionMotivo || solicitud.justificacion || 'N/D'}`,
+      snapshotPta: pta.datosEstructurados ?? null,
+      version: versionCongelada,
+    }));
+
+    // 2) Reabrir el PTA para edición del docente (conservando su contenido).
+    pta.estado = 'Borrador';
+    pta.version = versionCongelada + 1;
+    pta.observaciones = `PTA reabierto para modificación (nueva versión R${String(versionCongelada + 1).padStart(2, '0')}). ${solicitud.resolucionMotivo || solicitud.justificacion || ''}`.trim();
+    pta.motivoDevolucion = null;
+    // Si venía cerrado por cambio de periodo, se limpian los marcadores de cierre.
+    pta.estadoAntesCierrePeriodo = null;
+    pta.cerradoPorPeriodo = null;
+    const saved = await this.ptaRepo.save(pta);
+
+    // 3) Historial + evento del acto de reapertura.
+    await this.historialRepo.save(this.historialRepo.create({
+      ptaId: pta.id,
+      estadoAnterior,
+      estadoNuevo: 'Borrador',
+      actorId: solicitud.resueltoPor || 'sistema',
+      actorRol: 'Administrador',
+      tipoAccion: 'MODIFICACION_APROBADA',
+      comentarios: `Modificación aprobada; el docente puede editar y reenviar como R${String(versionCongelada + 1).padStart(2, '0')}.`,
+      snapshotPta: pta.datosEstructurados ?? null,
+      version: saved.version,
+    }));
+
+    await this.logEvento({
+      ptaId: pta.id,
+      tipo: 'cambio_estado',
+      docenteId: pta.docenteId,
+      docenteNombre: coalesceString((pta.datosEstructurados as any)?.docente_nombre),
+      estadoAnterior,
+      estadoNuevo: 'Borrador',
+      actor: solicitud.resueltoPor || 'sistema',
+      actorRol: 'Administrador',
+      sistemaOrigen: 'backoffice',
+      mensaje: `PTA reabierto para modificación (R${String(versionCongelada + 1).padStart(2, '0')}).`,
+      metadata: { solicitudId: solicitud.id, versionAnterior: versionCongelada },
+    });
+
+    return saved;
   }
 
   async getSolicitudesPTA(filters?: { estado?: string }) {
@@ -2782,7 +2941,37 @@ export class PtaService {
     }
     qb.orderBy('s.createdAt', 'DESC');
     qb.take(500);
-    return qb.getMany();
+    const solicitudes = await qb.getMany();
+
+    // Enriquecer con territorial y correo del docente (para no mostrar "N/A" en el
+    // panel admin). Se resuelve en una sola consulta batch por docenteId.
+    const docenteIds = Array.from(new Set(solicitudes.map((s) => s.docenteId).filter(Boolean)));
+    if (docenteIds.length > 0) {
+      try {
+        const rows: Array<{ id: string; email: string | null; territorial: string | null }> =
+          await this.ptaRepo.manager.query(
+            `SELECT d.id::text AS id,
+                    COALESCE(d."correoInstitucional", d."correoAlternativo") AS email,
+                    t.nombre AS territorial
+               FROM academic_work_plan."Docente" d
+               LEFT JOIN academic_work_plan."Territorial" t ON t.id = d."territorialId"
+              WHERE d.id = ANY($1::uuid[])`,
+            [docenteIds],
+          );
+        const byId = new Map(rows.map((r) => [String(r.id), r]));
+        return solicitudes.map((s) => {
+          const info = byId.get(String(s.docenteId));
+          return {
+            ...s,
+            docenteEmail: s.docenteEmail || info?.email || null,
+            territorialNombre: info?.territorial || null,
+          };
+        });
+      } catch (e: any) {
+        this.logger.warn(`No se pudo enriquecer solicitudes con datos del docente: ${e?.message || e}`);
+      }
+    }
+    return solicitudes;
   }
 
   async deletePTA(ptaId: string) {

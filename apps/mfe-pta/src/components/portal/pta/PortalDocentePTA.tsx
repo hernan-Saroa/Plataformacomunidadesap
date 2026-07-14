@@ -402,6 +402,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   const [sendingMsg, setSendingMsg] = useState(false);
   const [isReporteOpen, setIsReporteOpen] = useState(false);
   const [showSolicitudModal, setShowSolicitudModal] = useState(false);
+  // HU-12: PTA seleccionado para solicitar modificación (R01→R02).
+  const [modificacionPta, setModificacionPta] = useState<any | null>(null);
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
   const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
 
@@ -953,6 +955,12 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                               {isEnRevisionDocente && (
                                 <button onClick={(e) => { e.stopPropagation(); setEditPtaId(pta.id); setVista('v03_formulario'); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-[0.75rem] font-bold active:scale-[0.97] transition-all border-none cursor-pointer" style={{ background: '#7C3AED', boxShadow: '0 2px 8px rgba(124,58,237,0.18)' }}>
                                   <CheckCircle2 className="w-3.5 h-3.5" /> Revisar
+                                </button>
+                              )}
+                              {/* HU-12: solicitar modificación de un PTA cerrado (Aprobado/Terminado) → R02 */}
+                              {['Aprobado', 'En Firme', 'Finalizado', 'Terminado', 'TERMINADO'].includes(pta.estado) && (
+                                <button onClick={(e) => { e.stopPropagation(); setModificacionPta(pta); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[0.75rem] font-bold active:scale-[0.97] transition-all cursor-pointer border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">
+                                  <RotateCcw className="w-3.5 h-3.5" /> Solicitar modificación
                                 </button>
                               )}
                             </div>
@@ -1719,6 +1727,19 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
           docenteId={userPersonId}
           docenteNombre={userName || ''}
           onClose={() => setShowSolicitudModal(false)}
+          onSuccess={() => { loadPtas(); loadSolicitudes(); }}
+        />
+      )}
+
+      {/* HU-12: Modal de solicitud de MODIFICACIÓN de un PTA existente (R01→R02) */}
+      {modificacionPta && (
+        <SolicitudPTAModal
+          docenteId={userPersonId}
+          docenteNombre={userName || ''}
+          modo="modificacion"
+          ptaId={modificacionPta.id}
+          ptaLabel={modificacionPta.periodo ? `Periodo ${modificacionPta.periodo}` : undefined}
+          onClose={() => setModificacionPta(null)}
           onSuccess={() => { loadPtas(); loadSolicitudes(); }}
         />
       )}

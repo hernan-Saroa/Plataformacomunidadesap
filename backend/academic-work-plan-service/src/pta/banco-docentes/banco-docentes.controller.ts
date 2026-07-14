@@ -387,6 +387,9 @@ export class BancoDocentesController {
   // BR-039 — Vincular un soporte a un bloque
   @Post(':id/bloques/:bloque/soportes')
   @UseInterceptors(FileInterceptor('file', {
+    // Límite de tamaño (10MB) y un solo archivo por carga. Defensa en el servidor;
+    // el cliente también valida antes de subir para dar feedback inmediato.
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
     storage: diskStorage({
       destination: (req, file, cb) => {
         const docenteId = req.params.id || 'desconocido';
@@ -414,14 +417,25 @@ export class BancoDocentesController {
     try {
       let validacionTipo: any = undefined;
       if (file) {
+        // ── HU-06: Validación de archivo antes de registrar el soporte ──────────
+        // 1) Extensión/mimetype permitido (PDF o imagen). Si no, se descarta el
+        //    archivo del disco y se rechaza con un mensaje claro para el docente.
+        const extensionInvalida = this.motivoExtensionInvalida(file);
+        if (extensionInvalida) {
+          this.eliminarArchivoSubido(file);
+          return { success: false, error: extensionInvalida, code: 'ARCHIVO_TIPO_NO_PERMITIDO' };
+        }
+
         body.nombreArchivo = file.originalname;
         const docenteId = id || 'desconocido';
         const docenteNombre = body.docenteNombre ? String(body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
         body.documentoCarpetaId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file.filename}`;
 
-        // Validación SOFT de tipo de documento: escanea el PDF y compara contra
-        // palabras clave derivadas del código de soporte (+ nombre/descripción si vienen).
-        // No bloquea la carga; adjunta el veredicto a la respuesta para avisar al usuario.
+        // 2) Validación de CONTENIDO contra el tipo esperado: escanea el PDF y
+        //    compara contra palabras clave del código de soporte (+ nombre/descr).
+        //    Solo bloquea cuando SÍ pudo leer el contenido y NO corresponde
+        //    (validated && !matched); si no es PDF o no tiene texto extraíble, no
+        //    se puede afirmar nada y se deja pasar (queda 'Pendiente' de revisión).
         validacionTipo = await this.docTypeValidator.validate({
           filePath: (file as any).path,
           originalName: file.originalname,
@@ -430,7 +444,14 @@ export class BancoDocentesController {
           expectedDescription: body.tipoDescripcion,
         });
         if (validacionTipo.validated && !validacionTipo.matched) {
-          this.logger.warn(`[RUND] Soporte "${body.tipoSoporte}" del docente ${id}: posible tipo incorrecto (${validacionTipo.reason})`);
+          this.logger.warn(`[RUND] Soporte "${body.tipoSoporte}" del docente ${id}: tipo incorrecto (${validacionTipo.reason})`);
+          this.eliminarArchivoSubido(file);
+          return {
+            success: false,
+            error: `El archivo no corresponde al tipo de documento esperado (${body.tipoNombre || body.tipoSoporte}). ${validacionTipo.reason || ''}`.trim(),
+            code: 'ARCHIVO_CONTENIDO_NO_CORRESPONDE',
+            data: { validacionTipo },
+          };
         }
       }
       const result = await this.service.vincularSoporte(id, bloque, body);
@@ -441,7 +462,40 @@ export class BancoDocentesController {
         : { resultado: result, validacionTipo };
       return { success: true, data };
     } catch (e: any) {
+      // Si algo falla después de guardar el archivo, intentar limpiarlo para no
+      // dejar huérfanos en disco.
+      this.eliminarArchivoSubido(file);
       return { success: false, error: e.message, stack: e.stack };
+    }
+  }
+
+  /** Extensiones/mimetypes aceptados para soportes RUND (PDF e imágenes comunes). */
+  private static readonly SOPORTE_EXT_PERMITIDAS = ['.pdf', '.jpg', '.jpeg', '.png'];
+  private static readonly SOPORTE_MIME_PERMITIDOS = [
+    'application/pdf', 'image/jpeg', 'image/jpg', 'image/png',
+  ];
+
+  /** Devuelve un mensaje de error si el archivo no es de un tipo permitido, o null si es válido. */
+  private motivoExtensionInvalida(file: Express.Multer.File): string | null {
+    const ext = extname(file.originalname || '').toLowerCase();
+    const mime = (file.mimetype || '').toLowerCase();
+    const extOk = BancoDocentesController.SOPORTE_EXT_PERMITIDAS.includes(ext);
+    const mimeOk = BancoDocentesController.SOPORTE_MIME_PERMITIDOS.includes(mime);
+    // Se exige que AMBOS (extensión y mimetype) sean coherentes y permitidos.
+    if (!extOk || !mimeOk) {
+      return `Tipo de archivo no permitido. Solo se aceptan PDF o imágenes (${BancoDocentesController.SOPORTE_EXT_PERMITIDAS.join(', ')}).`;
+    }
+    return null;
+  }
+
+  /** Borra (best-effort) el archivo subido a disco cuando la carga se rechaza. */
+  private eliminarArchivoSubido(file?: Express.Multer.File): void {
+    const path = (file as any)?.path;
+    if (!path) return;
+    try {
+      if (fs.existsSync(path)) fs.unlinkSync(path);
+    } catch (e: any) {
+      this.logger.warn(`No se pudo eliminar el archivo rechazado ${path}: ${e?.message || e}`);
     }
   }
 

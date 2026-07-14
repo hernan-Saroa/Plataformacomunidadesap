@@ -365,4 +365,57 @@ export class PtaNotificationsService {
     this.logger.log(`PTA ${opts.ptaId}: profesor ${prof.idUser} notificado de aprobación de "${opts.componente}"`);
     return true;
   }
+
+  /**
+   * HU-12 — Notifica al profesor que su solicitud de MODIFICACIÓN de PTA fue aprobada
+   * y que el PTA quedó reabierto (Borrador) para que lo edite y reenvíe como nueva
+   * versión. Sin esta notificación, la reapertura ocurre "en silencio": el docente
+   * (y el propio administrador) no tienen forma de enterarse de que ya puede editarlo.
+   */
+  async notifyProfesorPtaReabiertoParaModificacion(opts: {
+    ptaId: string;
+    docenteId: string | null | undefined;
+    nuevaVersion: number;
+    resueltoPor?: string | null;
+  }): Promise<boolean> {
+    if (!opts.docenteId) return false;
+    const prof = await this.resolveUser(opts.docenteId);
+    if (!prof) {
+      this.logger.warn(`PTA ${opts.ptaId}: no se resolvió el profesor (${opts.docenteId}) para notificar reapertura por modificación`);
+      return false;
+    }
+
+    const versionLabel = `R${String(opts.nuevaVersion).padStart(2, '0')}`;
+    const titulo = 'Tu solicitud de modificación fue aprobada';
+    const mensaje = `Tu PTA fue reabierto para que lo edites y lo reenvíes como la versión ${versionLabel}.`;
+    const url = 'pta';
+
+    await this.createInApp({
+      id_usuario_destinatario: prof.idUser,
+      tipo_notificacion: 'pta_reabierto_modificacion',
+      titulo,
+      mensaje,
+      categoria: 'PTA',
+      prioridad: 'Alta',
+      icono: 'rotate-ccw',
+      color: '#2563EB',
+      tiene_accion: true,
+      texto_boton_accion: 'Editar mi PTA',
+      url_accion: url,
+      datos_adicionales: { ptaId: opts.ptaId, nuevaVersion: opts.nuevaVersion },
+    });
+
+    if (prof.email) {
+      const linkAbsoluto = `${this.resolvePublicAppUrl()}/?view=portal`;
+      const html = `
+        <p>Hola ${this.escapeHtml(prof.nombre || '')},</p>
+        <p>${this.escapeHtml(mensaje)}</p>
+        <p><a href="${linkAbsoluto}">Editar mi PTA</a></p>
+      `;
+      void this.sendEmail(prof.email, titulo, mensaje, html);
+    }
+
+    this.logger.log(`PTA ${opts.ptaId}: profesor ${prof.idUser} notificado de reapertura por modificación (${versionLabel})`);
+    return true;
+  }
 }

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Logger,
@@ -538,8 +539,19 @@ export class PtaController {
   }
 
   @Patch('solicitudes/:solicitudId/resolver')
-  async resolverSolicitud(@Param('solicitudId') solicitudId: string, @Body() body: any) {
-    const data = await this.ptaService.resolverSolicitudPTA(solicitudId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async resolverSolicitud(@Param('solicitudId') solicitudId: string, @Body() body: any, @Req() req: Request) {
+    // HU-12: resolver (aprobar/denegar) solicitudes de PTA requiere el permiso
+    // `pta.backoffice.solicitudes` (o ser aprobador integral / superusuario). Así el
+    // seguimiento de estas solicitudes queda gobernado por roles y permisos.
+    const auth = req.ptaAuth;
+    const autorizado = !!auth && (auth.isSuperUser || auth.approvesAll || auth.permissions?.has('pta.backoffice.solicitudes'));
+    if (!autorizado) {
+      throw new ForbiddenException('No tiene permiso para gestionar solicitudes de PTA (pta.backoffice.solicitudes).');
+    }
+    // La identidad de quien resuelve proviene del token (integridad de auditoría).
+    const payload = { ...(body || {}), resueltoPor: auth?.name || body?.resueltoPor };
+    const data = await this.ptaService.resolverSolicitudPTA(solicitudId, payload);
     return { success: true, data };
   }
 

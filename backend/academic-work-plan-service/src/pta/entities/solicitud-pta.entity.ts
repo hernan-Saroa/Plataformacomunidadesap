@@ -26,6 +26,14 @@ export class SolicitudPtaEntity {
   @Column({ name: 'casoLibre', type: 'text', nullable: true })
   casoLibre: string | null;
 
+  // HU-12: solicitud de modificación (R01→R02). `tipoSolicitud='modificacion'`
+  // referencia el PTA a reabrir en `ptaId`; 'creacion' es el flujo legacy (fila nueva).
+  @Column({ name: 'tipoSolicitud', type: 'text', default: 'creacion' })
+  tipoSolicitud: string;
+
+  @Column({ name: 'ptaId', type: 'text', nullable: true })
+  ptaId: string | null;
+
   @Column({ name: 'archivos', type: 'jsonb', nullable: true })
   archivos: any | null;
 

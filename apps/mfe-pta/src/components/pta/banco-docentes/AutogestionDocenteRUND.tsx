@@ -274,6 +274,21 @@ export function AutogestionDocenteRUND() {
   // Manejo de archivos retenidos por bloque/tipo (no se suben hasta el envío final).
   const setSoporteFile = (bloque: string, tipo: string, file: File | null) => {
     const key = `${bloque}__${tipo}`;
+    // HU-06: validación de tipo/tamaño en cliente para feedback inmediato (el backend
+    // vuelve a validar antes de registrar el soporte).
+    if (file) {
+      const ext = ('.' + (file.name.split('.').pop() || '')).toLowerCase();
+      const permitidas = ['.pdf', '.jpg', '.jpeg', '.png'];
+      if (!permitidas.includes(ext)) {
+        setError(`El archivo "${file.name}" no es válido. Solo se aceptan PDF o imágenes (${permitidas.join(', ')}).`);
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setError(`El archivo "${file.name}" supera el tamaño máximo de 10 MB.`);
+        return;
+      }
+      setError(null);
+    }
     setSoporteFiles(prev => {
       const next = { ...prev };
       if (file) next[key] = file; else delete next[key];
@@ -311,6 +326,7 @@ export function AutogestionDocenteRUND() {
 
       // Subir los soportes adjuntos al docente recién creado/actualizado.
       const entries = Object.entries(soporteFiles);
+      const soportesRechazados: string[] = [];
       if (docenteId && entries.length > 0) {
         let done = 0;
         for (const [key, file] of entries) {
@@ -318,11 +334,25 @@ export function AutogestionDocenteRUND() {
           setUploadProgress(`Subiendo documentos (${done + 1}/${entries.length})…`);
           const up = await vincularRundSoporte(docenteId, bloque, { tipoSoporte, cargadoPor: form.correoInstitucional || email }, file);
           if (!(up as any)?.success) {
+            // HU-06: el backend rechaza archivos de tipo/contenido incorrecto. Se
+            // recopila el motivo para avisarle al docente qué soportes no quedaron.
+            const motivo = (up as any)?.error || 'no se pudo validar el archivo';
             console.warn('[RUND] Falló la carga de un soporte', key, up);
+            soportesRechazados.push(`${tipoSoporte}: ${motivo}`);
           }
           done++;
         }
         setUploadProgress(null);
+      }
+
+      // Si algún soporte fue rechazado por validación, se informa al docente sin
+      // perder el registro ya creado (puede reintentar esos documentos).
+      if (soportesRechazados.length > 0) {
+        setError(
+          `Tu registro se guardó, pero ${soportesRechazados.length} documento(s) no se cargaron por no corresponder al tipo esperado o por formato inválido:\n• ${soportesRechazados.join('\n• ')}`,
+        );
+        setLoading(false);
+        return;
       }
 
       // §4 — Asegurar la creación de la Carpeta Digital (es lazy; la disparamos explícitamente).
