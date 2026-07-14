@@ -24,7 +24,9 @@ export class HorasPtaCalculator {
     if (asignatura.tipoExcepcion === 'seminario_opciones_apt') return 144;
 
     // 2. Pregrados centrales con horas fijas de clase (por ejemplo, AP_Diurno/Nocturno/Economía Pública: 64h de clase)
-    if (programa.horasPregradoCentral !== null && programa.horasPregradoCentral !== undefined) {
+    //    Debe ser > 0: el 0 (default del formulario de creación de programas) NO es "central",
+    //    sino "no aplica" → debe pasar al cálculo por crédito del punto 3.
+    if (programa.horasPregradoCentral != null && programa.horasPregradoCentral > 0) {
       return programa.horasPregradoCentral * 3;
     }
 
