@@ -22,6 +22,7 @@ import {
   escalarConcertacion, enviarAprobacionPTA,
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 interface MesaConcertacionProps {
   ptaId: string;
@@ -351,7 +352,10 @@ export function MesaConcertacion({ ptaId, onBack, userRole = 'direccion', userNa
   const horasBase = pta?.horas_a_programar || 800;
   const isConcertado = pta?.estado === 'CONCERTADO';
   const isEscalado = pta?.estado === 'ESCALADO_SNA';
-  const estadoInfo = pta ? (ESTADO_LABELS[pta.estado] || { label: pta.estado, color: '#4B5563', bg: '#F3F4F6', border: '#E5E7EB' }) : { label: '', color: '#4B5563', bg: '#F3F4F6', border: '#E5E7EB' };
+  const estadoVisual = getPtaStatusVisual(pta?.estado);
+  const estadoInfo = pta
+    ? { ...estadoVisual, label: ESTADO_LABELS[pta.estado]?.label || estadoVisual.label }
+    : { ...estadoVisual, label: '' };
 
   const comparativo = useMemo(() => [
     {

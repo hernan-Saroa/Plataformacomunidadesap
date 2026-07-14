@@ -14,32 +14,20 @@ import {
 } from 'lucide-react';
 import { getReporteSeguimiento, getCatalogoTerritoriales } from '../../services/api/ptaApi';
 import { ExportadorReportesPTA } from './ExportadorReportesPTA';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 const ESTADOS_ALL = [
   '', 'Borrador', 'PROPUESTO_POR_DIRECCION', 'NOTIFICADO_DOCENTE', 'EN_CONCERTACION',
   'CONCERTADO', 'ESCALADO_SNA', 'Pendiente Jefatura', 'Pendiente Decanatura',
-  'Pendiente Gestión Profesoral', 'Aprobado', 'Rechazado', 'Devuelto'
+  'Pendiente Gestión Profesoral', 'Aprobado', 'En Firme', 'Finalizado',
+  'Terminado', 'Rechazado', 'Devuelto'
 ];
 
 const DEDICACIONES = ['', 'Tiempo Completo', 'Medio Tiempo', 'Catedrático'];
 
 function getStatusBadge(estado: string) {
-  const configs: Record<string, { bg: string; color: string }> = {
-    'Borrador': { bg: '#F3F4F6', color: '#4B5563' },
-    'PROPUESTO_POR_DIRECCION': { bg: '#EFF6FF', color: '#1E40AF' },
-    'NOTIFICADO_DOCENTE': { bg: '#FEF3C7', color: '#92400E' },
-    'EN_CONCERTACION': { bg: '#F3E8FF', color: '#6B21A8' },
-    'CONCERTADO': { bg: '#D1FAE5', color: '#065F46' },
-    'ESCALADO_SNA': { bg: '#FEE2E2', color: '#991B1B' },
-    'Pendiente Jefatura': { bg: '#FEF3C7', color: '#92400E' },
-    'Pendiente Decanatura': { bg: '#DBEAFE', color: '#1E40AF' },
-    'Pendiente Gestión Profesoral': { bg: '#E0E7FF', color: '#3730A3' },
-    'Aprobado': { bg: '#D1FAE5', color: '#065F46' },
-    'Rechazado': { bg: '#FEE2E2', color: '#991B1B' },
-    'Devuelto': { bg: '#FFF7ED', color: '#9A3412' },
-  };
-  const c = configs[estado] || { bg: '#F3F4F6', color: '#4B5563' };
-  return c;
+  const visual = getPtaStatusVisual(estado);
+  return { bg: visual.bg, color: visual.color };
 }
 
 export function ReporteSeguimientoPTA() {

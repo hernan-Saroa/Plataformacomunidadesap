@@ -34,6 +34,7 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import {
   getAllPTAs, getDismissedAlerts, saveDismissedAlerts,
   getReportSchedules, saveReportSchedule, deleteReportSchedule, toggleReportSchedule,
@@ -1816,14 +1817,15 @@ export function CentroReportesPTA() {
                                 color: col.key === 'urgencia' && row[col.key] === 'CRITICA' ? '#DC2626'
                                   : col.key === 'urgencia' && row[col.key] === 'ALTA' ? '#EA580C'
                                   : col.key === 'cumple' && row[col.key] === 'NO' ? '#DC2626'
-                                  : col.key === 'estado' && row[col.key] === 'Aprobado' ? '#059669' : '#374151',
+                                  : col.key === 'estado' ? getPtaStatusVisual(row[col.key]).color : '#374151',
                                 fontWeight: col.key === 'urgencia' || col.key === 'total' ? 700 : 400,
                               }}>
                                 {col.key === 'estado' ? (
                                   <span style={{
                                     padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
-                                    background: row[col.key] === 'Aprobado' ? '#D1FAE5' : row[col.key]?.includes?.('Pendiente') ? '#FEF3C7' : '#F3F4F6',
-                                    color: row[col.key] === 'Aprobado' ? '#065F46' : row[col.key]?.includes?.('Pendiente') ? '#92400E' : '#6B7280',
+                                    background: getPtaStatusVisual(row[col.key]).bg,
+                                    color: getPtaStatusVisual(row[col.key]).color,
+                                    border: `1px solid ${getPtaStatusVisual(row[col.key]).border}`,
                                   }}>{row[col.key]}</span>
                                 ) : col.key === 'urgencia' ? (
                                   <span style={{
@@ -2229,8 +2231,9 @@ export function CentroReportesPTA() {
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <span style={{
                       padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 600,
-                      background: pta.estado === 'Aprobado' ? '#D1FAE5' : '#F3F4F6',
-                      color: pta.estado === 'Aprobado' ? '#065F46' : '#6B7280',
+                      background: getPtaStatusVisual(pta.estado || 'Borrador').bg,
+                      color: getPtaStatusVisual(pta.estado || 'Borrador').color,
+                      border: `1px solid ${getPtaStatusVisual(pta.estado || 'Borrador').border}`,
                     }}>{pta.estado || 'Borrador'}</span>
                     <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 2 }}>{pta.total_horas_programadas || 0}h</div>
                   </div>

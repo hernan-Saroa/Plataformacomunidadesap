@@ -174,6 +174,224 @@ function normalizeExtensionSectionKey(section: unknown): string {
   return EXTENSION_SECTION_ALIASES[key] || 'fortalecimiento';
 }
 
+const EXTENSION_ITEMS_COLUMN_KEY = '_items_';
+
+function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[] {
+  if (!detailColumns.length) return [];
+  const primaryColumn = detailColumns[0];
+  const primaryValues = Array.isArray(item?.col_valores?.[primaryColumn])
+    ? item.col_valores[primaryColumn]
+    : [];
+  const groups = primaryValues.map((value: any) => {
+    const name = String(value || '').trim();
+    return name ? { name, values: [] as Array<{ column: string; value: string }> } : null;
+  });
+
+  for (let columnIndex = 1; columnIndex < detailColumns.length; columnIndex += 1) {
+    const column = detailColumns[columnIndex];
+    const values = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+    const parentIndexes = Array.isArray(item?.col_parents?.[column]) ? item.col_parents[column] : [];
+    values.forEach((rawValue: any, valueIndex: number) => {
+      const value = String(rawValue || '').trim();
+      if (!value) return;
+      let primaryIndex = Number(parentIndexes[valueIndex] ?? valueIndex);
+      for (let parentColumnIndex = columnIndex - 1; parentColumnIndex > 0; parentColumnIndex -= 1) {
+        const parentColumn = detailColumns[parentColumnIndex];
+        const ancestors = Array.isArray(item?.col_parents?.[parentColumn]) ? item.col_parents[parentColumn] : [];
+        primaryIndex = Number(ancestors[primaryIndex] ?? primaryIndex);
+      }
+      if (!Number.isInteger(primaryIndex) || primaryIndex < 0 || primaryIndex >= groups.length) return;
+      groups[primaryIndex]?.values.push({ column, value });
+    });
+  }
+  return groups.filter((group): group is NonNullable<typeof group> => Boolean(group));
+}
+
+function getExtensionCatalogHourRows(activity: any, section: any): any[] {
+  const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
+  if (columns && columns.length > 0 && columns[0] !== EXTENSION_ITEMS_COLUMN_KEY) {
+    const controllingColumn = columns[0];
+    const itemsPosition = columns.indexOf(EXTENSION_ITEMS_COLUMN_KEY);
+    const detailColumns = itemsPosition >= 0 ? columns.slice(itemsPosition + 1) : [];
+    const values = Array.isArray(activity?.columnas_valores?.[controllingColumn])
+      ? activity.columnas_valores[controllingColumn]
+      : [];
+    const metadata = Array.isArray(activity?.columnas_meta?.[controllingColumn])
+      ? activity.columnas_meta[controllingColumn]
+      : [];
+    const items = Array.isArray(activity?.items) ? activity.items : [];
+    const rows: any[] = [];
+    const rowCount = Math.max(values.length, metadata.length);
+    const decorateItem = (item: any) => ({
+      ...item,
+      _detailValues: detailColumns.flatMap((column: string) => {
+        const columnValues = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+        return columnValues
+          .filter((value: any) => String(value || '').trim())
+          .map((value: any) => ({ column, value: String(value) }));
+      }),
+    });
+    for (let index = 0; index < rowCount; index += 1) {
+      const meta = metadata[index] || {};
+      const rowName = String(values[index] || meta?.nombre || `Fila ${index + 1}`);
+      const childItems = items
+        .filter((item: any) => Number(item?.parent_col_idx ?? 0) === index)
+        .map(decorateItem);
+      if (String(meta?.horas_en || 'linea') === 'actividad') {
+        childItems.forEach((item: any) => rows.push({
+          ...item,
+          nombre: `${rowName} — ${String(item?.nombre || 'Actividad')}`,
+          _detailGroups: [{ name: String(item?.nombre || 'Actividad'), values: item._detailValues || [] }],
+        }));
+      } else {
+        rows.push({
+          ...meta,
+          nombre: rowName,
+          _detailGroups: childItems.map((item: any) => ({
+            name: String(item?.nombre || 'Actividad'),
+            values: item._detailValues || [],
+          })),
+        });
+      }
+    }
+    return rows;
+  }
+  if (columns && columns.length === 0) return [];
+  if (Array.isArray(activity?.items)) {
+    const detailColumns = columns && columns[0] === EXTENSION_ITEMS_COLUMN_KEY
+      ? columns.slice(1)
+      : [];
+    return activity.items.map((item: any) => ({
+      ...item,
+      _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+    }));
+  }
+  return [];
+}
+
+function isConfiguredHourRow(row: any): boolean {
+  const type = String(row?.tipo || 'hasta').toLowerCase();
+  if (type === 'porcentaje') {
+    const percentage = Number(row?.porcentaje_pta);
+    return Number.isFinite(percentage) && percentage > 0;
+  }
+  const hours = Number(row?.horas ?? row?.max_horas);
+  return Number.isFinite(hours) && hours > 0;
+}
+
+/**
+ * Resume la estructura jerárquica de Complementarias en la restricción plana
+ * que consume el docente. El ID identifica el bloque, pero nunca determina sus
+ * horas ni el tipo de reconocimiento.
+ */
+function flattenConfiguredComplementaryActivity(
+  activity: any,
+  section: any,
+  fullPTAFromPercentage = false,
+): any {
+  const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
+  const usesStructuredRows = Array.isArray(columns)
+    ? columns.length > 0
+    : Array.isArray(activity?.items);
+  const configuredRows = usesStructuredRows
+    ? getExtensionCatalogHourRows(activity, section).filter(isConfiguredHourRow)
+    : [];
+
+  const rowMax = (row: any) => Math.max(0, Number(row?.horas ?? row?.max_horas) || 0);
+  const rowMin = (row: any, allowOptionalUntil = false) => {
+    const type = String(row?.tipo || 'hasta').toLowerCase();
+    if (type === 'fija') return rowMax(row);
+    if (type === 'intervalo') {
+      return Math.min(rowMax(row), Math.max(1, Number(row?.horas_min ?? row?.min_horas ?? row?.min) || 1));
+    }
+    if (type === 'hasta' && allowOptionalUntil) return 0;
+    return rowMax(row) > 0 ? 1 : 0;
+  };
+
+  let source: any = activity;
+  if (usesStructuredRows && configuredRows.length === 0) {
+    source = { tipo: 'hasta', max_horas: 0 };
+  } else if (configuredRows.length === 1) {
+    source = configuredRows[0];
+  } else if (configuredRows.length > 1) {
+    const types = configuredRows.map((row: any) => String(row?.tipo || 'hasta').toLowerCase());
+    const allFixed = types.every((type: string) => type === 'fija');
+    const allPercentage = types.every((type: string) => type === 'porcentaje');
+    const maxHours = configuredRows.reduce((sum: number, row: any) => sum + rowMax(row), 0);
+    const minHours = configuredRows.reduce(
+      (sum: number, row: any) => sum + rowMin(row, configuredRows.length > 1),
+      0,
+    );
+    source = allPercentage
+      ? {
+          tipo: 'porcentaje',
+          porcentaje_pta: configuredRows.reduce(
+            (sum: number, row: any) => sum + Math.max(0, Number(row?.porcentaje_pta) || 0),
+            0,
+          ),
+        }
+      : {
+          tipo: allFixed ? 'fija' : 'intervalo',
+          horas: maxHours,
+          horas_min: allFixed ? maxHours : Math.max(1, minHours),
+        };
+  }
+
+  const type = String(source?.tipo || activity?.tipo || 'hasta').toLowerCase();
+  const maxHours = source?.max_horas ?? source?.horas ?? activity?.max_horas ?? 0;
+  const minHours = source?.min_horas ?? source?.horas_min ?? source?.min ?? activity?.min_horas;
+  const percentage = source?.porcentaje_pta ?? activity?.porcentaje_pta;
+  const consumesFullPTA = Boolean(activity?.consumeTotalidad) || (
+    fullPTAFromPercentage
+    && type === 'porcentaje'
+    && Math.min(100, Math.max(1, Number(percentage) || 1)) === 100
+  );
+  const recognitionKeyOccurrences = new Map<string, number>();
+  const recognitionRows = configuredRows.map((row: any, rowIndex: number) => {
+    const rowType = String(row?.tipo || 'hasta').toLowerCase();
+    const max = rowMax(row);
+    const explicitKey = String(row?.id ?? row?.key ?? '').trim();
+    const normalizedName = String(row?.nombre || `fila-${rowIndex + 1}`)
+      .trim()
+      .toLocaleLowerCase('es')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-');
+    const keyBase = explicitKey ? `id:${explicitKey}` : `nombre:${normalizedName || 'fila'}`;
+    const occurrence = (recognitionKeyOccurrences.get(keyBase) || 0) + 1;
+    recognitionKeyOccurrences.set(keyBase, occurrence);
+    return {
+      // La clave permite conservar las cantidades del docente aunque el administrador
+      // reordene filas. Si no existe ID persistido, nombre + ocurrencia es estable.
+      clave: `${keyBase}#${occurrence}`,
+      nombre: row?.nombre,
+      tipo: rowType,
+      max_horas: rowType === 'porcentaje' ? null : max,
+      min_horas: rowType === 'intervalo' ? rowMin(row) : undefined,
+      porcentaje_pta: rowType === 'porcentaje'
+        ? Math.min(100, Math.max(1, Number(row?.porcentaje_pta) || 1))
+        : undefined,
+    };
+  });
+
+  return {
+    id: activity?.id,
+    nombre: activity?.nombre,
+    max_horas: consumesFullPTA || type === 'porcentaje' ? null : Math.max(0, Number(maxHours) || 0),
+    min_horas: type === 'intervalo'
+      ? Math.min(Math.max(0, Number(maxHours) || 0), Math.max(1, Number(minHours) || 1))
+      : undefined,
+    tipo: type,
+    porcentaje_pta: type === 'porcentaje'
+      ? Math.min(100, Math.max(1, Number(percentage) || 1))
+      : undefined,
+    // Permite calcular correctamente bloques que mezclan, por ejemplo, una fila
+    // fija con otra porcentual. El resumen plano se conserva por compatibilidad.
+    filas_reconocimiento: recognitionRows,
+    consumeTotalidad: consumesFullPTA,
+  };
+}
+
 function normalizeExtensionSections(raw: any): any[] {
   const savedByKey = new Map<string, any>();
   if (Array.isArray(raw)) {
@@ -190,6 +408,9 @@ function normalizeExtensionSections(raw: any): any[] {
       ...section,
       color: previous?.color || section.color,
       columnas: Array.isArray(previous?.columnas) ? previous.columnas : (section as any).columnas,
+      columna_raiz_nombre: previous?.columna_raiz_nombre || (section as any).columna_raiz_nombre || 'Componente',
+      columna_raiz_habilitada: previous?.columna_raiz_habilitada ?? (section as any).columna_raiz_habilitada ?? true,
+      columna_items_nombre: previous?.columna_items_nombre || (section as any).columna_items_nombre || 'Actividad / Ítem',
       // El multiplicador (×Factor) es configurable por el admin y debe persistir en guardado/lectura.
       multiplicador: Number.isFinite(savedMult) && savedMult > 0 ? savedMult : section.multiplicador,
     };
@@ -685,6 +906,24 @@ export class PtaService {
     const sumComp = compDocencia.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
     const sumAcad = compAadm.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
+    // Una actividad académico-administrativa de dedicación exclusiva sustituye la
+    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia conserva
+    // su cálculo independiente y puede generar horas adicionales/prorrateo.
+    const exclusiveActivities = compAadm.filter((activity: any) => activity?.consumeTotalidad === true);
+    if (exclusiveActivities.length > 0) {
+      const exclusiveHours = Math.max(
+        ...exclusiveActivities.map((activity: any) => Number(activity?.horas) || 0),
+      );
+      return {
+        sumDocencia,
+        sumInv: 0,
+        sumExt: 0,
+        sumComp: 0,
+        sumAcad: exclusiveHours,
+        total: sumDocencia + exclusiveHours,
+      };
+    }
+
     const total = sumDocencia + sumInv + sumExt + sumComp + sumAcad;
     return { sumDocencia, sumInv, sumExt, sumComp, sumAcad, total };
   }
@@ -800,8 +1039,255 @@ export class PtaService {
   }
 
   private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
-    const { aadm: compAadm } = this.readComplementariasSecciones(body);
+    const { all: allComp, aadm: compAadm } = this.readComplementariasSecciones(body);
     const tieneTotalidad = compAadm.some((a: any) => a?.consumeTotalidad === true);
+
+    // Las reglas porcentuales son autoritativas también en servidor. El frontend
+    // calcula el valor para facilitar la edición, pero una petición no puede enviar
+    // una cantidad distinta al porcentaje configurado sobre las horas reales del PTA.
+    const expectedPercentageHours = (activity: any): number | null => {
+      if (String(activity?.tipo || '').toLowerCase() !== 'porcentaje') return null;
+      const percentage = Math.min(100, Math.max(1, Number(activity?.porcentaje_pta) || 1));
+      return Math.round(horasAProgramar * percentage / 100);
+    };
+    const assertPercentageHours = (label: string, submitted: any, configured: any) => {
+      const expected = expectedPercentageHours(configured);
+      if (expected === null) return;
+      const actual = Number(submitted) || 0;
+      if (actual !== expected) {
+        const percentage = Math.min(100, Math.max(1, Number(configured?.porcentaje_pta) || 1));
+        throw new BadRequestException(
+          `La actividad ${label} corresponde al ${percentage}% del PTA y debe registrar ${expected}h.`,
+        );
+      }
+    };
+    const getRecognitionBounds = (configured: any, defaultType = 'hasta', allowZeroUntil = false) => {
+      const recognitionRows = Array.isArray(configured?.filas_reconocimiento)
+        ? configured.filas_reconocimiento
+        : [];
+      if (recognitionRows.length > 0) {
+        const bounds = recognitionRows.map((row: any) => getRecognitionBounds(
+          row,
+          'fija',
+          recognitionRows.length > 1,
+        ));
+        if (bounds.length === 1) return bounds[0];
+        const min = Math.max(1, bounds.reduce((sum: number, entry: any) => sum + entry.min, 0));
+        const max = bounds.reduce((sum: number, entry: any) => sum + entry.max, 0);
+        return { type: min === max ? 'fija' : 'intervalo', min, max };
+      }
+      const type = String(configured?.tipo || defaultType).toLowerCase();
+      const max = type === 'porcentaje'
+        ? (expectedPercentageHours(configured) || 0)
+        : Math.max(0, Number(configured?.max_horas ?? configured?.horas) || 0);
+      const min = type === 'fija' || type === 'porcentaje'
+        ? max
+        : type === 'intervalo'
+          ? Math.min(max, Math.max(1, Number(configured?.min_horas ?? configured?.horas_min ?? configured?.min) || 1))
+          : (max > 0 ? (allowZeroUntil && type === 'hasta' ? 0 : 1) : 0);
+      return { type, min, max };
+    };
+    const assertConfiguredHours = (
+      label: string,
+      submitted: any,
+      configured: any,
+      defaultType = 'hasta',
+      allowZeroUntil = false,
+    ) => {
+      const { type, min, max } = getRecognitionBounds(configured, defaultType, allowZeroUntil);
+      const actual = Number(submitted) || 0;
+      if (max <= 0) {
+        throw new BadRequestException(`La actividad ${label} no tiene horas configuradas y no puede enviarse.`);
+      }
+      if ((type === 'fija' || type === 'porcentaje') && actual !== max) {
+        throw new BadRequestException(`La actividad ${label} debe registrar exactamente ${max}h.`);
+      }
+      if ((type === 'hasta' || type === 'intervalo') && (actual < min || actual > max)) {
+        throw new BadRequestException(`La actividad ${label} debe registrar entre ${min}h y ${max}h.`);
+      }
+    };
+    const validateSubmittedRecognitionRows = (
+      label: string,
+      submittedActivity: any,
+      configuredActivity: any,
+    ): boolean => {
+      const recognitionRows = Array.isArray(configuredActivity?.filas_reconocimiento)
+        ? configuredActivity.filas_reconocimiento
+        : [];
+      if (recognitionRows.length <= 1) return false;
+
+      const keyedValues = submittedActivity?.filas_cantidades;
+      const indexedValues = submittedActivity?.items_cantidades;
+      const hasKeyedValues = keyedValues && typeof keyedValues === 'object';
+      const hasIndexedValues = indexedValues && typeof indexedValues === 'object';
+      if (!hasKeyedValues && !hasIndexedValues) return false;
+
+      let submittedTotal = 0;
+      recognitionRows.forEach((row: any, index: number) => {
+        const rowKey = String(row?.clave || '');
+        const submitted = (hasKeyedValues && rowKey ? keyedValues[rowKey] : undefined)
+          ?? (hasIndexedValues ? indexedValues[index] : undefined);
+        if (submitted === undefined || submitted === null) {
+          throw new BadRequestException(
+            `La fila ${row?.nombre || index + 1} de ${label} no tiene horas registradas.`,
+          );
+        }
+        assertConfiguredHours(
+          String(row?.nombre || index + 1),
+          submitted,
+          row,
+          'fija',
+          recognitionRows.length > 1,
+        );
+        submittedTotal += Number(submitted) || 0;
+      });
+
+      if (submittedTotal <= 0) {
+        throw new BadRequestException(
+          `La actividad ${label} debe registrar al menos 1h en una de sus filas.`,
+        );
+      }
+
+      const activityHours = Number(submittedActivity?.horas) || 0;
+      if (activityHours !== submittedTotal) {
+        throw new BadRequestException(
+          `La actividad ${label} debe totalizar ${submittedTotal}h según sus filas configuradas.`,
+        );
+      }
+      return true;
+    };
+
+    const extCatalog = rules?.ext_actividades && typeof rules.ext_actividades === 'object'
+      ? rules.ext_actividades
+      : {};
+    const extensionSections = normalizeExtensionSections(rules?.ext_secciones);
+    const extensionComponentLimit = Math.min(
+      this.getPositiveRuleNumber(
+        rules,
+        'max_horas_extension_global',
+        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+      ),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
+    );
+    const configuredRowHours = (row: any, allowZeroUntil = false): number =>
+      getRecognitionBounds(row, 'fija', allowZeroUntil).min;
+    for (const activity of (tieneTotalidad ? [] : (Array.isArray(body?.extension_actividades) ? body.extension_actividades : []))) {
+      const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+      const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        assertPercentageHours(configured?.nombre || activity?.nombre || 'de extensión', activity?.horas, configured);
+        const section = extensionSections.find((item: any) => item?.key === sectionKey);
+        const allConfiguredRows = getExtensionCatalogHourRows(configured, section);
+        const configuredRows = allConfiguredRows
+          .map((row: any, index: number) => ({ row, index }))
+          .filter(({ row }: any) => {
+            const type = String(row?.tipo || 'fija').toLowerCase();
+            if (type === 'porcentaje') return (expectedPercentageHours(row) || 0) > 0;
+            return Number(row?.horas) > 0;
+          });
+        const mandatoryHours = configuredRows.reduce(
+          (sum: number, entry: any) => sum + configuredRowHours(
+            entry.row,
+            configuredRows.length > 1,
+          ),
+          0,
+        );
+        const requiresRowSelection = configuredRows.length > 1
+          && mandatoryHours > extensionComponentLimit;
+        if (requiresRowSelection) {
+          const selectedRowIndex = Number(activity?.fila_seleccionada);
+          if (!Number.isInteger(selectedRowIndex)
+            || selectedRowIndex < 0
+            || selectedRowIndex >= allConfiguredRows.length
+            || !configuredRows.some((entry: any) => entry.index === selectedRowIndex)) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} requiere seleccionar una de sus filas horarias.`,
+            );
+          }
+          const selectedRow = allConfiguredRows[selectedRowIndex];
+          assertConfiguredHours(
+            String(selectedRow?.nombre || selectedRowIndex + 1),
+            activity?.horas,
+            selectedRow,
+            'fija',
+          );
+        } else if (configuredRows.length > 0) {
+          const submittedRows = activity?.items_cantidades;
+          if (submittedRows && typeof submittedRows === 'object') {
+            let submittedTotal = 0;
+            configuredRows.forEach(({ row, index }: any) => {
+              const submitted = submittedRows[index];
+              assertConfiguredHours(
+                String(row?.nombre || index + 1),
+                submitted,
+                row,
+                'fija',
+                configuredRows.length > 1,
+              );
+              submittedTotal += Number(submitted) || 0;
+            });
+            if (submittedTotal <= 0) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar al menos 1h en una de sus filas.`,
+              );
+            }
+            const activityHours = Number(activity?.horas) || 0;
+            if (activityHours !== submittedTotal) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe totalizar ${submittedTotal}h según sus filas configuradas.`,
+              );
+            }
+          } else {
+            // Compatibilidad con borradores anteriores a `items_cantidades`: se valida
+            // al menos el rango agregado sin inferir reglas desde el ID.
+            const minTotal = configuredRows.reduce(
+              (sum: number, entry: any) => sum + getRecognitionBounds(
+                entry.row,
+                'fija',
+                configuredRows.length > 1,
+              ).min,
+              0,
+            );
+            const maxTotal = configuredRows.reduce(
+              (sum: number, entry: any) => sum + getRecognitionBounds(entry.row, 'fija').max,
+              0,
+            );
+            const submittedTotal = Number(activity?.horas) || 0;
+            const effectiveMin = Math.max(1, minTotal);
+            if (submittedTotal < effectiveMin || submittedTotal > maxTotal) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar entre ${effectiveMin}h y ${maxTotal}h.`,
+              );
+            }
+          }
+        } else {
+          // En una tabla simple el reconocimiento vive directamente en el bloque.
+          assertConfiguredHours(
+            configured?.nombre || activity?.nombre || 'de extensión',
+            activity?.horas,
+            configured,
+          );
+        }
+      }
+    }
+
+    for (const activity of allComp) {
+      if (tieneTotalidad && activity?.consumeTotalidad !== true) continue;
+      const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
+      const configured = this.flattenCompV2Section(rules, sectionKey)
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        const label = configured?.nombre || activity?.nombre || 'complementaria';
+        const validatedByRows = validateSubmittedRecognitionRows(label, activity, configured);
+        if (!validatedByRows) {
+          // Borradores anteriores al desglose por filas conservan la validación
+          // agregada para poder abrirse y corregirse sin perder información.
+          assertPercentageHours(label, activity?.horas, configured);
+          assertConfiguredHours(label, activity?.horas, configured);
+        }
+      }
+    }
 
     if (!tieneTotalidad && horas.total === 0) {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
@@ -816,12 +1302,18 @@ export class PtaService {
       this.getPositiveRuleNumber(rules, 'horas_base_carrera_003', 800),
     );
     const maxInvestigacion = this.getPositiveRuleNumber(rules, 'max_horas_investigacion_global', 400);
-    const maxExtension = this.getPositiveRuleNumber(
-      rules,
-      'max_horas_extension_global',
-      this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+    const maxExtension = Math.min(
+      this.getPositiveRuleNumber(
+        rules,
+        'max_horas_extension_global',
+        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+      ),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
     );
-    const maxComplementarias = this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200);
+    const maxComplementarias = Math.min(
+      this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_complementarias', 25) / 100),
+    );
 
     const assertComponentLimit = (label: string, value: number, limit: number) => {
       if (value > limit) {
@@ -832,7 +1324,7 @@ export class PtaService {
     assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
-    assertComponentLimit('Complementarias', horas.sumComp, maxComplementarias);
+    assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
     const asignaturas = Array.isArray(body?.asignaturas)
       ? body.asignaturas.filter((a: any) => a?.asignatura_id)
@@ -973,8 +1465,83 @@ export class PtaService {
     return `${unique[0]} +${unique.length - 1}`;
   }
 
+  /**
+   * Completa la selección jerárquica de Extensión con textos legibles para las
+   * vistas posteriores al envío. Los PTAs recientes ya guardan esta instantánea;
+   * para registros anteriores se reconstruye desde fila_seleccionada + catálogo.
+   */
+  private async enrichExtensionSelections(dtos: any[]): Promise<void> {
+    if (!dtos.some(dto => Array.isArray(dto?.extension_actividades) && dto.extension_actividades.length > 0)) return;
+
+    const [catalogBySection, sections] = await Promise.all([
+      this.getCatalogoActividadesExtension(),
+      this.getCatalogoSeccionesExtension(),
+    ]);
+    const sectionByKey = new Map(
+      (Array.isArray(sections) ? sections : []).map((section: any) => [
+        normalizeExtensionSectionKey(section?.key),
+        section,
+      ]),
+    );
+
+    for (const dto of dtos) {
+      const activities = Array.isArray(dto?.extension_actividades) ? dto.extension_actividades : [];
+      dto.extension_actividades = activities.map((activity: any) => {
+        const selectedIndex = Number(activity?.fila_seleccionada);
+        if (!Number.isInteger(selectedIndex) || selectedIndex < 0) return activity;
+
+        const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+        const section = sectionByKey.get(sectionKey);
+        const catalog = Array.isArray(catalogBySection?.[sectionKey]) ? catalogBySection[sectionKey] : [];
+        const catalogActivity = catalog.find((item: any) =>
+          String(item?.id || '') === String(activity?.actividad_id || activity?.id || ''),
+        );
+        const selectedRow = catalogActivity
+          ? getExtensionCatalogHourRows(catalogActivity, section)[selectedIndex]
+          : null;
+        if (!selectedRow && activity?.fila_seleccionada_nombre) return activity;
+        if (!selectedRow) return activity;
+
+        const firstColumn = String(section?.columnas?.[0] || '').trim();
+        const selectionLabel = firstColumn === EXTENSION_ITEMS_COLUMN_KEY
+          ? String(section?.columna_items_nombre || 'Actividad / Ítem').trim()
+          : (!firstColumn || /^_.*_$/.test(firstColumn) ? 'Opción del bloque' : firstColumn);
+        const details = Array.isArray(selectedRow?._detailGroups)
+          ? selectedRow._detailGroups
+              .map((group: any) => ({
+                nombre: String(group?.name || group?.nombre || '').trim(),
+                valores: (Array.isArray(group?.values) ? group.values : [])
+                  .map((value: any) => ({
+                    columna: String(value?.column || value?.columna || '').trim(),
+                    valor: String(value?.value || value?.valor || '').trim(),
+                  }))
+                  .filter((value: any) => value.valor),
+              }))
+              .filter((group: any) => group.nombre || group.valores.length > 0)
+          : [];
+
+        return {
+          ...activity,
+          fila_seleccionada_nombre: activity?.fila_seleccionada_nombre || String(selectedRow?.nombre || '').trim(),
+          fila_seleccionada_etiqueta: activity?.fila_seleccionada_etiqueta || selectionLabel,
+          fila_seleccionada_detalles: Array.isArray(activity?.fila_seleccionada_detalles)
+            && activity.fila_seleccionada_detalles.length > 0
+            ? activity.fila_seleccionada_detalles
+            : details,
+        };
+      });
+    }
+  }
+
   private async enrichPtaSummaries(dtos: any[]): Promise<any[]> {
     if (!dtos.length) return dtos;
+
+    // Aditivo y tolerante a configuraciones legacy: nunca bloquea la consulta del PTA.
+    try {
+      await this.enrichExtensionSelections(dtos);
+    } catch (err: any) {
+      this.logger.warn(`Detalle de selección de Extensión omitido: ${err?.message || err}`);
+    }
 
     const programaKeys = new Set<string>();
     const territorialKeys = new Set<string>();
@@ -1409,6 +1976,14 @@ export class PtaService {
           console.error('[getPTAById] Error resolving nucleo tematico names:', err);
         }
       }
+
+      // Los cupos pertenecen a la oferta CETAP + programa del periodo, no al
+      // borrador del PTA. Al abrir un PTA siempre se devuelve el valor vigente,
+      // incluso si la asignatura fue guardada antes de que cambiaran los cupos.
+      dto.asignaturas = await this.syncAsignaturasCupos(
+        dto.asignaturas,
+        coalesceString(dto.periodo, pta.periodo),
+      );
     }
 
     return {
@@ -1504,6 +2079,16 @@ export class PtaService {
 
     const periodo = coalesceString(input?.periodo) || '2026-1';
     let estado = coalesceString(input?.estado) || 'BORRADOR';
+
+    // No confiar en el total enviado por el navegador: puede venir de un
+    // borrador abierto antes de una modificación de cupos. La oferta académica
+    // es la fuente única y se vuelve a consultar antes de validar/persistir.
+    if (Array.isArray(input?.asignaturas)) {
+      input = {
+        ...input,
+        asignaturas: await this.syncAsignaturasCupos(input.asignaturas, periodo),
+      };
+    }
 
     // Normalize state case
     if (estado.toLowerCase() === 'borrador') estado = 'Borrador';
@@ -1619,7 +2204,6 @@ export class PtaService {
 
     let saved: PlanTrabajoAcademicoEntity;
     let estadoAnteriorSave: string | null = null;
-    let datosAnterioresSave: any = null;
 
     if (id) {
       const existing = await this.ptaRepo.findOne({ where: { id } });
@@ -1627,7 +2211,6 @@ export class PtaService {
         saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, id, version: 1 }));
       } else {
         estadoAnteriorSave = existing.estado;
-        datosAnterioresSave = existing.datosEstructurados;
         saved = await this.ptaRepo.save({ ...existing, ...patch });
       }
     } else {
@@ -1679,20 +2262,29 @@ export class PtaService {
     if (isAdminEdit && id && estadoAnteriorSave !== null && estado === estadoAnteriorSave) {
       const comentarioConcertacion = coalesceString(input?._comentario_concertacion, input?.comentario_concertacion);
       if (comentarioConcertacion) {
-        // 1) Restringido por permiso → siempre su(s) componente(s) asignado(s), haya
-        //    editado o no (esto reemplaza al botón "Devolver a secas").
-        // 2) Sin restricción de permiso → la selección explícita que hizo el admin en
-        //    el formulario (checkboxes de componente), unida a los que sí cambiaron de
-        //    contenido. Antes se adivinaba por la pestaña que tenía abierta, lo que
-        //    podía fallar en silencio (guardaba, pero no devolvía nada) si no coincidía
-        //    con lo que realmente quería devolver.
+        // Qué componentes se devuelven al docente. La fuente de verdad es SIEMPRE una
+        // selección explícita, nunca una heurística:
+        //   1) Restringido por permiso a UN SOLO componente → ese, sin ambigüedad.
+        //   2) Restringido por permiso a VARIOS componentes (ej. un rol con
+        //      "aprueba docencia y complementarias") → también exige selección
+        //      explícita del admin, acotada a su alcance real. Antes se devolvían
+        //      TODOS sus componentes permitidos aunque solo hubiera tocado uno
+        //      (bug reportado en QA: devolver Docencia con un cambio devolvía en
+        //      cascada Complementarias también, sin que el revisor lo pidiera).
+        //   3) Sin restricción de permiso (aprueba todo / superusuario) → los que
+        //      el admin marcó en los checkboxes del formulario.
+        // NO se infieren componentes por "diff de contenido": el formulario re-serializa
+        // todo el PTA al guardar, así que un componente intacto (p.ej. Docencia ya
+        // aprobada) puede aparecer como "cambiado" por diferencias de serialización y
+        // terminaba reabriéndose a 'devuelto' sin que el revisor lo pidiera.
         const componentesSeleccionados = Array.isArray(input?._concertacion_componentes)
           ? input._concertacion_componentes.map((k: any) => String(k)).filter((k: string) => COMPONENT_APPROVAL_KEY_SET.has(k))
           : [];
-        const componentesModificados = this.detectComponentesModificados(datosAnterioresSave, input);
-        const componentesCambiados = allowedComponentKeys.length > 0
+        const componentesCambiados = allowedComponentKeys.length === 1
           ? allowedComponentKeys
-          : Array.from(new Set([...componentesSeleccionados, ...componentesModificados]));
+          : allowedComponentKeys.length > 1
+            ? componentesSeleccionados.filter((k) => allowedComponentKeys.includes(k))
+            : componentesSeleccionados;
         if (componentesCambiados.length > 0) {
           const devolucionResult = await this.registrarDevolucionPorConcertacion(
             saved.id,
@@ -2076,8 +2668,15 @@ export class PtaService {
             componentes: pendientes,
           });
         }
+        // Confirmación al profesor: su PTA salió de Borrador y está en aprobación.
+        await this.ptaNotifications.notifyProfesorPtaEnviadoAprobacion({
+          ptaId,
+          docenteId: existing.docenteId,
+          periodo: coalesceString((existing as any).periodo, (ds as any)?.periodo),
+          componentes: pendientes,
+        });
       } catch (error: any) {
-        this.logger.warn(`No se pudo notificar a aprobadores del PTA ${ptaId}: ${error?.message}`);
+        this.logger.warn(`No se pudo notificar el envío a aprobación del PTA ${ptaId}: ${error?.message}`);
       }
     }
 
@@ -2188,45 +2787,6 @@ export class PtaService {
       } as any);
     }
     await this.getComponentesAprobacion(ptaId);
-  }
-
-  /** Compara datosEstructurados antes/después de una edición y devuelve las claves de
-   * componente cuyo contenido cambió. Usado por "Concertar" (edición admin sin
-   * restricción de componente) para saber qué marcar como devuelto. */
-  private detectComponentesModificados(oldData: any, newData: any): string[] {
-    const old = oldData && typeof oldData === 'object' ? oldData : {};
-    const neu = newData && typeof newData === 'object' ? newData : {};
-    const eq = (a: any, b: any) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-    const changed: string[] = [];
-
-    if (!eq(old.asignaturas, neu.asignaturas)) changed.push('academica');
-    if (!eq(old.investigacion_proyecto, neu.investigacion_proyecto) ||
-      !eq(old.investigacion_actividades, neu.investigacion_actividades)) {
-      changed.push('investigacion');
-    }
-
-    const extBySeccion = (data: any, secciones: string[]) =>
-      (Array.isArray(data?.extension_actividades) ? data.extension_actividades : [])
-        .filter((a: any) => secciones.includes(normalizeExtensionSectionKey(a?.seccion)));
-    const EXT_SECTIONS: Record<string, string[]> = {
-      ext_capacitacion: ['capacitacion'],
-      ext_procesos: ['seleccion'],
-      ext_fortalecimiento: ['fortalecimiento'],
-      ext_gobierno: ['alto_gobierno'],
-    };
-    for (const [key, secciones] of Object.entries(EXT_SECTIONS)) {
-      if (!eq(extBySeccion(old, secciones), extBySeccion(neu, secciones))) {
-        changed.push(key);
-      }
-    }
-
-    const oldComp = this.readComplementariasSecciones(old);
-    const newComp = this.readComplementariasSecciones(neu);
-    if (!eq(oldComp.docencia, newComp.docencia) || !eq(oldComp.aadm, newComp.aadm)) {
-      changed.push('complementarias');
-    }
-
-    return changed;
   }
 
   /** "Concertar" (edición admin + envío) equivale a devolver el/los componente(s)
@@ -2762,33 +3322,83 @@ export class PtaService {
     return { deleted: true };
   }
 
-  // ── Cierre de PTAs al poner "en curso" un nuevo período académico ───────────
-  // Cuando un período se activa (estado 'en_curso'), todos los PTA de períodos
-  // anteriores pasan a 'Terminado' (solo lectura / observación), incluso los que
-  // están en seguimiento. No se tocan los que ya están en un estado terminal.
+  // ── Cierre reversible de PTAs por cambio de período académico ───────────────
+  // El estado funcional se conserva antes de mostrar el PTA como 'Terminado'.
+  // Así, si el período vuelve a activarse, el flujo continúa exactamente donde
+  // estaba (Borrador, aprobación, concertación, seguimiento, etc.).
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
     const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
-    const qb = this.ptaRepo
-      .createQueryBuilder()
-      .update(PlanTrabajoAcademicoEntity)
-      .set({ estado: 'Terminado', updatedAt: () => 'NOW()' })
-      .where('estado NOT IN (:...terminales)', { terminales });
-
-    // No finalizar los PTA del propio período recién creado (si llegaran a existir).
-    if (codigo) {
-      qb.andWhere('(periodo IS DISTINCT FROM :codigo)', { codigo });
-    }
-
-    const result = await qb.execute();
-    const finalizados = result.affected || 0;
+    const rows = await this.ptaRepo.manager.query(
+      `
+      UPDATE academic_work_plan."PlanTrabajoAcademico"
+      SET estado = 'Terminado',
+          "estadoAntesCierrePeriodo" = estado,
+          "cerradoPorPeriodo" = NULLIF($1, '')
+      WHERE estado <> ALL($2::text[])
+        AND ($1 = '' OR periodo IS DISTINCT FROM $1)
+      RETURNING id
+      `,
+      [codigo, terminales],
+    );
+    const finalizados = Array.isArray(rows) ? rows.length : 0;
     if (finalizados > 0) {
       this.logger.log(
         `[Período ${codigo || 'nuevo'}] ${finalizados} PTA(s) pasaron a 'Terminado' (solo lectura).`,
       );
     }
     return { finalizados };
+  }
+
+  /**
+   * Restaura los PTA del periodo que vuelve a estar en curso. El fallback desde
+   * datosEstructurados repara también cierres hechos por la versión anterior,
+   * que sobrescribía `estado` sin guardar una copia explícita.
+   */
+  async restaurarPtasPorReactivacionPeriodo(codigoPeriodo?: string | null): Promise<{ restaurados: number }> {
+    const codigo = coalesceString(codigoPeriodo);
+    if (!codigo) return { restaurados: 0 };
+
+    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
+    const rows = await this.ptaRepo.manager.query(
+      `
+      WITH restaurables AS (
+        SELECT p.id,
+          COALESCE(
+            NULLIF(p."estadoAntesCierrePeriodo", ''),
+            (
+              SELECT NULLIF(h."estadoNuevo", '')
+              FROM academic_work_plan."HistorialEstadoPTA" h
+              WHERE h."ptaId" = p.id
+              ORDER BY h."createdAt" DESC
+              LIMIT 1
+            ),
+            NULLIF(p."datosEstructurados"->>'estado', '')
+          ) AS estado_restaurado
+        FROM academic_work_plan."PlanTrabajoAcademico" p
+        WHERE p.periodo = $1
+          AND p.estado IN ('Terminado', 'TERMINADO')
+      )
+      UPDATE academic_work_plan."PlanTrabajoAcademico" p
+      SET estado = r.estado_restaurado,
+          "estadoAntesCierrePeriodo" = NULL,
+          "cerradoPorPeriodo" = NULL
+      FROM restaurables r
+      WHERE p.id = r.id
+        AND r.estado_restaurado IS NOT NULL
+        AND r.estado_restaurado <> ALL($2::text[])
+      RETURNING p.id
+      `,
+      [codigo, terminales],
+    );
+    const restaurados = Array.isArray(rows) ? rows.length : 0;
+    if (restaurados > 0) {
+      this.logger.log(
+        `[Período ${codigo}] ${restaurados} PTA(s) recuperaron su estado anterior.`,
+      );
+    }
+    return { restaurados };
   }
 
   // ── Límite de aprobación: PTAs no aprobados dentro del plazo se eliminan ─────
@@ -3071,24 +3681,38 @@ export class PtaService {
     } catch { /* non-critical */ }
   }
 
+  // Contrato del frontend (mfe-pta): tags = Record<ptaId, {label,color}[]>,
+  // notes = Record<ptaId, string>, pinned = string[], priorityOrder = string[].
+  // Se aceptan también las claves legacy (saved_tags, pinned_pta_ids, favorite_views).
+  private normalizeUserDataRow(row: Partial<PtaUserDataEntity>) {
+    const tags = row.tags && typeof row.tags === 'object' && !Array.isArray(row.tags) ? row.tags : {};
+    const notes = row.notes && typeof row.notes === 'object' && !Array.isArray(row.notes) ? row.notes : {};
+    const pinned = Array.isArray(row.pinned) ? row.pinned : [];
+    const priorityOrder = Array.isArray(row.priority) ? row.priority : [];
+    return {
+      tags,
+      notes,
+      pinned,
+      priorityOrder,
+      // alias legacy
+      pinned_pta_ids: pinned,
+      favorite_views: priorityOrder,
+    };
+  }
+
   async getPTAUserData(userId: string) {
     const row = await this.userDataRepo.findOne({ where: { userId } });
     if (!row) return null;
-    return {
-      pinned_pta_ids: Array.isArray(row.pinned) ? row.pinned : [],
-      saved_tags: Array.isArray(row.tags) ? row.tags : [],
-      notes: row.notes && typeof row.notes === 'object' ? row.notes : {},
-      favorite_views: Array.isArray(row.priority) ? row.priority : [],
-    };
+    return this.normalizeUserDataRow(row);
   }
 
   async savePTAUserData(userId: string, data: any) {
     const existing = await this.userDataRepo.findOne({ where: { userId } });
     const next = {
-      pinned: data?.pinned_pta_ids ?? existing?.pinned ?? [],
-      tags: data?.saved_tags ?? existing?.tags ?? [],
+      tags: data?.tags ?? data?.saved_tags ?? existing?.tags ?? {},
       notes: data?.notes ?? existing?.notes ?? {},
-      priority: data?.favorite_views ?? existing?.priority ?? [],
+      pinned: data?.pinned ?? data?.pinned_pta_ids ?? existing?.pinned ?? [],
+      priority: data?.priorityOrder ?? data?.favorite_views ?? existing?.priority ?? [],
     };
 
     const saved = await this.userDataRepo.save(
@@ -3097,12 +3721,7 @@ export class PtaService {
         : this.userDataRepo.create({ userId, ...next }),
     );
 
-    return {
-      pinned_pta_ids: Array.isArray(saved.pinned) ? saved.pinned : [],
-      saved_tags: Array.isArray(saved.tags) ? saved.tags : [],
-      notes: saved.notes && typeof saved.notes === 'object' ? saved.notes : {},
-      favorite_views: Array.isArray(saved.priority) ? saved.priority : [],
-    };
+    return this.normalizeUserDataRow(saved);
   }
 
   async seedPTAs() {
@@ -3490,6 +4109,7 @@ export class PtaService {
   async getOfertaCetapPrograma(query?: any) {
     const cetapId = coalesceString(query?.cetap_id, query?.cetapId);
     const programaId = coalesceString(query?.programa_id, query?.programaId);
+    const periodo = coalesceString(query?.periodo, query?.periodo_codigo, query?.periodoCodigo);
 
     if (!cetapId || !programaId) {
       return { cupos_estimados: null };
@@ -3500,20 +4120,77 @@ export class PtaService {
       SELECT ocp.cupos_estimados
       FROM academic_work_plan.oferta_cetap_programa ocp
       JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+      JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
       WHERE ocp.id_programa::text = $2
         AND ocp.activa = true
+        AND ($3::text IS NULL OR pa.codigo = $3)
         AND (
           c.id::text = $1
           OR c.codigo IN (SELECT s.cod_sede FROM auth.sedes s WHERE s.id_sede::text = $1)
         )
+      ORDER BY COALESCE(ocp.updated_at, ocp.created_at) DESC
       LIMIT 1
       `,
-      [cetapId, programaId],
+      [cetapId, programaId, periodo],
     );
 
     return {
       cupos_estimados: rows.length > 0 ? rows[0].cupos_estimados : null,
     };
+  }
+
+  /**
+   * Refresca únicamente el dato derivado `total_estudiantes` de las asignaturas
+   * PTA. Si una fila legacy no tiene CETAP/programa, o ya no existe una oferta
+   * activa para el periodo, se conserva intacta para no dañar el borrador.
+   */
+  private async syncAsignaturasCupos(asignaturas: any[], periodo?: string | null): Promise<any[]> {
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return asignaturas;
+
+    const requests = new Map<string, Promise<number | null>>();
+    const getCupos = (cetapId: string, programaId: string) => {
+      const key = `${cetapId}::${programaId}::${periodo || ''}`;
+      let request = requests.get(key);
+      if (!request) {
+        request = this.getOfertaCetapPrograma({
+          cetap_id: cetapId,
+          programa_id: programaId,
+          periodo,
+        })
+          .then(result => {
+            const cupos = Number(result?.cupos_estimados);
+            return Number.isInteger(cupos) && cupos > 0 ? cupos : null;
+          })
+          .catch((error: any) => {
+            this.logger.warn(
+              `No se pudieron sincronizar cupos PTA para CETAP ${cetapId} y programa ${programaId}: ${error?.message || error}`,
+            );
+            return null;
+          });
+        requests.set(key, request);
+      }
+      return request;
+    };
+
+    return Promise.all(asignaturas.map(async (asignatura: any) => {
+      const cetapId = coalesceLookupKey(
+        asignatura?.cetap_id,
+        asignatura?.cetapId,
+        asignatura?.sede_id,
+        asignatura?.sedeId,
+      );
+      const programaId = coalesceLookupKey(
+        asignatura?.programa_id,
+        asignatura?.programaId,
+        asignatura?.programa?.id,
+      );
+      if (!cetapId || !programaId) return asignatura;
+
+      const cupos = await getCupos(cetapId, programaId);
+      return cupos == null
+        ? asignatura
+        : { ...asignatura, total_estudiantes: cupos };
+    }));
   }
 
   async getDocentesDisponibles(query?: any) {
@@ -3801,28 +4478,29 @@ export class PtaService {
 
   // Aplana una actividad de comp_actividades_v2 al shape plano que consume el catálogo
   // ({ id, nombre, max_horas, min_horas?, consumeTotalidad }).
-  private flattenCompV2Activity(a: any): any {
-    const itemHours = Array.isArray(a?.items)
-      ? a.items.map((it: any) => Number(it?.horas || 0)).filter((n: number) => Number.isFinite(n))
-      : [];
-    const maxHoras = a?.max_horas ?? (itemHours.length ? Math.max(...itemHours) : 0);
-    return {
-      id: a?.id,
-      nombre: a?.nombre,
-      max_horas: a?.consumeTotalidad ? null : maxHoras,
-      min_horas: a?.min_horas,
-      consumeTotalidad: Boolean(a?.consumeTotalidad),
-    };
-  }
-
   private flattenCompV2Section(rules: any, sectionKey: string): any[] {
     const v2 = rules?.comp_actividades_v2;
     const arr = v2 && typeof v2 === 'object' ? v2[sectionKey] : null;
-    return Array.isArray(arr) ? arr.map((a: any) => this.flattenCompV2Activity(a)) : [];
+    const sections = Array.isArray(rules?.comp_secciones) && rules.comp_secciones.length > 0
+      ? rules.comp_secciones
+      : FIXED_COMP_SECCIONES;
+    const section = sections.find((item: any) => String(item?.key) === sectionKey)
+      || FIXED_COMP_SECCIONES.find(item => item.key === sectionKey);
+    return Array.isArray(arr)
+      ? arr.map((activity: any) => flattenConfiguredComplementaryActivity(
+          activity,
+          section,
+          sectionKey === 'academico_administrativas',
+        ))
+      : [];
   }
 
   async getCatalogoActividadesComplementarias() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
+    if (rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      && Object.prototype.hasOwnProperty.call(rules.comp_actividades_v2, 'complementarias_docencia')) {
+      return this.flattenCompV2Section(rules, 'complementarias_docencia');
+    }
     if (Array.isArray(rules?.comp_actividades) && rules.comp_actividades.length > 0) return rules.comp_actividades;
     // Fallback: derivar de la sección v2 (por si dejan de escribirse los arrays legacy).
     return this.flattenCompV2Section(rules, 'complementarias_docencia');
@@ -3830,6 +4508,10 @@ export class PtaService {
 
   async getCatalogoActividadesAcademicoAdmin() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
+    if (rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      && Object.prototype.hasOwnProperty.call(rules.comp_actividades_v2, 'academico_administrativas')) {
+      return this.flattenCompV2Section(rules, 'academico_administrativas');
+    }
     if (Array.isArray(rules?.aadm_actividades) && rules.aadm_actividades.length > 0) return rules.aadm_actividades;
     return this.flattenCompV2Section(rules, 'academico_administrativas');
   }
@@ -4071,8 +4753,10 @@ export class PtaService {
 
     this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email || 'docente sin correo'}: ${code}`);
 
-    // En modo mock no intentamos enviar correo (cualquier código sirve igual).
-    if (!this.MOCK_FIRMA_OTP && docente.email) {
+    // El correo con el código SIEMPRE se intenta enviar cuando hay email registrado
+    // (aunque MOCK_FIRMA_OTP esté activo). El mock solo relaja la *validación* del
+    // código, no debe impedir que el docente reciba el OTP en su correo.
+    if (docente.email) {
       try {
         await this.sendFirmaOtpEmail({
           to: docente.email,
@@ -4099,6 +4783,66 @@ export class PtaService {
       verificationId,
       expiresAt: expiresAt.toISOString(),
       email: docente.email ? this.maskEmail(docente.email) : 'correo no registrado',
+      devCode: code,
+    };
+  }
+
+  /**
+   * Solicita un OTP de firma para el APROBADOR/CONCERTADOR que va a avalar el PTA.
+   * A diferencia del OTP de docente, el firmante NO es el dueño del PTA sino el
+   * usuario autenticado que oprime "Aprobar" (Jefatura, Decanatura, Gestión
+   * Profesoral, etc.), por eso se resuelve con adminEdit (sin exigir rol DOCENTE)
+   * y se envía el código al correo de ESE usuario. La clave del OTP incluye el
+   * userId para que no colisione con el OTP del docente sobre el mismo PTA.
+   */
+  async requestFirmaAprobadorOtp(payload: {
+    ptaId?: string | null;
+    userId?: string | null;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+  }) {
+    const userId = coalesceString(payload?.userId);
+    if (!userId) throw new BadRequestException('userId es requerido para enviar el código de firma del aprobador.');
+
+    const aprobador = await this.fetchAuthDocenteInfo(userId, { adminEdit: true });
+    if (!aprobador.email && !this.MOCK_FIRMA_OTP) {
+      throw new BadRequestException('El aprobador no tiene correo registrado para enviar el código de validación.');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const ptaId = coalesceString(payload?.ptaId);
+    const verificationId = ptaId ? `pta:${ptaId}:aprobador:${userId}` : `aprobador:${userId}`;
+
+    this.logger.log(`🔑 [PRUEBAS] Código de firma (aprobador) generado para ${aprobador.email || 'aprobador sin correo'}: ${code}`);
+
+    if (aprobador.email) {
+      try {
+        await this.sendFirmaOtpEmail({
+          to: aprobador.email,
+          code,
+          fullName: aprobador.fullName,
+          periodo: payload?.periodo,
+          etapaLabel: payload?.etapaLabel,
+          expiresAt,
+        });
+      } catch (emailError) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(`⚠️  [DEV] Email de firma OTP (aprobador) falló — código OTP para ${aprobador.email}: ${code}`);
+          this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
+        } else {
+          throw emailError;
+        }
+      }
+    }
+
+    this.otpStore.set(verificationId, { code, expiresAt });
+
+    return {
+      verificationId,
+      expiresAt: expiresAt.toISOString(),
+      email: aprobador.email ? this.maskEmail(aprobador.email) : 'correo no registrado',
       devCode: code,
     };
   }

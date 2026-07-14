@@ -263,11 +263,12 @@ export async function getCetapsPorPrograma(programaId: string, territorialId?: s
 }
 
 /** Cupos estimados para CETAP + Programa - DINÁMICO */
-export async function getOfertaCetap(cetapId: string, programaId: string) {
+export async function getOfertaCetap(cetapId: string, programaId: string, periodo?: string) {
   try {
     const raw = await apiClient.get<any>(`${PTA_BASE}/catalogos/oferta-cetap`, {
       cetap_id: cetapId,
       programa_id: programaId,
+      ...(periodo ? { periodo } : {}),
     });
     const normalized = normalizeResult<any>(raw, { cupos_estimados: null });
     return { success: normalized.success, data: normalized.data };
@@ -559,6 +560,26 @@ export async function requestPTAFirmaDocenteCode(data: {
   }
 }
 
+export async function requestPTAFirmaAprobadorCode(data: {
+  ptaId?: string;
+  userId: string;
+  periodo?: string;
+  etapaLabel?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/firma-aprobador/request-code`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      ...asObject(raw),
+      success: normalized.success,
+      data: normalized.data,
+    };
+  } catch (error) {
+    console.error('[mfe-pta][requestPTAFirmaAprobadorCode] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
 export async function verifyPTAFirmaDocenteCode(data: {
   verificationId: string;
   code: string;
@@ -602,10 +623,10 @@ export async function getPTAUserData(userId: string) {
 export async function savePTAUserData(
   userId: string,
   data: {
-    pinned_pta_ids?: string[];
-    saved_tags?: string[];
+    tags?: Record<string, Array<{ label: string; color: string }>>;
     notes?: Record<string, string>;
-    favorite_views?: string[];
+    pinned?: string[];
+    priorityOrder?: string[];
   },
 ) {
   try {
@@ -1690,6 +1711,7 @@ const BD_BASE = `${SERVICE_BASE}/pta/banco-docentes`;
 export async function getBancoDocentes(filters?: {
   territorial?: string;
   dedicacion?: string;
+  vinculacion?: string;
   estado?: string;
   search?: string;
   page?: number;
@@ -1709,11 +1731,12 @@ export async function getBancoDocentes(filters?: {
   }
 }
 
-export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; estado?: string; periodoCarga?: string }) {
+export async function getBancoDocenteStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string }) {
   try {
     const params = new URLSearchParams();
     if (filters?.territorial) params.set('territorial', filters.territorial);
     if (filters?.dedicacion) params.set('dedicacion', filters.dedicacion);
+    if (filters?.vinculacion) params.set('vinculacion', filters.vinculacion);
     if (filters?.estado) params.set('estado', filters.estado);
     if (filters?.periodoCarga) params.set('periodoCarga', filters.periodoCarga);
     const qs = params.toString() ? `?${params.toString()}` : '';

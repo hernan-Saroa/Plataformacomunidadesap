@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { PTA_COLORS } from './shared/ptaColors';
+import { getExtensionSelectionInfo } from './shared/extensionSelection';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
 
@@ -570,7 +571,9 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     <div style={{ fontWeight: 600, color: PTA_COLORS.EXTENSION, textTransform: 'capitalize', marginBottom: 4 }}>
                       {seccion.replace(/_/g, ' ')}
                     </div>
-                    {acts.map((act: any, i: number) => (
+                    {acts.map((act: any, i: number) => {
+                      const selection = getExtensionSelectionInfo(act);
+                      return (
                       <div key={i} style={{
                         padding: '5px 8px', borderBottom: `1px solid ${PTA_COLORS.EXTENSION}20`,
                       }}>
@@ -578,6 +581,16 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           <span>{act.nombre || act.actividad || `Actividad ${i + 1}`}</span>
                           <span style={{ fontWeight: 600, whiteSpace: 'nowrap', marginLeft: 8 }}>{act.horas || 0}h</span>
                         </div>
+                        {selection && (
+                          <div style={{ marginTop: 4, padding: '5px 7px', borderRadius: 4, background: `${PTA_COLORS.EXTENSION}0A`, borderLeft: `3px solid ${PTA_COLORS.EXTENSION}` }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>{selection.etiqueta}: {selection.nombre}</div>
+                            {selection.detalles.map((detail, detailIndex) => (
+                              <div key={`${detail.nombre}-${detailIndex}`} style={{ marginTop: 2, fontSize: '0.66rem', color: '#64748B' }}>
+                                {detail.nombre}{detail.valores.map(value => ` · ${value.columna ? `${value.columna}: ` : ''}${value.valor}`).join('')}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {act.descripcion && (
                           <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2, fontStyle: 'italic' }}>{act.descripcion}</div>
                         )}
@@ -588,7 +601,8 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               })}

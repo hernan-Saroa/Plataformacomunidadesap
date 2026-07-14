@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner';
 import { getWorkflowAnalytics } from '../../services/api/ptaApi';
 import { SankeyTransicionesPTA } from './SankeyTransicionesPTA';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
 
@@ -61,17 +62,32 @@ const ESTADO_CONFIG: Record<string, { label: string; color: string; bg: string; 
   'CONCERTADO':                  { label: 'Concertado',            color: '#065F46', bg: '#D1FAE5', border: '#6EE7B7', icon: CheckCircle,    fase: 'Concertacion' },
   'ESCALADO_SNA':                { label: 'Escalado SNA',          color: '#991B1B', bg: '#FEF2F2', border: '#FCA5A5', icon: Scale,          fase: 'Arbitraje' },
   'RESUELTO_SNA':                { label: 'Resuelto SNA',          color: '#065F46', bg: '#D1FAE5', border: '#6EE7B7', icon: Scale,          fase: 'Arbitraje' },
+  'AJUSTE_REQUERIDO':            { label: 'Ajuste Requerido',      color: '#9A3412', bg: '#FFF7ED', border: '#FDBA74', icon: RotateCcw,      fase: 'Excepcional' },
   'Pendiente Jefatura':          { label: 'Pend. Jefatura',        color: '#92400E', bg: '#FEF3C7', border: '#FDE68A', icon: Clock,          fase: 'Aprobacion' },
   'Pendiente Decanatura':        { label: 'Pend. Decanatura',      color: '#1E40AF', bg: '#DBEAFE', border: '#93C5FD', icon: Clock,          fase: 'Aprobacion' },
   'Pendiente Gestion Profesoral':{ label: 'Pend. G. Profesoral',   color: '#3730A3', bg: '#E0E7FF', border: '#A5B4FC', icon: Clock,          fase: 'Aprobacion' },
   'Aprobado':                    { label: 'Aprobado',              color: '#065F46', bg: '#D1FAE5', border: '#6EE7B7', icon: CheckCircle,    fase: 'Final' },
+  'En Firme':                    { label: 'En Firme',              color: '#0F766E', bg: '#F0FDFA', border: '#5EEAD4', icon: Shield,         fase: 'Final' },
+  'RADICADO':                    { label: 'Radicado',              color: '#1E3A8A', bg: '#DBEAFE', border: '#60A5FA', icon: FileText,       fase: 'Final' },
+  'EN_EJECUCION':                { label: 'En Ejecucion',          color: '#0E7490', bg: '#ECFEFF', border: '#67E8F9', icon: Activity,       fase: 'Final' },
+  'Finalizado':                  { label: 'Finalizado',            color: '#5B21B6', bg: '#EDE9FE', border: '#A78BFA', icon: CheckCircle,    fase: 'Final' },
+  'Terminado':                   { label: 'Terminado',             color: '#334155', bg: '#E2E8F0', border: '#94A3B8', icon: XCircle,        fase: 'Final' },
   'Rechazado':                   { label: 'Rechazado',             color: '#991B1B', bg: '#FEE2E2', border: '#FCA5A5', icon: XCircle,        fase: 'Final' },
   'Devuelto':                    { label: 'Devuelto',              color: '#9A3412', bg: '#FFF7ED', border: '#FDBA74', icon: AlertTriangle,   fase: 'Excepcional' },
   'CERRADO_INACTIVIDAD':         { label: 'Cerrado Inact.',        color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB', icon: XCircle,        fase: 'Final' },
   'ANULADO':                     { label: 'Anulado',               color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB', icon: XCircle,        fase: 'Final' },
 };
 
-const getEstadoCfg = (estado: string) => ESTADO_CONFIG[estado] || { label: estado.replace(/_/g, ' '), color: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB', icon: FileText, fase: 'Otro' };
+const getEstadoCfg = (estado: string) => {
+  const visual = getPtaStatusVisual(estado);
+  const configured = ESTADO_CONFIG[estado];
+  return {
+    ...visual,
+    label: configured?.label || visual.label,
+    icon: configured?.icon || FileText,
+    fase: configured?.fase || 'Otro',
+  };
+};
 
 function formatHoras(h: number): string {
   if (h < 1) return `${Math.round(h * 60)}m`;

@@ -260,7 +260,7 @@ export function ConfiguracionConductasDisciplinarias() {
           </p>
         </div>
 
-        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_CREATE) && (
         <button
           onClick={abrirModalCrear}
           className="flex items-center gap-2 px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#1e5da8]/90 transition-colors"
@@ -278,7 +278,7 @@ export function ConfiguracionConductasDisciplinarias() {
             <Shield className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <h4 className="text-lg font-medium text-gray-900 mb-2">No hay conductas configuradas</h4>
             <p className="text-gray-600 mb-4">Comienza creando tu primera conducta disciplinaria</p>
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_CREATE) && (
             <button
               onClick={abrirModalCrear}
               className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#1e5da8]/90"
@@ -323,7 +323,7 @@ export function ConfiguracionConductasDisciplinarias() {
 
                   {/* Acciones */}
                   <div className="flex items-center gap-2">
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_EDIT) && (
                       <button
                         onClick={() => toggleEstadoConducta(conducta)}
                         className={`p-2 rounded-lg transition-colors ${
@@ -337,7 +337,7 @@ export function ConfiguracionConductasDisciplinarias() {
                       </button>
                     )}
 
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_EDIT) && (
                       <button
                         onClick={() => abrirModalEditar(conducta)}
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -347,7 +347,7 @@ export function ConfiguracionConductasDisciplinarias() {
                       </button>
                     )}
 
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_DELETE) && (
                       <button
                         onClick={() => eliminarConducta(conducta)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
