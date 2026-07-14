@@ -269,6 +269,129 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
   return [];
 }
 
+function isConfiguredHourRow(row: any): boolean {
+  const type = String(row?.tipo || 'hasta').toLowerCase();
+  if (type === 'porcentaje') {
+    const percentage = Number(row?.porcentaje_pta);
+    return Number.isFinite(percentage) && percentage > 0;
+  }
+  const hours = Number(row?.horas ?? row?.max_horas);
+  return Number.isFinite(hours) && hours > 0;
+}
+
+/**
+ * Resume la estructura jerárquica de Complementarias en la restricción plana
+ * que consume el docente. El ID identifica el bloque, pero nunca determina sus
+ * horas ni el tipo de reconocimiento.
+ */
+function flattenConfiguredComplementaryActivity(
+  activity: any,
+  section: any,
+  fullPTAFromPercentage = false,
+): any {
+  const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
+  const usesStructuredRows = Array.isArray(columns)
+    ? columns.length > 0
+    : Array.isArray(activity?.items);
+  const configuredRows = usesStructuredRows
+    ? getExtensionCatalogHourRows(activity, section).filter(isConfiguredHourRow)
+    : [];
+
+  const rowMax = (row: any) => Math.max(0, Number(row?.horas ?? row?.max_horas) || 0);
+  const rowMin = (row: any, allowOptionalUntil = false) => {
+    const type = String(row?.tipo || 'hasta').toLowerCase();
+    if (type === 'fija') return rowMax(row);
+    if (type === 'intervalo') {
+      return Math.min(rowMax(row), Math.max(1, Number(row?.horas_min ?? row?.min_horas ?? row?.min) || 1));
+    }
+    if (type === 'hasta' && allowOptionalUntil) return 0;
+    return rowMax(row) > 0 ? 1 : 0;
+  };
+
+  let source: any = activity;
+  if (usesStructuredRows && configuredRows.length === 0) {
+    source = { tipo: 'hasta', max_horas: 0 };
+  } else if (configuredRows.length === 1) {
+    source = configuredRows[0];
+  } else if (configuredRows.length > 1) {
+    const types = configuredRows.map((row: any) => String(row?.tipo || 'hasta').toLowerCase());
+    const allFixed = types.every((type: string) => type === 'fija');
+    const allPercentage = types.every((type: string) => type === 'porcentaje');
+    const maxHours = configuredRows.reduce((sum: number, row: any) => sum + rowMax(row), 0);
+    const minHours = configuredRows.reduce(
+      (sum: number, row: any) => sum + rowMin(row, configuredRows.length > 1),
+      0,
+    );
+    source = allPercentage
+      ? {
+          tipo: 'porcentaje',
+          porcentaje_pta: configuredRows.reduce(
+            (sum: number, row: any) => sum + Math.max(0, Number(row?.porcentaje_pta) || 0),
+            0,
+          ),
+        }
+      : {
+          tipo: allFixed ? 'fija' : 'intervalo',
+          horas: maxHours,
+          horas_min: allFixed ? maxHours : Math.max(1, minHours),
+        };
+  }
+
+  const type = String(source?.tipo || activity?.tipo || 'hasta').toLowerCase();
+  const maxHours = source?.max_horas ?? source?.horas ?? activity?.max_horas ?? 0;
+  const minHours = source?.min_horas ?? source?.horas_min ?? source?.min ?? activity?.min_horas;
+  const percentage = source?.porcentaje_pta ?? activity?.porcentaje_pta;
+  const consumesFullPTA = Boolean(activity?.consumeTotalidad) || (
+    fullPTAFromPercentage
+    && type === 'porcentaje'
+    && Math.min(100, Math.max(1, Number(percentage) || 1)) === 100
+  );
+  const recognitionKeyOccurrences = new Map<string, number>();
+  const recognitionRows = configuredRows.map((row: any, rowIndex: number) => {
+    const rowType = String(row?.tipo || 'hasta').toLowerCase();
+    const max = rowMax(row);
+    const explicitKey = String(row?.id ?? row?.key ?? '').trim();
+    const normalizedName = String(row?.nombre || `fila-${rowIndex + 1}`)
+      .trim()
+      .toLocaleLowerCase('es')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-');
+    const keyBase = explicitKey ? `id:${explicitKey}` : `nombre:${normalizedName || 'fila'}`;
+    const occurrence = (recognitionKeyOccurrences.get(keyBase) || 0) + 1;
+    recognitionKeyOccurrences.set(keyBase, occurrence);
+    return {
+      // La clave permite conservar las cantidades del docente aunque el administrador
+      // reordene filas. Si no existe ID persistido, nombre + ocurrencia es estable.
+      clave: `${keyBase}#${occurrence}`,
+      nombre: row?.nombre,
+      tipo: rowType,
+      max_horas: rowType === 'porcentaje' ? null : max,
+      min_horas: rowType === 'intervalo' ? rowMin(row) : undefined,
+      porcentaje_pta: rowType === 'porcentaje'
+        ? Math.min(100, Math.max(1, Number(row?.porcentaje_pta) || 1))
+        : undefined,
+    };
+  });
+
+  return {
+    id: activity?.id,
+    nombre: activity?.nombre,
+    max_horas: consumesFullPTA || type === 'porcentaje' ? null : Math.max(0, Number(maxHours) || 0),
+    min_horas: type === 'intervalo'
+      ? Math.min(Math.max(0, Number(maxHours) || 0), Math.max(1, Number(minHours) || 1))
+      : undefined,
+    tipo: type,
+    porcentaje_pta: type === 'porcentaje'
+      ? Math.min(100, Math.max(1, Number(percentage) || 1))
+      : undefined,
+    // Permite calcular correctamente bloques que mezclan, por ejemplo, una fila
+    // fija con otra porcentual. El resumen plano se conserva por compatibilidad.
+    filas_reconocimiento: recognitionRows,
+    consumeTotalidad: consumesFullPTA,
+  };
+}
+
 function normalizeExtensionSections(raw: any): any[] {
   const savedByKey = new Map<string, any>();
   if (Array.isArray(raw)) {
@@ -938,6 +1061,101 @@ export class PtaService {
         );
       }
     };
+    const getRecognitionBounds = (configured: any, defaultType = 'hasta', allowZeroUntil = false) => {
+      const recognitionRows = Array.isArray(configured?.filas_reconocimiento)
+        ? configured.filas_reconocimiento
+        : [];
+      if (recognitionRows.length > 0) {
+        const bounds = recognitionRows.map((row: any) => getRecognitionBounds(
+          row,
+          'fija',
+          recognitionRows.length > 1,
+        ));
+        if (bounds.length === 1) return bounds[0];
+        const min = Math.max(1, bounds.reduce((sum: number, entry: any) => sum + entry.min, 0));
+        const max = bounds.reduce((sum: number, entry: any) => sum + entry.max, 0);
+        return { type: min === max ? 'fija' : 'intervalo', min, max };
+      }
+      const type = String(configured?.tipo || defaultType).toLowerCase();
+      const max = type === 'porcentaje'
+        ? (expectedPercentageHours(configured) || 0)
+        : Math.max(0, Number(configured?.max_horas ?? configured?.horas) || 0);
+      const min = type === 'fija' || type === 'porcentaje'
+        ? max
+        : type === 'intervalo'
+          ? Math.min(max, Math.max(1, Number(configured?.min_horas ?? configured?.horas_min ?? configured?.min) || 1))
+          : (max > 0 ? (allowZeroUntil && type === 'hasta' ? 0 : 1) : 0);
+      return { type, min, max };
+    };
+    const assertConfiguredHours = (
+      label: string,
+      submitted: any,
+      configured: any,
+      defaultType = 'hasta',
+      allowZeroUntil = false,
+    ) => {
+      const { type, min, max } = getRecognitionBounds(configured, defaultType, allowZeroUntil);
+      const actual = Number(submitted) || 0;
+      if (max <= 0) {
+        throw new BadRequestException(`La actividad ${label} no tiene horas configuradas y no puede enviarse.`);
+      }
+      if ((type === 'fija' || type === 'porcentaje') && actual !== max) {
+        throw new BadRequestException(`La actividad ${label} debe registrar exactamente ${max}h.`);
+      }
+      if ((type === 'hasta' || type === 'intervalo') && (actual < min || actual > max)) {
+        throw new BadRequestException(`La actividad ${label} debe registrar entre ${min}h y ${max}h.`);
+      }
+    };
+    const validateSubmittedRecognitionRows = (
+      label: string,
+      submittedActivity: any,
+      configuredActivity: any,
+    ): boolean => {
+      const recognitionRows = Array.isArray(configuredActivity?.filas_reconocimiento)
+        ? configuredActivity.filas_reconocimiento
+        : [];
+      if (recognitionRows.length <= 1) return false;
+
+      const keyedValues = submittedActivity?.filas_cantidades;
+      const indexedValues = submittedActivity?.items_cantidades;
+      const hasKeyedValues = keyedValues && typeof keyedValues === 'object';
+      const hasIndexedValues = indexedValues && typeof indexedValues === 'object';
+      if (!hasKeyedValues && !hasIndexedValues) return false;
+
+      let submittedTotal = 0;
+      recognitionRows.forEach((row: any, index: number) => {
+        const rowKey = String(row?.clave || '');
+        const submitted = (hasKeyedValues && rowKey ? keyedValues[rowKey] : undefined)
+          ?? (hasIndexedValues ? indexedValues[index] : undefined);
+        if (submitted === undefined || submitted === null) {
+          throw new BadRequestException(
+            `La fila ${row?.nombre || index + 1} de ${label} no tiene horas registradas.`,
+          );
+        }
+        assertConfiguredHours(
+          String(row?.nombre || index + 1),
+          submitted,
+          row,
+          'fija',
+          recognitionRows.length > 1,
+        );
+        submittedTotal += Number(submitted) || 0;
+      });
+
+      if (submittedTotal <= 0) {
+        throw new BadRequestException(
+          `La actividad ${label} debe registrar al menos 1h en una de sus filas.`,
+        );
+      }
+
+      const activityHours = Number(submittedActivity?.horas) || 0;
+      if (activityHours !== submittedTotal) {
+        throw new BadRequestException(
+          `La actividad ${label} debe totalizar ${submittedTotal}h según sus filas configuradas.`,
+        );
+      }
+      return true;
+    };
 
     const extCatalog = rules?.ext_actividades && typeof rules.ext_actividades === 'object'
       ? rules.ext_actividades
@@ -951,13 +1169,8 @@ export class PtaService {
       ),
       horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
     );
-    const configuredRowHours = (row: any): number => {
-      const type = String(row?.tipo || 'fija').toLowerCase();
-      if (type === 'porcentaje') return expectedPercentageHours(row) || 0;
-      if (type === 'fija') return Math.max(0, Number(row?.horas) || 0);
-      if (type === 'intervalo') return Math.max(0, Number(row?.min ?? row?.horas_min) || 0);
-      return 0;
-    };
+    const configuredRowHours = (row: any, allowZeroUntil = false): number =>
+      getRecognitionBounds(row, 'fija', allowZeroUntil).min;
     for (const activity of (tieneTotalidad ? [] : (Array.isArray(body?.extension_actividades) ? body.extension_actividades : []))) {
       const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
       const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
@@ -974,7 +1187,10 @@ export class PtaService {
             return Number(row?.horas) > 0;
           });
         const mandatoryHours = configuredRows.reduce(
-          (sum: number, entry: any) => sum + configuredRowHours(entry.row),
+          (sum: number, entry: any) => sum + configuredRowHours(
+            entry.row,
+            configuredRows.length > 1,
+          ),
           0,
         );
         const requiresRowSelection = configuredRows.length > 1
@@ -990,39 +1206,86 @@ export class PtaService {
             );
           }
           const selectedRow = allConfiguredRows[selectedRowIndex];
-          const type = String(selectedRow?.tipo || 'fija').toLowerCase();
-          const submittedHours = Number(activity?.horas) || 0;
-          const maxHours = type === 'porcentaje'
-            ? (expectedPercentageHours(selectedRow) || 0)
-            : Math.max(0, Number(selectedRow?.horas) || 0);
-          const minHours = type === 'intervalo'
-            ? Math.max(0, Number(selectedRow?.min ?? selectedRow?.horas_min) || 0)
-            : 0;
-          if ((type === 'fija' || type === 'porcentaje') && submittedHours !== maxHours) {
-            throw new BadRequestException(
-              `La fila ${selectedRow?.nombre || selectedRowIndex + 1} debe registrar exactamente ${maxHours}h.`,
+          assertConfiguredHours(
+            String(selectedRow?.nombre || selectedRowIndex + 1),
+            activity?.horas,
+            selectedRow,
+            'fija',
+          );
+        } else if (configuredRows.length > 0) {
+          const submittedRows = activity?.items_cantidades;
+          if (submittedRows && typeof submittedRows === 'object') {
+            let submittedTotal = 0;
+            configuredRows.forEach(({ row, index }: any) => {
+              const submitted = submittedRows[index];
+              assertConfiguredHours(
+                String(row?.nombre || index + 1),
+                submitted,
+                row,
+                'fija',
+                configuredRows.length > 1,
+              );
+              submittedTotal += Number(submitted) || 0;
+            });
+            if (submittedTotal <= 0) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar al menos 1h en una de sus filas.`,
+              );
+            }
+            const activityHours = Number(activity?.horas) || 0;
+            if (activityHours !== submittedTotal) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe totalizar ${submittedTotal}h según sus filas configuradas.`,
+              );
+            }
+          } else {
+            // Compatibilidad con borradores anteriores a `items_cantidades`: se valida
+            // al menos el rango agregado sin inferir reglas desde el ID.
+            const minTotal = configuredRows.reduce(
+              (sum: number, entry: any) => sum + getRecognitionBounds(
+                entry.row,
+                'fija',
+                configuredRows.length > 1,
+              ).min,
+              0,
             );
-          }
-          if ((type === 'hasta' || type === 'intervalo')
-            && (submittedHours < minHours || submittedHours > maxHours)) {
-            throw new BadRequestException(
-              `La fila ${selectedRow?.nombre || selectedRowIndex + 1} debe registrar entre ${minHours}h y ${maxHours}h.`,
+            const maxTotal = configuredRows.reduce(
+              (sum: number, entry: any) => sum + getRecognitionBounds(entry.row, 'fija').max,
+              0,
             );
+            const submittedTotal = Number(activity?.horas) || 0;
+            const effectiveMin = Math.max(1, minTotal);
+            if (submittedTotal < effectiveMin || submittedTotal > maxTotal) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar entre ${effectiveMin}h y ${maxTotal}h.`,
+              );
+            }
           }
+        } else {
+          // En una tabla simple el reconocimiento vive directamente en el bloque.
+          assertConfiguredHours(
+            configured?.nombre || activity?.nombre || 'de extensión',
+            activity?.horas,
+            configured,
+          );
         }
       }
     }
 
-    const compCatalog = rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
-      ? rules.comp_actividades_v2
-      : {};
     for (const activity of allComp) {
       if (tieneTotalidad && activity?.consumeTotalidad !== true) continue;
       const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
-      const configured = (Array.isArray(compCatalog?.[sectionKey]) ? compCatalog[sectionKey] : [])
+      const configured = this.flattenCompV2Section(rules, sectionKey)
         .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
       if (configured) {
-        assertPercentageHours(configured?.nombre || activity?.nombre || 'complementaria', activity?.horas, configured);
+        const label = configured?.nombre || activity?.nombre || 'complementaria';
+        const validatedByRows = validateSubmittedRecognitionRows(label, activity, configured);
+        if (!validatedByRows) {
+          // Borradores anteriores al desglose por filas conservan la validación
+          // agregada para poder abrirse y corregirse sin perder información.
+          assertPercentageHours(label, activity?.horas, configured);
+          assertConfiguredHours(label, activity?.horas, configured);
+        }
       }
     }
 
@@ -4207,36 +4470,29 @@ export class PtaService {
 
   // Aplana una actividad de comp_actividades_v2 al shape plano que consume el catálogo
   // ({ id, nombre, max_horas, min_horas?, consumeTotalidad }).
-  private flattenCompV2Activity(a: any, fullPTAFromPercentage = false): any {
-    const itemHours = Array.isArray(a?.items)
-      ? a.items.map((it: any) => Number(it?.horas || 0)).filter((n: number) => Number.isFinite(n))
-      : [];
-    const maxHoras = a?.max_horas ?? (itemHours.length ? Math.max(...itemHours) : 0);
-    return {
-      id: a?.id,
-      nombre: a?.nombre,
-      max_horas: a?.consumeTotalidad ? null : maxHoras,
-      min_horas: a?.min_horas,
-      tipo: a?.tipo ?? a?.items?.[0]?.tipo,
-      porcentaje_pta: a?.porcentaje_pta ?? a?.items?.[0]?.porcentaje_pta,
-      consumeTotalidad: Boolean(a?.consumeTotalidad) || (
-        fullPTAFromPercentage &&
-        String(a?.tipo || '').toLowerCase() === 'porcentaje' &&
-        Math.min(100, Math.max(1, Number(a?.porcentaje_pta) || 1)) === 100
-      ),
-    };
-  }
-
   private flattenCompV2Section(rules: any, sectionKey: string): any[] {
     const v2 = rules?.comp_actividades_v2;
     const arr = v2 && typeof v2 === 'object' ? v2[sectionKey] : null;
+    const sections = Array.isArray(rules?.comp_secciones) && rules.comp_secciones.length > 0
+      ? rules.comp_secciones
+      : FIXED_COMP_SECCIONES;
+    const section = sections.find((item: any) => String(item?.key) === sectionKey)
+      || FIXED_COMP_SECCIONES.find(item => item.key === sectionKey);
     return Array.isArray(arr)
-      ? arr.map((a: any) => this.flattenCompV2Activity(a, sectionKey === 'academico_administrativas'))
+      ? arr.map((activity: any) => flattenConfiguredComplementaryActivity(
+          activity,
+          section,
+          sectionKey === 'academico_administrativas',
+        ))
       : [];
   }
 
   async getCatalogoActividadesComplementarias() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
+    if (rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      && Object.prototype.hasOwnProperty.call(rules.comp_actividades_v2, 'complementarias_docencia')) {
+      return this.flattenCompV2Section(rules, 'complementarias_docencia');
+    }
     if (Array.isArray(rules?.comp_actividades) && rules.comp_actividades.length > 0) return rules.comp_actividades;
     // Fallback: derivar de la sección v2 (por si dejan de escribirse los arrays legacy).
     return this.flattenCompV2Section(rules, 'complementarias_docencia');
@@ -4244,6 +4500,10 @@ export class PtaService {
 
   async getCatalogoActividadesAcademicoAdmin() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
+    if (rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      && Object.prototype.hasOwnProperty.call(rules.comp_actividades_v2, 'academico_administrativas')) {
+      return this.flattenCompV2Section(rules, 'academico_administrativas');
+    }
     if (Array.isArray(rules?.aadm_actividades) && rules.aadm_actividades.length > 0) return rules.aadm_actividades;
     return this.flattenCompV2Section(rules, 'academico_administrativas');
   }
