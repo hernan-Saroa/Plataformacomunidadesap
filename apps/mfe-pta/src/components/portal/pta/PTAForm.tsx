@@ -2773,9 +2773,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       setSaving(false);
       return;
     }
-    // Sin restricción de permiso y con más de un componente disponible: exige elegir
-    // explícitamente cuáles se devuelven (no se adivina por la pestaña abierta).
-    if (isAdminEdit && currentPtaId && !isAdminComponentRestricted && adminEditableComponentKeysNow.length > 1
+    // Con más de un componente disponible (con o sin restricción de permiso — un rol
+    // puede tener asignados varios componentes, ej. "aprueba docencia y
+    // complementarias") exige elegir explícitamente cuáles se devuelven. Antes esto
+    // solo aplicaba sin restricción de permiso, así que un revisor restringido a
+    // varios componentes devolvía TODOS los suyos aunque solo hubiera editado uno.
+    if (isAdminEdit && currentPtaId && adminEditableComponentKeysNow.length > 1
       && componentesSeleccionadosDevolver.length === 0) {
       toast.error('Selecciona qué componente(s) estás devolviendo.');
       setSaving(false);
@@ -2790,10 +2793,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Componente(s) a devolver cuando el revisor no tiene permiso restringido: la
-    // selección explícita del admin, o el único componente disponible si no hay
-    // ambigüedad.
-    const componentesConcertacionSeleccionados = isAdminEdit && !isAdminComponentRestricted
+    // Componente(s) a devolver: el único disponible si no hay ambigüedad, o la
+    // selección explícita del admin cuando hay más de uno (tenga o no restricción de
+    // permiso — el backend igual acota la selección a su alcance real si está
+    // restringido).
+    const componentesConcertacionSeleccionados = isAdminEdit
       ? (adminEditableComponentKeysNow.length <= 1 ? adminEditableComponentKeysNow : componentesSeleccionadosDevolver)
       : [];
 
@@ -3214,13 +3218,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
       {/* Comentario de Concertación — editar y guardar como revisor/admin equivale a
           devolver al docente el/los componente(s) seleccionados, con este comentario.
-          Si el revisor tiene permiso restringido a ciertos componentes, se devuelven
-          esos automáticamente. Si no (aprueba todo / sin restricción), debe elegir
-          explícitamente cuáles — evita adivinar por la pestaña que tenga abierta, que
-          podía fallar en silencio si no coincidía con lo que realmente quería devolver. */}
+          Si al revisor solo le queda UN componente disponible (con o sin restricción
+          de permiso), se devuelve automáticamente. Si tiene varios — esté o no
+          restringido por permiso a un subconjunto (ej. "aprueba docencia y
+          complementarias") — debe elegir explícitamente cuáles: no se adivina por la
+          pestaña abierta ni se devuelven todos sus componentes permitidos por
+          cascada. */}
       {isAdminEdit && ptaId && (
         <div className="mb-5 p-4 rounded-xl bg-blue-50 border border-blue-200">
-          {!isAdminComponentRestricted && adminEditableComponentKeysNow.length > 1 && (
+          {adminEditableComponentKeysNow.length > 1 && (
             <div className="mb-3">
               <label className="block text-[13px] font-bold text-blue-900 mb-1.5">
                 ¿Qué componente(s) estás devolviendo? (obligatorio)
@@ -3251,7 +3257,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             Comentario para el docente (obligatorio)
           </label>
           <p className="text-[12px] text-blue-700 mb-2">
-            Al guardar, el/los componente(s) {isAdminComponentRestricted || adminEditableComponentKeysNow.length <= 1 ? 'que edites' : 'seleccionados arriba'} se devolverán al docente con este comentario para que los corrija y reenvíe.
+            Al guardar, el/los componente(s) {adminEditableComponentKeysNow.length <= 1 ? 'que edites' : 'seleccionados arriba'} se devolverán al docente con este comentario para que los corrija y reenvíe.
           </p>
           <textarea
             value={comentarioConcertacion}

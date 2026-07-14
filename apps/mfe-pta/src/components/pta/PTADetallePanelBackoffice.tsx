@@ -904,9 +904,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
   const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
 
-  const [motivoDevolucion, setMotivoDevolucion] = useState('');
-  const [showDevolucionModal, setShowDevolucionModal] = useState(false);
-  const [procesandoDevolucion, setProcesandoDevolucion] = useState(false);
   const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
   // OTP de firma del aprobador: verificationId + correo enmascarado donde se envió.
@@ -1107,32 +1104,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || res.data?.estado || prev.estado }));
       onAprobar();
     }
-  };
-
-  const handleDevolver = async () => {
-    if (!motivoDevolucion.trim()) {
-      toast.error('Debe ingresar un motivo de devolución');
-      return;
-    }
-    setProcesandoDevolucion(true);
-    const res = await updatePTAStatus(pta.id, {
-      accion: 'devolver', motivo_devolucion: motivoDevolucion,
-      actorRol: rolLabel,
-      actorId,
-      nivelAprobacion,
-      actorTerritorialId: jefaturaTerritorialId,
-      isSuperUser: isSuperUser || false,
-    } as any);
-    setProcesandoDevolucion(false);
-    if (!res.success) {
-      toast.error(res.message || 'Error devolviendo PTA');
-      return;
-    }
-    toast.success('PTA devuelto al docente');
-    setShowDevolucionModal(false);
-    setMotivoDevolucion('');
-    setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || res.data?.estado || prev.estado, motivoDevolucion }));
-    onDevolver();
   };
 
   const historialEstados = pta.historialEstados || [];
@@ -3095,80 +3066,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         </div>
         )}
 
-        {/* ── Modal Devolución ───────────────────────────────────── */}
-        <AnimatePresence>
-          {showDevolucionModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{
-                position: 'absolute', inset: 0, zIndex: 10,
-                background: 'rgba(17,24,39,0.55)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', padding: 20,
-              }}
-              onClick={() => setShowDevolucionModal(false)}
-            >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                onClick={e => e.stopPropagation()}
-                style={{
-                  background: 'white', borderRadius: 14, padding: '20px 22px',
-                  width: '100%', maxWidth: 380,
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <RotateCcw style={{ width: 18, height: 18, color: '#9A3412' }} />
-                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#111827' }}>
-                    Devolver PTA al Docente
-                  </h4>
-                </div>
-                <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: '0 0 10px' }}>
-                  El PTA volverá a <strong>Borrador</strong> con el motivo visible para el docente.
-                </p>
-                <textarea
-                  value={motivoDevolucion}
-                  onChange={e => setMotivoDevolucion(e.target.value)}
-                  placeholder="Ej. El componente de investigación no está justificado correctamente..."
-                  rows={3}
-                  autoFocus
-                  style={{
-                    width: '100%', padding: '8px 10px', borderRadius: 8,
-                    border: '1px solid #D1D5DB', fontSize: '0.82rem',
-                    resize: 'vertical', fontFamily: 'inherit', outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setShowDevolucionModal(false)}
-                    style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', color: '#374151', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleDevolver}
-                    disabled={!motivoDevolucion.trim() || procesandoDevolucion}
-                    style={{
-                      padding: '7px 16px', borderRadius: 8, border: 'none',
-                      background: motivoDevolucion.trim() && !procesandoDevolucion ? '#9A3412' : '#9CA3AF',
-                      color: 'white', fontSize: '0.8rem', fontWeight: 700,
-                      cursor: motivoDevolucion.trim() && !procesandoDevolucion ? 'pointer' : 'default',
-                      display: 'flex', alignItems: 'center', gap: 5,
-                    }}
-                  >
-                    <RotateCcw style={{ width: 13, height: 13 }} />
-                    {procesandoDevolucion ? 'Devolviendo...' : 'Confirmar Devolución'}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* ── Footer Actions ─────────────────────────────────────── */}
         <div style={{
           padding: isMobile ? '10px 14px 14px' : '12px 20px',
@@ -3207,17 +3104,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </button>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => setShowDevolucionModal(true)}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 10,
-                        border: '1px solid #FDBA74', background: '#FFF7ED',
-                        color: '#9A3412', fontWeight: 600, fontSize: '0.8rem',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      }}
-                    >
-                      <RotateCcw style={{ width: 13, height: 13 }} /> Devolver
-                    </button>
                     <button
                       onClick={onVerReporte}
                       style={{
@@ -3301,19 +3187,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
               {isPendiente && puedeAprobarNivelActual && (
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {!yaAproboEstaJefatura && (
-                  <button
-                    onClick={() => setShowDevolucionModal(true)}
-                    style={{
-                      padding: '7px 14px', borderRadius: 8,
-                      border: '1px solid #FDBA74', background: '#FFF7ED',
-                      color: '#9A3412', fontWeight: 600, fontSize: '0.78rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                    }}
-                  >
-                    <RotateCcw style={{ width: 13, height: 13 }} /> Devolver
-                  </button>
-                  )}
                   {yaAproboEstaJefatura ? (
                     <div style={{
                       padding: '7px 14px', borderRadius: 8,
