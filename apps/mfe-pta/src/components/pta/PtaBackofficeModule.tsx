@@ -63,6 +63,8 @@ import {
   PTA_EXTENSION_COMPONENT_KEYS,
   type PTAComponentKey,
   hasAnyComponentApprovalData,
+  componentKeyForEvidencia,
+  isEvidenciaAuthorized,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import '../../styles/pta-world-class.css';
@@ -558,6 +560,22 @@ function isDocumentoPendiente(evidencia: any) {
 }
 
 function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNombre: string; rolLabel: string }) {
+  const { permisos } = usePermisosPTA();
+  // Autorización POR COMPONENTE: cada aprobador ve/revisa solo las evidencias de su(s)
+  // componente(s). `componentesAprobables` ya trae todas las llaves para superuser /
+  // admin / pta.approve.all.
+  const componentesAprobablesSet = useMemo(
+    () => new Set<string>(permisos.componentesAprobables || []),
+    [permisos.componentesAprobables],
+  );
+  const isComponentAuthorized = (key: PTAComponentKey) => componentesAprobablesSet.has(key);
+  const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
+  // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
+  const isSegComponentAuthorized = (compKey: string) => {
+    if (compKey === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(isComponentAuthorized);
+    const key = componentKeyForEvidencia(compKey, null);
+    return key ? isComponentAuthorized(key) : false;
+  };
   const [ptasData, setPtasData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroPeriodo, setFiltroPeriodo] = useState('');
@@ -598,18 +616,24 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   // Solo aplican al Seguimiento las PTAs que pueden tener documentos: aprobadas / en firme /
   // en ejecución, o las que ya tengan al menos una evidencia cargada (defensivo ante estados
   // con etiquetas inconsistentes). Así evitamos filas de Borrador/Pendiente que se despliegan vacías.
-  const aplicaSeguimiento = (p: any) =>
-    (p.evidencias || []).length > 0 || ESTADOS_CON_DOCUMENTOS_KEYS.has(normalizeEstadoKey(p.estado));
+  // Una PTA aplica al Seguimiento de ESTE usuario si: tiene evidencias suyas
+  // (autorizadas por componente), o —sin evidencias aún— está en un estado que las
+  // admite. Las PTAs cuyas evidencias son todas de otros componentes se ocultan.
+  const aplicaSeguimiento = (p: any) => {
+    const total = (p.evidencias || []).length;
+    if (total > 0) return evsAutorizadas(p).length > 0;
+    return ESTADOS_CON_DOCUMENTOS_KEYS.has(normalizeEstadoKey(p.estado));
+  };
 
   const filteredPtas = ptasData.filter((p: any) => {
     if (!aplicaSeguimiento(p)) return false;
     if (!filtroEstadoRev) return true;
-    return (p.evidencias || []).some((e: any) => getEstadoRevisionDocumento(e) === filtroEstadoRev);
+    return evsAutorizadas(p).some((e: any) => getEstadoRevisionDocumento(e) === filtroEstadoRev);
   });
 
   // Los adjuntos de soporte (0h) siguen la decisión de su documento principal:
-  // no se cuentan como pendientes propios.
-  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + (p.evidencias || []).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e)).length, 0);
+  // no se cuentan como pendientes propios. Solo se cuentan las evidencias autorizadas.
+  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + evsAutorizadas(p).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e)).length, 0);
 
   return (
     <div style={{ padding: '0 0 40px' }}>
@@ -657,7 +681,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filteredPtas.map((pta: any) => {
-            const evsPendientes = (pta.evidencias || []).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e));
+            const evsPendientes = evsAutorizadas(pta).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e));
             const isOpen = selectedPtaId === pta.pta_id;
             return (
               <div key={pta.pta_id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${evsPendientes.length > 0 ? '#FDE68A' : '#E5E7EB'}`, overflow: 'hidden' }}>
@@ -678,8 +702,8 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                   </div>
                   {/* Progress pills per component */}
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {COMPONENTES_SEG.map(comp => {
-                      // Se muestran SIEMPRE los 5 componentes fijos (aunque el PTA tenga 0h en alguno).
+                    {COMPONENTES_SEG.filter(comp => isSegComponentAuthorized(comp.key)).map(comp => {
+                      // Solo los componentes que el usuario está autorizado a revisar.
                       const horasTotal: number = (pta as any)[`horas_${comp.key}`] || 0;
                       const aprobadas = (pta.evidencias || [])
                         .filter((e: any) => e.componente_pta === comp.key && isDocumentoAprobado(e))
@@ -708,14 +732,14 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                   {isOpen && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden' }}>
                       <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {(pta.evidencias || []).length === 0 && (
+                        {evsAutorizadas(pta).length === 0 && (
                           <div style={{ textAlign: 'center', padding: '18px 12px', background: '#F9FAFB', borderRadius: 10, border: '1px dashed #E5E7EB' }}>
                             <FolderOpen style={{ width: 26, height: 26, color: '#D1D5DB', margin: '0 auto 6px' }} />
                             <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: 0, fontWeight: 600 }}>Sin documentos de soporte</p>
                             <p style={{ fontSize: '0.68rem', color: '#9CA3AF', margin: '2px 0 0' }}>El docente aún no ha subido evidencias para esta PTA</p>
                           </div>
                         )}
-                        {agruparEvidenciasPorJustificacion(pta.evidencias || []).map((grupo: { main: any; adjuntos: any[] }) => {
+                        {agruparEvidenciasPorJustificacion(evsAutorizadas(pta)).map((grupo: { main: any; adjuntos: any[] }) => {
                           const ev = grupo.main;
                           const comp = COMPONENTES_SEG.find(c => c.key === ev.componente_pta);
                           const estadoRev = getEstadoRevisionDocumento(ev);
@@ -727,7 +751,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.nombre}</div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                                    {comp && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>{comp.label}</span>}
+                                    {comp && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>{comp.label}{(ev.seccion_extension ?? ev.seccionExtension) ? ` · ${ev.seccion_extension ?? ev.seccionExtension}` : ''}</span>}
                                     {ev.horas_avance > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF' }}>{ev.horas_avance}h</span>}
                                     {grupo.adjuntos.length > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#F1F5F9', color: '#475569' }}>+{grupo.adjuntos.length} soporte{grupo.adjuntos.length > 1 ? 's' : ''}</span>}
                                     <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: estadoRev === 'aprobado' ? '#D1FAE5' : estadoRev === 'rechazado' ? '#FEE2E2' : '#FEF3C7', color: estadoRev === 'aprobado' ? '#065F46' : estadoRev === 'rechazado' ? '#991B1B' : '#92400E' }}>
