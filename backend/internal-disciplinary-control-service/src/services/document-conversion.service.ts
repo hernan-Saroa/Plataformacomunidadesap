@@ -340,6 +340,17 @@ export class DocumentConversionService {
 
       this.logger.log(`[Mammoth] HTML content length: ${htmlContent.length}`);
 
+      // Mammoth no lee word/header*.xml ni word/footer*.xml (solo word/document.xml),
+      // así que el membrete institucional insertado como encabezado de Word se pierde
+      // en la conversión. Se extrae aparte y se antepone al contenido.
+      const headerImages = await this.extractHeaderImages(inputPath);
+      const headerImagesHtml = headerImages
+        .map(
+          (src) =>
+            `<img src="${src}" style="max-width:100%; display:block; margin: 0 0 12pt 0;" />`,
+        )
+        .join('');
+
       // Crear HTML completo con estilos básicos
       const fullHtml = `
         <!DOCTYPE html>
@@ -364,6 +375,7 @@ export class DocumentConversionService {
         </head>
         <body>
           <div class="mammoth-style-wrapper">
+            ${headerImagesHtml}
             ${htmlContent}
           </div>
         </body>
@@ -420,6 +432,104 @@ export class DocumentConversionService {
 
   private escapePowerShellString(value: string): string {
     return value.replace(/'/g, "''");
+  }
+
+  private async extractHeaderImages(inputPath: string): Promise<string[]> {
+    try {
+      const docxBuffer = await fs.readFile(inputPath);
+      const zip = await JSZip.loadAsync(docxBuffer);
+
+      const headerFiles = Object.keys(zip.files).filter((fileName) =>
+        /^word\/header\d*\.xml$/i.test(fileName),
+      );
+
+      const images: string[] = [];
+      const seenMediaPaths = new Set<string>();
+
+      for (const headerFile of headerFiles) {
+        const headerXml = await zip.file(headerFile)?.async('string');
+        if (!headerXml) {
+          continue;
+        }
+
+        const relsPath = `word/_rels/${path.basename(headerFile)}.rels`;
+        const relsXml = await zip.file(relsPath)?.async('string');
+        if (!relsXml) {
+          continue;
+        }
+
+        const relsMap = new Map<string, string>();
+        const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
+        let relMatch: RegExpExecArray | null;
+
+        while ((relMatch = relRegex.exec(relsXml)) !== null) {
+          relsMap.set(relMatch[1], relMatch[2]);
+        }
+
+        const embedRegex = /r:embed="([^"]+)"/g;
+        let embedMatch: RegExpExecArray | null;
+
+        while ((embedMatch = embedRegex.exec(headerXml)) !== null) {
+          const target = relsMap.get(embedMatch[1]);
+          if (!target) {
+            continue;
+          }
+
+          const mediaPath = path.posix.normalize(`word/${target}`);
+          if (seenMediaPaths.has(mediaPath)) {
+            continue;
+          }
+          seenMediaPaths.add(mediaPath);
+
+          const mediaFile = zip.file(mediaPath);
+          if (!mediaFile) {
+            continue;
+          }
+
+          const mimeType = this.getImageMimeType(mediaPath);
+          if (!mimeType) {
+            this.logger.warn(
+              `[Conversion] Imagen de encabezado con formato no soportado para vista web: ${mediaPath}`,
+            );
+            continue;
+          }
+
+          const mediaBuffer = await mediaFile.async('nodebuffer');
+          images.push(`data:${mimeType};base64,${mediaBuffer.toString('base64')}`);
+        }
+      }
+
+      return images;
+    } catch (error) {
+      this.logger.warn(
+        `[Conversion] No se pudieron extraer imágenes del encabezado del documento: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return [];
+    }
+  }
+
+  private getImageMimeType(fileName: string): string | null {
+    const ext = path.extname(fileName).toLowerCase();
+
+    switch (ext) {
+      case '.png':
+        return 'image/png';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.gif':
+        return 'image/gif';
+      case '.bmp':
+        return 'image/bmp';
+      case '.svg':
+        return 'image/svg+xml';
+      default:
+        // Formatos como .emf/.wmf (metarchivos de Windows) no son renderizables
+        // como <img> en un navegador/Chromium headless.
+        return null;
+    }
   }
 
   private async createDocxWithReplacements(

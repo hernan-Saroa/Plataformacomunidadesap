@@ -2264,9 +2264,15 @@ export class PtaService {
       if (comentarioConcertacion) {
         // Qué componentes se devuelven al docente. La fuente de verdad es SIEMPRE una
         // selección explícita, nunca una heurística:
-        //   1) Restringido por permiso → su(s) componente(s) asignado(s) (server-side).
-        //   2) Sin restricción de permiso → los que el admin marcó en los checkboxes
-        //      del formulario (_concertacion_componentes).
+        //   1) Restringido por permiso a UN SOLO componente → ese, sin ambigüedad.
+        //   2) Restringido por permiso a VARIOS componentes (ej. un rol con
+        //      "aprueba docencia y complementarias") → también exige selección
+        //      explícita del admin, acotada a su alcance real. Antes se devolvían
+        //      TODOS sus componentes permitidos aunque solo hubiera tocado uno
+        //      (bug reportado en QA: devolver Docencia con un cambio devolvía en
+        //      cascada Complementarias también, sin que el revisor lo pidiera).
+        //   3) Sin restricción de permiso (aprueba todo / superusuario) → los que
+        //      el admin marcó en los checkboxes del formulario.
         // NO se infieren componentes por "diff de contenido": el formulario re-serializa
         // todo el PTA al guardar, así que un componente intacto (p.ej. Docencia ya
         // aprobada) puede aparecer como "cambiado" por diferencias de serialización y
@@ -2274,9 +2280,11 @@ export class PtaService {
         const componentesSeleccionados = Array.isArray(input?._concertacion_componentes)
           ? input._concertacion_componentes.map((k: any) => String(k)).filter((k: string) => COMPONENT_APPROVAL_KEY_SET.has(k))
           : [];
-        const componentesCambiados = allowedComponentKeys.length > 0
+        const componentesCambiados = allowedComponentKeys.length === 1
           ? allowedComponentKeys
-          : componentesSeleccionados;
+          : allowedComponentKeys.length > 1
+            ? componentesSeleccionados.filter((k) => allowedComponentKeys.includes(k))
+            : componentesSeleccionados;
         if (componentesCambiados.length > 0) {
           const devolucionResult = await this.registrarDevolucionPorConcertacion(
             saved.id,
