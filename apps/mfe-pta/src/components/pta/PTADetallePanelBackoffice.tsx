@@ -833,6 +833,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const hayComponentesPendientesParaMi = puedeActuarSobreComponentes &&
     componentesAprobacion.some(c => isComponentAuthorized(c.componente) && (c.estado || 'pendiente') === 'pendiente');
   const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
+  // Revisión de evidencias del tab Seguimiento: además de quien puede aprobar el PTA,
+  // cualquier usuario con permiso para ver el tab de seguimiento
+  // (pta.backoffice.seguimiento / pta.backoffice.reporte_seguimiento) puede aprobar o
+  // rechazar las evidencias individuales.
+  const puedeRevisarSeguimiento = isSuperUser
+    || puedeAprobarNivelActual
+    || puedePerm('pta.backoffice.seguimiento')
+    || puedePerm('pta.backoffice.reporte_seguimiento');
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;
@@ -2981,7 +2989,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, background: estadoBg, color: estadoColor }}>
                               {ev.estadoRevision || 'pendiente'}
                             </span>
-                            {ev.estadoRevision === 'pendiente' && puedeAprobarNivelActual && (
+                            {ev.estadoRevision === 'pendiente' && puedeRevisarSeguimiento && (
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button
                                   onClick={async () => {
