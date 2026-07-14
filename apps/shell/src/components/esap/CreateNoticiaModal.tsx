@@ -1202,7 +1202,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                               ? 'La acción disciplinaria ha perdido vigencia. Han transcurrido más de 5 años desde la ocurrencia de los hechos.'
                               : verificarProximoVencimiento(formData.fechaHechos)
                               ? 'Menos de 6 meses para el vencimiento. Se recomienda priorizar esta noticia.'
-                              : 'Según la ley 1952 de 2019 del Código general disciplinario, la acción disciplinaria caduca a los 5 años desde la ocurrencia de los hechos.'
+                              : 'Según el Artículo 33 de la ley 1952 de 2019 (Código General Disciplinario), la acción disciplinaria prescribe a los 5 años desde la ocurrencia de los hechos.'
                             }
                           </p>
                         </div>
@@ -1215,7 +1215,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         📖 Marco Legal - ley 1952 de 2019 (Código General Disciplinario)
                       </p>
                       <p className="text-xs text-gray-600">
-                        <strong>Artículo 33. Caducidad y prescripción de la acción disciplinaria:</strong> "La acción disciplinaria caducará si transcurridos cinco (5) años desde la ocurrencia de la falta, no se ha proferido auto de apertura de investigación disciplinaria."
+                        <strong>ARTÍCULO 33. Prescripción e interrupción de la acción disciplinaria.</strong> "La acción disciplinaria prescribirá en cinco (5) años contados para las faltas instantáneas desde el día de su consumación, para las de carácter permanente o continuado, desde la realización del último hecho o acto y para las omisivas, cuando haya cesado el deber de actuar."
                       </p>
                     </div>
                   </div>
