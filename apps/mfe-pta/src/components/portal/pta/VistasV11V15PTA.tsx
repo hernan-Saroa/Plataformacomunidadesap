@@ -285,6 +285,16 @@ const COMPONENTES_PTA = [
   { key: 'complementarias', label: 'Complementarias', color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
 ] as const;
 
+// Secciones de extensión (a nivel de permiso de aprobación pta.approve.extension.*).
+// Solo aplica cuando el componente de la evidencia es 'extension'. El valor se guarda
+// en la evidencia como `seccion_extension` y determina qué aprobador puede revisarla.
+const SECCIONES_EXTENSION = [
+  { key: 'capacitacion', label: 'Capacitación' },
+  { key: 'seleccion', label: 'Procesos de selección' },
+  { key: 'fortalecimiento', label: 'Fortalecimiento' },
+  { key: 'alto_gobierno', label: 'Alto Gobierno' },
+] as const;
+
 type EstadoRevisionEvidencia = 'pendiente' | 'aprobado' | 'rechazado';
 
 function normalizeEvidenceStatus(value?: string | null) {
@@ -378,6 +388,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   // Form state — soporta múltiples archivos (máx 10)
   const [formFiles, setFormFiles] = useState<File[]>([]);
   const [formComponente, setFormComponente] = useState('investigacion');
+  const [formSeccionExtension, setFormSeccionExtension] = useState('');
   const [formHoras, setFormHoras] = useState<number>(0);
   const [formDescripcion, setFormDescripcion] = useState('');
 
@@ -508,6 +519,10 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       return;
     }
     if (formHoras <= 0) { toast.error('Indica cuántas horas avanza esta carga'); return; }
+    if (formComponente === 'extension' && !formSeccionExtension) {
+      toast.error('Selecciona la sección de extensión de esta evidencia');
+      return;
+    }
     if (maxHoras > 0 && formHoras > disponibles) {
       toast.error(`Superas las horas del componente (${maxHoras}h). Tienes ${yaRegistradas}h aprobadas o pendientes; disponibles: ${disponibles}h.`);
       return;
@@ -528,6 +543,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         tamanio_bytes: f.size,
         categoria: COMPONENTES_PTA.find(c => c.key === formComponente)?.label || formComponente,
         componente_pta: formComponente,
+        seccion_extension: formComponente === 'extension' ? formSeccionExtension : null,
         horas_avance: i === 0 ? formHoras : 0,
         storage_path: storagePath,
         storage_url: fileUrl,
@@ -538,7 +554,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     }
     if (ok > 0) {
       toast.success(`${ok} documento${ok > 1 ? 's' : ''} registrado${ok > 1 ? 's' : ''}`);
-      setShowForm(false); setFormFiles([]); setFormHoras(0); setFormDescripcion('');
+      setShowForm(false); setFormFiles([]); setFormHoras(0); setFormDescripcion(''); setFormSeccionExtension('');
       loadEvidencias();
     } else {
       toast.error('Error al registrar los documentos');
@@ -701,7 +717,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Componente del PTA *</label>
                 <select
                   value={formComponente}
-                  onChange={e => setFormComponente(e.target.value)}
+                  onChange={e => { setFormComponente(e.target.value); if (e.target.value !== 'extension') setFormSeccionExtension(''); }}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
                 >
                   {COMPONENTES_PTA.map(c => (
@@ -723,6 +739,21 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 />
               </div>
             </div>
+            {formComponente === 'extension' && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Sección de extensión *</label>
+                <select
+                  value={formSeccionExtension}
+                  onChange={e => setFormSeccionExtension(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
+                >
+                  <option value="">Selecciona la sección…</option>
+                  {SECCIONES_EXTENSION.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div style={{ marginBottom: 10 }}>
               <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Descripción (opcional)</label>
               <input

@@ -49,6 +49,7 @@ import {
   type PTAComponentKey,
   componentKeysForApprovalLevel,
   splitComplementarias,
+  isEvidenciaAuthorized,
 } from './shared/ptaComponentPermissions';
 
 // ═══ TYPES ════════════════════════════════════════════════════════════
@@ -833,14 +834,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const hayComponentesPendientesParaMi = puedeActuarSobreComponentes &&
     componentesAprobacion.some(c => isComponentAuthorized(c.componente) && (c.estado || 'pendiente') === 'pendiente');
   const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
-  // Revisión de evidencias del tab Seguimiento: además de quien puede aprobar el PTA,
-  // cualquier usuario con permiso para ver el tab de seguimiento
-  // (pta.backoffice.seguimiento / pta.backoffice.reporte_seguimiento) puede aprobar o
-  // rechazar las evidencias individuales.
-  const puedeRevisarSeguimiento = isSuperUser
-    || puedeAprobarNivelActual
-    || puedePerm('pta.backoffice.seguimiento')
-    || puedePerm('pta.backoffice.reporte_seguimiento');
+  // Revisión de evidencias del tab Seguimiento: modelo POR COMPONENTE. Cada evidencia
+  // se puede ver/aprobar/rechazar solo si el usuario está autorizado para el componente
+  // (o la sección de extensión) al que pertenece. Superuser y pta.approve.all quedan
+  // cubiertos porque isComponentAuthorized retorna true para todos en ese caso.
+  const puedeRevisarEvidencia = useCallback(
+    (ev: any) => isEvidenciaAuthorized(ev, isComponentAuthorized),
+    [isComponentAuthorized],
+  );
+  // Solo se listan las evidencias del/los componente(s) que el usuario está autorizado
+  // a revisar. Superuser / pta.approve.all ven todas (isComponentAuthorized retorna true).
+  const evidenciasVisibles = useMemo(
+    () => evidencias.filter(ev => puedeRevisarEvidencia(ev)),
+    [evidencias, puedeRevisarEvidencia],
+  );
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_a_programar || 800;
@@ -2928,11 +2935,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             <div>
               <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <FileText style={{ width: 15, height: 15, color: '#059669' }} />
-                Evidencias de Seguimiento ({evidencias.length})
+                Evidencias de Seguimiento ({evidenciasVisibles.length})
               </h4>
               {loadingEvidencias ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: '#9CA3AF', fontSize: '0.82rem' }}>Cargando evidencias...</div>
-              ) : evidencias.length === 0 ? (
+              ) : evidenciasVisibles.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0' }}>
                   <FileText style={{ width: 36, height: 36, color: '#D1D5DB', margin: '0 auto 10px' }} />
                   <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#6B7280' }}>Sin evidencias registradas</p>
@@ -2940,7 +2947,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {evidencias.map((ev: any) => {
+                  {evidenciasVisibles.map((ev: any) => {
                     const estadoColor = ev.estadoRevision === 'aprobado' ? '#059669' : ev.estadoRevision === 'rechazado' ? '#DC2626' : '#D97706';
                     const estadoBg = ev.estadoRevision === 'aprobado' ? '#D1FAE5' : ev.estadoRevision === 'rechazado' ? '#FEE2E2' : '#FEF3C7';
                     return (
@@ -2949,7 +2956,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.nombre}</p>
                             <p style={{ fontSize: '0.7rem', color: '#6B7280', margin: '2px 0 0', display: 'flex', gap: 8 }}>
-                              {ev.componentePta && <span style={{ fontWeight: 600, color: '#4F46E5' }}>{ev.componentePta}</span>}
+                              {ev.componentePta && <span style={{ fontWeight: 600, color: '#4F46E5' }}>{ev.componentePta}{(ev.seccionExtension ?? ev.seccion_extension) ? ` · ${ev.seccionExtension ?? ev.seccion_extension}` : ''}</span>}
                               {ev.horasAvance > 0 && <span>{ev.horasAvance}h avance</span>}
                               {ev.subidoPor && <span>Por: {ev.subidoPor}</span>}
                             </p>
@@ -2960,7 +2967,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, background: estadoBg, color: estadoColor }}>
                               {ev.estadoRevision || 'pendiente'}
                             </span>
-                            {ev.estadoRevision === 'pendiente' && puedeRevisarSeguimiento && (
+                            {ev.estadoRevision === 'pendiente' && puedeRevisarEvidencia(ev) && (
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button
                                   onClick={async () => {

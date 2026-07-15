@@ -135,6 +135,70 @@ export function hasAnyComponentApprovalData(pta: any, keys: PTAComponentKey[]): 
   return keys.some(key => hasComponentApprovalData(pta, key));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Mapeo evidencia de seguimiento → llave de componente aprobable.
+//
+// La evidencia guarda `componentePta` (docencia|investigacion|extension|
+// complementarias) y, para extensión, `seccionExtension`. Este helper traduce ese
+// par a la PTAComponentKey que autoriza su revisión (ver + aprobar/rechazar), para
+// gatear con la misma lógica por componente que el resto del PTA.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Secciones de extensión a nivel de permiso y su PTAComponentKey. */
+const EXTENSION_SECCION_TO_KEY: Record<string, PTAComponentKey> = {
+  capacitacion: 'ext_capacitacion',
+  seleccion: 'ext_procesos',
+  procesos_seleccion: 'ext_procesos',
+  fortalecimiento: 'ext_fortalecimiento',
+  // Secciones de actividad que se pliegan dentro de "fortalecimiento".
+  laboratorio_innovacion: 'ext_fortalecimiento',
+  investigacion_aplicada: 'ext_fortalecimiento',
+  alto_gobierno: 'ext_gobierno',
+};
+
+const COMPONENTE_PTA_TO_KEY: Record<string, PTAComponentKey> = {
+  docencia: 'academica',
+  academica: 'academica',
+  investigacion: 'investigacion',
+  complementarias: 'complementarias',
+};
+
+/**
+ * Devuelve la PTAComponentKey que autoriza revisar una evidencia, o null si es de
+ * extensión sin sección asignada (legacy) — ese caso se resuelve con
+ * `isEvidenciaAuthorized`, que lo trata como cualquier sección de extensión.
+ */
+export function componentKeyForEvidencia(
+  componentePta: string | null | undefined,
+  seccionExtension?: string | null,
+): PTAComponentKey | null {
+  const comp = String(componentePta || '').toLowerCase().trim();
+  if (comp === 'extension') {
+    const sec = String(seccionExtension || '').toLowerCase().trim();
+    return EXTENSION_SECCION_TO_KEY[sec] || null; // null = extensión legacy sin sección
+  }
+  return COMPONENTE_PTA_TO_KEY[comp] || null;
+}
+
+/**
+ * ¿El usuario está autorizado para ver/aprobar/rechazar esta evidencia?
+ *
+ * @param ev            evidencia (con componentePta/componente_pta y seccionExtension/seccion_extension)
+ * @param isAuthorized  predicado por componente (p.ej. isComponentAuthorized del panel)
+ */
+export function isEvidenciaAuthorized(
+  ev: any,
+  isAuthorized: (key: PTAComponentKey) => boolean,
+): boolean {
+  const comp = String(ev?.componentePta ?? ev?.componente_pta ?? '').toLowerCase().trim();
+  const sec = ev?.seccionExtension ?? ev?.seccion_extension;
+  const key = componentKeyForEvidencia(comp, sec);
+  if (key) return isAuthorized(key);
+  // Extensión legacy sin sección: autorizada si el usuario aprueba CUALQUIER sección de extensión.
+  if (comp === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(k => isAuthorized(k));
+  return false;
+}
+
 function hasExtensionSectionData(pta: any, sections: string[]): boolean {
   const acts = Array.isArray(pta?.extension_actividades) ? pta.extension_actividades : [];
   const sectionMatches = acts.some((act: any) => {
