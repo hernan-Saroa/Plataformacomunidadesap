@@ -158,6 +158,14 @@ function deriveFromGranular(
   if (hasWildcard) {
     Object.values(PERMISO_TO_VISTA).forEach(v => vistasSet.add(v));
   }
+  // Cualquier aprobador (con al menos un pta.approve.*) accede al módulo de
+  // Seguimiento de Documentos, donde revisa las evidencias de SUS componentes
+  // (el filtrado por componente se aplica dentro del módulo). Ningún permiso mapea
+  // directamente a esta vista, por eso se deriva de la capacidad de aprobar.
+  if (puedeAprobar) {
+    vistasSet.add('seguimiento_docs');
+    vistasSet.add('gestion');
+  }
   const vistasPerm = Array.from(vistasSet);
 
   // nivelAprobacion: shim de compatibilidad para la máquina de estados legacy
