@@ -76,7 +76,6 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.workflow': 'workflow_visualizer',
   'pta.backoffice.gestion_territorial': 'territorial',
   'pta.backoffice.mapa_territorial': 'mapa_territorial',
-  'pta.backoffice.seguimiento': 'seguimiento',
   'pta.backoffice.comparativo': 'comparativo',
   'pta.backoffice.panel_sna': 'sna',
   'pta.backoffice.programacion': 'programacion',
