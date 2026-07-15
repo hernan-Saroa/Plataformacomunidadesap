@@ -838,9 +838,16 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // se puede ver/aprobar/rechazar solo si el usuario está autorizado para el componente
   // (o la sección de extensión) al que pertenece. Superuser y pta.approve.all quedan
   // cubiertos porque isComponentAuthorized retorna true para todos en ese caso.
+  // Autorización de evidencias basada EXCLUSIVAMENTE en los 7 permisos granulares
+  // pta.approve.<componente> (+ pta.approve.all y superuser). No usa los fallbacks por
+  // nivel/rol de isComponentAuthorized, para que el filtrado sea estrictamente por permiso.
+  const isEvidenciaComponentAuthorized = useCallback(
+    (key: PTAComponentKey) => apruebaTodo || puedePerm(PTA_COMPONENT_PERMISSION[key]),
+    [apruebaTodo, puedePerm],
+  );
   const puedeRevisarEvidencia = useCallback(
-    (ev: any) => isEvidenciaAuthorized(ev, isComponentAuthorized),
-    [isComponentAuthorized],
+    (ev: any) => isEvidenciaAuthorized(ev, isEvidenciaComponentAuthorized),
+    [isEvidenciaComponentAuthorized],
   );
   // Solo se listan las evidencias del/los componente(s) que el usuario está autorizado
   // a revisar. Superuser / pta.approve.all ven todas (isComponentAuthorized retorna true).
