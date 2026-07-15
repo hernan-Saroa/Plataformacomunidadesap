@@ -23,6 +23,11 @@ export class PtaEvidenciaEntity {
   @Column({ name: 'componentePta', type: 'text', nullable: true })
   componentePta: string | null;
 
+  // Sección de extensión (solo cuando componentePta = 'extension'):
+  // 'capacitacion' | 'seleccion' | 'fortalecimiento' | 'alto_gobierno'. NULL en el resto.
+  @Column({ name: 'seccionExtension', type: 'text', nullable: true })
+  seccionExtension: string | null;
+
   @Column({ name: 'horasAvance', type: 'int', default: 0 })
   horasAvance: number;
 

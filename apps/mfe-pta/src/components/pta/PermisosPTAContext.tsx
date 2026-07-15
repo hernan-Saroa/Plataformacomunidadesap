@@ -76,7 +76,6 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.workflow': 'workflow_visualizer',
   'pta.backoffice.gestion_territorial': 'territorial',
   'pta.backoffice.mapa_territorial': 'mapa_territorial',
-  'pta.backoffice.seguimiento': 'seguimiento',
   'pta.backoffice.comparativo': 'comparativo',
   'pta.backoffice.panel_sna': 'sna',
   'pta.backoffice.programacion': 'programacion',
@@ -158,6 +157,14 @@ function deriveFromGranular(
   // Si tiene wildcard, agregar todas las vistas
   if (hasWildcard) {
     Object.values(PERMISO_TO_VISTA).forEach(v => vistasSet.add(v));
+  }
+  // Cualquier aprobador (con al menos un pta.approve.*) accede al módulo de
+  // Seguimiento de Documentos, donde revisa las evidencias de SUS componentes
+  // (el filtrado por componente se aplica dentro del módulo). Ningún permiso mapea
+  // directamente a esta vista, por eso se deriva de la capacidad de aprobar.
+  if (puedeAprobar) {
+    vistasSet.add('seguimiento_docs');
+    vistasSet.add('gestion');
   }
   const vistasPerm = Array.from(vistasSet);
 
