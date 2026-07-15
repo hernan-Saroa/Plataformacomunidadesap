@@ -48,7 +48,7 @@ import { ProgramacionAcademica } from './ProgramacionAcademica';
 import { MesaConcertacion } from './MesaConcertacion';
 import { esAdjuntoEvidencia, agruparEvidenciasPorJustificacion } from './shared/evidenciasJustificacion';
 import { resolvePtaFileUrl } from './shared/ptaFiles';
-import { PermisosPTAProvider, SelectorRolPTA, usePermisosPTA } from './PermisosPTAContext';
+import { PermisosPTAProvider, SelectorRolPTA, usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
@@ -60,6 +60,8 @@ import { PTAWorldClassToolbar } from './PTAWorldClassToolbar';
 import { ESAPLogoLoader } from '../common/ESAPLogoLoader';
 import {
   PTA_COMPONENT_KEYS,
+  PTA_COMPONENT_PERMISSION,
+  PTA_APPROVE_ALL_PERMISSION,
   PTA_EXTENSION_COMPONENT_KEYS,
   type PTAComponentKey,
   hasAnyComponentApprovalData,
@@ -560,15 +562,13 @@ function isDocumentoPendiente(evidencia: any) {
 }
 
 function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNombre: string; rolLabel: string }) {
-  const { permisos } = usePermisosPTA();
-  // Autorización POR COMPONENTE: cada aprobador ve/revisa solo las evidencias de su(s)
-  // componente(s). `componentesAprobables` ya trae todas las llaves para superuser /
-  // admin / pta.approve.all.
-  const componentesAprobablesSet = useMemo(
-    () => new Set<string>(permisos.componentesAprobables || []),
-    [permisos.componentesAprobables],
-  );
-  const isComponentAuthorized = (key: PTAComponentKey) => componentesAprobablesSet.has(key);
+  // Autorización POR COMPONENTE basada EXCLUSIVAMENTE en los 7 permisos granulares
+  // pta.approve.<componente> (+ pta.approve.all y superuser). No se usa
+  // permisos.componentesAprobables porque muchos roles mapean a 'admin' por defecto y
+  // devolverían todos los componentes, ignorando los permisos reales del rol.
+  const { puede } = usePermisosPTAGranulares();
+  const apruebaTodo = puede(PTA_APPROVE_ALL_PERMISSION);
+  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || puede(PTA_COMPONENT_PERMISSION[key]);
   const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
   // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
   const isSegComponentAuthorized = (compKey: string) => {
@@ -642,6 +642,11 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
         <div>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0 }}>Seguimiento de Documentos</h2>
           <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Documentos de soporte subidos por docentes en PTAs aprobados</p>
+          {/* DIAGNÓSTICO TEMPORAL — muestra qué permisos de aprobación recibió el módulo.
+              Sirve para verificar el filtrado por componente. Eliminar tras validar. */}
+          <p style={{ fontSize: '0.68rem', color: '#B45309', background: '#FEF3C7', border: '1px dashed #FDE68A', borderRadius: 6, padding: '3px 8px', margin: '6px 0 0', fontWeight: 600 }}>
+            [debug] apruebaTodo(all/superuser): {String(apruebaTodo)} · componentes autorizados: {PTA_COMPONENT_KEYS.filter(isComponentAuthorized).join(', ') || '(ninguno)'}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {totalPendientes > 0 && (
