@@ -1205,11 +1205,24 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // ─── Periodo Académico (Selector Global) ───
   const [periodosPTA, setPeriodosPTA] = useState<any[]>([]);
   const [periodoSeleccionadoPTA, setPeriodoSeleccionadoPTA] = useState<string>('');
+  const [periodosInicializadosPTA, setPeriodosInicializadosPTA] = useState(false);
   const [showPeriodoDropdownPTA, setShowPeriodoDropdownPTA] = useState(false);
+  const cargarPeriodosRequestRef = useRef(0);
+  const loadDataRequestRef = useRef(0);
 
   const cargarPeriodosPTA = useCallback(async (preferredCode?: string) => {
+    const requestId = ++cargarPeriodosRequestRef.current;
+    // Un cambio del catálogo invalida de inmediato cualquier consulta PTA del
+    // período anterior, aunque esa petición todavía esté viajando por la red.
+    ++loadDataRequestRef.current;
+    setPeriodosInicializadosPTA(false);
+    if (preferredCode) {
+      setPeriodoSeleccionadoPTA(preferredCode);
+      setFiltroPeriodo(preferredCode);
+    }
     try {
       const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+      if (requestId !== cargarPeriodosRequestRef.current) return;
       const data = sortPeriodsByCreation(Array.isArray(res) ? res : []);
       setPeriodosPTA(data);
 
@@ -1220,10 +1233,23 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const codigo = getPeriodCode(activo);
       setPeriodoSeleccionadoPTA(codigo);
       setFiltroPeriodo(codigo);
+      if (!codigo) {
+        setPtas([]);
+        setEstadisticas(null);
+        setLoading(false);
+      }
     } catch {
+      if (requestId !== cargarPeriodosRequestRef.current) return;
       setPeriodosPTA([]);
       setPeriodoSeleccionadoPTA('');
       setFiltroPeriodo('');
+      setPtas([]);
+      setEstadisticas(null);
+      setLoading(false);
+    } finally {
+      if (requestId === cargarPeriodosRequestRef.current) {
+        setPeriodosInicializadosPTA(true);
+      }
     }
   }, []);
 
@@ -1731,10 +1757,18 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   });
 
   const loadData = async () => {
+    // La primera renderización todavía no conoce el período activo. Consultar en
+    // ese instante sin `periodo` trae todos los PTAs y puede sobrescribir después
+    // la respuesta filtrada. Esperamos siempre la inicialización del selector.
+    if (!periodosInicializadosPTA || !filtroPeriodo) return;
+
+    const requestId = ++loadDataRequestRef.current;
+    const periodoConsulta = filtroPeriodo;
+    const estadoConsulta = filtroEstado;
     setLoading(true);
-    const estadoBackend = getBackendEstadoFilter(filtroEstado);
+    const estadoBackend = getBackendEstadoFilter(estadoConsulta);
     const ptaFilters: any = {
-      periodo: filtroPeriodo,
+      periodo: periodoConsulta,
       nivelAprobacion: permisos.nivelAprobacion,
       isSuperUser: auth.isSuperUser,
     };
@@ -1742,8 +1776,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     const [ptaRes, statsRes] = await Promise.all([
       getAllPTAs(ptaFilters),
-      getPTAEstadisticas(filtroPeriodo),
+      getPTAEstadisticas(periodoConsulta),
     ]);
+
+    // Si el usuario cambió de período mientras respondía la API, esta respuesta
+    // ya es obsoleta y no debe reemplazar los datos de la selección más reciente.
+    if (requestId !== loadDataRequestRef.current) return;
     
     // Auto-seed desactivado: la tabla solo muestra PTAs reales enviados por docentes
     
@@ -1760,7 +1798,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     setRefreshCountdown(120);
   };
 
-  useEffect(() => { loadData(); setCurrentPage(1); }, [filtroEstado, filtroPeriodo]);
+  useEffect(() => {
+    if (!periodosInicializadosPTA || !filtroPeriodo) return;
+    loadData();
+    setCurrentPage(1);
+  }, [filtroEstado, filtroPeriodo, periodosInicializadosPTA]);
   // Reset page when search changes
   useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstadoRegistro]);
 
@@ -1873,6 +1915,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const filteredPtas = useMemo(() => {
     let result = ptas;
+    // Defensa adicional: aun durante una recarga/cambio rápido, la tabla solo
+    // puede renderizar registros cuyo período coincide con el selector global.
+    if (filtroPeriodo) {
+      result = result.filter((p: any) => String(p?.periodo || '') === filtroPeriodo);
+    }
     // Apply territorial filter for Jefatura role — filtra por territoriales de las ASIGNATURAS del PTA
     if (permisos.filtroTerritorial && permisos.filtroTerritorial.length > 0) {
       result = result.filter((p: any) => {
@@ -1932,7 +1979,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     }
     
     return result;
-  }, [ptas, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro]);
+  }, [ptas, filtroPeriodo, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro]);
 
   // ═══ Feature 23/33: Comparador único de la tabla ═══
   // Anclados primero (el anclado más reciente queda de primero), luego prioridad
