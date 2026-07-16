@@ -35,12 +35,12 @@ export function normalizeReviewNotes(value?: string): string {
 
   if (notes.length < min) {
     throw new BadRequestException(
-      `Las notas de revision deben tener al menos ${min} caracteres`,
+      `Las notas de revisión deben tener al menos ${min} caracteres`,
     );
   }
   if (notes.length > max) {
     throw new BadRequestException(
-      `Las notas de revision no pueden superar ${max} caracteres`,
+      `Las notas de revisión no pueden superar ${max} caracteres`,
     );
   }
 
@@ -78,7 +78,7 @@ export function normalizeAndValidateGraduateReviewPayload(
   );
   if (!PERSON_NAME_REGEX.test(normalized.fullName!)) {
     throw new BadRequestException(
-      'El nombre completo solo puede contener letras, espacios, apostrofes y guiones',
+      'El nombre completo solo puede contener letras, espacios, apóstrofos y guiones',
     );
   }
 
@@ -90,7 +90,7 @@ export function normalizeAndValidateGraduateReviewPayload(
   );
   if (!DOCUMENT_REGEX.test(normalized.idNumber!)) {
     throw new BadRequestException(
-      'El documento solo puede contener letras y numeros',
+      'El documento solo puede contener letras y números',
     );
   }
 
@@ -101,22 +101,22 @@ export function normalizeAndValidateGraduateReviewPayload(
     GRADUATION_REVIEW_LIMITS.email.max,
   );
   if (!EMAIL_REGEX.test(normalized.email!)) {
-    throw new BadRequestException('El email no tiene un formato valido');
+    throw new BadRequestException('El correo electrónico no tiene un formato válido');
   }
 
   validateDigitsField(
     normalized.numRegistro,
-    'El numero de registro',
+    'El número de registro',
     GRADUATION_REVIEW_LIMITS.numRegistro.max,
   );
   validateDigitsField(
     normalized.numFolio,
-    'El numero de folio',
+    'El número de folio',
     GRADUATION_REVIEW_LIMITS.numFolio.max,
   );
   validateDigitsField(
     normalized.numLibro,
-    'El numero de libro',
+    'El número de libro',
     GRADUATION_REVIEW_LIMITS.numLibro.max,
   );
 
@@ -179,7 +179,7 @@ export function normalizeAndValidateGraduateManagementUpdate(
     );
     if (!DOCUMENT_REGEX.test(normalized.idNumber!)) {
       throw new BadRequestException(
-        'El documento solo puede contener letras y numeros',
+        'El documento solo puede contener letras y números',
       );
     }
   }
@@ -187,13 +187,13 @@ export function normalizeAndValidateGraduateManagementUpdate(
   if (payload.email !== undefined) {
     validateRequiredText(
       normalized.email,
-      'El correo electronico',
+      'El correo electrónico',
       GRADUATION_REVIEW_LIMITS.email.min,
       GRADUATION_REVIEW_LIMITS.email.max,
     );
     if (!EMAIL_REGEX.test(normalized.email!)) {
       throw new BadRequestException(
-        'El correo electronico no tiene un formato valido',
+        'El correo electrónico no tiene un formato válido',
       );
     }
   }
@@ -201,21 +201,21 @@ export function normalizeAndValidateGraduateManagementUpdate(
   if (payload.numRegistro !== undefined) {
     validateDigitsField(
       normalized.numRegistro,
-      'El numero de registro',
+      'El número de registro',
       GRADUATE_MANAGEMENT_LIMITS.numRegistro.max,
     );
   }
   if (payload.numFolio !== undefined) {
     validateDigitsField(
       normalized.numFolio,
-      'El numero de folio',
+      'El número de folio',
       GRADUATE_MANAGEMENT_LIMITS.numFolio.max,
     );
   }
   if (payload.numLibro !== undefined) {
     validateDigitsField(
       normalized.numLibro,
-      'El numero de libro',
+      'El número de libro',
       GRADUATE_MANAGEMENT_LIMITS.numLibro.max,
     );
   }
@@ -246,7 +246,7 @@ function validateNamePart(value: string | undefined, label: string) {
     !PERSON_NAME_REGEX.test(value)
   ) {
     throw new BadRequestException(
-      `${label} solo puede contener letras, espacios, apostrofes y guiones`,
+      `${label} solo puede contener letras, espacios, apóstrofos y guiones`,
     );
   }
 }
@@ -260,7 +260,7 @@ function validateFullName(value: string | undefined) {
   );
   if (!PERSON_NAME_REGEX.test(value!)) {
     throw new BadRequestException(
-      'El nombre completo solo puede contener letras, espacios, apostrofes y guiones',
+      'El nombre completo solo puede contener letras, espacios, apóstrofos y guiones',
     );
   }
 }
@@ -277,7 +277,7 @@ function validateDigitsField(
 ) {
   if (!value || value.length > max || !DIGITS_REGEX.test(value)) {
     throw new BadRequestException(
-      `${label} es obligatorio y debe contener solo numeros, maximo ${max} digitos`,
+      `${label} es obligatorio y debe contener solo números, máximo ${max} dígitos`,
     );
   }
 }

@@ -231,7 +231,7 @@ const FIELD_ALIASES: Record<FieldKey, string[]> = {
 };
 
 const TEMPLATE_RULES = [
-  'No diligencies una columna ID; el sistema genera el identificador interno automáticamente.',
+  'No se debe diligenciar una columna ID; el sistema genera el identificador interno automáticamente.',
   'Una misma IDENTIFICACION puede aparecer varias veces solo si el TITULO es diferente.',
   'No se permite repetir la combinación IDENTIFICACION + TITULO en el archivo ni en la base de datos.',
   'FECHAREGISTRO no puede ser posterior a la fecha actual.',
@@ -1117,7 +1117,7 @@ export function BulkGraduatesUploadModal({
       `${fileBaseName}.xlsx`,
     );
     toast.success('Plantilla XLSX descargada', {
-      description: 'Incluye GRADUADOS para diligenciar y PARAMETROS con títulos, sedes y reglas.',
+      description: 'La plantilla incluye GRADUADOS para diligenciar y PARAMETROS con títulos, sedes y reglas.',
     });
   };
 
@@ -1137,7 +1137,7 @@ export function BulkGraduatesUploadModal({
     if (!catalogsReady) {
       toast.error('No se puede validar la plantilla', {
         description:
-          'No se cargaron títulos, territoriales o sedes desde la plataforma. Intenta abrir nuevamente el módulo antes de importar.',
+          'No se cargaron títulos, territoriales o sedes desde la plataforma. Intente abrir nuevamente el módulo antes de importar.',
       });
       return;
     }
@@ -1182,7 +1182,7 @@ export function BulkGraduatesUploadModal({
       setRows([]);
       setSelectedFileName('');
       toast.error('No se pudo leer el archivo', {
-        description: error?.message || 'Verifica que sea un archivo .xlsx válido.',
+        description: error?.message || 'Verifique que sea un archivo .xlsx válido.',
       });
     } finally {
       setIsParsing(false);
@@ -1194,7 +1194,7 @@ export function BulkGraduatesUploadModal({
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
       toast.error('Formato no permitido', {
-        description: 'Carga únicamente la plantilla en formato .xlsx.',
+        description: 'Cargue únicamente la plantilla en formato .xlsx.',
       });
       event.target.value = '';
       return;
@@ -1242,7 +1242,7 @@ export function BulkGraduatesUploadModal({
             Carga masiva de graduados
           </DialogTitle>
           <DialogDescription>
-            Importa graduados desde Excel. El sistema valida el archivo antes de crear registros y genera el identificador interno automáticamente.
+            Importe graduados desde Excel. El sistema valida el archivo antes de crear registros y genera el identificador interno automáticamente.
           </DialogDescription>
         </DialogHeader>
 
@@ -1268,7 +1268,7 @@ export function BulkGraduatesUploadModal({
                     Plantilla oficial
                   </p>
                   <p className="mt-1 text-xs leading-5" style={{ color: '#64748B' }}>
-                    El Excel trae dos hojas: <strong>GRADUADOS</strong> para diligenciar personas y <strong>PARAMETROS</strong> para copiar títulos, territoriales y sedes válidas.
+                    El archivo de Excel contiene dos hojas: <strong>GRADUADOS</strong> para diligenciar personas y <strong>PARAMETROS</strong> para copiar títulos, territoriales y sedes válidas.
                   </p>
                 </div>
                 <FileSpreadsheet className="h-8 w-8 flex-shrink-0" style={{ color: '#047857' }} />
@@ -1296,7 +1296,7 @@ export function BulkGraduatesUploadModal({
               </div>
               {!catalogsReady && (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                  No se puede descargar ni validar una carga porque faltan: <strong>{missingCatalogs.join(', ')}</strong>. Revisa los catálogos en los módulos de origen.
+                  No se puede descargar ni validar una carga porque faltan: <strong>{missingCatalogs.join(', ')}</strong>. Revise los catálogos en los módulos de origen.
                 </div>
               )}
             </div>
@@ -1388,7 +1388,7 @@ export function BulkGraduatesUploadModal({
                 <div className="border-b bg-slate-50 px-4 py-3">
                   <p className="text-sm font-semibold text-slate-900">Previsualización y validaciones</p>
                   <p className="mt-1 text-xs leading-5 text-slate-600">
-                    Revisa cada columna antes de crear. Las celdas marcadas en rojo indican exactamente qué dato debe corregirse en el archivo.
+                    Revise cada columna antes de crear. Las celdas marcadas en rojo indican exactamente qué dato debe corregirse en el archivo.
                   </p>
                 </div>
                 <div className="max-h-[22rem] overflow-auto">

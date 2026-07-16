@@ -134,7 +134,7 @@ export function ValidadorCertificadosPublico({
                 color: '#6B7280',
               }}
             >
-              Verifica la autenticidad de certificados emitidos por la Escuela
+              Verifique la autenticidad de certificados emitidos por la Escuela
               Superior de Administración Pública
             </p>
           </motion.div>
@@ -183,7 +183,7 @@ export function ValidadorCertificadosPublico({
                       color: '#6B7280',
                     }}
                   >
-                    Valida certificados laborales emitidos por el área de Talento
+                    Valide certificados laborales emitidos por el área de Talento
                     Humano de la ESAP
                   </p>
 
@@ -262,7 +262,7 @@ export function ValidadorCertificadosPublico({
                       color: '#6B7280',
                     }}
                   >
-                    Valida certificados académicos y títulos emitidos por la
+                    Valide certificados académicos y títulos emitidos por la
                     Dirección de Verificación de títulos
                   </p>
 

@@ -147,21 +147,21 @@ interface VerificationCertificatesModuleProps {
 }
 
 const DEFAULT_CERTIFICATE_TEMPLATE_TEXTS: GraduationCertificateTemplateTexts = {
-  cityDatePrefix: 'Bogota, D.C.,',
-  institutionTitle: 'ESCUELA SUPERIOR DE ADMINISTRACION PUBLICA - ESAP',
-  certificateTitle: 'Verificacion de titulo',
+  cityDatePrefix: 'Bogotá, D. C.,',
+  institutionTitle: 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP',
+  certificateTitle: 'Verificación de título',
   addressee: 'A QUIEN INTERESE',
   introParagraph:
-    'De conformidad con los registros en el Sistema de Control Academico de la Escuela Superior de Administracion Publica -ESAP-, nos permitimos informar la verificacion del siguiente titulo academico:',
-  degreeLabel: 'Titulo otorgado:',
-  graduateNameLabel: 'Nombres y apellidos del egresado graduado:',
-  documentLabel: 'Numero de documento de identificacion:',
-  issuePlaceDateLabel: 'Lugar y fecha de expedicion del titulo:',
+    'De conformidad con los registros del Sistema de Control Académico de la Escuela Superior de Administración Pública (ESAP), se informa la verificación del siguiente título académico:',
+  degreeLabel: 'Título otorgado:',
+  graduateNameLabel: 'Nombres y apellidos del graduado:',
+  documentLabel: 'Número de documento de identificación:',
+  issuePlaceDateLabel: 'Lugar y fecha de expedición del título:',
   registryLabel: 'Registro - Folio - Libro:',
   closingText: 'Cordialmente,',
-  signerTitle: 'Direccion Tecnica Registro y Control',
+  signerTitle: 'Dirección Técnica de Registro y Control',
   validationMessage:
-    'Puede validar la autenticidad de esta verificacion en',
+    'Puede validar la autenticidad de esta verificación en:',
 };
 
 const TEMPLATE_TEXT_FIELDS: Array<{
@@ -170,18 +170,18 @@ const TEMPLATE_TEXT_FIELDS: Array<{
   rows?: number;
 }> = [
   { key: 'cityDatePrefix', label: 'Ciudad y prefijo de fecha' },
-  { key: 'institutionTitle', label: 'Titulo institucional' },
-  { key: 'certificateTitle', label: 'Titulo del certificado' },
-  { key: 'addressee', label: 'Encabezado destinatario' },
-  { key: 'introParagraph', label: 'Parrafo introductorio', rows: 4 },
-  { key: 'degreeLabel', label: 'Etiqueta titulo otorgado' },
-  { key: 'graduateNameLabel', label: 'Etiqueta nombre del graduado' },
-  { key: 'documentLabel', label: 'Etiqueta documento' },
-  { key: 'issuePlaceDateLabel', label: 'Etiqueta lugar y fecha' },
-  { key: 'registryLabel', label: 'Etiqueta registro-folio-libro' },
+  { key: 'institutionTitle', label: 'Título institucional' },
+  { key: 'certificateTitle', label: 'Título del certificado' },
+  { key: 'addressee', label: 'Encabezado del destinatario' },
+  { key: 'introParagraph', label: 'Párrafo introductorio', rows: 4 },
+  { key: 'degreeLabel', label: 'Etiqueta del título otorgado' },
+  { key: 'graduateNameLabel', label: 'Etiqueta del nombre del graduado' },
+  { key: 'documentLabel', label: 'Etiqueta del documento' },
+  { key: 'issuePlaceDateLabel', label: 'Etiqueta del lugar y la fecha' },
+  { key: 'registryLabel', label: 'Etiqueta de registro, folio y libro' },
   { key: 'closingText', label: 'Texto de cierre' },
   { key: 'signerTitle', label: 'Texto del firmante', rows: 2 },
-  { key: 'validationMessage', label: 'Mensaje de validacion', rows: 2 },
+  { key: 'validationMessage', label: 'Mensaje de validación', rows: 2 },
 ];
 
 export function VerificationCertificatesModule({ onPendingCountChange }: VerificationCertificatesModuleProps = {}) {
@@ -549,7 +549,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     } catch (error) {
       console.error('Error cargando certificados:', error);
       toast.error('No se pudieron cargar los certificados', {
-        description: 'Verifica la conexion con el servicio academico.',
+        description: 'Verifique la conexión con el servicio académico.',
       });
       setCertificates([]);
     } finally {
@@ -756,7 +756,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
-      toast.error('El email no tiene un formato valido');
+      toast.error('El correo electrónico no tiene un formato válido');
       return;
     }
     if (!trimmedProgramName) {
@@ -1233,20 +1233,20 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
   const handleCopyValidationUrl = async () => {
     if (!qrPreviewCertificate?.qrCode) {
-      toast.error('No hay URL de validacion disponible');
+      toast.error('No hay una URL de validación disponible');
       return;
     }
 
     const url = getPublicValidationUrl(qrPreviewCertificate.qrCode);
     const copied = await copyToClipboard(url);
     if (copied) {
-      toast.success('URL de validacion copiada al portapapeles');
+      toast.success('URL de validación copiada al portapapeles');
       return;
     }
 
     const copiedFromCode = copyFromElementFallback(validationUrlCodeRef.current);
     if (copiedFromCode) {
-      toast.success('URL de validacion copiada al portapapeles');
+      toast.success('URL de validación copiada al portapapeles');
       return;
     }
 
@@ -1455,10 +1455,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillText('ESAP', width / 2, 70);
   
       ctx.font = '20px Arial';
-      ctx.fillText('Escuela Superior de Administracion Publica', width / 2, 110);
+      ctx.fillText('Escuela Superior de Administración Pública', width / 2, 110);
   
       ctx.font = 'bold 24px Arial';
-      ctx.fillText('Codigo QR de Validacion', width / 2, 150);
+      ctx.fillText('Código QR de validación', width / 2, 150);
   
       const qrSize = 400;
       const qrX = (width - qrSize) / 2;
@@ -1494,13 +1494,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillText(`Graduado: ${qrPreviewCertificate.graduate.fullName}`, leftMargin, infoY);
       ctx.fillText(`Documento: ${qrPreviewCertificate.graduate.document}`, leftMargin, infoY + 30);
       ctx.fillText(`Programa: ${qrPreviewCertificate.graduate.program}`, leftMargin, infoY + 60);
-      ctx.fillText(`N? Certificado: ${qrPreviewCertificate.certificateNumber}`, leftMargin, infoY + 90);
+      ctx.fillText(`Número de certificado: ${qrPreviewCertificate.certificateNumber}`, leftMargin, infoY + 90);
   
   
       ctx.font = '14px Arial';
       ctx.fillStyle = '#6B7280';
       ctx.textAlign = 'center';
-      ctx.fillText('Valida este certificado en:', width / 2, height - 80);
+      ctx.fillText('Valide este certificado en:', width / 2, height - 80);
       ctx.fillStyle = '#003DA5';
       ctx.font = 'bold 16px monospace';
       ctx.fillText(url, width / 2, height - 50);
@@ -1528,14 +1528,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         URL.revokeObjectURL(downloadUrl);
 
         toast.success('QR descargado exitosamente', {
-          description: `El codigo QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
+          description: `El código QR del certificado ${qrPreviewCertificate.certificateNumber} se ha descargado.`
         });
       }, 'image/png');
   
     } catch (error) {
       console.error('Error al generar el QR:', error);
       toast.error('Error al descargar el QR', {
-        description: 'No se pudo generar la imagen. Intenta nuevamente.'
+        description: 'No se pudo generar la imagen. Intente nuevamente.'
       });
     }
   };
@@ -1554,7 +1554,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         degreeTitle:
           latestCertificate.degreeTitle || latestCertificate.graduate.program,
         idNumber: `CC ${latestCertificate.graduate.document}`,
-        issuePlaceDate: `${latestCertificate.campus || latestCertificate.graduate.campus || 'Bogota'} ${formatDateOnly(latestCertificate.graduate.graduationDate, {
+        issuePlaceDate: `${latestCertificate.campus || latestCertificate.graduate.campus || 'Bogotá'} ${formatDateOnly(latestCertificate.graduate.graduationDate, {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
@@ -1566,11 +1566,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     }
 
     return {
-      fullName: 'EDGAR ZUNIGA CABARCAS',
-      degreeTitle: 'MAESTRIA EN ADMINISTRACION PUBLICA',
+      fullName: 'EDGAR ZÚÑIGA CABARCAS',
+      degreeTitle: 'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
       idNumber: 'CC 1047430674',
       issuePlaceDate:
-        'Bolivar - Cordoba - Sucre - San Andres 26 DE FEBRERO DE 2026',
+        'Bolívar - Córdoba - Sucre - San Andrés 26 DE FEBRERO DE 2026',
       registry: '3213-79-28',
       validationCode: 'QR-GR-2026-0005-ao3uf5yrxp',
       validationUrl: getPublicValidationUrl('QR-GR-2026-0005-ao3uf5yrxp'),
@@ -2469,7 +2469,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               Ver Certificado
             </DialogTitle>
             <DialogDescription>
-              Consulta los datos de verificacion del certificado y del graduado asociado.
+              Consulte los datos de verificación del certificado y del graduado asociado.
             </DialogDescription>
           </DialogHeader>
 
@@ -2493,7 +2493,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <Input
                   id="edit-id-number"
                   value={editCertificateForm.idNumber}
-                  placeholder="Numero de documento"
+                  placeholder="Número de documento"
                   disabled
                 />
               </div>
@@ -2536,7 +2536,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-num-registro">Numero de registro</Label>
+                <Label htmlFor="edit-num-registro">Número de registro</Label>
                 <Input
                   id="edit-num-registro"
                   value={formatRegistroValue(editCertificateForm.numRegistro)}
@@ -2545,7 +2545,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-num-folio">Numero de folio</Label>
+                <Label htmlFor="edit-num-folio">Número de folio</Label>
                 <Input
                   id="edit-num-folio"
                   value={formatRegistroValue(editCertificateForm.numFolio)}
@@ -2554,7 +2554,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-num-libro">Numero de libro</Label>
+                <Label htmlFor="edit-num-libro">Número de libro</Label>
                 <Input
                   id="edit-num-libro"
                   value={formatRegistroValue(editCertificateForm.numLibro)}
@@ -2688,7 +2688,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               Editar Certificado
             </DialogTitle>
             <DialogDescription>
-              Edita solo los textos del certificado de verificación de títulos. El QR, el codigo de validacion, los datos dinamicos y la URL publica siguen protegidos.
+              Edite únicamente los textos del certificado de verificación de títulos. El código QR, el código de validación, los datos dinámicos y la URL pública permanecen protegidos.
             </DialogDescription>
           </DialogHeader>
 
@@ -2698,7 +2698,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                   <p className="font-semibold mb-1">Edicion controlada</p>
                   <p>
-                    Aqui solo se modifican textos fijos de la plantilla. No se alteran variables del graduado, codigos QR, enlaces de validacion ni numeraciones ya emitidas.
+                    Aquí solo se modifican textos fijos de la plantilla. No se alteran variables del graduado, códigos QR, enlaces de validación ni numeraciones ya emitidas.
                   </p>
                 </div>
 
@@ -2713,7 +2713,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       <p className="text-sm font-semibold text-gray-900">{templateConfig.updatedBy || 'Sistema'}</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Ultima actualizacion</p>
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">Última actualización</p>
                       <p className="text-sm font-semibold text-gray-900">
                         {templateConfig.updatedAt
                           ? new Date(templateConfig.updatedAt).toLocaleString('es-CO')
@@ -2726,7 +2726,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 {isLoadingTemplateConfig ? (
                   <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-5 text-sm text-gray-600">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Cargando configuracion de la plantilla...
+                    Cargando configuración de la plantilla...
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-4">
@@ -2765,7 +2765,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     <div>
                       <p className="text-sm font-semibold text-gray-900">Vista previa</p>
                       <p className="text-xs text-gray-500">
-                        Los valores del ejemplo representan campos dinamicos reales del certificado.
+                        Los valores del ejemplo representan campos dinámicos reales del certificado.
                       </p>
                     </div>
                     <Badge className="bg-blue-100 text-blue-800 border-blue-200">
@@ -2801,11 +2801,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               ES
                             </div>
                             <div className="text-base font-black tracking-wide text-[#444444]">
-                              FUNCION PUBLICA
+                              FUNCIÓN PÚBLICA
                             </div>
                           </div>
                           <div className="max-w-[220px] text-right text-[11px] font-semibold text-gray-700">
-                            Codigo para validaciones: {previewCertificate.validationCode}
+                            Código para validaciones: {previewCertificate.validationCode}
                           </div>
                         </div>
 
@@ -3052,7 +3052,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         className="mt-2 break-all text-[10px] font-mono font-semibold leading-tight sm:text-xs"
                         style={{ color: '#6B7280', maxWidth: `${qrDisplaySize}px` }}
                       >
-                        {qrPreviewCertificate?.qrCode || 'Sin codigo'}
+                        {qrPreviewCertificate?.qrCode || 'Sin código'}
                       </p>
                     </div>
                   </div>
