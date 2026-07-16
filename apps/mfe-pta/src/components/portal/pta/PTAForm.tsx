@@ -489,6 +489,68 @@ function getSectionValidationToast(section: string, warnings: string[]): string 
     : ''}`;
 }
 
+type DocenciaModalityKind = 'presential' | 'non-presential' | 'undefined';
+
+function normalizeDocenciaModality(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * Los cruces solo son bloqueantes cuando ambas asignaturas tienen un
+ * componente presencial. Las modalidades enteramente remotas generan una
+ * advertencia informativa y "Por definir" conserva su validación BR-010.
+ */
+function getDocenciaModalityKind(value: unknown): DocenciaModalityKind {
+  const modality = normalizeDocenciaModality(value);
+  if (modality.includes('POR DEFINIR') || modality.includes('SIN DEFINIR')) {
+    return 'undefined';
+  }
+  if (
+    modality.includes('VIRTUAL')
+    || modality.includes('DISTANCIA')
+    || modality.includes('REMOT')
+    || modality.includes('ONLINE')
+    || modality.includes('EN LINEA')
+    || modality.includes('NO PRESENCIAL')
+  ) {
+    return 'non-presential';
+  }
+  // Compatibilidad con PTAs históricos que no persistían modalidad: se
+  // consideran presenciales para no relajar silenciosamente el bloqueo.
+  return 'presential';
+}
+
+function mapCatalogDocenciaModality(value: unknown): string {
+  const modality = normalizeDocenciaModality(value);
+  if (modality.includes('POR DEFINIR') || modality.includes('SIN DEFINIR')) return 'POR DEFINIR';
+  if (modality.includes('DISTANCIA')) return 'DISTANCIA';
+  if (
+    modality.includes('VIRTUAL')
+    || modality.includes('REMOT')
+    || modality.includes('ONLINE')
+    || modality.includes('EN LINEA')
+    || modality.includes('NO PRESENCIAL')
+  ) return 'VIRTUAL';
+  if (modality.includes('MIXT') || modality.includes('HIBRID')) return 'MIXTA';
+  return 'PRESENCIAL';
+}
+
+function getDocenciaModalityLabel(value: unknown): string {
+  const modality = normalizeDocenciaModality(value);
+  if (modality === 'VIRTUAL') return 'Virtual';
+  if (modality === 'DISTANCIA') return 'Distancia';
+  if (modality === 'MIXTA') return 'Mixta';
+  if (modality === 'POR DEFINIR' || modality === 'SIN DEFINIR') return 'Por definir';
+  if (modality === 'PRESENCIAL' || !modality) return 'Presencial';
+  return String(value);
+}
+
 // ═══ MOTOR DE CÁLCULO FRONTEND (réplica Excel) ═══════════════════
 
 // Resuelve el id de programa disponible (desde el objeto programa o desde la asignatura).
@@ -1947,35 +2009,59 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // ═══ SOLAPAMIENTO (necesario antes de calcular hDocencia) ════════════════
   const docenciaOverlapInfo = useMemo(() => {
-    const presenciales = asignaturas.filter(a =>
-      (a.modalidad || 'PRESENCIAL') !== 'VIRTUAL' &&
-      a.fecha_inicio && a.fecha_fin
+    const candidates = asignaturas.filter(a =>
+      a.asignatura_id && a.fecha_inicio && a.fecha_fin
     );
-    const conflicts: string[] = [];
-    const conflictIds = new Set<number>(); // IDs (a.id) de asignaturas conflictivas
-    for (let i = 0; i < presenciales.length; i++) {
-      for (let j = i + 1; j < presenciales.length; j++) {
-        const a = presenciales[i];
-        const b = presenciales[j];
-        if (a.territorial_id && b.territorial_id && a.territorial_id === b.territorial_id) continue;
-        const aS = new Date(a.fecha_inicio);
-        const aE = new Date(a.fecha_fin);
-        const bS = new Date(b.fecha_inicio);
-        const bE = new Date(b.fecha_fin);
-        if (aS <= bE && bS <= aE) {
-          conflictIds.add(b.id);
-          conflicts.push(
-            `"${b.asignatura_nombre || `Asignatura`}" genera un cruce con ` +
-            `"${a.asignatura_nombre || `Asignatura`}" ` +
-            `(${a.fecha_inicio}–${a.fecha_fin} / ${b.fecha_inicio}–${b.fecha_fin}).`
-          );
+    const blockingWarnings: string[] = [];
+    const advisoryWarnings: string[] = [];
+    const blockingIds = new Set<number>();
+    const advisoryIds = new Set<number>();
+    const excludedFromHoursIds = new Set<number>();
+
+    for (let i = 0; i < candidates.length; i++) {
+      for (let j = i + 1; j < candidates.length; j++) {
+        const a = candidates[i];
+        const b = candidates[j];
+        const aS = new Date(`${a.fecha_inicio}T00:00:00`);
+        const aE = new Date(`${a.fecha_fin}T00:00:00`);
+        const bS = new Date(`${b.fecha_inicio}T00:00:00`);
+        const bE = new Date(`${b.fecha_fin}T00:00:00`);
+        if ([aS, aE, bS, bE].some(date => Number.isNaN(date.getTime()))) continue;
+        if (!(aS <= bE && bS <= aE)) continue;
+
+        const aKind = getDocenciaModalityKind(a.modalidad);
+        const bKind = getDocenciaModalityKind(b.modalidad);
+        // La modalidad pendiente se bloquea mediante BR-010 y no debe tratarse
+        // como si fuera una asignatura virtual o a distancia.
+        if (aKind === 'undefined' || bKind === 'undefined') continue;
+
+        const detail =
+          `"${a.asignatura_nombre || 'Asignatura'}" (${getDocenciaModalityLabel(a.modalidad)}) y ` +
+          `"${b.asignatura_nombre || 'Asignatura'}" (${getDocenciaModalityLabel(b.modalidad)}) ` +
+          `coinciden entre ${a.fecha_inicio}–${a.fecha_fin} y ${b.fecha_inicio}–${b.fecha_fin}.`;
+
+        if (aKind === 'presential' && bKind === 'presential') {
+          blockingIds.add(a.id);
+          blockingIds.add(b.id);
+          // Se conserva la primera asignatura y se omiten únicamente las horas
+          // de la posterior, igual que en el comportamiento histórico.
+          excludedFromHoursIds.add(b.id);
+          blockingWarnings.push(detail);
+        } else {
+          advisoryIds.add(a.id);
+          advisoryIds.add(b.id);
+          advisoryWarnings.push(detail);
         }
       }
     }
-    return { warnings: conflicts, conflictIds };
+
+    return { blockingWarnings, advisoryWarnings, blockingIds, advisoryIds, excludedFromHoursIds };
   }, [asignaturas]);
-  const docenciaOverlapWarnings = docenciaOverlapInfo.warnings;
-  const docenciaConflictIds = docenciaOverlapInfo.conflictIds;
+  const docenciaBlockingOverlapWarnings = docenciaOverlapInfo.blockingWarnings;
+  const docenciaAdvisoryOverlapWarnings = docenciaOverlapInfo.advisoryWarnings;
+  const docenciaConflictIds = docenciaOverlapInfo.blockingIds;
+  const docenciaAdvisoryIds = docenciaOverlapInfo.advisoryIds;
+  const docenciaExcludedFromHoursIds = docenciaOverlapInfo.excludedFromHoursIds;
 
   // Recargar programas filtrados si el periodo cambia y ya hay un CETAP por defecto
   useEffect(() => {
@@ -1991,10 +2077,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // ═══ CÁLCULOS (réplica fórmulas Excel) ═══════════════════════════
 
   const hDocencia = useMemo(() =>
-    // Excluir asignaturas con conflicto de solapamiento del total
-    asignaturas.reduce((t, a) => docenciaConflictIds.has(a.id) ? t : t + (a.total_horas || 0), 0),
+    // Solo los cruces presencial-presencial excluyen la asignatura posterior.
+    // Virtual/Distancia conserva sus horas porque el cruce es informativo.
+    asignaturas.reduce((t, a) => docenciaExcludedFromHoursIds.has(a.id) ? t : t + (a.total_horas || 0), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [asignaturas, docenciaConflictIds]
+    [asignaturas, docenciaExcludedFromHoursIds]
   );
 
   const hInvestigacion_raw = useMemo(() =>
@@ -2491,12 +2578,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           updated.nucleo_tematico = asigCat.nucleo || '';
           updated.creditos = asigCat.creditos || 3;
           updated.semestre = asigCat.semestre || 1;
-            // Map the modality from catalog to PTA Form format
-            const rawMod = String(asigCat.modalidad || '').toLowerCase();
-            let mappedMod = 'PRESENCIAL';
-            if (rawMod.includes('virtual')) mappedMod = 'VIRTUAL';
-            else if (rawMod.includes('mixta')) mappedMod = 'MIXTA';
-            updated.modalidad = mappedMod;
+          // Conservar correctamente Virtual, Distancia y modalidades remotas.
+          // Antes, cualquier valor distinto de "Virtual" terminaba como presencial.
+          updated.modalidad = mapCatalogDocenciaModality(asigCat.modalidad);
           // Calcular horas: base y multiplicador salen SIEMPRE de la config (ptaRules); el
           // programa solo se usa para categorizar (nivel + Sede Central vs Territorial).
           const prog = programas.find(p => p.id === updated.programa_id);
@@ -3099,9 +3183,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Validación de solapamiento de fechas en Docencia
-    if ((!isComponentRestricted || canEditFormSection('docencia')) && docenciaOverlapWarnings.length > 0) {
-      toast.error(docenciaOverlapWarnings[0]);
+    // Solo el cruce entre dos asignaturas presenciales bloquea el envío.
+    // Los cruces Virtual/Distancia se muestran como aviso y se pueden guardar/enviar.
+    if (enviar && (!isComponentRestricted || canEditFormSection('docencia')) && docenciaBlockingOverlapWarnings.length > 0) {
+      toast.error(docenciaBlockingOverlapWarnings[0]);
+      setActiveSection('docencia');
       setSaving(false);
       return;
     }
@@ -3398,6 +3484,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (!tieneTotalidad && !validarAsignaturasParaEnvio(asignaturasValidas)) {
       return false;
     }
+    if (!tieneTotalidad && docenciaBlockingOverlapWarnings.length > 0) {
+      toast.error(docenciaBlockingOverlapWarnings[0]);
+      setActiveSection('docencia');
+      return false;
+    }
+    if (!tieneTotalidad && docenciaAdvisoryOverlapWarnings.length > 0) {
+      toast.warning(
+        `Se detectaron ${docenciaAdvisoryOverlapWarnings.length} cruce(s) con asignaturas Virtual/Distancia. ` +
+        'Es una advertencia informativa y puede continuar con el envío.',
+      );
+    }
     if (!tieneTotalidad && ['OCASIONAL', 'VISITANTE', 'ESPECIAL'].includes(tipoVinculacion)) {
       const hDocenciaTotal = asignaturasValidas.reduce((t, a) => t + (a.total_horas || 0), 0);
       if (hDocenciaTotal < horasAProgramar * 0.5) {
@@ -3457,7 +3554,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     return true;
-  }, [hasFullPTAActivity, academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
+  }, [hasFullPTAActivity, academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -4397,16 +4494,32 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   color={PTA_COLORS.DOCENCIA} icon={BookOpen}
                   action={isEditable && asignaturas.length < 10 ? { label: 'Agregar Asignatura', onClick: handleAddAsignatura } : undefined} />
 
-                {/* Banner de solapamiento — rojo, prominente */}
-                {docenciaOverlapWarnings.length > 0 && (
+                {/* Cruce presencial: bloqueante sin depender de la territorial. */}
+                {docenciaBlockingOverlapWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {docenciaOverlapWarnings.map((w, i) => (
+                    {docenciaBlockingOverlapWarnings.map((w, i) => (
                       <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border-2 border-red-400 text-red-800 text-sm font-semibold shadow-sm">
                         <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                         <div>
                           <div className="font-bold text-red-700 mb-0.5">Conflicto de fechas presenciales</div>
                           <span className="font-normal text-red-700">{w}</span>
-                          <div className="mt-1 text-xs font-medium text-red-500">Las horas de esta asignatura no se suman al total ni se puede enviar el PTA.</div>
+                          <div className="mt-1 text-xs font-medium text-red-500">La asignatura posterior no se suma al total y el PTA no se puede enviar hasta corregir el cruce.</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Virtual/Distancia: aviso visible, pero nunca bloquea ni descuenta horas. */}
+                {docenciaAdvisoryOverlapWarnings.length > 0 && (
+                  <div className="mx-4 md:mx-6 mt-3 space-y-2">
+                    {docenciaAdvisoryOverlapWarnings.map((w, i) => (
+                      <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-sm font-semibold shadow-sm">
+                        <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-bold text-amber-800 mb-0.5">Aviso de cruce Virtual/Distancia</div>
+                          <span className="font-normal text-amber-800">{w}</span>
+                          <div className="mt-1 text-xs font-medium text-amber-700">Este aviso aplica aunque las territoriales sean diferentes. Las horas sí se suman y puede enviar el PTA.</div>
                         </div>
                       </div>
                     ))}
@@ -4421,6 +4534,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       {asignaturas.map((asig, idx) => {
                         const isComplete = !!asig.asignatura_id;
                         const tieneConflicto = docenciaConflictIds.has(asig.id);
+                        const tieneAdvertencia = docenciaAdvisoryIds.has(asig.id);
                         // Para bloqueo por jefatura territorial
                         const bloqueadaPorTerritorial = !!(jefaturaTerritorialId && asig.territorial_id && asig.territorial_id !== jefaturaTerritorialId);
                         const rowEditable = isEditable && !bloqueadaPorTerritorial;
@@ -4444,6 +4558,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             className={`p-4 md:p-5 rounded-2xl border relative transition-all duration-300 group ${
                               tieneConflicto
                                 ? 'border-red-200 bg-red-50/30 shadow-sm border-l-4 border-l-red-500 hover:shadow-md'
+                                : tieneAdvertencia
+                                  ? 'border-amber-200 bg-amber-50/30 shadow-sm border-l-4 border-l-amber-500 hover:shadow-md'
                                 : bloqueadaPorTerritorial
                                   ? 'border-gray-200 bg-gray-50/80 opacity-75'
                                   : isComplete
@@ -4458,6 +4574,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-600 shadow-sm">
                                     <AlertTriangle className="w-3.5 h-3.5" />
                                   </div>
+                                ) : tieneAdvertencia ? (
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-700 shadow-sm">
+                                    <Info className="w-3.5 h-3.5" />
+                                  </div>
                                 ) : isComplete ? (
                                   <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 shadow-sm">
                                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -4467,7 +4587,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
                                   </div>
                                 )}
-                                <span className={`text-[15px] font-extrabold tracking-tight ${tieneConflicto ? 'text-red-700' : isComplete ? 'text-slate-800' : 'text-blue-700'}`}>
+                                <span className={`text-[15px] font-extrabold tracking-tight ${tieneConflicto ? 'text-red-700' : tieneAdvertencia ? 'text-amber-800' : isComplete ? 'text-slate-800' : 'text-blue-700'}`}>
                                   Asignatura {idx + 1}
                                 </span>
                                 {tieneConflicto && (
@@ -4475,7 +4595,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     ⚠ Cruce de fechas
                                   </span>
                                 )}
-                                {!isComplete && !bloqueadaPorTerritorial && !tieneConflicto && (
+                                {tieneAdvertencia && !tieneConflicto && (
+                                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md ml-1 flex items-center gap-1 shadow-sm">
+                                    Aviso de cruce
+                                  </span>
+                                )}
+                                {!isComplete && !bloqueadaPorTerritorial && !tieneConflicto && !tieneAdvertencia && (
                                   <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md ml-1 shadow-sm">
                                     En progreso
                                   </span>
@@ -4619,10 +4744,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <div className="flex flex-col">
                                   <span className="block text-[10px] font-semibold text-slate-500 tracking-wider uppercase mb-1 ml-1">Modalidad</span>
                                   <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-[12px] font-semibold text-slate-700 min-h-[36px] flex items-center shadow-sm">
-                                    {displayModalidad === 'PRESENCIAL' ? 'Presencial'
-                                     : displayModalidad === 'VIRTUAL' ? 'Virtual'
-                                     : displayModalidad === 'MIXTA' ? 'Mixta'
-                                     : displayModalidad || 'Presencial'}
+                                    {getDocenciaModalityLabel(displayModalidad)}
                                   </div>
                                 </div>
                               )}

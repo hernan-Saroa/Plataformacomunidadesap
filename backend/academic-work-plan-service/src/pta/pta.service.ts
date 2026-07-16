@@ -47,6 +47,31 @@ function normalizeEstadoFilter(value: unknown): string {
     : '';
 }
 
+function normalizeDocenciaModality(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function isUndefinedDocenciaModality(value: unknown): boolean {
+  const modality = normalizeDocenciaModality(value);
+  return modality.includes('POR DEFINIR') || modality.includes('SIN DEFINIR');
+}
+
+function isNonPresentialDocenciaModality(value: unknown): boolean {
+  const modality = normalizeDocenciaModality(value);
+  return modality.includes('VIRTUAL')
+    || modality.includes('DISTANCIA')
+    || modality.includes('REMOT')
+    || modality.includes('ONLINE')
+    || modality.includes('EN LINEA')
+    || modality.includes('NO PRESENCIAL');
+}
+
 function getGroupedPtaEstados(value: unknown): string[] | null {
   const key = normalizeEstadoFilter(value);
   if (!key) return null;
@@ -1242,6 +1267,45 @@ export class PtaService {
     return Math.min(globalLimit, rolLimit);
   }
 
+  private validateDocenciaDateOverlaps(asignaturas: any[]): void {
+    const candidates = (Array.isArray(asignaturas) ? asignaturas : [])
+      .filter((asig: any) => asig?.asignatura_id && asig?.fecha_inicio && asig?.fecha_fin);
+
+    for (let i = 0; i < candidates.length; i += 1) {
+      for (let j = i + 1; j < candidates.length; j += 1) {
+        const first = candidates[i];
+        const second = candidates[j];
+
+        // "Por definir" mantiene el bloqueo especializado BR-010. No se asume
+        // presencial ni se relaja como modalidad remota en esta regla.
+        if (isUndefinedDocenciaModality(first?.modalidad)
+          || isUndefinedDocenciaModality(second?.modalidad)) continue;
+
+        // Si al menos una asignatura es enteramente remota, el cruce es solo
+        // informativo en el cliente y nunca impide la concertación.
+        if (isNonPresentialDocenciaModality(first?.modalidad)
+          || isNonPresentialDocenciaModality(second?.modalidad)) continue;
+
+        const firstStart = new Date(`${first.fecha_inicio}T00:00:00`);
+        const firstEnd = new Date(`${first.fecha_fin}T00:00:00`);
+        const secondStart = new Date(`${second.fecha_inicio}T00:00:00`);
+        const secondEnd = new Date(`${second.fecha_fin}T00:00:00`);
+        if ([firstStart, firstEnd, secondStart, secondEnd]
+          .some(date => Number.isNaN(date.getTime()))) continue;
+
+        if (firstStart <= secondEnd && secondStart <= firstEnd) {
+          const firstLabel = first?.asignatura_nombre || 'Asignatura 1';
+          const secondLabel = second?.asignatura_nombre || 'Asignatura 2';
+          throw new BadRequestException(
+            `No se puede enviar el PTA: las asignaturas presenciales "${firstLabel}" y "${secondLabel}" `
+            + `tienen fechas cruzadas (${first.fecha_inicio}-${first.fecha_fin} / ${second.fecha_inicio}-${second.fecha_fin}). `
+            + 'La territorial no cambia esta validacion.',
+          );
+        }
+      }
+    }
+  }
+
   private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
     const { all: allComp, aadm: compAadm } = this.readComplementariasSecciones(body);
     const tieneTotalidad = compAadm.some((a: any) => a?.consumeTotalidad === true);
@@ -1500,6 +1564,11 @@ export class PtaService {
     // El envio se valida por topes individuales de componente, no por suma global.
     if (tieneTotalidad) return;
 
+    const asignaturas = Array.isArray(body?.asignaturas)
+      ? body.asignaturas.filter((a: any) => a?.asignatura_id)
+      : [];
+    this.validateDocenciaDateOverlaps(asignaturas);
+
     const maxDocencia = this.getScaledRuleLimit(
       rules,
       horasAProgramar,
@@ -1546,10 +1615,6 @@ export class PtaService {
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
     assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
-
-    const asignaturas = Array.isArray(body?.asignaturas)
-      ? body.asignaturas.filter((a: any) => a?.asignatura_id)
-      : [];
 
     if (asignaturas.length === 0) {
       throw new BadRequestException('Debe incluir al menos una asignatura valida antes de enviar el PTA a aprobacion.');
