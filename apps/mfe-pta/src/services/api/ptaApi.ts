@@ -1748,9 +1748,12 @@ export async function getBancoDocenteStats(filters?: { territorial?: string; ded
   }
 }
 
-export async function getBancoDocenteById(id: string) {
+export async function getBancoDocenteById(id: string, periodoCarga?: string) {
   try {
-    const raw = await apiClient.get<any>(`${BD_BASE}/${id}`);
+    const raw = await apiClient.get<any>(
+      `${BD_BASE}/${id}`,
+      periodoCarga ? { periodoCarga } : undefined,
+    );
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.warn('[mfe-pta][getBancoDocenteById] No encontrado o error al buscar docente:', error instanceof Error ? error.message : error);

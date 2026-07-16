@@ -52,7 +52,7 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
             <Search className="w-5 h-5 text-blue-500" /> 4. Gestión de Investigación
           </h2>
           <p className="text-slate-500 text-sm mt-1 max-w-2xl">
-            Roles y actividades de investigación configurables — avalados por la SNI. Los cambios se reflejan en el formulario PTA del docente.
+            Roles y actividades de investigación configurables — avalados por la SNI. Todos los valores son topes «hasta» y se reflejan dinámicamente en el formulario PTA del docente.
           </p>
         </div>
 
@@ -68,8 +68,8 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
             </summary>
             <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-blue-50/10">
-              {renderInputRow("max_horas_investigacion_global", "Tope Global Investigación (Horas)", "Límite máximo de horas para actividades de investigación. Los topes por rol y actividad se configuran abajo.", "h")}
-              {renderInputRow("max_pct_investigacion", "Máximo % Investigación", "Límite porcentual sobre el PTA total (Circular §2).", "%")}
+              {renderInputRow("max_horas_investigacion_global", "Hasta Global de Investigación (Horas de referencia)", "Referencia normativa sobre una bolsa de 800h. En cada PTA se escala a la bolsa RUND real; por ejemplo, 400h/50% se convierten en hasta 360h para una bolsa de 720h.", "h")}
+              {renderInputRow("max_pct_investigacion", "Hasta % de Investigación", "Porcentaje máximo sobre la bolsa RUND real del docente (Circular §2).", "%")}
             </div>
           </details>
 
@@ -116,11 +116,11 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                     placeholder="Nombre del rol..."
                     className="flex-1 min-w-0 bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
                   />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Horas:</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Hasta:</span>
                   <input type="number" value={rol.horas_max} onChange={e => updateRol(idx, 'horas_max', e.target.value)}
                     className="w-[70px] bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none shrink-0" />
                   <span className="text-xs text-slate-400 font-bold shrink-0">h</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Tope:</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Sin exceder:</span>
                   <input type="number" value={rol.pct_max} onChange={e => updateRol(idx, 'pct_max', e.target.value)}
                     className="w-[70px] bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1.5 text-center focus:ring-2 focus:ring-blue-500/20 outline-none shrink-0" />
                   <span className="text-xs text-slate-400 font-bold shrink-0">%</span>
@@ -181,7 +181,7 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                     placeholder="Nombre de la actividad..."
                     className="flex-1 min-w-0 bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-amber-500/20 outline-none transition-all"
                   />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Horas Máx:</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Hasta:</span>
                   <input type="number" value={act.horas_max} onChange={e => updateAct(idx, 'horas_max', e.target.value)}
                     className="w-[70px] bg-white border border-slate-200 text-slate-800 font-bold text-[13px] rounded-lg px-2 py-1.5 text-center focus:ring-2 focus:ring-amber-500/20 outline-none shrink-0" />
                   <span className="text-xs text-slate-400 font-bold shrink-0">h</span>

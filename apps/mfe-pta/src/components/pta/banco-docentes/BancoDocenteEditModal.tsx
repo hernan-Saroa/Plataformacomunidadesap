@@ -172,6 +172,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
     cetapNombre: '',
     tipoVinculacion: 'OCASIONAL',
     dedicacion: 'TC',
+    horasPta: '',
     escalafon: '',
     origenVinculacion: '',
     actoAdministrativoVinculacion: '',
@@ -211,6 +212,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         cetapNombre: docente.cetapNombre || docente.cetap_nombre || '',
         tipoVinculacion: docente.vinculacion_codigo || 'OCASIONAL',
         dedicacion: docente.dedicacion_codigo || 'TC',
+        horasPta: String(docente.horas_programables ?? docente.horasAsignables ?? ''),
         escalafon: docente.categoria || '',
         origenVinculacion: docente.origen_vinculacion || '',
         actoAdministrativoVinculacion: docente.acto_administrativo_vinculacion || '',
@@ -273,6 +275,12 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
     if (!form.documento_identidad) { setError('El número de documento es obligatorio'); goToStep(0); return; }
     if (!form.nombreCompleto) { setError('El nombre completo es obligatorio'); goToStep(0); return; }
     if (!form.territorialNombre) { setError('La territorial es obligatoria'); goToStep(0); return; }
+    const horasPta = form.horasPta === '' ? null : Number(form.horasPta);
+    if (horasPta !== null && (!Number.isFinite(horasPta) || horasPta < 0)) {
+      setError('Las horas programables deben ser un número mayor o igual a cero');
+      goToStep(0);
+      return;
+    }
 
     if (form.correoInstitucional && !form.correoInstitucional.toLowerCase().endsWith('@esap.edu.co')) {
       setError('El correo institucional debe terminar en @esap.edu.co');
@@ -296,6 +304,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
       cetapNombre: form.cetapNombre || null,
       tipoVinculacion: form.tipoVinculacion,
       dedicacion: form.dedicacion,
+      horasPta,
+      horasAsignables: horasPta,
       escalafon: form.escalafon || null,
       origenVinculacion: form.origenVinculacion || null,
       actoAdministrativoVinculacion: form.actoAdministrativoVinculacion || null,
@@ -486,10 +496,13 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                       </FloatingField>
                       <FloatingField label="Dedicación" required>
                         <select className="wizard-field wizard-select" style={fieldStyle} value={form.dedicacion} onChange={set('dedicacion')}>
-                          <option value="TC">Tiempo Completo (800h)</option>
-                          <option value="MT">Medio Tiempo (400h)</option>
-                          <option value="HC">Hora Cátedra (0h)</option>
+                          <option value="TC">Tiempo Completo</option>
+                          <option value="MT">Medio Tiempo</option>
+                          <option value="HC">Hora Cátedra</option>
                         </select>
+                      </FloatingField>
+                      <FloatingField label="Horas programables PTA" hint="Bolsa autoritativa usada por creación, concertación y reportes PTA">
+                        <input className="wizard-field" style={fieldStyle} type="number" min="0" step="1" value={form.horasPta} onChange={set('horasPta')} placeholder="Ej: 720, 800, 900..." />
                       </FloatingField>
                       <FloatingField label="Decreto / Acuerdo" hint="Ej: 2400/1968, 1279/2002, 003/2018">
                         <input className="wizard-field" style={fieldStyle} value={form.decretoVinculacion} onChange={set('decretoVinculacion')} placeholder="Decreto o acuerdo normativo" />

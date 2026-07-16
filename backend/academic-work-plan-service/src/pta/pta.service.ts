@@ -47,6 +47,31 @@ function normalizeEstadoFilter(value: unknown): string {
     : '';
 }
 
+function normalizeDocenciaModality(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function isUndefinedDocenciaModality(value: unknown): boolean {
+  const modality = normalizeDocenciaModality(value);
+  return modality.includes('POR DEFINIR') || modality.includes('SIN DEFINIR');
+}
+
+function isNonPresentialDocenciaModality(value: unknown): boolean {
+  const modality = normalizeDocenciaModality(value);
+  return modality.includes('VIRTUAL')
+    || modality.includes('DISTANCIA')
+    || modality.includes('REMOT')
+    || modality.includes('ONLINE')
+    || modality.includes('EN LINEA')
+    || modality.includes('NO PRESENCIAL');
+}
+
 function getGroupedPtaEstados(value: unknown): string[] | null {
   const key = normalizeEstadoFilter(value);
   if (!key) return null;
@@ -659,15 +684,31 @@ export class PtaService {
     return { personId, email, fullName };
   }
 
-  private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean }): Promise<{ personId: string, email: string | null, fullName: string }> {
+  private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean; periodo?: string }): Promise<{ personId: string, email: string | null, fullName: string }> {
     const { personId, email, fullName } = await this.fetchAuthDocenteInfo(docenteKey, { adminEdit: options?.adminEdit });
 
     // Mapear a academic_work_plan."Docente" (para mantener compatibilidad con FK de PTA).
+    // Se prioriza la vinculacion oficial del periodo sobre un registro dummy antiguo
+    // cuyo id pudo quedar igual al personaId con 800h por defecto. Ese caso producia
+    // duplicados en Banco de Docentes y hacia que el PTA ignorara el registro de 720h.
+    const byPersonaQb = this.docenteRepo
+      .createQueryBuilder('d')
+      .where('d."personaId"::text = :personId', { personId });
+    if (options?.periodo) {
+      byPersonaQb
+        .orderBy('CASE WHEN d."periodoCarga" = :periodo THEN 0 ELSE 1 END', 'ASC')
+        .setParameter('periodo', options.periodo);
+    } else {
+      byPersonaQb.orderBy('CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END', 'ASC');
+    }
+    const byPersonaId = await byPersonaQb
+      .addOrderBy('CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END', 'ASC')
+      .addOrderBy('d."updatedAt"', 'DESC')
+      .getOne();
+    if (byPersonaId) return { personId: byPersonaId.id, email, fullName };
+
     const byId = await this.docenteRepo.findOne({ where: { id: personId } as any });
     if (byId) return { personId: byId.id, email, fullName };
-
-    const byPersonaId = await this.docenteRepo.findOne({ where: { personaId: personId } as any });
-    if (byPersonaId) return { personId: byPersonaId.id, email, fullName };
 
     if (email) {
       const byCorreo = await this.docenteRepo.findOne({ where: { correoInstitucional: email } as any });
@@ -759,8 +800,8 @@ export class PtaService {
   // Cache de resolución de docente (TTL 30s) para evitar queries repetidas en la misma sesión
   private readonly docenteCache = new Map<string, { result: { personId: string; email: string | null; fullName: string }; expiresAt: number }>();
 
-  private async resolveDocenteIdCached(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean }): Promise<{ personId: string; email: string | null; fullName: string }> {
-    const cacheKey = `${docenteKey}:${options?.adminEdit ? 'admin' : 'normal'}`;
+  private async resolveDocenteIdCached(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean; periodo?: string }): Promise<{ personId: string; email: string | null; fullName: string }> {
+    const cacheKey = `${docenteKey}:${options?.adminEdit ? 'admin' : 'normal'}:${options?.periodo || ''}`;
     const cached = this.docenteCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.result;
 
@@ -769,9 +810,158 @@ export class PtaService {
     return result;
   }
 
-  private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string }): Promise<string> {
+  private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string; periodo?: string }): Promise<string> {
     const res = await this.resolveDocenteIdCached(docenteKey, options);
     return res.personId;
+  }
+
+  /**
+   * Obtiene la bolsa autoritativa del Banco de Docentes. El valor enviado por el
+   * navegador solo se conserva como compatibilidad para registros legacy que aun
+   * no tengan una vinculacion en academic_work_plan."Docente".
+   */
+  private async resolveHorasAProgramar(
+    docenteId: string,
+    input: any,
+    legacyFallback?: number,
+  ): Promise<number> {
+    let docente = docenteId
+      ? await this.docenteRepo.findOne({ where: { id: docenteId } as any })
+      : null;
+    // Un PTA legacy puede seguir apuntando al registro dummy de 800h aunque la
+    // misma persona ya tenga una vinculacion RUND oficial para el periodo. Se usa
+    // la misma precedencia deterministica aplicada al crear/guardar el PTA.
+    if (docente?.personaId) {
+      const preferredQb = this.docenteRepo
+        .createQueryBuilder('d')
+        .where('d."personaId"::text = :personId', { personId: docente.personaId });
+      const periodo = coalesceString(input?.periodo);
+      if (periodo) {
+        preferredQb
+          .orderBy('CASE WHEN d."periodoCarga" = :periodo THEN 0 ELSE 1 END', 'ASC')
+          .setParameter('periodo', periodo);
+      } else {
+        preferredQb.orderBy('CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END', 'ASC');
+      }
+      docente = await preferredQb
+        .addOrderBy('CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END', 'ASC')
+        .addOrderBy('d."updatedAt"', 'DESC')
+        .getOne() || docente;
+    }
+    const horasBanco = Number(docente?.horasAsignables);
+
+    if (Number.isFinite(horasBanco) && horasBanco >= 0) {
+      const semanasProrrateo = Number(input?.semanas_prorrateo ?? input?.semanasProrrateo ?? 16);
+      const factor = Number.isFinite(semanasProrrateo) && semanasProrrateo > 0
+        ? Math.min(semanasProrrateo / 16, 1)
+        : 1;
+      return Math.round(horasBanco * factor);
+    }
+
+    const legacy = Number(
+      legacyFallback
+      ?? input?.horas_a_programar
+      ?? input?.horasAsignables
+      ?? input?.horas_asignables,
+    );
+    if (Number.isFinite(legacy) && legacy > 0) return legacy;
+
+    return this.calcHorasProgramables({
+      tipo_vinculacion: input?.tipo_vinculacion,
+      dedicacion: input?.dedicacion,
+      semanas_vinculacion: input?.semanas_vinculacion,
+    });
+  }
+
+  /**
+   * Refresca las horas de los DTO que alimentan listados, reportes, concertacion
+   * y aprobacion. Asi, un PTA legacy no conserva visualmente una bolsa antigua
+   * cuando la vinculacion oficial del mismo periodo ya existe en el RUND.
+   *
+   * La consulta es por lote para evitar una consulta por cada PTA del listado.
+   */
+  private async enrichHorasDesdeBanco(dtos: any[]): Promise<void> {
+    const solicitudes = [...new Map(
+      dtos
+        .map((dto) => ({
+          docente_id: coalesceString(dto?.docente_id, dto?.docenteId),
+          periodo: coalesceString(dto?.periodo),
+        }))
+        .filter((item) => item.docente_id)
+        .map((item) => [`${item.docente_id}::${item.periodo || ''}`, item]),
+    ).values()];
+    if (solicitudes.length === 0) return;
+
+    try {
+      const rows = await this.ptaRepo.manager.query(
+        `
+        WITH solicitudes AS (
+          SELECT DISTINCT s.docente_id, s.periodo
+          FROM jsonb_to_recordset($1::jsonb) AS s(docente_id text, periodo text)
+        ), vinculaciones AS (
+          SELECT
+            s.docente_id,
+            s.periodo,
+            base."personaId" AS persona_id
+          FROM solicitudes s
+          LEFT JOIN academic_work_plan."Docente" base
+            ON base.id::text = s.docente_id
+        ), candidatas AS (
+          SELECT
+            v.docente_id,
+            v.periodo,
+            d."horasAsignables" AS horas,
+            ROW_NUMBER() OVER (
+              PARTITION BY v.docente_id, v.periodo
+              ORDER BY
+                CASE WHEN d."periodoCarga" = v.periodo THEN 0 ELSE 1 END,
+                CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
+                d."updatedAt" DESC
+            ) AS prioridad
+          FROM vinculaciones v
+          JOIN academic_work_plan."Docente" d
+            ON d.id::text = v.docente_id
+            OR d."personaId"::text = COALESCE(v.persona_id::text, v.docente_id)
+        )
+        SELECT docente_id, periodo, horas
+        FROM candidatas
+        WHERE prioridad = 1
+        `,
+        [JSON.stringify(solicitudes)],
+      );
+
+      const horasPorVinculacion = new Map<string, number>();
+      for (const row of rows) {
+        const horas = Number(row?.horas);
+        if (!Number.isFinite(horas) || horas < 0) continue;
+        horasPorVinculacion.set(
+          `${String(row.docente_id)}::${coalesceString(row.periodo) || ''}`,
+          horas,
+        );
+      }
+
+      for (const dto of dtos) {
+        const docenteId = coalesceString(dto?.docente_id, dto?.docenteId);
+        const periodo = coalesceString(dto?.periodo) || '';
+        const horasBanco = docenteId
+          ? horasPorVinculacion.get(`${docenteId}::${periodo}`)
+          : undefined;
+        if (horasBanco == null) continue;
+
+        const semanasProrrateo = Number(dto?.semanas_prorrateo ?? dto?.semanasProrrateo ?? 16);
+        const factor = Number.isFinite(semanasProrrateo) && semanasProrrateo > 0
+          ? Math.min(semanasProrrateo / 16, 1)
+          : 1;
+        const horas = Math.round(horasBanco * factor);
+        dto.horas_a_programar = horas;
+        dto.horas_asignables = horas;
+        dto.horas_fuente = 'BANCO_DOCENTES';
+      }
+    } catch (err: any) {
+      // Un fallo de enriquecimiento no debe impedir consultar PTAs legacy. En
+      // ese caso se conserva la bolsa persistida, pero nunca se inventa 800h.
+      this.logger?.warn?.(`Horas del Banco de Docentes no disponibles para el listado: ${err?.message || err}`);
+    }
   }
 
   private isMedioTiempo(dedicacionRaw: any): boolean {
@@ -907,8 +1097,8 @@ export class PtaService {
     const sumAcad = compAadm.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
     // Una actividad académico-administrativa de dedicación exclusiva sustituye la
-    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia conserva
-    // su cálculo independiente y puede generar horas adicionales/prorrateo.
+    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia se
+    // conserva en el cálculo para que el tope global detecte cualquier hora adicional.
     const exclusiveActivities = compAadm.filter((activity: any) => activity?.consumeTotalidad === true);
     if (exclusiveActivities.length > 0) {
       const exclusiveHours = Math.max(
@@ -1006,12 +1196,48 @@ export class PtaService {
     return Number.isFinite(value) && value > 0 ? value : fallback;
   }
 
+  /**
+   * Convierte los topes historicos expresados en horas sobre una bolsa de 800h
+   * a un porcentaje y lo aplica a la bolsa real del RUND. De esta forma 400h
+   * conserva su significado de 50%, pero una bolsa de 900h permite 450h.
+   */
+  private getScaledRuleLimit(
+    rules: any,
+    horasAProgramar: number,
+    percentageKey: string,
+    percentageFallback: number,
+    absoluteKey?: string,
+    absoluteFallback?: number,
+  ): number {
+    let percentage = this.getPositiveRuleNumber(rules, percentageKey, percentageFallback);
+    if (absoluteKey) {
+      const absoluteReference = this.getPositiveRuleNumber(
+        rules,
+        absoluteKey,
+        absoluteFallback ?? Math.round(800 * percentageFallback / 100),
+      );
+      percentage = Math.min(percentage, (absoluteReference / 800) * 100);
+    }
+    return Math.round(horasAProgramar * percentage / 100);
+  }
+
   private getInvestigacionLimit(body: any, rules: any, horasAProgramar: number): number {
+    const globalLimit = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_investigacion',
+      50,
+      'max_horas_investigacion_global',
+      400,
+    );
     const rolRaw = coalesceString(body?.investigacion_proyecto?.rol);
     if (!rolRaw) {
       const maxHoras = this.getRuleNumber(rules, 'max_horas_inv_fomento', 200);
-      const maxPct = this.getRuleNumber(rules, 'max_pct_inv_fomento', 25) / 100;
-      return Math.min(maxHoras, Math.round(horasAProgramar * maxPct));
+      const maxPct = this.getRuleNumber(rules, 'max_pct_inv_fomento', 25);
+      const scaledLimit = Math.round(
+        horasAProgramar * Math.min(maxPct, (maxHoras / 800) * 100) / 100,
+      );
+      return Math.min(globalLimit, scaledLimit);
     }
 
     const rolKey = normalizeEstadoFilter(rolRaw);
@@ -1028,14 +1254,67 @@ export class PtaService {
       else maxRol = this.getRuleNumber(rules, 'max_horas_inv_lider', 400);
     }
 
-    let rolLimit = maxRol;
-    const tipo = normalizeEstadoFilter(body?.tipo_vinculacion ?? body?.tipoVinculacion);
-    if (tipo !== 'CARRERA_009') {
-      const base800 = this.getRuleNumber(rules, 'horas_base_carrera_003', 800);
-      rolLimit = Math.round(maxRol * (horasAProgramar / base800));
-    }
+    const configuredPct = Number(configured?.pct_max);
+    // Los roles historicamente expresaban la misma regla en horas para una bolsa
+    // de 800h y en porcentaje. El porcentaje permite aplicar el tope a cualquier
+    // bolsa del Banco (720h u otro valor) sin depender del acuerdo de vinculacion.
+    const maxRolPct = (maxRol / 800) * 100;
+    const rolPct = Number.isFinite(configuredPct) && configuredPct > 0
+      ? Math.min(configuredPct, maxRolPct)
+      : maxRolPct;
+    const rolLimit = Math.round(horasAProgramar * rolPct / 100);
 
-    return Math.min(this.getRuleNumber(rules, 'max_horas_investigacion_global', 400), rolLimit);
+    return Math.min(globalLimit, rolLimit);
+  }
+
+  private validateDocenciaDateOverlaps(asignaturas: any[]): void {
+    const candidates = (Array.isArray(asignaturas) ? asignaturas : [])
+      .filter((asig: any) => asig?.asignatura_id && asig?.fecha_inicio && asig?.fecha_fin);
+
+    for (let i = 0; i < candidates.length; i += 1) {
+      for (let j = i + 1; j < candidates.length; j += 1) {
+        const first = candidates[i];
+        const second = candidates[j];
+
+        // "Por definir" mantiene el bloqueo especializado BR-010. No se asume
+        // presencial ni se relaja como modalidad remota en esta regla.
+        if (isUndefinedDocenciaModality(first?.modalidad)
+          || isUndefinedDocenciaModality(second?.modalidad)) continue;
+
+        // Si al menos una asignatura es enteramente remota, el cruce es solo
+        // informativo en el cliente y nunca impide la concertación.
+        if (isNonPresentialDocenciaModality(first?.modalidad)
+          || isNonPresentialDocenciaModality(second?.modalidad)) continue;
+
+        const firstStart = new Date(`${first.fecha_inicio}T00:00:00`);
+        const firstEnd = new Date(`${first.fecha_fin}T00:00:00`);
+        const secondStart = new Date(`${second.fecha_inicio}T00:00:00`);
+        const secondEnd = new Date(`${second.fecha_fin}T00:00:00`);
+        if ([firstStart, firstEnd, secondStart, secondEnd]
+          .some(date => Number.isNaN(date.getTime()))) continue;
+
+        if (firstStart <= secondEnd && secondStart <= firstEnd) {
+          const firstLabel = first?.asignatura_nombre || 'Asignatura 1';
+          const secondLabel = second?.asignatura_nombre || 'Asignatura 2';
+          throw new BadRequestException(
+            `No se puede enviar el PTA: las asignaturas presenciales "${firstLabel}" y "${secondLabel}" `
+            + `tienen fechas cruzadas (${first.fecha_inicio}-${first.fecha_fin} / ${second.fecha_inicio}-${second.fecha_fin}). `
+            + 'La territorial no cambia esta validacion.',
+          );
+        }
+      }
+    }
+  }
+
+  private validateGlobalPtaHours(totalHours: number, horasAProgramar: number): void {
+    const total = Number(totalHours) || 0;
+    const limit = Math.max(0, Number(horasAProgramar) || 0);
+    if (total > limit) {
+      throw new BadRequestException(
+        `El total del PTA excede las horas programables del docente: ${total}h / ${limit}h. `
+        + `Redistribuya ${total - limit}h entre los componentes antes de continuar.`,
+      );
+    }
   }
 
   private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
@@ -1161,13 +1440,13 @@ export class PtaService {
       ? rules.ext_actividades
       : {};
     const extensionSections = normalizeExtensionSections(rules?.ext_secciones);
-    const extensionComponentLimit = Math.min(
-      this.getPositiveRuleNumber(
-        rules,
-        'max_horas_extension_global',
-        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
-      ),
-      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
+    const extensionComponentLimit = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_extension',
+      25,
+      'max_horas_extension_global',
+      this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
     );
     const configuredRowHours = (row: any, allowZeroUntil = false): number =>
       getRecognitionBounds(row, 'fija', allowZeroUntil).min;
@@ -1293,26 +1572,35 @@ export class PtaService {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
     }
 
-    // El envio se valida por topes individuales de componente, no por suma global.
+    // La bolsa proveniente del Banco de Docentes es el tope autoritativo para la
+    // suma de los cuatro componentes. También aplica a dedicaciones exclusivas:
+    // una actividad del 100% no puede coexistir con horas adicionales.
+    this.validateGlobalPtaHours(horas.total, horasAProgramar);
+
+    // Una actividad de dedicación exclusiva ya consume la bolsa completa.
     if (tieneTotalidad) return;
 
-    const maxDocencia = this.getPositiveRuleNumber(
+    const asignaturas = Array.isArray(body?.asignaturas)
+      ? body.asignaturas.filter((a: any) => a?.asignatura_id)
+      : [];
+    this.validateDocenciaDateOverlaps(asignaturas);
+
+    const maxInvestigacion = this.getInvestigacionLimit(body, rules, horasAProgramar);
+    const maxExtension = this.getScaledRuleLimit(
       rules,
-      'max_horas_docencia_global',
-      this.getPositiveRuleNumber(rules, 'horas_base_carrera_003', 800),
+      horasAProgramar,
+      'max_pct_extension',
+      25,
+      'max_horas_extension_global',
+      this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
     );
-    const maxInvestigacion = this.getPositiveRuleNumber(rules, 'max_horas_investigacion_global', 400);
-    const maxExtension = Math.min(
-      this.getPositiveRuleNumber(
-        rules,
-        'max_horas_extension_global',
-        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
-      ),
-      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
-    );
-    const maxComplementarias = Math.min(
-      this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200),
-      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_complementarias', 25) / 100),
+    const maxComplementarias = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_complementarias',
+      25,
+      'max_horas_complementarias_global',
+      200,
     );
 
     const assertComponentLimit = (label: string, value: number, limit: number) => {
@@ -1321,14 +1609,21 @@ export class PtaService {
       }
     };
 
-    assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
+    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
+    if (rolInvestigacion) {
+      const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas);
+      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > maxInvestigacion) {
+        throw new BadRequestException(
+          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${maxInvestigacion}h (hasta el tope dinamico de la bolsa RUND).`,
+        );
+      }
+    }
+
+    // Docencia no tiene tope porcentual propio; el límite global anterior le
+    // permite ocupar desde una fracción hasta el 100% de la bolsa disponible.
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
     assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
-
-    const asignaturas = Array.isArray(body?.asignaturas)
-      ? body.asignaturas.filter((a: any) => a?.asignatura_id)
-      : [];
 
     if (asignaturas.length === 0) {
       throw new BadRequestException('Debe incluir al menos una asignatura valida antes de enviar el PTA a aprobacion.');
@@ -1374,9 +1669,13 @@ export class PtaService {
       throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
     }
 
-    const maxAadm = Math.min(
-      this.getRuleNumber(rules, 'max_horas_aadm_global', 200),
-      horasAProgramar * (this.getRuleNumber(rules, 'max_pct_aadm', 25) / 100),
+    const maxAadm = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_aadm',
+      25,
+      'max_horas_aadm_global',
+      200,
     );
     if (horas.sumAcad > maxAadm) {
       throw new BadRequestException(`Actividades academico-administrativas superan el tope permitido: ${horas.sumAcad}h / ${maxAadm}h.`);
@@ -1389,6 +1688,9 @@ export class PtaService {
       id: _id, pta_id: _ptaId, ptaId: _ptaId2,
       estado: _estado, periodo: _periodo, version: _version,
       docente_id: _docId,
+      horas_a_programar: _horasAProgramar,
+      horas_asignables: _horasAsignables,
+      horasAsignables: _horasAsignablesCamel,
       ...extra
     } = (entity.datosEstructurados && typeof entity.datosEstructurados === 'object'
       ? entity.datosEstructurados
@@ -1417,7 +1719,13 @@ export class PtaService {
     // Complementarias unificado = sección docencia + sección académico-administrativa.
     const hComp = hCompDocencia + hAcad;
     const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp);
-    const horasAsignables = (entity as any).horasAsignables || Number(ds.horas_a_programar) || 800;
+    const horasAsignablesRaw = Number(
+      (entity as any).horasAsignables
+      ?? ds.horas_a_programar
+      ?? ds.horas_asignables
+      ?? 0,
+    );
+    const horasAsignables = Number.isFinite(horasAsignablesRaw) ? horasAsignablesRaw : 0;
 
     return {
       id: entity.id,
@@ -1536,6 +1844,8 @@ export class PtaService {
   private async enrichPtaSummaries(dtos: any[]): Promise<any[]> {
     if (!dtos.length) return dtos;
 
+    await this.enrichHorasDesdeBanco(dtos);
+
     // Aditivo y tolerante a configuraciones legacy: nunca bloquea la consulta del PTA.
     try {
       await this.enrichExtensionSelections(dtos);
@@ -1582,7 +1892,9 @@ export class PtaService {
           const item = {
             id: String(row.id),
             codigo: row.codigo ? String(row.codigo) : undefined,
-            nombre: row.nombreCorto || row.nombre,
+            // El nombre corto (p. ej. "APT") es solo un código visual. Los DTO
+            // consumidos por reportes deben exponer el nombre oficial completo.
+            nombre: String(row.nombre || row.nombreCorto || ''),
             nombreCorto: row.nombreCorto || undefined,
           };
           programaMap.set(item.id, item);
@@ -1652,8 +1964,11 @@ export class PtaService {
         const territorialId = coalesceLookupKey(asig?.territorial_id, asig?.territorialId, asig?.territorial?.id);
         const cetapId = coalesceLookupKey(asig?.cetap_id, asig?.cetapId, asig?.sede_id, asig?.sedeId);
 
-        const programaNombre = coalesceString(asig?.programa_nombre, asig?.programa?.nombre, asig?.programa?.nombreCorto)
-          || (programaId ? programaMap.get(programaId)?.nombre : null);
+        const programaCatalogo = programaId ? programaMap.get(programaId) : null;
+        // El catálogo vigente es autoritativo. Esto corrige también PTAs legacy
+        // que persistieron `programa_nombre` con la abreviación (p. ej. "APT").
+        const programaNombre = programaCatalogo?.nombre
+          || coalesceString(asig?.programa_nombre_completo, asig?.programa_nombre, asig?.programa?.nombre, asig?.programa?.nombreCorto);
         const territorialNombre = coalesceString(asig?.territorial_nombre, asig?.territorial?.nombre)
           || (territorialId ? territorialMap.get(territorialId)?.nombre : null);
         const cetapNombre = coalesceString(asig?.cetap_nombre, asig?.sede_nombre, asig?.cetap?.nombre, asig?.sede?.nombre)
@@ -1661,6 +1976,9 @@ export class PtaService {
 
         if (programaNombre) {
           asig.programa_nombre = programaNombre;
+          asig.programa_nombre_completo = programaNombre;
+          if (programaCatalogo?.codigo) asig.programa_codigo = programaCatalogo.codigo;
+          if (programaCatalogo?.nombreCorto) asig.programa_nombre_corto = programaCatalogo.nombreCorto;
           programaNames.push(programaNombre);
         }
         if (territorialNombre) {
@@ -1926,7 +2244,7 @@ export class PtaService {
   }
 
   async getPTAsByDocente(docenteId: string, periodo?: string | undefined) {
-    const resolved = await this.resolveDocenteId(docenteId);
+    const resolved = await this.resolveDocenteId(docenteId, { periodo });
     const qb = this.ptaRepo.createQueryBuilder('pta');
     qb.andWhere('pta.docenteId = :docenteId', { docenteId: resolved });
     if (periodo) qb.andWhere('pta.periodo = :periodo', { periodo });
@@ -2050,6 +2368,7 @@ export class PtaService {
 
   async savePTA(input: SavePtaInput) {
     let id = coalesceString(input?.id);
+    const periodo = coalesceString(input?.periodo) || '2026-1';
     const isAdminEdit = Boolean(input?._adminEdit);
     const allowedComponentKeys = Array.isArray(input?._allowed_component_keys)
       ? input._allowed_component_keys
@@ -2072,14 +2391,17 @@ export class PtaService {
       input?.docente?.personaId,
     );
     const fallbackTerritorial = Array.isArray(input?.asignaturas) && input.asignaturas.length > 0 ? input.asignaturas[0].territorial_id : undefined;
-    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteIdCached(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
+    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteIdCached(docenteKey || '', {
+      fallbackTerritorial,
+      adminEdit: isAdminEdit,
+      periodo,
+    });
 
     // Enrich identity if missing
     if (!input.docente_nombre) {
       input.docente_nombre = dbName;
     }
 
-    const periodo = coalesceString(input?.periodo) || '2026-1';
     let estado = coalesceString(input?.estado) || 'BORRADOR';
 
     // No confiar en el total enviado por el navegador: puede venir de un
@@ -2176,15 +2498,21 @@ export class PtaService {
       }
     }
 
+    const horasAProgramar = await this.resolveHorasAProgramar(docenteId, input);
+    // Mantener sincronizados la columna tipada y el JSON estructurado. El cliente
+    // no puede imponer una bolsa distinta a la registrada en Banco de Docentes.
+    input = {
+      ...input,
+      horas_a_programar: horasAProgramar,
+      horas_asignables: horasAProgramar,
+      complementarias: Array.isArray(input?.complementarias)
+        ? input.complementarias.map((activity: any) => activity?.consumeTotalidad === true
+          ? { ...activity, horas: horasAProgramar }
+          : activity)
+        : input?.complementarias,
+    };
     const extMult = await this.getExtMultiplicadores();
     const horas = this.computeHorasTotales(input, extMult);
-    const horasAProgramar =
-      Number(input?.horas_a_programar ?? input?.horasAsignables ?? input?.horas_asignables) ||
-      (await this.calcHorasProgramables({
-        tipo_vinculacion: input?.tipo_vinculacion,
-        dedicacion: input?.dedicacion,
-        semanas_vinculacion: input?.semanas_vinculacion,
-      }));
 
     if (isPendingRoleApprovalState(estado)) {
       this.validatePtaForSubmission(input, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
@@ -2518,12 +2846,14 @@ export class PtaService {
               snapshotPta: existing.datosEstructurados ?? null,
               version: existing.version,
             }));
+            const partialDto = this.toPtaDto(existing, await this.getExtMultiplicadores());
+            await this.enrichHorasDesdeBanco([partialDto]);
             return {
               parcial: true,
               message: 'Tu aprobación fue registrada. Esperando aprobación de otras jefaturas.',
               nuevoEstado: existing.estado,
               aprobaciones: pendientes,
-              pta: this.toPtaDto(existing, await this.getExtMultiplicadores()),
+              pta: partialDto,
             };
           }
 
@@ -2584,13 +2914,11 @@ export class PtaService {
       const ds = existing.datosEstructurados as any || {};
       const extMult = await this.getExtMultiplicadores();
       const horas = this.computeHorasTotales(ds, extMult);
-      const horasAProgramar =
-        Number((existing as any).horasAsignables ?? ds?.horas_a_programar ?? ds?.horasAsignables ?? ds?.horas_asignables) ||
-        (await this.calcHorasProgramables({
-          tipo_vinculacion: ds?.tipo_vinculacion,
-          dedicacion: ds?.dedicacion,
-          semanas_vinculacion: ds?.semanas_vinculacion,
-        }));
+      const horasAProgramar = await this.resolveHorasAProgramar(
+        existing.docenteId,
+        ds,
+        Number((existing as any).horasAsignables),
+      );
       this.validatePtaForSubmission(ds, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
     }
 
@@ -2682,11 +3010,13 @@ export class PtaService {
       }
     }
 
+    const updatedDto = this.toPtaDto(updated, await this.getExtMultiplicadores());
+    await this.enrichHorasDesdeBanco([updatedDto]);
     return {
       ...(parallelApprovalResult || {}),
       version: updated.version,
       nuevoEstado: estadoFinal,
-      pta: this.toPtaDto(updated, await this.getExtMultiplicadores()),
+      pta: updatedDto,
     };
   }
 
@@ -3140,10 +3470,11 @@ export class PtaService {
       const diasSinMovimiento = p.updatedAt ? Math.floor((now - new Date(p.updatedAt).getTime()) / 86400000) : 0;
       return { ...dto, diasSinMovimiento };
     });
+    await this.enrichPtaSummaries(detalle);
 
     const alertas = {
       sinMovimiento7d: detalle.filter(p => p.diasSinMovimiento >= 7 && !['Aprobado','Rechazado','Borrador'].includes(p.estado)).length,
-      sobrecarga: detalle.filter(p => (p.total_horas_programadas || 0) > (p.horas_a_programar || 800)).length,
+      sobrecarga: detalle.filter(p => (p.total_horas_programadas || 0) > (p.horas_a_programar ?? 0)).length,
       sinHoras: detalle.filter(p => (p.total_horas_programadas || 0) === 0 && p.estado !== 'Borrador').length,
       escaladosSNA: detalle.filter(p => p.estado === 'ESCALADO_SNA').length,
     };
@@ -3487,7 +3818,7 @@ export class PtaService {
       evidencias: evidenciasByPta[pta.id] || [],
     }));
     await this.attachPtaReferenceDates(dtos);
-    return this.sortPtasByReferenceDate(dtos);
+    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
   }
 
   async getConfiguracionPTAGlobal() {
@@ -4199,7 +4530,9 @@ export class PtaService {
   async getDocentesDisponibles(query?: any) {
     const periodo = coalesceString(query?.periodo);
     const docentes = await this.ptaRepo.manager.query(`
-      SELECT
+      SELECT *
+      FROM (
+        SELECT DISTINCT ON (d."personaId")
         d.*,
         json_build_object(
           'id', p.id_person,
@@ -4233,14 +4566,21 @@ export class PtaService {
             'codigo', sede.cod_sede
           )
         END AS sede
-      FROM academic_work_plan."Docente" d
-      LEFT JOIN auth.personas p ON p.id_person = d."personaId"
-      LEFT JOIN auth."user" u ON u.id_person = p.id_person
-      LEFT JOIN auth.seccionales sec ON sec.id_seccional::text = COALESCE(d."territorialId", p.id_seccional::text)
-      LEFT JOIN auth.sedes sede ON sede.id_sede::text = COALESCE(d."sedeId", p.id_sede::text)
-      ORDER BY d."ordenListado" ASC NULLS LAST, d."createdAt" DESC
+        FROM academic_work_plan."Docente" d
+        LEFT JOIN auth.personas p ON p.id_person = d."personaId"
+        LEFT JOIN auth."user" u ON u.id_person = p.id_person
+        LEFT JOIN auth.seccionales sec ON sec.id_seccional::text = COALESCE(d."territorialId", p.id_seccional::text)
+        LEFT JOIN auth.sedes sede ON sede.id_sede::text = COALESCE(d."sedeId", p.id_sede::text)
+        ORDER BY
+          d."personaId",
+          CASE WHEN $1::text IS NOT NULL AND d."periodoCarga" = $1::text THEN 0 ELSE 1 END,
+          CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
+          CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END,
+          d."updatedAt" DESC
+      ) docentes_periodo
+      ORDER BY "ordenListado" ASC NULLS LAST, "createdAt" DESC
       LIMIT 5000
-    `);
+    `, [periodo || null]);
 
     const docenteIds = docentes.map((d) => d.id);
     const ptas = docenteIds.length
@@ -4255,10 +4595,12 @@ export class PtaService {
       : [];
 
     const extMult = await this.getExtMultiplicadores();
+    const ptaDtos = ptas.map((pta) => this.toPtaDto(pta, extMult));
+    await this.enrichHorasDesdeBanco(ptaDtos);
     const ptasByDocente: Record<string, any[]> = {};
-    for (const pta of ptas) {
-      ptasByDocente[pta.docenteId] ||= [];
-      ptasByDocente[pta.docenteId].push(this.toPtaDto(pta, extMult));
+    for (const dto of ptaDtos) {
+      ptasByDocente[dto.docente_id] ||= [];
+      ptasByDocente[dto.docente_id].push(dto);
     }
 
     return docentes.map((d: any) => ({
@@ -5354,6 +5696,11 @@ export class PtaService {
 
     // 1. Fetch all PTAs for the period
     const ptas = await this.ptaRepo.find({ where: { periodo: targetPeriodo } });
+    const horasDtos = ptas.map((pta) => this.toPtaDto(pta));
+    await this.enrichHorasDesdeBanco(horasDtos);
+    const horasAsignablesPorPta = new Map(
+      horasDtos.map((dto) => [String(dto.id), Number(dto.horas_a_programar) || 0]),
+    );
 
     // 2. Pipeline counts
     const pipeline = {
@@ -5398,7 +5745,7 @@ export class PtaService {
       const hExt = ext.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
       const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
       const hTotal = pta.horasTotales || (hDoc + hInv + hExt + hComp);
-      const hAsign = pta.horasAsignables || Number(ds.horas_a_programar) || 800;
+      const hAsign = horasAsignablesPorPta.get(String(pta.id)) ?? 0;
 
       totalDocencia += hDoc;
       totalInv += hInv;
