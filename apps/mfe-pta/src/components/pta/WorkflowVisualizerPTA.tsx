@@ -19,7 +19,7 @@ import {
   CheckCircle, Clock, Eye, Filter, GitBranch, Loader2,
   RefreshCw, TrendingUp, XCircle, Zap, ChevronDown,
   ChevronRight, Target, Shield, Users, Scale, FileText,
-  MessageSquare, ArrowLeftRight, Timer, Gauge,
+  MessageSquare, ArrowLeftRight, Timer, Gauge, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getWorkflowAnalytics } from '../../services/api/ptaApi';

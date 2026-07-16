@@ -285,6 +285,26 @@ const COMPONENTES_PTA = [
   { key: 'complementarias', label: 'Complementarias', color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
 ] as const;
 
+// Secciones de extensión (a nivel de permiso de aprobación pta.approve.extension.*).
+// Solo aplica cuando el componente de la evidencia es 'extension'. El valor se guarda
+// en la evidencia como `seccion_extension` y determina qué aprobador puede revisarla.
+const SECCIONES_EXTENSION = [
+  { key: 'capacitacion', label: 'Capacitación' },
+  { key: 'seleccion', label: 'Procesos de selección' },
+  { key: 'fortalecimiento', label: 'Fortalecimiento' },
+  { key: 'alto_gobierno', label: 'Alto Gobierno' },
+] as const;
+
+// Normaliza la sección de una actividad de extensión del PTA a una de las 4 secciones
+// de aprobación. laboratorio_innovacion / investigacion_aplicada se pliegan en
+// fortalecimiento (coherente con el backoffice). Cualquier otra queda como null.
+function normalizarSeccionExtension(seccion: unknown): string | null {
+  const key = String(seccion || '').trim();
+  if (key === 'laboratorio_innovacion' || key === 'investigacion_aplicada') return 'fortalecimiento';
+  if (['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(key)) return key;
+  return null;
+}
+
 type EstadoRevisionEvidencia = 'pendiente' | 'aprobado' | 'rechazado';
 
 function normalizeEvidenceStatus(value?: string | null) {
@@ -378,35 +398,59 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   // Form state — soporta múltiples archivos (máx 10)
   const [formFiles, setFormFiles] = useState<File[]>([]);
   const [formComponente, setFormComponente] = useState('investigacion');
+  const [formSeccionExtension, setFormSeccionExtension] = useState('');
   const [formHoras, setFormHoras] = useState<number>(0);
   const [formDescripcion, setFormDescripcion] = useState('');
 
-  // Calcular horas por componente del PTA
+  // Clave efectiva de cupo de horas: la extensión se separa por sección
+  // (extension:capacitacion, extension:seleccion, ...). El resto usa su componente.
+  const evidenciaHorasKey = (componente: string, seccion?: string | null): string =>
+    componente === 'extension' && seccion ? `extension:${seccion}` : componente;
+
+  // Horas de extensión POR SECCIÓN, tomadas del PTA (extension_actividades).
+  // La extensión ya NO es un cupo global: cada sección tiene sus propias horas.
+  const horasExtensionPorSeccion = useMemo<Record<string, number>>(() => {
+    const acc: Record<string, number> = { capacitacion: 0, seleccion: 0, fortalecimiento: 0, alto_gobierno: 0 };
+    const acts = Array.isArray(activePta?.extension_actividades) ? activePta.extension_actividades : [];
+    for (const a of acts) {
+      const sec = normalizarSeccionExtension(a?.seccion);
+      if (sec && acc[sec] !== undefined) acc[sec] += Number(a?.horas ?? a?.horas_ejecutadas ?? 0) || 0;
+    }
+    return acc;
+  }, [activePta]);
+
+  // Calcular horas por componente del PTA (extensión desglosada por sección).
   const horasPorComponente = useMemo<Record<string, number>>(() => ({
     docencia: activePta?.horas_docencia || 0,
     investigacion: activePta?.horas_investigacion || 0,
-    extension: activePta?.horas_extension || 0,
+    extension: activePta?.horas_extension || 0, // total (solo para etiqueta/auto-selección)
     complementarias: activePta?.horas_complementarias || 0,
     acad_admin: activePta?.horas_acad_admin || 0,
-  }), [activePta]);
+    'extension:capacitacion': horasExtensionPorSeccion.capacitacion,
+    'extension:seleccion': horasExtensionPorSeccion.seleccion,
+    'extension:fortalecimiento': horasExtensionPorSeccion.fortalecimiento,
+    'extension:alto_gobierno': horasExtensionPorSeccion.alto_gobierno,
+  }), [activePta, horasExtensionPorSeccion]);
 
-  // Horas aprobadas por componente (de evidencias aprobadas)
+  // Horas aprobadas por clave efectiva (de evidencias aprobadas)
   const horasAprobadasPorComponente = useMemo(() => {
-    const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0 };
+    const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0, 'extension:capacitacion': 0, 'extension:seleccion': 0, 'extension:fortalecimiento': 0, 'extension:alto_gobierno': 0 };
     evidencias.forEach(e => {
-      if (isApprovedEvidence(e) && e.componente_pta && acc[e.componente_pta] !== undefined) {
-        acc[e.componente_pta] += Number(e.horas_avance) || 0;
-      }
+      if (!isApprovedEvidence(e) || !e.componente_pta) return;
+      const key = evidenciaHorasKey(e.componente_pta, e.seccion_extension ?? e.seccionExtension);
+      if (acc[key] !== undefined) acc[key] += Number(e.horas_avance) || 0;
+      if (e.componente_pta === 'extension') acc.extension += Number(e.horas_avance) || 0;
     });
     return acc;
   }, [evidencias]);
 
   const horasReservadasPorComponente = useMemo(() => {
-    const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0 };
+    const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0, 'extension:capacitacion': 0, 'extension:seleccion': 0, 'extension:fortalecimiento': 0, 'extension:alto_gobierno': 0 };
     evidencias.forEach(e => {
-      if (isReservedEvidence(e) && e.componente_pta && acc[e.componente_pta] !== undefined) {
-        acc[e.componente_pta] += Number(e.horas_avance) || 0;
-      }
+      if (!isReservedEvidence(e) || !e.componente_pta) return;
+      const key = evidenciaHorasKey(e.componente_pta, e.seccion_extension ?? e.seccionExtension);
+      if (acc[key] !== undefined) acc[key] += Number(e.horas_avance) || 0;
+      if (e.componente_pta === 'extension') acc.extension += Number(e.horas_avance) || 0;
     });
     return acc;
   }, [evidencias]);
@@ -420,8 +464,12 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   }, [horasPorComponente, horasReservadasPorComponente]);
 
   useEffect(() => {
-    const disponibles = horasDisponiblesPorComponente[formComponente] || 0;
-    if (disponibles <= 0) {
+    // Para extensión, el cupo real es por sección: no auto-saltamos de componente ni
+    // clampeamos hasta que el docente elija la sección.
+    if (formComponente === 'extension' && !formSeccionExtension) return;
+    const cupoKey = evidenciaHorasKey(formComponente, formSeccionExtension);
+    const disponibles = horasDisponiblesPorComponente[cupoKey] || 0;
+    if (disponibles <= 0 && formComponente !== 'extension') {
       const next = COMPONENTES_PTA.find(c => (horasDisponiblesPorComponente[c.key] || 0) > 0)?.key;
       if (next && next !== formComponente) {
         setFormComponente(next);
@@ -429,7 +477,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       }
     }
     if (formHoras > disponibles) setFormHoras(disponibles);
-  }, [horasDisponiblesPorComponente, formComponente, formHoras]);
+  }, [horasDisponiblesPorComponente, formComponente, formSeccionExtension, formHoras]);
 
   const loadEvidencias = async () => {
     if (!activePtaId) return;
@@ -498,18 +546,24 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       toast.error(`Máximo ${MAX_ARCHIVOS_JUSTIFICACION} archivos por justificación`);
       return;
     }
-    const maxHoras = horasPorComponente[formComponente] || 0;
+    if (formComponente === 'extension' && !formSeccionExtension) {
+      toast.error('Selecciona la sección de extensión de esta evidencia');
+      return;
+    }
+    // Cupo POR SECCIÓN cuando es extensión; por componente en el resto.
+    const cupoKey = evidenciaHorasKey(formComponente, formSeccionExtension);
+    const maxHoras = horasPorComponente[cupoKey] || 0;
     const yaRegistradas = (evidencias
-      .filter(e => e.componente_pta === formComponente && isReservedEvidence(e))
+      .filter(e => evidenciaHorasKey(e.componente_pta, e.seccion_extension ?? e.seccionExtension) === cupoKey && isReservedEvidence(e))
       .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0));
     const disponibles = Math.max(maxHoras - yaRegistradas, 0);
     if (maxHoras > 0 && disponibles <= 0) {
-      toast.error('Este componente ya no tiene horas disponibles para nuevos soportes.');
+      toast.error('Esta sección/componente ya no tiene horas disponibles para nuevos soportes.');
       return;
     }
     if (formHoras <= 0) { toast.error('Indica cuántas horas avanza esta carga'); return; }
     if (maxHoras > 0 && formHoras > disponibles) {
-      toast.error(`Superas las horas del componente (${maxHoras}h). Tienes ${yaRegistradas}h aprobadas o pendientes; disponibles: ${disponibles}h.`);
+      toast.error(`Superas las horas disponibles (${maxHoras}h). Tienes ${yaRegistradas}h aprobadas o pendientes; disponibles: ${disponibles}h.`);
       return;
     }
     setSubmitting(true);
@@ -528,6 +582,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         tamanio_bytes: f.size,
         categoria: COMPONENTES_PTA.find(c => c.key === formComponente)?.label || formComponente,
         componente_pta: formComponente,
+        seccion_extension: formComponente === 'extension' ? formSeccionExtension : null,
         horas_avance: i === 0 ? formHoras : 0,
         storage_path: storagePath,
         storage_url: fileUrl,
@@ -538,7 +593,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     }
     if (ok > 0) {
       toast.success(`${ok} documento${ok > 1 ? 's' : ''} registrado${ok > 1 ? 's' : ''}`);
-      setShowForm(false); setFormFiles([]); setFormHoras(0); setFormDescripcion('');
+      setShowForm(false); setFormFiles([]); setFormHoras(0); setFormDescripcion(''); setFormSeccionExtension('');
       loadEvidencias();
     } else {
       toast.error('Error al registrar los documentos');
@@ -567,7 +622,29 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const filteredEvidencias = filtroComponente
     ? evidencias.filter(e => e.componente_pta === filtroComponente)
     : evidencias;
-  const horasDisponiblesForm = horasDisponiblesPorComponente[formComponente] || 0;
+  // Clave de cupo activa del formulario (extensión → por sección).
+  const formCupoKey = evidenciaHorasKey(formComponente, formSeccionExtension);
+  // Secciones de extensión que el PTA REALMENTE tiene (según sus actividades de
+  // extensión). Solo estas se ofrecen en el selector; las que el PTA no tiene ni
+  // aparecen. Fallback: si el PTA no trae actividades detalladas pero sí horas de
+  // extensión, se muestran las 4 (no se puede determinar la sección, no bloquear).
+  const seccionesDelPta = useMemo<Set<string>>(() => {
+    const set = new Set<string>();
+    const acts = Array.isArray(activePta?.extension_actividades) ? activePta.extension_actividades : [];
+    for (const a of acts) {
+      const sec = normalizarSeccionExtension(a?.seccion);
+      if (sec) set.add(sec);
+    }
+    return set;
+  }, [activePta]);
+  const seccionesExtensionDisponibles = seccionesDelPta.size > 0
+    ? SECCIONES_EXTENSION.filter(s => seccionesDelPta.has(s.key))
+    : ((activePta?.horas_extension || 0) > 0 ? [...SECCIONES_EXTENSION] : []);
+  // Horas disponibles para la carga actual: si es extensión sin sección elegida aún, 0
+  // (el docente debe elegir sección primero, pues cada una tiene su propio cupo).
+  const horasDisponiblesForm = (formComponente === 'extension' && !formSeccionExtension)
+    ? 0
+    : (horasDisponiblesPorComponente[formCupoKey] || 0);
   const sinHorasDisponibles = horasDisponiblesForm <= 0;
 
   return (
@@ -701,7 +778,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Componente del PTA *</label>
                 <select
                   value={formComponente}
-                  onChange={e => setFormComponente(e.target.value)}
+                  onChange={e => { setFormComponente(e.target.value); if (e.target.value !== 'extension') setFormSeccionExtension(''); }}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
                 >
                   {COMPONENTES_PTA.map(c => (
@@ -711,18 +788,48 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                   ))}
                 </select>
               </div>
-              <div>
+              {formComponente === 'extension' ? (
+                <div>
+                  <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Sección de extensión *</label>
+                  <select
+                    value={formSeccionExtension}
+                    onChange={e => setFormSeccionExtension(e.target.value)}
+                    disabled={seccionesExtensionDisponibles.length === 0}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
+                  >
+                    <option value="">{seccionesExtensionDisponibles.length === 0 ? 'Sin secciones con horas' : 'Selecciona la sección…'}</option>
+                    {seccionesExtensionDisponibles.map(s => (
+                      <option key={s.key} value={s.key}>{s.label} ({horasDisponiblesPorComponente[`extension:${s.key}`] || 0}h)</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Horas que avanza *</label>
+                  <input
+                    type="number" min={1} max={horasDisponiblesForm || 0}
+                    value={formHoras || ''}
+                    onChange={e => setFormHoras(Number(e.target.value))}
+                    placeholder={horasDisponiblesForm > 0 ? `Máx. ${horasDisponiblesForm}` : 'Sin horas disponibles'}
+                    disabled={sinHorasDisponibles}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              )}
+            </div>
+            {formComponente === 'extension' && (
+              <div style={{ marginBottom: 10 }}>
                 <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Horas que avanza *</label>
                 <input
                   type="number" min={1} max={horasDisponiblesForm || 0}
                   value={formHoras || ''}
                   onChange={e => setFormHoras(Number(e.target.value))}
-                  placeholder={horasDisponiblesForm > 0 ? `Máx. ${horasDisponiblesForm}` : 'Sin horas disponibles'}
+                  placeholder={!formSeccionExtension ? 'Elige la sección primero' : (horasDisponiblesForm > 0 ? `Máx. ${horasDisponiblesForm}` : 'Sin horas disponibles')}
                   disabled={sinHorasDisponibles}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
-            </div>
+            )}
             <div style={{ marginBottom: 10 }}>
               <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Descripción (opcional)</label>
               <input
