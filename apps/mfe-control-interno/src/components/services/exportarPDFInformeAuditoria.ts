@@ -561,14 +561,14 @@ export async function exportarPDFInformeAuditoria(
 
     // Destinatario
     doc.setFont('helvetica', 'bold');
-    doc.text('Doctora', margin, y);
+    doc.text('Doctor(a)', margin, y);
     y += LH;
     doc.text(destinatario.toUpperCase(), margin, y);
     y += LH;
     doc.setFont('helvetica', 'normal');
     doc.text(cargoDest, margin, y);
     y += LH;
-    doc.text(`Dirección Territorial ${unidad.replace('Dirección Territorial ', '')}`, margin, y);
+    doc.text(`Dirección ${unidad.replace('Dirección Territorial ', '')}`, margin, y);
     y += LH * 2;
 
     // Asunto
@@ -586,7 +586,7 @@ export async function exportarPDFInformeAuditoria(
 
     // Saludo
     const primerNombre = (destinatario.includes(' ') ? destinatario.split(' ')[0] : destinatario);
-    const saludo = `Respetada Doctora ${primerNombre}, reciba un cordial saludo:`;
+    const saludo = `Respetado(a) doctor(a) ${primerNombre}, reciba un cordial saludo:`;
     doc.text(saludo, margin, y);
     y += LH * 2;
 
