@@ -623,7 +623,7 @@ export function ReviewRequestsModule({
     if (success) {
       toast.success(`${label} copiado al portapapeles`);
     } else {
-      toast.error('No se pudo copiar. Por favor, cópialo manualmente.');
+      toast.error('No se pudo copiar. Por favor, cópielo manualmente.');
     }
   };
 
@@ -665,7 +665,7 @@ export function ReviewRequestsModule({
     const fileType = getRequesterSupportFileType(file);
     if (fileType === 'other') {
       toast.info('Este archivo no tiene vista previa disponible', {
-        description: 'Puedes descargarlo para abrirlo en tu equipo.',
+        description: 'Puede descargarlo para abrirlo en su equipo.',
       });
       return;
     }
@@ -776,7 +776,7 @@ export function ReviewRequestsModule({
     }
 
     if (uniqueFiles.length > availableSlots) {
-      toast.error(`Solo puedes adjuntar ${availableSlots} archivo(s) más`, {
+      toast.error(`Solo puede adjuntar ${availableSlots} archivo(s) más`, {
         description: `La solicitud admite máximo ${MAX_APPROVAL_FILES} archivos en total.`,
       });
       return;
@@ -808,7 +808,7 @@ export function ReviewRequestsModule({
     const nextFiles = [...approvalFiles, ...selected];
     const currentPersistedFiles = existingApprovalFiles.length;
     if (currentPersistedFiles + nextFiles.length > MAX_APPROVAL_FILES) {
-      toast.error(`Solo puedes adjuntar máximo ${MAX_APPROVAL_FILES} archivos`);
+      toast.error(`Solo puede adjuntar máximo ${MAX_APPROVAL_FILES} archivos`);
       event.target.value = '';
       return;
     }
@@ -1175,7 +1175,7 @@ export function ReviewRequestsModule({
         console.error('Error cargando catálogos de aprobación:', error);
         if (isMounted) {
           setStructureCatalogNotice(
-            'No se pudo actualizar el catálogo de Estructura Organizacional. Se conserva el último catálogo cargado; intenta nuevamente.',
+            'No se pudo actualizar el catálogo de Estructura Organizacional. Se conserva el último catálogo cargado; intente nuevamente.',
           );
         }
       } finally {
@@ -1226,7 +1226,7 @@ export function ReviewRequestsModule({
     [approvalForm.programName, existingGraduatePrograms],
   );
   const duplicateProgramMessage =
-    'Este programa ya existe para el documento consultado. Selecciona un programa diferente para cargar la revisión.';
+    'Este programa ya existe para el documento consultado. Seleccione un programa diferente para cargar la revisión.';
 
   const campusOptions = useMemo(() => {
     const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
@@ -1731,8 +1731,8 @@ export function ReviewRequestsModule({
     if (!trimmedReviewNotes) {
       toast.error(
         reviewAction === 'approve'
-          ? 'Por favor ingresa notas de revisión'
-          : 'Por favor ingresa la descripción del rechazo',
+          ? 'Por favor, ingrese las notas de revisión'
+          : 'Por favor, ingrese la descripción del rechazo',
       );
       return;
     }
@@ -1810,7 +1810,7 @@ export function ReviewRequestsModule({
         return;
       }
       if (!approvalForm.programName) {
-        toast.error('Selecciona el programa');
+        toast.error('Seleccione el programa');
         return;
       }
       if (selectedProgramAlreadyExists) {
@@ -1818,7 +1818,7 @@ export function ReviewRequestsModule({
         return;
       }
       if (!approvalForm.graduationDate) {
-        toast.error('Selecciona la fecha de graduación');
+        toast.error('Seleccione la fecha de graduación');
         return;
       }
       if (!graduationDate) {
@@ -1834,11 +1834,11 @@ export function ReviewRequestsModule({
         return;
       }
       if (!approvalForm.campus) {
-        toast.error('Selecciona la sede');
+        toast.error('Seleccione la sede');
         return;
       }
       if (!approvalForm.seccionalName) {
-        toast.error('Selecciona la territorial');
+        toast.error('Seleccione la territorial');
         return;
       }
       const selectedSeccionalKey = normalizeKey(approvalForm.seccionalName);
@@ -2039,8 +2039,8 @@ export function ReviewRequestsModule({
       : 'Confirmar Acción';
   const confirmDialogDescription =
     confirmAction?.type === 'start_review'
-      ? 'Confirma que deseas iniciar la revisión. El solicitante recibirá una notificación por correo.'
-      : 'Verifica que deseas continuar con esta acción.';
+      ? 'Confirme que desea iniciar la revisión. El solicitante recibirá una notificación por correo.'
+      : 'Verifique que desea continuar con esta acción.';
   const confirmButtonLabel =
     confirmAction?.type === 'start_review'
       ? 'Iniciar revisión'
@@ -2442,17 +2442,17 @@ export function ReviewRequestsModule({
             <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
               {isMyReviewsScope
                 ? myReviewView === 'pending'
-                  ? 'No tienes revisiones pendientes'
-                  : 'No tienes revisiones revisadas'
+                  ? 'No hay revisiones pendientes'
+                  : 'No hay revisiones completadas'
                 : 'No se encontraron solicitudes'}
             </h3>
             <p className="text-sm text-[#6B7280] mb-6">
               {hasActiveFilters
-                ? 'Intenta ajustar los filtros de búsqueda'
+                ? 'Intente ajustar los filtros de búsqueda'
                 : isMyReviewsScope
                   ? myReviewView === 'pending'
                     ? 'No hay solicitudes propias por revisar o corregir en este momento'
-                    : 'Todavía no tienes solicitudes propias enviadas o cerradas'
+                    : 'Todavía no hay solicitudes propias enviadas o cerradas'
                   : 'No hay solicitudes en este momento'}
             </p>
             {hasActiveFilters && (
@@ -3189,7 +3189,7 @@ export function ReviewRequestsModule({
               {reviewActionLabel}
             </DialogTitle>
             <DialogDescription>
-              Registra el concepto del revisor para que el aprobador tome la decisión final
+              Registre el concepto del revisor para que el aprobador tome la decisión final
             </DialogDescription>
           </DialogHeader>
 
@@ -3246,7 +3246,7 @@ export function ReviewRequestsModule({
                       </p>
                       <p className="mt-2 text-xs text-amber-700">
                         Los datos y archivos cargados previamente se conservan.
-                        Corrige solo lo necesario y vuelve a enviar.
+                        Corrija solo lo necesario y vuelva a enviar.
                       </p>
                     </div>
                   </div>
@@ -3264,8 +3264,8 @@ export function ReviewRequestsModule({
                 onBlur={() => setReviewNotes((value) => value.trim())}
                 placeholder={
                   reviewAction === 'approve'
-                    ? 'Describe la información revisada y los soportes cargados...'
-                    : 'Describe la novedad encontrada para que el aprobador la evalúe...'
+                    ? 'Describa la información revisada y los soportes cargados...'
+                    : 'Describa la novedad encontrada para que el aprobador la evalúe...'
                 }
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
@@ -3570,7 +3570,7 @@ export function ReviewRequestsModule({
                             ? campusOptions.length > 0
                               ? 'Seleccionar sede'
                               : 'No hay sedes para esta territorial'
-                            : 'Selecciona primero una territorial'}
+                            : 'Seleccione primero una territorial'}
                       </option>
                       {campusOptions.map((sede, index) => (
                         <option key={`${sede}-${index}`} value={sede}>
@@ -3662,7 +3662,7 @@ export function ReviewRequestsModule({
                       <span className="mt-1 text-xs">
                         {approvalFileSlotsRemaining > 0
                           ? `${approvalFileSlotsRemaining} cupo(s) disponible(s)`
-                          : 'Quita un archivo para adjuntar otro'}
+                          : 'Quite un archivo para adjuntar otro'}
                       </span>
                     </label>
                   </div>
@@ -3700,7 +3700,7 @@ export function ReviewRequestsModule({
                         ))}
                       </div>
                       <p className="mt-2 text-xs text-blue-800">
-                        Si un archivo estaba mal, quítalo y adjunta la versión
+                        Si un archivo es incorrecto, elimínelo y adjunte la versión
                         corregida. Los demás se conservarán.
                       </p>
                     </div>
@@ -3741,7 +3741,7 @@ export function ReviewRequestsModule({
                     </>
                   ) : (
                     <p className="text-xs text-gray-500">
-                      {`Adjunta documentos PDF, Word, Excel o imágenes (máx. ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo).`}
+                      {`Adjunte documentos PDF, Word, Excel o imágenes (máx. ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo).`}
                     </p>
                   )}
                 </div>

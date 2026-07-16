@@ -149,7 +149,7 @@ const getPersonNameValidationError = (value: string, fieldName: string) => {
   const normalizedValue = normalizeTextSpaces(value);
 
   if (!normalizedValue) {
-    return `Por favor, ingresa ${fieldName}`;
+    return `Por favor, ingrese ${fieldName}`;
   }
 
   if (normalizedValue.length < 2) {
@@ -211,7 +211,7 @@ const showRequestErrorToast = (error: any, title: string) => {
   }
 
   toast.error(title, {
-    description: error?.message || "Por favor, intenta nuevamente",
+    description: error?.message || "Por favor, intente nuevamente",
   });
 };
 
@@ -384,7 +384,7 @@ export function PublicTitleVerification({
     const nextBaseRecord = explicitBaseRecord || selectedBaseRecord;
 
     if (!nextBaseRecord) {
-      toast.error("Selecciona primero la persona correcta para continuar");
+      toast.error("Seleccione primero la persona correcta para continuar");
       return;
     }
 
@@ -535,7 +535,7 @@ export function PublicTitleVerification({
     const normalizedRequesterEmail = requesterEmail.trim();
 
     if (!normalizedDocumentNumber) {
-      return "Por favor, ingresa el número de documento del graduado";
+      return "Por favor, ingrese el número de documento del graduado";
     }
 
     if (
@@ -565,7 +565,7 @@ export function PublicTitleVerification({
 
     if (requesterType === "empresa") {
       if (!normalizedRequesterName) {
-        return "Por favor, ingresa el nombre de la empresa";
+        return "Por favor, ingrese el nombre de la empresa";
       }
 
       if (normalizedRequesterName.length < 2) {
@@ -586,7 +586,7 @@ export function PublicTitleVerification({
     }
 
     if (!normalizedRequesterEmail) {
-      return "Por favor, ingresa tu correo electrónico";
+      return "Por favor, ingrese su correo electrónico";
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -594,7 +594,7 @@ export function PublicTitleVerification({
       normalizedRequesterEmail.length > EMAIL_MAX_LENGTH ||
       !emailRegex.test(normalizedRequesterEmail)
     ) {
-      return "Por favor, ingresa un correo electrónico válido";
+      return "Por favor, ingrese un correo electrónico válido";
     }
     if (
       graduateDocumentIssueDate &&
@@ -603,7 +603,7 @@ export function PublicTitleVerification({
       return GRADUATION_DATE_FUTURE_ERROR;
     }
     if (!acceptedTerms) {
-      return "Debes aceptar los términos y condiciones y la política de tratamiento de datos personales";
+      return "Debe aceptar los términos y condiciones para continuar";
     }
 
     if (
@@ -611,30 +611,30 @@ export function PublicTitleVerification({
       !options?.skipMissingTitleReview
     ) {
       if (!missingTitleBaseRecord) {
-        return "Selecciona primero la persona correcta para crear la solicitud de revisión";
+        return "Seleccione primero la persona correcta para crear la solicitud de revisión";
       }
 
       const normalizedMissingTitle =
         normalizeTextSpaces(missingTitleProgramName);
       if (!normalizedMissingTitle) {
-        return "Selecciona el título que deseas enviar a revisión";
+        return "Seleccione el título que desea enviar a revisión";
       }
       if (
         !(GRADUATE_PROGRAM_OPTIONS as readonly string[]).includes(
           normalizedMissingTitle,
         )
       ) {
-        return "Selecciona un título válido de la lista de programas";
+        return "Seleccione un título válido de la lista de programas";
       }
       if (
         titleAlreadyExistsForMissingReview(normalizedMissingTitle)
       ) {
-        return "Ese título ya existe para la persona seleccionada. Selecciona un título diferente para solicitar revisión.";
+        return "Ese título ya existe para la persona seleccionada. Seleccione un título diferente para solicitar revisión.";
       }
     }
 
     if (options?.requireManualReviewSupport && !manualReviewSupportFile) {
-      return "Adjunta el soporte PDF de la solicitud para enviar la revisión manual";
+      return "Adjunte el soporte PDF de la solicitud para enviar la revisión manual";
     }
 
     if (manualReviewSupportFile) {
@@ -723,7 +723,7 @@ export function PublicTitleVerification({
 
     if (!manualReviewSupportFile) {
       throw new Error(
-        "Adjunta el soporte PDF de la solicitud para enviar la revisión manual",
+        "Adjunte el soporte PDF de la solicitud para enviar la revisión manual",
       );
     }
 
@@ -760,13 +760,13 @@ export function PublicTitleVerification({
         description:
           isMissingTitleReview
             ? "Se creó una solicitud de revisión para validar otro título que no aparece en la plataforma."
-            : "No encontramos coincidencias con ese documento. Se generó una solicitud de revisión manual (15 días hábiles).",
+            : "No se encontraron coincidencias con ese documento. Se generó una solicitud de revisión manual (15 días hábiles).",
       });
       return;
     }
 
     if (!response.certificado) {
-      throw new Error("No se pudo generar el certificado. Intenta nuevamente.");
+      throw new Error("No se pudo generar el certificado. Intente nuevamente.");
     }
 
     const effectiveRequesterName =
@@ -829,7 +829,7 @@ export function PublicTitleVerification({
       setManualReviewSupportUploadProgress(0);
       if (error?.status === 409) {
         setManualReviewAlertMessage(
-          "Ya registramos una solicitud de revisión manual para este documento y todavía se encuentra en proceso. Mientras esa solicitud siga activa, no es posible crear otra.",
+          "Ya se registró una solicitud de revisión manual para este documento y todavía se encuentra en proceso. Mientras esa solicitud siga activa, no es posible crear otra.",
         );
         return;
       }
@@ -873,10 +873,10 @@ export function PublicTitleVerification({
       setMatchSuggestions(response.suggestions.slice(0, 3));
       setSelectedSuggestionId("");
 
-      toast.info("Selecciona la persona correcta para continuar", {
+      toast.info("Seleccione la persona correcta para continuar", {
         description:
           response.message ||
-          "Encontramos coincidencias con ese documento. Debes elegir una para generar el certificado.",
+          "Se encontraron coincidencias con ese documento. Debe elegir una para generar el certificado.",
       });
     } catch (error: any) {
       console.error("Error al buscar coincidencias:", error);
@@ -923,10 +923,10 @@ export function PublicTitleVerification({
       setMatchSuggestions(response.suggestions.slice(0, 3));
       setSelectedSuggestionId("");
 
-      toast.info("Selecciona la persona correcta para continuar", {
+      toast.info("Seleccione la persona correcta para continuar", {
         description:
           response.message ||
-          "Encontramos coincidencias con ese documento. Debes elegir una para generar el certificado.",
+          "Se encontraron coincidencias con ese documento. Debe elegir una para generar el certificado.",
       });
     } catch (error: any) {
       console.error("Error al buscar coincidencias:", error);
@@ -970,7 +970,7 @@ export function PublicTitleVerification({
     );
 
     if (!selectedSuggestion) {
-      toast.error("Debes seleccionar una coincidencia para continuar");
+      toast.error("Debe seleccionar una coincidencia para continuar");
       return;
     }
 
@@ -1058,11 +1058,11 @@ export function PublicTitleVerification({
   const manualReviewDisplayGraduationDate = graduateDocumentIssueDate;
   const isMissingTitleReviewCreated = createdReviewReason === "missing_title";
   const manualReviewTitle = isMissingTitleManualReview
-    ? "¿Te falta otro título?"
-    : "No encontramos coincidencias en la base de datos";
+    ? "¿Le falta otro título?"
+    : "No se encontraron coincidencias en la base de datos";
   const manualReviewDescription = isMissingTitleManualReview
-    ? "Si tienes otro título de ESAP que no aparece entre los resultados disponibles, puedes enviar una solicitud de revisión manual para que el equipo de Verificación de títulos lo valide."
-    : "No encontramos ningún graduado ni coincidencias con los datos ingresados. Si deseas, puedes enviar ahora una solicitud de revisión manual para la verificación del título de egresado.";
+    ? "Si tiene otro título de la ESAP que no aparece entre los resultados disponibles, puede enviar una solicitud de revisión manual para que el equipo de Verificación de títulos lo valide."
+    : "No se encontró ningún graduado ni coincidencias con los datos ingresados. Si lo desea, puede enviar una solicitud de revisión manual para verificar el título del graduado.";
   const manualReviewCancelLabel = isMissingTitleManualReview
     ? "Volver a los resultados"
     : "Seguir revisando";
@@ -1171,18 +1171,18 @@ export function PublicTitleVerification({
                       </>
                     ) : (
                       <>
-                        No encontramos el registro del graduado con el documento{" "}
+                        No se encontró el registro del graduado con el documento{" "}
                         <span className="font-mono font-bold text-[#1e5da8]">
                           {graduateDocumentNumber}
                         </span>{" "}
-                        en nuestra base de datos de graduados ESAP.
+                        en la base de datos de graduados de la ESAP.
                       </>
                     )}
                   </p>
                   <p className="text-gray-700 leading-relaxed">
-                    Hemos generado una{" "}
+                    Se generó una{" "}
                     <strong>solicitud de revisión manual</strong> que será
-                    evaluada por nuestro equipo administrativo en los próximos{" "}
+                    evaluada por el equipo administrativo en los próximos{" "}
                     <strong className="text-amber-600">15 días hábiles</strong>.
                   </p>
                 </div>
@@ -1191,7 +1191,7 @@ export function PublicTitleVerification({
                 <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-2xl p-6">
                   <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <Shield className="w-5 h-5 text-[#1e5da8]" />
-                    Datos de tu Solicitud
+                    Datos de la solicitud
                   </h3>
                   <div className="grid sm:grid-cols-2 gap-6">
                     <div className="space-y-1">
@@ -1284,7 +1284,7 @@ export function PublicTitleVerification({
                               "El equipo de Verificación de títulos revisará el título seleccionado para crear el nuevo registro si corresponde."
                             ) : (
                               <>
-                                Te enviaremos un correo de confirmación a{" "}
+                                Se enviará un correo de confirmación a{" "}
                                 <strong className="text-gray-900">
                                   {requesterEmail}
                                 </strong>
@@ -1297,7 +1297,7 @@ export function PublicTitleVerification({
                             ✓
                           </span>
                           <span className="text-gray-700">
-                            Nuestro equipo revisará la solicitud en los próximos{" "}
+                            El equipo revisará la solicitud en los próximos{" "}
                             <strong className="text-amber-600">
                               15 días hábiles
                             </strong>
@@ -1308,7 +1308,7 @@ export function PublicTitleVerification({
                             ✓
                           </span>
                           <span className="text-gray-700">
-                            Recibirás una notificación con el resultado de la
+                            Recibirá una notificación con el resultado de la
                             revisión
                           </span>
                         </li>
@@ -1710,7 +1710,7 @@ export function PublicTitleVerification({
             </span>
           </h1>
           <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto leading-relaxed px-4">
-            Obtén un certificado oficial de verificación con código QR en
+            Obtenga un certificado oficial de verificación con código QR en
             segundos
           </p>
         </motion.div>
@@ -1761,7 +1761,7 @@ export function PublicTitleVerification({
                       Información del Proceso
                     </p>
                     <p className="text-sm text-gray-600 leading-relaxed">
-                      Verifica títulos académicos de graduados ESAP. El
+                      Verifique títulos académicos de graduados de la ESAP. El
                       certificado se genera instantáneamente si el graduado está
                       registrado, o en 15 días hábiles si requiere revisión
                       manual.
@@ -1866,7 +1866,7 @@ export function PublicTitleVerification({
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                           />
                           <p className="text-xs text-gray-500 mt-1">
-                            Si lo tienes, ingresa manualmente el número de NIT de la empresa.
+                            Si dispone de este dato, ingrese manualmente el NIT de la empresa.
                           </p>
                         </div>
 
@@ -2059,7 +2059,7 @@ export function PublicTitleVerification({
                             htmlFor="graduateEmail"
                             className="text-xs font-semibold text-gray-700 mb-2 block"
                           >
-                            Correo donde deseas recibir el certificado{" "}
+                            Correo en el que desea recibir el certificado{" "}
                             <span className="text-red-500">*</span>
                           </Label>
                           <Input
@@ -2072,7 +2072,7 @@ export function PublicTitleVerification({
                               )
                             }
                             maxLength={EMAIL_MAX_LENGTH}
-                            placeholder="tucorreo@ejemplo.com"
+                            placeholder="correo@ejemplo.com"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                             required
                           />
@@ -2094,7 +2094,7 @@ export function PublicTitleVerification({
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-900 mb-1">
-                        Verifica que todos los datos sean correctos antes de
+                        Verifique que todos los datos sean correctos antes de
                         enviar la solicitud.
                       </p>
                       <p className="text-xs text-gray-600">
@@ -2130,8 +2130,9 @@ export function PublicTitleVerification({
                           className="font-semibold text-[#1e5da8] underline decoration-[#1e5da8]/30 underline-offset-2 hover:text-[#174a86]"
                         >
                           ventanillaunica@esap.edu.co
-                        </a>{" "}
-                        adjuntando copia de Diploma o Acta de Grado.
+                        </a>
+                        , la cual será resuelta en un plazo de quince (15) días
+                        hábiles.
                       </p>
                     </div>
                   </div>
@@ -2149,9 +2150,9 @@ export function PublicTitleVerification({
                           Selección obligatoria de coincidencias
                         </p>
                         <p className="text-xs text-gray-600">
-                          Selecciona la persona correcta entre las coincidencias
-                          encontradas con ese documento antes de generar el
-                          certificado.
+                          Seleccione la persona correcta entre las coincidencias
+                          encontradas con el documento de identificación antes de
+                          generar el certificado.
                         </p>
                       </div>
                     </div>
@@ -2251,11 +2252,11 @@ export function PublicTitleVerification({
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="space-y-1">
                             <p className="text-sm font-semibold text-amber-950">
-                              ¿Te falta otro título?
+                              ¿Le falta otro título?
                             </p>
                             <p className="text-xs leading-5 text-amber-900">
-                              Si el título que buscas no aparece en estas
-                              coincidencias, puedes crear una solicitud de
+                              Si el título que busca no aparece en estas
+                              coincidencias, puede crear una solicitud de
                               revisión manual.
                             </p>
                           </div>
@@ -2282,54 +2283,56 @@ export function PublicTitleVerification({
                       id="acceptTerms"
                       checked={acceptedTerms}
                       onChange={(e) => setAcceptedTerms(e.target.checked)}
+                      aria-describedby="acceptTerms-description"
                       className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
                     />
-                    <label
-                      htmlFor="acceptTerms"
-                      className="flex-1 cursor-pointer"
-                    >
-                      <p className="text-sm font-semibold text-gray-900 mb-2">
-                        Acepto los Términos y Condiciones y la Política de
-                        Tratamiento de Datos Personales
-                        <span className="text-red-500 ml-1">*</span>
-                      </p>
-                      <div className="text-xs text-gray-700 space-y-1">
+                    <div className="min-w-0 flex-1">
+                      <label
+                        htmlFor="acceptTerms"
+                        className="block cursor-pointer"
+                      >
+                        <span className="text-sm font-semibold text-gray-900">
+                          Acepto los términos y condiciones y la política de
+                          tratamiento de datos personales
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <div
+                        id="acceptTerms-description"
+                        className="mt-2 space-y-2 text-xs leading-relaxed text-gray-700"
+                      >
                         <p>
                           Autorizo a la Escuela Superior de Administración
-                          Pública (ESAP) para que en los términos legalmente
+                          Pública (ESAP) para que, en los términos legalmente
                           establecidos, recolecte, almacene, use, circule,
                           suprima, comparta, actualice y transmita mis datos
-                          personales de acuerdo con la{" "}
+                          personales, de acuerdo con la{" "}
                           <strong>Ley 1581 de 2012</strong> y el{" "}
-                          <strong>Decreto 1377 de 2013</strong>, con la
-                          finalidad de:
+                          <strong>Decreto 1377 de 2013</strong>, compilado en el
+                          capítulo 2.2.2.25 del{" "}
+                          <strong>Decreto 1074 de 2015</strong>.
                         </p>
-                        <ul className="list-disc list-inside pl-2 space-y-0.5">
-                          <li>
-                            Verificar la autenticidad de la información
-                            académica del graduado
-                          </li>
-                          <li>
-                            Generar y expedir certificados de verificación de
-                            títulos
-                          </li>
-                          <li>
-                            Enviar el certificado al correo electrónico
-                            informado en la solicitud
-                          </li>
-                          <li>
-                            Mantener un registro histórico de las solicitudes
-                            realizadas
-                          </li>
-                        </ul>
-                        <p className="mt-2">
-                          Declaro que he leído y acepto que los datos
-                          suministrados son verídicos y que conozco mis derechos
-                          como titular de la información (acceso, rectificación,
-                          actualización, supresión y revocación).
+                        <p>
+                          El tratamiento se realizará conforme a la{" "}
+                          <a
+                            href="https://www.esap.edu.co/ley-de-transparencia-y-acceso-a-la-informacion/politica-proteccion-datos-personales/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-semibold text-[#1e5da8] underline decoration-[#1e5da8]/40 underline-offset-2 transition-colors hover:text-[#174a86] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                          >
+                            Política de Protección de Datos Personales aprobada
+                            por el Acuerdo SC No. 014 de 2022 de la ESAP
+                          </a>
+                          .
+                        </p>
+                        <p>
+                          Declaro que los datos suministrados son verídicos y
+                          que conozco mis derechos como titular de la
+                          información: acceso, rectificación, actualización,
+                          supresión y revocación.
                         </p>
                       </div>
-                    </label>
+                    </div>
                   </div>
                 </div>
 
@@ -2396,7 +2399,7 @@ export function PublicTitleVerification({
                             htmlFor="missing-title-program"
                             className="mb-2 block text-xs font-semibold text-gray-700"
                           >
-                            Título que deseas revisar{" "}
+                            Título que desea revisar{" "}
                             <span className="text-red-500">*</span>
                           </Label>
                           <select
@@ -2415,14 +2418,14 @@ export function PublicTitleVerification({
                             ))}
                           </select>
                           <p className="mt-2 text-xs leading-5 text-gray-600">
-                            Selecciona el título que no aparece en los
+                            Seleccione el título que no aparece en los
                             resultados para que el equipo de Verificación de títulos pueda
                             validarlo.
                           </p>
                           {selectedMissingTitleAlreadyExists && (
                             <p className="mt-2 text-xs font-semibold leading-5 text-red-600">
                               Ese título ya existe para la persona seleccionada.
-                              Selecciona un título diferente para solicitar
+                              Seleccione un título diferente para solicitar
                               revisión.
                             </p>
                           )}
@@ -2437,7 +2440,7 @@ export function PublicTitleVerification({
                               <span className="text-red-500">*</span>
                             </p>
                             <p className="mt-1 text-xs leading-5 text-gray-600">
-                              Adjunta el diploma, acta de grado o soporte
+                              Adjunte el diploma, acta de grado o soporte
                               relacionado en PDF. Tamaño máximo:{" "}
                               {MANUAL_REVIEW_SUPPORT_MAX_SIZE_LABEL}.
                             </p>
@@ -2506,7 +2509,7 @@ export function PublicTitleVerification({
                           </div>
                         ) : (
                           <p className="mt-3 rounded-lg border border-dashed border-amber-300 bg-amber-50/60 px-3 py-2 text-xs font-semibold text-amber-900">
-                            Adjunta un PDF para poder enviar la solicitud de revisión.
+                            Adjunte un archivo PDF para enviar la solicitud de revisión.
                           </p>
                         )}
                       </div>
@@ -2514,7 +2517,7 @@ export function PublicTitleVerification({
                       <div className="rounded-xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
                         La revisión manual tiene un tiempo estimado de{" "}
                         <span className="font-semibold">15 días hábiles</span>.
-                        No se enviará ninguna solicitud hasta que lo confirmes.
+                        No se enviará ninguna solicitud hasta que se confirme la acción.
                       </div>
 
                       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -2572,7 +2575,7 @@ export function PublicTitleVerification({
                               {manualReviewAlertMessage}
                             </p>
                             <p className="mt-2 leading-6">
-                              Nuestro equipo debe terminar esa validación antes de permitir una nueva solicitud. Si necesitas orientación adicional, comunícate con{" "}
+                              El equipo debe finalizar esa validación antes de permitir una nueva solicitud. Si necesita orientación adicional, comuníquese con{" "}
                               <a
                                 href="mailto:ventanillaunica@esap.edu.co"
                                 className="font-semibold text-[#1e5da8] underline decoration-[#1e5da8]/30 underline-offset-2 hover:text-[#174a86]"
@@ -2632,14 +2635,14 @@ export function PublicTitleVerification({
                   {hasPendingMatchSuggestions && (
                     <p className="text-xs text-blue-700 text-center">
                       <Shield className="w-3 h-3 inline-block mr-1" />
-                      Resuelve las coincidencias encontradas usando las acciones superiores.
+                      Resuelva las coincidencias encontradas mediante las acciones superiores.
                     </p>
                   )}
 
                   {!acceptedTerms && (
                     <p className="text-xs text-gray-500 text-center">
                       <Shield className="w-3 h-3 inline-block mr-1" />
-                      Debes aceptar los términos y condiciones para continuar
+                      Debe aceptar los términos y condiciones para continuar
                     </p>
                   )}
                 </div>

@@ -285,7 +285,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       console.error('Error al descargar certificado:', error);
       toast.error('Error al descargar certificado', {
         id: 'pdf-generation',
-        description: error.message || 'Por favor, intenta de nuevo'
+        description: error.message || 'Por favor, intente nuevamente'
       });
     } finally {
       setIsDownloading(false);
@@ -319,7 +319,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       console.error('Error al enviar certificado por correo:', error);
       toast.error('No se pudo enviar el certificado por correo', {
         id: 'auto-email-certificate',
-        description: error?.message || 'Intenta nuevamente',
+        description: error?.message || 'Intente nuevamente',
         duration: 5000,
       });
     } finally {
@@ -349,14 +349,14 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     } catch (error) {
       console.error('Error al copiar enlace de verificación:', error);
       toast.error('No se pudo copiar el enlace', {
-        description: 'Por favor, copia manualmente la URL de verificación',
+        description: 'Por favor, copie manualmente la URL de verificación',
       });
     }
   };
 
   const verificationUrl = `${getRuntimePublicBaseUrl()}/verificar-certificado/${certificate.qrCode}`;
   const templateFechaExpedicion = formatDateLong(certificate.generatedAt);
-  const templateLugarFecha = `Bogotá D.C. ${formatDateLong(certificate.graduate.graduationDate)}`;
+  const templateLugarFecha = `Bogotá, D. C., ${formatDateLong(certificate.graduate.graduationDate)}`;
   const templateRegistroFolio = certificate.graduate.diplomaNumber || 'N/A';
   const templateTitulo = certificate.graduate.titleType || certificate.graduate.programName;
 
@@ -402,7 +402,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
           </div>
 
           <div style={{ textAlign: 'left', marginBottom: '30px', fontSize: '10.5pt' }}>
-            Bogotá, D.C., {templateFechaExpedicion}
+            Bogotá, D. C., {templateFechaExpedicion}
           </div>
 
           <div style={{ textAlign: 'center', fontSize: '14pt', fontWeight: 'bold', marginBottom: '18px', textTransform: 'uppercase' }}>
@@ -419,8 +419,8 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
           <div style={{ textAlign: 'justify', marginBottom: '28px', padding: '0 15px' }}>
             <p style={{ marginBottom: '18px' }}>
-              De conformidad con los registros en el Sistema de Control Académico de la Escuela Superior de
-              Administración Pública -ESAP-, nos permitimos informar la verificación del siguiente título académico:
+              De conformidad con los registros del Sistema de Control Académico de la Escuela Superior de
+              Administración Pública (ESAP), se informa la verificación del siguiente título académico:
             </p>
           </div>
 
@@ -436,7 +436,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
               </tr>
               <tr>
                 <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', fontWeight: 'bold', backgroundColor: '#f5f5f5', verticalAlign: 'middle' }}>
-                  Nombres y apellidos del egresado graduado:
+                   Nombres y apellidos del graduado:
                 </td>
                 <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', verticalAlign: 'middle' }}>
                   {certificate.graduate.fullName}
@@ -460,7 +460,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
               </tr>
               <tr>
                 <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', fontWeight: 'bold', backgroundColor: '#f5f5f5', verticalAlign: 'middle' }}>
-                  Registro – Folio - Libro:
+                   Registro - Folio - Libro:
                 </td>
                 <td style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '10pt', verticalAlign: 'middle' }}>
                   {templateRegistroFolio}
@@ -473,7 +473,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
             <div style={{ flex: 1 }}>
               <p style={{ marginBottom: '12px' }}>Cordialmente,</p>
               <div style={{ marginTop: '22px', fontWeight: 'bold', fontSize: '10.5pt' }}>
-                Dirección Técnica Registro y Control
+                 Dirección Técnica de Registro y Control
               </div>
             </div>
             {/* Código QR de validación */}
@@ -492,7 +492,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
           </div>
 
           <div style={{ marginTop: '28px', textAlign: 'center', fontSize: '9pt', fontWeight: 'bold' }}>
-            Puede validar la autenticidad de esta verificación en<br />
+             Puede validar la autenticidad de esta verificación en:<br />
             <a href={verificationUrl} style={{ color: '#1d4ed8', textDecoration: 'underline' }}>
               {verificationUrl}
             </a>
@@ -785,8 +785,9 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                         <Lock className="w-5 h-5 text-emerald-700" />
                       </h4>
                       <p className="text-sm text-emerald-800 leading-relaxed">
-                        Este certificado cuenta con un <strong>código QR único</strong> y una URL pública para
-                        consultar su autenticidad directamente en la plataforma institucional de ESAP.
+                        Este documento PDF tiene plena validez legal según la Ley 527 de 1999, el Decreto 1747
+                        de 2000, el Decreto 333 de 2014 y el Decreto 2364 de 2012, así como las normas que los
+                        complementan o modifican.
                       </p>
                     </div>
                   </div>
@@ -865,7 +866,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                     <div className="flex items-start gap-3">
                       <CheckCircle className="w-5 h-5 text-emerald-700 flex-shrink-0 mt-0.5" />
                       <div className="text-xs text-emerald-900 leading-relaxed">
-                        <p className="font-semibold mb-1">Autenticidad e Integridad Verificable</p>
+                        <p className="font-semibold mb-1">Autenticidad e integridad verificables</p>
                         <p>
                           El código QR y la URL pública permiten contrastar el certificado emitido con el
                           registro disponible en la plataforma institucional. La verificación muestra el estado,
@@ -905,7 +906,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                     <p className="text-xs text-gray-600 leading-relaxed max-w-3xl mx-auto">
                       Para cualquier consulta o verificación adicional, puede contactar directamente con la
                       <strong> Oficina de Registro y Control Académico de ESAP</strong>.
-                      Este documento ha sido generado de forma automatizada por el Sistema de Verificación de títulos Graduados.
+                       Este documento ha sido generado de forma automatizada por el Sistema de Verificación de Títulos de Graduados.
                     </p>
                     <div className="flex items-center justify-center gap-2 pt-2">
                       <div className="h-px w-12 bg-gray-300"></div>

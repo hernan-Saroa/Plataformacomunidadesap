@@ -151,23 +151,23 @@ interface VerificationCertificatesModuleProps {
 }
 
 const DEFAULT_CERTIFICATE_TEMPLATE_TEXTS: GraduationCertificateTemplateTexts = {
-  cityDatePrefix: 'Bogotá, D.C.,',
+  cityDatePrefix: 'Bogotá, D. C.,',
   institutionTitle: 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP',
   certificateTitle: 'Verificación de título',
   addressee: 'A QUIEN INTERESE',
   introParagraph:
-    'De conformidad con los registros en el Sistema de Control Académico de la Escuela Superior de Administración Pública -ESAP-, nos permitimos informar la verificación del siguiente título académico:',
+    'De conformidad con los registros del Sistema de Control Académico de la Escuela Superior de Administración Pública (ESAP), se informa la verificación del siguiente título académico:',
   degreeLabel: 'Título otorgado:',
-  graduateNameLabel: 'Nombres y apellidos del egresado graduado:',
+  graduateNameLabel: 'Nombres y apellidos del graduado:',
   documentLabel: 'Número de documento de identificación:',
   issuePlaceDateLabel: 'Lugar y fecha de expedición del título:',
   registryLabel: 'Registro - Folio - Libro:',
   closingText: 'Cordialmente,',
-  signerTitle: 'Dirección Técnica Registro y Control',
+  signerTitle: 'Dirección Técnica de Registro y Control',
   validationMessage:
-    'Puede validar la autenticidad de esta verificación en',
+    'Puede validar la autenticidad de esta verificación en:',
   footerAddress:
-    'Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN\nPBX: 2202790 - Fax: (091) 2202790 Ext. 7205\nCorreo Electrónico: ventanillaunica@esap.edu.co\nwww.esap.edu.co',
+    'Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN\nPBX: 2202790 - Fax: (091) 2202790 Ext. 7205\nCorreo electrónico: ventanillaunica@esap.edu.co\nwww.esap.edu.co',
 };
 
 const TEMPLATE_TEXT_FIELDS: Array<{
@@ -178,16 +178,16 @@ const TEMPLATE_TEXT_FIELDS: Array<{
   { key: 'cityDatePrefix', label: 'Ciudad y prefijo de fecha' },
   { key: 'institutionTitle', label: 'Título institucional' },
   { key: 'certificateTitle', label: 'Título del certificado' },
-  { key: 'addressee', label: 'Encabezado destinatario' },
+  { key: 'addressee', label: 'Encabezado del destinatario' },
   { key: 'introParagraph', label: 'Párrafo introductorio', rows: 4 },
-  { key: 'degreeLabel', label: 'Etiqueta título otorgado' },
-  { key: 'graduateNameLabel', label: 'Etiqueta nombre del graduado' },
-  { key: 'documentLabel', label: 'Etiqueta documento' },
-  { key: 'issuePlaceDateLabel', label: 'Etiqueta lugar y fecha' },
-  { key: 'registryLabel', label: 'Etiqueta registro-folio-libro' },
+  { key: 'degreeLabel', label: 'Etiqueta del título otorgado' },
+  { key: 'graduateNameLabel', label: 'Etiqueta del nombre del graduado' },
+  { key: 'documentLabel', label: 'Etiqueta del documento' },
+  { key: 'issuePlaceDateLabel', label: 'Etiqueta del lugar y la fecha' },
+  { key: 'registryLabel', label: 'Etiqueta de registro, folio y libro' },
   { key: 'closingText', label: 'Texto de cierre' },
   { key: 'validationMessage', label: 'Mensaje de validación', rows: 2 },
-  { key: 'footerAddress', label: 'Dirección pie de página', rows: 4 },
+  { key: 'footerAddress', label: 'Dirección del pie de página', rows: 4 },
 ];
 
 const DEFAULT_TEMPLATE_SIGNATURE_FORM = {
@@ -616,7 +616,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     } catch (error) {
       console.error('Error cargando certificados:', error);
       toast.error('No se pudieron cargar los certificados', {
-        description: 'Verifica la conexión con el servicio académico.',
+        description: 'Verifique la conexión con el servicio académico.',
       });
       setCertificates([]);
     } finally {
@@ -739,7 +739,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleOpenEditCertificate = async (cert: CertificateRecord) => {
     if (!canEditCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Editar Certificados para consultar o editar este certificado.',
+        description: 'Se requiere el permiso Editar Certificados para consultar o editar este certificado.',
       });
       return;
     }
@@ -814,7 +814,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     if (!selectedCertificate) return;
     if (!canEditCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Editar Certificados para guardar cambios.',
+        description: 'Se requiere el permiso Editar Certificados para guardar cambios.',
       });
       return;
     }
@@ -1107,7 +1107,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleOpenTemplateEditor = async () => {
     if (!canEditCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Editar Certificados para modificar la plantilla.',
+        description: 'Se requiere el permiso Editar Certificados para modificar la plantilla.',
       });
       return;
     }
@@ -1424,7 +1424,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     if (success) {
       toast.success(`${label} copiado al portapapeles`);
     } else {
-      toast.error('No se pudo copiar. Por favor, cópialo manualmente.');
+      toast.error('No se pudo copiar. Por favor, cópielo manualmente.');
     }
   };
 
@@ -1471,7 +1471,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       return;
     }
 
-    toast.error('No se pudo copiar. Por favor, cópialo manualmente.');
+    toast.error('No se pudo copiar. Por favor, cópielo manualmente.');
   };
 
   const releaseCertificatePdfUrl = useCallback((clearState = true) => {
@@ -1508,7 +1508,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleViewCertificatePdf = async (cert: CertificateRecord) => {
     if (!canEditCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Editar Certificados para consultar este certificado.',
+        description: 'Se requiere el permiso Editar Certificados para consultar este certificado.',
       });
       return;
     }
@@ -1547,7 +1547,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       const message =
         error?.message ||
-        'No se pudo cargar el PDF del certificado. Intenta nuevamente.';
+        'No se pudo cargar el PDF del certificado. Intente nuevamente.';
       setCertificatePdfError(message);
       toast.error('No se pudo abrir el certificado', {
         description: message,
@@ -1563,7 +1563,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleResendCertificate = async (cert: CertificateRecord) => {
     if (!canResendCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Reenviar Certificados para ejecutar esta acción.',
+        description: 'Se requiere el permiso Reenviar Certificados para ejecutar esta acción.',
       });
       return;
     }
@@ -1610,7 +1610,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         description:
           backendMessage ||
           error?.message ||
-          'Error enviando el certificado. Intenta nuevamente.',
+          'Error enviando el certificado. Intente nuevamente.',
       });
     } finally {
       setResendingCertificateId(null);
@@ -1679,7 +1679,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleOpenExportModal = () => {
     if (!canExportCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Certificados para descargar esta información.',
+        description: 'Se requiere el permiso Exportar Certificados para descargar esta información.',
       });
       return;
     }
@@ -1690,7 +1690,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleExportCertificates = () => {
     if (!canExportCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Certificados para descargar esta información.',
+        description: 'Se requiere el permiso Exportar Certificados para descargar esta información.',
       });
       return;
     }
@@ -1827,7 +1827,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.font = '14px Arial';
       ctx.fillStyle = '#6B7280';
       ctx.textAlign = 'center';
-      ctx.fillText('Valida este certificado en:', width / 2, height - 80);
+      ctx.fillText('Valide este certificado en:', width / 2, height - 80);
       ctx.fillStyle = '#003DA5';
       ctx.font = 'bold 16px monospace';
       ctx.fillText(url, width / 2, height - 50);
@@ -1862,7 +1862,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     } catch (error) {
       console.error('Error al generar el QR:', error);
       toast.error('Error al descargar el QR', {
-        description: 'No se pudo generar la imagen. Intenta nuevamente.'
+        description: 'No se pudo generar la imagen. Intente nuevamente.'
       });
     }
   };
@@ -2242,7 +2242,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             </h3>
             <p className="text-sm text-[#6B7280] mb-6">
               {hasActiveFilters 
-                ? 'Intenta ajustar los filtros de búsqueda'
+                ? 'Intente ajustar los filtros de búsqueda'
                 : 'Aún no hay solicitudes de certificados procesadas en el sistema'}
             </p>
             {hasActiveFilters && (
@@ -2733,10 +2733,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
                                 <div>
                                   <p className="text-sm font-semibold text-amber-900">
-                                    Necesitas permiso para ver este historial de verificaciones.
+                                    Se requiere permiso para ver este historial de verificaciones.
                                   </p>
                                   <p className="mt-1 text-xs text-amber-800">
-                                    Activa el permiso Verificar Certificado para consultar los escaneos QR registrados.
+                                    Active el permiso Verificar Certificado para consultar los escaneos QR registrados.
                                   </p>
                                 </div>
                               </div>
@@ -3014,7 +3014,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               Ver Certificado
             </DialogTitle>
             <DialogDescription>
-              Consulta los datos de verificación del certificado y del graduado asociado.
+              Consulte los datos de verificación del certificado y del graduado asociado.
             </DialogDescription>
           </DialogHeader>
 
@@ -3239,7 +3239,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     Editar Certificado
                   </DialogTitle>
                   <DialogDescription className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
-                    Edita solo los textos del certificado de verificación de títulos. El QR, el código de validación, los datos dinámicos y la URL pública siguen protegidos.
+                    Edite únicamente los textos del certificado de verificación de títulos. El código QR, el código de validación, los datos dinámicos y la URL pública permanecen protegidos.
                   </DialogDescription>
                 </div>
               </div>
@@ -3401,7 +3401,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
                             <ImageIcon className="h-4 w-4 text-[#003DA5]" />
-                            {newHeaderLogoFile?.filename || templateConfig?.logos?.headerLogoFilename || 'Logo Funcion Publica predeterminado'}
+                            {newHeaderLogoFile?.filename || templateConfig?.logos?.headerLogoFilename || 'Logo Función Pública predeterminado'}
                             {newHeaderLogoFile && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Nuevo</span>}
                             {!hasCustomHeaderLogo && <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">Base</span>}
                           </div>
@@ -3561,7 +3561,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 event.target.value,
                               )
                             }
-                            placeholder="Ej: Administrador jefe Verificación de títulos"
+                            placeholder="Ej.: jefe de Verificación de Títulos"
                             maxLength={255}
                             disabled={isSavingTemplateConfig}
                             className="border-slate-200 bg-white text-slate-900 shadow-inner shadow-slate-200/50 focus-visible:border-[#003DA5] focus-visible:ring-[#003DA5]/20"
@@ -3658,7 +3658,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 />
                               ) : (
                                 <div className="rounded bg-slate-100 px-4 py-3 text-base font-black text-[#444444]">
-                                  FUNCION PUBLICA
+                                  FUNCIÓN PÚBLICA
                                 </div>
                               )}
                             </div>
@@ -3849,7 +3849,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               Exportar Verificaciones de Títulos
             </DialogTitle>
             <DialogDescription>
-              Filtra por fecha de generación del certificado y descarga el CSV.
+              Filtre por fecha de generación del certificado y descargue el archivo CSV.
             </DialogDescription>
           </DialogHeader>
 
@@ -4041,7 +4041,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   Historial de Validaciones
                 </h4>
                 <p className="text-xs text-amber-800">
-                  Necesitas permiso para ver este historial de verificaciones.
+                  Se requiere permiso para ver este historial de verificaciones.
                 </p>
               </div>
             )}
@@ -4137,7 +4137,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <div className="text-xs text-amber-800">
                     <p className="font-semibold mb-2">¿Qué sucede cuando alguien escanea este QR para validar?</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li><strong>Validación Inmediata:</strong> Sistema verifica si el certificado es válido</li>
+                      <li><strong>Validación Inmediata:</strong> El sistema verifica si el certificado es válido</li>
                       {/* <li><strong>Badge Visual:</strong> Muestra "✅ CERTIFICADO ACTIVO Y VÁLIDO" o "❌ CERTIFICADO INVÁLIDO"</li> */}
                       <li><strong>Datos del Graduado:</strong> Nombre completo, documento, programa y fecha de graduación</li>
                       <li><strong>Datos del Certificado:</strong> Número único, fecha de emisión y solicitante</li>

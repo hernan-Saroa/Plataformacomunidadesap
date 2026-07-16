@@ -108,7 +108,7 @@ export class PdfGeneratorService {
     const fechaExpedicion = this.formatDate(
       certificate.issueDate || new Date(),
     );
-    const lugarFechaExpedicion = `${certificate.campus || 'Bogota'} (${certificate.campus?.toUpperCase() || 'BOGOTA'}) ${this.formatDateLong(certificate.graduationDate)}`;
+    const lugarFechaExpedicion = `${certificate.campus || 'Bogotá'} (${certificate.campus?.toUpperCase() || 'BOGOTÁ'}) ${this.formatDateLong(certificate.graduationDate)}`;
 
     const htmlContent = templateHtml
       .replace(/{{CODIGO_VALIDACION}}/g, certificate.verificationCode)

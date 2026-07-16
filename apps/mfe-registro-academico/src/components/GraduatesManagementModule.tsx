@@ -618,7 +618,7 @@ export function GraduatesManagementModule() {
     const currentCount = filesModalItems.length + filesUploadQueue.length;
     const nextCount = currentCount + selected.length;
     if (nextCount > MAX_FILES_PER_GRADUATE) {
-      toast.error(`Solo puedes tener máximo ${MAX_FILES_PER_GRADUATE} archivos en total`);
+      toast.error(`Solo puede tener máximo ${MAX_FILES_PER_GRADUATE} archivos en total`);
       event.target.value = '';
       return;
     }
@@ -981,7 +981,7 @@ export function GraduatesManagementModule() {
       } catch (error) {
         console.error('Error cargando graduados:', error);
         toast.error('No se pudieron cargar los graduados', {
-          description: 'Intenta recargar la página o verifica tu conexión.',
+          description: 'Intente recargar la página o verifique su conexión.',
         });
         if (isMounted) {
           setGraduates([]);
@@ -1474,7 +1474,7 @@ export function GraduatesManagementModule() {
   const handleEdit = (user: GraduateRow) => {
     if (!canEditGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Editar Graduado para modificar este registro.',
+        description: 'Se requiere el permiso Editar Graduado para modificar este registro.',
       });
       return;
     }
@@ -1573,7 +1573,7 @@ export function GraduatesManagementModule() {
   const handleVerifyTitle = (user?: GraduateRow) => {
     if (!canVerifyGraduateCertificates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Verificar Certificado para abrir esta validación.',
+        description: 'Se requiere el permiso Verificar Certificado para abrir esta validación.',
       });
       return;
     }
@@ -1601,7 +1601,7 @@ export function GraduatesManagementModule() {
   const handleOpenBulkUploadModal = () => {
     if (!canBulkUploadGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso de Carga Masiva de graduados.',
+        description: 'Se requiere el permiso de Carga Masiva de graduados.',
       });
       return;
     }
@@ -1678,7 +1678,7 @@ export function GraduatesManagementModule() {
     if (!selectedUser) return;
     if (!canEditGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Editar Graduado para guardar cambios.',
+        description: 'Se requiere el permiso Editar Graduado para guardar cambios.',
       });
       return;
     }
@@ -1908,7 +1908,7 @@ export function GraduatesManagementModule() {
   const handleOpenExportModal = () => {
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
+        description: 'Se requiere el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1920,7 +1920,7 @@ export function GraduatesManagementModule() {
 
     toast.info('No hay graduados para exportar', {
       description: hasActiveFilters
-        ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+        ? 'Los filtros activos no tienen resultados. Ajústelos antes de exportar.'
         : 'Aún no existen graduados registrados para exportación.',
     });
   };
@@ -1929,7 +1929,7 @@ export function GraduatesManagementModule() {
     if (isExporting) return;
     if (!canExportGraduates) {
       toast.error('Permiso requerido', {
-        description: 'Necesitas el permiso Exportar Graduados para descargar esta información.',
+        description: 'Se requiere el permiso Exportar Graduados para descargar esta información.',
       });
       return;
     }
@@ -1949,7 +1949,7 @@ export function GraduatesManagementModule() {
     if (filteredUsers.length === 0) {
       toast.info('No hay graduados para exportar', {
         description: hasActiveFilters
-          ? 'Los filtros activos no tienen resultados. Ajústalos antes de exportar.'
+          ? 'Los filtros activos no tienen resultados. Ajústelos antes de exportar.'
           : 'Aún no existen graduados registrados para exportación.',
       });
       setIsExporting(false);
@@ -2080,7 +2080,7 @@ export function GraduatesManagementModule() {
               Gestión de Graduados
             </h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              Administra graduados y genera certificados de verificación de títulos
+              Administración de graduados y generación de certificados de verificación de títulos
             </p>
           </div>
         </div>
@@ -2406,7 +2406,7 @@ export function GraduatesManagementModule() {
             </h3>
             <p className="text-sm text-[#6B7280] mb-6">
               {hasActiveFilters 
-                ? 'Intenta ajustar los filtros de búsqueda'
+                ? 'Intente ajustar los filtros de búsqueda'
                 : 'Aún no hay graduados registrados en el sistema'}
             </p>
             {hasActiveFilters && (
@@ -2865,7 +2865,7 @@ export function GraduatesManagementModule() {
               Exportar Graduados
             </DialogTitle>
             <DialogDescription>
-              Filtra por fecha de enrolamiento y descarga el listado en CSV.
+              Filtre por fecha de enrolamiento y descargue el listado en formato CSV.
             </DialogDescription>
           </DialogHeader>
 
@@ -2977,7 +2977,7 @@ export function GraduatesManagementModule() {
                     <DialogDescription>
                       {filesModalUser
                         ? `Graduado: ${filesModalUser.firstName} ${filesModalUser.lastName} - Documento: ${filesModalUser.document}`
-                        : 'Selecciona un graduado para ver sus archivos.'}
+                        : 'Seleccione un graduado para ver sus archivos.'}
                     </DialogDescription>
                     {filesModalUser?.program && (
                       <p className="mt-1 truncate text-xs font-semibold" style={{ color: '#475569' }}>
@@ -3129,11 +3129,11 @@ export function GraduatesManagementModule() {
                     <Upload className="h-4 w-4" />
                   </span>
                   <span className="text-sm font-semibold leading-none">
-                    {isFilesInputDisabled ? 'Carga no disponible' : 'Haz clic para seleccionar archivos'}
+                    {isFilesInputDisabled ? 'Carga no disponible' : 'Haga clic para seleccionar archivos'}
                   </span>
                 </label>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Puedes seleccionar varios archivos en una sola carga.
+                  Puede seleccionar varios archivos en una sola carga.
                 </p>
                 <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
                   Cada archivo debe pesar máximo {MAX_UPLOAD_SIZE_LABEL}. Se subirán uno por uno.
@@ -3365,7 +3365,7 @@ export function GraduatesManagementModule() {
               </div>
               <div className="min-w-0 pt-0.5">
                 <h3 id="delete-file-confirm-title" className="text-base font-semibold leading-6" style={{ color: '#111827' }}>
-                  Confirmar eliminacion
+                  Confirmar eliminación
                 </h3>
                 <p id="delete-file-confirm-description" className="mt-1 text-sm leading-5" style={{ color: '#6B7280' }}>
                   Se eliminara permanentemente el archivo{' '}
@@ -3409,7 +3409,7 @@ export function GraduatesManagementModule() {
               Editar Graduado
             </DialogTitle>
             <DialogDescription>
-              Actualiza la información del graduado {selectedUser?.firstName} {selectedUser?.lastName}
+              Actualice la información del graduado {selectedUser?.firstName} {selectedUser?.lastName}
             </DialogDescription>
           </DialogHeader>
 
@@ -3866,7 +3866,7 @@ export function GraduatesManagementModule() {
               Verificar Certificado de Título
             </DialogTitle>
             <DialogDescription>
-              Confirma la verificación del certificado de {selectedUser?.firstName} {selectedUser?.lastName}
+              Confirme la verificación del certificado de {selectedUser?.firstName} {selectedUser?.lastName}
             </DialogDescription>
           </DialogHeader>
 
@@ -3932,7 +3932,7 @@ export function GraduatesManagementModule() {
               Generar Certificado de Graduación
             </DialogTitle>
             <DialogDescription>
-              Configura las opciones del certificado para {selectedUser?.firstName} {selectedUser?.lastName}
+              Configure las opciones del certificado para {selectedUser?.firstName} {selectedUser?.lastName}
             </DialogDescription>
           </DialogHeader>
 
@@ -4028,7 +4028,7 @@ export function GraduatesManagementModule() {
                     <span className="font-medium text-gray-900">Incluir firma institucional</span>
                   </div>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    Agrega la firma visual del firmante autorizado de ESAP al certificado
+                    Agregue la firma visual del firmante autorizado de la ESAP al certificado
                   </p>
                 </label>
               </div>
@@ -4064,7 +4064,7 @@ export function GraduatesManagementModule() {
               Enviar Email a Graduado
             </DialogTitle>
             <DialogDescription>
-              Envía un correo electrónico a {selectedUser?.email}
+              Envíe un correo electrónico a {selectedUser?.email}
             </DialogDescription>
           </DialogHeader>
 
@@ -4094,7 +4094,7 @@ export function GraduatesManagementModule() {
                 id="email-message"
                 value={emailForm.message}
                 onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
-                placeholder="Escribe tu mensaje aquí..."
+                placeholder="Escriba su mensaje aquí..."
                 rows={8}
                 className="resize-none"
               />
@@ -4139,7 +4139,7 @@ export function GraduatesManagementModule() {
               Bloquear Graduado
             </DialogTitle>
             <DialogDescription>
-              ¿Estás seguro de que deseas bloquear a este graduado?
+              ¿Confirma que desea bloquear a este graduado?
             </DialogDescription>
           </DialogHeader>
 
@@ -4173,7 +4173,7 @@ export function GraduatesManagementModule() {
                     <li>El graduado no podrá acceder al portal</li>
                     <li>No podrá descargar certificados</li>
                     <li>Se suspenderán todas sus sesiones activas</li>
-                    <li>Podrás revertir esta acción en cualquier momento</li>
+                    <li>Podrá revertir esta acción en cualquier momento</li>
                   </ul>
                 </div>
               </div>
@@ -4221,7 +4221,7 @@ export function GraduatesManagementModule() {
                   Eliminar Graduado
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-sm text-gray-500">
-                  ¿Estás seguro de que deseas eliminar este usuario?
+                  ¿Confirma que desea eliminar este usuario?
                 </DialogDescription>
               </div>
             </div>
