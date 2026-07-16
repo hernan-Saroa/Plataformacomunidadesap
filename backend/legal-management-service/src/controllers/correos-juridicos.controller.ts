@@ -9,6 +9,7 @@ import {
     HttpCode,
     HttpStatus,
     Res,
+    Req,
 } from '@nestjs/common';
 import { CorreosJuridicosService } from '../services/correos-juridicos.service';
 import type { EmailFilters } from '../services/correos-juridicos.service';
@@ -192,8 +193,8 @@ export class CorreosJuridicosController {
      */
     @Post('send')
     @HttpCode(HttpStatus.OK)
-    async sendEmail(@Body() dto: SendEmailDto): Promise<{ success: boolean }> {
-        const result = await this.correosService.sendEmail(dto);
+    async sendEmail(@Body() dto: SendEmailDto, @Req() req: any): Promise<{ success: boolean }> {
+        const result = await this.correosService.sendEmail(dto, req);
         return { success: result.success };
     }
 
@@ -308,9 +309,10 @@ export class CorreosJuridicosController {
     @HttpCode(HttpStatus.OK)
     async replyEmail(
         @Param('id') id: string,
-        @Body() body: { body: string; attachments?: { name: string; contentBytes: string; contentType: string }[] }
+        @Body() body: { body: string; attachments?: { name: string; contentBytes: string; contentType: string }[] },
+        @Req() req: any,
     ): Promise<{ success: boolean }> {
-        const result = await this.correosService.replyEmail(id, body.body, body.attachments);
+        const result = await this.correosService.replyEmail(id, body.body, body.attachments, req);
         return { success: result.success };
     }
 
@@ -327,13 +329,15 @@ export class CorreosJuridicosController {
             to: string;
             comment: string;
             attachments?: { name: string; contentBytes: string; contentType: string }[];
-        }
+        },
+        @Req() req: any,
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         const result = await this.correosService.forwardEmail(
             id,
             body.to || '',
             body.comment || '',
             body.attachments,
+            req,
         );
         return { success: result.success, correo: result.correo };
     }
