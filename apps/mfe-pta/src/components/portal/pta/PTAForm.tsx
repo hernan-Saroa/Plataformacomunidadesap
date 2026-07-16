@@ -2056,23 +2056,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     });
     rolesParaDropdown.forEach((r: any) => {
       const absolute = getPositiveRuleNumber(r.horas_max, globalHours);
-      const pct = getPositiveRuleNumber(r.pct_max, (absolute / 800) * 100);
-      base[r.nombre] = Math.min(globalHours, Math.round(horasAProgramar * pct / 100));
+      const absolutePct = (absolute / 800) * 100;
+      const configuredPct = getPositiveRuleNumber(r.pct_max, absolutePct);
+      // La Circular expresa dos topes simultáneos: «hasta N horas» y «sin
+      // exceder X%». Se aplica siempre el menor, escalado a la bolsa RUND real.
+      const effectivePct = Math.min(absolutePct, configuredPct);
+      base[r.nombre] = Math.min(globalHours, Math.round(horasAProgramar * effectivePct / 100));
     });
     return base;
   }, [rolesParaDropdown, horasAProgramar, ptaRules]);
 
   const hInvestigacion = useMemo(() => {
-    // 1. Prioridad: horas del rol en catálogo (si ptaRules/rolesHorasMap ya cargó)
-    if (invProyecto.rol && rolesHorasMap[invProyecto.rol]) {
-      return rolesHorasMap[invProyecto.rol];
+    // Con rol, la tabla normativa define un tope «hasta», no una cantidad fija.
+    // Se conserva la cantidad elegida y se acota al máximo dinámico de la bolsa RUND.
+    if (invProyecto.rol) {
+      const requested = Number(invProyecto.horas_solicitadas);
+      if (!Number.isFinite(requested) || requested <= 0) return 0;
+      const hasRoleLimit = Object.prototype.hasOwnProperty.call(rolesHorasMap, invProyecto.rol);
+      return hasRoleLimit
+        ? Math.min(requested, Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0))
+        : requested;
     }
-    // 2. Fallback: horas_solicitadas guardadas (al editar un PTA existente antes de que
-    //    cargue ptaRules; así el display de tabs muestra el valor correcto de la BD)
-    if (invProyecto.horas_solicitadas && Number(invProyecto.horas_solicitadas) > 0) {
-      return Number(invProyecto.horas_solicitadas);
-    }
-    // 3. Último recurso: suma de actividades individuales
+    // Sin rol, las horas provienen de las actividades individuales.
     return hInvestigacion_raw;
   }, [hInvestigacion_raw, invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
 
@@ -2178,6 +2183,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     ptaRules?.max_horas_investigacion_global,
     400,
   );
+  const maxInvEffectiveLimit = invProyecto.rol
+    ? Math.min(maxInvLimit, Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0))
+    : maxInvLimit;
   // Límite Complementarias: mínimo entre el tope absoluto (ej. 200h) y el porcentaje
   // configurado sobre el PTA total (ej. 25% de 800h = 200h). Espejo del flujo de
   // Extensión/AADM: la config expresa el límite como % de las horas del PTA.
@@ -2214,7 +2222,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const hComplementariasComponente = hComplementarias + hAcademicoAdmin;
 
   const docExcede = !actividadTotalidad && hDocencia > maxDocenciaLimit;
-  const invExcede = !actividadTotalidad && hInvestigacion > maxInvLimit;
+  const invExcede = !actividadTotalidad && hInvestigacion > maxInvEffectiveLimit;
   const extExcede = !actividadTotalidad && hExtension > maxExtLimit;
   const compExcede = !actividadTotalidad && hComplementariasComponente > maxCompLimit;
   // Sub-tope propio de Académico-Administrativas (independiente del tope del componente).
@@ -2248,7 +2256,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     };
 
     addViolation('docencia', 'Docencia', hDocencia, maxDocenciaLimit);
-    addViolation('investigacion', 'Investigacion', hInvestigacion, maxInvLimit);
+    addViolation('investigacion', 'Investigacion', hInvestigacion, maxInvEffectiveLimit);
     addViolation('extension', 'Extension', hExtension, maxExtLimit);
     addViolation('complementarias', 'Complementarias', hComplementariasComponente, maxCompLimit);
     addViolation('academico_admin', 'Academico-Administrativo', hAcademicoAdmin, maxAadmLimit);
@@ -2262,7 +2270,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     hComplementarias,
     hAcademicoAdmin,
     maxDocenciaLimit,
-    maxInvLimit,
+    maxInvEffectiveLimit,
     maxExtLimit,
     maxCompLimit,
     maxAadmLimit,
@@ -2372,6 +2380,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     const rolProyecto = (invProyecto.rol || '').toUpperCase();
     const horasProyecto = hInvestigacion;
 
+    if (rolProyecto) {
+      const maxRol = Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0);
+      if (horasProyecto <= 0) {
+        warns.push(`Ingresa las horas de investigación reconocidas para el rol, entre 1h y ${maxRol}h.`);
+      } else if (horasProyecto > maxRol) {
+        warns.push(`Las horas de investigación del rol deben ser de hasta ${maxRol}h.`);
+      }
+    }
+
     // Validaciones documentales propias de investigacion.
 
     // REGLA 3: omitida — cuando el docente llena el proyecto, las actividades son
@@ -2388,7 +2405,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     return warns;
-  }, [invProyecto, invActividades, horasAProgramar, tipoVinculacion, ptaRules, hInvestigacion, hExtension]);
+  }, [invProyecto, invActividades, horasAProgramar, tipoVinculacion, ptaRules, hInvestigacion, hExtension, rolesHorasMap]);
 
   // ═══ HANDLERS: DOCENCIA ═══════════════════════════════════════════
 
@@ -3558,7 +3575,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const allSections = [
     { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: docProrr, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: `${maxDocenciaLimit}h`, excede: docExcede, bloqueada: false, modificada: seccionModificada('docencia') },
-    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: invProrr, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `${Math.round(maxInvLimit)}h`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
+    { key: 'investigacion' as const, icon: FlaskConical, label: 'Investigación', count: invActividades.length + (invProyecto.nombre ? 1 : 0), hours: invProrr, prorr: invProrr, color: PTA_COLORS.INVESTIGACION, limit: `hasta ${Math.round(maxInvEffectiveLimit)}h`, excede: invExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('investigacion') },
     { key: 'extension' as const, icon: Globe, label: 'Extensión', count: extActividades.length, hours: extProrr, prorr: extProrr, color: PTA_COLORS.EXTENSION, limit: `${maxExtLimit}h`, excede: extExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('extension') },
     //{ key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length, hours: hComplementarias, prorr: compProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${maxCompLimit}h`, excede: compExcede, bloqueada: !!actividadTotalidad || (!hasDocencia && !actividadTotalidad), modificada: seccionModificada('complementarias') },
     { key: 'complementarias' as const, icon: Briefcase, label: 'Complementarias', count: complementarias.length + academicoAdmin.length, hours: compProrr + acadProrr, prorr: compProrr + acadProrr, color: PTA_COLORS.COMPLEMENTARIAS, limit: `${ptaRules?.max_pct_complementarias || 25}%`, excede: compExcede || acadExcede, bloqueada: false, modificada: seccionModificada('complementarias') },
@@ -4670,7 +4687,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             {/* ─── INVESTIGACIÓN ─── */}
             {hasDocencia && activeVisibleSection === 'investigacion' && (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (máx ${Math.round(maxInvLimit)}h)`}
+                <SectionHeader title="Investigación" subtitle={`${hInvestigacion}h programadas (hasta ${Math.round(maxInvEffectiveLimit)}h)`}
                   color={PTA_COLORS.INVESTIGACION} icon={FlaskConical} excede={invExcede} />
 
                 {invWarnings.length > 0 && (
@@ -4718,12 +4735,33 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           setInvProyecto(p => ({ ...p, rol: v, horas_solicitadas: maxH }));
                           if (v) setInvActividades([]);
                         }}
-                        options={rolesParaDropdown.map((r: any) => ({ value: r.nombre, label: `${r.nombre} (máx ${rolesHorasMap[r.nombre] || 0}h)` }))}
+                        options={rolesParaDropdown.map((r: any) => ({ value: r.nombre, label: `${r.nombre} (hasta ${rolesHorasMap[r.nombre] || 0}h)` }))}
                         placeholder="Seleccionar rol..." />
                     </div>
                     {invProyecto.rol && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <ReadonlyField label="Máximo por Rol" value={`${rolesHorasMap[invProyecto.rol] || 0}h`} />
+                        <div>
+                          <FormInput
+                            label={`Horas de Investigación (Hasta ${rolesHorasMap[invProyecto.rol] || 0}h)`}
+                            type="number"
+                            min={1}
+                            max={rolesHorasMap[invProyecto.rol] || 0}
+                            step={1}
+                            value={hInvestigacion}
+                            disabled={!isEditable}
+                            onChange={v => {
+                              const maxRol = Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0);
+                              const parsed = Number(v);
+                              const horas = Number.isFinite(parsed)
+                                ? Math.min(maxRol, Math.max(0, Math.round(parsed)))
+                                : 0;
+                              setInvProyecto(p => ({ ...p, horas_solicitadas: horas }));
+                            }}
+                          />
+                          <p className="text-[9px] text-purple-600 mt-1 ml-1">
+                            Valor graduable entre 1h y {rolesHorasMap[invProyecto.rol] || 0}h, según la bolsa RUND.
+                          </p>
+                        </div>
                         <ReadonlyField label="% del PTA" value={`${horasAProgramar > 0 ? ((hInvestigacion / horasAProgramar) * 100).toFixed(1) : 0}%`} />
                       </div>
                     )}
@@ -4798,7 +4836,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   {/* Actividades — modo depende de si se llenó el proyecto y si tiene rol */}
                   <div>
                     {invProyecto.rol ? (
-                      /* ── MODO ROL: horas fijas, sin actividades ── */
+                      /* ── MODO ROL: horas graduables hasta el tope, sin actividades ── */
                       invResolucionPendiente ? (
                         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300">
                           <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
@@ -4812,8 +4850,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </div>
                       ) : (
                       <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-purple-100 border border-purple-300">
-                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">Horas asignadas por rol</span>
-                        <span className="text-lg font-black text-purple-800">{rolesHorasMap[invProyecto.rol] || 0}h</span>
+                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">Horas asignadas (hasta {rolesHorasMap[invProyecto.rol] || 0}h)</span>
+                        <span className="text-lg font-black text-purple-800">{hInvestigacion}h</span>
                       </div>
                       )
                     ) : (

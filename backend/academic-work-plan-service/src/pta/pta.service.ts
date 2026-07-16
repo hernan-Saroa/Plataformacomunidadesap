@@ -1233,9 +1233,10 @@ export class PtaService {
     // Los roles historicamente expresaban la misma regla en horas para una bolsa
     // de 800h y en porcentaje. El porcentaje permite aplicar el tope a cualquier
     // bolsa del Banco (720h u otro valor) sin depender del acuerdo de vinculacion.
+    const maxRolPct = (maxRol / 800) * 100;
     const rolPct = Number.isFinite(configuredPct) && configuredPct > 0
-      ? configuredPct
-      : (maxRol / 800) * 100;
+      ? Math.min(configuredPct, maxRolPct)
+      : maxRolPct;
     const rolLimit = Math.round(horasAProgramar * rolPct / 100);
 
     return Math.min(globalLimit, rolLimit);
@@ -1530,6 +1531,16 @@ export class PtaService {
         throw new BadRequestException(`El componente ${label} excede el limite permitido: ${value}h / ${limit}h.`);
       }
     };
+
+    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
+    if (rolInvestigacion) {
+      const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas);
+      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > maxInvestigacion) {
+        throw new BadRequestException(
+          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${maxInvestigacion}h (hasta el tope dinamico de la bolsa RUND).`,
+        );
+      }
+    }
 
     assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);

@@ -79,6 +79,106 @@ describe('PtaService - horas autoritativas del Banco de Docentes', () => {
     }, rules, 900)).toBe(450);
   });
 
+  it('aplica el menor entre hasta horas y sin exceder porcentaje del rol', () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rules = {
+      max_pct_investigacion: 50,
+      max_horas_investigacion_global: 400,
+      inv_roles: [{
+        nombre: 'INVESTIGADOR LIDER DE PROYECTO',
+        horas_max: 300,
+        pct_max: 50,
+      }],
+    };
+
+    expect(service.getInvestigacionLimit({
+      investigacion_proyecto: { rol: 'INVESTIGADOR LIDER DE PROYECTO' },
+    }, rules, 720)).toBe(270);
+  });
+
+  it('acepta horas graduables por debajo del tope dinamico del rol', () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const body = {
+      tipo_vinculacion: 'CARRERA_003',
+      investigacion_proyecto: {
+        rol: 'INVESTIGADOR LIDER DE PROYECTO',
+        horas_solicitadas: 180,
+      },
+      asignaturas: [{
+        asignatura_id: 'asignatura-1',
+        programa_id: 'programa-1',
+        asignatura_nombre: 'Economia de lo Publico',
+        creditos: 3,
+        total_horas: 144,
+        fecha_inicio: '2026-07-01',
+        fecha_fin: '2026-07-03',
+      }],
+      complementarias: [{
+        actividad_id: 'comp-legacy',
+        nombre: 'Actividad complementaria',
+        seccion: 'complementarias_docencia',
+        horas: 20,
+      }],
+    };
+    const hours = {
+      total: 344,
+      sumDocencia: 144,
+      sumInv: 180,
+      sumExt: 0,
+      sumComp: 20,
+      sumAcad: 0,
+    };
+    const rules = {
+      max_pct_docencia: 100,
+      max_horas_docencia_global: 800,
+      max_pct_investigacion: 50,
+      max_horas_investigacion_global: 400,
+      max_pct_extension: 25,
+      max_horas_extension_global: 200,
+      max_pct_complementarias: 25,
+      max_horas_complementarias_global: 200,
+      inv_roles: [{
+        nombre: 'INVESTIGADOR LIDER DE PROYECTO',
+        horas_max: 400,
+        pct_max: 50,
+      }],
+    };
+
+    expect(() => service.validatePtaForSubmission(body, hours, 720, rules)).not.toThrow();
+  });
+
+  it('rechaza un rol sin horas reconocidas y conserva el tope dinamico en el mensaje', () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const body = {
+      investigacion_proyecto: {
+        rol: 'INVESTIGADOR LIDER DE PROYECTO',
+        horas_solicitadas: 0,
+      },
+      asignaturas: [],
+      complementarias: [],
+    };
+    const hours = {
+      total: 20,
+      sumDocencia: 0,
+      sumInv: 0,
+      sumExt: 20,
+      sumComp: 0,
+      sumAcad: 0,
+    };
+    const rules = {
+      max_pct_investigacion: 50,
+      max_horas_investigacion_global: 400,
+      inv_roles: [{
+        nombre: 'INVESTIGADOR LIDER DE PROYECTO',
+        horas_max: 400,
+        pct_max: 50,
+      }],
+    };
+
+    expect(() => service.validatePtaForSubmission(body, hours, 720, rules))
+      .toThrow('deben estar entre 1h y 360h');
+  });
+
   it.each([
     ['Extension', { sumExt: 181, sumComp: 0 }],
     ['Complementarias', { sumExt: 0, sumComp: 181 }],
