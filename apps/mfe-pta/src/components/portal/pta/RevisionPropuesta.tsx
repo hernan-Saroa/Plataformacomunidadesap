@@ -54,7 +54,7 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
   }, [ptaId]);
 
   const propuesta = pta?.propuesta_direccion || {};
-  const horasProgramables = pta?.horas_a_programar || 800;
+  const horasProgramables = pta?.horas_asignables ?? pta?.horas_a_programar ?? 0;
   const totalComp = complementarias.reduce((t: number, c: any) => t + (c.horas || 0), 0);
   const totalProgramado = (propuesta.total_precargado || 0) + totalComp;
   const pendiente = horasProgramables - totalProgramado;

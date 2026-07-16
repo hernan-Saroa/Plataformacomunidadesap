@@ -323,8 +323,8 @@ export class BancoDocentesController {
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string) {
-    return { success: true, data: await this.service.getById(id) };
+  async getById(@Param('id') id: string, @Query('periodoCarga') periodoCarga?: string) {
+    return { success: true, data: await this.service.getById(id, periodoCarga) };
   }
 
   @Post()

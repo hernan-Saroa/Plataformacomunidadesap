@@ -4049,7 +4049,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               const idx = group.startIdx + localIdx;
                       const sc = getStatusConfig(pta.estado);
                       const horasProg = pta.total_horas_programadas || 0;
-                      const horasDisp = pta.horas_a_programar || 800;
+                      const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
                       const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
                       const isPendiente = isEstadoPendienteAprobacion(pta.estado);
                       const isSelected = selectedIds.has(pta.id);
@@ -4492,7 +4492,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 {/* ═══ World-Class Unified Footer (Feature 15 & Pagination) ═══ */}
                 {viewMode === 'table' && paginated.length > 0 && (() => {
                   const totalHorasProg = paginated.reduce((sum: number, p: any) => sum + (p.total_horas_programadas || 0), 0);
-                  const totalHorasDisp = paginated.reduce((sum: number, p: any) => sum + (p.horas_a_programar || 800), 0);
+                  const totalHorasDisp = paginated.reduce((sum: number, p: any) => sum + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
                   const avgCarga = totalHorasDisp > 0 ? Math.round((totalHorasProg / totalHorasDisp) * 100) : 0;
                   const pendCount = paginated.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length;
                   const aprobCount = paginated.filter((p: any) => p.estado === 'Aprobado').length;

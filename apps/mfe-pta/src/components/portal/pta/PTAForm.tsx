@@ -4,7 +4,7 @@
  * Motor de cálculo según fórmulas Excel:
  * - K15: Horas base por programa (AP=64, Maestría=créd×12, otros=créd×16)
  * - L15: Total horas = horasBase × 3 (con excepciones)
- * - Topes por componente desde configuracion (defaults: Doc=800h, Inv=400h, Ext=200h, Comp=200h)
+ * - Bolsa total desde Banco de Docentes y topes porcentuales desde configuracion
  * 
  * Dropdowns en cascada: Territorial → CETAP → Programa → Asignatura
  * 5 Componentes: Docencia, Investigación, Extensión (4 secciones), Complementarias
@@ -238,14 +238,31 @@ function buildHourConstraint(min: number, max: number, editable: boolean, mode: 
   return { min: safeMin, max: safeMax, editable: true, mode };
 }
 
+function getScaledRuleLimit(
+  horasAProgramar: number,
+  percentageValue: any,
+  percentageFallback: number,
+  absoluteReferenceValue?: any,
+  absoluteReferenceFallback?: number,
+): number {
+  let percentage = getPositiveRuleNumber(percentageValue, percentageFallback);
+  if (absoluteReferenceValue != null || absoluteReferenceFallback != null) {
+    const absoluteReference = getPositiveRuleNumber(
+      absoluteReferenceValue,
+      absoluteReferenceFallback ?? Math.round(800 * percentageFallback / 100),
+    );
+    percentage = Math.min(percentage, (absoluteReference / 800) * 100);
+  }
+  return Math.round(horasAProgramar * percentage / 100);
+}
+
 function getConfiguredExtensionLimit(rules: any, horasAProgramar: number): number {
-  const absoluteLimit = getPositiveRuleNumber(
+  return getScaledRuleLimit(
+    horasAProgramar,
+    rules?.max_pct_extension,
+    25,
     rules?.max_horas_extension_global ?? rules?.ext_max_horas_enlace,
     200,
-  );
-  return Math.min(
-    absoluteLimit,
-    horasAProgramar * (getPositiveRuleNumber(rules?.max_pct_extension, 25) / 100),
   );
 }
 
@@ -570,11 +587,6 @@ function calcHorasProgramables(tipoVinc: string, dedicacion: string, semanas?: n
   const hSem = dedicacion === 'Medio Tiempo' ? (rules?.horas_semanales_mt || 20) : (rules?.horas_semanales_tc || 40);
   return hSem * (semanas || 20);
 }
-
-const DEDICACION_HORAS: Record<string, number> = {
-  'Tiempo Completo': 800,
-  'Medio Tiempo': 400,
-};
 
 const ROLES_INVESTIGACION_HORAS: Record<string, number> = {
   'INVESTIGADOR LÍDER DE PROYECTO': 400,
@@ -1137,7 +1149,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [tipoVinculacion, setTipoVinculacion] = useState('CARRERA_003');
   const [semanasVinculacion, setSemanasVinculacion] = useState(20);
   const [semanasProrrateo, setSemanasProrrateo] = useState(16);
-  const [horasAProgramar, setHorasAProgramar] = useState(800);
+  const [horasAProgramar, setHorasAProgramar] = useState(0);
+  const [horasBancoDocente, setHorasBancoDocente] = useState<number | null>(null);
+  const [horasPersistidasPta, setHorasPersistidasPta] = useState<number | null>(null);
+  const [horasBancoConsultadas, setHorasBancoConsultadas] = useState(false);
   const [estado, setEstado] = useState('Borrador');
   const [originalEstado, setOriginalEstado] = useState('');
   const [observacionesDocente, setObservacionesDocente] = useState('');
@@ -1177,11 +1192,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const esNoVinculado = tipoVincData?.regimen === 'no_vinculado';
 
   useEffect(() => {
-    const base = calcHorasProgramables(tipoVinculacion, dedicacion, semanasVinculacion, ptaRules);
+    if (!horasBancoConsultadas) return;
+    // La columna HORAS del Banco de Docentes es la fuente principal. El cálculo
+    // normativo queda únicamente como fallback para registros legacy sin Banco.
+    if (horasBancoDocente == null && horasPersistidasPta != null) {
+      setHorasAProgramar(horasPersistidasPta);
+      return;
+    }
+    const base = horasBancoDocente
+      ?? calcHorasProgramables(tipoVinculacion, dedicacion, semanasVinculacion, ptaRules);
     // Prorrateo: no incrementa topes (máximo factor = 1.0)
     const factor = Math.min((semanasProrrateo || 16) / 16, 1.0);
     setHorasAProgramar(Math.round(base * factor));
-  }, [tipoVinculacion, dedicacion, semanasVinculacion, ptaRules, semanasProrrateo]);
+  }, [horasBancoDocente, horasPersistidasPta, horasBancoConsultadas, tipoVinculacion, dedicacion, semanasVinculacion, ptaRules, semanasProrrateo]);
 
   // Componentes
   const [asignaturas, setAsignaturas] = useState<AsignaturaItem[]>([]);
@@ -1713,7 +1736,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         setTipoVinculacion(d.tipo_vinculacion || 'CARRERA_003');
         setSemanasVinculacion(d.semanas_vinculacion || 20);
         setSemanasProrrateo(d.semanas_prorrateo || 16);
-        setHorasAProgramar(d.horas_a_programar || 800);
+        const horasDetalle = Number(d.horas_asignables ?? d.horas_a_programar ?? 0);
+        setHorasPersistidasPta(Number.isFinite(horasDetalle) && horasDetalle >= 0 ? horasDetalle : null);
+        setHorasAProgramar(Number.isFinite(horasDetalle) ? horasDetalle : 0);
         setEstado(d.estado || 'Borrador');
         setOriginalEstado(d.estado || '');
         setAsignaturas(d.asignaturas || []);
@@ -1842,12 +1867,20 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
     // Load Docente User Profile and Banco Docentes info to prepopulate defaults
     useEffect(() => {
-      const activeDocenteId = userPersonId || docenteIdFromPta;
+      // En edición administrativa la bolsa pertenece al docente del PTA, nunca al
+      // usuario revisor que tiene abierta la pantalla.
+      const activeDocenteId = isAdminEdit
+        ? docenteIdFromPta
+        : (userPersonId || docenteIdFromPta);
       if (!activeDocenteId) return;
+      let cancelado = false;
+      setHorasBancoConsultadas(false);
+      setHorasBancoDocente(null);
       Promise.all([
         getPerfilPortal(activeDocenteId).catch(() => null),
-        getBancoDocenteById(activeDocenteId).catch(() => null)
+        getBancoDocenteById(activeDocenteId, periodo).catch(() => null)
       ]).then(([resPerfil, resBanco]) => {
+        if (cancelado) return;
         let p: any = {};
         
         if (resPerfil && resPerfil.success && resPerfil.data) {
@@ -1861,13 +1894,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           p.nombre = bd.nombre_completo || bd.nombreCompleto || p.nombre;
           p.dedicacion = bd.dedicacion || p.dedicacion;
           
-          let mappedTipoVinc = bd.tipo_vinculacion || bd.tipoVinculacion;
-          if (mappedTipoVinc === 'CARRERA') {
-             const regNorm = bd.regimen_normativo || bd.regimenNormativo;
-             if (regNorm === '009/2004') mappedTipoVinc = 'CARRERA_009';
-             else if (regNorm === '003/2018') mappedTipoVinc = 'CARRERA_003';
-          }
+          let mappedTipoVinc = bd.tipo_vinculacion || bd.tipoVinculacion || bd.vinculacion_codigo;
+          const regNorm = String(bd.regimen_normativo || bd.regimenNormativo || '');
+          if (mappedTipoVinc === 'CARRERA1' || regNorm.includes('009/2004')) mappedTipoVinc = 'CARRERA_009';
+          else if (mappedTipoVinc === 'CARRERA2' || mappedTipoVinc === 'CARRERA' || regNorm.includes('003/2018')) mappedTipoVinc = 'CARRERA_003';
           p.tipoVinculacion = mappedTipoVinc || p.tipoVinculacion;
+          p.horasProgramables = Number(bd.horas_programables ?? bd.horasAsignables);
         }
 
         // Territorial y CETAP: siempre se cargan del perfil (son fijos del docente)
@@ -1889,6 +1921,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         // Nombre del docente para firma digital
         const nombre = p.nombre || p.primer_nombre || p.fullName || p.name || '';
         if (nombre) setDocenteName(nombre);
+        if (Number.isFinite(p.horasProgramables) && p.horasProgramables >= 0) {
+          setHorasBancoDocente(p.horasProgramables);
+        }
+        setHorasBancoConsultadas(true);
         // Tipo de vinculación y dedicación: solo al crear un PTA nuevo (al editar vienen del PTA guardado)
         if (!ptaId) {
           if (p.tipoVinculacion) {
@@ -1896,11 +1932,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           }
           if (p.dedicacion) {
             setDedicacion(p.dedicacion);
-            setHorasAProgramar(calcHorasProgramables(p.tipoVinculacion || 'CARRERA_003', p.dedicacion, semanasVinculacion, ptaRules));
           }
         }
-      }).catch((e) => console.warn('[PTAForm] Error loading docente profile data (non-critical):', e?.message || e));
-    }, [userPersonId, docenteIdFromPta, ptaId, loadCetaps, semanasVinculacion, ptaRules]);
+      }).catch((e) => {
+        if (cancelado) return;
+        setHorasBancoConsultadas(true);
+        console.warn('[PTAForm] Error loading docente profile data (non-critical):', e?.message || e);
+      });
+      return () => { cancelado = true; };
+    }, [userPersonId, docenteIdFromPta, ptaId, periodo, isAdminEdit, loadCetaps]);
 
   // ═══ SOLAPAMIENTO (necesario antes de calcular hDocencia) ════════════════
   const docenciaOverlapInfo = useMemo(() => {
@@ -1996,12 +2036,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return configured.filter((activity: any) => hasConfiguredCatalogHours(activity, horasAProgramar));
   }, [ptaRules, actInvestigacion, horasAProgramar]);
 
-  // Mapa nombre→horas_max para lookup rápido
+  // Mapa nombre→tope efectivo. Cada porcentaje se aplica sobre la bolsa real
+  // del Banco de Docentes (por ejemplo, 50% de 720h = 360h).
   const rolesHorasMap = useMemo((): Record<string, number> => {
-    const base: Record<string, number> = { ...ROLES_INVESTIGACION_HORAS };
-    rolesParaDropdown.forEach((r: any) => { base[r.nombre] = r.horas_max; });
+    const globalPct = getPositiveRuleNumber(ptaRules?.max_pct_investigacion, 50);
+    const globalHours = getScaledRuleLimit(
+      horasAProgramar,
+      globalPct,
+      50,
+      ptaRules?.max_horas_investigacion_global,
+      400,
+    );
+    const base: Record<string, number> = {};
+    Object.entries(ROLES_INVESTIGACION_HORAS).forEach(([nombre, horas]) => {
+      base[nombre] = Math.min(globalHours, Math.round(horasAProgramar * (horas / 800)));
+    });
+    rolesParaDropdown.forEach((r: any) => {
+      const absolute = getPositiveRuleNumber(r.horas_max, globalHours);
+      const pct = getPositiveRuleNumber(r.pct_max, (absolute / 800) * 100);
+      base[r.nombre] = Math.min(globalHours, Math.round(horasAProgramar * pct / 100));
+    });
     return base;
-  }, [rolesParaDropdown]);
+  }, [rolesParaDropdown, horasAProgramar, ptaRules]);
 
   const hInvestigacion = useMemo(() => {
     // 1. Prioridad: horas del rol en catálogo (si ptaRules/rolesHorasMap ya cargó)
@@ -2103,18 +2159,39 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
-  const maxDocenciaLimit = getPositiveRuleNumber(ptaRules?.max_horas_docencia_global ?? ptaRules?.horas_base_carrera_003, 800);
+  const maxDocenciaLimit = getScaledRuleLimit(
+    horasAProgramar,
+    ptaRules?.max_pct_docencia,
+    100,
+    ptaRules?.max_horas_docencia_global,
+    800,
+  );
   const maxExtLimit = getConfiguredExtensionLimit(ptaRules, horasAProgramar);
   // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
-  const maxInvLimit = getPositiveRuleNumber(ptaRules?.max_horas_investigacion_global, 400);
+  const maxInvLimit = getScaledRuleLimit(
+    horasAProgramar,
+    ptaRules?.max_pct_investigacion,
+    50,
+    ptaRules?.max_horas_investigacion_global,
+    400,
+  );
   // Límite Complementarias: mínimo entre el tope absoluto (ej. 200h) y el porcentaje
   // configurado sobre el PTA total (ej. 25% de 800h = 200h). Espejo del flujo de
   // Extensión/AADM: la config expresa el límite como % de las horas del PTA.
-  const maxCompLimit = Math.min(
-    getPositiveRuleNumber(ptaRules?.max_horas_complementarias_global, 200),
-    horasAProgramar * (getPositiveRuleNumber(ptaRules?.max_pct_complementarias, 25) / 100),
+  const maxCompLimit = getScaledRuleLimit(
+    horasAProgramar,
+    ptaRules?.max_pct_complementarias,
+    25,
+    ptaRules?.max_horas_complementarias_global,
+    200,
   );
-  const maxAadmLimit = Math.min(ptaRules?.max_horas_aadm_global ?? 200, horasAProgramar * ((ptaRules?.max_pct_aadm ?? 25) / 100));
+  const maxAadmLimit = getScaledRuleLimit(
+    horasAProgramar,
+    ptaRules?.max_pct_aadm,
+    25,
+    ptaRules?.max_horas_aadm_global,
+    200,
+  );
 
   const hCompOrdinary = useMemo(() =>
     complementarias
@@ -2428,12 +2505,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     // Validar tope general (con o sin rol) antes de dejar agregar fila
     if (invProyecto.rol) {
       const maxRol = rolesHorasMap[invProyecto.rol] || Infinity;
-      let rolLimit = maxRol;
-      if (tipoVinculacion !== 'CARRERA_009') {
-          const base800 = ptaRules?.horas_base_carrera_003 || 800;
-          const factor = horasAProgramar / base800;
-          rolLimit = Math.round(maxRol * factor);
-      }
+      const rolLimit = maxRol;
       if (hInvestigacion >= rolLimit) {
         toast.error(`Máximo alcanzado: el rol "${invProyecto.rol}" permite ${rolLimit}h y ya tienes ${hInvestigacion}h asignadas.`);
         return;
@@ -2461,13 +2533,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       let maxLimit = 0;
       if (invProyecto.rol) {
           const maxRol = rolesHorasMap[invProyecto.rol] || Infinity;
-          let rolLimit = maxRol;
-          if (tipoVinculacion !== 'CARRERA_009') {
-              const base800 = ptaRules?.horas_base_carrera_003 || 800;
-              const factor = horasAProgramar / base800;
-              rolLimit = Math.round(maxRol * factor);
-          }
-          maxLimit = rolLimit;
+          maxLimit = maxRol;
       } else {
           maxLimit = horasAProgramar * 0.25;
       }
@@ -4628,7 +4694,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           setInvProyecto(p => ({ ...p, rol: v, horas_solicitadas: maxH }));
                           if (v) setInvActividades([]);
                         }}
-                        options={rolesParaDropdown.map((r: any) => ({ value: r.nombre, label: `${r.nombre} (máx ${r.horas_max}h)` }))}
+                        options={rolesParaDropdown.map((r: any) => ({ value: r.nombre, label: `${r.nombre} (máx ${rolesHorasMap[r.nombre] || 0}h)` }))}
                         placeholder="Seleccionar rol..." />
                     </div>
                     {invProyecto.rol && (
@@ -5459,7 +5525,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               </div>
             ) : (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <SectionHeader title="Actividades Complementarias a la Docencia" subtitle={`${hComplementarias}h programadas (máx ${maxCompLimit}h — ${ptaRules?.max_pct_complementarias || 25}% o ${ptaRules?.max_horas_complementarias_global ?? 200}h global, máx 17 act.)`}
+                <SectionHeader title="Actividades Complementarias a la Docencia" subtitle={`${hComplementarias}h programadas (máx ${maxCompLimit}h — ${ptaRules?.max_pct_complementarias || 25}% de la bolsa RUND, máx 17 act.)`}
                   color={PTA_COLORS.COMPLEMENTARIAS} icon={Briefcase} excede={compExcede}
                   action={(() => {
                     if (!isEditable || hasFullPTAActivity || complementarias.length >= 17) return undefined;

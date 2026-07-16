@@ -349,7 +349,7 @@ export function MesaConcertacion({ ptaId, onBack, userRole = 'direccion', userNa
   const propuesta = pta?.propuesta_direccion || {};
   const respuesta = pta?.respuesta_docente || {};
   const comentarios = pta?.concertacion?.comentarios || [];
-  const horasBase = pta?.horas_a_programar || 800;
+  const horasBase = pta?.horas_asignables ?? pta?.horas_a_programar ?? 0;
   const isConcertado = pta?.estado === 'CONCERTADO';
   const isEscalado = pta?.estado === 'ESCALADO_SNA';
   const estadoVisual = getPtaStatusVisual(pta?.estado);

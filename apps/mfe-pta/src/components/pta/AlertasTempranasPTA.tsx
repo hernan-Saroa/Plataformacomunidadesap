@@ -154,7 +154,7 @@ export function AlertasTempranasPTA() {
 
       // 4. Prorrateo excedido
       const horasProg = pta.total_horas_programadas || 0;
-      const horasDisp = pta.horas_a_programar || 800;
+      const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
       const pctCarga = horasDisp > 0 ? (horasProg / horasDisp) * 100 : 0;
 
       if (pctCarga > 105) {

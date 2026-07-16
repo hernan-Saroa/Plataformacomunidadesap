@@ -149,7 +149,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
   const horasExt = pta?.horas_extension ?? extActs.reduce((s, a) => s + Number(a.horas || 0), 0);
   const horasComp = pta?.horas_complementarias ?? compActs.reduce((s, a) => s + Number(a.horas || 0), 0);
   const horasProg = pta?.horas_totales ?? pta?.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp);
-  const horasDisp = pta?.horas_asignables ?? pta?.horas_a_programar ?? 800;
+  const horasDisp = pta?.horas_asignables ?? pta?.horas_a_programar ?? 0;
   const semanas = Number(pta?.semanas_vinculacion) || 16;
   const pctDe = (h: number) => (horasProg > 0 ? Math.round((h / horasProg) * 100) : 0);
 

@@ -98,7 +98,7 @@ const CATEGORIES = [
 
 function generarR02(ptas: any[]): ReporteGenerado {
   const filas = ptas.map(pta => {
-    const hBase = pta.horas_a_programar || 800;
+    const hBase = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
     const hDoc = pta.horas_docencia || 0, hInv = pta.horas_investigacion || 0;
     // horas_complementarias ya incluye la sección académico-administrativa (AADM).
     const hExt = pta.horas_extension || 0, hComp = pta.horas_complementarias || 0;
@@ -447,7 +447,7 @@ function generarR11(ptas: any[]): ReporteGenerado {
   const enConcertacion = ptas.filter(p => p.estado === 'EN_CONCERTACION').length;
   const pctAprobacion = total > 0 ? ((aprobados / total) * 100).toFixed(1) : '0';
   const totalHoras = ptas.reduce((s, p) => s + (p.total_horas_programadas || 0), 0);
-  const totalBase = ptas.reduce((s, p) => s + (p.horas_a_programar || 800), 0);
+  const totalBase = ptas.reduce((s, p) => s + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
   const pctProgramacion = totalBase > 0 ? ((totalHoras / totalBase) * 100).toFixed(1) : '0';
   const territoriales = new Set(ptas.map(p => p.territorial)).size;
   const tiempoPromedio = ptas.filter(p => p.estado === 'Aprobado' && p.created_at && p.updated_at)
@@ -603,7 +603,7 @@ function generarR13(ptas: any[]): ReporteGenerado {
 
 function generarR15(ptas: any[]): ReporteGenerado {
   const filas = ptas.map(p => {
-    const hBase = p.horas_a_programar || 800;
+    const hBase = p.horas_asignables ?? p.horas_a_programar ?? 0;
     const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
     // horas_complementarias es el total unificado (incl. AADM); el tope del 25% aplica
     // solo a la sección "complementarias a la docencia".
@@ -720,7 +720,7 @@ function generarEXP03_Nomina(ptas: any[]) {
   const lines = [headers.map(h => `"${h}"`).join(',')];
   aprobados.forEach(p => {
     const total = p.total_horas_programadas || 0;
-    const base = p.horas_a_programar || 800;
+    const base = p.horas_asignables ?? p.horas_a_programar ?? 0;
     lines.push([
       `"${p.cedula || p.numero_documento || ''}"`,
       `"${(p.docente_nombre || '').replace(/"/g, '""')}"`,
@@ -778,7 +778,7 @@ function generarEXP02_XML(ptas: any[]) {
     const hAadm = p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0);
     const hComp = p.complementarias_secciones?.complementarias_docencia ?? Math.max(0, hCompTotal - hAadm);
     const total = p.total_horas_programadas || (hDoc + hInv + hExt + hCompTotal);
-    const base = p.horas_a_programar || 800;
+    const base = p.horas_asignables ?? p.horas_a_programar ?? 0;
     xmlLines.push(`    <PTA secuencia="${idx + 1}">`);
     xmlLines.push(`      <Identificacion>`);
     xmlLines.push(`        <PtaId>${escapeXml(p.id || '')}</PtaId>`);
@@ -957,7 +957,7 @@ export function CentroReportesPTA() {
       const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
       const hExt = p.horas_extension || 0, hComp = p.horas_complementarias || 0;
       const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp);
-      const base = p.horas_a_programar || 800;
+      const base = p.horas_asignables ?? p.horas_a_programar ?? 0;
 
       sections.push(`
         <div style="page-break-after:always;padding:20px;font-family:Arial,sans-serif;font-size:12px;">
@@ -1042,7 +1042,7 @@ export function CentroReportesPTA() {
     const devueltos = ptas.filter(p => p.estado === 'Devuelto').length;
     const enConcertacion = ptas.filter(p => p.estado === 'EN_CONCERTACION').length;
     const totalHoras = ptas.reduce((s, p) => s + (p.total_horas_programadas || 0), 0);
-    const totalBase = ptas.reduce((s, p) => s + (p.horas_a_programar || 800), 0);
+    const totalBase = ptas.reduce((s, p) => s + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
     const pctAprobacion = total > 0 ? (aprobados / total) * 100 : 0;
     const pctProgramacion = totalBase > 0 ? (totalHoras / totalBase) * 100 : 0;
     const territoriales = new Set(ptas.map(p => p.territorial).filter(Boolean)).size;
@@ -1444,7 +1444,7 @@ export function CentroReportesPTA() {
     const pendientes = ptasComparar.filter((p: any) => p.estado?.includes('Pendiente')).length;
     const devueltos = ptasComparar.filter((p: any) => p.estado === 'Devuelto').length;
     const totalHoras = ptasComparar.reduce((s: number, p: any) => s + (p.total_horas_programadas || 0), 0);
-    const totalBase = ptasComparar.reduce((s: number, p: any) => s + (p.horas_a_programar || 800), 0);
+    const totalBase = ptasComparar.reduce((s: number, p: any) => s + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
     const pctAprobacion = total > 0 ? (aprobados / total) * 100 : 0;
     const pctProgramacion = totalBase > 0 ? (totalHoras / totalBase) * 100 : 0;
     const territoriales = new Set(ptasComparar.map((p: any) => p.territorial).filter(Boolean)).size;

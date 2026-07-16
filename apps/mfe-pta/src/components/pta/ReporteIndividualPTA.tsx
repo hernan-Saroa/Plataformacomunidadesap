@@ -101,7 +101,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
 
   if (!pta) return null;
 
-  const horasProgramables = pta.horas_a_programar || 800;
+  const horasProgramables = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
   const asignaturas = pta.asignaturas || [];
   const investigacion = pta.investigacion_proyecto || pta.investigacion || null;
   const invActividades = pta.investigacion_actividades || [];

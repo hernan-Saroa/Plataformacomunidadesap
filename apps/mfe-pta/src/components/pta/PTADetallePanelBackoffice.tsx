@@ -850,7 +850,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   );
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
-  const horasDisp = pta.horas_a_programar || 800;
+  const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
   const asignaturas = Array.isArray(pta.asignaturas) ? pta.asignaturas : [];
   
   const investigacion = {

@@ -47,35 +47,20 @@ export function TabGenerales({ draft, handleChange }: { draft: PTARules; handleC
         <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-blue-500" /> 1. Condiciones Generales y Horas Base
+              <Calculator className="w-5 h-5 text-blue-500" /> 1. Condiciones Generales
             </h2>
             <p className="text-slate-500 text-sm mt-1 max-w-2xl">
-              Asignación nominal de horas según tipo de vinculación y topes porcentuales máximos para evitar sobreasignación sobre la bolsa total.
+              Reglas generales del período y topes porcentuales para evitar sobreasignación. La bolsa total de cada PTA proviene de la columna HORAS del Banco de Docentes.
             </p>
           </div>
         </div>
 
         <div className="space-y-4">
-          {/* Vinculados */}
-          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
-            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-emerald-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
-              <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">A</span>
-                Docentes Vinculados (Carrera) - TC y MT
-              </span>
-              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
-            </summary>
-            <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-emerald-50/10">
-              {renderInputRow("horas_base_carrera_009", "Normativa Acuerdo 009 de 2004", "Horas base consolidadas.", false, "h")}
-              {renderInputRow("horas_base_carrera_003", "Normativa Acuerdo 003 de 2018", "Horas base consolidadas.", false, "h")}
-            </div>
-          </details>
-
           {/* No Vinculados */}
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-amber-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">B</span>
+                <span className="w-6 h-6 rounded bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">A</span>
                 No Vinculados (Ocasionales y Visitantes)
               </span>
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
@@ -83,7 +68,7 @@ export function TabGenerales({ draft, handleChange }: { draft: PTARules; handleC
             <div className="p-4 border-t border-slate-100 flex flex-col gap-3 bg-amber-50/10">
               {renderInputRow("horas_semanales_tc", "Dedicación Tiempo Completo", "Por semana de vinculación.", false, "h/sem")}
               {renderInputRow("horas_semanales_mt", "Dedicación Medio Tiempo", "Por semana de vinculación.", false, "h/sem")}
-              {renderInputRow("semanas_periodo_academico", "Semanas del Período Académico", "Circular §2: base de proporcionalidad (20 sem × 40h = 800h PTA).", false, "sem")}
+              {renderInputRow("semanas_periodo_academico", "Semanas del Período Académico", "Base temporal para prorrateos; la bolsa total de cada docente proviene del Banco/RUND.", false, "sem")}
             </div>
           </details>
 
@@ -91,7 +76,7 @@ export function TabGenerales({ draft, handleChange }: { draft: PTARules; handleC
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-blue-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs">C</span>
+                <span className="w-6 h-6 rounded bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs">B</span>
                 Topes Globales (Módulo Reglas)
               </span>
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
