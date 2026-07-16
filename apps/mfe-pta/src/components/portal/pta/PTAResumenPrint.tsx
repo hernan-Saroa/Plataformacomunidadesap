@@ -282,7 +282,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                             {a.nucleo_tematico && <div style={SUB}>{a.nucleo_tematico}{a.semestre ? ` · ${a.semestre}` : ''}{a.modalidad ? ` · ${String(a.modalidad).charAt(0) + String(a.modalidad).slice(1).toLowerCase()}` : ''}</div>}
                           </td>
                           <td style={TD}>
-                            {a.programa_nombre || a.programa || '—'}
+                            {a.programa_nombre_completo || a.programa_nombre || a.programa || '—'}
                             {a.cetap_nombre && <div style={SUB}>CETAP {a.cetap_nombre}{a.territorial_nombre ? ` · ${a.territorial_nombre}` : ''}</div>}
                           </td>
                           <td style={TDC}>{a.creditos || '-'}</td>

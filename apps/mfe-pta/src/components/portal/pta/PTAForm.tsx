@@ -128,6 +128,9 @@ interface AsignaturaItem {
   territorial_id: string;
   cetap_id: string;
   programa_id: string;
+  programa_nombre?: string;
+  programa_nombre_completo?: string;
+  programa_codigo?: string;
   asignatura_id: string;
   asignatura_nombre: string;
   nucleo_tematico: string;
@@ -3180,6 +3183,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       ? (adminEditableComponentKeysNow.length <= 1 ? adminEditableComponentKeysNow : componentesSeleccionadosDevolver)
       : [];
 
+    // Persistir una instantánea legible del programa, además de su id. El backend
+    // vuelve a resolver el catálogo al consultar el PTA, pero esta copia mantiene
+    // completos también los snapshots y borradores recién guardados.
+    const asignaturasPayload = asignaturas
+      .filter(a => a.asignatura_id && a.asignatura_id !== '')
+      .map(a => {
+        const programasDelCetap = a.cetap_id ? (programasPorCetap[a.cetap_id] || []) : [];
+        const programaCatalogo = [...programasDelCetap, ...programas]
+          .find((programa: any) => String(programa?.id) === String(a.programa_id));
+        const programaNombreCompleto = String(programaCatalogo?.nombre || a.programa_nombre_completo || a.programa_nombre || '').trim();
+
+        return programaNombreCompleto
+          ? {
+              ...a,
+              programa_nombre: programaNombreCompleto,
+              programa_nombre_completo: programaNombreCompleto,
+              programa_codigo: programaCatalogo?.codigo || a.programa_codigo,
+            }
+          : a;
+      });
+
     const payload = {
       id: currentPtaId || undefined,
       docente_id: isAdminEdit ? (docenteIdFromPta || userPersonId) : (userPersonId || docenteIdFromPta),
@@ -3198,7 +3222,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       _concertacion_actor_id: isAdminEdit ? concertacionActorId : undefined,
       _concertacion_actor_nombre: isAdminEdit ? concertacionActorNombre : undefined,
       _concertacion_componentes: componentesConcertacionSeleccionados,
-      asignaturas: asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== ''),
+      asignaturas: asignaturasPayload,
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
       investigacion_proyecto: (invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)

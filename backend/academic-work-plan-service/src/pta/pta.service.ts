@@ -1807,7 +1807,9 @@ export class PtaService {
           const item = {
             id: String(row.id),
             codigo: row.codigo ? String(row.codigo) : undefined,
-            nombre: row.nombreCorto || row.nombre,
+            // El nombre corto (p. ej. "APT") es solo un código visual. Los DTO
+            // consumidos por reportes deben exponer el nombre oficial completo.
+            nombre: String(row.nombre || row.nombreCorto || ''),
             nombreCorto: row.nombreCorto || undefined,
           };
           programaMap.set(item.id, item);
@@ -1877,8 +1879,11 @@ export class PtaService {
         const territorialId = coalesceLookupKey(asig?.territorial_id, asig?.territorialId, asig?.territorial?.id);
         const cetapId = coalesceLookupKey(asig?.cetap_id, asig?.cetapId, asig?.sede_id, asig?.sedeId);
 
-        const programaNombre = coalesceString(asig?.programa_nombre, asig?.programa?.nombre, asig?.programa?.nombreCorto)
-          || (programaId ? programaMap.get(programaId)?.nombre : null);
+        const programaCatalogo = programaId ? programaMap.get(programaId) : null;
+        // El catálogo vigente es autoritativo. Esto corrige también PTAs legacy
+        // que persistieron `programa_nombre` con la abreviación (p. ej. "APT").
+        const programaNombre = programaCatalogo?.nombre
+          || coalesceString(asig?.programa_nombre_completo, asig?.programa_nombre, asig?.programa?.nombre, asig?.programa?.nombreCorto);
         const territorialNombre = coalesceString(asig?.territorial_nombre, asig?.territorial?.nombre)
           || (territorialId ? territorialMap.get(territorialId)?.nombre : null);
         const cetapNombre = coalesceString(asig?.cetap_nombre, asig?.sede_nombre, asig?.cetap?.nombre, asig?.sede?.nombre)
@@ -1886,6 +1891,9 @@ export class PtaService {
 
         if (programaNombre) {
           asig.programa_nombre = programaNombre;
+          asig.programa_nombre_completo = programaNombre;
+          if (programaCatalogo?.codigo) asig.programa_codigo = programaCatalogo.codigo;
+          if (programaCatalogo?.nombreCorto) asig.programa_nombre_corto = programaCatalogo.nombreCorto;
           programaNames.push(programaNombre);
         }
         if (territorialNombre) {
