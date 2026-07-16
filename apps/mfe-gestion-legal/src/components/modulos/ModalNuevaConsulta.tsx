@@ -56,7 +56,7 @@ export interface NuevaConsultaData {
   antecedentes?: string;
   prioridad: PrioridadConsulta;
   abogadoAsignadoId: string;
-  documentoAdjunto?: File;
+  documentosAdjuntos?: File[];
 }
 
 interface Abogado {
@@ -121,7 +121,8 @@ const initialData: NuevaConsultaData = {
   consulta: '',
   antecedentes: '',
   prioridad: 'MEDIA' as PrioridadConsulta,
-  abogadoAsignadoId: ''
+  abogadoAsignadoId: '',
+  documentosAdjuntos: []
 };
 
 export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = false, consultaInicial }: ModalNuevaConsultaProps) {
@@ -316,13 +317,13 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
         const formDataToSend = new FormData();
         Object.keys(payload).forEach(key => {
           const value = (payload as any)[key];
-          if (key !== 'documentoAdjunto' && value !== undefined && value !== null) {
+          if (key !== 'documentosAdjuntos' && value !== undefined && value !== null) {
             formDataToSend.append(key, value.toString());
           }
         });
-        if (formData.documentoAdjunto) {
-          formDataToSend.append('file', formData.documentoAdjunto);
-        }
+        (formData.documentosAdjuntos || []).forEach(file => {
+          formDataToSend.append('files', file);
+        });
         await legalService.createConsultaJuridica(formDataToSend);
       }
 
@@ -666,40 +667,93 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
                 />
               </div>
 
-              {/* ✅ ADJUNTAR DOCUMENTO */}
+              {/* ✅ ADJUNTAR DOCUMENTOS (MÚLTIPLES) */}
               <div className="mt-4">
                 <Label className="text-sm font-bold text-gray-700 flex items-center gap-1 mb-2">
                   <FileText className="w-4 h-4 text-gray-500" />
-                  Documento Adjunto (Opcional)
+                  Documentos Adjuntos (Opcional)
                 </Label>
                 <Input
                   type="file"
                   accept=".pdf"
+                  multiple
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
+                    const seleccionados = Array.from(e.target.files || []);
+                    if (seleccionados.length === 0) return;
+
+                    const actuales = formData.documentosAdjuntos || [];
+                    const nuevos: File[] = [];
+
+                    for (const file of seleccionados) {
                       // Validar tipo PDF
                       if (file.type !== 'application/pdf') {
-                        toast.error('Solo se permiten archivos en formato PDF');
-                        e.target.value = '';
-                        return;
+                        toast.error(`"${file.name}" no es un PDF. Solo se permiten archivos en formato PDF`);
+                        continue;
                       }
-                      // Validar tamaño (ej. 10MB)
+                      // Validar tamaño (10MB)
                       if (file.size > 10 * 1024 * 1024) {
-                        toast.error('El archivo excede el tamaño máximo permitido (10MB)');
-                        e.target.value = ''; // Reset input
-                        return;
+                        toast.error(`"${file.name}" excede el tamaño máximo permitido (10MB)`);
+                        continue;
                       }
-                      updateField('documentoAdjunto', file);
-                    } else {
-                      updateField('documentoAdjunto', undefined);
+                      // Evitar duplicados (mismo nombre y tamaño)
+                      const yaExiste = [...actuales, ...nuevos].some(
+                        f => f.name === file.name && f.size === file.size
+                      );
+                      if (yaExiste) {
+                        toast.warning(`"${file.name}" ya fue agregado`);
+                        continue;
+                      }
+                      nuevos.push(file);
                     }
+
+                    if (nuevos.length > 0) {
+                      updateField('documentosAdjuntos', [...actuales, ...nuevos]);
+                    }
+                    // Reset del input para permitir volver a seleccionar el mismo archivo si se elimina
+                    e.target.value = '';
                   }}
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Formatos permitidos: PDF únicamente. Máximo 10MB.
+                  Formatos permitidos: PDF únicamente. Máximo 10MB por archivo. Puede adjuntar varios documentos.
                 </p>
+
+                {/* Listado de anexos seleccionados */}
+                {(formData.documentosAdjuntos || []).length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-600">
+                      {(formData.documentosAdjuntos || []).length} documento(s) adjunto(s):
+                    </p>
+                    {(formData.documentosAdjuntos || []).map((file, index) => (
+                      <div
+                        key={`${file.name}-${index}`}
+                        className="flex items-center justify-between gap-3 p-2 bg-white border border-gray-200 rounded-lg"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
+                          <span className="text-sm text-gray-700 truncate" title={file.name}>
+                            {file.name}
+                          </span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const restantes = (formData.documentosAdjuntos || []).filter((_, i) => i !== index);
+                            updateField('documentosAdjuntos', restantes);
+                          }}
+                          className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
+                          title="Eliminar documento"
+                          aria-label={`Eliminar ${file.name}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </FormSection>
 
