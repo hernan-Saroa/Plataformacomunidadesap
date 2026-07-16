@@ -1243,10 +1243,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Modal de confirmación PTA incompleto (reemplaza window.confirm nativo)
   const [showConfirmIncompleto, setShowConfirmIncompleto] = useState(false);
   const [confirmIncompletoData, setConfirmIncompletoData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
-  // Confirmación de horas de EXCESO (el PTA supera el límite programable).
-  const [showConfirmExceso, setShowConfirmExceso] = useState(false);
-  const [confirmExcesoData, setConfirmExcesoData] = useState<{ totalHoras: number; horasRequeridas: number; horasExceso: number; porcentaje: number } | null>(null);
-
   // Legacy — conservados por compatibilidad
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
   const [savedPtaIdForSignature, setSavedPtaIdForSignature] = useState('');
@@ -2168,8 +2164,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return hInvestigacion_raw;
   }, [hInvestigacion_raw, invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
 
-  // La dedicación exclusiva prevalece sobre la bolsa no docente; Docencia mantiene
-  // su cálculo independiente y puede producir carga adicional/prorrateo.
+  // La dedicación exclusiva consume el 100% de la bolsa. Docencia se conserva
+  // durante la edición para no perder datos sin confirmación, pero cualquier suma
+  // adicional queda señalada y bloqueada por el tope global.
   const actividadTotalidadGuardada = academicoAdmin.find(item => {
     const catalog = actAcadAdmin.find((activity: any) => activity.id === item.actividad_id);
     return isFullPTAActivity(catalog || item);
@@ -2187,9 +2184,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     : undefined;
   const hasFullPTAActivity = Boolean(actividadTotalidad);
 
-  // El 100% reemplaza la bolsa conjunta de Investigación, Extensión y
-  // Complementarias. Docencia es independiente y se conserva. La limpieza es
-  // deliberada para que no queden formularios parciales ocultos en el borrador.
+  // El 100% reemplaza Investigación, Extensión y Complementarias ordinarias.
+  // Docencia se conserva para que el usuario decida qué retirar, pero no podrá
+  // concertar mientras la suma resultante supere la bolsa total.
   useEffect(() => {
     if (!actividadTotalidadGuardada) return;
 
@@ -2254,13 +2251,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
-  const maxDocenciaLimit = getScaledRuleLimit(
-    horasAProgramar,
-    ptaRules?.max_pct_docencia,
-    100,
-    ptaRules?.max_horas_docencia_global,
-    800,
-  );
+  // Docencia no tiene un porcentaje propio: puede ocupar cualquier parte de la
+  // bolsa, incluso el 100%, pero nunca superar las horas reales del docente.
+  const maxDocenciaLimit = Math.max(0, Number(horasAProgramar) || 0);
   const maxExtLimit = getConfiguredExtensionLimit(ptaRules, horasAProgramar);
   // Límite Investigación: mínimo entre absoluto global (ej. 400h) y porcentaje por rol
   const maxInvLimit = getScaledRuleLimit(
@@ -2316,9 +2309,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const acadExcede = !actividadTotalidad && hAcademicoAdmin > maxAadmLimit;
 
   const componentLimitViolations = useMemo(() => {
-    if (actividadTotalidad) return [];
     const violations: Array<{
-      section: 'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin';
+      section: 'global' | 'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin';
       label: string;
       hours: number;
       limit: number;
@@ -2326,7 +2318,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }> = [];
 
     const addViolation = (
-      section: 'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin',
+      section: 'global' | 'docencia' | 'investigacion' | 'extension' | 'complementarias' | 'academico_admin',
       label: string,
       hours: number,
       limit: number,
@@ -2337,26 +2329,36 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           label,
           hours,
           limit,
-          message: `El componente ${label} excede el limite permitido: ${hours}h / ${limit}h.`,
+          message: section === 'global'
+            ? `El total del PTA excede las horas programables del docente: ${hours}h / ${limit}h. Redistribuya ${hours - limit}h antes de continuar.`
+            : `El componente ${label} excede el limite permitido: ${hours}h / ${limit}h.`,
         });
       }
     };
 
-    addViolation('docencia', 'Docencia', hDocencia, maxDocenciaLimit);
-    addViolation('investigacion', 'Investigacion', hInvestigacion, maxInvEffectiveLimit);
-    addViolation('extension', 'Extension', hExtension, maxExtLimit);
-    addViolation('complementarias', 'Complementarias', hComplementariasComponente, maxCompLimit);
-    addViolation('academico_admin', 'Academico-Administrativo', hAcademicoAdmin, maxAadmLimit);
+    // La suma de los cuatro componentes tiene como tope autoritativo la bolsa
+    // dinámica del Banco de Docentes. Se registra primero para mostrarla como
+    // causa principal cuando coincide con otro tope individual.
+    addViolation('global', 'Total PTA', totalHoras, horasAProgramar);
+
+    if (!actividadTotalidad) {
+      // Docencia no necesita una segunda regla porcentual: si por sí sola supera
+      // la bolsa, la validación global anterior ya la bloquea.
+      addViolation('investigacion', 'Investigacion', hInvestigacion, maxInvEffectiveLimit);
+      addViolation('extension', 'Extension', hExtension, maxExtLimit);
+      addViolation('complementarias', 'Complementarias', hComplementariasComponente, maxCompLimit);
+      addViolation('academico_admin', 'Academico-Administrativo', hAcademicoAdmin, maxAadmLimit);
+    }
 
     return violations;
   }, [
     actividadTotalidad,
-    hDocencia,
     hInvestigacion,
     hExtension,
     hComplementarias,
     hAcademicoAdmin,
-    maxDocenciaLimit,
+    totalHoras,
+    horasAProgramar,
     maxInvEffectiveLimit,
     maxExtLimit,
     maxCompLimit,
@@ -3192,11 +3194,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    // Bloqueo por topes individuales de componente, no por suma global del PTA.
-    if (enviar && hasBlockingHourLimits) {
+    // Al enviar o concertar se aplican los topes individuales y el tope global
+    // autoritativo de la bolsa del docente. El borrador sí puede conservarse
+    // mientras el usuario redistribuye las horas.
+    if ((enviar || isAdminEdit) && hasBlockingHourLimits) {
       const firstViolation = componentLimitViolations[0];
       toast.error(firstViolation?.message || 'Hay componentes que exceden el limite permitido de horas.');
-      if (firstViolation?.section) setActiveSection(firstViolation.section);
+      if (firstViolation?.section && firstViolation.section !== 'global') setActiveSection(firstViolation.section);
       setSaving(false);
       return;
     }
@@ -3505,11 +3509,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (!validarComposicionParaEnvio()) {
       return false;
     }
-    // Bloqueo por topes individuales de componente, no por suma global del PTA.
+    // Bloqueo por topes individuales y por la suma global de los componentes.
     if (hasBlockingHourLimits) {
       const firstViolation = componentLimitViolations[0];
       toast.error(firstViolation?.message || 'Hay componentes que exceden el limite permitido de horas.');
-      if (firstViolation?.section) setActiveSection(firstViolation.section);
+      if (firstViolation?.section && firstViolation.section !== 'global') setActiveSection(firstViolation.section);
       return false;
     }
     if (invWarnings?.length > 0) {
@@ -3543,16 +3547,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return false; // Detener el flujo — el modal se encargará de continuar si el usuario acepta
     }
 
-    // Horas de exceso: si el PTA supera el límite programable, se pide
-    // confirmación explícita (no bloquea; el docente decide enviarlo así).
-    const horasExcesoEnvio = totalHoras - horasAProgramar;
-    if (horasExcesoEnvio > 0) {
-      const porcentajeReal = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
-      setConfirmExcesoData({ totalHoras, horasRequeridas: horasAProgramar, horasExceso: horasExcesoEnvio, porcentaje: porcentajeReal });
-      setShowConfirmExceso(true);
-      return false; // Detener el flujo — el modal continúa si el usuario acepta
-    }
-
     return true;
   }, [hasFullPTAActivity, academicoAdmin, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio]);
 
@@ -3571,6 +3565,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const solicitarFirmaDocente = useCallback(async (accion: 'via_save' | 'avanzar_sin_cambios') => {
     if (requestingFirmaCode) return;
+    if (hasBlockingHourLimits) {
+      toast.error(componentLimitViolations[0]?.message || 'El PTA excede el tope permitido de horas.');
+      return;
+    }
 
     setRequestingFirmaCode(true);
     try {
@@ -3603,7 +3601,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     } finally {
       setRequestingFirmaCode(false);
     }
-  }, [currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, isAdminEdit, periodo, requestingFirmaCode, userPersonId]);
+  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, requestingFirmaCode, userPersonId]);
 
   const verificarCodigoFirmaDocente = useCallback(async (codigo: string) => {
     if (!firmaVerificationId) throw new Error('No hay código activo. Solicita uno nuevo.');
@@ -3947,122 +3945,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         document.body
       )}
 
-      {/* Modal: confirmación de HORAS DE EXCESO (supera el límite programable) */}
-      {showConfirmExceso && confirmExcesoData && createPortal(
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 99999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: '20px', maxWidth: '460px', width: '92%',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-            overflow: 'hidden', animation: 'scaleIn 0.25s ease'
-          }}>
-            {/* Header con icono de advertencia */}
-            <div style={{
-              background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%)',
-              padding: '28px 28px 20px', borderBottom: '1px solid #FDE68A',
-              display: 'flex', alignItems: 'flex-start', gap: '16px'
-            }}>
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
-                background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
-              }}>
-                <AlertTriangle style={{ width: '24px', height: '24px', color: '#fff' }} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#92400E', lineHeight: 1.3 }}>
-                  PTA con horas de exceso
-                </h3>
-                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#B45309', fontWeight: 500 }}>
-                  El plan supera el límite programable
-                </p>
-              </div>
-            </div>
-
-            {/* Body */}
-            <div style={{ padding: '24px 28px' }}>
-              <div style={{
-                background: '#FFFBEB', borderRadius: '14px', padding: '16px 20px',
-                border: '1px solid #FDE68A', marginBottom: '20px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#374151' }}>
-                    {confirmExcesoData.totalHoras}h programadas
-                  </span>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#9CA3AF' }}>
-                    límite {confirmExcesoData.horasRequeridas}h
-                  </span>
-                </div>
-                <div style={{ textAlign: 'center', marginTop: '8px' }}>
-                  <span style={{ fontSize: '26px', fontWeight: 800, color: '#D97706' }}>
-                    +{confirmExcesoData.horasExceso}h
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '6px', fontWeight: 600 }}>
-                    de exceso ({confirmExcesoData.porcentaje}%)
-                  </span>
-                </div>
-              </div>
-
-              <p style={{
-                margin: 0, fontSize: '13.5px', lineHeight: 1.65, color: '#4B5563', fontWeight: 500
-              }}>
-                Este PTA tiene <strong style={{ color: '#D97706' }}>{confirmExcesoData.horasExceso} horas de exceso</strong> por encima de las {confirmExcesoData.horasRequeridas}h del límite programable.
-              </p>
-              <p style={{
-                margin: '12px 0 0', fontSize: '13.5px', lineHeight: 1.65, color: '#6B7280', fontWeight: 500
-              }}>
-                ¿Desea enviarlo de todas formas?
-              </p>
-            </div>
-
-            {/* Footer con botones */}
-            <div style={{
-              padding: '0 28px 24px', display: 'flex', gap: '12px', justifyContent: 'flex-end'
-            }}>
-              <button
-                onClick={() => { setShowConfirmExceso(false); setConfirmExcesoData(null); }}
-                style={{
-                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
-                  border: '2px solid #E5E7EB', background: '#fff', color: '#374151',
-                  cursor: 'pointer', transition: 'all 0.2s'
-                }}
-                onMouseOver={e => { (e.target as HTMLElement).style.background = '#F3F4F6'; }}
-                onMouseOut={e => { (e.target as HTMLElement).style.background = '#fff'; }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => {
-                  setShowConfirmExceso(false);
-                  setConfirmExcesoData(null);
-                  solicitarFirmaDocente('via_save');
-                }}
-                style={{
-                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
-                  border: 'none', background: '#D97706', color: '#fff',
-                  cursor: 'pointer', transition: 'all 0.2s',
-                  boxShadow: '0 4px 12px rgba(217,119,6,0.3)'
-                }}
-                onMouseOver={e => { (e.target as HTMLElement).style.background = '#B45309'; }}
-                onMouseOut={e => { (e.target as HTMLElement).style.background = '#D97706'; }}
-              >
-                Sí, enviar de todas formas
-              </button>
-            </div>
-          </div>
-          <style>{`
-            @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-            @keyframes scaleIn { from { opacity: 0; transform: scale(0.95) } to { opacity: 1; transform: scale(1) } }
-          `}</style>
-        </div>,
-        document.body
-      )}
-
       {/* Banner: Devolución de componente(s) — el revisor devolvió componentes para corrección.
           Muestra QUÉ componente se devolvió y el comentario del revisor; el docente solo
           puede editar esos componentes y re-enviar. */}
@@ -4126,7 +4008,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 }
                 solicitarFirmaDocente('via_save');
               }}
-              disabled={saving || requestingFirmaCode}
+              disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
               style={{ background: '#D97706' }}
             >
@@ -4161,7 +4043,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           <div className="flex flex-col sm:flex-row gap-2 mt-1">
             <button
               onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')}
-              disabled={saving || requestingFirmaCode}
+              disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
               style={{ background: '#7C3AED' }}
             >
@@ -4169,7 +4051,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             </button>
             <button
               onClick={() => solicitarFirmaDocente('via_save')}
-              disabled={saving || requestingFirmaCode}
+              disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-violet-300 bg-white text-violet-700 text-sm font-bold disabled:opacity-50 cursor-pointer hover:bg-violet-50"
             >
               <RotateCcw className="w-4 h-4" /> Corregir y re-enviar al revisor
@@ -4431,11 +4313,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <span className="font-bold text-slate-700">{horasAProgramar}h</span>
                   </div>
                   {horasExceso > 0 && (
-                    <div className="mt-1.5 flex justify-between items-center text-[10px] font-semibold text-amber-600">
+                    <div className="mt-1.5 flex justify-between items-center text-[10px] font-semibold text-red-600">
                       <span className="flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> Horas de exceso:
+                        <AlertTriangle className="w-3 h-3" /> Exceso bloqueante:
                       </span>
-                      <span className="font-bold text-amber-700">+{horasExceso}h</span>
+                      <span className="font-bold text-red-700">+{horasExceso}h</span>
                     </div>
                   )}
                   <div className={`mt-3 p-2.5 rounded-lg border text-[10px] leading-relaxed flex items-start gap-1.5 ${
@@ -5873,7 +5755,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                       <div>
                         <p className="font-bold mb-0.5">Actividad de dedicación exclusiva (100%)</p>
-                        <p className="text-xs text-blue-800">«{actividadTotalidad.nombre}» ocupa el 100% de la bolsa de Investigación, Extensión y Complementarias ({horasAProgramar}h). Esas actividades incompatibles se limpiaron; Docencia permanece independiente y sus horas se suman como carga adicional.</p>
+                        <p className="text-xs text-blue-800">«{actividadTotalidad.nombre}» ocupa el 100% de las horas programables ({horasAProgramar}h). Las actividades incompatibles se limpiaron; si conserva Docencia deberá retirarla o elegir otra actividad antes de concertar.</p>
                       </div>
                     </div>
                   )}
@@ -6050,9 +5932,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               )}
 
               {isAdminEdit ? (
-                <button onClick={() => handleSave(false)} disabled={saving}
-                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50"
-                  style={{ background: '#003DA5' }}>
+                <button onClick={() => handleSave(false)} disabled={saving || hasBlockingHourLimits}
+                  className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: (saving || hasBlockingHourLimits) ? '#9CA3AF' : '#003DA5' }}>
                   <Save className="w-3.5 h-3.5" /> {saving ? 'Guardando...' : 'Concertar'}
                 </button>
               ) : esDevolucionComponentes ? (
@@ -6072,7 +5954,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 </button>
               ) : isEnRevisionDocente ? (
                 <>
-                  <button onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')} disabled={saving || requestingFirmaCode}
+                  <button onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')} disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
                     className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50">
                     <Send className="w-3.5 h-3.5" /> Avanzar sin cambios
                   </button>

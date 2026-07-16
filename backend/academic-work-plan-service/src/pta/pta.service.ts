@@ -1097,8 +1097,8 @@ export class PtaService {
     const sumAcad = compAadm.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
     // Una actividad académico-administrativa de dedicación exclusiva sustituye la
-    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia conserva
-    // su cálculo independiente y puede generar horas adicionales/prorrateo.
+    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia se
+    // conserva en el cálculo para que el tope global detecte cualquier hora adicional.
     const exclusiveActivities = compAadm.filter((activity: any) => activity?.consumeTotalidad === true);
     if (exclusiveActivities.length > 0) {
       const exclusiveHours = Math.max(
@@ -1303,6 +1303,17 @@ export class PtaService {
           );
         }
       }
+    }
+  }
+
+  private validateGlobalPtaHours(totalHours: number, horasAProgramar: number): void {
+    const total = Number(totalHours) || 0;
+    const limit = Math.max(0, Number(horasAProgramar) || 0);
+    if (total > limit) {
+      throw new BadRequestException(
+        `El total del PTA excede las horas programables del docente: ${total}h / ${limit}h. `
+        + `Redistribuya ${total - limit}h entre los componentes antes de continuar.`,
+      );
     }
   }
 
@@ -1561,7 +1572,12 @@ export class PtaService {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
     }
 
-    // El envio se valida por topes individuales de componente, no por suma global.
+    // La bolsa proveniente del Banco de Docentes es el tope autoritativo para la
+    // suma de los cuatro componentes. También aplica a dedicaciones exclusivas:
+    // una actividad del 100% no puede coexistir con horas adicionales.
+    this.validateGlobalPtaHours(horas.total, horasAProgramar);
+
+    // Una actividad de dedicación exclusiva ya consume la bolsa completa.
     if (tieneTotalidad) return;
 
     const asignaturas = Array.isArray(body?.asignaturas)
@@ -1569,14 +1585,6 @@ export class PtaService {
       : [];
     this.validateDocenciaDateOverlaps(asignaturas);
 
-    const maxDocencia = this.getScaledRuleLimit(
-      rules,
-      horasAProgramar,
-      'max_pct_docencia',
-      100,
-      'max_horas_docencia_global',
-      800,
-    );
     const maxInvestigacion = this.getInvestigacionLimit(body, rules, horasAProgramar);
     const maxExtension = this.getScaledRuleLimit(
       rules,
@@ -1611,7 +1619,8 @@ export class PtaService {
       }
     }
 
-    assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
+    // Docencia no tiene tope porcentual propio; el límite global anterior le
+    // permite ocupar desde una fracción hasta el 100% de la bolsa disponible.
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
     assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
