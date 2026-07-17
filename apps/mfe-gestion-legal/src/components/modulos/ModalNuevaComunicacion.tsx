@@ -194,7 +194,9 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
   const [cuerpo, setCuerpo] = useState('');
   const [paraEmails, setParaEmails] = useState<string[]>([]);
   const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [bccEmails, setBccEmails] = useState<string[]>([]);
   const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
   const [isForward, setIsForward] = useState(false);
   const [isReply, setIsReply] = useState(false);
   const [originalCorreoId, setOriginalCorreoId] = useState<string | undefined>();
@@ -208,6 +210,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
 
     setArchivos(initialData?.archivos || []);
     setShowCc(false);
+    setShowBcc(false);
+    setBccEmails([]);
     setRequestReadReceipt(true);
 
     if (initialData?.isForward) {
@@ -255,6 +259,13 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
     if (invalidCc.length > 0) {
       toast.error('⚠️ Emails de CC inválidos', {
         description: `Corrija: ${invalidCc.join(', ')}`,
+      });
+      return;
+    }
+    const invalidBcc = bccEmails.filter((em) => !EMAIL_REGEX.test(em));
+    if (invalidBcc.length > 0) {
+      toast.error('⚠️ Emails de CCO inválidos', {
+        description: `Corrija: ${invalidBcc.join(', ')}`,
       });
       return;
     }
@@ -308,6 +319,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
           subject: asunto.trim() || 'Sin Asunto',
           body: cuerpo.trim(),
           cc: ccEmails.length > 0 ? ccEmails : undefined,
+          bcc: bccEmails.length > 0 ? bccEmails : undefined,
           attachments: attachmentsBase64.length > 0 ? attachmentsBase64 : undefined,
           // Solo solicitamos read receipt (cuando el destinatario abre el correo).
           // NO requestDeliveryReceipt — genera DSN automáticos del MTA que ensucian la bandeja.
@@ -344,10 +356,12 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
         // Reset
         setParaEmails([]);
         setCcEmails([]);
+        setBccEmails([]);
         setAsunto('');
         setCuerpo('');
         setArchivos([]);
         setShowCc(false);
+        setShowBcc(false);
         onClose();
       } else {
         throw new Error('El servidor indicó que no pudo procesar la solicitud');
@@ -387,15 +401,17 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
   const resetAndClose = () => {
     setParaEmails([]);
     setCcEmails([]);
+    setBccEmails([]);
     setAsunto('');
     setCuerpo('');
     setArchivos([]);
     setShowCc(false);
+    setShowBcc(false);
     setShowCancelConfirm(false);
     onClose();
   };
 
-  const totalDestinatarios = paraEmails.length + ccEmails.length;
+  const totalDestinatarios = paraEmails.length + ccEmails.length + bccEmails.length;
 
   return (
     <>
@@ -448,15 +464,29 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                           </span>
                         )}
                       </Label>
-                      {!showCc && !isReply && (
-                        <button
-                          type="button"
-                          onClick={() => setShowCc(true)}
-                          className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
-                        >
-                          <ChevronDown className="w-3 h-3" />
-                          CC
-                        </button>
+                      {!isReply && (
+                        <div className="flex items-center gap-3">
+                          {!showCc && (
+                            <button
+                              type="button"
+                              onClick={() => setShowCc(true)}
+                              className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                            >
+                              <ChevronDown className="w-3 h-3" />
+                              CC
+                            </button>
+                          )}
+                          {!showBcc && (
+                            <button
+                              type="button"
+                              onClick={() => setShowBcc(true)}
+                              className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                            >
+                              <ChevronDown className="w-3 h-3" />
+                              CCO
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                     <EmailTagInput
@@ -497,6 +527,41 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                         onEmailsChange={setCcEmails}
                         placeholder="copia@ejemplo.com"
                       />
+                    </div>
+                  )}
+
+                  {/* CCO (Copia Oculta) expandible */}
+                  {showBcc && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                          CCO
+                          {bccEmails.length > 0 && (
+                            <span className="ml-2 text-gray-500 font-normal normal-case">
+                              ({bccEmails.length} correo{bccEmails.length > 1 ? 's' : ''})
+                            </span>
+                          )}
+                        </Label>
+                        {bccEmails.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowBcc(false)}
+                            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5"
+                          >
+                            <ChevronUp className="w-3 h-3" />
+                            Ocultar CCO
+                          </button>
+                        )}
+                      </div>
+                      <EmailTagInput
+                        id="bcc"
+                        emails={bccEmails}
+                        onEmailsChange={setBccEmails}
+                        placeholder="copia.oculta@ejemplo.com"
+                      />
+                      <p className="text-xs text-gray-400">
+                        Los destinatarios en CCO no serán visibles para los demás.
+                      </p>
                     </div>
                   )}
 

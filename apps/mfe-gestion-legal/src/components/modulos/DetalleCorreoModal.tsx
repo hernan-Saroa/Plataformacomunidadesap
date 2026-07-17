@@ -134,6 +134,8 @@ export function DetalleCorreoModal({ isOpen, onClose, notificacion, onVerAdjunto
         remitente: notificacion.remitente || notificacion.remitenteNombre || notificacion.remitenteEmail || notificacion.metadata?.remitente || 'Desconocido',
         remitenteEmail: notificacion.remitenteEmail || '',
         destinatario: notificacion.destinatario || notificacion.destinatariosTo || notificacion.metadata?.destinatario || 'Desconocido',
+        cc: notificacion.cc || '',
+        cco: notificacion.cco || '',
         asunto: notificacion.asunto || notificacion.metadata?.subject || notificacion.descripcion || 'Sin asunto',
         fecha: notificacion.fecha || notificacion.fechaRecepcion || notificacion.metadata?.emailDate || notificacion.fechaActuacion || notificacion.fechaRadicacion,
         contenido: notificacion.contenido || notificacion.cuerpoHtml || notificacion.metadata?.body || notificacion.descripcion || '',
@@ -198,6 +200,25 @@ export function DetalleCorreoModal({ isOpen, onClose, notificacion, onVerAdjunto
                                     <p className="font-semibold text-gray-900">{data.destinatario}</p>
                                 </div>
                             </div>
+                            {data.cc && (
+                                <div className="flex items-start gap-3">
+                                    <User className="w-4 h-4 text-gray-400 mt-1" />
+                                    <div>
+                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">CC</span>
+                                        <p className="font-semibold text-gray-900 break-words">{data.cc}</p>
+                                    </div>
+                                </div>
+                            )}
+                            {data.cco && (
+                                <div className="flex items-start gap-3">
+                                    <User className="w-4 h-4 text-amber-500 mt-1" />
+                                    <div>
+                                        <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">CCO (Copia Oculta)</span>
+                                        <p className="font-semibold text-gray-900 break-words">{data.cco}</p>
+                                        <p className="text-xs text-gray-400">No visible para los demás destinatarios.</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">

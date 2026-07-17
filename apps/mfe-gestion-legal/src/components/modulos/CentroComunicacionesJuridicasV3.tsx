@@ -58,6 +58,8 @@ interface ComunicacionUnificada {
   remitente: string;
   remitenteEmail?: string;
   destinatario?: string; // Para comunicaciones enviadas
+  cc?: string; // CC — correos en copia (comunicaciones enviadas)
+  cco?: string; // CCO — correos en copia oculta (comunicaciones enviadas)
   despachoOrigen?: string;
   radicadoExterno?: string;
   fechaRadicacion: Date;
@@ -90,6 +92,32 @@ interface ModuloDestinoUI {
   nombreCorto: string;
   color: string;
   aliases: string[];
+}
+
+// Normaliza una lista de correos guardada en BD a una cadena legible "a@x.com, b@y.com".
+// Es tolerante a las distintas formas en que se persiste este dato:
+//   - arreglo JSON de strings           → correos enviados (CC/CCO)
+//   - arreglo JSON de objetos de Graph   → correos recibidos ({ emailAddress: { address } })
+//   - texto plano separado por comas
+// Devuelve '' si no hay datos.
+function parseListaCorreos(raw?: string | null): string {
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item: any) =>
+          typeof item === 'string'
+            ? item
+            : (item?.emailAddress?.address || item?.address || item?.email || '')
+        )
+        .filter(Boolean)
+        .join(', ');
+    }
+  } catch {
+    // No era JSON: se asume texto plano ya separado por comas
+  }
+  return String(raw);
 }
 
 const MODULOS_DESTINO_UI: ModuloDestinoUI[] = [
@@ -160,8 +188,6 @@ const getModuloDestinoUI = (moduloSugerido?: string): ModuloDestinoUI | undefine
     mod.aliases.some((alias) => normalizarTexto(alias) === normalized)
   );
 };
-
-import { correosJuridicosService } from '../../../../services/api/legal.service';
 
 type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'respuestas' | 'urgentes' | 'archivadas';
 type VistaModulo = 'inbox' | 'lista';
@@ -291,6 +317,8 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       remitente: correo.remitenteNombre || correo.remitenteEmail,
       remitenteEmail: correo.remitenteEmail,
       destinatario: isSent ? (correo.destinatariosTo || '') : undefined,
+      cc: isSent ? parseListaCorreos(correo.destinatarios) : undefined,
+      cco: isSent ? parseListaCorreos(correo.destinatariosCco) : undefined,
       fechaRadicacion: new Date(correo.fechaRecepcion),
       urgente: correo.urgente,
       leida: correo.leido,

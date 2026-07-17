@@ -1242,6 +1242,7 @@ export interface CorreoJuridico {
     cuerpoHtml: string | null;
     cuerpoTexto: string | null;
     tieneAdjuntos: boolean;
+    adjuntos?: AdjuntoCorreo[];
     leido: boolean;
     archivado: boolean;
     urgente: boolean;
@@ -1254,6 +1255,8 @@ export interface CorreoJuridico {
     expedienteId?: string;
     direccion?: string; // ENTRANTE, ENVIADO
     destinatariosTo?: string;
+    destinatarios?: string; // CC (arreglo JSON de correos)
+    destinatariosCco?: string; // CCO / Copia Oculta (arreglo JSON de correos)
     // Threading
     isReplied?: boolean;
     parentEmailId?: string;
@@ -1279,6 +1282,7 @@ export interface CorreoFilters {
 export interface SendCorreoDto {
     to: string | string[];
     cc?: string[];
+    bcc?: string[]; // Copia Oculta (CCO) — destinatarios no visibles para los demás
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
@@ -1303,8 +1307,13 @@ export class CorreosJuridicosService {
     /**
      * Trigger manual sync from Microsoft Graph
      */
-    async syncCorreos(nextLink?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, { nextLink });
+    async syncCorreos(nextLink?: string, buzon?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, { nextLink, buzon });
+    }
+
+    /** Buzones de correo configurados en el backend (para saber cuáles sincronizar). */
+    async getMailboxes(): Promise<Array<{ buzon: string; address: string }>> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/mailboxes`);
     }
 
     /**
