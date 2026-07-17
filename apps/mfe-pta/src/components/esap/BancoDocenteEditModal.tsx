@@ -41,6 +41,7 @@ type FormState = {
   territorial: string;
   categoria: string;
   dedicacion: string;
+  horasProgramables: string;
   nucleoTematico: string;
   nivelFormacion: string;
   perfilAcademico: string;
@@ -139,6 +140,12 @@ function buildInitialForm(docente: any): FormState {
     territorial: cleanBancoDocenteText(banco?.territorial || docente?.territorial_nombre || docente?.territorial?.nombre) || '',
     categoria: cleanBancoDocenteText(banco?.categoria || docente?.categoria_escalafon || docente?.escalafon) || '',
     dedicacion: normalizeBancoDocenteDedicacionCode(banco?.dedicacion || docente?.dedicacion_label || docente?.dedicacion),
+    horasProgramables: String(
+      banco?.horas_programables
+      ?? docente?.horas_programables
+      ?? docente?.docente?.horasAsignables
+      ?? resolveBancoDocenteHours(banco?.dedicacion || docente?.dedicacion_label || docente?.dedicacion),
+    ),
     nucleoTematico: cleanBancoDocenteText(banco?.nucleo_tematico) || '',
     nivelFormacion: cleanBancoDocenteText(banco?.nivel_formacion) || '',
     perfilAcademico: cleanBancoDocenteText(banco?.perfil_academico) || '',
@@ -300,6 +307,11 @@ export function BancoDocenteEditModal({
       toast.error('La dedicacion es obligatoria');
       return false;
     }
+    const horas = Number(form.horasProgramables);
+    if (!Number.isFinite(horas) || horas < 0) {
+      toast.error('Las horas programables deben ser un numero mayor o igual a cero');
+      return false;
+    }
     return true;
   };
 
@@ -340,7 +352,8 @@ export function BancoDocenteEditModal({
         vinculacion: getBancoDocenteVinculacionLabel(vinculacionCode),
         dedicacion: dedicacionCode,
         dedicacionLabel: getBancoDocenteDedicacionLabel(dedicacionCode),
-        horasAsignables: resolveBancoDocenteHours(dedicacionCode),
+        horasAsignables: Number(form.horasProgramables),
+        horasPta: Number(form.horasProgramables),
         territorial: form.territorial.trim(),
         territorialNombre: form.territorial.trim(),
         escalafon: form.categoria.trim(),
@@ -437,7 +450,7 @@ export function BancoDocenteEditModal({
           />
         </Field>
 
-        <Field label="Dedicacion" hint={`Horas derivadas: ${resolveBancoDocenteHours(form.dedicacion)}h`}>
+        <Field label="Dedicacion">
           <select
             value={form.dedicacion}
             onChange={(event) => handleChange('dedicacion', event.target.value)}
@@ -449,6 +462,16 @@ export function BancoDocenteEditModal({
               </option>
             ))}
           </select>
+        </Field>
+        <Field label="Horas programables PTA" hint="Bolsa autoritativa usada en todo el flujo PTA">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={form.horasProgramables}
+            onChange={(event) => handleChange('horasProgramables', event.target.value)}
+            className={inputCls}
+          />
         </Field>
 
         <div className="md:col-span-2">

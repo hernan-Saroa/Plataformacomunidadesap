@@ -1067,7 +1067,7 @@ export function V13IndicadoresPersonales({ ptas, userName }: IndicadoresPersonal
     const total = ptas.length;
     const aprobados = ptas.filter(p => p.estado === 'Aprobado').length;
     const horasTotal = ptas.reduce((s, p) => s + (p.total_horas_programadas || 0), 0);
-    const horasDisp = ptas.reduce((s, p) => s + (p.horas_a_programar || 800), 0);
+    const horasDisp = ptas.reduce((s, p) => s + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
     const asigTotal = ptas.reduce((s, p) => s + (p.asignaturas?.length || p.num_asignaturas || 0), 0);
     const pctCarga = horasDisp > 0 ? Math.round((horasTotal / horasDisp) * 100) : 0;
     const tasaAprobacion = total > 0 ? Math.round((aprobados / total) * 100) : 0;
@@ -1335,7 +1335,7 @@ export function V14CertificadoDigitalPortal({ ptas, userName, onVerificar }: Cer
                     <div>
                       <div style={{ fontSize: '0.62rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>Horas</div>
                       <div style={{ fontWeight: 600, color: '#111827' }}>
-                        {pta.total_horas_programadas || 0}/{pta.horas_a_programar || 800}h
+                        {pta.total_horas_programadas || 0}/{pta.horas_asignables ?? pta.horas_a_programar ?? 0}h
                       </div>
                     </div>
                     {hasFirma && (

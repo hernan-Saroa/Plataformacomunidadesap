@@ -190,7 +190,8 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
       byTerritorial[d.territorial] = (byTerritorial[d.territorial] || 0) + 1;
       byEscalafon[d.escalafon] = (byEscalafon[d.escalafon] || 0) + 1;
     });
-    return { total: docentes.length, tc, mt, byTerritorial, byEscalafon };
+    const totalHoras = docentes.reduce((total, docente) => total + (Number(docente.horas) || 0), 0);
+    return { total: docentes.length, tc, mt, totalHoras, byTerritorial, byEscalafon };
   }, [docentes]);
 
   const uniqueTerritoriales = useMemo(() => [...new Set(docentes.map(d => d.territorial))].sort(), [docentes]);
@@ -830,7 +831,7 @@ export function BancoDocentesView({ onBack, allUsers, onReloadUsers, onViewDetai
                 <div className="text-xs text-blue-700 font-medium mt-1">Total Docentes</div>
               </div>
               <div className="bg-emerald-50 rounded-xl p-4 text-center border border-emerald-100">
-                <div className="text-3xl font-bold text-emerald-700">{(stats.tc * 800 + stats.mt * 400).toLocaleString()}</div>
+                <div className="text-3xl font-bold text-emerald-700">{stats.totalHoras.toLocaleString()}</div>
                 <div className="text-xs text-emerald-700 font-medium mt-1">Total Horas Programables</div>
               </div>
               <div className="bg-purple-50 rounded-xl p-4 text-center border border-purple-100">

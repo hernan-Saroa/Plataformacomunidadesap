@@ -331,7 +331,7 @@ export function ReportePTAInstitucional({
   const horasComplementarias = numero(pta?.horas_complementarias ?? compActs.reduce((sum: number, a: any) => sum + numero(a.horas), 0));
   const sumaComponentes = horasDocencia + horasInvestigacion + horasExtension + horasComplementarias;
   const horasProg = numero(pta?.horas_totales ?? pta?.total_horas_programadas ?? sumaComponentes);
-  const horasDisp = numero(pta?.horas_asignables ?? pta?.horas_a_programar ?? 800);
+  const horasDisp = numero(pta?.horas_asignables ?? pta?.horas_a_programar ?? 0);
 
   const getPct = (val: number) => horasProg > 0 ? Math.round((val / horasProg) * 100) : 0;
 

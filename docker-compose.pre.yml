@@ -395,9 +395,15 @@ services:
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
       LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT}
+      LEGAL_EMAIL_ACCOUNT_JUDICIAL: ${LEGAL_EMAIL_ACCOUNT_JUDICIAL}
+      LEGAL_EMAIL_ACCOUNT_CORREOS: ${LEGAL_EMAIL_ACCOUNT_CORREOS}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
+      # Host público del ambiente: fallback para construir los enlaces de descarga
+      # de adjuntos en los correos (tracking). Normalmente se resuelve dinámicamente
+      # desde la request, pero se deja como respaldo y por consistencia con qa/prod.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://172.16.202.222}
     ports:
       - "3008:3008"
     depends_on:
@@ -435,6 +441,7 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
+      EMAIL_REDIRECT_TO: ${EMAIL_REDIRECT_TO:-}
       AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}

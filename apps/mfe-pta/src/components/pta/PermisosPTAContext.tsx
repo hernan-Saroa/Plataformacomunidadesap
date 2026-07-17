@@ -394,7 +394,15 @@ function deriveRolPTA(
   if (r.includes('coordinador acad') || c.includes('coordinador acad')) return 'decanatura';
   if (r.includes('coordinador grupo acad') || c.includes('coordinador grupo acad')) return 'coord_grupo_dt';
   if (r.includes('administrativo') || r.includes('profesional')) return 'admin';
-  return 'admin';
+  // Fallback seguro: un rol/cargo que no matchea ningún patrón conocido (p.ej. un rol
+  // granular custom como "Aprobador Docencia" creado vía RolePermissionsEditor) NO debe
+  // caer en 'admin', porque perfil.rol === 'admin' se usa como proxy de superusuario
+  // (ver isSuperUserEffective en este archivo y en PtaBackofficeModule.tsx) y otorgaría
+  // acceso total a todos los componentes sin mirar sus permisos granulares reales
+  // (pta.approve.*), violando la segregación de funciones. 'docente' es el bucket menos
+  // privilegiado; si el usuario sí tiene permisos pta.* granulares, deriveFromGranular
+  // los sigue detectando igual (no depende de perfil.rol).
+  return 'docente';
 }
 
 function deriveTerritorialIds(persona: any): string[] {
