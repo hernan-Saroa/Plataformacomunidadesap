@@ -172,7 +172,29 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
 
-  const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
+  // ── Acceso por buzón institucional (segregación de funciones) ──
+  // Cada buzón (Judicial / Correos Institucional) es administrado por funcionarios
+  // distintos; el usuario solo ve y gestiona las comunicaciones de los buzones que
+  // le fueron asignados según sus permisos.
+  const puedeBuzonJudicial = authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_BUZON_JUDICIAL);
+  const puedeBuzonCorreos = authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_BUZON_CORREOS);
+  const buzonesPermitidos: string[] = [
+    ...(puedeBuzonJudicial ? ['JUDICIAL'] : []),
+    ...(puedeBuzonCorreos ? ['CORREOS'] : []),
+  ];
+  const buzonPermitido = (c: ComunicacionUnificada): boolean =>
+    buzonesPermitidos.includes(((c.buzon as string) || 'JUDICIAL').toUpperCase());
+  // Los tabs Judiciales/Oficios pertenecen al buzón JUDICIAL; Correos al buzón CORREOS.
+  // Los tabs generales (enviados/respuestas/urgentes/archivadas) muestran los buzones permitidos.
+  const tabPermitida = (tab: TabUnificadaType): boolean => {
+    if (tab === 'judiciales' || tab === 'oficios') return puedeBuzonJudicial;
+    if (tab === 'correos') return puedeBuzonCorreos;
+    return buzonesPermitidos.length > 0;
+  };
+
+  const [tabActiva, setTabActiva] = useState<TabUnificadaType>(
+    () => (puedeBuzonJudicial ? 'judiciales' : puedeBuzonCorreos ? 'correos' : 'enviados')
+  );
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
@@ -336,6 +358,13 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       } catch { /* fallback abajo */ }
       if (buzones.length === 0) buzones = ['JUDICIAL'];
 
+      // Restringir la sincronización a los buzones que el usuario tiene permitido ver.
+      buzones = buzones.filter(b => buzonesPermitidos.includes(String(b).toUpperCase()));
+      if (buzones.length === 0) {
+        toast.dismiss();
+        return; // el finally restablece el estado de sincronización
+      }
+
       for (const buzon of buzones) {
         let nextLink: string | null | undefined = undefined;
         let pagesProcessed = 0;
@@ -410,15 +439,24 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // restringen al buzón JUDICIAL y Correos al buzón CORREOS (separación por cuenta).
   // Con un solo buzón (estado actual) se mantiene el filtrado por tipo para no
   // ocultar nada. Al configurar la segunda cuenta, la separación es automática.
+  // Solo las comunicaciones de los buzones que el usuario tiene permitido ver.
+  // Es la fuente de verdad para la lista visible y para los contadores/estadísticas,
+  // evitando que se filtre información de un buzón ajeno a las funciones del usuario.
+  const comunicacionesVisibles = useMemo(
+    () => comunicaciones.filter(buzonPermitido),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [comunicaciones, puedeBuzonJudicial, puedeBuzonCorreos]
+  );
+
   const buzonesPresentes = useMemo(() => {
     const set = new Set<string>();
-    comunicaciones.forEach(c => set.add((c.buzon || 'JUDICIAL').toUpperCase()));
+    comunicacionesVisibles.forEach(c => set.add((c.buzon || 'JUDICIAL').toUpperCase()));
     return set;
-  }, [comunicaciones]);
+  }, [comunicacionesVisibles]);
   const multiBuzon = buzonesPresentes.size > 1;
 
   const comunicacionesFiltradas = useMemo(() => {
-    let resultado = [...comunicaciones];
+    let resultado = [...comunicacionesVisibles];
     const esBuzon = (c: ComunicacionUnificada, b: string) => (c.buzon || 'JUDICIAL').toUpperCase() === b;
 
     // Filtrar por tab
@@ -490,7 +528,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return resultado.sort((a, b) => {
       return b.fechaRadicacion.getTime() - a.fechaRadicacion.getTime();
     });
-  }, [comunicaciones, tabActiva, busqueda, filtroMedioControl, filtroBuzon, multiBuzon]);
+  }, [comunicacionesVisibles, tabActiva, busqueda, filtroMedioControl, filtroBuzon, multiBuzon]);
 
   // ✨ Aplicar paginación
   const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
@@ -507,20 +545,30 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     setFiltroBuzon('todos');
   }, [tabActiva, busqueda]);
 
-  // Calcular estadísticas
-  const totalNoLeidas = comunicaciones.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
-  const totalUrgentes = comunicaciones.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
-  const totalArchivadas = comunicaciones.filter(c => c.estado === 'ARCHIVADA').length;
-  const totalIAAltaConfianza = comunicaciones.filter(
+  // Si el tab activo pertenece a un buzón que el usuario no puede ver, redirigir
+  // al primer tab permitido (evita quedar en un tab vacío tras cambiar permisos).
+  useEffect(() => {
+    if (!tabPermitida(tabActiva)) {
+      const primera = (['judiciales', 'correos', 'enviados'] as TabUnificadaType[]).find(tabPermitida);
+      if (primera) setTabActiva(primera);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabActiva, puedeBuzonJudicial, puedeBuzonCorreos]);
+
+  // Calcular estadísticas (solo sobre los buzones permitidos)
+  const totalNoLeidas = comunicacionesVisibles.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
+  const totalUrgentes = comunicacionesVisibles.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
+  const totalArchivadas = comunicacionesVisibles.filter(c => c.estado === 'ARCHIVADA').length;
+  const totalIAAltaConfianza = comunicacionesVisibles.filter(
     (c) => c.estado !== 'ARCHIVADA' && c.clasificacionIA && getConfianzaPercent(c.clasificacionIA.confianza) >= 90
   ).length;
 
   const contadoresTabs = {
-    judiciales: comunicaciones.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
-    correos: comunicaciones.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
-    oficios: comunicaciones.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
-    enviados: comunicaciones.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
-    respuestas: comunicaciones.filter(c => c.categoria === 'RESPUESTA' && c.estado !== 'ARCHIVADA').length,
+    judiciales: comunicacionesVisibles.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
+    correos: comunicacionesVisibles.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
+    oficios: comunicacionesVisibles.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
+    enviados: comunicacionesVisibles.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
+    respuestas: comunicacionesVisibles.filter(c => c.categoria === 'RESPUESTA' && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,
     archivadas: totalArchivadas
   };
@@ -856,63 +904,81 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       {/* Tabs Unificados */}
       <Card className="p-1">
         <div className="flex gap-1 flex-wrap">
-          <TabButton
-            active={tabActiva === 'judiciales'}
-            onClick={() => setTabActiva('judiciales')}
-            icon={<Gavel className="w-4 h-4" />}
-            label="Judiciales"
-            count={contadoresTabs.judiciales}
-            color="#003DA5"
-          />
-          <TabButton
-            active={tabActiva === 'correos'}
-            onClick={() => setTabActiva('correos')}
-            icon={<Mail className="w-4 h-4" />}
-            label="Correos"
-            count={contadoresTabs.correos}
-            color="#6B7280"
-          />
-          <TabButton
-            active={tabActiva === 'oficios'}
-            onClick={() => setTabActiva('oficios')}
-            icon={<FileText className="w-4 h-4" />}
-            label="Oficios"
-            count={contadoresTabs.oficios}
-            color="#6B7280"
-          />
-          <TabButton
-            active={tabActiva === 'enviados'}
-            onClick={() => setTabActiva('enviados')}
-            icon={<Send className="w-4 h-4" />}
-            label="Enviados"
-            count={contadoresTabs.enviados}
-            color="#6B7280"
-          />
-          <TabButton
-            active={tabActiva === 'respuestas'}
-            onClick={() => setTabActiva('respuestas')}
-            icon={<Reply className="w-4 h-4" />}
-            label="Respondidos"
-            count={contadoresTabs.respuestas}
-            color="#059669"
-          />
-          <TabButton
-            active={tabActiva === 'urgentes'}
-            onClick={() => setTabActiva('urgentes')}
-            icon={<AlertTriangle className="w-4 h-4" />}
-            label="Urgentes"
-            count={contadoresTabs.urgentes}
-            color="#DC2626"
-            urgent
-          />
-          <TabButton
-            active={tabActiva === 'archivadas'}
-            onClick={() => setTabActiva('archivadas')}
-            icon={<Archive className="w-4 h-4" />}
-            label="Archivadas"
-            count={contadoresTabs.archivadas}
-            color="#6B7280"
-          />
+          {/* Buzón Judicial */}
+          {puedeBuzonJudicial && (
+            <TabButton
+              active={tabActiva === 'judiciales'}
+              onClick={() => setTabActiva('judiciales')}
+              icon={<Gavel className="w-4 h-4" />}
+              label="Judiciales"
+              count={contadoresTabs.judiciales}
+              color="#003DA5"
+            />
+          )}
+          {/* Buzón Correos (Institucional) */}
+          {puedeBuzonCorreos && (
+            <TabButton
+              active={tabActiva === 'correos'}
+              onClick={() => setTabActiva('correos')}
+              icon={<Mail className="w-4 h-4" />}
+              label="Correos"
+              count={contadoresTabs.correos}
+              color="#6B7280"
+            />
+          )}
+          {/* Buzón Judicial */}
+          {puedeBuzonJudicial && (
+            <TabButton
+              active={tabActiva === 'oficios'}
+              onClick={() => setTabActiva('oficios')}
+              icon={<FileText className="w-4 h-4" />}
+              label="Oficios"
+              count={contadoresTabs.oficios}
+              color="#6B7280"
+            />
+          )}
+          {/* Tabs generales — sobre los buzones permitidos */}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'enviados'}
+              onClick={() => setTabActiva('enviados')}
+              icon={<Send className="w-4 h-4" />}
+              label="Enviados"
+              count={contadoresTabs.enviados}
+              color="#6B7280"
+            />
+          )}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'respuestas'}
+              onClick={() => setTabActiva('respuestas')}
+              icon={<Reply className="w-4 h-4" />}
+              label="Respondidos"
+              count={contadoresTabs.respuestas}
+              color="#059669"
+            />
+          )}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'urgentes'}
+              onClick={() => setTabActiva('urgentes')}
+              icon={<AlertTriangle className="w-4 h-4" />}
+              label="Urgentes"
+              count={contadoresTabs.urgentes}
+              color="#DC2626"
+              urgent
+            />
+          )}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'archivadas'}
+              onClick={() => setTabActiva('archivadas')}
+              icon={<Archive className="w-4 h-4" />}
+              label="Archivadas"
+              count={contadoresTabs.archivadas}
+              color="#6B7280"
+            />
+          )}
         </div>
       </Card>
 
@@ -948,8 +1014,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             </div>
           )}
 
-          {/* Filtro interno por BUZÓN — visible en tabs generales (muestran ambas cuentas) */}
-          {['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && (
+          {/* Filtro interno por BUZÓN — visible en tabs generales solo si el usuario
+              tiene acceso a AMBOS buzones (si solo tiene uno, los datos ya vienen filtrados). */}
+          {['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && buzonesPermitidos.length > 1 && (
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
               <select
@@ -1098,13 +1165,16 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         isOpen={modalNuevaComunicacionOpen}
         onClose={() => setModalNuevaComunicacionOpen(false)}
         buzon={
-          // Cuenta remitente según el tab activo: Correos → CORREOS; en tabs generales
-          // respeta el filtro interno de buzón; el resto (judiciales/oficios) → JUDICIAL.
+          // Cuenta remitente según el tab activo: Correos → CORREOS; Judiciales/Oficios → JUDICIAL;
+          // en tabs generales respeta el filtro interno de buzón y, si no hay filtro, usa el
+          // primer buzón permitido del usuario (evita componer desde un buzón sin acceso).
           tabActiva === 'correos'
             ? 'CORREOS'
-            : (['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && filtroBuzon !== 'todos'
-                ? filtroBuzon
-                : 'JUDICIAL')
+            : tabActiva === 'judiciales' || tabActiva === 'oficios'
+              ? 'JUDICIAL'
+              : (['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && filtroBuzon !== 'todos'
+                  ? filtroBuzon
+                  : (buzonesPermitidos[0] || 'JUDICIAL'))
         }
         onSubmit={async (data) => {
           console.log('Nueva comunicación enviada:', data);
