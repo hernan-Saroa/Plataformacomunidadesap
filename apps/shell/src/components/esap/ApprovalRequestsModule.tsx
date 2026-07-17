@@ -240,7 +240,7 @@ const buildOfficePreview = async (
     status: 'unsupported',
     kind: 'unsupported',
     error:
-      'Este formato de Word antiguo no permite una previsualización segura en el navegador. Descárgalo para abrirlo.',
+      'Este formato de Word antiguo no permite una previsualización segura en el navegador. Descárguelo para abrirlo.',
   };
 };
 
@@ -601,7 +601,7 @@ export function ApprovalRequestsModule({
           status: 'unsupported',
           kind: 'unsupported',
           error:
-            'Este tipo de archivo no tiene previsualizacion disponible. Puedes descargarlo para abrirlo.',
+            'Este tipo de archivo no tiene previsualización disponible. Puede descargarlo para abrirlo.',
         },
       });
       return;
@@ -614,7 +614,7 @@ export function ApprovalRequestsModule({
       const url = URL.createObjectURL(blob);
       setPreviewState({ url, name: displayName, fileType });
     } catch (error: any) {
-      toast.error('No se pudo cargar el soporte para visualizacion', {
+      toast.error('No se pudo cargar el soporte para visualización', {
         description: error?.response?.data?.message || error?.message,
       });
     }
@@ -636,7 +636,7 @@ export function ApprovalRequestsModule({
           status: 'unsupported',
           kind: 'unsupported',
           error:
-            'Este tipo de archivo no tiene previsualización disponible. Puedes descargarlo para abrirlo.',
+            'Este tipo de archivo no tiene previsualización disponible. Puede descargarlo para abrirlo.',
         },
       });
       return;
@@ -702,7 +702,7 @@ export function ApprovalRequestsModule({
 
     const trimmedNotes = notes.trim();
     if (!isHeadMode && (action === 'REJECTED' || action === 'OBSERVATION') && !trimmedNotes) {
-      toast.error('Debes escribir una justificación');
+      toast.error('Debe escribir una justificación');
       return;
     }
 
@@ -756,7 +756,7 @@ export function ApprovalRequestsModule({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-orange-800">
-                {isHeadMode ? 'Pendientes de decisión final' : 'Esperando tu preconcepto'}
+                {isHeadMode ? 'Pendientes de decisión final' : 'En espera de su preconcepto'}
               </p>
               <p className="mt-2 text-3xl font-bold text-orange-900">
                 {pendingCount}
@@ -816,8 +816,8 @@ export function ApprovalRequestsModule({
             </h2>
             <p className="text-sm text-[#6B7280]">
               {isHeadMode
-                ? 'Define la aprobación final, rechazo final u observación al aprobador.'
-                : 'Revisa datos, concepto y archivos cargados por el revisor.'}
+                ? 'Defina la aprobación final, el rechazo final o una observación al aprobador.'
+                : 'Revise los datos, el concepto y los archivos cargados por el revisor.'}
             </p>
           </div>
           <button
@@ -1311,11 +1311,11 @@ export function ApprovalRequestsModule({
                   placeholder={
                     isHeadMode
                       ? action === 'OBSERVATION'
-                        ? 'Describe qué debe revisar o corregir el aprobador...'
+                        ? 'Describa qué debe revisar o corregir el aprobador...'
                         : 'Este texto se incluirá en el correo enviado al solicitante...'
                       : action === 'APPROVED'
-                        ? 'Agrega una nota para el jefe si aplica...'
-                        : 'Describe el motivo de la decisión...'
+                        ? 'Agregue una nota para el jefe si aplica...'
+                        : 'Describa el motivo de la decisión...'
                   }
                 />
               </div>
@@ -1496,7 +1496,7 @@ export function ApprovalRequestsModule({
                       (previewState.officePreview.totalColumns || 0) > 20 ? (
                         <p className="mt-3 text-xs text-gray-500">
                           Vista limitada a las primeras 80 filas y 20 columnas para evitar
-                          bloqueos del navegador. Descarga el archivo para revisar todo el contenido.
+                          bloqueos del navegador. Descargue el archivo para revisar todo el contenido.
                         </p>
                       ) : null}
                     </div>
@@ -1514,12 +1514,12 @@ export function ApprovalRequestsModule({
                       </p>
                       <p className="text-xs leading-relaxed text-gray-500">
                         {previewState.officePreview?.error ||
-                          'Descárgalo para abrirlo correctamente.'}
+                          'Descárguelo para abrirlo correctamente.'}
                       </p>
                     </div>
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1e5da8]/10 px-3 py-1.5 text-xs font-medium text-[#1e5da8]">
                       <Download className="h-3.5 w-3.5" />
-                      Usa el boton de descarga
+                      Use el botón de descarga
                     </span>
                   </div>
                 )}
@@ -1537,16 +1537,16 @@ export function ApprovalRequestsModule({
                   </p>
                   <p className="text-xs text-gray-500 leading-relaxed">
                     {previewState.officePreview?.error ||
-                      'Descarga el archivo para abrirlo correctamente.'}
+                      'Descargue el archivo para abrirlo correctamente.'}
                   </p>
                   <p className="hidden">
                     Los archivos Word y Excel requieren una aplicación de escritorio.<br />
-                    Descárgalo para abrirlo correctamente.
+                    Descárguelo para abrirlo correctamente.
                   </p>
                 </div>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
                   <Download className="w-3.5 h-3.5" />
-                  Usa el boton de descarga
+                  Use el botón de descarga
                 </span>
                 <span className={`hidden ${
                   previewState?.fileType === 'office'
@@ -1554,7 +1554,7 @@ export function ApprovalRequestsModule({
                     : 'bg-gray-100 text-gray-600'
                 }`}>
                   <Download className="w-3.5 h-3.5" />
-                  Usa el botón de descarga
+                  Use el botón de descarga
                 </span>
               </div>
             )}

@@ -7,6 +7,7 @@ import { CorreoTrackingToken } from '../entities/correo-tracking-token.entity';
 import { ActuacionService } from './actuacion.service';
 import { CorreosJuridicosService } from './correos-juridicos.service';
 import { MicrosoftGraphService } from './microsoft-graph.service';
+import { NotificationClientService } from './notification-client.service';
 import { SmartClassificationService } from './smart-classification.service';
 
 jest.mock('fs', () => ({
@@ -27,6 +28,7 @@ describe('CorreosJuridicosService', () => {
     let mockGraphService: any;
     let mockSmartService: any;
     let mockActuacionService: any;
+    let mockNotificationClient: any;
 
     beforeEach(async () => {
         process.env = {
@@ -72,6 +74,8 @@ describe('CorreosJuridicosService', () => {
             getAttachment: jest.fn(),
             getAttachments: jest.fn(),
             downloadAttachment: jest.fn(),
+            resolveAccount: jest.fn().mockReturnValue('juridica@esap.gov.co'),
+            isBuzonConfigured: jest.fn().mockReturnValue(true),
         };
         mockSmartService = {
             classify: jest.fn(),
@@ -79,6 +83,7 @@ describe('CorreosJuridicosService', () => {
             extractEntities: jest.fn().mockReturnValue({}),
         };
         mockActuacionService = { create: jest.fn(), registrarActuacion: jest.fn() };
+        mockNotificationClient = { notifyByRoles: jest.fn().mockResolvedValue(undefined) };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -90,6 +95,7 @@ describe('CorreosJuridicosService', () => {
                 { provide: MicrosoftGraphService, useValue: mockGraphService },
                 { provide: SmartClassificationService, useValue: mockSmartService },
                 { provide: ActuacionService, useValue: mockActuacionService },
+                { provide: NotificationClientService, useValue: mockNotificationClient },
             ],
         }).compile();
 
@@ -110,7 +116,15 @@ describe('CorreosJuridicosService', () => {
 
             expect(result.success).toBe(true);
             expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ asunto: 'Asunto', direccion: 'ENVIADO' }));
-            expect(mockGraphService.sendEmail).toHaveBeenCalledWith('destino@test.com', 'Asunto', expect.stringContaining('/correos/track/open/'), undefined, []);
+            expect(mockGraphService.sendEmail).toHaveBeenCalledWith(
+                'destino@test.com',
+                'Asunto',
+                expect.stringContaining('/correos/track/open/'),
+                undefined,
+                [],
+                { requestReadReceipt: false, requestDeliveryReceipt: false },
+                'juridica@esap.gov.co',
+            );
         });
 
         it('debe inyectar pixel de tracking en el body HTML antes de enviar', async () => {
@@ -207,6 +221,33 @@ describe('CorreosJuridicosService', () => {
             mockGraphService.sendEmail.mockResolvedValue(true);
 
             await service.sendEmail({ to: 'destino@test.com', subject: 'URL fallback', body: '<p>Hola</p>' });
+
+            expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://cors.test.esap.gov.co/services/legal/api/v1/correos/track/open/');
+        });
+
+        it('debe derivar el host público desde el Origin de la request (dinámico por ambiente)', async () => {
+            // Sin TRACKING_PUBLIC_URL: el host debe salir de la request, no del env ni de localhost
+            delete process.env.TRACKING_PUBLIC_URL;
+            delete process.env.CORS_ORIGIN;
+            mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-req', ...data }));
+            mockGraphService.sendEmail.mockResolvedValue(true);
+
+            const req = { headers: { origin: 'http://172.16.202.222' } };
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Dinamico', body: '<p>Hola</p>' }, req);
+
+            expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('http://172.16.202.222/services/legal/api/v1/correos/track/open/');
+        });
+
+        it('debe ignorar hosts internos de Docker y caer al fallback de configuración', async () => {
+            // Un Host interno (api-gateway-pre:3000) no sirve para un destinatario externo:
+            // se ignora y se usa CORS_ORIGIN como respaldo.
+            delete process.env.TRACKING_PUBLIC_URL;
+            process.env.CORS_ORIGIN = 'https://cors.test.esap.gov.co';
+            mockCorreoRepo.save.mockImplementation(async (data) => ({ id: data.id || 'correo-int', ...data }));
+            mockGraphService.sendEmail.mockResolvedValue(true);
+
+            const req = { headers: { host: 'api-gateway-pre:3000' } };
+            await service.sendEmail({ to: 'destino@test.com', subject: 'Interno', body: '<p>Hola</p>' }, req);
 
             expect(mockGraphService.sendEmail.mock.calls[0][2]).toContain('https://cors.test.esap.gov.co/services/legal/api/v1/correos/track/open/');
         });

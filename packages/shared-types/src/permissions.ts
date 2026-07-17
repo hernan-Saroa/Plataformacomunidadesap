@@ -66,6 +66,9 @@ export enum Permissions {
   GESTION_LEGAL_COMUNICACIONES_CREATE = 'gestion-legal.comunicaciones.create',
   GESTION_LEGAL_COMUNICACIONES_LEIDO = 'gestion-legal.comunicaciones.leido',
   GESTION_LEGAL_COMUNICACIONES_ARCHIVAR = 'gestion-legal.comunicaciones.archivar',
+  // Acceso por buzón institucional (segregación de funciones: cada buzón lo administran funcionarios distintos)
+  GESTION_LEGAL_COMUNICACIONES_BUZON_JUDICIAL = 'gestion-legal.comunicaciones.buzon.judicial',
+  GESTION_LEGAL_COMUNICACIONES_BUZON_CORREOS = 'gestion-legal.comunicaciones.buzon.correos',
 
   // Gestión Legal - Términos e Informaciones
   GESTION_LEGAL_TERMINOS_MANAGE = 'gestion-legal.terminos.manage',
