@@ -26,7 +26,7 @@ import {
   getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
   requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode, getActivePeriodoAcademico,
   getRUNDDocente, getPeriodosAcademicos, getCatalogoProgramasCascada,
-  getOfertaCetap, getComponentesAprobacion
+  getOfertaCetap, getComponentesAprobacion, updatePTAStatus, enviarAprobacionPTA
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
@@ -1174,7 +1174,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // a concertar/aprobar ese componente.
   const [respuestasDevolucionDocente, setRespuestasDevolucionDocente] = useState<Record<string, string>>({});
   const savingRef = useRef(false);
-  const handleSaveRef = useRef<((enviar?: boolean, silent?: boolean) => Promise<void>) | null>(null);
+  const handleSaveRef = useRef<((enviar?: boolean, silent?: boolean) => Promise<boolean>) | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
   const [autoSaveCountdown, setAutoSaveCountdown] = useState(120);
@@ -3157,7 +3157,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return true;
   }, [hasFullPTAActivity, hComplementarias, hInvestigacion, hExtension]);
 
-  const handleSave = async (enviar = false, silent = false) => {
+  const finishSaving = (result: boolean) => {
+    setSaving(false);
+    savingRef.current = false;
+    return result;
+  };
+
+  const handleSave = async (enviar = false, silent = false): Promise<boolean> => {
     setSaving(true);
     savingRef.current = true;
     if (!silent) { autoSaveCountdownRef.current = 120; setAutoSaveCountdown(120); }
@@ -3169,20 +3175,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       toast.error(asignaturas.length > 0
         ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
         : 'Debe incluir al menos una asignatura de docencia.');
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // Validación: al menos una asignatura con mínimo 3 créditos
     if (enviar && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     if (enviar && !validarComposicionParaEnvio()) {
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // Solo el cruce entre dos asignaturas presenciales bloquea el envío.
@@ -3190,8 +3193,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (enviar && (!isComponentRestricted || canEditFormSection('docencia')) && docenciaBlockingOverlapWarnings.length > 0) {
       toast.error(docenciaBlockingOverlapWarnings[0]);
       setActiveSection('docencia');
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // Al enviar o concertar se aplican los topes individuales y el tope global
@@ -3201,8 +3203,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const firstViolation = componentLimitViolations[0];
       toast.error(firstViolation?.message || 'Hay componentes que exceden el limite permitido de horas.');
       if (firstViolation?.section && firstViolation.section !== 'global') setActiveSection(firstViolation.section);
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // Validación: si se seleccionó rol en investigación, los campos del proyecto son obligatorios
@@ -3215,8 +3216,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (faltantes.length > 0) {
         toast.error(`Completa la sección Investigación: ${faltantes.join(', ')}.`);
         setActiveSection('investigacion');
-        setSaving(false);
-        return;
+        return finishSaving(false);
       }
     }
 
@@ -3224,8 +3224,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (enviar && (!isComponentRestricted || canEditFormSection('investigacion')) && invWarnings && invWarnings.length > 0) {
       toast.error(getSectionValidationToast('Investigación', invWarnings));
       setActiveSection('investigacion');
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // Validación de reglas de negocio para Extensión
@@ -3233,8 +3232,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       toast.error(getSectionValidationToast('Extensión', extWarnings));
       setActiveSection('extension');
       if (firstExtensionWarningSection) setExtSubseccion(firstExtensionWarningSection);
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // Validación de reglas de negocio para Complementarias
@@ -3242,8 +3240,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       toast.error(getSectionValidationToast('Actividades Complementarias', compWarnings));
       setActiveSection('complementarias');
       setComplementariasSubseccion(COMP_SECCION_DOCENCIA);
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // Validación de reglas de negocio para Académico-Administrativas (sub-sección de Complementarias)
@@ -3251,16 +3248,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       toast.error(getSectionValidationToast('Actividades Académico-Administrativas', acadWarnings));
       setActiveSection('complementarias');
       setComplementariasSubseccion(COMP_SECCION_AADM);
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     // "Concertar": editar y guardar como revisor/admin equivale a devolver al docente
     // el/los componente(s) seleccionados — se exige el comentario que verá el docente.
     if (isAdminEdit && currentPtaId && !comentarioConcertacion.trim()) {
       toast.error('Debe ingresar un comentario para el docente antes de guardar.');
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
     // Con más de un componente disponible (con o sin restricción de permiso — un rol
     // puede tener asignados varios componentes, ej. "aprueba docencia y
@@ -3270,16 +3265,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (isAdminEdit && currentPtaId && adminEditableComponentKeysNow.length > 1
       && componentesSeleccionadosDevolver.length === 0) {
       toast.error('Selecciona qué componente(s) estás devolviendo.');
-      setSaving(false);
-      return;
+      return finishSaving(false);
     }
 
     const isReenvio = originalEstado === 'Devuelto' && enviar;
     if (enviar && esDevolucionComponentes && !respuestasDevolucionCompletas) {
       toast.error('Debes explicar tu respuesta para cada componente devuelto antes de reenviar.');
-      setSaving(false);
-      savingRef.current = false;
-      return;
+      return finishSaving(false);
     }
 
     // Componente(s) a devolver: el único disponible si no hay ambigüedad, o la
@@ -3368,14 +3360,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     try {
       res = await savePTA(payload);
     } catch (err) {
-      setSaving(false);
-      savingRef.current = false;
       toast.error('Error de conexión al guardar. Intenta de nuevo.');
-      return;
+      return finishSaving(false);
     }
-    setSaving(false);
-    savingRef.current = false;
-
     if (res.success) {
       const savedId = res.data?.id || res.id || currentPtaId;
       if (savedId) setCurrentPtaId(savedId);
@@ -3384,15 +3371,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (isAdminEdit) {
         toast.success('Cambios guardados correctamente.');
         onBack();
-        return;
+        return finishSaving(true);
       }
 
       if (enviar || isReenvio) {
         if (!savedId) {
           toast.error('No se pudo obtener el ID del PTA guardado. Intenta de nuevo.');
-          return;
+          return finishSaving(false);
         }
-        const { updatePTAStatus } = await import('../../../services/api/ptaApi');
         if (isEnRevisionDocente) {
           // Revisión docente: re-enviar corregido al nivel que lo devolvió. Si es una
           // devolución por componente, se adjunta la respuesta del docente para que el
@@ -3406,28 +3392,34 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             toast.success(`PTA re-enviado (v${reenvio.version}) → ${reenvio.nuevoEstado}`);
             addNotification({ type: 'success', title: 'Re-envío exitoso', message: `Tu PTA versión ${reenvio.version} fue enviado a ${reenvio.nuevoEstado}` });
             onBack();
+            return finishSaving(true);
           } else {
             toast.error(reenvio.message || 'Error al re-enviar el PTA');
+            return finishSaving(false);
           }
         } else {
           // Flujo normal Borrador -> Pendiente Jefatura (inicio del circuito oficial por roles)
-          const envio = await updatePTAStatus(savedId, { estado: 'Pendiente Jefatura' });
+          const envio = await enviarAprobacionPTA(savedId);
           if (envio.success) {
             toast.success('PTA enviado a aprobación');
             addNotification({ type: 'success', title: 'PTA enviado', message: 'Tu PTA fue enviado exitosamente a aprobación' });
-            if (envio.faltaRevisor) {
+            if (envio.faltaRevisor || envio.data?.faltaRevisor) {
               toast.warning('Aviso: no hay evaluadores asignados para tu territorial. La revisión podría demorar.', { duration: 8000 });
             }
             onBack();
+            return finishSaving(true);
           } else {
             toast.error(envio.message || 'Error al enviar el PTA');
+            return finishSaving(false);
           }
         }
       } else {
         if (!silent) toast.info('Borrador guardado. Puedes continuar editando.');
+        return finishSaving(true);
       }
     } else {
       toast.error(res.message || 'Error al guardar el PTA');
+      return finishSaving(false);
     }
   };
 
@@ -3441,7 +3433,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     onBack();
   };
 
-  const handleFirmaDocenteCompleta = async (firmaData: FirmaData) => {
+  const handleFirmaDocenteCompleta = async (firmaData: FirmaData): Promise<boolean> => {
     setShowFirmaDocente(false);
     setFirmaVerificationId('');
     setFirmaCorreoDestino('');
@@ -3454,17 +3446,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       metadata: { timestamp: firmaData.timestamp, pin_verificado: firmaData.pin_verificado },
     }).catch(() => { });
 
-    if (pendingDocenteAccion === 'avanzar_sin_cambios') {
-      if (!currentPtaId) return;
-      const { updatePTAStatus } = await import('../../../services/api/ptaApi');
-      const r = await updatePTAStatus(currentPtaId, { accion: 'avanzar_sin_cambios' });
-      if (r.success) { toast.success(`PTA firmado y enviado a ${r.nuevoEstado}`); onBack(); }
-      else toast.error(r.message || 'Error al avanzar');
-    } else {
+    try {
+      if (pendingDocenteAccion === 'avanzar_sin_cambios') {
+        if (!currentPtaId) {
+          toast.error('No se pudo identificar el PTA para enviarlo. Intenta de nuevo.');
+          return false;
+        }
+        const r = await updatePTAStatus(currentPtaId, { accion: 'avanzar_sin_cambios' });
+        if (r.success) {
+          toast.success(`PTA firmado y enviado a ${r.nuevoEstado}`);
+          onBack();
+          return true;
+        }
+        toast.error(r.message || 'Error al avanzar');
+        return false;
+      }
+
       // 'via_save': guarda + cambia estado (maneja Borrador, Devuelto, REVISION_DOCENTE_Nx)
-      await handleSave(true);
+      return await handleSave(true);
+    } finally {
+      setPendingDocenteAccion(null);
     }
-    setPendingDocenteAccion(null);
   };
 
   const ESTADOS_REVISION_DOCENTE = ['REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'];
