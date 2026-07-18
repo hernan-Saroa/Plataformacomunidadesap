@@ -34,6 +34,7 @@ import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity'
 import { CorreoJuridico } from './entities/correo-juridico.entity';
 import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
 import { CorreoJuridicoHistorial } from './entities/correo-juridico-historial.entity';
+import { BorradorCorreo } from './entities/borrador-correo.entity';
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
 import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
 import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
@@ -69,6 +70,7 @@ import { PlanesMejoramientoController } from './controllers/planes-mejoramiento.
 import { DashboardController } from './controllers/dashboard.controller';
 import { DocumentosConsultaController } from './controllers/documentos-consulta.controller';
 import { CorreosJuridicosController } from './controllers/correos-juridicos.controller';
+import { BorradoresCorreosController } from './controllers/borradores-correos.controller';
 import { ProcesoCoactivoController } from './controllers/proceso-coactivo.controller';
 import { ConfigurationsController } from './controllers/configurations.controller';
 import { OficiosController } from './controllers/oficios.controller';
@@ -99,6 +101,7 @@ import { ComentarioConsulta } from './entities/comentario-consulta.entity';
 import { ComentariosConsultaController } from './controllers/comentarios-consulta.controller';
 import { MicrosoftGraphService } from './services/microsoft-graph.service';
 import { CorreosJuridicosService } from './services/correos-juridicos.service';
+import { BorradoresCorreosService } from './services/borradores-correos.service';
 import { CorreosSyncScheduler } from './services/correos-sync.scheduler';
 import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
 import { ConfigurationsService } from './services/configurations.service';
@@ -160,6 +163,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       CorreoJuridico,
       AdjuntoCorreo,
       CorreoJuridicoHistorial,
+      // Borradores de correos (Redactar Correo)
+      BorradorCorreo,
       // Excepciones Procesales
       ExcepcionProcesal,
       // Procesos Coactivos
@@ -207,6 +212,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     ComentariosConsultaController,
     // Correos Jurídicos
     CorreosJuridicosController,
+    // Borradores de correos (Redactar Correo)
+    BorradoresCorreosController,
     // Procesos Coactivos
     ProcesoCoactivoController,
     // Configurations
@@ -240,6 +247,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Microsoft Graph / Correos
     MicrosoftGraphService,
     CorreosJuridicosService,
+    BorradoresCorreosService,
     CorreosSyncScheduler,
     SmartClassificationService,
     // Procesos Coactivos
