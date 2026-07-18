@@ -32,6 +32,7 @@ export interface EmailClassification {
 export interface SendEmailDto {
     to: string | string[];
     cc?: string[];
+    bcc?: string[]; // Copia Oculta (CCO) — destinatarios no visibles para los demás
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
@@ -151,21 +152,108 @@ export class CorreosJuridicosService {
 
     /**
      * Obtiene la URL base para tracking (pixel + links de descarga).
-     * - En producción: API_GATEWAY_URL (ej: https://plataforma.esap.edu.co)
-     *   las rutas son /legal/api/v1/correos/track/...
-     * - En desarrollo: directamente al puerto del legal-management-service
-     *   las rutas son /correos/track/...
+     *
+     * Los enlaces se envían por correo a destinatarios externos, por lo que DEBEN
+     * apuntar al host público del ambiente donde está desplegada la app — nunca a
+     * `localhost` ni a un host interno de Docker (que solo resuelven en el servidor).
+     *
+     * Para que funcione en CUALQUIER ambiente/despliegue sin configuración manual,
+     * el host se resuelve de forma dinámica en este orden de prioridad:
+     *   1. TRACKING_PUBLIC_URL — override explícito por ambiente (si se define).
+     *   2. El origen público de la request que disparó el envío (cabecera Origin /
+     *      Referer / X-Forwarded-Proto+Host). El frontend siempre llega al backend
+     *      a través de nginx en `/services/*`, así que este origen es exactamente el
+     *      host que el destinatario también puede alcanzar. Funciona en dev-server,
+     *      QA, pre y prod por igual, sin depender de env vars por servicio.
+     *   3. CORS_ORIGIN — fallback de configuración.
+     *   4. localhost:PORT — último recurso solo para desarrollo local directo.
+     *
+     * En los casos 1-3 la ruta pública pasa por el gateway: nginx recibe `/services/*`
+     * y lo reenvía al api-gateway, de ahí a legal-management-service.
      */
-    private getTrackingBaseUrl(): { baseUrl: string; pathPrefix: string } {
-        const publicUrl = process.env.TRACKING_PUBLIC_URL || process.env.CORS_ORIGIN;
-        if (publicUrl) {
-            // Producción/QA/Dev server: usa el gateway (nginx recibe /services/* y lo pasa al api-gateway:3000)
-            const firstUrl = publicUrl.split(',')[0].trim();
-            return { baseUrl: firstUrl, pathPrefix: '/services/legal/api/v1' };
+    private getTrackingBaseUrl(req?: any): { baseUrl: string; pathPrefix: string } {
+        const gatewayPrefix = '/services/legal/api/v1';
+
+        // 1. Override explícito por ambiente
+        const explicit = process.env.TRACKING_PUBLIC_URL;
+        if (explicit) {
+            return { baseUrl: this.normalizeBaseUrl(explicit), pathPrefix: gatewayPrefix };
         }
-        // Local dev: acceso directo al puerto del servicio (sin proxy Vite)
+
+        // 2. Origen público derivado de la request (dinámico, sirve para todo ambiente)
+        const fromRequest = this.resolvePublicOriginFromRequest(req);
+        if (fromRequest) {
+            return { baseUrl: fromRequest, pathPrefix: gatewayPrefix };
+        }
+
+        // 3. Fallback de configuración
+        const cors = process.env.CORS_ORIGIN;
+        if (cors) {
+            return { baseUrl: this.normalizeBaseUrl(cors), pathPrefix: gatewayPrefix };
+        }
+
+        // 4. Desarrollo local directo al puerto del servicio (sin proxy)
         const port = process.env.PORT || '3008';
         return { baseUrl: `http://localhost:${port}`, pathPrefix: '' };
+    }
+
+    /**
+     * Normaliza una URL base: toma la primera si viene lista separada por comas
+     * y elimina la barra final para evitar rutas con `//`.
+     */
+    private normalizeBaseUrl(url: string): string {
+        return url.split(',')[0].trim().replace(/\/+$/, '');
+    }
+
+    /**
+     * Reconstruye el origen público (esquema + host) desde las cabeceras de la
+     * request que llegó a través de nginx → api-gateway. Devuelve null si no se
+     * puede determinar (p.ej. no hay request, o es un host interno/local).
+     */
+    private resolvePublicOriginFromRequest(req?: any): string | null {
+        if (!req || !req.headers) return null;
+        const headers = req.headers;
+        const header = (name: string): string | undefined => {
+            const v = headers[name] ?? headers[name.toLowerCase()];
+            return Array.isArray(v) ? v[0] : v;
+        };
+
+        // Filtra hosts que no sirven para un destinatario externo.
+        const isUsable = (host: string): boolean => {
+            const h = host.toLowerCase();
+            return !!h
+                && !h.startsWith('localhost')
+                && !h.startsWith('127.0.0.1')
+                // hosts internos de Docker (ej: api-gateway-pre:3000, legal-management-service:3008)
+                && !/^[a-z0-9-]+(-(?:dev|qa|pre|prod))?:\d+$/i.test(h);
+        };
+
+        // a) Origin — el más fiable: lo envía el navegador en los POST (send/reply/forward)
+        const origin = header('origin');
+        if (origin) {
+            try {
+                const u = new URL(origin);
+                if (isUsable(u.host)) return this.normalizeBaseUrl(origin);
+            } catch { /* ignore */ }
+        }
+
+        // b) X-Forwarded-Proto + X-Forwarded-Host / Host
+        const proto = (header('x-forwarded-proto') || '').split(',')[0].trim();
+        const fwdHost = (header('x-forwarded-host') || header('host') || '').split(',')[0].trim();
+        if (proto && fwdHost && isUsable(fwdHost)) {
+            return `${proto}://${fwdHost}`;
+        }
+
+        // c) Referer como último intento
+        const referer = header('referer');
+        if (referer) {
+            try {
+                const u = new URL(referer);
+                if (isUsable(u.host)) return `${u.protocol}//${u.host}`;
+            } catch { /* ignore */ }
+        }
+
+        return null;
     }
 
     /**
@@ -687,10 +775,10 @@ export class CorreosJuridicosService {
      * ALL attachments are converted to tracked download links (no inline attachments).
      * A tracking pixel is injected to detect when the recipient opens the email.
      */
-    async sendEmail(dto: SendEmailDto): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+    async sendEmail(dto: SendEmailDto, req?: any): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         const fs = require('fs');
         const path = require('path');
-        const { baseUrl, pathPrefix } = this.getTrackingBaseUrl();
+        const { baseUrl, pathPrefix } = this.getTrackingBaseUrl(req);
         const toList = Array.isArray(dto.to) ? dto.to : [dto.to];
         const destinatariosTo = toList.join(', ');
 
@@ -706,6 +794,7 @@ export class CorreosJuridicosService {
             remitenteNombre: 'Oficina Jurídica ESAP',
             destinatariosTo,
             destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
+            destinatariosCco: dto.bcc?.length ? JSON.stringify(dto.bcc) : undefined,
             fechaRecepcion: new Date(),
             cuerpoHtml: dto.body,
             cuerpoTexto: dto.body?.replace(/<[^>]*>/g, '') || '',
@@ -803,6 +892,7 @@ export class CorreosJuridicosService {
                 requestDeliveryReceipt: !!dto.requestDeliveryReceipt,
             },
             fromAccount, // remitente según el buzón del tab
+            dto.bcc,     // Copia Oculta (CCO) — no visible para los demás destinatarios
         );
 
         if (!sent) {
@@ -818,7 +908,14 @@ export class CorreosJuridicosService {
         await this.correoRepo.save(savedCorreo);
 
         // 6. Register ENVIADO event
-        await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${destinatariosTo}`, 'Sistema');
+        // El CCO (bcc) se deja en la traza interna de auditoría, pero NO viaja visible
+        // a los demás destinatarios ni se guarda en el campo `destinatarios` (que se
+        // muestra como CC al leer el correo).
+        const bccList = Array.isArray(dto.bcc) ? dto.bcc.filter(Boolean) : [];
+        const detalleEnvio = `Correo enviado a ${destinatariosTo}` +
+            (dto.cc?.length ? ` · CC: ${dto.cc.join(', ')}` : '') +
+            (bccList.length ? ` · CCO: ${bccList.join(', ')}` : '');
+        await this.registrarAccion(savedCorreo.id, 'ENVIADO', detalleEnvio, 'Sistema');
         this.logger.log(`Sent email with tracking: ${savedCorreo.id} -> ${destinatariosTo} (${savedAdjuntos.length} tracked attachments)`);
         return { success: true, correo: savedCorreo };
     }
@@ -826,7 +923,7 @@ export class CorreosJuridicosService {
     /**
      * Reply to an email — maintains thread via Graph API
      */
-    async replyEmail(correoId: string, body: string, attachments?: { name: string; contentBytes: string; contentType: string }[]): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+    async replyEmail(correoId: string, body: string, attachments?: { name: string; contentBytes: string; contentType: string }[], req?: any): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         const original = await this.correoRepo.findOne({ where: { id: correoId } });
         if (!original) throw new NotFoundException('Correo original no encontrado');
 
@@ -871,7 +968,7 @@ export class CorreosJuridicosService {
             await this.registrarAccion(original.id, 'RESPONDIDO', `Respuesta enviada (${savedReply.id})`);
             // ── Trazabilidad: Registrar ENVIADO en la respuesta ──
             await this.registrarAccion(savedReply.id, 'ENVIADO', `Respuesta enviada a ${original.remitenteEmail}`, 'Sistema');
-            await this.injectTrackingIntoEmail(savedReply, original.remitenteEmail);
+            await this.injectTrackingIntoEmail(savedReply, original.remitenteEmail, req);
 
             this.logger.log(`Reply saved: ${savedReply.id} -> parent: ${original.id}`);
             return { success: true, correo: savedReply };
@@ -892,6 +989,7 @@ export class CorreosJuridicosService {
         to: string,
         comment: string,
         additionalAttachments?: { name: string; contentBytes: string; contentType: string }[],
+        req?: any,
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         const original = await this.correoRepo.findOne({ where: { id: correoId }, relations: ['adjuntos'] });
         if (!original) throw new NotFoundException('Correo original no encontrado');
@@ -961,7 +1059,7 @@ export class CorreosJuridicosService {
             await this.registrarAccion(original.id, 'REENVIADO', adjuntosDesc);
             // ── Trazabilidad: Registrar ENVIADO en el reenvío ──
             await this.registrarAccion(savedForward.id, 'ENVIADO', `Reenvío enviado a ${to}`, 'Sistema');
-            await this.injectTrackingIntoEmail(savedForward, to);
+            await this.injectTrackingIntoEmail(savedForward, to, req);
 
             this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id}`);
             return { success: true, correo: savedForward };
@@ -1329,9 +1427,11 @@ export class CorreosJuridicosService {
      * Inyecta pixel de tracking y convierte adjuntos a links con token en el HTML guardado.
      * Se llama después de guardar un correo enviado/respondido/reenviado.
      */
-    private async injectTrackingIntoEmail(correo: CorreoJuridico, destinatarioEmail: string): Promise<void> {
+    private async injectTrackingIntoEmail(correo: CorreoJuridico, destinatarioEmail: string, req?: any): Promise<void> {
         try {
-            const baseUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+            // Usa el mismo resolvedor dinámico que sendEmail para que los enlaces
+            // apunten al host público del ambiente (no a un host interno de Docker).
+            const { baseUrl, pathPrefix } = this.getTrackingBaseUrl(req);
             let htmlBody = correo.cuerpoHtml || correo.cuerpoTexto || '';
 
             // 1. Crear token para pixel de apertura
@@ -1345,7 +1445,7 @@ export class CorreosJuridicosService {
             await this.trackingRepo.save(pixelTracking);
 
             // Inyectar pixel invisible al final del HTML
-            const pixelUrl = `${baseUrl}/legal/api/v1/correos/track/open/${pixelToken}?_=${Date.now()}`;
+            const pixelUrl = `${baseUrl}${pathPrefix}/correos/track/open/${pixelToken}?_=${Date.now()}`;
             const pixelHtml = `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0;height:0;width:0;" alt="" />`;
 
             // 2. Crear tokens para cada adjunto del correo
@@ -1367,7 +1467,7 @@ export class CorreosJuridicosService {
                     });
                     await this.trackingRepo.save(dlTracking);
 
-                    const downloadUrl = `${baseUrl}/legal/api/v1/correos/track/download/${downloadToken}`;
+                    const downloadUrl = `${baseUrl}${pathPrefix}/correos/track/download/${downloadToken}`;
                     const sizeMB = (adj.tamanio / (1024 * 1024)).toFixed(2);
                     linksHtml += `<li style="margin-bottom:6px;"><a href="${downloadUrl}" target="_blank" style="color:#2563eb;text-decoration:none;font-weight:600;">${adj.nombre}</a> <span style="color:#64748b;font-size:12px;">(${sizeMB} MB)</span></li>`;
                 }

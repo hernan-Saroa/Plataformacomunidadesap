@@ -1378,6 +1378,7 @@ export interface CorreoJuridico {
     cuerpoHtml: string | null;
     cuerpoTexto: string | null;
     tieneAdjuntos: boolean;
+    adjuntos?: AdjuntoCorreo[];
     leido: boolean;
     archivado: boolean;
     urgente: boolean;
@@ -1390,6 +1391,8 @@ export interface CorreoJuridico {
     expedienteId?: string;
     direccion?: string; // ENTRANTE, ENVIADO
     destinatariosTo?: string;
+    destinatarios?: string; // CC (arreglo JSON de correos)
+    destinatariosCco?: string; // CCO / Copia Oculta (arreglo JSON de correos)
     // Threading
     isReplied?: boolean;
     parentEmailId?: string;
@@ -1415,6 +1418,7 @@ export interface CorreoFilters {
 export interface SendCorreoDto {
     to: string;
     cc?: string[];
+    bcc?: string[]; // Copia Oculta (CCO) — destinatarios no visibles para los demás
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
@@ -1437,8 +1441,13 @@ export class CorreosJuridicosService {
     /**
      * Trigger manual sync from Microsoft Graph
      */
-    async syncCorreos(nextLink?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, { nextLink });
+    async syncCorreos(nextLink?: string, buzon?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, { nextLink, buzon });
+    }
+
+    /** Buzones de correo configurados en el backend (para saber cuáles sincronizar). */
+    async getMailboxes(): Promise<Array<{ buzon: string; address: string }>> {
+        return apiClient.get(`${SERVICE_PREFIX}/correos/mailboxes`);
     }
 
     /**
@@ -1500,8 +1509,8 @@ export class CorreosJuridicosService {
     /**
      * Forward an email
      */
-    async forwardEmail(correoId: string, to: string, comment: string): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment });
+    async forwardEmail(correoId: string, to: string, comment: string, attachments?: { name: string; contentBytes: string; contentType: string }[]): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment, attachments });
     }
 
     /**
@@ -1844,8 +1853,73 @@ export class ProcesosCoactivosService {
     }
 }
 
+// =========================================================================
+// BORRADORES DE CORREOS (Centro de Comunicaciones — Redactar Correo)
+// Borradores privados por usuario. Se autoguardan y se eliminan al enviarse.
+// =========================================================================
+
+export interface BorradorAdjunto {
+    name: string;
+    contentType: string;
+    contentBytes: string; // base64 (sin prefijo data:)
+    size: number;         // bytes
+}
+
+export interface BorradorCorreo {
+    id: string;
+    usuarioId: string;
+    usuarioNombre: string | null;
+    buzon: string; // JUDICIAL | CORREOS
+    destinatariosTo: string | null;  // JSON array de correos ("Para")
+    destinatariosCc: string | null;  // JSON array de correos (CC)
+    destinatariosCco: string | null; // JSON array de correos (CCO)
+    asunto: string | null;
+    cuerpo: string | null;
+    adjuntos: BorradorAdjunto[];
+    solicitarAcuse: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface UpsertBorradorDto {
+    id?: string;              // si viene, se actualiza ese borrador
+    usuarioId: string;
+    usuarioNombre?: string;
+    buzon?: string;
+    para?: string[];
+    cc?: string[];
+    cco?: string[];
+    asunto?: string;
+    cuerpo?: string;
+    adjuntos?: BorradorAdjunto[];
+    solicitarAcuse?: boolean;
+}
+
+export class BorradoresCorreosService {
+    /** Lista los borradores del usuario (más recientes primero). */
+    async getBorradores(usuarioId: string): Promise<BorradorCorreo[]> {
+        if (!usuarioId) return [];
+        return apiClient.get(`${SERVICE_PREFIX}/borradores-correos`, { params: { usuarioId } });
+    }
+
+    async getBorrador(id: string): Promise<BorradorCorreo> {
+        return apiClient.get(`${SERVICE_PREFIX}/borradores-correos/${id}`);
+    }
+
+    /** Crea o actualiza (upsert) un borrador. Devuelve el borrador persistido. */
+    async saveBorrador(dto: UpsertBorradorDto): Promise<BorradorCorreo> {
+        return apiClient.post(`${SERVICE_PREFIX}/borradores-correos`, dto);
+    }
+
+    async deleteBorrador(id: string, usuarioId?: string): Promise<{ success: boolean }> {
+        const qs = usuarioId ? `?usuarioId=${encodeURIComponent(usuarioId)}` : '';
+        return apiClient.delete(`${SERVICE_PREFIX}/borradores-correos/${id}${qs}`);
+    }
+}
+
 export const legalService = new LegalService();
 export const ocService = new OCService();
 export const riesgosService = new RiesgosService();
 export const correosJuridicosService = new CorreosJuridicosService();
+export const borradoresCorreosService = new BorradoresCorreosService();
 export const procesosCoactivosService = new ProcesosCoactivosService();

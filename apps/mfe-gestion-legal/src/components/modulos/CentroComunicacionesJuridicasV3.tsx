@@ -21,7 +21,7 @@ import {
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
   Filter, Star, Gavel, Scale, Briefcase, Paperclip, ChevronLeft, ChevronRight,
-  RefreshCw, Loader2, Reply, ArrowRight, Link2
+  RefreshCw, Loader2, Reply, ArrowRight, Link2, Pencil, Trash2, PenLine
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -34,11 +34,11 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
-import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
+import { ModalNuevaComunicacion, NuevaComunicacionData, DraftSavePayload } from './ModalNuevaComunicacion';
 import { ModalResponderCorreo, CorreoOriginalData } from './ModalResponderCorreo';
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 import { DetalleCorreoModal } from './DetalleCorreoModal';
-import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
+import { correosJuridicosService, CorreoJuridico, borradoresCorreosService, BorradorCorreo as BorradorCorreoDTO, BorradorAdjunto } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
@@ -58,6 +58,8 @@ interface ComunicacionUnificada {
   remitente: string;
   remitenteEmail?: string;
   destinatario?: string; // Para comunicaciones enviadas
+  cc?: string; // CC — correos en copia (comunicaciones enviadas)
+  cco?: string; // CCO — correos en copia oculta (comunicaciones enviadas)
   despachoOrigen?: string;
   radicadoExterno?: string;
   fechaRadicacion: Date;
@@ -90,6 +92,32 @@ interface ModuloDestinoUI {
   nombreCorto: string;
   color: string;
   aliases: string[];
+}
+
+// Normaliza una lista de correos guardada en BD a una cadena legible "a@x.com, b@y.com".
+// Es tolerante a las distintas formas en que se persiste este dato:
+//   - arreglo JSON de strings           → correos enviados (CC/CCO)
+//   - arreglo JSON de objetos de Graph   → correos recibidos ({ emailAddress: { address } })
+//   - texto plano separado por comas
+// Devuelve '' si no hay datos.
+function parseListaCorreos(raw?: string | null): string {
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item: any) =>
+          typeof item === 'string'
+            ? item
+            : (item?.emailAddress?.address || item?.address || item?.email || '')
+        )
+        .filter(Boolean)
+        .join(', ');
+    }
+  } catch {
+    // No era JSON: se asume texto plano ya separado por comas
+  }
+  return String(raw);
 }
 
 const MODULOS_DESTINO_UI: ModuloDestinoUI[] = [
@@ -161,9 +189,7 @@ const getModuloDestinoUI = (moduloSugerido?: string): ModuloDestinoUI | undefine
   );
 };
 
-import { correosJuridicosService } from '../../../../services/api/legal.service';
-
-type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'respuestas' | 'urgentes' | 'archivadas';
+type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'respuestas' | 'urgentes' | 'archivadas' | 'borradores';
 type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
@@ -172,7 +198,32 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
 
-  const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
+  // ── Acceso por buzón institucional (segregación de funciones) ──
+  // Cada buzón (Judicial / Correos Institucional) es administrado por funcionarios
+  // distintos; el usuario solo ve y gestiona las comunicaciones de los buzones que
+  // le fueron asignados según sus permisos.
+  const puedeBuzonJudicial = authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_BUZON_JUDICIAL);
+  const puedeBuzonCorreos = authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_BUZON_CORREOS);
+  // Poder redactar/guardar borradores requiere permiso de creación de comunicaciones.
+  const puedeCrear = authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_CREATE);
+  const buzonesPermitidos: string[] = [
+    ...(puedeBuzonJudicial ? ['JUDICIAL'] : []),
+    ...(puedeBuzonCorreos ? ['CORREOS'] : []),
+  ];
+  const buzonPermitido = (c: ComunicacionUnificada): boolean =>
+    buzonesPermitidos.includes(((c.buzon as string) || 'JUDICIAL').toUpperCase());
+  // Los tabs Judiciales/Oficios pertenecen al buzón JUDICIAL; Correos al buzón CORREOS.
+  // Los tabs generales (enviados/respuestas/urgentes/archivadas) muestran los buzones permitidos.
+  const tabPermitida = (tab: TabUnificadaType): boolean => {
+    if (tab === 'judiciales' || tab === 'oficios') return puedeBuzonJudicial;
+    if (tab === 'correos') return puedeBuzonCorreos;
+    if (tab === 'borradores') return puedeCrear && buzonesPermitidos.length > 0;
+    return buzonesPermitidos.length > 0;
+  };
+
+  const [tabActiva, setTabActiva] = useState<TabUnificadaType>(
+    () => (puedeBuzonJudicial ? 'judiciales' : puedeBuzonCorreos ? 'correos' : 'enviados')
+  );
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
@@ -218,6 +269,10 @@ export function ModuloCentroComunicacionesJuridicasV3() {
 
   // Estados para modales
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
+
+  // ── Borradores de correos (privados por usuario) ──
+  const [borradores, setBorradores] = useState<BorradorCorreoDTO[]>([]);
+  const [borradorEnEdicion, setBorradorEnEdicion] = useState<BorradorCorreoDTO | null>(null);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [comunicacionParaExpediente, setComunicacionParaExpediente] = useState<ComunicacionUnificada | null>(null);
 
@@ -269,6 +324,8 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       remitente: correo.remitenteNombre || correo.remitenteEmail,
       remitenteEmail: correo.remitenteEmail,
       destinatario: isSent ? (correo.destinatariosTo || '') : undefined,
+      cc: isSent ? parseListaCorreos(correo.destinatarios) : undefined,
+      cco: isSent ? parseListaCorreos(correo.destinatariosCco) : undefined,
       fechaRadicacion: new Date(correo.fechaRecepcion),
       urgente: correo.urgente,
       leida: correo.leido,
@@ -317,6 +374,95 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     }
   };
 
+  // ── Borradores: carga, apertura, guardado y eliminación ──
+
+  // Convierte un adjunto base64 del borrador de vuelta a un objeto File para el modal.
+  const base64ToFile = (a: BorradorAdjunto): File => {
+    const byteChars = atob(a.contentBytes || '');
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    return new File([bytes], a.name, { type: a.contentType || 'application/octet-stream' });
+  };
+
+  // Mapea un borrador persistido a los datos iniciales del modal Redactar Correo.
+  const mapBorradorToInitialData = (b: BorradorCorreoDTO): Partial<NuevaComunicacionData> => ({
+    para: parseListaCorreos(b.destinatariosTo),
+    cc: parseListaCorreos(b.destinatariosCc),
+    cco: parseListaCorreos(b.destinatariosCco),
+    asunto: b.asunto || '',
+    cuerpo: b.cuerpo || '',
+    archivos: (b.adjuntos || []).map(base64ToFile),
+    solicitarAcuse: b.solicitarAcuse,
+    borradorId: b.id,
+  });
+
+  const ordenarBorradores = (list: BorradorCorreoDTO[]) =>
+    [...list].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  const loadBorradores = async () => {
+    const u = authService.getCurrentUser();
+    if (!u?.id || !puedeCrear) { setBorradores([]); return; }
+    try {
+      const data = await borradoresCorreosService.getBorradores(u.id);
+      setBorradores(ordenarBorradores(data || []));
+    } catch (error) {
+      console.error('Error cargando borradores:', error);
+    }
+  };
+
+  // Guarda/actualiza el borrador (autoguardado o al cerrar). Devuelve el id persistido.
+  const handleSaveDraft = async (payload: DraftSavePayload): Promise<string | undefined> => {
+    const u = authService.getCurrentUser();
+    if (!u?.id) {
+      toast.error('No fue posible identificar la sesión para guardar el borrador');
+      return undefined;
+    }
+    try {
+      const saved = await borradoresCorreosService.saveBorrador({
+        id: payload.id,
+        usuarioId: u.id,
+        usuarioNombre: (u as any).fullName || (u as any).nombre || u.email,
+        buzon: payload.buzon,
+        para: payload.para,
+        cc: payload.cc,
+        cco: payload.cco,
+        asunto: payload.asunto,
+        cuerpo: payload.cuerpo,
+        adjuntos: payload.adjuntos,
+        solicitarAcuse: payload.solicitarAcuse,
+      });
+      // Refleja el cambio en la lista local (contador + última edición) sin refetch.
+      setBorradores(prev => {
+        const idx = prev.findIndex(x => x.id === saved.id);
+        const next = idx >= 0 ? prev.map(x => (x.id === saved.id ? saved : x)) : [saved, ...prev];
+        return ordenarBorradores(next);
+      });
+      return saved.id;
+    } catch (error) {
+      console.error('Error guardando borrador:', error);
+      return undefined;
+    }
+  };
+
+  const handleAbrirBorrador = (b: BorradorCorreoDTO) => {
+    setReplyData(null);
+    setBorradorEnEdicion(b);
+    setModalNuevaComunicacionOpen(true);
+  };
+
+  const handleEliminarBorrador = async (id: string) => {
+    const u = authService.getCurrentUser();
+    setBorradores(prev => prev.filter(x => x.id !== id)); // optimista
+    try {
+      await borradoresCorreosService.deleteBorrador(id, u?.id);
+      toast.success('Borrador eliminado', { icon: <Trash2 className="w-4 h-4" /> });
+    } catch (error) {
+      console.error('Error eliminando borrador:', error);
+      toast.error('No se pudo eliminar el borrador');
+      loadBorradores(); // re-sincronizar ante fallo
+    }
+  };
+
   // Sincronizar con Microsoft Graph de forma progresiva.
   // Itera sobre cada BUZÓN configurado (JUDICIAL y, cuando exista, CORREOS).
   const handleSyncCorreos = async () => {
@@ -335,6 +481,13 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         buzones = (mailboxes || []).map(m => m.buzon).filter(Boolean);
       } catch { /* fallback abajo */ }
       if (buzones.length === 0) buzones = ['JUDICIAL'];
+
+      // Restringir la sincronización a los buzones que el usuario tiene permitido ver.
+      buzones = buzones.filter(b => buzonesPermitidos.includes(String(b).toUpperCase()));
+      if (buzones.length === 0) {
+        toast.dismiss();
+        return; // el finally restablece el estado de sincronización
+      }
 
       for (const buzon of buzones) {
         let nextLink: string | null | undefined = undefined;
@@ -387,6 +540,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // Cargar datos al montar + auto-polling cada 2 minutos
   useEffect(() => {
     loadCorreosFromAPI();
+    loadBorradores();
 
     // Auto-polling: refresca la lista silenciosamente cada 2 minutos
     const pollInterval = setInterval(async () => {
@@ -410,15 +564,24 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // restringen al buzón JUDICIAL y Correos al buzón CORREOS (separación por cuenta).
   // Con un solo buzón (estado actual) se mantiene el filtrado por tipo para no
   // ocultar nada. Al configurar la segunda cuenta, la separación es automática.
+  // Solo las comunicaciones de los buzones que el usuario tiene permitido ver.
+  // Es la fuente de verdad para la lista visible y para los contadores/estadísticas,
+  // evitando que se filtre información de un buzón ajeno a las funciones del usuario.
+  const comunicacionesVisibles = useMemo(
+    () => comunicaciones.filter(buzonPermitido),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [comunicaciones, puedeBuzonJudicial, puedeBuzonCorreos]
+  );
+
   const buzonesPresentes = useMemo(() => {
     const set = new Set<string>();
-    comunicaciones.forEach(c => set.add((c.buzon || 'JUDICIAL').toUpperCase()));
+    comunicacionesVisibles.forEach(c => set.add((c.buzon || 'JUDICIAL').toUpperCase()));
     return set;
-  }, [comunicaciones]);
+  }, [comunicacionesVisibles]);
   const multiBuzon = buzonesPresentes.size > 1;
 
   const comunicacionesFiltradas = useMemo(() => {
-    let resultado = [...comunicaciones];
+    let resultado = [...comunicacionesVisibles];
     const esBuzon = (c: ComunicacionUnificada, b: string) => (c.buzon || 'JUDICIAL').toUpperCase() === b;
 
     // Filtrar por tab
@@ -450,6 +613,11 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         break;
       case 'archivadas':
         resultado = resultado.filter(c => c.estado === 'ARCHIVADA');
+        break;
+      case 'borradores':
+        // Los borradores no son comunicaciones sincronizadas; se listan aparte
+        // (VistaBorradores). Aquí no aplica el listado/paginación de correos.
+        resultado = [];
         break;
     }
 
@@ -490,7 +658,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return resultado.sort((a, b) => {
       return b.fechaRadicacion.getTime() - a.fechaRadicacion.getTime();
     });
-  }, [comunicaciones, tabActiva, busqueda, filtroMedioControl, filtroBuzon, multiBuzon]);
+  }, [comunicacionesVisibles, tabActiva, busqueda, filtroMedioControl, filtroBuzon, multiBuzon]);
 
   // ✨ Aplicar paginación
   const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
@@ -507,22 +675,33 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     setFiltroBuzon('todos');
   }, [tabActiva, busqueda]);
 
-  // Calcular estadísticas
-  const totalNoLeidas = comunicaciones.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
-  const totalUrgentes = comunicaciones.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
-  const totalArchivadas = comunicaciones.filter(c => c.estado === 'ARCHIVADA').length;
-  const totalIAAltaConfianza = comunicaciones.filter(
+  // Si el tab activo pertenece a un buzón que el usuario no puede ver, redirigir
+  // al primer tab permitido (evita quedar en un tab vacío tras cambiar permisos).
+  useEffect(() => {
+    if (!tabPermitida(tabActiva)) {
+      const primera = (['judiciales', 'correos', 'enviados'] as TabUnificadaType[]).find(tabPermitida);
+      if (primera) setTabActiva(primera);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabActiva, puedeBuzonJudicial, puedeBuzonCorreos]);
+
+  // Calcular estadísticas (solo sobre los buzones permitidos)
+  const totalNoLeidas = comunicacionesVisibles.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
+  const totalUrgentes = comunicacionesVisibles.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
+  const totalArchivadas = comunicacionesVisibles.filter(c => c.estado === 'ARCHIVADA').length;
+  const totalIAAltaConfianza = comunicacionesVisibles.filter(
     (c) => c.estado !== 'ARCHIVADA' && c.clasificacionIA && getConfianzaPercent(c.clasificacionIA.confianza) >= 90
   ).length;
 
   const contadoresTabs = {
-    judiciales: comunicaciones.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
-    correos: comunicaciones.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
-    oficios: comunicaciones.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
-    enviados: comunicaciones.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
-    respuestas: comunicaciones.filter(c => c.categoria === 'RESPUESTA' && c.estado !== 'ARCHIVADA').length,
+    judiciales: comunicacionesVisibles.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
+    correos: comunicacionesVisibles.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
+    oficios: comunicacionesVisibles.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
+    enviados: comunicacionesVisibles.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
+    respuestas: comunicacionesVisibles.filter(c => c.categoria === 'RESPUESTA' && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,
-    archivadas: totalArchivadas
+    archivadas: totalArchivadas,
+    borradores: borradores.length
   };
 
   const handleMarcarLeida = async (id: string) => {
@@ -696,7 +875,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         label: 'Nueva Comunicación',
         labelMobile: 'Nueva',
         icon: <Plus className="w-4 h-4" />,
-        onClick: () => setModalNuevaComunicacionOpen(true),
+        onClick: () => {
+          // Composición nueva y limpia (sin borrador ni reenvío previos).
+          setBorradorEnEdicion(null);
+          setReplyData(null);
+          setModalNuevaComunicacionOpen(true);
+        },
         variant: 'primary' as const
       })
     }
@@ -856,63 +1040,92 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       {/* Tabs Unificados */}
       <Card className="p-1">
         <div className="flex gap-1 flex-wrap">
-          <TabButton
-            active={tabActiva === 'judiciales'}
-            onClick={() => setTabActiva('judiciales')}
-            icon={<Gavel className="w-4 h-4" />}
-            label="Judiciales"
-            count={contadoresTabs.judiciales}
-            color="#003DA5"
-          />
-          <TabButton
-            active={tabActiva === 'correos'}
-            onClick={() => setTabActiva('correos')}
-            icon={<Mail className="w-4 h-4" />}
-            label="Correos"
-            count={contadoresTabs.correos}
-            color="#6B7280"
-          />
-          <TabButton
-            active={tabActiva === 'oficios'}
-            onClick={() => setTabActiva('oficios')}
-            icon={<FileText className="w-4 h-4" />}
-            label="Oficios"
-            count={contadoresTabs.oficios}
-            color="#6B7280"
-          />
-          <TabButton
-            active={tabActiva === 'enviados'}
-            onClick={() => setTabActiva('enviados')}
-            icon={<Send className="w-4 h-4" />}
-            label="Enviados"
-            count={contadoresTabs.enviados}
-            color="#6B7280"
-          />
-          <TabButton
-            active={tabActiva === 'respuestas'}
-            onClick={() => setTabActiva('respuestas')}
-            icon={<Reply className="w-4 h-4" />}
-            label="Respondidos"
-            count={contadoresTabs.respuestas}
-            color="#059669"
-          />
-          <TabButton
-            active={tabActiva === 'urgentes'}
-            onClick={() => setTabActiva('urgentes')}
-            icon={<AlertTriangle className="w-4 h-4" />}
-            label="Urgentes"
-            count={contadoresTabs.urgentes}
-            color="#DC2626"
-            urgent
-          />
-          <TabButton
-            active={tabActiva === 'archivadas'}
-            onClick={() => setTabActiva('archivadas')}
-            icon={<Archive className="w-4 h-4" />}
-            label="Archivadas"
-            count={contadoresTabs.archivadas}
-            color="#6B7280"
-          />
+          {/* Buzón Judicial */}
+          {puedeBuzonJudicial && (
+            <TabButton
+              active={tabActiva === 'judiciales'}
+              onClick={() => setTabActiva('judiciales')}
+              icon={<Gavel className="w-4 h-4" />}
+              label="Judiciales"
+              count={contadoresTabs.judiciales}
+              color="#003DA5"
+            />
+          )}
+          {/* Buzón Correos (Institucional) */}
+          {puedeBuzonCorreos && (
+            <TabButton
+              active={tabActiva === 'correos'}
+              onClick={() => setTabActiva('correos')}
+              icon={<Mail className="w-4 h-4" />}
+              label="Correos"
+              count={contadoresTabs.correos}
+              color="#6B7280"
+            />
+          )}
+          {/* Buzón Judicial */}
+          {puedeBuzonJudicial && (
+            <TabButton
+              active={tabActiva === 'oficios'}
+              onClick={() => setTabActiva('oficios')}
+              icon={<FileText className="w-4 h-4" />}
+              label="Oficios"
+              count={contadoresTabs.oficios}
+              color="#6B7280"
+            />
+          )}
+          {/* Tabs generales — sobre los buzones permitidos */}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'enviados'}
+              onClick={() => setTabActiva('enviados')}
+              icon={<Send className="w-4 h-4" />}
+              label="Enviados"
+              count={contadoresTabs.enviados}
+              color="#6B7280"
+            />
+          )}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'respuestas'}
+              onClick={() => setTabActiva('respuestas')}
+              icon={<Reply className="w-4 h-4" />}
+              label="Respondidos"
+              count={contadoresTabs.respuestas}
+              color="#059669"
+            />
+          )}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'urgentes'}
+              onClick={() => setTabActiva('urgentes')}
+              icon={<AlertTriangle className="w-4 h-4" />}
+              label="Urgentes"
+              count={contadoresTabs.urgentes}
+              color="#DC2626"
+              urgent
+            />
+          )}
+          {buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'archivadas'}
+              onClick={() => setTabActiva('archivadas')}
+              icon={<Archive className="w-4 h-4" />}
+              label="Archivadas"
+              count={contadoresTabs.archivadas}
+              color="#6B7280"
+            />
+          )}
+          {/* Borradores — composiciones sin enviar (privadas por usuario) */}
+          {puedeCrear && buzonesPermitidos.length > 0 && (
+            <TabButton
+              active={tabActiva === 'borradores'}
+              onClick={() => setTabActiva('borradores')}
+              icon={<PenLine className="w-4 h-4" />}
+              label="Borradores"
+              count={contadoresTabs.borradores}
+              color="#B45309"
+            />
+          )}
         </div>
       </Card>
 
@@ -948,8 +1161,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             </div>
           )}
 
-          {/* Filtro interno por BUZÓN — visible en tabs generales (muestran ambas cuentas) */}
-          {['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && (
+          {/* Filtro interno por BUZÓN — visible en tabs generales solo si el usuario
+              tiene acceso a AMBOS buzones (si solo tiene uno, los datos ya vienen filtrados). */}
+          {['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && buzonesPermitidos.length > 1 && (
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
               <select
@@ -987,8 +1201,17 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         </div>
       </Card>
 
+      {/* Vista Borradores — composiciones sin enviar */}
+      {tabActiva === 'borradores' && (
+        <VistaBorradores
+          borradores={borradores}
+          onAbrir={handleAbrirBorrador}
+          onEliminar={handleEliminarBorrador}
+        />
+      )}
+
       {/* Vista Inbox (Gmail style) */}
-      {tipoVista === 'inbox' && (
+      {tipoVista === 'inbox' && tabActiva !== 'borradores' && (
         <VistaInbox
           comunicaciones={comunicacionesPaginadas}
           comunicacionSeleccionada={comunicacionSeleccionada}
@@ -1018,7 +1241,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       )}
 
       {/* Vista Lista */}
-      {tipoVista === 'lista' && (
+      {tipoVista === 'lista' && tabActiva !== 'borradores' && (
         <VistaLista
           comunicaciones={comunicacionesPaginadas}
           onMarcarLeida={handleMarcarLeida}
@@ -1096,20 +1319,57 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       {/* Modal Nueva Comunicación */}
       <ModalNuevaComunicacion
         isOpen={modalNuevaComunicacionOpen}
-        onClose={() => setModalNuevaComunicacionOpen(false)}
+        onClose={() => {
+          // Al cerrar, el modal ya intentó autoguardar el borrador (si aplicaba).
+          setModalNuevaComunicacionOpen(false);
+          setBorradorEnEdicion(null);
+          setReplyData(null);
+          loadBorradores();
+        }}
+        // Al editar un borrador, se restaura su cuenta remitente original.
         buzon={
-          // Cuenta remitente según el tab activo: Correos → CORREOS; en tabs generales
-          // respeta el filtro interno de buzón; el resto (judiciales/oficios) → JUDICIAL.
-          tabActiva === 'correos'
-            ? 'CORREOS'
-            : (['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && filtroBuzon !== 'todos'
-                ? filtroBuzon
-                : 'JUDICIAL')
+          borradorEnEdicion
+            ? borradorEnEdicion.buzon
+            // Cuenta remitente según el tab activo: Correos → CORREOS; Judiciales/Oficios → JUDICIAL;
+            // en tabs generales respeta el filtro interno de buzón y, si no hay filtro, usa el
+            // primer buzón permitido del usuario (evita componer desde un buzón sin acceso).
+            : tabActiva === 'correos'
+              ? 'CORREOS'
+              : tabActiva === 'judiciales' || tabActiva === 'oficios'
+                ? 'JUDICIAL'
+                : (['enviados', 'respuestas', 'urgentes', 'archivadas'].includes(tabActiva) && filtroBuzon !== 'todos'
+                    ? filtroBuzon
+                    : (buzonesPermitidos[0] || 'JUDICIAL'))
         }
+        initialData={
+          borradorEnEdicion
+            ? mapBorradorToInitialData(borradorEnEdicion)
+            : replyData
+              ? {
+                  para: (replyData as any).to || '',
+                  asunto: (replyData as any).subject || '',
+                  cuerpo: (replyData as any).body || '',
+                  isForward: (replyData as any).isForward,
+                  isReply: (replyData as any).isReply,
+                  originalCorreoId: (replyData as any).originalCorreoId,
+                }
+              : undefined
+        }
+        onSaveDraft={handleSaveDraft}
         onSubmit={async (data) => {
           console.log('Nueva comunicación enviada:', data);
           toast.success('Comunicación registrada exitosamente');
           setModalNuevaComunicacionOpen(false);
+          setBorradorEnEdicion(null);
+          // Si se envió desde un borrador, eliminarlo de Borradores.
+          if (data.borradorId) {
+            setBorradores(prev => prev.filter(x => x.id !== data.borradorId));
+            try {
+              await borradoresCorreosService.deleteBorrador(data.borradorId, authService.getCurrentUser()?.id);
+            } catch (error) {
+              console.error('Error eliminando borrador tras enviar:', error);
+            }
+          }
           // Si fue una respuesta, marcar optimisticamente isReplied en el correo original
           if (data.isReply && data.originalCorreoId) {
             setComunicaciones(prev =>
@@ -1244,6 +1504,112 @@ function TabButton({ active, onClick, icon, label, count, color, urgent }: TabBu
         {count}
       </Badge>
     </button>
+  );
+}
+
+// ==================== VISTA BORRADORES ====================
+interface VistaBorradoresProps {
+  borradores: BorradorCorreoDTO[];
+  onAbrir: (b: BorradorCorreoDTO) => void;
+  onEliminar: (id: string) => void;
+}
+
+function VistaBorradores({ borradores, onAbrir, onEliminar }: VistaBorradoresProps) {
+  const formatFecha = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString('es-CO', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  if (borradores.length === 0) {
+    return (
+      <Card className="p-10">
+        <div className="flex flex-col items-center justify-center text-center gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center">
+            <PenLine className="w-7 h-7 text-amber-600" />
+          </div>
+          <h3 className="text-base font-bold text-gray-900">No tienes borradores</h3>
+          <p className="text-sm text-gray-500 max-w-md">
+            Cuando empieces a redactar una comunicación y salgas sin enviarla, se guardará
+            aquí automáticamente para que puedas retomarla luego.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="divide-y divide-gray-100 overflow-hidden">
+      {borradores.map((b) => {
+        const para = parseListaCorreos(b.destinatariosTo);
+        const nAdjuntos = Array.isArray(b.adjuntos) ? b.adjuntos.length : 0;
+        return (
+          <div
+            key={b.id}
+            className="group flex items-start gap-3 px-4 py-3 hover:bg-amber-50/40 transition-colors cursor-pointer"
+            onClick={() => onAbrir(b)}
+          >
+            <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <PenLine className="w-4 h-4 text-amber-700" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {b.asunto?.trim() || '(Sin asunto)'}
+                </p>
+                <Badge className="bg-amber-100 text-amber-800 text-[10px]">Borrador</Badge>
+                {b.buzon && (
+                  <Badge className="bg-gray-100 text-gray-600 text-[10px]">
+                    {b.buzon === 'CORREOS' ? 'Correos' : 'Judicial'}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 truncate mt-0.5">
+                {para ? <>Para: {para}</> : <span className="italic">Sin destinatarios</span>}
+                {b.cuerpo?.trim() ? ` · ${b.cuerpo.trim().slice(0, 90)}` : ''}
+              </p>
+              <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400">
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Editado {formatFecha(b.updatedAt)}
+                </span>
+                {nAdjuntos > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <Paperclip className="w-3 h-3" /> {nAdjuntos} adjunto{nAdjuntos > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={(e) => { e.stopPropagation(); onAbrir(b); }}
+              >
+                <Pencil className="w-3 h-3 mr-1" />
+                Continuar
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
+                onClick={(e) => { e.stopPropagation(); onEliminar(b.id); }}
+                aria-label="Eliminar borrador"
+                title="Eliminar borrador"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </Card>
   );
 }
 
