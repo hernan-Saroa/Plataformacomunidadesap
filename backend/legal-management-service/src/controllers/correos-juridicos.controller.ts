@@ -19,6 +19,7 @@ import { CorreoJuridico } from '../entities/correo-juridico.entity';
 export class SendEmailDto {
     to: string | string[];
     cc?: string[];
+    bcc?: string[]; // Copia Oculta (CCO) — destinatarios no visibles para los demás
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];

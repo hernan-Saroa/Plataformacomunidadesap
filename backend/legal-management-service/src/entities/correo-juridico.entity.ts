@@ -19,7 +19,12 @@ export class CorreoJuridico {
     remitenteNombre: string;
 
     @Column({ type: 'text', nullable: true })
-    destinatarios: string;
+    destinatarios: string; // CC (arreglo JSON de correos)
+
+    // Destinatarios en Copia Oculta (CCO/BCC), arreglo JSON de correos. No visibles
+    // para los demás destinatarios; se conservan para trazabilidad institucional.
+    @Column({ name: 'destinatarios_cco', type: 'text', nullable: true })
+    destinatariosCco: string;
 
     @Column({ name: 'fecha_recepcion', type: 'timestamp' })
     fechaRecepcion: Date;
