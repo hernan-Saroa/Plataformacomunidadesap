@@ -32,6 +32,7 @@ export interface EmailClassification {
 export interface SendEmailDto {
     to: string | string[];
     cc?: string[];
+    bcc?: string[]; // Copia Oculta (CCO) — destinatarios no visibles para los demás
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
@@ -793,6 +794,7 @@ export class CorreosJuridicosService {
             remitenteNombre: 'Oficina Jurídica ESAP',
             destinatariosTo,
             destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
+            destinatariosCco: dto.bcc?.length ? JSON.stringify(dto.bcc) : undefined,
             fechaRecepcion: new Date(),
             cuerpoHtml: dto.body,
             cuerpoTexto: dto.body?.replace(/<[^>]*>/g, '') || '',
@@ -890,6 +892,7 @@ export class CorreosJuridicosService {
                 requestDeliveryReceipt: !!dto.requestDeliveryReceipt,
             },
             fromAccount, // remitente según el buzón del tab
+            dto.bcc,     // Copia Oculta (CCO) — no visible para los demás destinatarios
         );
 
         if (!sent) {
@@ -905,7 +908,14 @@ export class CorreosJuridicosService {
         await this.correoRepo.save(savedCorreo);
 
         // 6. Register ENVIADO event
-        await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${destinatariosTo}`, 'Sistema');
+        // El CCO (bcc) se deja en la traza interna de auditoría, pero NO viaja visible
+        // a los demás destinatarios ni se guarda en el campo `destinatarios` (que se
+        // muestra como CC al leer el correo).
+        const bccList = Array.isArray(dto.bcc) ? dto.bcc.filter(Boolean) : [];
+        const detalleEnvio = `Correo enviado a ${destinatariosTo}` +
+            (dto.cc?.length ? ` · CC: ${dto.cc.join(', ')}` : '') +
+            (bccList.length ? ` · CCO: ${bccList.join(', ')}` : '');
+        await this.registrarAccion(savedCorreo.id, 'ENVIADO', detalleEnvio, 'Sistema');
         this.logger.log(`Sent email with tracking: ${savedCorreo.id} -> ${destinatariosTo} (${savedAdjuntos.length} tracked attachments)`);
         return { success: true, correo: savedCorreo };
     }
