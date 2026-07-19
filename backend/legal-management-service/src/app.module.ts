@@ -99,6 +99,9 @@ import { DocumentosConsultaService } from './services/documentos-consulta.servic
 import { ComentariosConsultaService } from './services/comentarios-consulta.service';
 import { ComentarioConsulta } from './entities/comentario-consulta.entity';
 import { ComentariosConsultaController } from './controllers/comentarios-consulta.controller';
+import { ComentariosCorreoService } from './services/comentarios-correo.service';
+import { ComentarioCorreo } from './entities/comentario-correo.entity';
+import { ComentariosCorreoController } from './controllers/comentarios-correo.controller';
 import { MicrosoftGraphService } from './services/microsoft-graph.service';
 import { CorreosJuridicosService } from './services/correos-juridicos.service';
 import { BorradoresCorreosService } from './services/borradores-correos.service';
@@ -163,6 +166,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       CorreoJuridico,
       AdjuntoCorreo,
       CorreoJuridicoHistorial,
+      ComentarioCorreo,
       // Borradores de correos (Redactar Correo)
       BorradorCorreo,
       // Excepciones Procesales
@@ -212,6 +216,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     ComentariosConsultaController,
     // Correos Jurídicos
     CorreosJuridicosController,
+    ComentariosCorreoController,
     // Borradores de correos (Redactar Correo)
     BorradoresCorreosController,
     // Procesos Coactivos
@@ -247,6 +252,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Microsoft Graph / Correos
     MicrosoftGraphService,
     CorreosJuridicosService,
+    ComentariosCorreoService,
     BorradoresCorreosService,
     CorreosSyncScheduler,
     SmartClassificationService,

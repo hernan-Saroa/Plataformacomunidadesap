@@ -130,6 +130,12 @@ export function ModalExpedienteComunicacion({
   const [historial, setHistorial] = useState<any[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
 
+  // Comentarios
+  const [comentarios, setComentarios] = useState<any[]>([]);
+  const [loadingComentarios, setLoadingComentarios] = useState(false);
+  const [nuevoComentario, setNuevoComentario] = useState('');
+  const [publicandoComentario, setPublicandoComentario] = useState(false);
+
   // Cuerpo HTML completo del correo (con imágenes inline resueltas)
   const [fullBodyHtml, setFullBodyHtml] = useState<string | null>(null);
   const [loadingBody, setLoadingBody] = useState(false);
@@ -188,6 +194,54 @@ export function ModalExpedienteComunicacion({
     loadHistorial();
   }, [isOpen, comunicacion?.id, tabActivo]);
 
+  // Cargar comentarios al abrir la comunicación o al entrar a la pestaña
+  useEffect(() => {
+    const loadComentarios = async () => {
+      if (!isOpen || !comunicacion?.id || tabActivo !== 'comentarios') return;
+
+      setLoadingComentarios(true);
+      try {
+        const data = await correosJuridicosService.getComentarios(comunicacion.id);
+        setComentarios(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Error loading comentarios:', error);
+        setComentarios([]);
+      } finally {
+        setLoadingComentarios(false);
+      }
+    };
+
+    loadComentarios();
+  }, [isOpen, comunicacion?.id, tabActivo]);
+
+  const handlePublicarComentario = async () => {
+    if (!comunicacion?.id || !nuevoComentario.trim()) return;
+
+    setPublicandoComentario(true);
+    try {
+      const currentUser = authService.getCurrentUser() as any;
+      const usuarioNombre = currentUser
+        ? (currentUser.fullName || `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email || 'Usuario')
+        : 'Usuario';
+
+      await correosJuridicosService.createComentario(comunicacion.id, {
+        mensaje: nuevoComentario,
+        usuario: usuarioNombre,
+        cargo: 'Funcionario'
+      });
+
+      setNuevoComentario('');
+      const data = await correosJuridicosService.getComentarios(comunicacion.id);
+      setComentarios(Array.isArray(data) ? data : []);
+      toast.success('Comentario publicado');
+    } catch (error) {
+      console.error('Error creando comentario:', error);
+      toast.error('Error al publicar el comentario');
+    } finally {
+      setPublicandoComentario(false);
+    }
+  };
+
   // ==================== DATOS MOCK ====================
 
   // Dynamic Timeline mapped from fetched data instead of mock
@@ -216,16 +270,6 @@ export function ModalExpedienteComunicacion({
       color
     };
   }) : [];
-
-  const comentarios = [
-    {
-      id: 'COM-001',
-      usuario: 'Coordinador Jurídico',
-      fecha: new Date(),
-      comentario: 'Requiere atención inmediata. Favor asignar al módulo correspondiente.',
-      tipo: 'CLASIFICACIÓN'
-    }
-  ];
 
   // ==================== HANDLERS ====================
 
@@ -789,41 +833,63 @@ export function ModalExpedienteComunicacion({
                       placeholder="Escriba su comentario..."
                       rows={3}
                       className="mb-3"
+                      value={nuevoComentario}
+                      onChange={(e) => setNuevoComentario(e.target.value)}
                     />
-                    <Button size="sm">
-                      <Send className="w-4 h-4 mr-2" />
+                    <Button
+                      size="sm"
+                      onClick={handlePublicarComentario}
+                      disabled={!nuevoComentario.trim() || publicandoComentario}
+                    >
+                      {publicandoComentario ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4 mr-2" />
+                      )}
                       Publicar Comentario
                     </Button>
                   </Card>
 
                   {/* Comentarios Existentes */}
-                  <div className="space-y-3">
-                    {comentarios.map((comentario) => (
-                      <Card key={comentario.id} className="p-4">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="w-10 h-10">
-                            <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                              {comentario.usuario.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <h4 className="font-bold text-gray-900">{comentario.usuario}</h4>
-                                <p className="text-xs text-gray-600">
-                                  {new Date(comentario.fecha).toLocaleDateString('es-CO')}
-                                </p>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {comentario.tipo}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-gray-800">{comentario.comentario}</p>
-                          </div>
+                  {loadingComentarios ? (
+                    <div className="text-center py-4 text-gray-500">Cargando comentarios...</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {comentarios.length === 0 ? (
+                        <div className="text-center py-6 text-gray-500">
+                          <p className="text-sm">No hay comentarios aún.</p>
                         </div>
-                      </Card>
-                    ))}
-                  </div>
+                      ) : (
+                        comentarios.map((comentario) => (
+                          <Card key={comentario.id} className="p-4">
+                            <div className="flex items-start gap-3">
+                              <Avatar className="w-10 h-10">
+                                <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                                  {(comentario.usuario?.split(' ').map((n: string) => n[0]).join('').substring(0, 2)) || 'U'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div>
+                                    <h4 className="font-bold text-gray-900">{comentario.usuario}</h4>
+                                    <p className="text-xs text-gray-600">
+                                      {new Date(comentario.fecha).toLocaleString('es-CO')}
+                                    </p>
+                                  </div>
+                                  {comentario.cargo && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {comentario.cargo}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-800">{comentario.mensaje}</p>
+                              </div>
+                            </div>
+                          </Card>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </TabsContent>
               </div>
             </Tabs>

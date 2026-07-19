@@ -418,7 +418,6 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
                 <div className="text-sm text-blue-900">
                   <p className="font-bold mb-2">📋 Antes de continuar, considere:</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>El término de respuesta por defecto es de <strong>30 días hábiles</strong> (Ley 1755 de 2015).</li>
                     <li>Identificar claramente el tema jurídico de la consulta.</li>
                     <li>Redactar la consulta de forma clara y concreta.</li>
                     <li>Definir la prioridad según la urgencia real del trámite.</li>
