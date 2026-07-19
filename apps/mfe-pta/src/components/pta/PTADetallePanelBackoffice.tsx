@@ -38,6 +38,8 @@ import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
 import { PTA_COLORS } from './shared/ptaColors';
+import { getExtensionSelectionInfo } from './shared/extensionSelection';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import {
   PTA_COMPONENT_KEYS,
   PTA_COMPONENT_LEVELS,
@@ -47,6 +49,7 @@ import {
   type PTAComponentKey,
   componentKeysForApprovalLevel,
   splitComplementarias,
+  isEvidenciaAuthorized,
 } from './shared/ptaComponentPermissions';
 
 // ═══ TYPES ════════════════════════════════════════════════════════════
@@ -115,15 +118,16 @@ function getResponsableRoleLabel(key: string): string {
 }
 
 function getStatusConfig(estado: string) {
+  const visual = getPtaStatusVisual(estado);
   const found = FLUJO_COMPLETO.find(f => f.key === estado);
-  if (found) return found;
-  if (estado === 'PENDIENTE_APROBACION') return { key: estado, label: 'Pendiente Aprobación', short: 'Pend.', color: '#B45309', bg: '#FEF3C7' };
-  if (estado === 'Rechazado') return { key: estado, label: 'Rechazado', short: 'Rech.', color: '#991B1B', bg: '#FEE2E2' };
-  if (estado === 'Devuelto') return { key: estado, label: 'Devuelto', short: 'Dev.', color: '#9A3412', bg: '#FFF7ED' };
-  if (estado === 'ESCALADO_SNA') return { key: estado, label: 'Escalado SNA', short: 'SNA', color: '#991B1B', bg: '#FEE2E2' };
-  if (estado === 'OBJETADO_DOCENTE') return { key: estado, label: 'Objetado', short: 'Obj.', color: '#991B1B', bg: '#FEE2E2' };
-  if (estado === 'MODIFICADO_DOCENTE') return { key: estado, label: 'Modificado', short: 'Mod.', color: '#1E40AF', bg: '#DBEAFE' };
-  return { key: estado, label: estado?.replace(/_/g, ' ') || estado, short: estado?.substring(0, 4) || '', color: '#6B7280', bg: '#F3F4F6' };
+  return {
+    key: estado,
+    label: found?.label || visual.label,
+    short: found?.short || visual.label.substring(0, 5),
+    color: visual.color,
+    bg: visual.bg,
+    border: visual.border,
+  };
 }
 
 function getNextStateLabel(current: string, hayModificaciones = false): string {
@@ -830,9 +834,30 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const hayComponentesPendientesParaMi = puedeActuarSobreComponentes &&
     componentesAprobacion.some(c => isComponentAuthorized(c.componente) && (c.estado || 'pendiente') === 'pendiente');
   const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
+  // Revisión de evidencias del tab Seguimiento: modelo POR COMPONENTE. Cada evidencia
+  // se puede ver/aprobar/rechazar solo si el usuario está autorizado para el componente
+  // (o la sección de extensión) al que pertenece. Superuser y pta.approve.all quedan
+  // cubiertos porque isComponentAuthorized retorna true para todos en ese caso.
+  // Autorización de evidencias basada EXCLUSIVAMENTE en los 7 permisos granulares
+  // pta.approve.<componente> (+ pta.approve.all y superuser). No usa los fallbacks por
+  // nivel/rol de isComponentAuthorized, para que el filtrado sea estrictamente por permiso.
+  const isEvidenciaComponentAuthorized = useCallback(
+    (key: PTAComponentKey) => apruebaTodo || puedePerm(PTA_COMPONENT_PERMISSION[key]),
+    [apruebaTodo, puedePerm],
+  );
+  const puedeRevisarEvidencia = useCallback(
+    (ev: any) => isEvidenciaAuthorized(ev, isEvidenciaComponentAuthorized),
+    [isEvidenciaComponentAuthorized],
+  );
+  // Solo se listan las evidencias del/los componente(s) que el usuario está autorizado
+  // a revisar. Superuser / pta.approve.all ven todas (isComponentAuthorized retorna true).
+  const evidenciasVisibles = useMemo(
+    () => evidencias.filter(ev => puedeRevisarEvidencia(ev)),
+    [evidencias, puedeRevisarEvidencia],
+  );
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
-  const horasDisp = pta.horas_a_programar || 800;
+  const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
   const asignaturas = Array.isArray(pta.asignaturas) ? pta.asignaturas : [];
   
   const investigacion = {
@@ -901,9 +926,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
   const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
 
-  const [motivoDevolucion, setMotivoDevolucion] = useState('');
-  const [showDevolucionModal, setShowDevolucionModal] = useState(false);
-  const [procesandoDevolucion, setProcesandoDevolucion] = useState(false);
   const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
   // OTP de firma del aprobador: verificationId + correo enmascarado donde se envió.
@@ -1104,32 +1126,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || res.data?.estado || prev.estado }));
       onAprobar();
     }
-  };
-
-  const handleDevolver = async () => {
-    if (!motivoDevolucion.trim()) {
-      toast.error('Debe ingresar un motivo de devolución');
-      return;
-    }
-    setProcesandoDevolucion(true);
-    const res = await updatePTAStatus(pta.id, {
-      accion: 'devolver', motivo_devolucion: motivoDevolucion,
-      actorRol: rolLabel,
-      actorId,
-      nivelAprobacion,
-      actorTerritorialId: jefaturaTerritorialId,
-      isSuperUser: isSuperUser || false,
-    } as any);
-    setProcesandoDevolucion(false);
-    if (!res.success) {
-      toast.error(res.message || 'Error devolviendo PTA');
-      return;
-    }
-    toast.success('PTA devuelto al docente');
-    setShowDevolucionModal(false);
-    setMotivoDevolucion('');
-    setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || res.data?.estado || prev.estado, motivoDevolucion }));
-    onDevolver();
   };
 
   const historialEstados = pta.historialEstados || [];
@@ -2672,7 +2668,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669', marginBottom: 4, textTransform: 'uppercase' }}>
                         {LABELS[sec]}
                       </div>
-                      {acts.map((a: any, i: number) => (
+                      {acts.map((a: any, i: number) => {
+                        const selection = getExtensionSelectionInfo(a);
+                        return (
                         <div key={i} style={{
                           padding: '7px 10px', borderRadius: 6, background: '#FAFAFA',
                           border: '1px solid #F3F4F6', marginBottom: 3,
@@ -2681,6 +2679,19 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre}</span>
                             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{a.horas}h</span>
                           </div>
+                          {selection && (
+                            <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                              <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#166534' }}>{selection.etiqueta}: {selection.nombre}</div>
+                              {selection.detalles.map((detail, detailIndex) => (
+                                <div key={`${detail.nombre}-${detailIndex}`} style={{ marginTop: 3, paddingLeft: 7, borderLeft: '2px solid #86EFAC', fontSize: '0.64rem', color: '#475569', lineHeight: 1.4 }}>
+                                  {detail.nombre && <strong>{detail.nombre}</strong>}
+                                  {detail.valores.map((value, valueIndex) => (
+                                    <div key={`${value.columna}-${valueIndex}`}>{value.columna && <strong>{value.columna}: </strong>}{value.valor}</div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {a.descripcion && (
                             <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
                           )}
@@ -2691,7 +2702,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -2930,11 +2942,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             <div>
               <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <FileText style={{ width: 15, height: 15, color: '#059669' }} />
-                Evidencias de Seguimiento ({evidencias.length})
+                Evidencias de Seguimiento ({evidenciasVisibles.length})
               </h4>
               {loadingEvidencias ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: '#9CA3AF', fontSize: '0.82rem' }}>Cargando evidencias...</div>
-              ) : evidencias.length === 0 ? (
+              ) : evidenciasVisibles.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0' }}>
                   <FileText style={{ width: 36, height: 36, color: '#D1D5DB', margin: '0 auto 10px' }} />
                   <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#6B7280' }}>Sin evidencias registradas</p>
@@ -2942,7 +2954,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {evidencias.map((ev: any) => {
+                  {evidenciasVisibles.map((ev: any) => {
                     const estadoColor = ev.estadoRevision === 'aprobado' ? '#059669' : ev.estadoRevision === 'rechazado' ? '#DC2626' : '#D97706';
                     const estadoBg = ev.estadoRevision === 'aprobado' ? '#D1FAE5' : ev.estadoRevision === 'rechazado' ? '#FEE2E2' : '#FEF3C7';
                     return (
@@ -2951,7 +2963,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.nombre}</p>
                             <p style={{ fontSize: '0.7rem', color: '#6B7280', margin: '2px 0 0', display: 'flex', gap: 8 }}>
-                              {ev.componentePta && <span style={{ fontWeight: 600, color: '#4F46E5' }}>{ev.componentePta}</span>}
+                              {ev.componentePta && <span style={{ fontWeight: 600, color: '#4F46E5' }}>{ev.componentePta}{(ev.seccionExtension ?? ev.seccion_extension) ? ` · ${ev.seccionExtension ?? ev.seccion_extension}` : ''}</span>}
                               {ev.horasAvance > 0 && <span>{ev.horasAvance}h avance</span>}
                               {ev.subidoPor && <span>Por: {ev.subidoPor}</span>}
                             </p>
@@ -2962,7 +2974,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, background: estadoBg, color: estadoColor }}>
                               {ev.estadoRevision || 'pendiente'}
                             </span>
-                            {ev.estadoRevision === 'pendiente' && puedeAprobarNivelActual && (
+                            {ev.estadoRevision === 'pendiente' && puedeRevisarEvidencia(ev) && (
                               <div style={{ display: 'flex', gap: 4 }}>
                                 <button
                                   onClick={async () => {
@@ -3076,80 +3088,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         </div>
         )}
 
-        {/* ── Modal Devolución ───────────────────────────────────── */}
-        <AnimatePresence>
-          {showDevolucionModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{
-                position: 'absolute', inset: 0, zIndex: 10,
-                background: 'rgba(17,24,39,0.55)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', padding: 20,
-              }}
-              onClick={() => setShowDevolucionModal(false)}
-            >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                onClick={e => e.stopPropagation()}
-                style={{
-                  background: 'white', borderRadius: 14, padding: '20px 22px',
-                  width: '100%', maxWidth: 380,
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <RotateCcw style={{ width: 18, height: 18, color: '#9A3412' }} />
-                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#111827' }}>
-                    Devolver PTA al Docente
-                  </h4>
-                </div>
-                <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: '0 0 10px' }}>
-                  El PTA volverá a <strong>Borrador</strong> con el motivo visible para el docente.
-                </p>
-                <textarea
-                  value={motivoDevolucion}
-                  onChange={e => setMotivoDevolucion(e.target.value)}
-                  placeholder="Ej. El componente de investigación no está justificado correctamente..."
-                  rows={3}
-                  autoFocus
-                  style={{
-                    width: '100%', padding: '8px 10px', borderRadius: 8,
-                    border: '1px solid #D1D5DB', fontSize: '0.82rem',
-                    resize: 'vertical', fontFamily: 'inherit', outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setShowDevolucionModal(false)}
-                    style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', color: '#374151', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleDevolver}
-                    disabled={!motivoDevolucion.trim() || procesandoDevolucion}
-                    style={{
-                      padding: '7px 16px', borderRadius: 8, border: 'none',
-                      background: motivoDevolucion.trim() && !procesandoDevolucion ? '#9A3412' : '#9CA3AF',
-                      color: 'white', fontSize: '0.8rem', fontWeight: 700,
-                      cursor: motivoDevolucion.trim() && !procesandoDevolucion ? 'pointer' : 'default',
-                      display: 'flex', alignItems: 'center', gap: 5,
-                    }}
-                  >
-                    <RotateCcw style={{ width: 13, height: 13 }} />
-                    {procesandoDevolucion ? 'Devolviendo...' : 'Confirmar Devolución'}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* ── Footer Actions ─────────────────────────────────────── */}
         <div style={{
           padding: isMobile ? '10px 14px 14px' : '12px 20px',
@@ -3188,17 +3126,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </button>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => setShowDevolucionModal(true)}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 10,
-                        border: '1px solid #FDBA74', background: '#FFF7ED',
-                        color: '#9A3412', fontWeight: 600, fontSize: '0.8rem',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      }}
-                    >
-                      <RotateCcw style={{ width: 13, height: 13 }} /> Devolver
-                    </button>
                     <button
                       onClick={onVerReporte}
                       style={{
@@ -3252,19 +3179,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   >
                     <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
                   </button>
-                  {pta.estado !== 'Aprobado' && (
-                    <button
-                      onClick={() => setActiveTab('componentes')}
-                      style={{
-                        flex: 1, padding: '11px 14px', borderRadius: 10,
-                        border: '1px solid #BFDBFE', background: '#EFF6FF',
-                        color: '#003DA5', fontWeight: 600, fontSize: '0.82rem',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      }}
-                    >
-                      <Layers style={{ width: 13, height: 13 }} /> Concertar
-                    </button>
-                  )}
                   <div style={{
                     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.72rem', color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center',
@@ -3291,36 +3205,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 >
                   <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
                 </button>
-                {pta.estado !== 'Aprobado' && (
-                  <button
-                    onClick={() => setActiveTab('componentes')}
-                    style={{
-                      padding: '7px 14px', borderRadius: 8,
-                      border: '1px solid #BFDBFE', background: '#EFF6FF',
-                      color: '#003DA5', fontWeight: 600, fontSize: '0.78rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                    }}
-                  >
-                    <Layers style={{ width: 13, height: 13 }} /> Concertar
-                  </button>
-                )}
               </div>
 
               {isPendiente && puedeAprobarNivelActual && (
                 <div style={{ display: 'flex', gap: 6 }}>
-                  {!yaAproboEstaJefatura && (
-                  <button
-                    onClick={() => setShowDevolucionModal(true)}
-                    style={{
-                      padding: '7px 14px', borderRadius: 8,
-                      border: '1px solid #FDBA74', background: '#FFF7ED',
-                      color: '#9A3412', fontWeight: 600, fontSize: '0.78rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                    }}
-                  >
-                    <RotateCcw style={{ width: 13, height: 13 }} /> Devolver
-                  </button>
-                  )}
                   {yaAproboEstaJefatura ? (
                     <div style={{
                       padding: '7px 14px', borderRadius: 8,

@@ -91,7 +91,7 @@ export class GraduateOracleIntegrationService {
 
     if (!/^[A-Z0-9_$#]+$/.test(normalized)) {
       throw new ServiceUnavailableException(
-        `El valor configurado para ORACLE_GRAD_${fieldName.toUpperCase()} no es valido.`,
+        `El valor configurado para ORACLE_GRAD_${fieldName.toUpperCase()} no es válido.`,
       );
     }
 
@@ -149,7 +149,7 @@ export class GraduateOracleIntegrationService {
 
     if (!config.enabled) {
       throw new ServiceUnavailableException(
-        'La integracion Oracle SINU esta deshabilitada. Activa ORACLE_GRAD_ENABLED=true para usarla.',
+        'La integración Oracle SINU está deshabilitada. Active ORACLE_GRAD_ENABLED=true para utilizarla.',
       );
     }
 
@@ -261,7 +261,7 @@ export class GraduateOracleIntegrationService {
         const mode = driver.thin === false ? 'Thick' : 'Thin';
         throw new ServiceUnavailableException(
           `Oracle SINU no pudo resolver o alcanzar el connect string ${config.connectString} usando modo ${mode}. ` +
-            'Valida desde el contenedor academic-registration-service que el host del connect string resuelva por DNS y tenga salida al puerto 1521. ' +
+            'Valide desde el contenedor academic-registration-service que el host del connect string resuelva por DNS y tenga salida al puerto 1521. ' +
             'Ejemplos: docker exec academic-registration-service getent hosts scan-pri.esap.edu.int y docker exec academic-registration-service nc -vz scan-pri.esap.edu.int 1521.',
         );
       }
@@ -275,7 +275,7 @@ export class GraduateOracleIntegrationService {
         await connection.close();
       } catch (error) {
         this.logger.warn(
-          `No se pudo cerrar la conexion Oracle SINU: ${this.extractErrorMessage(error)}`,
+          `No se pudo cerrar la conexión Oracle SINU: ${this.extractErrorMessage(error)}`,
         );
       }
     }
@@ -284,7 +284,7 @@ export class GraduateOracleIntegrationService {
   private sanitizeDocument(document: string): string {
     const cleaned = String(document || '').trim();
     if (!cleaned) {
-      throw new BadRequestException('Debes enviar un numero de documento.');
+      throw new BadRequestException('Debe enviar un número de documento.');
     }
     return cleaned;
   }
@@ -394,7 +394,7 @@ export class GraduateOracleIntegrationService {
         view: config.view,
         qualifiedView: config.qualifiedView,
         message:
-          'La integracion Oracle SINU esta deshabilitada. Define ORACLE_GRAD_ENABLED=true para probarla.',
+          'La integración Oracle SINU está deshabilitada. Defina ORACLE_GRAD_ENABLED=true para probarla.',
       };
     }
 
@@ -452,7 +452,7 @@ export class GraduateOracleIntegrationService {
                   .map((item) => item.name || '')
                   .filter(Boolean),
             sampleRow: sample ? this.mapRow(sample) : null,
-            message: 'Conexion Oracle SINU exitosa y vista accesible.',
+            message: 'Conexión Oracle SINU exitosa y vista accesible.',
           };
         },
       );

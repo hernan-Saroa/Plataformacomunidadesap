@@ -500,7 +500,9 @@ export function ExpedientesElectronicosWorldClass() {
            id: proceso.id,
            radicado: proceso.radicadoProceso,
            radicadoNoticia: proceso.news?.radicado || undefined,
-           estado: estadoMap[proceso.etapaActual] || 'valoracion',
+           estado: (proceso.estado === 'ARCHIVADO' || proceso.estado === 'CERRADO')
+             ? 'finalizado'
+             : estadoMap[proceso.etapaActual] || 'valoracion',
            nombreDisciplinado: (() => { const d = proceso.news?.disciplinable; return (Array.isArray(d) ? d[0]?.nombre : d?.nombre) || 'Sin nombre'; })(),
            tipoProceso: proceso.news?.conductas?.[0] || proceso.news?.conducta || 'Proceso Disciplinario',
            responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',

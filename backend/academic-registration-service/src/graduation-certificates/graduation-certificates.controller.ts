@@ -156,7 +156,7 @@ const assertCanMakeFinalReviewDecision = (req: AuthenticatedRequest) => {
   }
 
   throw new ForbiddenException(
-    'Se requieren los permisos minimos de jefe de Verificación de títulos para emitir la decision final.',
+    'Se requieren los permisos mínimos de jefe de Verificación de títulos para emitir la decisión final.',
   );
 };
 
@@ -203,7 +203,7 @@ const assertCanResolveApprovalDecision = (
     assertHasPermission(
       req,
       REJECT_REQUEST_PERMISSION,
-      'Se requiere permiso para rechazar solicitudes de revision.',
+      'Se requiere permiso para rechazar solicitudes de revisión.',
     );
     return;
   }
@@ -212,7 +212,7 @@ const assertCanResolveApprovalDecision = (
     assertHasAnyPermission(
       req,
       [APPROVE_REQUEST_PERMISSION, REJECT_REQUEST_PERMISSION],
-      'Se requiere permiso de aprobador para devolver solicitudes con observacion.',
+      'Se requiere permiso de aprobador para devolver solicitudes con observación.',
     );
     return;
   }
@@ -220,7 +220,7 @@ const assertCanResolveApprovalDecision = (
   assertHasPermission(
     req,
     APPROVE_REQUEST_PERMISSION,
-    'Se requiere permiso para aprobar solicitudes de revision.',
+    'Se requiere permiso para aprobar solicitudes de revisión.',
   );
 };
 
@@ -815,7 +815,7 @@ export class GraduationCertificatesController {
           assertHasAnyPermission(
             _req as AuthenticatedRequest,
             REVIEW_WORK_PERMISSIONS,
-            'Se requiere permiso para trabajar solicitudes de revision.',
+            'Se requiere permiso para trabajar solicitudes de revisión.',
           );
         } catch (error) {
           return cb(error as Error, false);
@@ -866,7 +866,7 @@ export class GraduationCertificatesController {
     assertHasAnyPermission(
       req,
       REVIEW_WORK_PERMISSIONS,
-      'Se requiere permiso para trabajar solicitudes de revision.',
+      'Se requiere permiso para trabajar solicitudes de revisión.',
     );
 
     if (!files || files.length === 0) {
@@ -895,7 +895,7 @@ export class GraduationCertificatesController {
     assertHasAnyPermission(
       req,
       REVIEW_WORK_PERMISSIONS,
-      'Se requiere permiso para iniciar la revision de solicitudes.',
+      'Se requiere permiso para iniciar la revisión de solicitudes.',
     );
 
     return await this.service.marcarEnRevision(
@@ -921,7 +921,7 @@ export class GraduationCertificatesController {
     assertHasAnyPermission(
       req,
       REVIEW_WORK_PERMISSIONS,
-      'Se requiere permiso para enviar decisiones de revision.',
+      'Se requiere permiso para enviar decisiones de revisión.',
     );
 
     return await this.service.enviarDecisionRevision(id, body);
@@ -961,7 +961,7 @@ export class GraduationCertificatesController {
     assertHasPermission(
       req,
       APPROVE_REQUEST_PERMISSION,
-      'Se requiere permiso para aprobar solicitudes de revision.',
+      'Se requiere permiso para aprobar solicitudes de revisión.',
     );
 
     return await this.service.aprobarSolicitud(id, body, getFrontendBaseUrl(req));
@@ -982,7 +982,7 @@ export class GraduationCertificatesController {
     assertHasPermission(
       req,
       REJECT_REQUEST_PERMISSION,
-      'Se requiere permiso para rechazar solicitudes de revision.',
+      'Se requiere permiso para rechazar solicitudes de revisión.',
     );
 
     return await this.service.rechazarSolicitud(

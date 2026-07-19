@@ -59,7 +59,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
     {
       icon: <Award className="w-7 h-7" style={{ color: '#1e5da8' }} />,
       title: 'Verificación de títulos',
-      description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
+      description: 'Cada certificado cuenta con un código QR único para su validación pública. El sistema mantiene la trazabilidad completa de cada validación.',
       action: () => {
         if (onNavigate) {
           onNavigate('solicitar-certificados-graduados');

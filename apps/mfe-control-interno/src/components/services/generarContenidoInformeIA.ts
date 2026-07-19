@@ -476,7 +476,7 @@ function contenidoPorDefecto(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoP
       12_150_350_472
       Bogotá, D.C.
 
-      Doctora
+      Doctor(a)
       ${(auditoria.destinatarioNombre || 'Director(a) Territorial').toUpperCase()}
       ${auditoria.destinatarioCargo || 'Director(a) Territorial'}
       ESAP - ${unidad}
@@ -484,7 +484,7 @@ function contenidoPorDefecto(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoP
 
       Asunto: Informe preliminar auditoría interna de evaluación y seguimiento ${unidad} – Vigencia ${año}.
 
-      Respetada Doctora ${(auditoria.destinatarioNombre || 'Director').split(' ')[0]} reciba un cordial saludo:
+      Respetado(a) doctor(a) ${(auditoria.destinatarioNombre || 'Director').split(' ')[0]} reciba un cordial saludo:
 
       La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${año}, remite para su conocimiento y pronunciamiento el informe Preliminar de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${año - 1}.
 

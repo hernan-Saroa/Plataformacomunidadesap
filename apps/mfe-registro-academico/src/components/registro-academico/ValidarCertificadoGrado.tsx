@@ -255,7 +255,7 @@ export function ValidarCertificadoGrado({
     const normalizedValue = normalizeLookupValue(lookupValue);
 
     if (!normalizedValue) {
-      toast.error('Ingresa un código QR, enlace o número de certificado.');
+      toast.error('Ingrese un código QR, enlace o número de certificado.');
       return;
     }
 
@@ -281,7 +281,7 @@ export function ValidarCertificadoGrado({
         mensaje: 'Se presentó un error al consultar la validación del certificado.',
         resultado: 'NOT_FOUND',
       });
-      toast.error('Error al validar el certificado. Intenta nuevamente.');
+      toast.error('Error al validar el certificado. Intente nuevamente.');
     } finally {
       setIsValidating(false);
     }
@@ -469,7 +469,7 @@ export function ValidarCertificadoGrado({
                         Este certificado no se encuentra vigente
                       </p>
                       <p className="text-sm text-amber-800">
-                        Verifica con el equipo de Verificación de títulos antes de usar este documento como soporte
+                        Verifique con el equipo de Verificación de títulos antes de usar este documento como soporte
                         oficial.
                       </p>
                     </div>
@@ -488,7 +488,7 @@ export function ValidarCertificadoGrado({
                   No se encontró información del certificado
                 </p>
                 <p className="text-sm text-slate-600">
-                  Revisa el código ingresado o intenta con el número del certificado en el formato
+                  Revise el código ingresado o intente con el número del certificado en el formato
                   `CERT-GR-AAAA-0000`.
                 </p>
               </div>
@@ -566,7 +566,7 @@ export function ValidarCertificadoGrado({
                 color: '#6B7280',
               }}
             >
-              Verifica la autenticidad de un certificado académico emitido por la ESAP ingresando el
+              Verifique la autenticidad de un certificado académico emitido por la ESAP mediante el
               código QR, el enlace del QR o el consecutivo.
             </p>
           </div>
@@ -625,7 +625,7 @@ export function ValidarCertificadoGrado({
                     Validación de certificados de grado
                   </DialogTitle>
                   <DialogDescription id={descriptionId} className="max-w-2xl text-sm text-slate-600">
-                    Verifica certificados académicos y títulos emitidos por el equipo de Verificación de títulos usando el
+                    Verifique certificados académicos y títulos emitidos por el equipo de Verificación de títulos mediante el
                     código QR, el enlace del QR o el número del certificado.
                   </DialogDescription>
                 </div>

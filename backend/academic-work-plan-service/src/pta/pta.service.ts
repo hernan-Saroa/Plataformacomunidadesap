@@ -47,6 +47,31 @@ function normalizeEstadoFilter(value: unknown): string {
     : '';
 }
 
+function normalizeDocenciaModality(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function isUndefinedDocenciaModality(value: unknown): boolean {
+  const modality = normalizeDocenciaModality(value);
+  return modality.includes('POR DEFINIR') || modality.includes('SIN DEFINIR');
+}
+
+function isNonPresentialDocenciaModality(value: unknown): boolean {
+  const modality = normalizeDocenciaModality(value);
+  return modality.includes('VIRTUAL')
+    || modality.includes('DISTANCIA')
+    || modality.includes('REMOT')
+    || modality.includes('ONLINE')
+    || modality.includes('EN LINEA')
+    || modality.includes('NO PRESENCIAL');
+}
+
 function getGroupedPtaEstados(value: unknown): string[] | null {
   const key = normalizeEstadoFilter(value);
   if (!key) return null;
@@ -179,6 +204,224 @@ function normalizeExtensionSectionKey(section: unknown): string {
   const key = String(section || '');
   if (FIXED_EXTENSION_SECTIONS.some(s => s.key === key)) return key;
   return EXTENSION_SECTION_ALIASES[key] || 'fortalecimiento';
+}
+
+const EXTENSION_ITEMS_COLUMN_KEY = '_items_';
+
+function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[] {
+  if (!detailColumns.length) return [];
+  const primaryColumn = detailColumns[0];
+  const primaryValues = Array.isArray(item?.col_valores?.[primaryColumn])
+    ? item.col_valores[primaryColumn]
+    : [];
+  const groups = primaryValues.map((value: any) => {
+    const name = String(value || '').trim();
+    return name ? { name, values: [] as Array<{ column: string; value: string }> } : null;
+  });
+
+  for (let columnIndex = 1; columnIndex < detailColumns.length; columnIndex += 1) {
+    const column = detailColumns[columnIndex];
+    const values = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+    const parentIndexes = Array.isArray(item?.col_parents?.[column]) ? item.col_parents[column] : [];
+    values.forEach((rawValue: any, valueIndex: number) => {
+      const value = String(rawValue || '').trim();
+      if (!value) return;
+      let primaryIndex = Number(parentIndexes[valueIndex] ?? valueIndex);
+      for (let parentColumnIndex = columnIndex - 1; parentColumnIndex > 0; parentColumnIndex -= 1) {
+        const parentColumn = detailColumns[parentColumnIndex];
+        const ancestors = Array.isArray(item?.col_parents?.[parentColumn]) ? item.col_parents[parentColumn] : [];
+        primaryIndex = Number(ancestors[primaryIndex] ?? primaryIndex);
+      }
+      if (!Number.isInteger(primaryIndex) || primaryIndex < 0 || primaryIndex >= groups.length) return;
+      groups[primaryIndex]?.values.push({ column, value });
+    });
+  }
+  return groups.filter((group): group is NonNullable<typeof group> => Boolean(group));
+}
+
+function getExtensionCatalogHourRows(activity: any, section: any): any[] {
+  const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
+  if (columns && columns.length > 0 && columns[0] !== EXTENSION_ITEMS_COLUMN_KEY) {
+    const controllingColumn = columns[0];
+    const itemsPosition = columns.indexOf(EXTENSION_ITEMS_COLUMN_KEY);
+    const detailColumns = itemsPosition >= 0 ? columns.slice(itemsPosition + 1) : [];
+    const values = Array.isArray(activity?.columnas_valores?.[controllingColumn])
+      ? activity.columnas_valores[controllingColumn]
+      : [];
+    const metadata = Array.isArray(activity?.columnas_meta?.[controllingColumn])
+      ? activity.columnas_meta[controllingColumn]
+      : [];
+    const items = Array.isArray(activity?.items) ? activity.items : [];
+    const rows: any[] = [];
+    const rowCount = Math.max(values.length, metadata.length);
+    const decorateItem = (item: any) => ({
+      ...item,
+      _detailValues: detailColumns.flatMap((column: string) => {
+        const columnValues = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+        return columnValues
+          .filter((value: any) => String(value || '').trim())
+          .map((value: any) => ({ column, value: String(value) }));
+      }),
+    });
+    for (let index = 0; index < rowCount; index += 1) {
+      const meta = metadata[index] || {};
+      const rowName = String(values[index] || meta?.nombre || `Fila ${index + 1}`);
+      const childItems = items
+        .filter((item: any) => Number(item?.parent_col_idx ?? 0) === index)
+        .map(decorateItem);
+      if (String(meta?.horas_en || 'linea') === 'actividad') {
+        childItems.forEach((item: any) => rows.push({
+          ...item,
+          nombre: `${rowName} — ${String(item?.nombre || 'Actividad')}`,
+          _detailGroups: [{ name: String(item?.nombre || 'Actividad'), values: item._detailValues || [] }],
+        }));
+      } else {
+        rows.push({
+          ...meta,
+          nombre: rowName,
+          _detailGroups: childItems.map((item: any) => ({
+            name: String(item?.nombre || 'Actividad'),
+            values: item._detailValues || [],
+          })),
+        });
+      }
+    }
+    return rows;
+  }
+  if (columns && columns.length === 0) return [];
+  if (Array.isArray(activity?.items)) {
+    const detailColumns = columns && columns[0] === EXTENSION_ITEMS_COLUMN_KEY
+      ? columns.slice(1)
+      : [];
+    return activity.items.map((item: any) => ({
+      ...item,
+      _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+    }));
+  }
+  return [];
+}
+
+function isConfiguredHourRow(row: any): boolean {
+  const type = String(row?.tipo || 'hasta').toLowerCase();
+  if (type === 'porcentaje') {
+    const percentage = Number(row?.porcentaje_pta);
+    return Number.isFinite(percentage) && percentage > 0;
+  }
+  const hours = Number(row?.horas ?? row?.max_horas);
+  return Number.isFinite(hours) && hours > 0;
+}
+
+/**
+ * Resume la estructura jerárquica de Complementarias en la restricción plana
+ * que consume el docente. El ID identifica el bloque, pero nunca determina sus
+ * horas ni el tipo de reconocimiento.
+ */
+function flattenConfiguredComplementaryActivity(
+  activity: any,
+  section: any,
+  fullPTAFromPercentage = false,
+): any {
+  const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
+  const usesStructuredRows = Array.isArray(columns)
+    ? columns.length > 0
+    : Array.isArray(activity?.items);
+  const configuredRows = usesStructuredRows
+    ? getExtensionCatalogHourRows(activity, section).filter(isConfiguredHourRow)
+    : [];
+
+  const rowMax = (row: any) => Math.max(0, Number(row?.horas ?? row?.max_horas) || 0);
+  const rowMin = (row: any, allowOptionalUntil = false) => {
+    const type = String(row?.tipo || 'hasta').toLowerCase();
+    if (type === 'fija') return rowMax(row);
+    if (type === 'intervalo') {
+      return Math.min(rowMax(row), Math.max(1, Number(row?.horas_min ?? row?.min_horas ?? row?.min) || 1));
+    }
+    if (type === 'hasta' && allowOptionalUntil) return 0;
+    return rowMax(row) > 0 ? 1 : 0;
+  };
+
+  let source: any = activity;
+  if (usesStructuredRows && configuredRows.length === 0) {
+    source = { tipo: 'hasta', max_horas: 0 };
+  } else if (configuredRows.length === 1) {
+    source = configuredRows[0];
+  } else if (configuredRows.length > 1) {
+    const types = configuredRows.map((row: any) => String(row?.tipo || 'hasta').toLowerCase());
+    const allFixed = types.every((type: string) => type === 'fija');
+    const allPercentage = types.every((type: string) => type === 'porcentaje');
+    const maxHours = configuredRows.reduce((sum: number, row: any) => sum + rowMax(row), 0);
+    const minHours = configuredRows.reduce(
+      (sum: number, row: any) => sum + rowMin(row, configuredRows.length > 1),
+      0,
+    );
+    source = allPercentage
+      ? {
+          tipo: 'porcentaje',
+          porcentaje_pta: configuredRows.reduce(
+            (sum: number, row: any) => sum + Math.max(0, Number(row?.porcentaje_pta) || 0),
+            0,
+          ),
+        }
+      : {
+          tipo: allFixed ? 'fija' : 'intervalo',
+          horas: maxHours,
+          horas_min: allFixed ? maxHours : Math.max(1, minHours),
+        };
+  }
+
+  const type = String(source?.tipo || activity?.tipo || 'hasta').toLowerCase();
+  const maxHours = source?.max_horas ?? source?.horas ?? activity?.max_horas ?? 0;
+  const minHours = source?.min_horas ?? source?.horas_min ?? source?.min ?? activity?.min_horas;
+  const percentage = source?.porcentaje_pta ?? activity?.porcentaje_pta;
+  const consumesFullPTA = Boolean(activity?.consumeTotalidad) || (
+    fullPTAFromPercentage
+    && type === 'porcentaje'
+    && Math.min(100, Math.max(1, Number(percentage) || 1)) === 100
+  );
+  const recognitionKeyOccurrences = new Map<string, number>();
+  const recognitionRows = configuredRows.map((row: any, rowIndex: number) => {
+    const rowType = String(row?.tipo || 'hasta').toLowerCase();
+    const max = rowMax(row);
+    const explicitKey = String(row?.id ?? row?.key ?? '').trim();
+    const normalizedName = String(row?.nombre || `fila-${rowIndex + 1}`)
+      .trim()
+      .toLocaleLowerCase('es')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-');
+    const keyBase = explicitKey ? `id:${explicitKey}` : `nombre:${normalizedName || 'fila'}`;
+    const occurrence = (recognitionKeyOccurrences.get(keyBase) || 0) + 1;
+    recognitionKeyOccurrences.set(keyBase, occurrence);
+    return {
+      // La clave permite conservar las cantidades del docente aunque el administrador
+      // reordene filas. Si no existe ID persistido, nombre + ocurrencia es estable.
+      clave: `${keyBase}#${occurrence}`,
+      nombre: row?.nombre,
+      tipo: rowType,
+      max_horas: rowType === 'porcentaje' ? null : max,
+      min_horas: rowType === 'intervalo' ? rowMin(row) : undefined,
+      porcentaje_pta: rowType === 'porcentaje'
+        ? Math.min(100, Math.max(1, Number(row?.porcentaje_pta) || 1))
+        : undefined,
+    };
+  });
+
+  return {
+    id: activity?.id,
+    nombre: activity?.nombre,
+    max_horas: consumesFullPTA || type === 'porcentaje' ? null : Math.max(0, Number(maxHours) || 0),
+    min_horas: type === 'intervalo'
+      ? Math.min(Math.max(0, Number(maxHours) || 0), Math.max(1, Number(minHours) || 1))
+      : undefined,
+    tipo: type,
+    porcentaje_pta: type === 'porcentaje'
+      ? Math.min(100, Math.max(1, Number(percentage) || 1))
+      : undefined,
+    // Permite calcular correctamente bloques que mezclan, por ejemplo, una fila
+    // fija con otra porcentual. El resumen plano se conserva por compatibilidad.
+    filas_reconocimiento: recognitionRows,
+    consumeTotalidad: consumesFullPTA,
+  };
 }
 
 function normalizeExtensionSections(raw: any): any[] {
@@ -448,15 +691,31 @@ export class PtaService {
     return { personId, email, fullName };
   }
 
-  private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean }): Promise<{ personId: string, email: string | null, fullName: string }> {
+  private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean; periodo?: string }): Promise<{ personId: string, email: string | null, fullName: string }> {
     const { personId, email, fullName } = await this.fetchAuthDocenteInfo(docenteKey, { adminEdit: options?.adminEdit });
 
     // Mapear a academic_work_plan."Docente" (para mantener compatibilidad con FK de PTA).
+    // Se prioriza la vinculacion oficial del periodo sobre un registro dummy antiguo
+    // cuyo id pudo quedar igual al personaId con 800h por defecto. Ese caso producia
+    // duplicados en Banco de Docentes y hacia que el PTA ignorara el registro de 720h.
+    const byPersonaQb = this.docenteRepo
+      .createQueryBuilder('d')
+      .where('d."personaId"::text = :personId', { personId });
+    if (options?.periodo) {
+      byPersonaQb
+        .orderBy('CASE WHEN d."periodoCarga" = :periodo THEN 0 ELSE 1 END', 'ASC')
+        .setParameter('periodo', options.periodo);
+    } else {
+      byPersonaQb.orderBy('CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END', 'ASC');
+    }
+    const byPersonaId = await byPersonaQb
+      .addOrderBy('CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END', 'ASC')
+      .addOrderBy('d."updatedAt"', 'DESC')
+      .getOne();
+    if (byPersonaId) return { personId: byPersonaId.id, email, fullName };
+
     const byId = await this.docenteRepo.findOne({ where: { id: personId } as any });
     if (byId) return { personId: byId.id, email, fullName };
-
-    const byPersonaId = await this.docenteRepo.findOne({ where: { personaId: personId } as any });
-    if (byPersonaId) return { personId: byPersonaId.id, email, fullName };
 
     if (email) {
       const byCorreo = await this.docenteRepo.findOne({ where: { correoInstitucional: email } as any });
@@ -548,8 +807,8 @@ export class PtaService {
   // Cache de resolución de docente (TTL 30s) para evitar queries repetidas en la misma sesión
   private readonly docenteCache = new Map<string, { result: { personId: string; email: string | null; fullName: string }; expiresAt: number }>();
 
-  private async resolveDocenteIdCached(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean }): Promise<{ personId: string; email: string | null; fullName: string }> {
-    const cacheKey = `${docenteKey}:${options?.adminEdit ? 'admin' : 'normal'}`;
+  private async resolveDocenteIdCached(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean; periodo?: string }): Promise<{ personId: string; email: string | null; fullName: string }> {
+    const cacheKey = `${docenteKey}:${options?.adminEdit ? 'admin' : 'normal'}:${options?.periodo || ''}`;
     const cached = this.docenteCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.result;
 
@@ -558,9 +817,158 @@ export class PtaService {
     return result;
   }
 
-  private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string }): Promise<string> {
+  private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string; periodo?: string }): Promise<string> {
     const res = await this.resolveDocenteIdCached(docenteKey, options);
     return res.personId;
+  }
+
+  /**
+   * Obtiene la bolsa autoritativa del Banco de Docentes. El valor enviado por el
+   * navegador solo se conserva como compatibilidad para registros legacy que aun
+   * no tengan una vinculacion en academic_work_plan."Docente".
+   */
+  private async resolveHorasAProgramar(
+    docenteId: string,
+    input: any,
+    legacyFallback?: number,
+  ): Promise<number> {
+    let docente = docenteId
+      ? await this.docenteRepo.findOne({ where: { id: docenteId } as any })
+      : null;
+    // Un PTA legacy puede seguir apuntando al registro dummy de 800h aunque la
+    // misma persona ya tenga una vinculacion RUND oficial para el periodo. Se usa
+    // la misma precedencia deterministica aplicada al crear/guardar el PTA.
+    if (docente?.personaId) {
+      const preferredQb = this.docenteRepo
+        .createQueryBuilder('d')
+        .where('d."personaId"::text = :personId', { personId: docente.personaId });
+      const periodo = coalesceString(input?.periodo);
+      if (periodo) {
+        preferredQb
+          .orderBy('CASE WHEN d."periodoCarga" = :periodo THEN 0 ELSE 1 END', 'ASC')
+          .setParameter('periodo', periodo);
+      } else {
+        preferredQb.orderBy('CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END', 'ASC');
+      }
+      docente = await preferredQb
+        .addOrderBy('CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END', 'ASC')
+        .addOrderBy('d."updatedAt"', 'DESC')
+        .getOne() || docente;
+    }
+    const horasBanco = Number(docente?.horasAsignables);
+
+    if (Number.isFinite(horasBanco) && horasBanco >= 0) {
+      const semanasProrrateo = Number(input?.semanas_prorrateo ?? input?.semanasProrrateo ?? 16);
+      const factor = Number.isFinite(semanasProrrateo) && semanasProrrateo > 0
+        ? Math.min(semanasProrrateo / 16, 1)
+        : 1;
+      return Math.round(horasBanco * factor);
+    }
+
+    const legacy = Number(
+      legacyFallback
+      ?? input?.horas_a_programar
+      ?? input?.horasAsignables
+      ?? input?.horas_asignables,
+    );
+    if (Number.isFinite(legacy) && legacy > 0) return legacy;
+
+    return this.calcHorasProgramables({
+      tipo_vinculacion: input?.tipo_vinculacion,
+      dedicacion: input?.dedicacion,
+      semanas_vinculacion: input?.semanas_vinculacion,
+    });
+  }
+
+  /**
+   * Refresca las horas de los DTO que alimentan listados, reportes, concertacion
+   * y aprobacion. Asi, un PTA legacy no conserva visualmente una bolsa antigua
+   * cuando la vinculacion oficial del mismo periodo ya existe en el RUND.
+   *
+   * La consulta es por lote para evitar una consulta por cada PTA del listado.
+   */
+  private async enrichHorasDesdeBanco(dtos: any[]): Promise<void> {
+    const solicitudes = [...new Map(
+      dtos
+        .map((dto) => ({
+          docente_id: coalesceString(dto?.docente_id, dto?.docenteId),
+          periodo: coalesceString(dto?.periodo),
+        }))
+        .filter((item) => item.docente_id)
+        .map((item) => [`${item.docente_id}::${item.periodo || ''}`, item]),
+    ).values()];
+    if (solicitudes.length === 0) return;
+
+    try {
+      const rows = await this.ptaRepo.manager.query(
+        `
+        WITH solicitudes AS (
+          SELECT DISTINCT s.docente_id, s.periodo
+          FROM jsonb_to_recordset($1::jsonb) AS s(docente_id text, periodo text)
+        ), vinculaciones AS (
+          SELECT
+            s.docente_id,
+            s.periodo,
+            base."personaId" AS persona_id
+          FROM solicitudes s
+          LEFT JOIN academic_work_plan."Docente" base
+            ON base.id::text = s.docente_id
+        ), candidatas AS (
+          SELECT
+            v.docente_id,
+            v.periodo,
+            d."horasAsignables" AS horas,
+            ROW_NUMBER() OVER (
+              PARTITION BY v.docente_id, v.periodo
+              ORDER BY
+                CASE WHEN d."periodoCarga" = v.periodo THEN 0 ELSE 1 END,
+                CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
+                d."updatedAt" DESC
+            ) AS prioridad
+          FROM vinculaciones v
+          JOIN academic_work_plan."Docente" d
+            ON d.id::text = v.docente_id
+            OR d."personaId"::text = COALESCE(v.persona_id::text, v.docente_id)
+        )
+        SELECT docente_id, periodo, horas
+        FROM candidatas
+        WHERE prioridad = 1
+        `,
+        [JSON.stringify(solicitudes)],
+      );
+
+      const horasPorVinculacion = new Map<string, number>();
+      for (const row of rows) {
+        const horas = Number(row?.horas);
+        if (!Number.isFinite(horas) || horas < 0) continue;
+        horasPorVinculacion.set(
+          `${String(row.docente_id)}::${coalesceString(row.periodo) || ''}`,
+          horas,
+        );
+      }
+
+      for (const dto of dtos) {
+        const docenteId = coalesceString(dto?.docente_id, dto?.docenteId);
+        const periodo = coalesceString(dto?.periodo) || '';
+        const horasBanco = docenteId
+          ? horasPorVinculacion.get(`${docenteId}::${periodo}`)
+          : undefined;
+        if (horasBanco == null) continue;
+
+        const semanasProrrateo = Number(dto?.semanas_prorrateo ?? dto?.semanasProrrateo ?? 16);
+        const factor = Number.isFinite(semanasProrrateo) && semanasProrrateo > 0
+          ? Math.min(semanasProrrateo / 16, 1)
+          : 1;
+        const horas = Math.round(horasBanco * factor);
+        dto.horas_a_programar = horas;
+        dto.horas_asignables = horas;
+        dto.horas_fuente = 'BANCO_DOCENTES';
+      }
+    } catch (err: any) {
+      // Un fallo de enriquecimiento no debe impedir consultar PTAs legacy. En
+      // ese caso se conserva la bolsa persistida, pero nunca se inventa 800h.
+      this.logger?.warn?.(`Horas del Banco de Docentes no disponibles para el listado: ${err?.message || err}`);
+    }
   }
 
   private isMedioTiempo(dedicacionRaw: any): boolean {
@@ -695,6 +1103,24 @@ export class PtaService {
     const sumComp = compDocencia.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
     const sumAcad = compAadm.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
+    // Una actividad académico-administrativa de dedicación exclusiva sustituye la
+    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia se
+    // conserva en el cálculo para que el tope global detecte cualquier hora adicional.
+    const exclusiveActivities = compAadm.filter((activity: any) => activity?.consumeTotalidad === true);
+    if (exclusiveActivities.length > 0) {
+      const exclusiveHours = Math.max(
+        ...exclusiveActivities.map((activity: any) => Number(activity?.horas) || 0),
+      );
+      return {
+        sumDocencia,
+        sumInv: 0,
+        sumExt: 0,
+        sumComp: 0,
+        sumAcad: exclusiveHours,
+        total: sumDocencia + exclusiveHours,
+      };
+    }
+
     const total = sumDocencia + sumInv + sumExt + sumComp + sumAcad;
     return { sumDocencia, sumInv, sumExt, sumComp, sumAcad, total };
   }
@@ -777,12 +1203,48 @@ export class PtaService {
     return Number.isFinite(value) && value > 0 ? value : fallback;
   }
 
+  /**
+   * Convierte los topes historicos expresados en horas sobre una bolsa de 800h
+   * a un porcentaje y lo aplica a la bolsa real del RUND. De esta forma 400h
+   * conserva su significado de 50%, pero una bolsa de 900h permite 450h.
+   */
+  private getScaledRuleLimit(
+    rules: any,
+    horasAProgramar: number,
+    percentageKey: string,
+    percentageFallback: number,
+    absoluteKey?: string,
+    absoluteFallback?: number,
+  ): number {
+    let percentage = this.getPositiveRuleNumber(rules, percentageKey, percentageFallback);
+    if (absoluteKey) {
+      const absoluteReference = this.getPositiveRuleNumber(
+        rules,
+        absoluteKey,
+        absoluteFallback ?? Math.round(800 * percentageFallback / 100),
+      );
+      percentage = Math.min(percentage, (absoluteReference / 800) * 100);
+    }
+    return Math.round(horasAProgramar * percentage / 100);
+  }
+
   private getInvestigacionLimit(body: any, rules: any, horasAProgramar: number): number {
+    const globalLimit = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_investigacion',
+      50,
+      'max_horas_investigacion_global',
+      400,
+    );
     const rolRaw = coalesceString(body?.investigacion_proyecto?.rol);
     if (!rolRaw) {
       const maxHoras = this.getRuleNumber(rules, 'max_horas_inv_fomento', 200);
-      const maxPct = this.getRuleNumber(rules, 'max_pct_inv_fomento', 25) / 100;
-      return Math.min(maxHoras, Math.round(horasAProgramar * maxPct));
+      const maxPct = this.getRuleNumber(rules, 'max_pct_inv_fomento', 25);
+      const scaledLimit = Math.round(
+        horasAProgramar * Math.min(maxPct, (maxHoras / 800) * 100) / 100,
+      );
+      return Math.min(globalLimit, scaledLimit);
     }
 
     const rolKey = normalizeEstadoFilter(rolRaw);
@@ -799,14 +1261,67 @@ export class PtaService {
       else maxRol = this.getRuleNumber(rules, 'max_horas_inv_lider', 400);
     }
 
-    let rolLimit = maxRol;
-    const tipo = normalizeEstadoFilter(body?.tipo_vinculacion ?? body?.tipoVinculacion);
-    if (tipo !== 'CARRERA_009') {
-      const base800 = this.getRuleNumber(rules, 'horas_base_carrera_003', 800);
-      rolLimit = Math.round(maxRol * (horasAProgramar / base800));
-    }
+    const configuredPct = Number(configured?.pct_max);
+    // Los roles historicamente expresaban la misma regla en horas para una bolsa
+    // de 800h y en porcentaje. El porcentaje permite aplicar el tope a cualquier
+    // bolsa del Banco (720h u otro valor) sin depender del acuerdo de vinculacion.
+    const maxRolPct = (maxRol / 800) * 100;
+    const rolPct = Number.isFinite(configuredPct) && configuredPct > 0
+      ? Math.min(configuredPct, maxRolPct)
+      : maxRolPct;
+    const rolLimit = Math.round(horasAProgramar * rolPct / 100);
 
-    return Math.min(this.getRuleNumber(rules, 'max_horas_investigacion_global', 400), rolLimit);
+    return Math.min(globalLimit, rolLimit);
+  }
+
+  private validateDocenciaDateOverlaps(asignaturas: any[]): void {
+    const candidates = (Array.isArray(asignaturas) ? asignaturas : [])
+      .filter((asig: any) => asig?.asignatura_id && asig?.fecha_inicio && asig?.fecha_fin);
+
+    for (let i = 0; i < candidates.length; i += 1) {
+      for (let j = i + 1; j < candidates.length; j += 1) {
+        const first = candidates[i];
+        const second = candidates[j];
+
+        // "Por definir" mantiene el bloqueo especializado BR-010. No se asume
+        // presencial ni se relaja como modalidad remota en esta regla.
+        if (isUndefinedDocenciaModality(first?.modalidad)
+          || isUndefinedDocenciaModality(second?.modalidad)) continue;
+
+        // Si al menos una asignatura es enteramente remota, el cruce es solo
+        // informativo en el cliente y nunca impide la concertación.
+        if (isNonPresentialDocenciaModality(first?.modalidad)
+          || isNonPresentialDocenciaModality(second?.modalidad)) continue;
+
+        const firstStart = new Date(`${first.fecha_inicio}T00:00:00`);
+        const firstEnd = new Date(`${first.fecha_fin}T00:00:00`);
+        const secondStart = new Date(`${second.fecha_inicio}T00:00:00`);
+        const secondEnd = new Date(`${second.fecha_fin}T00:00:00`);
+        if ([firstStart, firstEnd, secondStart, secondEnd]
+          .some(date => Number.isNaN(date.getTime()))) continue;
+
+        if (firstStart <= secondEnd && secondStart <= firstEnd) {
+          const firstLabel = first?.asignatura_nombre || 'Asignatura 1';
+          const secondLabel = second?.asignatura_nombre || 'Asignatura 2';
+          throw new BadRequestException(
+            `No se puede enviar el PTA: las asignaturas presenciales "${firstLabel}" y "${secondLabel}" `
+            + `tienen fechas cruzadas (${first.fecha_inicio}-${first.fecha_fin} / ${second.fecha_inicio}-${second.fecha_fin}). `
+            + 'La territorial no cambia esta validacion.',
+          );
+        }
+      }
+    }
+  }
+
+  private validateGlobalPtaHours(totalHours: number, horasAProgramar: number): void {
+    const total = Number(totalHours) || 0;
+    const limit = Math.max(0, Number(horasAProgramar) || 0);
+    if (total > limit) {
+      throw new BadRequestException(
+        `El total del PTA excede las horas programables del docente: ${total}h / ${limit}h. `
+        + `Redistribuya ${total - limit}h entre los componentes antes de continuar.`,
+      );
+    }
   }
 
   private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
@@ -832,28 +1347,231 @@ export class PtaService {
         );
       }
     };
+    const getRecognitionBounds = (configured: any, defaultType = 'hasta', allowZeroUntil = false) => {
+      const recognitionRows = Array.isArray(configured?.filas_reconocimiento)
+        ? configured.filas_reconocimiento
+        : [];
+      if (recognitionRows.length > 0) {
+        const bounds = recognitionRows.map((row: any) => getRecognitionBounds(
+          row,
+          'fija',
+          recognitionRows.length > 1,
+        ));
+        if (bounds.length === 1) return bounds[0];
+        const min = Math.max(1, bounds.reduce((sum: number, entry: any) => sum + entry.min, 0));
+        const max = bounds.reduce((sum: number, entry: any) => sum + entry.max, 0);
+        return { type: min === max ? 'fija' : 'intervalo', min, max };
+      }
+      const type = String(configured?.tipo || defaultType).toLowerCase();
+      const max = type === 'porcentaje'
+        ? (expectedPercentageHours(configured) || 0)
+        : Math.max(0, Number(configured?.max_horas ?? configured?.horas) || 0);
+      const min = type === 'fija' || type === 'porcentaje'
+        ? max
+        : type === 'intervalo'
+          ? Math.min(max, Math.max(1, Number(configured?.min_horas ?? configured?.horas_min ?? configured?.min) || 1))
+          : (max > 0 ? (allowZeroUntil && type === 'hasta' ? 0 : 1) : 0);
+      return { type, min, max };
+    };
+    const assertConfiguredHours = (
+      label: string,
+      submitted: any,
+      configured: any,
+      defaultType = 'hasta',
+      allowZeroUntil = false,
+    ) => {
+      const { type, min, max } = getRecognitionBounds(configured, defaultType, allowZeroUntil);
+      const actual = Number(submitted) || 0;
+      if (max <= 0) {
+        throw new BadRequestException(`La actividad ${label} no tiene horas configuradas y no puede enviarse.`);
+      }
+      if ((type === 'fija' || type === 'porcentaje') && actual !== max) {
+        throw new BadRequestException(`La actividad ${label} debe registrar exactamente ${max}h.`);
+      }
+      if ((type === 'hasta' || type === 'intervalo') && (actual < min || actual > max)) {
+        throw new BadRequestException(`La actividad ${label} debe registrar entre ${min}h y ${max}h.`);
+      }
+    };
+    const validateSubmittedRecognitionRows = (
+      label: string,
+      submittedActivity: any,
+      configuredActivity: any,
+    ): boolean => {
+      const recognitionRows = Array.isArray(configuredActivity?.filas_reconocimiento)
+        ? configuredActivity.filas_reconocimiento
+        : [];
+      if (recognitionRows.length <= 1) return false;
+
+      const keyedValues = submittedActivity?.filas_cantidades;
+      const indexedValues = submittedActivity?.items_cantidades;
+      const hasKeyedValues = keyedValues && typeof keyedValues === 'object';
+      const hasIndexedValues = indexedValues && typeof indexedValues === 'object';
+      if (!hasKeyedValues && !hasIndexedValues) return false;
+
+      let submittedTotal = 0;
+      recognitionRows.forEach((row: any, index: number) => {
+        const rowKey = String(row?.clave || '');
+        const submitted = (hasKeyedValues && rowKey ? keyedValues[rowKey] : undefined)
+          ?? (hasIndexedValues ? indexedValues[index] : undefined);
+        if (submitted === undefined || submitted === null) {
+          throw new BadRequestException(
+            `La fila ${row?.nombre || index + 1} de ${label} no tiene horas registradas.`,
+          );
+        }
+        assertConfiguredHours(
+          String(row?.nombre || index + 1),
+          submitted,
+          row,
+          'fija',
+          recognitionRows.length > 1,
+        );
+        submittedTotal += Number(submitted) || 0;
+      });
+
+      if (submittedTotal <= 0) {
+        throw new BadRequestException(
+          `La actividad ${label} debe registrar al menos 1h en una de sus filas.`,
+        );
+      }
+
+      const activityHours = Number(submittedActivity?.horas) || 0;
+      if (activityHours !== submittedTotal) {
+        throw new BadRequestException(
+          `La actividad ${label} debe totalizar ${submittedTotal}h según sus filas configuradas.`,
+        );
+      }
+      return true;
+    };
 
     const extCatalog = rules?.ext_actividades && typeof rules.ext_actividades === 'object'
       ? rules.ext_actividades
       : {};
-    for (const activity of (Array.isArray(body?.extension_actividades) ? body.extension_actividades : [])) {
+    const extensionSections = normalizeExtensionSections(rules?.ext_secciones);
+    const extensionComponentLimit = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_extension',
+      25,
+      'max_horas_extension_global',
+      this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+    );
+    const configuredRowHours = (row: any, allowZeroUntil = false): number =>
+      getRecognitionBounds(row, 'fija', allowZeroUntil).min;
+    for (const activity of (tieneTotalidad ? [] : (Array.isArray(body?.extension_actividades) ? body.extension_actividades : []))) {
       const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
       const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
         .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
       if (configured) {
         assertPercentageHours(configured?.nombre || activity?.nombre || 'de extensión', activity?.horas, configured);
+        const section = extensionSections.find((item: any) => item?.key === sectionKey);
+        const allConfiguredRows = getExtensionCatalogHourRows(configured, section);
+        const configuredRows = allConfiguredRows
+          .map((row: any, index: number) => ({ row, index }))
+          .filter(({ row }: any) => {
+            const type = String(row?.tipo || 'fija').toLowerCase();
+            if (type === 'porcentaje') return (expectedPercentageHours(row) || 0) > 0;
+            return Number(row?.horas) > 0;
+          });
+        const mandatoryHours = configuredRows.reduce(
+          (sum: number, entry: any) => sum + configuredRowHours(
+            entry.row,
+            configuredRows.length > 1,
+          ),
+          0,
+        );
+        const requiresRowSelection = configuredRows.length > 1
+          && mandatoryHours > extensionComponentLimit;
+        if (requiresRowSelection) {
+          const selectedRowIndex = Number(activity?.fila_seleccionada);
+          if (!Number.isInteger(selectedRowIndex)
+            || selectedRowIndex < 0
+            || selectedRowIndex >= allConfiguredRows.length
+            || !configuredRows.some((entry: any) => entry.index === selectedRowIndex)) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} requiere seleccionar una de sus filas horarias.`,
+            );
+          }
+          const selectedRow = allConfiguredRows[selectedRowIndex];
+          assertConfiguredHours(
+            String(selectedRow?.nombre || selectedRowIndex + 1),
+            activity?.horas,
+            selectedRow,
+            'fija',
+          );
+        } else if (configuredRows.length > 0) {
+          const submittedRows = activity?.items_cantidades;
+          if (submittedRows && typeof submittedRows === 'object') {
+            let submittedTotal = 0;
+            configuredRows.forEach(({ row, index }: any) => {
+              const submitted = submittedRows[index];
+              assertConfiguredHours(
+                String(row?.nombre || index + 1),
+                submitted,
+                row,
+                'fija',
+                configuredRows.length > 1,
+              );
+              submittedTotal += Number(submitted) || 0;
+            });
+            if (submittedTotal <= 0) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar al menos 1h en una de sus filas.`,
+              );
+            }
+            const activityHours = Number(activity?.horas) || 0;
+            if (activityHours !== submittedTotal) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe totalizar ${submittedTotal}h según sus filas configuradas.`,
+              );
+            }
+          } else {
+            // Compatibilidad con borradores anteriores a `items_cantidades`: se valida
+            // al menos el rango agregado sin inferir reglas desde el ID.
+            const minTotal = configuredRows.reduce(
+              (sum: number, entry: any) => sum + getRecognitionBounds(
+                entry.row,
+                'fija',
+                configuredRows.length > 1,
+              ).min,
+              0,
+            );
+            const maxTotal = configuredRows.reduce(
+              (sum: number, entry: any) => sum + getRecognitionBounds(entry.row, 'fija').max,
+              0,
+            );
+            const submittedTotal = Number(activity?.horas) || 0;
+            const effectiveMin = Math.max(1, minTotal);
+            if (submittedTotal < effectiveMin || submittedTotal > maxTotal) {
+              throw new BadRequestException(
+                `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar entre ${effectiveMin}h y ${maxTotal}h.`,
+              );
+            }
+          }
+        } else {
+          // En una tabla simple el reconocimiento vive directamente en el bloque.
+          assertConfiguredHours(
+            configured?.nombre || activity?.nombre || 'de extensión',
+            activity?.horas,
+            configured,
+          );
+        }
       }
     }
 
-    const compCatalog = rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
-      ? rules.comp_actividades_v2
-      : {};
     for (const activity of allComp) {
+      if (tieneTotalidad && activity?.consumeTotalidad !== true) continue;
       const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
-      const configured = (Array.isArray(compCatalog?.[sectionKey]) ? compCatalog[sectionKey] : [])
+      const configured = this.flattenCompV2Section(rules, sectionKey)
         .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
       if (configured) {
-        assertPercentageHours(configured?.nombre || activity?.nombre || 'complementaria', activity?.horas, configured);
+        const label = configured?.nombre || activity?.nombre || 'complementaria';
+        const validatedByRows = validateSubmittedRecognitionRows(label, activity, configured);
+        if (!validatedByRows) {
+          // Borradores anteriores al desglose por filas conservan la validación
+          // agregada para poder abrirse y corregirse sin perder información.
+          assertPercentageHours(label, activity?.horas, configured);
+          assertConfiguredHours(label, activity?.horas, configured);
+        }
       }
     }
 
@@ -861,21 +1579,36 @@ export class PtaService {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
     }
 
-    // El envio se valida por topes individuales de componente, no por suma global.
+    // La bolsa proveniente del Banco de Docentes es el tope autoritativo para la
+    // suma de los cuatro componentes. También aplica a dedicaciones exclusivas:
+    // una actividad del 100% no puede coexistir con horas adicionales.
+    this.validateGlobalPtaHours(horas.total, horasAProgramar);
+
+    // Una actividad de dedicación exclusiva ya consume la bolsa completa.
     if (tieneTotalidad) return;
 
-    const maxDocencia = this.getPositiveRuleNumber(
+    const asignaturas = Array.isArray(body?.asignaturas)
+      ? body.asignaturas.filter((a: any) => a?.asignatura_id)
+      : [];
+    this.validateDocenciaDateOverlaps(asignaturas);
+
+    const maxInvestigacion = this.getInvestigacionLimit(body, rules, horasAProgramar);
+    const maxExtension = this.getScaledRuleLimit(
       rules,
-      'max_horas_docencia_global',
-      this.getPositiveRuleNumber(rules, 'horas_base_carrera_003', 800),
-    );
-    const maxInvestigacion = this.getPositiveRuleNumber(rules, 'max_horas_investigacion_global', 400);
-    const maxExtension = this.getPositiveRuleNumber(
-      rules,
+      horasAProgramar,
+      'max_pct_extension',
+      25,
       'max_horas_extension_global',
       this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
     );
-    const maxComplementarias = this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200);
+    const maxComplementarias = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_complementarias',
+      25,
+      'max_horas_complementarias_global',
+      200,
+    );
 
     const assertComponentLimit = (label: string, value: number, limit: number) => {
       if (value > limit) {
@@ -883,14 +1616,21 @@ export class PtaService {
       }
     };
 
-    assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
+    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
+    if (rolInvestigacion) {
+      const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas);
+      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > maxInvestigacion) {
+        throw new BadRequestException(
+          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${maxInvestigacion}h (hasta el tope dinamico de la bolsa RUND).`,
+        );
+      }
+    }
+
+    // Docencia no tiene tope porcentual propio; el límite global anterior le
+    // permite ocupar desde una fracción hasta el 100% de la bolsa disponible.
     assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
-    assertComponentLimit('Complementarias', horas.sumComp, maxComplementarias);
-
-    const asignaturas = Array.isArray(body?.asignaturas)
-      ? body.asignaturas.filter((a: any) => a?.asignatura_id)
-      : [];
+    assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
     if (asignaturas.length === 0) {
       throw new BadRequestException('Debe incluir al menos una asignatura valida antes de enviar el PTA a aprobacion.');
@@ -936,9 +1676,13 @@ export class PtaService {
       throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
     }
 
-    const maxAadm = Math.min(
-      this.getRuleNumber(rules, 'max_horas_aadm_global', 200),
-      horasAProgramar * (this.getRuleNumber(rules, 'max_pct_aadm', 25) / 100),
+    const maxAadm = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_aadm',
+      25,
+      'max_horas_aadm_global',
+      200,
     );
     if (horas.sumAcad > maxAadm) {
       throw new BadRequestException(`Actividades academico-administrativas superan el tope permitido: ${horas.sumAcad}h / ${maxAadm}h.`);
@@ -951,6 +1695,9 @@ export class PtaService {
       id: _id, pta_id: _ptaId, ptaId: _ptaId2,
       estado: _estado, periodo: _periodo, version: _version,
       docente_id: _docId,
+      horas_a_programar: _horasAProgramar,
+      horas_asignables: _horasAsignables,
+      horasAsignables: _horasAsignablesCamel,
       ...extra
     } = (entity.datosEstructurados && typeof entity.datosEstructurados === 'object'
       ? entity.datosEstructurados
@@ -979,7 +1726,13 @@ export class PtaService {
     // Complementarias unificado = sección docencia + sección académico-administrativa.
     const hComp = hCompDocencia + hAcad;
     const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp);
-    const horasAsignables = (entity as any).horasAsignables || Number(ds.horas_a_programar) || 800;
+    const horasAsignablesRaw = Number(
+      (entity as any).horasAsignables
+      ?? ds.horas_a_programar
+      ?? ds.horas_asignables
+      ?? 0,
+    );
+    const horasAsignables = Number.isFinite(horasAsignablesRaw) ? horasAsignablesRaw : 0;
 
     return {
       id: entity.id,
@@ -1027,8 +1780,85 @@ export class PtaService {
     return `${unique[0]} +${unique.length - 1}`;
   }
 
+  /**
+   * Completa la selección jerárquica de Extensión con textos legibles para las
+   * vistas posteriores al envío. Los PTAs recientes ya guardan esta instantánea;
+   * para registros anteriores se reconstruye desde fila_seleccionada + catálogo.
+   */
+  private async enrichExtensionSelections(dtos: any[]): Promise<void> {
+    if (!dtos.some(dto => Array.isArray(dto?.extension_actividades) && dto.extension_actividades.length > 0)) return;
+
+    const [catalogBySection, sections] = await Promise.all([
+      this.getCatalogoActividadesExtension(),
+      this.getCatalogoSeccionesExtension(),
+    ]);
+    const sectionByKey = new Map(
+      (Array.isArray(sections) ? sections : []).map((section: any) => [
+        normalizeExtensionSectionKey(section?.key),
+        section,
+      ]),
+    );
+
+    for (const dto of dtos) {
+      const activities = Array.isArray(dto?.extension_actividades) ? dto.extension_actividades : [];
+      dto.extension_actividades = activities.map((activity: any) => {
+        const selectedIndex = Number(activity?.fila_seleccionada);
+        if (!Number.isInteger(selectedIndex) || selectedIndex < 0) return activity;
+
+        const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+        const section = sectionByKey.get(sectionKey);
+        const catalog = Array.isArray(catalogBySection?.[sectionKey]) ? catalogBySection[sectionKey] : [];
+        const catalogActivity = catalog.find((item: any) =>
+          String(item?.id || '') === String(activity?.actividad_id || activity?.id || ''),
+        );
+        const selectedRow = catalogActivity
+          ? getExtensionCatalogHourRows(catalogActivity, section)[selectedIndex]
+          : null;
+        if (!selectedRow && activity?.fila_seleccionada_nombre) return activity;
+        if (!selectedRow) return activity;
+
+        const firstColumn = String(section?.columnas?.[0] || '').trim();
+        const selectionLabel = firstColumn === EXTENSION_ITEMS_COLUMN_KEY
+          ? String(section?.columna_items_nombre || 'Actividad / Ítem').trim()
+          : (!firstColumn || /^_.*_$/.test(firstColumn) ? 'Opción del bloque' : firstColumn);
+        const details = Array.isArray(selectedRow?._detailGroups)
+          ? selectedRow._detailGroups
+              .map((group: any) => ({
+                nombre: String(group?.name || group?.nombre || '').trim(),
+                valores: (Array.isArray(group?.values) ? group.values : [])
+                  .map((value: any) => ({
+                    columna: String(value?.column || value?.columna || '').trim(),
+                    valor: String(value?.value || value?.valor || '').trim(),
+                  }))
+                  .filter((value: any) => value.valor),
+              }))
+              .filter((group: any) => group.nombre || group.valores.length > 0)
+          : [];
+
+        return {
+          ...activity,
+          fila_seleccionada_nombre: activity?.fila_seleccionada_nombre || String(selectedRow?.nombre || '').trim(),
+          fila_seleccionada_etiqueta: activity?.fila_seleccionada_etiqueta || selectionLabel,
+          fila_seleccionada_detalles: Array.isArray(activity?.fila_seleccionada_detalles)
+            && activity.fila_seleccionada_detalles.length > 0
+            ? activity.fila_seleccionada_detalles
+            : details,
+        };
+      });
+    }
+  }
+
   private async enrichPtaSummaries(dtos: any[]): Promise<any[]> {
     if (!dtos.length) return dtos;
+
+    await this.enrichHorasDesdeBanco(dtos);
+
+    // Aditivo y tolerante a configuraciones legacy: nunca bloquea la consulta del PTA.
+    try {
+      await this.enrichExtensionSelections(dtos);
+    } catch (err: any) {
+      this.logger.warn(`Detalle de selección de Extensión omitido: ${err?.message || err}`);
+    }
 
     const programaKeys = new Set<string>();
     const territorialKeys = new Set<string>();
@@ -1069,7 +1899,9 @@ export class PtaService {
           const item = {
             id: String(row.id),
             codigo: row.codigo ? String(row.codigo) : undefined,
-            nombre: row.nombreCorto || row.nombre,
+            // El nombre corto (p. ej. "APT") es solo un código visual. Los DTO
+            // consumidos por reportes deben exponer el nombre oficial completo.
+            nombre: String(row.nombre || row.nombreCorto || ''),
             nombreCorto: row.nombreCorto || undefined,
           };
           programaMap.set(item.id, item);
@@ -1139,8 +1971,11 @@ export class PtaService {
         const territorialId = coalesceLookupKey(asig?.territorial_id, asig?.territorialId, asig?.territorial?.id);
         const cetapId = coalesceLookupKey(asig?.cetap_id, asig?.cetapId, asig?.sede_id, asig?.sedeId);
 
-        const programaNombre = coalesceString(asig?.programa_nombre, asig?.programa?.nombre, asig?.programa?.nombreCorto)
-          || (programaId ? programaMap.get(programaId)?.nombre : null);
+        const programaCatalogo = programaId ? programaMap.get(programaId) : null;
+        // El catálogo vigente es autoritativo. Esto corrige también PTAs legacy
+        // que persistieron `programa_nombre` con la abreviación (p. ej. "APT").
+        const programaNombre = programaCatalogo?.nombre
+          || coalesceString(asig?.programa_nombre_completo, asig?.programa_nombre, asig?.programa?.nombre, asig?.programa?.nombreCorto);
         const territorialNombre = coalesceString(asig?.territorial_nombre, asig?.territorial?.nombre)
           || (territorialId ? territorialMap.get(territorialId)?.nombre : null);
         const cetapNombre = coalesceString(asig?.cetap_nombre, asig?.sede_nombre, asig?.cetap?.nombre, asig?.sede?.nombre)
@@ -1148,6 +1983,9 @@ export class PtaService {
 
         if (programaNombre) {
           asig.programa_nombre = programaNombre;
+          asig.programa_nombre_completo = programaNombre;
+          if (programaCatalogo?.codigo) asig.programa_codigo = programaCatalogo.codigo;
+          if (programaCatalogo?.nombreCorto) asig.programa_nombre_corto = programaCatalogo.nombreCorto;
           programaNames.push(programaNombre);
         }
         if (territorialNombre) {
@@ -1358,6 +2196,8 @@ export class PtaService {
       categoria: entity.categoria,
       componentePta: entity.componentePta,
       componente_pta: entity.componentePta,
+      seccionExtension: entity.seccionExtension,
+      seccion_extension: entity.seccionExtension,
       horasAvance: entity.horasAvance,
       horas_avance: entity.horasAvance,
       storageUrl: entity.storageUrl,
@@ -1411,7 +2251,7 @@ export class PtaService {
   }
 
   async getPTAsByDocente(docenteId: string, periodo?: string | undefined) {
-    const resolved = await this.resolveDocenteId(docenteId);
+    const resolved = await this.resolveDocenteId(docenteId, { periodo });
     const qb = this.ptaRepo.createQueryBuilder('pta');
     qb.andWhere('pta.docenteId = :docenteId', { docenteId: resolved });
     if (periodo) qb.andWhere('pta.periodo = :periodo', { periodo });
@@ -1535,6 +2375,7 @@ export class PtaService {
 
   async savePTA(input: SavePtaInput) {
     let id = coalesceString(input?.id);
+    const periodo = coalesceString(input?.periodo) || '2026-1';
     const isAdminEdit = Boolean(input?._adminEdit);
     const allowedComponentKeys = Array.isArray(input?._allowed_component_keys)
       ? input._allowed_component_keys
@@ -1557,14 +2398,17 @@ export class PtaService {
       input?.docente?.personaId,
     );
     const fallbackTerritorial = Array.isArray(input?.asignaturas) && input.asignaturas.length > 0 ? input.asignaturas[0].territorial_id : undefined;
-    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteIdCached(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
+    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteIdCached(docenteKey || '', {
+      fallbackTerritorial,
+      adminEdit: isAdminEdit,
+      periodo,
+    });
 
     // Enrich identity if missing
     if (!input.docente_nombre) {
       input.docente_nombre = dbName;
     }
 
-    const periodo = coalesceString(input?.periodo) || '2026-1';
     let estado = coalesceString(input?.estado) || 'BORRADOR';
 
     // No confiar en el total enviado por el navegador: puede venir de un
@@ -1661,15 +2505,21 @@ export class PtaService {
       }
     }
 
+    const horasAProgramar = await this.resolveHorasAProgramar(docenteId, input);
+    // Mantener sincronizados la columna tipada y el JSON estructurado. El cliente
+    // no puede imponer una bolsa distinta a la registrada en Banco de Docentes.
+    input = {
+      ...input,
+      horas_a_programar: horasAProgramar,
+      horas_asignables: horasAProgramar,
+      complementarias: Array.isArray(input?.complementarias)
+        ? input.complementarias.map((activity: any) => activity?.consumeTotalidad === true
+          ? { ...activity, horas: horasAProgramar }
+          : activity)
+        : input?.complementarias,
+    };
     const extMult = await this.getExtMultiplicadores();
     const horas = this.computeHorasTotales(input, extMult);
-    const horasAProgramar =
-      Number(input?.horas_a_programar ?? input?.horasAsignables ?? input?.horas_asignables) ||
-      (await this.calcHorasProgramables({
-        tipo_vinculacion: input?.tipo_vinculacion,
-        dedicacion: input?.dedicacion,
-        semanas_vinculacion: input?.semanas_vinculacion,
-      }));
 
     if (isPendingRoleApprovalState(estado)) {
       this.validatePtaForSubmission(input, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
@@ -1751,9 +2601,15 @@ export class PtaService {
       if (comentarioConcertacion) {
         // Qué componentes se devuelven al docente. La fuente de verdad es SIEMPRE una
         // selección explícita, nunca una heurística:
-        //   1) Restringido por permiso → su(s) componente(s) asignado(s) (server-side).
-        //   2) Sin restricción de permiso → los que el admin marcó en los checkboxes
-        //      del formulario (_concertacion_componentes).
+        //   1) Restringido por permiso a UN SOLO componente → ese, sin ambigüedad.
+        //   2) Restringido por permiso a VARIOS componentes (ej. un rol con
+        //      "aprueba docencia y complementarias") → también exige selección
+        //      explícita del admin, acotada a su alcance real. Antes se devolvían
+        //      TODOS sus componentes permitidos aunque solo hubiera tocado uno
+        //      (bug reportado en QA: devolver Docencia con un cambio devolvía en
+        //      cascada Complementarias también, sin que el revisor lo pidiera).
+        //   3) Sin restricción de permiso (aprueba todo / superusuario) → los que
+        //      el admin marcó en los checkboxes del formulario.
         // NO se infieren componentes por "diff de contenido": el formulario re-serializa
         // todo el PTA al guardar, así que un componente intacto (p.ej. Docencia ya
         // aprobada) puede aparecer como "cambiado" por diferencias de serialización y
@@ -1761,9 +2617,11 @@ export class PtaService {
         const componentesSeleccionados = Array.isArray(input?._concertacion_componentes)
           ? input._concertacion_componentes.map((k: any) => String(k)).filter((k: string) => COMPONENT_APPROVAL_KEY_SET.has(k))
           : [];
-        const componentesCambiados = allowedComponentKeys.length > 0
+        const componentesCambiados = allowedComponentKeys.length === 1
           ? allowedComponentKeys
-          : componentesSeleccionados;
+          : allowedComponentKeys.length > 1
+            ? componentesSeleccionados.filter((k) => allowedComponentKeys.includes(k))
+            : componentesSeleccionados;
         if (componentesCambiados.length > 0) {
           const devolucionResult = await this.registrarDevolucionPorConcertacion(
             saved.id,
@@ -1995,12 +2853,14 @@ export class PtaService {
               snapshotPta: existing.datosEstructurados ?? null,
               version: existing.version,
             }));
+            const partialDto = this.toPtaDto(existing, await this.getExtMultiplicadores());
+            await this.enrichHorasDesdeBanco([partialDto]);
             return {
               parcial: true,
               message: 'Tu aprobación fue registrada. Esperando aprobación de otras jefaturas.',
               nuevoEstado: existing.estado,
               aprobaciones: pendientes,
-              pta: this.toPtaDto(existing, await this.getExtMultiplicadores()),
+              pta: partialDto,
             };
           }
 
@@ -2061,13 +2921,11 @@ export class PtaService {
       const ds = existing.datosEstructurados as any || {};
       const extMult = await this.getExtMultiplicadores();
       const horas = this.computeHorasTotales(ds, extMult);
-      const horasAProgramar =
-        Number((existing as any).horasAsignables ?? ds?.horas_a_programar ?? ds?.horasAsignables ?? ds?.horas_asignables) ||
-        (await this.calcHorasProgramables({
-          tipo_vinculacion: ds?.tipo_vinculacion,
-          dedicacion: ds?.dedicacion,
-          semanas_vinculacion: ds?.semanas_vinculacion,
-        }));
+      const horasAProgramar = await this.resolveHorasAProgramar(
+        existing.docenteId,
+        ds,
+        Number((existing as any).horasAsignables),
+      );
       this.validatePtaForSubmission(ds, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
     }
 
@@ -2159,11 +3017,13 @@ export class PtaService {
       }
     }
 
+    const updatedDto = this.toPtaDto(updated, await this.getExtMultiplicadores());
+    await this.enrichHorasDesdeBanco([updatedDto]);
     return {
       ...(parallelApprovalResult || {}),
       version: updated.version,
       nuevoEstado: estadoFinal,
-      pta: this.toPtaDto(updated, await this.getExtMultiplicadores()),
+      pta: updatedDto,
     };
   }
 
@@ -2617,10 +3477,11 @@ export class PtaService {
       const diasSinMovimiento = p.updatedAt ? Math.floor((now - new Date(p.updatedAt).getTime()) / 86400000) : 0;
       return { ...dto, diasSinMovimiento };
     });
+    await this.enrichPtaSummaries(detalle);
 
     const alertas = {
       sinMovimiento7d: detalle.filter(p => p.diasSinMovimiento >= 7 && !['Aprobado','Rechazado','Borrador'].includes(p.estado)).length,
-      sobrecarga: detalle.filter(p => (p.total_horas_programadas || 0) > (p.horas_a_programar || 800)).length,
+      sobrecarga: detalle.filter(p => (p.total_horas_programadas || 0) > (p.horas_a_programar ?? 0)).length,
       sinHoras: detalle.filter(p => (p.total_horas_programadas || 0) === 0 && p.estado !== 'Borrador').length,
       escaladosSNA: detalle.filter(p => p.estado === 'ESCALADO_SNA').length,
     };
@@ -2646,6 +3507,7 @@ export class PtaService {
       tamanioBytes,
       categoria: coalesceString(body?.categoria) as any,
       componentePta: coalesceString(body?.componentePta, body?.componente_pta) as any,
+      seccionExtension: coalesceString(body?.seccionExtension, body?.seccion_extension) as any,
       horasAvance: Number(body?.horasAvance ?? body?.horas_avance ?? 0) || 0,
       storageUrl: storageUrl,
       subidoPor: coalesceString(body?.subidoPor, body?.subido_por) as any,
@@ -3145,7 +4007,7 @@ export class PtaService {
       evidencias: evidenciasByPta[pta.id] || [],
     }));
     await this.attachPtaReferenceDates(dtos);
-    return this.sortPtasByReferenceDate(dtos);
+    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
   }
 
   async getConfiguracionPTAGlobal() {
@@ -3857,7 +4719,9 @@ export class PtaService {
   async getDocentesDisponibles(query?: any) {
     const periodo = coalesceString(query?.periodo);
     const docentes = await this.ptaRepo.manager.query(`
-      SELECT
+      SELECT *
+      FROM (
+        SELECT DISTINCT ON (d."personaId")
         d.*,
         json_build_object(
           'id', p.id_person,
@@ -3891,14 +4755,21 @@ export class PtaService {
             'codigo', sede.cod_sede
           )
         END AS sede
-      FROM academic_work_plan."Docente" d
-      LEFT JOIN auth.personas p ON p.id_person = d."personaId"
-      LEFT JOIN auth."user" u ON u.id_person = p.id_person
-      LEFT JOIN auth.seccionales sec ON sec.id_seccional::text = COALESCE(d."territorialId", p.id_seccional::text)
-      LEFT JOIN auth.sedes sede ON sede.id_sede::text = COALESCE(d."sedeId", p.id_sede::text)
-      ORDER BY d."ordenListado" ASC NULLS LAST, d."createdAt" DESC
+        FROM academic_work_plan."Docente" d
+        LEFT JOIN auth.personas p ON p.id_person = d."personaId"
+        LEFT JOIN auth."user" u ON u.id_person = p.id_person
+        LEFT JOIN auth.seccionales sec ON sec.id_seccional::text = COALESCE(d."territorialId", p.id_seccional::text)
+        LEFT JOIN auth.sedes sede ON sede.id_sede::text = COALESCE(d."sedeId", p.id_sede::text)
+        ORDER BY
+          d."personaId",
+          CASE WHEN $1::text IS NOT NULL AND d."periodoCarga" = $1::text THEN 0 ELSE 1 END,
+          CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
+          CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END,
+          d."updatedAt" DESC
+      ) docentes_periodo
+      ORDER BY "ordenListado" ASC NULLS LAST, "createdAt" DESC
       LIMIT 5000
-    `);
+    `, [periodo || null]);
 
     const docenteIds = docentes.map((d) => d.id);
     const ptas = docenteIds.length
@@ -3913,10 +4784,12 @@ export class PtaService {
       : [];
 
     const extMult = await this.getExtMultiplicadores();
+    const ptaDtos = ptas.map((pta) => this.toPtaDto(pta, extMult));
+    await this.enrichHorasDesdeBanco(ptaDtos);
     const ptasByDocente: Record<string, any[]> = {};
-    for (const pta of ptas) {
-      ptasByDocente[pta.docenteId] ||= [];
-      ptasByDocente[pta.docenteId].push(this.toPtaDto(pta, extMult));
+    for (const dto of ptaDtos) {
+      ptasByDocente[dto.docente_id] ||= [];
+      ptasByDocente[dto.docente_id].push(dto);
     }
 
     return docentes.map((d: any) => ({
@@ -4139,36 +5012,29 @@ export class PtaService {
 
   // Aplana una actividad de comp_actividades_v2 al shape plano que consume el catálogo
   // ({ id, nombre, max_horas, min_horas?, consumeTotalidad }).
-  private flattenCompV2Activity(a: any, fullPTAFromPercentage = false): any {
-    const itemHours = Array.isArray(a?.items)
-      ? a.items.map((it: any) => Number(it?.horas || 0)).filter((n: number) => Number.isFinite(n))
-      : [];
-    const maxHoras = a?.max_horas ?? (itemHours.length ? Math.max(...itemHours) : 0);
-    return {
-      id: a?.id,
-      nombre: a?.nombre,
-      max_horas: a?.consumeTotalidad ? null : maxHoras,
-      min_horas: a?.min_horas,
-      tipo: a?.tipo ?? a?.items?.[0]?.tipo,
-      porcentaje_pta: a?.porcentaje_pta ?? a?.items?.[0]?.porcentaje_pta,
-      consumeTotalidad: Boolean(a?.consumeTotalidad) || (
-        fullPTAFromPercentage &&
-        String(a?.tipo || '').toLowerCase() === 'porcentaje' &&
-        Math.min(100, Math.max(1, Number(a?.porcentaje_pta) || 1)) === 100
-      ),
-    };
-  }
-
   private flattenCompV2Section(rules: any, sectionKey: string): any[] {
     const v2 = rules?.comp_actividades_v2;
     const arr = v2 && typeof v2 === 'object' ? v2[sectionKey] : null;
+    const sections = Array.isArray(rules?.comp_secciones) && rules.comp_secciones.length > 0
+      ? rules.comp_secciones
+      : FIXED_COMP_SECCIONES;
+    const section = sections.find((item: any) => String(item?.key) === sectionKey)
+      || FIXED_COMP_SECCIONES.find(item => item.key === sectionKey);
     return Array.isArray(arr)
-      ? arr.map((a: any) => this.flattenCompV2Activity(a, sectionKey === 'academico_administrativas'))
+      ? arr.map((activity: any) => flattenConfiguredComplementaryActivity(
+          activity,
+          section,
+          sectionKey === 'academico_administrativas',
+        ))
       : [];
   }
 
   async getCatalogoActividadesComplementarias() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
+    if (rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      && Object.prototype.hasOwnProperty.call(rules.comp_actividades_v2, 'complementarias_docencia')) {
+      return this.flattenCompV2Section(rules, 'complementarias_docencia');
+    }
     if (Array.isArray(rules?.comp_actividades) && rules.comp_actividades.length > 0) return rules.comp_actividades;
     // Fallback: derivar de la sección v2 (por si dejan de escribirse los arrays legacy).
     return this.flattenCompV2Section(rules, 'complementarias_docencia');
@@ -4176,6 +5042,10 @@ export class PtaService {
 
   async getCatalogoActividadesAcademicoAdmin() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
+    if (rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      && Object.prototype.hasOwnProperty.call(rules.comp_actividades_v2, 'academico_administrativas')) {
+      return this.flattenCompV2Section(rules, 'academico_administrativas');
+    }
     if (Array.isArray(rules?.aadm_actividades) && rules.aadm_actividades.length > 0) return rules.aadm_actividades;
     return this.flattenCompV2Section(rules, 'academico_administrativas');
   }
@@ -5015,6 +5885,11 @@ export class PtaService {
 
     // 1. Fetch all PTAs for the period
     const ptas = await this.ptaRepo.find({ where: { periodo: targetPeriodo } });
+    const horasDtos = ptas.map((pta) => this.toPtaDto(pta));
+    await this.enrichHorasDesdeBanco(horasDtos);
+    const horasAsignablesPorPta = new Map(
+      horasDtos.map((dto) => [String(dto.id), Number(dto.horas_a_programar) || 0]),
+    );
 
     // 2. Pipeline counts
     const pipeline = {
@@ -5059,7 +5934,7 @@ export class PtaService {
       const hExt = ext.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
       const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
       const hTotal = pta.horasTotales || (hDoc + hInv + hExt + hComp);
-      const hAsign = pta.horasAsignables || Number(ds.horas_a_programar) || 800;
+      const hAsign = horasAsignablesPorPta.get(String(pta.id)) ?? 0;
 
       totalDocencia += hDoc;
       totalInv += hInv;

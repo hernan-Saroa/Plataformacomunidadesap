@@ -163,7 +163,7 @@ export function ControlDisciplinarioFull() {
           version: auto.currentVersion || 1,
           fechaEnvio: auto.createdAt,
           profesional: {
-            nombre: auto.process?.abogadoAsignadoNombre || 'Profesional',
+            nombre: auto.process?.abogadoAsignado?.nombreCompleto || auto.process?.abogadoAsignadoNombre || 'Profesional',
             email: '',
           },
           observacionesProfesional: auto.comentarios || '',
@@ -175,7 +175,7 @@ export function ControlDisciplinarioFull() {
           historial: [{
             id: `h-${auto.id}`,
             tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
-            usuario: auto.process?.abogadoAsignadoNombre || 'Profesional',
+            usuario: auto.process?.abogadoAsignado?.nombreCompleto || auto.process?.abogadoAsignadoNombre || 'Profesional',
             fecha: auto.createdAt,
             descripcion: auto.estado === 'APROBADO'
               ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'

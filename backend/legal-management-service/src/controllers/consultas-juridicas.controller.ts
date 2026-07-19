@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UploadedFile, UseInterceptors, BadRequestException, Req } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UploadedFile, UploadedFiles, UseInterceptors, BadRequestException, Req } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ConsultasJuridicasService } from '../services/consultas-juridicas.service';
@@ -32,7 +32,7 @@ export class ConsultasJuridicasController {
     }
 
     @Post()
-    @UseInterceptors(FileInterceptor('file', {
+    @UseInterceptors(FilesInterceptor('files', 10, {
         storage: diskStorage({
             destination: './uploads',
             filename: (req, file, cb) => {
@@ -43,7 +43,7 @@ export class ConsultasJuridicasController {
     }))
     async create(
         @Body() body: any,
-        @UploadedFile() file?: Express.Multer.File
+        @UploadedFiles() files?: Express.Multer.File[]
     ) {
         const consultaData = {
             canalEntrada: body.canalEntrada,
@@ -64,15 +64,15 @@ export class ConsultasJuridicasController {
             abogadoAsignadoNombre: body.abogadoAsignadoNombre || null
         };
 
-        const fileData = file ? {
+        const filesData = (files || []).map(file => ({
             filename: file.filename,
             path: file.path,
             mimetype: file.mimetype,
             size: file.size,
             originalname: file.originalname
-        } : undefined;
+        }));
 
-        return this.consultasService.create(consultaData, fileData);
+        return this.consultasService.create(consultaData, filesData);
     }
 
     @Patch(':id')
