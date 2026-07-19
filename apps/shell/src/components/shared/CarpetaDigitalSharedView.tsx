@@ -1137,12 +1137,16 @@ export function CarpetaDigitalSharedView({
       formData.append('cargadoPor', currentUserId);
 
       const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
-      if (res?.success || res) {
+      // res.success solo llega explícito (=== false) cuando el backend rechaza el
+      // archivo (tipo/contenido inválido); en éxito el wrapper {success,data} se
+      // desenvuelve y "success" no viaja, por eso NO se puede usar `res?.success ||res`
+      // (siempre truthy) para detectar el rechazo.
+      if (res?.success !== false) {
         toast.success(`Documento "${file.name}" cargado exitosamente.`);
         warnIfWrongDocType(res?.validacionTipo);
         await fetchRundData();
       } else {
-        toast.error('Error al cargar el documento.');
+        toast.error(res?.error || 'Error al cargar el documento.');
       }
     } catch (err: any) {
       toast.error(err?.message || 'Error al cargar el documento.');
@@ -1180,13 +1184,15 @@ export function CarpetaDigitalSharedView({
         formData.append('cargadoPor', currentUserId);
 
         const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
-        if (res?.success || res) {
+        // Ver nota en handleRundFileChange: res.success solo llega explícito (=== false)
+        // cuando el backend rechaza el archivo.
+        if (res?.success !== false) {
           toast.success(`Soporte "${file.name}" cargado para RUND - ${tipo.nombre}`);
           warnIfWrongDocType(res?.validacionTipo);
           await fetchRundData();
           return true;
         } else {
-          toast.error('Error al cargar el soporte en RUND.');
+          toast.error(res?.error || 'Error al cargar el soporte en RUND.');
         }
       } catch (err: any) {
         toast.error(err?.message || 'Error al cargar el soporte.');

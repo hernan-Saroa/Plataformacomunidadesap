@@ -446,11 +446,17 @@ export class BancoDocentesController {
         if (validacionTipo.validated && !validacionTipo.matched) {
           this.logger.warn(`[RUND] Soporte "${body.tipoSoporte}" del docente ${id}: tipo incorrecto (${validacionTipo.reason})`);
           this.eliminarArchivoSubido(file);
+          // OJO: NO anidar aquí un campo `data` (a diferencia de la respuesta de éxito
+          // más abajo). El upload() del shell (apiClient.ts) devuelve `response.data`
+          // cuando existe, y en ese caso descarta los campos hermanos `success`/`error`.
+          // Si esta respuesta trajera `data: { validacionTipo }`, el frontend (panel
+          // admin, autogestión, CarpetaDigitalSharedView) recibiría solo `{validacionTipo}`
+          // y trataría el rechazo por contenido incorrecto como una carga exitosa.
           return {
             success: false,
             error: `El archivo no corresponde al tipo de documento esperado (${body.tipoNombre || body.tipoSoporte}). ${validacionTipo.reason || ''}`.trim(),
             code: 'ARCHIVO_CONTENIDO_NO_CORRESPONDE',
-            data: { validacionTipo },
+            validacionTipo,
           };
         }
       }

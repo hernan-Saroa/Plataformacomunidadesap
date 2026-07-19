@@ -336,7 +336,7 @@ export function AutogestionDocenteRUND() {
           if (!(up as any)?.success) {
             // HU-06: el backend rechaza archivos de tipo/contenido incorrecto. Se
             // recopila el motivo para avisarle al docente qué soportes no quedaron.
-            const motivo = (up as any)?.error || 'no se pudo validar el archivo';
+            const motivo = (up as any)?.error || (up as any)?.data?.error || 'no se pudo validar el archivo';
             console.warn('[RUND] Falló la carga de un soporte', key, up);
             soportesRechazados.push(`${tipoSoporte}: ${motivo}`);
           }

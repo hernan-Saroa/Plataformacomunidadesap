@@ -19,6 +19,15 @@ export class PlanTrabajoAcademicoEntity {
   @Column({ type: 'text', default: 'BORRADOR' })
   estado: string;
 
+  // OJO: es un contador COMPUESTO — se incrementa tanto en cada devolución/concertación
+  // por componente dentro de un mismo ciclo de aprobación (pta.service.ts:
+  // registrarDevolucionPorConcertacion, aprobarComponente) como al reabrir el PTA para
+  // modificación post-cierre (HU-12, reabrirPtaParaModificacion). NO es un número de
+  // versión "R01/R02" estable: tras varias concertaciones dentro del mismo ciclo puede
+  // superar ampliamente el conteo real de reaperturas formales. Solo es fiable como
+  // "R0X" en el instante justo de la reapertura (ver el toast en PtaBackofficeModule.tsx
+  // que usa ptaReabierto.version recién calculado); no asumir que se mantiene estable
+  // después de eso.
   @Column({ name: 'version', type: 'int', default: 1 })
   version: number;
 

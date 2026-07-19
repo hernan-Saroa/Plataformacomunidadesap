@@ -175,8 +175,13 @@ const REVISION_DOCENTE_STATES = new Set(Object.values(COMPONENT_REVISION_STATE))
 
 // HU-12: estados "cerrados" desde los que se puede solicitar una modificación
 // (reapertura R01→R02). Un PTA en borrador/en revisión no requiere modificación formal.
+// Debe cubrir los mismos estados que habilitan el botón "Solicitar modificación" en
+// PortalDocentePTA.tsx (Aprobado/En Firme/Finalizado/Terminado); si un estado se agrega
+// ahí, agregarlo también aquí para no romper la solicitud con un 400.
 const MODIFIABLE_PTA_STATES = new Set([
   'Aprobado', 'APROBADO',
+  'En Firme', 'EN_FIRME',
+  'Finalizado', 'FINALIZADO',
   'Terminado', 'TERMINADO',
 ]);
 
