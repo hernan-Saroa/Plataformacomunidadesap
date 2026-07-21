@@ -1649,9 +1649,9 @@ function VistaInbox({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Panel Izquierdo: Lista de Comunicaciones */}
       <div className="lg:col-span-2">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden flex flex-col h-[calc(100vh-200px)]">
           {/* Header de lista con selección masiva */}
-          <div className="p-3 border-b bg-gray-50 flex items-center gap-3">
+          <div className="p-3 border-b bg-gray-50 flex items-center gap-3 flex-shrink-0">
             <Checkbox
               checked={seleccionadas.size === comunicaciones.length && comunicaciones.length > 0}
               onCheckedChange={onSeleccionarTodas}
@@ -1662,8 +1662,8 @@ function VistaInbox({
             </div>
           </div>
 
-          {/* Lista de comunicaciones */}
-          <div className="divide-y">
+          {/* Lista de comunicaciones — scroll independiente del panel de detalle */}
+          <div className="divide-y overflow-y-auto overscroll-contain flex-1 min-h-0">
             {comunicaciones.map((com) => (
               <ItemComunicacion
                 key={com.id}
@@ -1690,7 +1690,7 @@ function VistaInbox({
       {/* Panel Derecho: Vista Previa */}
       <div className="lg:col-span-1">
         <Card className="sticky top-4 h-[calc(100vh-200px)]">
-          <div className="overflow-y-auto h-full">
+          <div className="overflow-y-auto overscroll-contain h-full">
             {comunicacionSeleccionada ? (
               <VistaPreviaComunicacion
                 comunicacion={comunicacionSeleccionada}
