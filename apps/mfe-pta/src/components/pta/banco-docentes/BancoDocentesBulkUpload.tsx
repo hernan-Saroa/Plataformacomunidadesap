@@ -108,10 +108,14 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
       }
       
       const stats = response.data || {};
+      const errorCount = Number(stats.errors || 0);
+      const importableCount = Number(stats.created || 0) + Number(stats.updated || 0);
+      const hasImportableRows = importableCount > 0;
       
       setResult({
-        success: stats.errors === 0,
-        has_blocking_errors: stats.errors > 0,
+        success: errorCount === 0 || hasImportableRows,
+        has_blocking_errors: errorCount > 0 && !hasImportableRows,
+        partial_import_available: errorCount > 0 && hasImportableRows,
         errores: stats.errorDetails || [],
         data: stats,
       });
@@ -185,13 +189,14 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
   const updatedDts = 0; // Not used
   const newCetaps = result?.data?.created || 0;
   const updatedCetaps = result?.data?.updated || 0;
+  const importableCetaps = newCetaps + updatedCetaps;
   const identicalDts = 0; // Not used
   const identicalCetaps = result?.data?.unchanged || 0;
 
   const isAllIdentical = totalCetaps > 0 && identicalCetaps === totalCetaps && newCetaps === 0 && updatedCetaps === 0;
   const allDuplicates = totalCetaps > 0 && identicalCetaps === totalCetaps && newCetaps === 0 && updatedCetaps === 0;
 
-  const hasValidToImport = (totalCetaps > 0) && (newCetaps > 0 || updatedCetaps > 0);
+  const hasValidToImport = totalCetaps > 0 && importableCetaps > 0;
   const resultErrors = Array.isArray(result?.errores) ? result.errores : [];
   const duplicateDocumentErrors = resultErrors.filter((err: any) =>
     err && typeof err === 'object' && (err.tipo === 'DUPLICADO_DOCUMENTO' || err.duplicado === true || err.columna === 'DOCUMENTO_IDENTIDAD' && /duplicad|ya existe/i.test(String(err.mensaje || err.message || '')))
@@ -543,7 +548,9 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                       </div>
                       <div>
                         <h3 className="font-bold text-gray-900 text-sm">Validación parcial</h3>
-                        <p className="text-[11px] text-gray-500">{result.errores.length} error(es) encontrados</p>
+                        <p className="text-[11px] text-gray-500">
+                          {result.errores.length} error(es) encontrados. Se importarán solo los {importableCetaps} docente(s) válido(s).
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -557,13 +564,13 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
                           hasValidToImport ? 'bg-amber-500 hover:bg-amber-600' : 'bg-gray-300 cursor-not-allowed'
                         }`}
                       >
-                        Importar válidos ({newCetaps + updatedCetaps})
+                        Importar ahora ({importableCetaps})
                       </button>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-100">
-                      <Check className="w-3 h-3" /> {newCetaps + updatedCetaps} docentes válidos
+                      <Check className="w-3 h-3" /> {importableCetaps} docentes válidos
                     </span>
                     {(result?.data?.errors || 0) > 0 && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-red-600 text-[10px] font-semibold border border-red-100">

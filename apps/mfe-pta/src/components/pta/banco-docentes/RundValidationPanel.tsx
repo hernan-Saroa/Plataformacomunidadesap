@@ -8,6 +8,7 @@ import {
 import { toast } from 'sonner';
 import { apiClient } from '../../../../../shell/src/services/api';
 import { useAuth } from '../../../contexts/AuthContext';
+import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 
 // ============================================================================
@@ -179,17 +180,31 @@ const OBLIG_BADGE: Record<string, { bg: string, text: string, label: string }> =
   'Derivado': { bg: '#F3F4F6', text: '#4B5563', label: 'Automático' }
 };
 
+const formatDateForRund = (value: string | Date): string | null => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('es-CO', { timeZone: 'UTC' });
+};
+
+const cleanRundDisplayText = (value: unknown): string => {
+  return sanitizeText(String(value))
+    .replace(/aÃ±os/g, 'a\u00f1os')
+    .replace(/aÃƒÂ±os/g, 'a\u00f1os')
+    .replace(/mÃ¡s/g, 'm\u00e1s')
+    .replace(/mÃƒÂ¡s/g, 'm\u00e1s');
+};
+
 const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any) => {
   const campos = tarjetaRund?.bloques?.[bloqueId]?.campos || [];
   const lowerLabel = campoLabel.toLowerCase();
 
   const formatValue = (value: any) => {
     if (value === undefined || value === null || value === '') return null;
-    if (value instanceof Date) return value.toLocaleDateString('es-CO');
+    if (value instanceof Date) return formatDateForRund(value);
     if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-CO');
+      return formatDateForRund(value) || cleanRundDisplayText(value);
     }
+    if (typeof value === 'string') return cleanRundDisplayText(value);
     return value;
   };
 
@@ -198,7 +213,7 @@ const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any)
   if (lowerLabel.includes('edad')) {
     const edad = findValue('EDAD');
     const rango = findValue('RANGO_EDAD');
-    return [edad ? `${edad} años` : null, rango].filter(Boolean).join(' / ') || null;
+    return [edad ? `${edad} a\u00f1os` : null, rango].filter(Boolean).join(' / ') || null;
   }
   if (lowerLabel.includes('sexo biol')) return findValue('SEXO_BIOLOGICO');
   if (lowerLabel.includes('inicio / fin')) {
@@ -246,7 +261,7 @@ const getDatoExtraido = (bloqueId: string, campoLabel: string, tarjetaRund: any)
 
   if (keyToFind) {
     const found = campos.find((c: any) => c.campo === keyToFind);
-    return found ? found.valor : null;
+    return found ? formatValue(found.valor) : null;
   }
   return null;
 };
@@ -526,7 +541,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                   { campo: 'NOMBRE_COMPLETO', valor: docenteSnapshot.nombre_completo },
                   { campo: 'GENERO', valor: docenteSnapshot.genero },
                   { campo: 'SEXO_BIOLOGICO', valor: docenteSnapshot.sexo_biologico },
-                  { campo: 'FECHA_NACIMIENTO', valor: docenteSnapshot.nacimiento ? new Date(docenteSnapshot.nacimiento).toLocaleDateString('es-CO') : null },
+                  { campo: 'FECHA_NACIMIENTO', valor: docenteSnapshot.nacimiento ? formatDateForRund(docenteSnapshot.nacimiento) : null },
                   { campo: 'EDAD', valor: docenteSnapshot.edad },
                   { campo: 'RANGO_EDAD', valor: docenteSnapshot.rango_edad },
                 ]
@@ -713,7 +728,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                 { campo: 'NOMBRE_COMPLETO', valor: docenteSnapshot.nombre_completo },
                 { campo: 'GENERO', valor: docenteSnapshot.genero },
                 { campo: 'SEXO_BIOLOGICO', valor: docenteSnapshot.sexo_biologico },
-                { campo: 'FECHA_NACIMIENTO', valor: docenteSnapshot.nacimiento ? new Date(docenteSnapshot.nacimiento).toLocaleDateString('es-CO') : null },
+                { campo: 'FECHA_NACIMIENTO', valor: docenteSnapshot.nacimiento ? formatDateForRund(docenteSnapshot.nacimiento) : null },
                 { campo: 'EDAD', valor: docenteSnapshot.edad },
                 { campo: 'RANGO_EDAD', valor: docenteSnapshot.rango_edad },
               ]

@@ -22,6 +22,7 @@ import {
   escalarConcertacion, enviarAprobacionPTA,
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 interface MesaConcertacionProps {
   ptaId: string;
@@ -351,7 +352,10 @@ export function MesaConcertacion({ ptaId, onBack, userRole = 'direccion', userNa
   const horasBase = pta?.horas_a_programar || 800;
   const isConcertado = pta?.estado === 'CONCERTADO';
   const isEscalado = pta?.estado === 'ESCALADO_SNA';
-  const estadoInfo = pta ? (ESTADO_LABELS[pta.estado] || { label: pta.estado, color: '#4B5563', bg: '#F3F4F6', border: '#E5E7EB' }) : { label: '', color: '#4B5563', bg: '#F3F4F6', border: '#E5E7EB' };
+  const estadoVisual = getPtaStatusVisual(pta?.estado);
+  const estadoInfo = pta
+    ? { ...estadoVisual, label: ESTADO_LABELS[pta.estado]?.label || estadoVisual.label }
+    : { ...estadoVisual, label: '' };
 
   const comparativo = useMemo(() => [
     {
@@ -365,14 +369,10 @@ export function MesaConcertacion({ ptaId, onBack, userRole = 'direccion', userNa
       horasDoc: respuesta.contrapropuesta?.extension ?? (propuesta.horas_extension || 0),
     },
     {
+      // Complementarias incluye la sección Académico-Administrativa (AADM fusionado).
       key: 'complementarias', label: 'Complementarias', icon: Briefcase, color: '#D97706',
       horasDir: propuesta.horas_complementarias || 0,
       horasDoc: pta?.horas_complementarias ?? (propuesta.horas_complementarias || 0),
-    },
-    {
-      key: 'academicas_admin', label: 'Acad. Admin.', icon: Award, color: '#6B21A8',
-      horasDir: propuesta.horas_acad_admin || 0,
-      horasDoc: pta?.horas_acad_admin ?? (propuesta.horas_acad_admin || 0),
     },
   ], [pta, propuesta, respuesta]);
 

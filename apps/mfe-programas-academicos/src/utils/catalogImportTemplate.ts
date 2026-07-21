@@ -89,7 +89,7 @@ export async function downloadCatalogImportTemplate(): Promise<void> {
       'maestria',
       'maestria',
       'Maestría — 12h por crédito',
-      'POSGRADO',
+      'POSGRADO-MAES',
       'Posgrado',
       'presencial',
       12,

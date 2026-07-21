@@ -34,6 +34,7 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import {
   getAllPTAs, getDismissedAlerts, saveDismissedAlerts,
   getReportSchedules, saveReportSchedule, deleteReportSchedule, toggleReportSchedule,
@@ -99,16 +100,15 @@ function generarR02(ptas: any[]): ReporteGenerado {
   const filas = ptas.map(pta => {
     const hBase = pta.horas_a_programar || 800;
     const hDoc = pta.horas_docencia || 0, hInv = pta.horas_investigacion || 0;
+    // horas_complementarias ya incluye la sección académico-administrativa (AADM).
     const hExt = pta.horas_extension || 0, hComp = pta.horas_complementarias || 0;
-    const hAadm = pta.horas_acad_admin || 0;
-    const total = pta.total_horas_programadas || (hDoc + hInv + hExt + hComp + hAadm);
+    const total = pta.total_horas_programadas || (hDoc + hInv + hExt + hComp);
     const pct = hBase > 0 ? ((total / hBase) * 100).toFixed(1) : '0.0';
-    const cumple = hInv <= hBase * 0.5 && hExt <= hBase * 0.25 && hComp <= hBase * 0.25;
+    const cumple = hInv <= hBase * 0.5 && hExt <= hBase * 0.25;
     return {
       documento: pta.cedula || pta.numero_documento || '-', nombre: pta.docente_nombre || 'N/A',
       territorial: pta.territorial || pta.sede || '-', dedicacion: pta.dedicacion || '-',
       h_docencia: hDoc, h_investigacion: hInv, h_extension: hExt, h_complementarias: hComp,
-      h_acad_admin: hAadm,
       total, pct: `${pct}%`, estado: pta.estado || 'Borrador', cumple: cumple ? 'SI' : 'NO',
     };
   });
@@ -120,7 +120,6 @@ function generarR02(ptas: any[]): ReporteGenerado {
       { key: 'territorial', label: 'Territorial' }, { key: 'dedicacion', label: 'Ded.' },
       { key: 'h_docencia', label: 'H.Doc', align: 'center' }, { key: 'h_investigacion', label: 'H.Inv', align: 'center' },
       { key: 'h_extension', label: 'H.Ext', align: 'center' }, { key: 'h_complementarias', label: 'H.Comp', align: 'center' },
-      { key: 'h_acad_admin', label: 'H.AADM', align: 'center' },
       { key: 'total', label: 'Total', align: 'center' }, { key: 'pct', label: '%', align: 'center' },
       { key: 'estado', label: 'Estado' }, { key: 'cumple', label: 'Cumple', align: 'center' },
     ],
@@ -128,7 +127,6 @@ function generarR02(ptas: any[]): ReporteGenerado {
     totales: {
       h_docencia: filas.reduce((s, f) => s + f.h_docencia, 0), h_investigacion: filas.reduce((s, f) => s + f.h_investigacion, 0),
       h_extension: filas.reduce((s, f) => s + f.h_extension, 0), h_complementarias: filas.reduce((s, f) => s + f.h_complementarias, 0),
-      h_acad_admin: filas.reduce((s, f) => s + f.h_acad_admin, 0),
       total: filas.reduce((s, f) => s + f.total, 0),
     },
   };
@@ -176,16 +174,15 @@ function generarR04(ptas: any[]): ReporteGenerado {
   const tDoc = p.reduce((s, x) => s + (x.horas_docencia || 0), 0);
   const tInv = p.reduce((s, x) => s + (x.horas_investigacion || 0), 0);
   const tExt = p.reduce((s, x) => s + (x.horas_extension || 0), 0);
+  // horas_complementarias ya incluye la sección académico-administrativa (AADM).
   const tCom = p.reduce((s, x) => s + (x.horas_complementarias || 0), 0);
-  const tAadm = p.reduce((s, x) => s + (x.horas_acad_admin || 0), 0);
-  const tot = tDoc + tInv + tExt + tCom + tAadm; const n = p.length || 1;
+  const tot = tDoc + tInv + tExt + tCom; const n = p.length || 1;
   const pf = (v: number) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '0%';
   const filas = [
     { componente: 'Docencia', total_horas: tDoc, porcentaje: pf(tDoc), promedio: Math.round(tDoc / n), maximo: 'Sin limite' },
     { componente: 'Investigacion', total_horas: tInv, porcentaje: pf(tInv), promedio: Math.round(tInv / n), maximo: '50%' },
     { componente: 'Extension', total_horas: tExt, porcentaje: pf(tExt), promedio: Math.round(tExt / n), maximo: '25%' },
     { componente: 'Complementarias', total_horas: tCom, porcentaje: pf(tCom), promedio: Math.round(tCom / n), maximo: '25%' },
-    { componente: 'Acad. Admin.', total_horas: tAadm, porcentaje: pf(tAadm), promedio: Math.round(tAadm / n), maximo: 'Sin limite' },
   ];
   return {
     titulo: 'R-04: Distribucion de Horas por Componente',
@@ -200,7 +197,6 @@ function generarR04(ptas: any[]): ReporteGenerado {
     chartData: [
       { name: 'Docencia', value: tDoc }, { name: 'Investigacion', value: tInv },
       { name: 'Extension', value: tExt }, { name: 'Complementarias', value: tCom },
-      { name: 'Acad. Admin.', value: tAadm },
     ],
     chartType: 'pie',
   };
@@ -609,12 +605,15 @@ function generarR15(ptas: any[]): ReporteGenerado {
   const filas = ptas.map(p => {
     const hBase = p.horas_a_programar || 800;
     const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
+    // horas_complementarias es el total unificado (incl. AADM); el tope del 25% aplica
+    // solo a la sección "complementarias a la docencia".
     const hExt = p.horas_extension || 0, hComp = p.horas_complementarias || 0;
-    const hAadm = p.horas_acad_admin || 0;
-    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp + hAadm);
+    const hAadm = p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0);
+    const hCompDoc = p.complementarias_secciones?.complementarias_docencia ?? Math.max(0, hComp - hAadm);
+    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp);
     const pctInv = hBase > 0 ? (hInv / hBase) * 100 : 0;
     const pctExt = hBase > 0 ? (hExt / hBase) * 100 : 0;
-    const pctComp = hBase > 0 ? (hComp / hBase) * 100 : 0;
+    const pctComp = hBase > 0 ? (hCompDoc / hBase) * 100 : 0;
     const pctTotal = hBase > 0 ? (total / hBase) * 100 : 0;
     const invOk = pctInv <= 50, extOk = pctExt <= 25, compOk = pctComp <= 25;
     const totalOk = pctTotal >= 95 && pctTotal <= 105;
@@ -688,8 +687,8 @@ function generarEXP01_SIIF(ptas: any[]) {
       { comp: 'DOC', horas: p.horas_docencia || 0 },
       { comp: 'INV', horas: p.horas_investigacion || 0 },
       { comp: 'EXT', horas: p.horas_extension || 0 },
-      { comp: 'COMP', horas: p.horas_complementarias || 0 },
-      { comp: 'AADM', horas: p.horas_acad_admin || 0 },
+      { comp: 'COMP', horas: p.complementarias_secciones?.complementarias_docencia ?? (p.horas_complementarias || 0) },
+      { comp: 'AADM', horas: p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0) },
     ];
     const principal = comps.reduce((a, b) => a.horas >= b.horas ? a : b);
     lines.push([
@@ -726,7 +725,9 @@ function generarEXP03_Nomina(ptas: any[]) {
       `"${p.cedula || p.numero_documento || ''}"`,
       `"${(p.docente_nombre || '').replace(/"/g, '""')}"`,
       `"${p.territorial || ''}"`, `"${p.dedicacion || ''}"`, `"${p.categoria_escalafon || ''}"`,
-      p.horas_docencia || 0, p.horas_investigacion || 0, p.horas_extension || 0, p.horas_complementarias || 0, p.horas_acad_admin || 0,
+      p.horas_docencia || 0, p.horas_investigacion || 0, p.horas_extension || 0,
+      p.complementarias_secciones?.complementarias_docencia ?? (p.horas_complementarias || 0),
+      p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0),
       total, base > 0 ? `${((total / base) * 100).toFixed(1)}%` : '0%',
       `"Aprobado"`,
       `"${p.updated_at ? new Date(p.updated_at).toISOString().slice(0, 10) : ''}"`,
@@ -771,9 +772,12 @@ function generarEXP02_XML(ptas: any[]) {
 
   aprobados.forEach((p, idx) => {
     const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
-    const hExt = p.horas_extension || 0, hComp = p.horas_complementarias || 0;
-    const hAadm = p.horas_acad_admin || 0;
-    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp + hAadm);
+    const hExt = p.horas_extension || 0;
+    // Complementarias unificado; el XML conserva el desglose por sección (no solapado).
+    const hCompTotal = p.horas_complementarias || 0;
+    const hAadm = p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0);
+    const hComp = p.complementarias_secciones?.complementarias_docencia ?? Math.max(0, hCompTotal - hAadm);
+    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hCompTotal);
     const base = p.horas_a_programar || 800;
     xmlLines.push(`    <PTA secuencia="${idx + 1}">`);
     xmlLines.push(`      <Identificacion>`);
@@ -823,8 +827,9 @@ function generarEXP02_XML(ptas: any[]) {
   const totalDoc = aprobados.reduce((s, p) => s + (p.horas_docencia || 0), 0);
   const totalInv = aprobados.reduce((s, p) => s + (p.horas_investigacion || 0), 0);
   const totalExt = aprobados.reduce((s, p) => s + (p.horas_extension || 0), 0);
-  const totalComp = aprobados.reduce((s, p) => s + (p.horas_complementarias || 0), 0);
-  const totalAadm = aprobados.reduce((s, p) => s + (p.horas_acad_admin || 0), 0);
+  const totalAadm = aprobados.reduce((s, p) => s + (p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0)), 0);
+  // Complementarias del XML = solo sección "a la docencia" (no solapa con AADM).
+  const totalComp = aprobados.reduce((s, p) => s + (p.complementarias_secciones?.complementarias_docencia ?? Math.max(0, (p.horas_complementarias || 0) - (p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0)))), 0);
   xmlLines.push(`    <TotalDocentes>${aprobados.length}</TotalDocentes>`);
   xmlLines.push(`    <TotalHorasProgramadas>${totalH}</TotalHorasProgramadas>`);
   xmlLines.push(`    <HorasDocencia>${totalDoc}</HorasDocencia>`);
@@ -1812,14 +1817,15 @@ export function CentroReportesPTA() {
                                 color: col.key === 'urgencia' && row[col.key] === 'CRITICA' ? '#DC2626'
                                   : col.key === 'urgencia' && row[col.key] === 'ALTA' ? '#EA580C'
                                   : col.key === 'cumple' && row[col.key] === 'NO' ? '#DC2626'
-                                  : col.key === 'estado' && row[col.key] === 'Aprobado' ? '#059669' : '#374151',
+                                  : col.key === 'estado' ? getPtaStatusVisual(row[col.key]).color : '#374151',
                                 fontWeight: col.key === 'urgencia' || col.key === 'total' ? 700 : 400,
                               }}>
                                 {col.key === 'estado' ? (
                                   <span style={{
                                     padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600,
-                                    background: row[col.key] === 'Aprobado' ? '#D1FAE5' : row[col.key]?.includes?.('Pendiente') ? '#FEF3C7' : '#F3F4F6',
-                                    color: row[col.key] === 'Aprobado' ? '#065F46' : row[col.key]?.includes?.('Pendiente') ? '#92400E' : '#6B7280',
+                                    background: getPtaStatusVisual(row[col.key]).bg,
+                                    color: getPtaStatusVisual(row[col.key]).color,
+                                    border: `1px solid ${getPtaStatusVisual(row[col.key]).border}`,
                                   }}>{row[col.key]}</span>
                                 ) : col.key === 'urgencia' ? (
                                   <span style={{
@@ -2225,8 +2231,9 @@ export function CentroReportesPTA() {
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <span style={{
                       padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 600,
-                      background: pta.estado === 'Aprobado' ? '#D1FAE5' : '#F3F4F6',
-                      color: pta.estado === 'Aprobado' ? '#065F46' : '#6B7280',
+                      background: getPtaStatusVisual(pta.estado || 'Borrador').bg,
+                      color: getPtaStatusVisual(pta.estado || 'Borrador').color,
+                      border: `1px solid ${getPtaStatusVisual(pta.estado || 'Borrador').border}`,
                     }}>{pta.estado || 'Borrador'}</span>
                     <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 2 }}>{pta.total_horas_programadas || 0}h</div>
                   </div>

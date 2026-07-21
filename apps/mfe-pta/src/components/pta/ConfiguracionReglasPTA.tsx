@@ -31,12 +31,17 @@ import { TabGenerales } from "./config-tabs/TabGenerales";
 // Ítem dentro de una actividad de extensión (etapa)
 export interface ExtItem {
   nombre: string;
-  tipo: 'fija' | 'por_unidad' | 'hasta' | 'intervalo';
+  tipo: 'fija' | 'por_unidad' | 'hasta' | 'intervalo' | 'porcentaje';
   horas: number;
   horas_min?: number;   // minimum hours (used when tipo='intervalo')
+  porcentaje_pta?: number;
   max_unidades?: number;
   unidad?: string;
   col_valores?: Record<string, string[]>;
+  // Encadenamiento en escalera de las columnas de detalle (posteriores a _items_):
+  // col_parents[col][i] = índice del valor padre en la columna de detalle ANTERIOR.
+  // Ausente → emparejamiento legacy por orden (valor i cuelga del padre i).
+  col_parents?: Record<string, number[]>;
   parent_col_idx?: number; // index of the first-column value this item belongs to
 }
 
@@ -210,7 +215,17 @@ export interface PTARules {
   inv_actividades: Array<{ id: string; nombre: string; horas_max: number }>;
 
   // Secciones de Extensión (configurables)
-  ext_secciones: Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number; columnas?: string[] }>;
+  ext_secciones: Array<{
+    key: string;
+    label: string;
+    color: string;
+    orden: number;
+    multiplicador?: number;
+    columnas?: string[];
+    columna_raiz_nombre?: string;
+    columna_raiz_habilitada?: boolean;
+    columna_items_nombre?: string;
+  }>;
   // Actividades de Extensión por sección (configurables)
   // Si la actividad tiene 'items', es una ETAPA jerárquica (con ítems fijos o por unidad).
   // Si no tiene 'items', es una actividad plana (backward-compatible) con max_horas.
@@ -222,34 +237,48 @@ export interface PTARules {
     evidencias?: string[]; // backward-compat: evidencias requeridas
     columnas?: Array<{ nombre: string; valores: string[] }>; // backward-compat: per-activity columns
     columnas_valores?: Record<string, string[]>; // valores por columna (columnas definidas en ext_secciones)
-    columnas_meta?: Record<string, Array<{ tipo?: string; horas?: number; horas_en?: string }>>; // metadata (tipo/horas) per column value — applies to 1st column
+    columnas_meta?: Record<string, Array<{ tipo?: string; horas?: number; horas_min?: number; horas_en?: string; porcentaje_pta?: number }>>; // metadata (tipo/horas) per column value — applies to 1st column
     horas_en_etapa?: boolean;  // true = horas assigned directly on the etapa, false = distributed in items/columns below
+    tipo?: string;        // tipo de horas del bloque cuando la estructura es solo columna raíz (fija|hasta|intervalo)
     max_horas?: number;   // tope total opcional (o valor directo para actividades planas)
     min_horas?: number;   // valor mínimo para actividades planas (backward-compat)
+    porcentaje_pta?: number;
   }>>;
 
   // Actividades Complementarias — LEGACY (backward-compat, no borrar)
-  comp_actividades: Array<{ id: string; nombre: string; max_horas: number | null; min_horas?: number; tipo?: string; seccion: string; consumeTotalidad?: boolean }>;
+  comp_actividades: Array<{ id: string; nombre: string; max_horas: number | null; min_horas?: number; tipo?: string; seccion: string; consumeTotalidad?: boolean; porcentaje_pta?: number }>;
   comp_tipos?: Record<string, { tipo: string; min_horas?: number }>;
   comp_secciones_custom?: Array<{ id: string; label: string; color: string }>;
   comp_secciones_deleted?: string[];
 
   // Actividades Complementarias — NUEVO (misma arquitectura que Extensión)
-  comp_secciones: Array<{ key: string; label: string; color: string; orden: number; multiplicador?: number; columnas?: string[] }>;
+  comp_secciones: Array<{
+    key: string;
+    label: string;
+    color: string;
+    orden: number;
+    multiplicador?: number;
+    columnas?: string[];
+    columna_raiz_nombre?: string;
+    columna_raiz_habilitada?: boolean;
+    columna_items_nombre?: string;
+  }>;
   comp_actividades_v2: Record<string, Array<{
     id: string;
     nombre: string;
     items?: ExtItem[];
     columnas_valores?: Record<string, string[]>;
-    columnas_meta?: Record<string, Array<{ tipo?: string; horas?: number; horas_en?: string }>>;
+    columnas_meta?: Record<string, Array<{ tipo?: string; horas?: number; horas_min?: number; horas_en?: string; porcentaje_pta?: number }>>;
     horas_en_etapa?: boolean;
+    tipo?: string;        // tipo de horas del bloque cuando la estructura es solo columna raíz (fija|hasta|intervalo)
     max_horas?: number;
     min_horas?: number;
+    porcentaje_pta?: number;
     consumeTotalidad?: boolean;
   }>>;
 
   // Actividades Académico-Administrativas (configurables)
-  aadm_actividades: Array<{ id: string; nombre: string; max_horas: number | null; consumeTotalidad: boolean }>;
+  aadm_actividades: Array<{ id: string; nombre: string; max_horas: number | null; consumeTotalidad: boolean; tipo?: string; porcentaje_pta?: number }>;
 }
 
 export const defaultPTARules: PTARules = {
@@ -793,6 +822,9 @@ function normalizeFixedExtSecciones(saved: any): PTARules['ext_secciones'] {
       ...sec,
       color: previous?.color || sec.color,
       columnas: Array.isArray(previous?.columnas) ? previous?.columnas : sec.columnas,
+      columna_raiz_nombre: previous?.columna_raiz_nombre || sec.columna_raiz_nombre || 'Componente',
+      columna_raiz_habilitada: previous?.columna_raiz_habilitada ?? sec.columna_raiz_habilitada ?? true,
+      columna_items_nombre: previous?.columna_items_nombre || sec.columna_items_nombre || 'Actividad / Ítem',
       // El multiplicador (×Factor) lo edita el admin y debe persistir; el fijo es solo default.
       multiplicador: Number.isFinite(savedMult) && savedMult > 0 ? savedMult : sec.multiplicador,
     };
@@ -812,6 +844,9 @@ function normalizeFixedCompSecciones(saved: any): PTARules['comp_secciones'] {
       ...sec,
       color: previous?.color || sec.color,
       columnas: Array.isArray(previous?.columnas) ? previous?.columnas : sec.columnas,
+      columna_raiz_nombre: previous?.columna_raiz_nombre || sec.columna_raiz_nombre || 'Componente',
+      columna_raiz_habilitada: previous?.columna_raiz_habilitada ?? sec.columna_raiz_habilitada ?? true,
+      columna_items_nombre: previous?.columna_items_nombre || sec.columna_items_nombre || 'Actividad / Ítem',
     };
   });
 }
@@ -875,10 +910,13 @@ function aadmToCompActividadV2(activity: PTARules['aadm_actividades'][number]): 
     nombre: activity.nombre,
     max_horas: activity.max_horas ?? undefined,
     consumeTotalidad: activity.consumeTotalidad,
+    tipo: activity.tipo,
+    porcentaje_pta: activity.porcentaje_pta,
     items: [{
       nombre: activity.nombre,
-      tipo: activity.consumeTotalidad ? 'fija' : 'hasta',
+      tipo: (activity.tipo || (activity.consumeTotalidad ? 'fija' : 'hasta')) as ExtItem['tipo'],
       horas: activity.max_horas ?? 0,
+      porcentaje_pta: activity.porcentaje_pta,
     }],
   };
 }
@@ -891,12 +929,15 @@ function legacyComplementariaToV2(activity: PTARules['comp_actividades'][number]
     nombre: activity.nombre,
     max_horas: activity.max_horas ?? undefined,
     min_horas: activity.min_horas,
+    tipo,
+    porcentaje_pta: activity.porcentaje_pta,
     consumeTotalidad: activity.consumeTotalidad,
     items: [{
       nombre: activity.nombre,
       tipo: tipo as ExtItem['tipo'],
       horas: Number(maxHoras) || 0,
       horas_min: activity.min_horas,
+      porcentaje_pta: activity.porcentaje_pta,
     }],
   };
 }
@@ -988,7 +1029,8 @@ function syncLegacyComplementariasFromV2(v2: PTARules['comp_actividades_v2']): P
     nombre: activity.nombre,
     max_horas: activityMaxHoursFromV2(activity),
     min_horas: activity.min_horas,
-    tipo: activity.items?.[0]?.tipo,
+    tipo: activity.tipo ?? activity.items?.[0]?.tipo,
+    porcentaje_pta: activity.porcentaje_pta ?? activity.items?.[0]?.porcentaje_pta,
     seccion: 'ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA',
     consumeTotalidad: activity.consumeTotalidad,
   }));
@@ -999,7 +1041,12 @@ function syncLegacyAadmFromV2(v2: PTARules['comp_actividades_v2']): PTARules['aa
     id: activity.id,
     nombre: activity.nombre,
     max_horas: activityMaxHoursFromV2(activity),
-    consumeTotalidad: Boolean(activity.consumeTotalidad),
+    tipo: activity.tipo ?? activity.items?.[0]?.tipo,
+    porcentaje_pta: activity.porcentaje_pta ?? activity.items?.[0]?.porcentaje_pta,
+    consumeTotalidad: Boolean(activity.consumeTotalidad) || (
+      (activity.tipo ?? activity.items?.[0]?.tipo) === 'porcentaje' &&
+      Math.min(100, Math.max(1, Number(activity.porcentaje_pta ?? activity.items?.[0]?.porcentaje_pta) || 1)) === 100
+    ),
   }));
 }
 

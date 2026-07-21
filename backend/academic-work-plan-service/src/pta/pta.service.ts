@@ -22,6 +22,7 @@ import { COMPONENT_PERMISSION } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 
 type SavePtaInput = Record<string, any>;
+type ComponentResponseMap = Record<string, string>;
 
 function coalesceString(...values: unknown[]): string | null {
   for (const value of values) {
@@ -81,6 +82,7 @@ function getGroupedPtaEstados(value: unknown): string[] | null {
 
   if (key === 'SNA') return ['ESCALADO_SNA', 'Escalado SNA'];
   if (key === 'APROBADO' || key === 'APROBADOS') return ['Aprobado', 'APROBADO'];
+  if (key === 'FINALIZADO' || key === 'FINALIZADOS') return ['Finalizado', 'FINALIZADO'];
   if (key === 'SEGUIMIENTO') return ['En Firme', 'EN_FIRME', 'RADICADO', 'EN_EJECUCION', 'EN_EJECUCI\u00d3N'];
 
   return null;
@@ -108,7 +110,17 @@ const COMPONENT_APPROVAL_KEYS = [
   'ext_fortalecimiento',
   'ext_gobierno',
   'complementarias',
-  'academicas_admin',
+];
+
+// AADM se fusionó dentro de 'complementarias' (sección academico_administrativas).
+// Se conserva la clave legacy solo para poder limpiar filas viejas de aprobación.
+const LEGACY_COMPONENT_APPROVAL_KEYS = ['academicas_admin'];
+
+// Secciones fijas de Complementarias (espejo de ConfiguracionReglasPTA.tsx FIXED_COMP_SECCIONES).
+// Se usan como default del catálogo agrupado cuando la config no trae comp_secciones.
+const FIXED_COMP_SECCIONES = [
+  { key: 'complementarias_docencia', label: 'ACTIVIDADES COMPLEMENTARIAS A LA DOCENCIA', color: '#D97706', orden: 1, multiplicador: 1, columnas: ['_items_'] },
+  { key: 'academico_administrativas', label: 'ACTIVIDADES ACADÉMICO-ADMINISTRATIVAS', color: '#2563EB', orden: 2, multiplicador: 1, columnas: ['_items_'] },
 ];
 
 const COMPONENT_APPROVAL_KEY_SET = new Set(COMPONENT_APPROVAL_KEYS);
@@ -130,8 +142,11 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
   ext_procesos: 'REVISION_DOCENTE_N2',
   ext_fortalecimiento: 'REVISION_DOCENTE_N2',
   ext_gobierno: 'REVISION_DOCENTE_N2',
-  academicas_admin: 'REVISION_DOCENTE_N3',
 };
+
+// Estados que indican devolución PARCIAL (uno o más componentes devueltos, el resto
+// puede seguir aprobado) — a diferencia del estado legacy 'Devuelto' (todo el PTA).
+const REVISION_DOCENTE_STATES = new Set(Object.values(COMPONENT_REVISION_STATE));
 
 type ExtensionCatalogActivity = {
   id: string;
@@ -159,6 +174,101 @@ function normalizeExtensionSectionKey(section: unknown): string {
   return EXTENSION_SECTION_ALIASES[key] || 'fortalecimiento';
 }
 
+const EXTENSION_ITEMS_COLUMN_KEY = '_items_';
+
+function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[] {
+  if (!detailColumns.length) return [];
+  const primaryColumn = detailColumns[0];
+  const primaryValues = Array.isArray(item?.col_valores?.[primaryColumn])
+    ? item.col_valores[primaryColumn]
+    : [];
+  const groups = primaryValues.map((value: any) => {
+    const name = String(value || '').trim();
+    return name ? { name, values: [] as Array<{ column: string; value: string }> } : null;
+  });
+
+  for (let columnIndex = 1; columnIndex < detailColumns.length; columnIndex += 1) {
+    const column = detailColumns[columnIndex];
+    const values = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+    const parentIndexes = Array.isArray(item?.col_parents?.[column]) ? item.col_parents[column] : [];
+    values.forEach((rawValue: any, valueIndex: number) => {
+      const value = String(rawValue || '').trim();
+      if (!value) return;
+      let primaryIndex = Number(parentIndexes[valueIndex] ?? valueIndex);
+      for (let parentColumnIndex = columnIndex - 1; parentColumnIndex > 0; parentColumnIndex -= 1) {
+        const parentColumn = detailColumns[parentColumnIndex];
+        const ancestors = Array.isArray(item?.col_parents?.[parentColumn]) ? item.col_parents[parentColumn] : [];
+        primaryIndex = Number(ancestors[primaryIndex] ?? primaryIndex);
+      }
+      if (!Number.isInteger(primaryIndex) || primaryIndex < 0 || primaryIndex >= groups.length) return;
+      groups[primaryIndex]?.values.push({ column, value });
+    });
+  }
+  return groups.filter((group): group is NonNullable<typeof group> => Boolean(group));
+}
+
+function getExtensionCatalogHourRows(activity: any, section: any): any[] {
+  const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
+  if (columns && columns.length > 0 && columns[0] !== EXTENSION_ITEMS_COLUMN_KEY) {
+    const controllingColumn = columns[0];
+    const itemsPosition = columns.indexOf(EXTENSION_ITEMS_COLUMN_KEY);
+    const detailColumns = itemsPosition >= 0 ? columns.slice(itemsPosition + 1) : [];
+    const values = Array.isArray(activity?.columnas_valores?.[controllingColumn])
+      ? activity.columnas_valores[controllingColumn]
+      : [];
+    const metadata = Array.isArray(activity?.columnas_meta?.[controllingColumn])
+      ? activity.columnas_meta[controllingColumn]
+      : [];
+    const items = Array.isArray(activity?.items) ? activity.items : [];
+    const rows: any[] = [];
+    const rowCount = Math.max(values.length, metadata.length);
+    const decorateItem = (item: any) => ({
+      ...item,
+      _detailValues: detailColumns.flatMap((column: string) => {
+        const columnValues = Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [];
+        return columnValues
+          .filter((value: any) => String(value || '').trim())
+          .map((value: any) => ({ column, value: String(value) }));
+      }),
+    });
+    for (let index = 0; index < rowCount; index += 1) {
+      const meta = metadata[index] || {};
+      const rowName = String(values[index] || meta?.nombre || `Fila ${index + 1}`);
+      const childItems = items
+        .filter((item: any) => Number(item?.parent_col_idx ?? 0) === index)
+        .map(decorateItem);
+      if (String(meta?.horas_en || 'linea') === 'actividad') {
+        childItems.forEach((item: any) => rows.push({
+          ...item,
+          nombre: `${rowName} — ${String(item?.nombre || 'Actividad')}`,
+          _detailGroups: [{ name: String(item?.nombre || 'Actividad'), values: item._detailValues || [] }],
+        }));
+      } else {
+        rows.push({
+          ...meta,
+          nombre: rowName,
+          _detailGroups: childItems.map((item: any) => ({
+            name: String(item?.nombre || 'Actividad'),
+            values: item._detailValues || [],
+          })),
+        });
+      }
+    }
+    return rows;
+  }
+  if (columns && columns.length === 0) return [];
+  if (Array.isArray(activity?.items)) {
+    const detailColumns = columns && columns[0] === EXTENSION_ITEMS_COLUMN_KEY
+      ? columns.slice(1)
+      : [];
+    return activity.items.map((item: any) => ({
+      ...item,
+      _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+    }));
+  }
+  return [];
+}
+
 function normalizeExtensionSections(raw: any): any[] {
   const savedByKey = new Map<string, any>();
   if (Array.isArray(raw)) {
@@ -175,6 +285,9 @@ function normalizeExtensionSections(raw: any): any[] {
       ...section,
       color: previous?.color || section.color,
       columnas: Array.isArray(previous?.columnas) ? previous.columnas : (section as any).columnas,
+      columna_raiz_nombre: previous?.columna_raiz_nombre || (section as any).columna_raiz_nombre || 'Componente',
+      columna_raiz_habilitada: previous?.columna_raiz_habilitada ?? (section as any).columna_raiz_habilitada ?? true,
+      columna_items_nombre: previous?.columna_items_nombre || (section as any).columna_items_nombre || 'Actividad / Ítem',
       // El multiplicador (×Factor) es configurable por el admin y debe persistir en guardado/lectura.
       multiplicador: Number.isFinite(savedMult) && savedMult > 0 ? savedMult : section.multiplicador,
     };
@@ -188,10 +301,20 @@ function canonicalizeExtensionActivities(raw: any): Record<string, any[]> {
   for (const [sectionKey, value] of Object.entries(source)) {
     if (!Array.isArray(value)) continue;
     const targetKey = normalizeExtensionSectionKey(sectionKey);
-    result[targetKey] = [
-      ...(result[targetKey] || []),
-      ...value.map((act: any) => ({ ...act })),
-    ];
+    const bucket = result[targetKey] || (result[targetKey] = []);
+    // De-duplicar por id al fusionar: varias claves/alias legacy (p.ej.
+    // laboratorio_innovacion, investigacion_aplicada → fortalecimiento) pueden
+    // aportar la MISMA actividad, dejando ids repetidos (LAB_12, etc.) que rompían
+    // el dropdown (React keys duplicadas) y la selección. Se conserva la primera.
+    const seen = new Set(
+      bucket.map((a: any) => String(a?.id ?? '')).filter(Boolean),
+    );
+    for (const act of value) {
+      const id = String(act?.id ?? '');
+      if (id && seen.has(id)) continue;
+      if (id) seen.add(id);
+      bucket.push({ ...act });
+    }
   }
 
   return result;
@@ -241,6 +364,10 @@ function componentKeyForExtensionSection(section: unknown): string {
 
 function isPendingRoleApprovalState(estado?: string | null): boolean {
   return PENDING_ROLE_APPROVAL_STATES.has(normalizeEstadoFilter(estado));
+}
+
+function isDraftPtaState(estado?: string | null): boolean {
+  return normalizeEstadoFilter(estado) === 'BORRADOR';
 }
 
 function pendingApprovalState(estado?: string | null): string {
@@ -599,6 +726,36 @@ export class PtaService {
     return m > 0 ? m : 1;
   }
 
+  // Normaliza la clave de sección de una actividad complementaria. AADM ahora es
+  // la sección 'academico_administrativas' dentro de complementarias.
+  private normalizeCompSeccion(seccion: unknown, item?: any): 'complementarias_docencia' | 'academico_administrativas' {
+    const s = String(seccion || '');
+    if (s === 'academico_administrativas' || s === 'complementarias_docencia') return s;
+    // Heurística legacy: un ítem que vivía en academico_admin trae consumeTotalidad definido.
+    if (item && item.consumeTotalidad !== undefined && s === '') return 'academico_administrativas';
+    return 'complementarias_docencia';
+  }
+
+  // Lee complementarias separando por sección y fusionando cualquier array legacy
+  // `academico_admin` (PTAs no migrados o saves en tránsito). Mantiene separadas las
+  // dos sumas para que el prorrateo/topes por sección no se mezclen.
+  private readComplementariasSecciones(ds: any): { all: any[]; docencia: any[]; aadm: any[] } {
+    const comp = Array.isArray(ds?.complementarias) ? ds.complementarias : [];
+    const legacyAadm = Array.isArray(ds?.academico_admin) ? ds.academico_admin : [];
+    const tagged = [
+      ...comp.map((a: any) => ({ ...a, seccion: this.normalizeCompSeccion(a?.seccion, a) })),
+      // Fusiona el array legacy academico_admin evitando duplicar lo ya migrado a complementarias.
+      ...legacyAadm
+        .filter((a: any) => !comp.some((c: any) =>
+          (c?.actividad_id ?? c?.id) === (a?.actividad_id ?? a?.id) &&
+          this.normalizeCompSeccion(c?.seccion, c) === 'academico_administrativas'))
+        .map((a: any) => ({ ...a, seccion: 'academico_administrativas' as const })),
+    ];
+    const docencia = tagged.filter(a => a.seccion !== 'academico_administrativas');
+    const aadm = tagged.filter(a => a.seccion === 'academico_administrativas');
+    return { all: tagged, docencia, aadm };
+  }
+
   private computeHorasTotales(body: any, extMult: Record<string, number> = { capacitacion: 2 }) {
     const asignaturas = Array.isArray(body?.asignaturas) ? body.asignaturas : [];
     const sumDocencia = asignaturas.reduce((sum: number, a: any) => sum + Number(a?.total_horas ?? a?.horas ?? 0), 0);
@@ -620,11 +777,29 @@ export class PtaService {
     });
     const sumExt = extActs.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
-    const comp = Array.isArray(body?.complementarias) ? body.complementarias : [];
-    const sumComp = comp.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
+    // Complementarias = una sola colección con dos secciones. Las horas se separan
+    // por sección para conservar reglas/topes/prorrateo distintos.
+    const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(body);
+    const sumComp = compDocencia.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
+    const sumAcad = compAadm.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
 
-    const acad = Array.isArray(body?.academico_admin) ? body.academico_admin : [];
-    const sumAcad = acad.reduce((sum: number, a: any) => sum + Number(a?.horas || 0), 0);
+    // Una actividad académico-administrativa de dedicación exclusiva sustituye la
+    // bolsa conjunta de Investigación, Extensión y Complementarias. Docencia conserva
+    // su cálculo independiente y puede generar horas adicionales/prorrateo.
+    const exclusiveActivities = compAadm.filter((activity: any) => activity?.consumeTotalidad === true);
+    if (exclusiveActivities.length > 0) {
+      const exclusiveHours = Math.max(
+        ...exclusiveActivities.map((activity: any) => Number(activity?.horas) || 0),
+      );
+      return {
+        sumDocencia,
+        sumInv: 0,
+        sumExt: 0,
+        sumComp: 0,
+        sumAcad: exclusiveHours,
+        total: sumDocencia + exclusiveHours,
+      };
+    }
 
     const total = sumDocencia + sumInv + sumExt + sumComp + sumAcad;
     return { sumDocencia, sumInv, sumExt, sumComp, sumAcad, total };
@@ -703,6 +878,11 @@ export class PtaService {
     return Number.isFinite(value) ? value : fallback;
   }
 
+  private getPositiveRuleNumber(rules: any, key: string, fallback: number): number {
+    const value = Number(rules?.[key]);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
   private getInvestigacionLimit(body: any, rules: any, horasAProgramar: number): number {
     const rolRaw = coalesceString(body?.investigacion_proyecto?.rol);
     if (!rolRaw) {
@@ -736,22 +916,152 @@ export class PtaService {
   }
 
   private validatePtaForSubmission(body: any, horas: ReturnType<PtaService['computeHorasTotales']>, horasAProgramar: number, rules: any) {
-    const tieneTotalidad = Array.isArray(body?.academico_admin) &&
-      body.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+    const { all: allComp, aadm: compAadm } = this.readComplementariasSecciones(body);
+    const tieneTotalidad = compAadm.some((a: any) => a?.consumeTotalidad === true);
+
+    // Las reglas porcentuales son autoritativas también en servidor. El frontend
+    // calcula el valor para facilitar la edición, pero una petición no puede enviar
+    // una cantidad distinta al porcentaje configurado sobre las horas reales del PTA.
+    const expectedPercentageHours = (activity: any): number | null => {
+      if (String(activity?.tipo || '').toLowerCase() !== 'porcentaje') return null;
+      const percentage = Math.min(100, Math.max(1, Number(activity?.porcentaje_pta) || 1));
+      return Math.round(horasAProgramar * percentage / 100);
+    };
+    const assertPercentageHours = (label: string, submitted: any, configured: any) => {
+      const expected = expectedPercentageHours(configured);
+      if (expected === null) return;
+      const actual = Number(submitted) || 0;
+      if (actual !== expected) {
+        const percentage = Math.min(100, Math.max(1, Number(configured?.porcentaje_pta) || 1));
+        throw new BadRequestException(
+          `La actividad ${label} corresponde al ${percentage}% del PTA y debe registrar ${expected}h.`,
+        );
+      }
+    };
+
+    const extCatalog = rules?.ext_actividades && typeof rules.ext_actividades === 'object'
+      ? rules.ext_actividades
+      : {};
+    const extensionSections = normalizeExtensionSections(rules?.ext_secciones);
+    const extensionComponentLimit = Math.min(
+      this.getPositiveRuleNumber(
+        rules,
+        'max_horas_extension_global',
+        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+      ),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
+    );
+    const configuredRowHours = (row: any): number => {
+      const type = String(row?.tipo || 'fija').toLowerCase();
+      if (type === 'porcentaje') return expectedPercentageHours(row) || 0;
+      if (type === 'fija') return Math.max(0, Number(row?.horas) || 0);
+      if (type === 'intervalo') return Math.max(0, Number(row?.min ?? row?.horas_min) || 0);
+      return 0;
+    };
+    for (const activity of (tieneTotalidad ? [] : (Array.isArray(body?.extension_actividades) ? body.extension_actividades : []))) {
+      const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+      const configured = (Array.isArray(extCatalog?.[sectionKey]) ? extCatalog[sectionKey] : [])
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        assertPercentageHours(configured?.nombre || activity?.nombre || 'de extensión', activity?.horas, configured);
+        const section = extensionSections.find((item: any) => item?.key === sectionKey);
+        const allConfiguredRows = getExtensionCatalogHourRows(configured, section);
+        const configuredRows = allConfiguredRows
+          .map((row: any, index: number) => ({ row, index }))
+          .filter(({ row }: any) => {
+            const type = String(row?.tipo || 'fija').toLowerCase();
+            if (type === 'porcentaje') return (expectedPercentageHours(row) || 0) > 0;
+            return Number(row?.horas) > 0;
+          });
+        const mandatoryHours = configuredRows.reduce(
+          (sum: number, entry: any) => sum + configuredRowHours(entry.row),
+          0,
+        );
+        const requiresRowSelection = configuredRows.length > 1
+          && mandatoryHours > extensionComponentLimit;
+        if (requiresRowSelection) {
+          const selectedRowIndex = Number(activity?.fila_seleccionada);
+          if (!Number.isInteger(selectedRowIndex)
+            || selectedRowIndex < 0
+            || selectedRowIndex >= allConfiguredRows.length
+            || !configuredRows.some((entry: any) => entry.index === selectedRowIndex)) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} requiere seleccionar una de sus filas horarias.`,
+            );
+          }
+          const selectedRow = allConfiguredRows[selectedRowIndex];
+          const type = String(selectedRow?.tipo || 'fija').toLowerCase();
+          const submittedHours = Number(activity?.horas) || 0;
+          const maxHours = type === 'porcentaje'
+            ? (expectedPercentageHours(selectedRow) || 0)
+            : Math.max(0, Number(selectedRow?.horas) || 0);
+          const minHours = type === 'intervalo'
+            ? Math.max(0, Number(selectedRow?.min ?? selectedRow?.horas_min) || 0)
+            : 0;
+          if ((type === 'fija' || type === 'porcentaje') && submittedHours !== maxHours) {
+            throw new BadRequestException(
+              `La fila ${selectedRow?.nombre || selectedRowIndex + 1} debe registrar exactamente ${maxHours}h.`,
+            );
+          }
+          if ((type === 'hasta' || type === 'intervalo')
+            && (submittedHours < minHours || submittedHours > maxHours)) {
+            throw new BadRequestException(
+              `La fila ${selectedRow?.nombre || selectedRowIndex + 1} debe registrar entre ${minHours}h y ${maxHours}h.`,
+            );
+          }
+        }
+      }
+    }
+
+    const compCatalog = rules?.comp_actividades_v2 && typeof rules.comp_actividades_v2 === 'object'
+      ? rules.comp_actividades_v2
+      : {};
+    for (const activity of allComp) {
+      if (tieneTotalidad && activity?.consumeTotalidad !== true) continue;
+      const sectionKey = this.normalizeCompSeccion(activity?.seccion, activity);
+      const configured = (Array.isArray(compCatalog?.[sectionKey]) ? compCatalog[sectionKey] : [])
+        .find((item: any) => String(item?.id) === String(activity?.actividad_id ?? activity?.id));
+      if (configured) {
+        assertPercentageHours(configured?.nombre || activity?.nombre || 'complementaria', activity?.horas, configured);
+      }
+    }
 
     if (!tieneTotalidad && horas.total === 0) {
       throw new BadRequestException('El PTA no tiene horas programadas (0h). Guarda el PTA con tus actividades antes de enviarlo a aprobacion.');
     }
 
-    // Prorrateo (Circular 003/2025): el exceso en Investigación, Extensión y
-    // Complementarias NO bloquea al docente — se prorratea cada uno a su tope para el
-    // conteo. Aquí solo se valida que las partes NO prorrateables (Docencia +
-    // Académico-Administrativo) no superen por sí solas la bolsa de horas.
-    if ((horas.sumDocencia + horas.sumAcad) > horasAProgramar) {
-      throw new BadRequestException(`Docencia + Académico-Administrativo (${horas.sumDocencia + horas.sumAcad}h) superan las horas programables (${horasAProgramar}h).`);
-    }
-
+    // El envio se valida por topes individuales de componente, no por suma global.
     if (tieneTotalidad) return;
+
+    const maxDocencia = this.getPositiveRuleNumber(
+      rules,
+      'max_horas_docencia_global',
+      this.getPositiveRuleNumber(rules, 'horas_base_carrera_003', 800),
+    );
+    const maxInvestigacion = this.getPositiveRuleNumber(rules, 'max_horas_investigacion_global', 400);
+    const maxExtension = Math.min(
+      this.getPositiveRuleNumber(
+        rules,
+        'max_horas_extension_global',
+        this.getPositiveRuleNumber(rules, 'ext_max_horas_enlace', 200),
+      ),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_extension', 25) / 100),
+    );
+    const maxComplementarias = Math.min(
+      this.getPositiveRuleNumber(rules, 'max_horas_complementarias_global', 200),
+      horasAProgramar * (this.getPositiveRuleNumber(rules, 'max_pct_complementarias', 25) / 100),
+    );
+
+    const assertComponentLimit = (label: string, value: number, limit: number) => {
+      if (value > limit) {
+        throw new BadRequestException(`El componente ${label} excede el limite permitido: ${value}h / ${limit}h.`);
+      }
+    };
+
+    assertComponentLimit('Docencia', horas.sumDocencia, maxDocencia);
+    assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
+    assertComponentLimit('Extension', horas.sumExt, maxExtension);
+    assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
     const asignaturas = Array.isArray(body?.asignaturas)
       ? body.asignaturas.filter((a: any) => a?.asignatura_id)
@@ -801,12 +1111,6 @@ export class PtaService {
       throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
     }
 
-    // ── Prorrateo Circular 003/2025 ──────────────────────────────────────────
-    // Investigación (≤50%), Extensión (≤25%) y Complementarias (≤25%) NO bloquean al
-    // enviar. Si el docente se excede, el frontend prorratea (recorta) cada componente a
-    // su tope para el conteo y el envío se acepta igual. Por eso aquí ya NO se lanza error
-    // por superar el tope de estos 3 componentes (ni por el tope cruzado Inv+Ext).
-
     const maxAadm = Math.min(
       this.getRuleNumber(rules, 'max_horas_aadm_global', 200),
       horasAProgramar * (this.getRuleNumber(rules, 'max_pct_aadm', 25) / 100),
@@ -815,8 +1119,6 @@ export class PtaService {
       throw new BadRequestException(`Actividades academico-administrativas superan el tope permitido: ${horas.sumAcad}h / ${maxAadm}h.`);
     }
 
-    // El tope cruzado Investigación+Extensión (Enlace Territorial / Director de Grupo)
-    // tampoco bloquea: forma parte del prorrateo de los 3 componentes (no se rechaza).
   }
 
   private toPtaDto(entity: PlanTrabajoAcademicoEntity, extMult: Record<string, number> = { capacitacion: 2 }) {
@@ -834,8 +1136,7 @@ export class PtaService {
     const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
     const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
     const extActs: any[] = Array.isArray(ds.extension_actividades) ? ds.extension_actividades : [];
-    const comp: any[] = Array.isArray(ds.complementarias) ? ds.complementarias : [];
-    const acadAdmin: any[] = Array.isArray(ds.academico_admin) ? ds.academico_admin : [];
+    const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
@@ -848,9 +1149,11 @@ export class PtaService {
       return { ...a, horas: horasEjec * m };
     });
     const hExt = extActsNorm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
-    const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
-    const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
-    const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp + hAcad);
+    const hCompDocencia = compDocencia.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const hAcad = compAadm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    // Complementarias unificado = sección docencia + sección académico-administrativa.
+    const hComp = hCompDocencia + hAcad;
+    const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp);
     const horasAsignables = (entity as any).horasAsignables || Number(ds.horas_a_programar) || 800;
 
     return {
@@ -868,16 +1171,25 @@ export class PtaService {
       horas_docencia: hDocencia,
       horas_investigacion: hInv,
       horas_extension: hExt,
+      // Complementarias unificado incluye la sección académico-administrativa.
       horas_complementarias: hComp,
+      // Desglose por sección (nuevo) — para vistas que quieran diferenciar.
+      complementarias_secciones: {
+        complementarias_docencia: hCompDocencia,
+        academico_administrativas: hAcad,
+      },
+      // Alias deprecado (compat con consumidores que aún leen horas_acad_admin).
       horas_acad_admin: hAcad,
       num_asignaturas: asignaturas.length,
       motivo_devolucion: entity.motivoDevolucion,
-      created_at: entity.createdAt,
-      updated_at: entity.updatedAt,
       dedicacion: (entity as any).dedicacion,
       tipo_vinculacion: (entity as any).tipoVinculacion,
       semanas_vinculacion: (entity as any).semanasVinculacion,
       ...extra,
+      createdAt: entity.createdAt,
+      created_at: entity.createdAt,
+      updatedAt: entity.updatedAt,
+      updated_at: entity.updatedAt,
       pta_id: entity.id,
       ptaId: entity.id,
     };
@@ -890,8 +1202,83 @@ export class PtaService {
     return `${unique[0]} +${unique.length - 1}`;
   }
 
+  /**
+   * Completa la selección jerárquica de Extensión con textos legibles para las
+   * vistas posteriores al envío. Los PTAs recientes ya guardan esta instantánea;
+   * para registros anteriores se reconstruye desde fila_seleccionada + catálogo.
+   */
+  private async enrichExtensionSelections(dtos: any[]): Promise<void> {
+    if (!dtos.some(dto => Array.isArray(dto?.extension_actividades) && dto.extension_actividades.length > 0)) return;
+
+    const [catalogBySection, sections] = await Promise.all([
+      this.getCatalogoActividadesExtension(),
+      this.getCatalogoSeccionesExtension(),
+    ]);
+    const sectionByKey = new Map(
+      (Array.isArray(sections) ? sections : []).map((section: any) => [
+        normalizeExtensionSectionKey(section?.key),
+        section,
+      ]),
+    );
+
+    for (const dto of dtos) {
+      const activities = Array.isArray(dto?.extension_actividades) ? dto.extension_actividades : [];
+      dto.extension_actividades = activities.map((activity: any) => {
+        const selectedIndex = Number(activity?.fila_seleccionada);
+        if (!Number.isInteger(selectedIndex) || selectedIndex < 0) return activity;
+
+        const sectionKey = normalizeExtensionSectionKey(activity?.seccion);
+        const section = sectionByKey.get(sectionKey);
+        const catalog = Array.isArray(catalogBySection?.[sectionKey]) ? catalogBySection[sectionKey] : [];
+        const catalogActivity = catalog.find((item: any) =>
+          String(item?.id || '') === String(activity?.actividad_id || activity?.id || ''),
+        );
+        const selectedRow = catalogActivity
+          ? getExtensionCatalogHourRows(catalogActivity, section)[selectedIndex]
+          : null;
+        if (!selectedRow && activity?.fila_seleccionada_nombre) return activity;
+        if (!selectedRow) return activity;
+
+        const firstColumn = String(section?.columnas?.[0] || '').trim();
+        const selectionLabel = firstColumn === EXTENSION_ITEMS_COLUMN_KEY
+          ? String(section?.columna_items_nombre || 'Actividad / Ítem').trim()
+          : (!firstColumn || /^_.*_$/.test(firstColumn) ? 'Opción del bloque' : firstColumn);
+        const details = Array.isArray(selectedRow?._detailGroups)
+          ? selectedRow._detailGroups
+              .map((group: any) => ({
+                nombre: String(group?.name || group?.nombre || '').trim(),
+                valores: (Array.isArray(group?.values) ? group.values : [])
+                  .map((value: any) => ({
+                    columna: String(value?.column || value?.columna || '').trim(),
+                    valor: String(value?.value || value?.valor || '').trim(),
+                  }))
+                  .filter((value: any) => value.valor),
+              }))
+              .filter((group: any) => group.nombre || group.valores.length > 0)
+          : [];
+
+        return {
+          ...activity,
+          fila_seleccionada_nombre: activity?.fila_seleccionada_nombre || String(selectedRow?.nombre || '').trim(),
+          fila_seleccionada_etiqueta: activity?.fila_seleccionada_etiqueta || selectionLabel,
+          fila_seleccionada_detalles: Array.isArray(activity?.fila_seleccionada_detalles)
+            && activity.fila_seleccionada_detalles.length > 0
+            ? activity.fila_seleccionada_detalles
+            : details,
+        };
+      });
+    }
+  }
+
   private async enrichPtaSummaries(dtos: any[]): Promise<any[]> {
     if (!dtos.length) return dtos;
+
+    // Aditivo y tolerante a configuraciones legacy: nunca bloquea la consulta del PTA.
+    try {
+      await this.enrichExtensionSelections(dtos);
+    } catch (err: any) {
+      this.logger.warn(`Detalle de selección de Extensión omitido: ${err?.message || err}`);
+    }
 
     const programaKeys = new Set<string>();
     const territorialKeys = new Set<string>();
@@ -1059,6 +1446,56 @@ export class PtaService {
     return dtos;
   }
 
+  private async attachPtaReferenceDates(dtos: any[]): Promise<void> {
+    const ids = dtos.map(d => d?.id).filter(Boolean);
+    if (!ids.length) return;
+
+    let histories: HistorialEstadoPtaEntity[] = [];
+    try {
+      histories = await this.historialRepo.find({
+        where: { ptaId: In(ids) } as any,
+        order: { createdAt: 'DESC' },
+      });
+    } catch (err: any) {
+      this.logger.warn(`No se pudo calcular fecha de referencia PTA: ${err?.message || err}`);
+    }
+
+    const historiesByPta = new Map<string, HistorialEstadoPtaEntity[]>();
+    for (const h of histories) {
+      if (!h?.ptaId) continue;
+      if (!historiesByPta.has(h.ptaId)) historiesByPta.set(h.ptaId, []);
+      historiesByPta.get(h.ptaId)!.push(h);
+    }
+
+    for (const dto of dtos) {
+      const draft = isDraftPtaState(dto?.estado);
+      const submission = (historiesByPta.get(dto.id) || []).find(h =>
+        isPendingRoleApprovalState(h.estadoNuevo) &&
+        !isPendingRoleApprovalState(h.estadoAnterior),
+      );
+      const created = dto.createdAt || dto.created_at;
+      const updated = dto.updatedAt || dto.updated_at;
+      const referenceDate = draft
+        ? (created || updated)
+        : (submission?.createdAt || updated || created);
+
+      dto.fecha_envio_revision = submission?.createdAt || null;
+      dto.fecha_referencia = referenceDate || null;
+      dto.fecha_orden = referenceDate || null;
+    }
+  }
+
+  private sortPtasByReferenceDate(dtos: any[]): any[] {
+    return [...dtos].sort((a, b) => {
+      const aTime = new Date(a?.fecha_orden || a?.fecha_referencia || a?.updatedAt || a?.updated_at || a?.createdAt || a?.created_at || 0).getTime();
+      const bTime = new Date(b?.fecha_orden || b?.fecha_referencia || b?.updatedAt || b?.updated_at || b?.createdAt || b?.created_at || 0).getTime();
+      const safeA = Number.isFinite(aTime) ? aTime : 0;
+      const safeB = Number.isFinite(bTime) ? bTime : 0;
+      if (safeA !== safeB) return safeB - safeA;
+      return String(a?.docente_nombre || '').localeCompare(String(b?.docente_nombre || ''), 'es');
+    });
+  }
+
   /**
    * Adjunta a cada DTO de la lista el avance de aprobación por componente
    * (componentes_aprobados / componentes_total), usando el mismo criterio que el
@@ -1086,7 +1523,7 @@ export class PtaService {
       estadoByPta.get(a.ptaId)!.set(a.componente, String(a.estado || 'pendiente'));
     }
 
-    const BASE_KEYS = ['academica', 'investigacion', 'complementarias', 'academicas_admin'];
+    const BASE_KEYS = ['academica', 'investigacion', 'complementarias'];
     const EXT_SUB_SECTIONS: Record<string, string[]> = {
       ext_capacitacion: ['capacitacion'],
       ext_procesos: ['seleccion'],
@@ -1104,8 +1541,8 @@ export class PtaService {
         const horasPorComp: Record<string, number> = {
           academica: Number(dto?.horas_docencia || 0),
           investigacion: Number(dto?.horas_investigacion || 0),
+          // horas_complementarias ya incluye la sección académico-administrativa.
           complementarias: Number(dto?.horas_complementarias || 0),
-          academicas_admin: Number(dto?.horas_acad_admin || 0),
           ext_capacitacion: extHoras(EXT_SUB_SECTIONS.ext_capacitacion),
           ext_procesos: extHoras(EXT_SUB_SECTIONS.ext_procesos),
           ext_fortalecimiento: extHoras(EXT_SUB_SECTIONS.ext_fortalecimiento),
@@ -1123,19 +1560,34 @@ export class PtaService {
         const EXT_KEYS = ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'];
         let total = 0;
         let aprobados = 0;
+        const componentesEstado: Array<{ key: string; label: string; estado: string }> = [];
         for (const c of BASE_KEYS) {
           total++;
-          if (estaAprobado(c)) aprobados++;
+          const aprobado = estaAprobado(c);
+          if (aprobado) aprobados++;
+          componentesEstado.push({
+            key: c,
+            label: c === 'academica' ? 'Docencia' : c === 'investigacion' ? 'Investigacion' : 'Complementarias',
+            estado: aprobado ? 'aprobado' : (recs.get(c) || 'pendiente'),
+          });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
         const extTieneHoras = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
         if (extTieneHoras) {
           total++;
-          if (EXT_KEYS.every(k => estaAprobado(k))) aprobados++;
+          const extAprobada = EXT_KEYS.every(k => estaAprobado(k));
+          if (extAprobada) aprobados++;
+          const extEstados = EXT_KEYS.map(k => recs.get(k)).filter(Boolean);
+          componentesEstado.push({
+            key: 'extension',
+            label: 'Extension',
+            estado: extAprobada ? 'aprobado' : (extEstados.includes('devuelto') ? 'devuelto' : 'pendiente'),
+          });
         }
 
         dto.componentes_total = total;
         dto.componentes_aprobados = aprobados;
+        dto.componentes_estado = componentesEstado;
       } catch {
         // No romper la lista por un DTO problemático.
       }
@@ -1203,7 +1655,9 @@ export class PtaService {
 
     const rows = await qb.getMany();
     const extMult = await this.getExtMultiplicadores();
-    return this.enrichPtaSummaries(rows.map((row) => this.toPtaDto(row, extMult)));
+    const dtos = rows.map((row) => this.toPtaDto(row, extMult));
+    await this.attachPtaReferenceDates(dtos);
+    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
   }
 
   async getPTAsByDocente(docenteId: string, periodo?: string | undefined) {
@@ -1214,7 +1668,9 @@ export class PtaService {
     qb.orderBy('pta.updatedAt', 'DESC');
     const rows = await qb.getMany();
     const extMult = await this.getExtMultiplicadores();
-    return this.enrichPtaSummaries(rows.map((row) => this.toPtaDto(row, extMult)));
+    const dtos = rows.map((row) => this.toPtaDto(row, extMult));
+    await this.attachPtaReferenceDates(dtos);
+    return this.sortPtasByReferenceDate(await this.enrichPtaSummaries(dtos));
   }
 
   async getPTAById(id: string) {
@@ -1229,6 +1685,7 @@ export class PtaService {
     const [dto] = await this.enrichPtaSummaries([
       this.toPtaDto(pta, await this.getExtMultiplicadores()) as any,
     ]);
+    await this.attachPtaReferenceDates([dto]);
 
     if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
       const asigIds = dto.asignaturas.map((a: any) => a.asignatura_id).filter(Boolean);
@@ -1256,6 +1713,14 @@ export class PtaService {
           console.error('[getPTAById] Error resolving nucleo tematico names:', err);
         }
       }
+
+      // Los cupos pertenecen a la oferta CETAP + programa del periodo, no al
+      // borrador del PTA. Al abrir un PTA siempre se devuelve el valor vigente,
+      // incluso si la asignatura fue guardada antes de que cambiaran los cupos.
+      dto.asignaturas = await this.syncAsignaturasCupos(
+        dto.asignaturas,
+        coalesceString(dto.periodo, pta.periodo),
+      );
     }
 
     return {
@@ -1296,9 +1761,9 @@ export class PtaService {
       preserveField('investigacion_actividades');
     }
     if (!allowed.has('complementarias')) {
+      // Complementarias ahora incluye la sección académico-administrativa; se preserva
+      // también el array legacy academico_admin para PTAs no migrados.
       preserveField('complementarias');
-    }
-    if (!allowed.has('academicas_admin')) {
       preserveField('academico_admin');
     }
 
@@ -1351,6 +1816,16 @@ export class PtaService {
 
     const periodo = coalesceString(input?.periodo) || '2026-1';
     let estado = coalesceString(input?.estado) || 'BORRADOR';
+
+    // No confiar en el total enviado por el navegador: puede venir de un
+    // borrador abierto antes de una modificación de cupos. La oferta académica
+    // es la fuente única y se vuelve a consultar antes de validar/persistir.
+    if (Array.isArray(input?.asignaturas)) {
+      input = {
+        ...input,
+        asignaturas: await this.syncAsignaturasCupos(input.asignaturas, periodo),
+      };
+    }
 
     // Normalize state case
     if (estado.toLowerCase() === 'borrador') estado = 'Borrador';
@@ -1513,6 +1988,52 @@ export class PtaService {
       sistemaOrigen: isAdminEdit ? 'backoffice' : 'portal',
       mensaje: tipoAccionSave === 'CREACION' ? 'PTA creado' : tipoAccionSave === 'CAMBIO_ESTADO' ? `Estado: ${estadoAnteriorSave} → ${saved.estado}` : 'PTA guardado',
     });
+
+    // "Concertar" (edición admin sobre un PTA existente, sin cambio de estado): editar y
+    // enviar es, en la práctica, una devolución del/los componente(s) afectados al
+    // docente. Se marca cada componente modificado como 'devuelto' con el comentario
+    // del revisor, igual que en la pestaña de Aprobación, para que el docente vea qué
+    // se devolvió y por qué, y solo pueda corregir eso. Requiere comentario explícito:
+    // si no llega, se preserva el comportamiento anterior (edición silenciosa), para no
+    // afectar otros llamadores de savePTA que no envíen este campo nuevo.
+    if (isAdminEdit && id && estadoAnteriorSave !== null && estado === estadoAnteriorSave) {
+      const comentarioConcertacion = coalesceString(input?._comentario_concertacion, input?.comentario_concertacion);
+      if (comentarioConcertacion) {
+        // Qué componentes se devuelven al docente. La fuente de verdad es SIEMPRE una
+        // selección explícita, nunca una heurística:
+        //   1) Restringido por permiso a UN SOLO componente → ese, sin ambigüedad.
+        //   2) Restringido por permiso a VARIOS componentes (ej. un rol con
+        //      "aprueba docencia y complementarias") → también exige selección
+        //      explícita del admin, acotada a su alcance real. Antes se devolvían
+        //      TODOS sus componentes permitidos aunque solo hubiera tocado uno
+        //      (bug reportado en QA: devolver Docencia con un cambio devolvía en
+        //      cascada Complementarias también, sin que el revisor lo pidiera).
+        //   3) Sin restricción de permiso (aprueba todo / superusuario) → los que
+        //      el admin marcó en los checkboxes del formulario.
+        // NO se infieren componentes por "diff de contenido": el formulario re-serializa
+        // todo el PTA al guardar, así que un componente intacto (p.ej. Docencia ya
+        // aprobada) puede aparecer como "cambiado" por diferencias de serialización y
+        // terminaba reabriéndose a 'devuelto' sin que el revisor lo pidiera.
+        const componentesSeleccionados = Array.isArray(input?._concertacion_componentes)
+          ? input._concertacion_componentes.map((k: any) => String(k)).filter((k: string) => COMPONENT_APPROVAL_KEY_SET.has(k))
+          : [];
+        const componentesCambiados = allowedComponentKeys.length === 1
+          ? allowedComponentKeys
+          : allowedComponentKeys.length > 1
+            ? componentesSeleccionados.filter((k) => allowedComponentKeys.includes(k))
+            : componentesSeleccionados;
+        if (componentesCambiados.length > 0) {
+          const devolucionResult = await this.registrarDevolucionPorConcertacion(
+            saved.id,
+            componentesCambiados,
+            comentarioConcertacion,
+            coalesceString(input?._concertacion_actor_id) || undefined,
+            coalesceString(input?._concertacion_actor_nombre) || 'Revisor',
+          );
+          if (devolucionResult) saved = devolucionResult;
+        }
+      }
+    }
 
     // Consumir la solicitud aprobada que habilitó este segundo PTA: pasa a 'gestionada'
     // para que `tienePermisoEspecial` (que solo cuenta 'aprobado') se limpie y el docente
@@ -1751,8 +2272,8 @@ export class PtaService {
     // ── Bloquear envío a aprobación cuando el PTA no tiene horas programadas ──────────────────────────
     if (isPendingRoleApprovalState(nuevoEstado)) {
       const ds = existing.datosEstructurados as any || {};
-      const tieneTotalidad = Array.isArray(ds.academico_admin) &&
-        ds.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+      const tieneTotalidad = this.readComplementariasSecciones(ds).aadm
+        .some((a: any) => a?.consumeTotalidad === true);
       const horasActuales = existing.horasTotales || 0;
       if (!tieneTotalidad && horasActuales === 0) {
         throw new BadRequestException(
@@ -1764,8 +2285,8 @@ export class PtaService {
     // ── Cuando el PTA llega a aprobación, validar datos completos ──────────────────────────
     if (isPendingRoleApprovalState(nuevoEstado)) {
       const ds = existing.datosEstructurados as any || {};
-      const tieneTotalidad = Array.isArray(ds.academico_admin) &&
-        ds.academico_admin.some((a: any) => a?.consumeTotalidad === true);
+      const tieneTotalidad = this.readComplementariasSecciones(ds).aadm
+        .some((a: any) => a?.consumeTotalidad === true);
       if (!tieneTotalidad) {
         const asignaturas = Array.isArray(ds.asignaturas)
           ? ds.asignaturas.filter((a: any) => a?.asignatura_id)
@@ -1815,8 +2336,16 @@ export class PtaService {
       (!isPendingRoleApprovalState(existing.estado) ||
         (existing.estado === 'PENDIENTE_APROBACION' && estadoFinal === 'Pendiente Jefatura'));
     if (debeInicializarAprobacionesJefatura && !parallelApprovalResult) {
+      // Reenvío tras devolución PARCIAL (solo algunos componentes devueltos): se
+      // conservan las aprobaciones ya otorgadas a otros componentes y solo se
+      // vuelven a revisar los que el revisor devolvió. Esto permite aprobar y
+      // devolver varios componentes de forma independiente sin que un reenvío
+      // obligue a re-aprobar todo el PTA de nuevo.
+      const veniaDeDevolucionParcial = REVISION_DOCENTE_STATES.has(existing.estado);
+      const respuestaDocenteReenvio = coalesceString(body?.comentario_docente, body?.respuesta_docente);
+      const respuestasDocentePorComponente = this.readRespuestasDocentePorComponente(body);
       await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
-      await this.resetComponentApprovalWorkflow(ptaId);
+      await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio, respuestasDocentePorComponente);
     }
 
     const estadoAnterior = existing.estado;
@@ -1876,8 +2405,15 @@ export class PtaService {
             componentes: pendientes,
           });
         }
+        // Confirmación al profesor: su PTA salió de Borrador y está en aprobación.
+        await this.ptaNotifications.notifyProfesorPtaEnviadoAprobacion({
+          ptaId,
+          docenteId: existing.docenteId,
+          periodo: coalesceString((existing as any).periodo, (ds as any)?.periodo),
+          componentes: pendientes,
+        });
       } catch (error: any) {
-        this.logger.warn(`No se pudo notificar a aprobadores del PTA ${ptaId}: ${error?.message}`);
+        this.logger.warn(`No se pudo notificar el envío a aprobación del PTA ${ptaId}: ${error?.message}`);
       }
     }
 
@@ -1941,12 +2477,125 @@ export class PtaService {
     await this.initAprobacionesJefatura(ptaId, datosEstructurados);
   }
 
-  private async resetComponentApprovalWorkflow(ptaId: string) {
-    await this.ptaComponentApprovalRepo.delete({
-      ptaId,
-      componente: In(COMPONENT_APPROVAL_KEYS),
-    } as any);
+  private readRespuestasDocentePorComponente(body: any): ComponentResponseMap {
+    const source =
+      body?.respuestas_docente_componentes ??
+      body?.respuestasDocenteComponentes ??
+      body?.respuesta_docente_componentes ??
+      body?.respuestaDocentePorComponente ??
+      body?.comentarios_docente_componentes;
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+
+    return Object.entries(source).reduce<ComponentResponseMap>((acc, [componentKey, rawValue]) => {
+      const value = typeof rawValue === 'object' && rawValue !== null
+        ? coalesceString((rawValue as any).respuesta, (rawValue as any).comentario, (rawValue as any).observaciones)
+        : coalesceString(rawValue);
+      if (componentKey && value) acc[componentKey] = value;
+      return acc;
+    }, {});
+  }
+
+  private async resetComponentApprovalWorkflow(
+    ptaId: string,
+    soloComponentesDevueltos = false,
+    respuestaDocente?: string | null,
+    respuestasDocentePorComponente: ComponentResponseMap = {},
+  ) {
+    const componentKeys = [...COMPONENT_APPROVAL_KEYS, ...LEGACY_COMPONENT_APPROVAL_KEYS];
+    if (soloComponentesDevueltos) {
+      // Solo se re-revisan los componentes que estaban devueltos; los componentes
+      // ya aprobados conservan su fila (no se borran, no vuelven a pendiente).
+      // Se ACTUALIZA en el lugar (no se borra) para conservar el comentario original
+      // del revisor (`comentarios`) como historial visible cuando vuelva a concertar,
+      // y se adjunta la respuesta del docente sobre por qué reenvía / qué corrigió.
+      const devueltos = await this.ptaComponentApprovalRepo.find({
+        where: { ptaId, componente: In(componentKeys), estado: 'devuelto' },
+      });
+      for (const row of devueltos) {
+        row.estado = 'pendiente';
+        row.respuestaDocente = respuestasDocentePorComponente[row.componente] || respuestaDocente || null;
+        await this.ptaComponentApprovalRepo.save(row);
+      }
+    } else {
+      await this.ptaComponentApprovalRepo.delete({
+        ptaId,
+        // Incluye claves legacy (academicas_admin) para limpiar filas de PTAs no migrados.
+        componente: In(componentKeys),
+      } as any);
+    }
     await this.getComponentesAprobacion(ptaId);
+  }
+
+  /** "Concertar" (edición admin + envío) equivale a devolver el/los componente(s)
+   * afectados al docente con el comentario del revisor: reutiliza el mismo modelo de
+   * aprobación por componente que ya usa la pestaña de Aprobación (PtaComponentApproval
+   * en estado 'devuelto'), para que el docente vea el mismo banner y quede restringido
+   * a corregir solo eso. No repite las validaciones de permisos de aprobarComponente:
+   * la autorización de "Concertar" ya se resuelve en el guardado (isAdminEdit +
+   * _allowed_component_keys), igual que el resto de esta acción. */
+  private async registrarDevolucionPorConcertacion(
+    ptaId: string,
+    componentesCambiados: string[],
+    comentario: string,
+    actorId?: string,
+    actorNombre?: string,
+  ): Promise<PlanTrabajoAcademicoEntity | null> {
+    const existingPta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!existingPta) return null;
+
+    const ahora = new Date();
+    for (const componente of componentesCambiados) {
+      let approval = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } });
+      if (!approval) {
+        approval = this.ptaComponentApprovalRepo.create({ ptaId, componente, estado: 'pendiente' });
+      }
+      approval.estado = 'devuelto';
+      approval.aprobadorId = actorId || null;
+      approval.aprobadorNombre = actorNombre || 'Revisor (Concertación)';
+      approval.comentarios = comentario;
+      approval.fechaAprobacion = ahora;
+      // Nueva decisión del revisor: la respuesta del docente al ciclo anterior queda
+      // obsoleta.
+      approval.respuestaDocente = null;
+      await this.ptaComponentApprovalRepo.save(approval);
+    }
+
+    const estadoAnterior = existingPta.estado;
+    const hayN1 = componentesCambiados.some(c => COMPONENT_REVISION_STATE[c] === 'REVISION_DOCENTE_N1');
+    const nuevoEstadoPta = hayN1 ? 'REVISION_DOCENTE_N1' : 'REVISION_DOCENTE_N2';
+
+    existingPta.estado = nuevoEstadoPta;
+    existingPta.version = (existingPta.version || 1) + 1;
+    existingPta.motivoDevolucion = `Concertación — componente(s) devuelto(s) (${componentesCambiados.join(', ')}): ${comentario}`;
+    const saved = await this.ptaRepo.save(existingPta);
+
+    await this.historialRepo.save(this.historialRepo.create({
+      ptaId,
+      estadoAnterior,
+      estadoNuevo: nuevoEstadoPta,
+      actorId: actorId || 'Administrador',
+      actorRol: actorNombre || 'Revisor',
+      tipoAccion: 'DEVOLUCION_COMPONENTE',
+      comentarios: comentario,
+      snapshotPta: existingPta.datosEstructurados ?? null,
+      version: saved.version,
+    }));
+
+    await this.logEvento({
+      ptaId,
+      tipo: 'cambio_estado',
+      docenteId: existingPta.docenteId,
+      docenteNombre: coalesceString((existingPta.datosEstructurados as any)?.docente_nombre),
+      estadoAnterior,
+      estadoNuevo: nuevoEstadoPta,
+      actor: actorId,
+      actorRol: actorNombre,
+      sistemaOrigen: 'backoffice',
+      mensaje: `Concertación: componente(s) ${componentesCambiados.join(', ')} devuelto(s). Estado general: ${nuevoEstadoPta}`,
+      metadata: { componentes: componentesCambiados, comentario },
+    });
+
+    return saved;
   }
 
   private async registerJefaturaTerritorialApproval(
@@ -2291,7 +2940,58 @@ export class PtaService {
       comentarioRevision: coalesceString(body?.observaciones, body?.comentario, body?.comentarioRevision) ?? existing.comentarioRevision,
     });
 
+    await this.syncPtaSeguimientoEstado(ptaId);
+
     return this.toEvidenciaDto(updated);
+  }
+
+  private async syncPtaSeguimientoEstado(ptaId: string): Promise<void> {
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!pta) return;
+
+    const extMult = await this.getExtMultiplicadores();
+    const dto = this.toPtaDto(pta, extMult) as any;
+    const requeridas: Record<string, number> = {
+      docencia: Number(dto.horas_docencia || 0),
+      investigacion: Number(dto.horas_investigacion || 0),
+      extension: Number(dto.horas_extension || 0),
+      complementarias: Number(dto.horas_complementarias || 0),
+    };
+
+    const evidencias = await this.evidenciaRepo.find({ where: { ptaId } });
+    const aprobadas: Record<string, number> = {
+      docencia: 0,
+      investigacion: 0,
+      extension: 0,
+      complementarias: 0,
+    };
+
+    for (const evidencia of evidencias) {
+      const componente = String(evidencia.componentePta || '');
+      if (!(componente in aprobadas)) continue;
+      if (normalizeEstadoFilter(evidencia.estado) === 'ELIMINADO') continue;
+      if (normalizeEstadoFilter(evidencia.estadoRevision) !== 'APROBADO') continue;
+      aprobadas[componente] += Number(evidencia.horasAvance || 0);
+    }
+
+    const tieneHorasRequeridas = Object.values(requeridas).some(total => total > 0);
+    const seguimientoCompleto = tieneHorasRequeridas && Object.entries(requeridas).every(([componente, total]) => {
+      if (total <= 0) return true;
+      return (aprobadas[componente] || 0) >= total;
+    });
+
+    const estadoActual = normalizeEstadoFilter(pta.estado);
+    const estadosSeguimiento = new Set(['APROBADO', 'EN_FIRME', 'RADICADO', 'EN_EJECUCION', 'EN_EJECUCION']);
+    if (seguimientoCompleto && estadosSeguimiento.has(estadoActual)) {
+      pta.estado = 'Finalizado';
+      await this.ptaRepo.save(pta);
+      return;
+    }
+
+    if (!seguimientoCompleto && estadoActual === 'FINALIZADO') {
+      pta.estado = 'Aprobado';
+      await this.ptaRepo.save(pta);
+    }
   }
 
   async crearSolicitudPTA(body: any) {
@@ -2359,33 +3059,83 @@ export class PtaService {
     return { deleted: true };
   }
 
-  // ── Cierre de PTAs al poner "en curso" un nuevo período académico ───────────
-  // Cuando un período se activa (estado 'en_curso'), todos los PTA de períodos
-  // anteriores pasan a 'Terminado' (solo lectura / observación), incluso los que
-  // están en seguimiento. No se tocan los que ya están en un estado terminal.
+  // ── Cierre reversible de PTAs por cambio de período académico ───────────────
+  // El estado funcional se conserva antes de mostrar el PTA como 'Terminado'.
+  // Así, si el período vuelve a activarse, el flujo continúa exactamente donde
+  // estaba (Borrador, aprobación, concertación, seguimiento, etc.).
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
-    const terminales = ['Terminado', 'TERMINADO', 'Rechazado', 'RECHAZADO'];
+    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
-    const qb = this.ptaRepo
-      .createQueryBuilder()
-      .update(PlanTrabajoAcademicoEntity)
-      .set({ estado: 'Terminado', updatedAt: () => 'NOW()' })
-      .where('estado NOT IN (:...terminales)', { terminales });
-
-    // No finalizar los PTA del propio período recién creado (si llegaran a existir).
-    if (codigo) {
-      qb.andWhere('(periodo IS DISTINCT FROM :codigo)', { codigo });
-    }
-
-    const result = await qb.execute();
-    const finalizados = result.affected || 0;
+    const rows = await this.ptaRepo.manager.query(
+      `
+      UPDATE academic_work_plan."PlanTrabajoAcademico"
+      SET estado = 'Terminado',
+          "estadoAntesCierrePeriodo" = estado,
+          "cerradoPorPeriodo" = NULLIF($1, '')
+      WHERE estado <> ALL($2::text[])
+        AND ($1 = '' OR periodo IS DISTINCT FROM $1)
+      RETURNING id
+      `,
+      [codigo, terminales],
+    );
+    const finalizados = Array.isArray(rows) ? rows.length : 0;
     if (finalizados > 0) {
       this.logger.log(
         `[Período ${codigo || 'nuevo'}] ${finalizados} PTA(s) pasaron a 'Terminado' (solo lectura).`,
       );
     }
     return { finalizados };
+  }
+
+  /**
+   * Restaura los PTA del periodo que vuelve a estar en curso. El fallback desde
+   * datosEstructurados repara también cierres hechos por la versión anterior,
+   * que sobrescribía `estado` sin guardar una copia explícita.
+   */
+  async restaurarPtasPorReactivacionPeriodo(codigoPeriodo?: string | null): Promise<{ restaurados: number }> {
+    const codigo = coalesceString(codigoPeriodo);
+    if (!codigo) return { restaurados: 0 };
+
+    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
+    const rows = await this.ptaRepo.manager.query(
+      `
+      WITH restaurables AS (
+        SELECT p.id,
+          COALESCE(
+            NULLIF(p."estadoAntesCierrePeriodo", ''),
+            (
+              SELECT NULLIF(h."estadoNuevo", '')
+              FROM academic_work_plan."HistorialEstadoPTA" h
+              WHERE h."ptaId" = p.id
+              ORDER BY h."createdAt" DESC
+              LIMIT 1
+            ),
+            NULLIF(p."datosEstructurados"->>'estado', '')
+          ) AS estado_restaurado
+        FROM academic_work_plan."PlanTrabajoAcademico" p
+        WHERE p.periodo = $1
+          AND p.estado IN ('Terminado', 'TERMINADO')
+      )
+      UPDATE academic_work_plan."PlanTrabajoAcademico" p
+      SET estado = r.estado_restaurado,
+          "estadoAntesCierrePeriodo" = NULL,
+          "cerradoPorPeriodo" = NULL
+      FROM restaurables r
+      WHERE p.id = r.id
+        AND r.estado_restaurado IS NOT NULL
+        AND r.estado_restaurado <> ALL($2::text[])
+      RETURNING p.id
+      `,
+      [codigo, terminales],
+    );
+    const restaurados = Array.isArray(rows) ? rows.length : 0;
+    if (restaurados > 0) {
+      this.logger.log(
+        `[Período ${codigo}] ${restaurados} PTA(s) recuperaron su estado anterior.`,
+      );
+    }
+    return { restaurados };
   }
 
   // ── Límite de aprobación: PTAs no aprobados dentro del plazo se eliminan ─────
@@ -2406,7 +3156,7 @@ export class PtaService {
     // elegible para purga si superó el plazo.
     const safe = [
       'Aprobado', 'APROBADO', 'En Firme', 'EN_FIRME', 'RADICADO',
-      'EN_EJECUCION', 'EN_EJECUCIÓN', 'Terminado', 'TERMINADO', 'Rechazado', 'RECHAZADO',
+      'EN_EJECUCION', 'EN_EJECUCIÓN', 'Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO',
     ];
 
     const vencidos = await this.ptaRepo
@@ -2466,10 +3216,12 @@ export class PtaService {
     }
 
     const extMult = await this.getExtMultiplicadores();
-    return ptas.map((pta) => ({
+    const dtos = ptas.map((pta) => ({
       ...this.toPtaDto(pta, extMult),
       evidencias: evidenciasByPta[pta.id] || [],
     }));
+    await this.attachPtaReferenceDates(dtos);
+    return this.sortPtasByReferenceDate(dtos);
   }
 
   async getConfiguracionPTAGlobal() {
@@ -2666,24 +3418,38 @@ export class PtaService {
     } catch { /* non-critical */ }
   }
 
+  // Contrato del frontend (mfe-pta): tags = Record<ptaId, {label,color}[]>,
+  // notes = Record<ptaId, string>, pinned = string[], priorityOrder = string[].
+  // Se aceptan también las claves legacy (saved_tags, pinned_pta_ids, favorite_views).
+  private normalizeUserDataRow(row: Partial<PtaUserDataEntity>) {
+    const tags = row.tags && typeof row.tags === 'object' && !Array.isArray(row.tags) ? row.tags : {};
+    const notes = row.notes && typeof row.notes === 'object' && !Array.isArray(row.notes) ? row.notes : {};
+    const pinned = Array.isArray(row.pinned) ? row.pinned : [];
+    const priorityOrder = Array.isArray(row.priority) ? row.priority : [];
+    return {
+      tags,
+      notes,
+      pinned,
+      priorityOrder,
+      // alias legacy
+      pinned_pta_ids: pinned,
+      favorite_views: priorityOrder,
+    };
+  }
+
   async getPTAUserData(userId: string) {
     const row = await this.userDataRepo.findOne({ where: { userId } });
     if (!row) return null;
-    return {
-      pinned_pta_ids: Array.isArray(row.pinned) ? row.pinned : [],
-      saved_tags: Array.isArray(row.tags) ? row.tags : [],
-      notes: row.notes && typeof row.notes === 'object' ? row.notes : {},
-      favorite_views: Array.isArray(row.priority) ? row.priority : [],
-    };
+    return this.normalizeUserDataRow(row);
   }
 
   async savePTAUserData(userId: string, data: any) {
     const existing = await this.userDataRepo.findOne({ where: { userId } });
     const next = {
-      pinned: data?.pinned_pta_ids ?? existing?.pinned ?? [],
-      tags: data?.saved_tags ?? existing?.tags ?? [],
+      tags: data?.tags ?? data?.saved_tags ?? existing?.tags ?? {},
       notes: data?.notes ?? existing?.notes ?? {},
-      priority: data?.favorite_views ?? existing?.priority ?? [],
+      pinned: data?.pinned ?? data?.pinned_pta_ids ?? existing?.pinned ?? [],
+      priority: data?.priorityOrder ?? data?.favorite_views ?? existing?.priority ?? [],
     };
 
     const saved = await this.userDataRepo.save(
@@ -2692,12 +3458,7 @@ export class PtaService {
         : this.userDataRepo.create({ userId, ...next }),
     );
 
-    return {
-      pinned_pta_ids: Array.isArray(saved.pinned) ? saved.pinned : [],
-      saved_tags: Array.isArray(saved.tags) ? saved.tags : [],
-      notes: saved.notes && typeof saved.notes === 'object' ? saved.notes : {},
-      favorite_views: Array.isArray(saved.priority) ? saved.priority : [],
-    };
+    return this.normalizeUserDataRow(saved);
   }
 
   async seedPTAs() {
@@ -3012,10 +3773,24 @@ export class PtaService {
    */
   async getProgramasPorSede(query?: any) {
     const sedeId = coalesceString(query?.cetap_id, query?.sede_id, query?.cetapId);
+    const periodoCodigo = query?.periodo;
 
     if (!sedeId) {
       return [];
     }
+
+    const params: any[] = [sedeId];
+    let joinPeriodo = '';
+    
+    if (periodoCodigo) {
+      params.push(periodoCodigo);
+      joinPeriodo = `
+        INNER JOIN academic_work_plan.periodo_academico per
+          ON ocp.id_periodo_academico = per.id AND per.codigo = $2
+      `;
+    }
+
+    console.log('[BACKEND DEBUG] getProgramasPorSede params:', { sedeId, periodoCodigo, params });
 
     // Single query: try direct cetap.id match OR bridge via auth.sedes.cod_sede
     const raw = await this.ptaRepo.manager.query(
@@ -3032,6 +3807,7 @@ export class PtaService {
       FROM academic_work_plan.programa p
       INNER JOIN academic_work_plan.oferta_cetap_programa ocp
         ON ocp.id_programa = p.id AND ocp.activa = true
+      ${joinPeriodo}
       INNER JOIN academic_work_plan.cetap c
         ON c.id = ocp.id_cetap AND c.activo = true
       WHERE p.activo = true
@@ -3048,7 +3824,7 @@ export class PtaService {
         )
       ORDER BY p.nombre ASC
       `,
-      [sedeId],
+      params,
     );
 
     const nivelFormacionMap: Record<string, string> = {
@@ -3070,6 +3846,7 @@ export class PtaService {
   async getOfertaCetapPrograma(query?: any) {
     const cetapId = coalesceString(query?.cetap_id, query?.cetapId);
     const programaId = coalesceString(query?.programa_id, query?.programaId);
+    const periodo = coalesceString(query?.periodo, query?.periodo_codigo, query?.periodoCodigo);
 
     if (!cetapId || !programaId) {
       return { cupos_estimados: null };
@@ -3080,20 +3857,77 @@ export class PtaService {
       SELECT ocp.cupos_estimados
       FROM academic_work_plan.oferta_cetap_programa ocp
       JOIN academic_work_plan.cetap c ON c.id = ocp.id_cetap
+      JOIN academic_work_plan.periodo_academico pa ON pa.id = ocp.id_periodo_academico
       WHERE ocp.id_programa::text = $2
         AND ocp.activa = true
+        AND ($3::text IS NULL OR pa.codigo = $3)
         AND (
           c.id::text = $1
           OR c.codigo IN (SELECT s.cod_sede FROM auth.sedes s WHERE s.id_sede::text = $1)
         )
+      ORDER BY COALESCE(ocp.updated_at, ocp.created_at) DESC
       LIMIT 1
       `,
-      [cetapId, programaId],
+      [cetapId, programaId, periodo],
     );
 
     return {
       cupos_estimados: rows.length > 0 ? rows[0].cupos_estimados : null,
     };
+  }
+
+  /**
+   * Refresca únicamente el dato derivado `total_estudiantes` de las asignaturas
+   * PTA. Si una fila legacy no tiene CETAP/programa, o ya no existe una oferta
+   * activa para el periodo, se conserva intacta para no dañar el borrador.
+   */
+  private async syncAsignaturasCupos(asignaturas: any[], periodo?: string | null): Promise<any[]> {
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return asignaturas;
+
+    const requests = new Map<string, Promise<number | null>>();
+    const getCupos = (cetapId: string, programaId: string) => {
+      const key = `${cetapId}::${programaId}::${periodo || ''}`;
+      let request = requests.get(key);
+      if (!request) {
+        request = this.getOfertaCetapPrograma({
+          cetap_id: cetapId,
+          programa_id: programaId,
+          periodo,
+        })
+          .then(result => {
+            const cupos = Number(result?.cupos_estimados);
+            return Number.isInteger(cupos) && cupos > 0 ? cupos : null;
+          })
+          .catch((error: any) => {
+            this.logger.warn(
+              `No se pudieron sincronizar cupos PTA para CETAP ${cetapId} y programa ${programaId}: ${error?.message || error}`,
+            );
+            return null;
+          });
+        requests.set(key, request);
+      }
+      return request;
+    };
+
+    return Promise.all(asignaturas.map(async (asignatura: any) => {
+      const cetapId = coalesceLookupKey(
+        asignatura?.cetap_id,
+        asignatura?.cetapId,
+        asignatura?.sede_id,
+        asignatura?.sedeId,
+      );
+      const programaId = coalesceLookupKey(
+        asignatura?.programa_id,
+        asignatura?.programaId,
+        asignatura?.programa?.id,
+      );
+      if (!cetapId || !programaId) return asignatura;
+
+      const cupos = await getCupos(cetapId, programaId);
+      return cupos == null
+        ? asignatura
+        : { ...asignatura, total_estudiantes: cupos };
+    }));
   }
 
   async getDocentesDisponibles(query?: any) {
@@ -3379,16 +4213,69 @@ export class PtaService {
     ];
   }
 
+  // Aplana una actividad de comp_actividades_v2 al shape plano que consume el catálogo
+  // ({ id, nombre, max_horas, min_horas?, consumeTotalidad }).
+  private flattenCompV2Activity(a: any, fullPTAFromPercentage = false): any {
+    const itemHours = Array.isArray(a?.items)
+      ? a.items.map((it: any) => Number(it?.horas || 0)).filter((n: number) => Number.isFinite(n))
+      : [];
+    const maxHoras = a?.max_horas ?? (itemHours.length ? Math.max(...itemHours) : 0);
+    return {
+      id: a?.id,
+      nombre: a?.nombre,
+      max_horas: a?.consumeTotalidad ? null : maxHoras,
+      min_horas: a?.min_horas,
+      tipo: a?.tipo ?? a?.items?.[0]?.tipo,
+      porcentaje_pta: a?.porcentaje_pta ?? a?.items?.[0]?.porcentaje_pta,
+      consumeTotalidad: Boolean(a?.consumeTotalidad) || (
+        fullPTAFromPercentage &&
+        String(a?.tipo || '').toLowerCase() === 'porcentaje' &&
+        Math.min(100, Math.max(1, Number(a?.porcentaje_pta) || 1)) === 100
+      ),
+    };
+  }
+
+  private flattenCompV2Section(rules: any, sectionKey: string): any[] {
+    const v2 = rules?.comp_actividades_v2;
+    const arr = v2 && typeof v2 === 'object' ? v2[sectionKey] : null;
+    return Array.isArray(arr)
+      ? arr.map((a: any) => this.flattenCompV2Activity(a, sectionKey === 'academico_administrativas'))
+      : [];
+  }
+
   async getCatalogoActividadesComplementarias() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
     if (Array.isArray(rules?.comp_actividades) && rules.comp_actividades.length > 0) return rules.comp_actividades;
-    return [];
+    // Fallback: derivar de la sección v2 (por si dejan de escribirse los arrays legacy).
+    return this.flattenCompV2Section(rules, 'complementarias_docencia');
   }
 
   async getCatalogoActividadesAcademicoAdmin() {
     const rules = (await this.getConfiguracionPTAGlobal()) as any;
     if (Array.isArray(rules?.aadm_actividades) && rules.aadm_actividades.length > 0) return rules.aadm_actividades;
-    return [];
+    return this.flattenCompV2Section(rules, 'academico_administrativas');
+  }
+
+  // Catálogo agrupado por sección para la pestaña unificada de Complementarias del docente.
+  // Devuelve las secciones (parametrizables desde config) y sus actividades.
+  async getCatalogoComplementariasAgrupado() {
+    const rules = (await this.getConfiguracionPTAGlobal()) as any;
+    const secciones = Array.isArray(rules?.comp_secciones) && rules.comp_secciones.length > 0
+      ? rules.comp_secciones
+      : FIXED_COMP_SECCIONES;
+    const actividades: Record<string, any[]> = {};
+    for (const sec of secciones) {
+      const key = sec?.key;
+      if (!key) continue;
+      if (key === 'complementarias_docencia') {
+        actividades[key] = await this.getCatalogoActividadesComplementarias();
+      } else if (key === 'academico_administrativas') {
+        actividades[key] = await this.getCatalogoActividadesAcademicoAdmin();
+      } else {
+        actividades[key] = this.flattenCompV2Section(rules, key);
+      }
+    }
+    return { secciones, actividades };
   }
 
   async getEstadisticas(periodo?: string | null) {
@@ -3606,8 +4493,10 @@ export class PtaService {
 
     this.logger.log(`🔑 [PRUEBAS] Código de firma generado para ${docente.email || 'docente sin correo'}: ${code}`);
 
-    // En modo mock no intentamos enviar correo (cualquier código sirve igual).
-    if (!this.MOCK_FIRMA_OTP && docente.email) {
+    // El correo con el código SIEMPRE se intenta enviar cuando hay email registrado
+    // (aunque MOCK_FIRMA_OTP esté activo). El mock solo relaja la *validación* del
+    // código, no debe impedir que el docente reciba el OTP en su correo.
+    if (docente.email) {
       try {
         await this.sendFirmaOtpEmail({
           to: docente.email,
@@ -3634,6 +4523,66 @@ export class PtaService {
       verificationId,
       expiresAt: expiresAt.toISOString(),
       email: docente.email ? this.maskEmail(docente.email) : 'correo no registrado',
+      devCode: code,
+    };
+  }
+
+  /**
+   * Solicita un OTP de firma para el APROBADOR/CONCERTADOR que va a avalar el PTA.
+   * A diferencia del OTP de docente, el firmante NO es el dueño del PTA sino el
+   * usuario autenticado que oprime "Aprobar" (Jefatura, Decanatura, Gestión
+   * Profesoral, etc.), por eso se resuelve con adminEdit (sin exigir rol DOCENTE)
+   * y se envía el código al correo de ESE usuario. La clave del OTP incluye el
+   * userId para que no colisione con el OTP del docente sobre el mismo PTA.
+   */
+  async requestFirmaAprobadorOtp(payload: {
+    ptaId?: string | null;
+    userId?: string | null;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+  }) {
+    const userId = coalesceString(payload?.userId);
+    if (!userId) throw new BadRequestException('userId es requerido para enviar el código de firma del aprobador.');
+
+    const aprobador = await this.fetchAuthDocenteInfo(userId, { adminEdit: true });
+    if (!aprobador.email && !this.MOCK_FIRMA_OTP) {
+      throw new BadRequestException('El aprobador no tiene correo registrado para enviar el código de validación.');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const ptaId = coalesceString(payload?.ptaId);
+    const verificationId = ptaId ? `pta:${ptaId}:aprobador:${userId}` : `aprobador:${userId}`;
+
+    this.logger.log(`🔑 [PRUEBAS] Código de firma (aprobador) generado para ${aprobador.email || 'aprobador sin correo'}: ${code}`);
+
+    if (aprobador.email) {
+      try {
+        await this.sendFirmaOtpEmail({
+          to: aprobador.email,
+          code,
+          fullName: aprobador.fullName,
+          periodo: payload?.periodo,
+          etapaLabel: payload?.etapaLabel,
+          expiresAt,
+        });
+      } catch (emailError) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(`⚠️  [DEV] Email de firma OTP (aprobador) falló — código OTP para ${aprobador.email}: ${code}`);
+          this.logger.warn(`⚠️  [DEV] Usa este código para firmar en desarrollo local.`);
+        } else {
+          throw emailError;
+        }
+      }
+    }
+
+    this.otpStore.set(verificationId, { code, expiresAt });
+
+    return {
+      verificationId,
+      expiresAt: expiresAt.toISOString(),
+      email: aprobador.email ? this.maskEmail(aprobador.email) : 'correo no registrado',
       devCode: code,
     };
   }
@@ -3715,14 +4664,14 @@ export class PtaService {
     const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
     const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
     const extActs: any[] = Array.isArray(ds.extension_actividades) ? ds.extension_actividades : [];
-    const comp: any[] = Array.isArray(ds.complementarias) ? ds.complementarias : [];
-    const acadAdmin: any[] = Array.isArray(ds.academico_admin) ? ds.academico_admin : [];
+    const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
-    const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
-    const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    // Complementarias unificado = sección docencia + sección académico-administrativa.
+    const hComp = compDocencia.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0)
+      + compAadm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
 
     const extMult = await this.getExtMultiplicadores();
     const extBySeccion = (secciones: string[]) =>
@@ -3748,7 +4697,6 @@ export class PtaService {
       ext_fortalecimiento: extBySeccion(['fortalecimiento']),
       ext_gobierno: extBySeccion(['alto_gobierno']),
       complementarias: hComp,
-      academicas_admin: hAcad,
     };
 
     const todosComponentes = Object.keys(horasPorComponente);
@@ -3756,7 +4704,7 @@ export class PtaService {
     // Si todos los arrays están vacíos, probablemente hay un problema de datos
     // (e.g. actividades filtradas incorrectamente al guardar). No auto-aprobar nada.
     const totalActividades =
-      asignaturas.length + invActs.length + extActs.length + comp.length + acadAdmin.length;
+      asignaturas.length + invActs.length + extActs.length + compDocencia.length + compAadm.length;
     const hayActividades = totalActividades > 0;
 
     const byComponent = new Map(componentList.map(item => [item.componente, item]));
@@ -3855,6 +4803,9 @@ export class PtaService {
     approval.scope = coalesceString(body?.scope);
     approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);
     approval.fechaAprobacion = new Date();
+    // Nueva decisión del revisor: la respuesta del docente al ciclo anterior queda
+    // obsoleta.
+    approval.respuestaDocente = null;
 
     await this.ptaComponentApprovalRepo.save(approval);
 

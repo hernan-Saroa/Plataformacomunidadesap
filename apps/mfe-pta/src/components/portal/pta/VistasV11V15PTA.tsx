@@ -9,6 +9,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, Clock, FileText, Upload, Download, Trash2,
@@ -20,6 +21,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { agruparEvidenciasPorJustificacion, ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
+import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import {
   registrarEvidenciaPTA, getEvidenciasPTA, eliminarEvidenciaPTA, uploadEvidenciaFile,
 } from '../../../services/api/ptaApi';
@@ -278,9 +281,39 @@ const COMPONENTES_PTA = [
   { key: 'docencia', label: 'Docencia', color: PTA_COLORS.DOCENCIA, icon: BookOpen },
   { key: 'investigacion', label: 'Investigación', color: PTA_COLORS.INVESTIGACION, icon: FlaskConical },
   { key: 'extension', label: 'Extensión', color: PTA_COLORS.EXTENSION, icon: Globe },
+  // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
   { key: 'complementarias', label: 'Complementarias', color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
-  { key: 'acad_admin', label: 'Acad. Admin.', color: PTA_COLORS.ACAD_ADMIN, icon: Shield },
 ] as const;
+
+type EstadoRevisionEvidencia = 'pendiente' | 'aprobado' | 'rechazado';
+
+function normalizeEvidenceStatus(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function getEvidenceRevisionStatus(evidencia: any): EstadoRevisionEvidencia {
+  const estado = normalizeEvidenceStatus(evidencia?.estado_revision ?? evidencia?.estadoRevision ?? evidencia);
+  if (estado === 'aprobado' || estado === 'aprobada') return 'aprobado';
+  if (estado === 'rechazado' || estado === 'rechazada' || estado === 'denegado' || estado === 'denegada') return 'rechazado';
+  return 'pendiente';
+}
+
+function isActiveEvidence(evidencia: any) {
+  return !['eliminado', 'eliminada', 'deleted'].includes(normalizeEvidenceStatus(evidencia?.estado));
+}
+
+function isApprovedEvidence(evidencia: any) {
+  return isActiveEvidence(evidencia) && getEvidenceRevisionStatus(evidencia) === 'aprobado';
+}
+
+function isReservedEvidence(evidencia: any) {
+  return isActiveEvidence(evidencia) && getEvidenceRevisionStatus(evidencia) !== 'rechazado';
+}
 
 interface AdjuntosDocumentosProps {
   ptas: any[];
@@ -295,13 +328,52 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const activePtaId = ptaIdProp || ptas[0]?.id || '';
   const activePta = ptaData || ptas[0];
 
+  // El cargue de justificaciones solo se habilita con el PTA totalmente aprobado
+  // (todos sus componentes). Mientras tanto la vista se muestra bloqueada.
+  const seguimientoBloqueado = !!activePta && !ptaHabilitadoParaSeguimiento(activePta);
+
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [filtroComponente, setFiltroComponente] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ url: string; nombre: string; tipo: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Botones Ver/Descargar por archivo (mismo patrón que el Seguimiento del backoffice).
+  const renderBotonesArchivo = (ev: any, compacto = false) => {
+    const ext = (ev.tipo_archivo || ev.nombre?.split('.').pop() || '').toLowerCase();
+    const hasRealFile = !!(ev.storage_url && String(ev.storage_url).startsWith('/uploads'));
+    const canPreview = hasRealFile && ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+    const fileUrl = resolvePtaFileUrl(ev.storage_url || ev.storage_path || '');
+    if (!hasRealFile && (!fileUrl || fileUrl === '#')) return null;
+    const pad = compacto ? '2px 8px' : '3px 10px';
+    const fs = compacto ? '0.6rem' : '0.65rem';
+    const ic = compacto ? 10 : 11;
+    return (
+      <>
+        {canPreview && (
+          <button
+            onClick={(e2) => { e2.stopPropagation(); setPreviewFile({ url: fileUrl, nombre: ev.nombre, tipo: ext }); }}
+            style={{ padding: pad, borderRadius: 6, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1E40AF', fontSize: fs, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+          >
+            <Eye style={{ width: ic, height: ic }} /> Ver
+          </button>
+        )}
+        <a
+          href={fileUrl}
+          download={ev.nombre}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e2 => e2.stopPropagation()}
+          style={{ padding: pad, borderRadius: 6, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: fs, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none', flexShrink: 0 }}
+        >
+          <Download style={{ width: ic, height: ic }} /> Descargar
+        </a>
+      </>
+    );
+  };
 
   // Form state — soporta múltiples archivos (máx 10)
   const [formFiles, setFormFiles] = useState<File[]>([]);
@@ -310,24 +382,54 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const [formDescripcion, setFormDescripcion] = useState('');
 
   // Calcular horas por componente del PTA
-  const horasPorComponente: Record<string, number> = {
+  const horasPorComponente = useMemo<Record<string, number>>(() => ({
     docencia: activePta?.horas_docencia || 0,
     investigacion: activePta?.horas_investigacion || 0,
     extension: activePta?.horas_extension || 0,
     complementarias: activePta?.horas_complementarias || 0,
     acad_admin: activePta?.horas_acad_admin || 0,
-  };
+  }), [activePta]);
 
   // Horas aprobadas por componente (de evidencias aprobadas)
   const horasAprobadasPorComponente = useMemo(() => {
     const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0 };
     evidencias.forEach(e => {
-      if (e.estado_revision === 'aprobado' && e.componente_pta && acc[e.componente_pta] !== undefined) {
+      if (isApprovedEvidence(e) && e.componente_pta && acc[e.componente_pta] !== undefined) {
         acc[e.componente_pta] += Number(e.horas_avance) || 0;
       }
     });
     return acc;
   }, [evidencias]);
+
+  const horasReservadasPorComponente = useMemo(() => {
+    const acc: Record<string, number> = { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, acad_admin: 0 };
+    evidencias.forEach(e => {
+      if (isReservedEvidence(e) && e.componente_pta && acc[e.componente_pta] !== undefined) {
+        acc[e.componente_pta] += Number(e.horas_avance) || 0;
+      }
+    });
+    return acc;
+  }, [evidencias]);
+
+  const horasDisponiblesPorComponente = useMemo(() => {
+    const acc: Record<string, number> = {};
+    Object.keys(horasPorComponente).forEach(key => {
+      acc[key] = Math.max((horasPorComponente[key] || 0) - (horasReservadasPorComponente[key] || 0), 0);
+    });
+    return acc;
+  }, [horasPorComponente, horasReservadasPorComponente]);
+
+  useEffect(() => {
+    const disponibles = horasDisponiblesPorComponente[formComponente] || 0;
+    if (disponibles <= 0) {
+      const next = COMPONENTES_PTA.find(c => (horasDisponiblesPorComponente[c.key] || 0) > 0)?.key;
+      if (next && next !== formComponente) {
+        setFormComponente(next);
+        return;
+      }
+    }
+    if (formHoras > disponibles) setFormHoras(disponibles);
+  }, [horasDisponiblesPorComponente, formComponente, formHoras]);
 
   const loadEvidencias = async () => {
     if (!activePtaId) return;
@@ -349,12 +451,20 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   };
 
   const revisionBadge = (estado_revision?: string) => {
-    if (estado_revision === 'aprobado') return { label: 'Aprobado', color: '#065F46', bg: '#D1FAE5', icon: CheckCircle2 };
-    if (estado_revision === 'rechazado') return { label: 'Rechazado', color: '#991B1B', bg: '#FEE2E2', icon: XCircle };
+    const estado = getEvidenceRevisionStatus(estado_revision);
+    if (estado === 'aprobado') return { label: 'Aprobado', color: '#065F46', bg: '#D1FAE5', icon: CheckCircle2 };
+    if (estado === 'rechazado') return { label: 'Rechazado', color: '#991B1B', bg: '#FEE2E2', icon: XCircle };
     return { label: 'Pendiente revisión', color: '#92400E', bg: '#FEF3C7', icon: Clock };
   };
 
+  // Máximo de archivos por justificación (las horas y descripción aplican al grupo completo).
+  const MAX_ARCHIVOS_JUSTIFICACION = 3;
+
   const handleFilesSelect = (files: FileList | File[]) => {
+    if (seguimientoBloqueado) {
+      toast.info('Podrás cargar documentos cuando todos los componentes de tu PTA estén aprobados.');
+      return;
+    }
     const arr = Array.from(files);
     const valid: File[] = [];
     for (const f of arr) {
@@ -364,7 +474,10 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     if (valid.length === 0) return;
     setFormFiles(prev => {
       const combined = [...prev, ...valid];
-      if (combined.length > 10) { toast.error('Máximo 10 archivos por carga'); return combined.slice(0, 10); }
+      if (combined.length > MAX_ARCHIVOS_JUSTIFICACION) {
+        toast.info(`Puedes adjuntar máximo ${MAX_ARCHIVOS_JUSTIFICACION} archivos por justificación`);
+        return combined.slice(0, MAX_ARCHIVOS_JUSTIFICACION);
+      }
       return combined;
     });
     setShowForm(true);
@@ -381,13 +494,22 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
 
   const handleSubmit = async () => {
     if (formFiles.length === 0 || !activePtaId) return;
-    if (formHoras <= 0) { toast.error('Indica cuántas horas avanza esta carga'); return; }
+    if (formFiles.length > MAX_ARCHIVOS_JUSTIFICACION) {
+      toast.error(`Máximo ${MAX_ARCHIVOS_JUSTIFICACION} archivos por justificación`);
+      return;
+    }
     const maxHoras = horasPorComponente[formComponente] || 0;
     const yaRegistradas = (evidencias
-      .filter(e => e.componente_pta === formComponente && e.estado !== 'eliminado')
+      .filter(e => e.componente_pta === formComponente && isReservedEvidence(e))
       .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0));
-    if (maxHoras > 0 && yaRegistradas + formHoras > maxHoras) {
-      toast.error(`Superas las horas del componente (${maxHoras}h). Ya tienes ${yaRegistradas}h registradas.`);
+    const disponibles = Math.max(maxHoras - yaRegistradas, 0);
+    if (maxHoras > 0 && disponibles <= 0) {
+      toast.error('Este componente ya no tiene horas disponibles para nuevos soportes.');
+      return;
+    }
+    if (formHoras <= 0) { toast.error('Indica cuántas horas avanza esta carga'); return; }
+    if (maxHoras > 0 && formHoras > disponibles) {
+      toast.error(`Superas las horas del componente (${maxHoras}h). Tienes ${yaRegistradas}h aprobadas o pendientes; disponibles: ${disponibles}h.`);
       return;
     }
     setSubmitting(true);
@@ -424,16 +546,29 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     setSubmitting(false);
   };
 
-  const handleDelete = async (evidenciaId: string) => {
-    if (!window.confirm('¿Eliminar este documento?')) return;
-    const res = await eliminarEvidenciaPTA(activePtaId, evidenciaId);
-    if (res.success) { toast.success('Documento eliminado'); loadEvidencias(); }
-    else toast.error('Error al eliminar');
+  // Elimina un documento; si es el principal de una justificación, elimina también sus soportes.
+  const handleDelete = async (evidenciaId: string, adjuntosIds: string[] = []) => {
+    const msg = adjuntosIds.length > 0
+      ? `¿Eliminar esta justificación y sus ${adjuntosIds.length} soporte${adjuntosIds.length > 1 ? 's' : ''} adicional${adjuntosIds.length > 1 ? 'es' : ''}?`
+      : '¿Eliminar este documento?';
+    if (!window.confirm(msg)) return;
+    const ids = [evidenciaId, ...adjuntosIds];
+    let ok = 0;
+    for (const id of ids) {
+      const res = await eliminarEvidenciaPTA(activePtaId, id);
+      if (res.success) ok++;
+    }
+    if (ok > 0) {
+      toast.success(ids.length > 1 ? 'Justificación eliminada' : 'Documento eliminado');
+      loadEvidencias();
+    } else toast.error('Error al eliminar');
   };
 
   const filteredEvidencias = filtroComponente
     ? evidencias.filter(e => e.componente_pta === filtroComponente)
     : evidencias;
+  const horasDisponiblesForm = horasDisponiblesPorComponente[formComponente] || 0;
+  const sinHorasDisponibles = horasDisponiblesForm <= 0;
 
   return (
     <div>
@@ -457,7 +592,48 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         </button>
       </div>
 
+      {/* Aviso de seguimiento bloqueado: el PTA aún no tiene todos sus componentes aprobados */}
+      {seguimientoBloqueado && (
+        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '24px 20px', marginBottom: 16, textAlign: 'center' }}>
+          <div style={{ width: 42, height: 42, borderRadius: 999, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+            <Lock style={{ width: 18, height: 18, color: '#B45309' }} />
+          </div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#92400E' }}>
+            Seguimiento disponible tras la aprobación de tu PTA
+          </div>
+          <div style={{ fontSize: '0.74rem', color: '#A16207', marginTop: 6, maxWidth: 520, margin: '6px auto 0', lineHeight: 1.6 }}>
+            Podrás registrar los documentos que justifican tus horas cuando la totalidad de los
+            componentes de tu Plan de Trabajo Académico hayan sido aprobados.
+          </div>
+          {Array.isArray(activePta?.componentes_estado) && activePta.componentes_estado.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
+              {[...activePta.componentes_estado].sort((a: any, b: any) => {
+                const ORDEN = ['academica', 'investigacion', 'extension', 'complementarias'];
+                const ia = ORDEN.indexOf(a?.key); const ib = ORDEN.indexOf(b?.key);
+                return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+              }).map((c: any) => {
+                const aprobado = c.estado === 'aprobado';
+                const devuelto = c.estado === 'devuelto';
+                const label = c.label === 'Investigacion' ? 'Investigación' : c.label === 'Extension' ? 'Extensión' : c.label;
+                return (
+                  <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background: aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : '#FEF3C7', color: aprobado ? '#047857' : devuelto ? '#B91C1C' : '#92400E', fontSize: '0.64rem', fontWeight: 700, border: `1px solid ${aprobado ? '#6EE7B7' : devuelto ? '#FCA5A5' : '#FDE68A'}` }}>
+                    {aprobado ? <CheckCircle2 style={{ width: 10, height: 10 }} /> : devuelto ? <XCircle style={{ width: 10, height: 10 }} /> : <Clock style={{ width: 10, height: 10 }} />}
+                    {label}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          {Number(activePta?.componentes_total) > 0 && (
+            <div style={{ fontSize: '0.68rem', color: '#92400E', fontWeight: 700, marginTop: 10 }}>
+              {Number(activePta?.componentes_aprobados) || 0} de {Number(activePta?.componentes_total)} componentes aprobados
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Progress por componente */}
+      {!seguimientoBloqueado && (
       <div style={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB', padding: '14px 18px', marginBottom: 16 }}>
         <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', marginBottom: 10 }}>
           Progreso por componente (horas aprobadas)
@@ -482,6 +658,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
           );
         })}
       </div>
+      )}
 
       {/* Upload form (modal inline) */}
       <AnimatePresence>
@@ -490,22 +667,34 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
             initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: '16px 18px', marginBottom: 16 }}
           >
-            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0369A1', marginBottom: 8 }}>
-              Registrar {formFiles.length} archivo{formFiles.length > 1 ? 's' : ''}:
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0369A1' }}>
+                Registrar justificación — {formFiles.length} archivo{formFiles.length > 1 ? 's' : ''}
+              </div>
+              <span style={{ fontSize: '0.64rem', fontWeight: 700, color: formFiles.length >= MAX_ARCHIVOS_JUSTIFICACION ? '#B45309' : '#64748B', background: formFiles.length >= MAX_ARCHIVOS_JUSTIFICACION ? '#FEF3C7' : '#F1F5F9', padding: '2px 8px', borderRadius: 999 }}>
+                {formFiles.length}/{MAX_ARCHIVOS_JUSTIFICACION} archivos
+              </span>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
               {formFiles.map((f, i) => (
                 <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.68rem', color: '#1E40AF', fontWeight: 600 }}>
                   {f.name.length > 25 ? f.name.substring(0, 22) + '...' : f.name}
                   <button onClick={() => removeFormFile(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#DC2626', fontSize: '0.7rem', fontWeight: 700, lineHeight: 1 }}>×</button>
                 </span>
               ))}
-              {formFiles.length < 10 && (
+              {formFiles.length < MAX_ARCHIVOS_JUSTIFICACION ? (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   style={{ padding: '2px 8px', borderRadius: 6, border: '1px dashed #9CA3AF', background: 'white', fontSize: '0.68rem', color: '#6B7280', cursor: 'pointer' }}
-                >+ Agregar más</button>
+                >+ Agregar más ({formFiles.length}/{MAX_ARCHIVOS_JUSTIFICACION})</button>
+              ) : (
+                <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.66rem', color: '#B45309', background: '#FEF3C7', border: '1px solid #FDE68A', fontWeight: 600 }}>
+                  Alcanzaste el máximo de {MAX_ARCHIVOS_JUSTIFICACION} archivos
+                </span>
               )}
+            </div>
+            <div style={{ fontSize: '0.64rem', color: '#64748B', marginBottom: 10 }}>
+              Las horas y la descripción aplican a la justificación completa; los archivos adicionales quedan como soportes de la misma.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
               <div>
@@ -516,17 +705,20 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
                 >
                   {COMPONENTES_PTA.map(c => (
-                    <option key={c.key} value={c.key}>{c.label} ({horasPorComponente[c.key] || 0}h)</option>
+                    <option key={c.key} value={c.key} disabled={(horasDisponiblesPorComponente[c.key] || 0) <= 0}>
+                      {c.label} ({horasDisponiblesPorComponente[c.key] || 0}h)
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Horas que avanza *</label>
                 <input
-                  type="number" min={1} max={horasPorComponente[formComponente] || 800}
+                  type="number" min={1} max={horasDisponiblesForm || 0}
                   value={formHoras || ''}
                   onChange={e => setFormHoras(Number(e.target.value))}
-                  placeholder="ej. 40"
+                  placeholder={horasDisponiblesForm > 0 ? `Máx. ${horasDisponiblesForm}` : 'Sin horas disponibles'}
+                  disabled={sinHorasDisponibles}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
@@ -542,11 +734,11 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
-                onClick={handleSubmit} disabled={submitting}
-                style={{ flex: 1, padding: '9px 16px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: submitting ? 0.6 : 1 }}
+                onClick={handleSubmit} disabled={submitting || sinHorasDisponibles}
+                style={{ flex: 1, padding: '9px 16px', borderRadius: 8, border: 'none', background: sinHorasDisponibles ? '#9CA3AF' : '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: submitting || sinHorasDisponibles ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: submitting ? 0.6 : 1 }}
               >
                 <Send style={{ width: 14, height: 14 }} />
-                {submitting ? 'Enviando...' : 'Registrar documento'}
+                {submitting ? 'Enviando...' : sinHorasDisponibles ? 'Sin horas disponibles' : 'Registrar documento'}
               </button>
               <button
                 onClick={() => { setShowForm(false); setFormFiles([]); }}
@@ -559,8 +751,13 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         )}
       </AnimatePresence>
 
+      {/* Input de archivos SIEMPRE montado: lo usan tanto la drop zone como el
+          botón "+ Agregar más" del formulario (antes vivía dentro de la drop
+          zone condicional y el botón quedaba sin input al abrir el form). */}
+      <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) handleFilesSelect(e.target.files); e.target.value = ''; }} />
+
       {/* Drop zone */}
-      {!showForm && (
+      {!seguimientoBloqueado && !showForm && (
         <div
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -573,18 +770,18 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
             marginBottom: 14, transition: 'all 0.2s', cursor: 'pointer',
           }}
         >
-          <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={e => { if (e.target.files && e.target.files.length > 0) handleFilesSelect(e.target.files); e.target.value = ''; }} />
           <Upload style={{ width: 26, height: 26, color: dragOver ? '#003DA5' : '#9CA3AF', margin: '0 auto 6px' }} />
           <p style={{ fontSize: '0.85rem', color: dragOver ? '#003DA5' : '#6B7280', fontWeight: 600, margin: 0 }}>
-            {dragOver ? 'Suelta aquí tu archivo' : 'Arrastra archivos o haz clic para adjuntar'}
+            {dragOver ? 'Suelta aquí tus archivos' : 'Arrastra archivos o haz clic para adjuntar'}
           </p>
           <p style={{ fontSize: '0.7rem', color: '#9CA3AF', margin: '4px 0 0' }}>
-            PDF, DOCX, XLSX, imágenes — Máx. 10 MB
+            PDF, DOCX, XLSX, imágenes — Máx. 10 MB · hasta {MAX_ARCHIVOS_JUSTIFICACION} archivos por justificación
           </p>
         </div>
       )}
 
-      {/* Filtros por componente */}
+      {/* Filtros por componente (ocultos si el seguimiento está bloqueado y no hay documentos) */}
+      {(!seguimientoBloqueado || evidencias.length > 0) && (
       <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
         <button onClick={() => setFiltroComponente('')} style={{ padding: '3px 9px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 600, border: !filtroComponente ? '1.5px solid #003DA5' : '1px solid #E5E7EB', background: !filtroComponente ? '#EFF6FF' : 'white', color: !filtroComponente ? '#003DA5' : '#6B7280', cursor: 'pointer' }}>
           Todos
@@ -595,27 +792,33 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
           </button>
         ))}
       </div>
+      )}
 
       {/* Lista evidencias */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 30, color: '#9CA3AF', fontSize: '0.82rem' }}>Cargando documentos...</div>
       ) : filteredEvidencias.length === 0 ? (
+        seguimientoBloqueado ? null : (
         <div style={{ textAlign: 'center', padding: '30px 20px', background: '#F9FAFB', borderRadius: 12 }}>
           <Paperclip style={{ width: 32, height: 32, color: '#D1D5DB', margin: '0 auto 8px' }} />
           <p style={{ fontSize: '0.82rem', color: '#9CA3AF', margin: 0 }}>Sin documentos registrados{filtroComponente ? ` en ${COMPONENTES_PTA.find(c => c.key === filtroComponente)?.label}` : ''}</p>
         </div>
+        )
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {filteredEvidencias.map((ev, i) => {
+          {agruparEvidenciasPorJustificacion(filteredEvidencias).map((grupo, i) => {
+            const ev = grupo.main;
             const fi = fileIcon(ev.nombre || '');
             const FI = fi.icon;
-            const badge = revisionBadge(ev.estado_revision);
+            const estadoRevision = getEvidenceRevisionStatus(ev);
+            const badge = revisionBadge(estadoRevision);
             const BadgeIcon = badge.icon;
             const comp = COMPONENTES_PTA.find(c => c.key === ev.componente_pta);
             return (
               <motion.div key={ev.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
-                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, background: 'white', border: `1px solid ${ev.estado_revision === 'rechazado' ? '#FCA5A5' : ev.estado_revision === 'aprobado' ? '#6EE7B7' : '#E5E7EB'}` }}
+                style={{ padding: '12px 14px', borderRadius: 10, background: 'white', border: `1px solid ${estadoRevision === 'rechazado' ? '#FCA5A5' : estadoRevision === 'aprobado' ? '#6EE7B7' : '#E5E7EB'}` }}
               >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <div style={{ width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${fi.color}10`, flexShrink: 0, marginTop: 2 }}>
                   <FI style={{ width: 16, height: 16, color: fi.color }} />
                 </div>
@@ -637,28 +840,109 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                     <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.62rem', fontWeight: 700, background: badge.bg, color: badge.color, display: 'flex', alignItems: 'center', gap: 3 }}>
                       <BadgeIcon style={{ width: 9, height: 9 }} /> {badge.label}
                     </span>
+                    {grupo.adjuntos.length > 0 && (
+                      <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.62rem', fontWeight: 700, background: '#F1F5F9', color: '#475569' }}>
+                        +{grupo.adjuntos.length} soporte{grupo.adjuntos.length > 1 ? 's' : ''}
+                      </span>
+                    )}
                     {ev.descripcion && (
                       <span style={{ fontSize: '0.62rem', color: '#64748B', fontStyle: 'italic' }} title={ev.descripcion}>📝 {ev.descripcion.substring(0, 40)}{ev.descripcion.length > 40 ? '...' : ''}</span>
                     )}
                   </div>
                   {ev.comentario_revision && (
-                    <div style={{ marginTop: 4, padding: '4px 8px', borderRadius: 6, background: ev.estado_revision === 'rechazado' ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${ev.estado_revision === 'rechazado' ? '#FECACA' : '#BBF7D0'}`, fontSize: '0.65rem', color: ev.estado_revision === 'rechazado' ? '#991B1B' : '#166534' }}>
+                    <div style={{ marginTop: 4, padding: '4px 8px', borderRadius: 6, background: estadoRevision === 'rechazado' ? '#FEF2F2' : '#F0FDF4', border: `1px solid ${estadoRevision === 'rechazado' ? '#FECACA' : '#BBF7D0'}`, fontSize: '0.65rem', color: estadoRevision === 'rechazado' ? '#991B1B' : '#166534' }}>
                       <strong>Revisor:</strong> {ev.comentario_revision}
                     </div>
                   )}
                   <div style={{ fontSize: '0.62rem', color: '#9CA3AF', marginTop: 2 }}>
                     {new Date(ev.fecha_subida).toLocaleDateString('es-CO')} — {(ev.tamanio_bytes / 1024).toFixed(0)} KB
                   </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                    {renderBotonesArchivo(ev)}
+                  </div>
                 </div>
-                {ev.estado_revision !== 'aprobado' && (
-                  <button onClick={() => handleDelete(ev.id)} style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {estadoRevision !== 'aprobado' && (
+                  <button
+                    onClick={() => handleDelete(ev.id, grupo.adjuntos.map((a: any) => a.id))}
+                    title={grupo.adjuntos.length > 0 ? 'Eliminar la justificación y sus soportes' : 'Eliminar documento'}
+                    style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                  >
                     <Trash2 style={{ width: 12, height: 12, color: '#DC2626' }} />
                   </button>
+                )}
+                </div>
+                {/* Soportes adicionales de la misma justificación */}
+                {grupo.adjuntos.length > 0 && (
+                  <div style={{ marginTop: 8, marginLeft: 44, borderLeft: '2px solid #E2E8F0', paddingLeft: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Soportes adicionales ({grupo.adjuntos.length})
+                    </div>
+                    {grupo.adjuntos.map((adj: any) => {
+                      const afi = fileIcon(adj.nombre || '');
+                      const AFI = afi.icon;
+                      return (
+                        <div key={adj.id} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
+                          <AFI style={{ width: 12, height: 12, color: afi.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: '0.7rem', color: '#475569', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>{adj.nombre}</span>
+                          <span style={{ fontSize: '0.6rem', color: '#9CA3AF', flexShrink: 0 }}>{(Number(adj.tamanio_bytes || 0) / 1024).toFixed(0)} KB</span>
+                          {renderBotonesArchivo(adj, true)}
+                          {getEvidenceRevisionStatus(adj) !== 'aprobado' && (
+                            <button
+                              onClick={() => handleDelete(adj.id)}
+                              title="Eliminar este soporte"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: '#DC2626', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            >
+                              <Trash2 style={{ width: 10, height: 10 }} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </motion.div>
             );
           })}
         </div>
+      )}
+
+      {/* Modal de previsualización de archivo (mismo patrón que el Seguimiento del backoffice) */}
+      {previewFile && createPortal(
+        <div
+          onClick={() => setPreviewFile(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100002, background: 'rgba(17,24,39,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 800, maxHeight: '90vh', overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid #E5E7EB', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <FileText style={{ width: 18, height: 18, color: '#003DA5', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{previewFile.nombre}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
+                  <Download style={{ width: 14, height: 14 }} /> Descargar
+                </a>
+                <button onClick={() => setPreviewFile(null)} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X style={{ width: 16, height: 16, color: '#6B7280' }} />
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
+              {['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(previewFile.tipo) ? (
+                <img src={previewFile.url} alt={previewFile.nombre} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, objectFit: 'contain' }} />
+              ) : previewFile.tipo === 'pdf' ? (
+                <iframe src={previewFile.url} title={previewFile.nombre} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 8 }} />
+              ) : (
+                <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
+                  <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />
+                  <p style={{ fontSize: '0.85rem' }}>Este tipo de archivo no se puede previsualizar</p>
+                  <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

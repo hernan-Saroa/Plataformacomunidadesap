@@ -26,6 +26,7 @@ export class BancoDocentesController {
   async list(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
+    @Query('vinculacion') vinculacion?: string,
     @Query('estado') estado?: string,
     @Query('search') search?: string,
     @Query('periodoCarga') periodoCarga?: string,
@@ -35,6 +36,7 @@ export class BancoDocentesController {
     const result = await this.service.list({
       territorial,
       dedicacion,
+      vinculacion,
       estado,
       search,
       periodoCarga,
@@ -55,10 +57,11 @@ export class BancoDocentesController {
   async stats(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
+    @Query('vinculacion') vinculacion?: string,
     @Query('estado') estado?: string,
     @Query('periodoCarga') periodoCarga?: string,
   ) {
-    return { success: true, data: await this.service.getStats({ territorial, dedicacion, estado, periodoCarga }) };
+    return { success: true, data: await this.service.getStats({ territorial, dedicacion, vinculacion, estado, periodoCarga }) };
   }
 
   @Get('invitaciones')

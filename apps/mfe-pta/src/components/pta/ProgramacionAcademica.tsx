@@ -21,14 +21,7 @@ import {
   crearPTAPreCarga, notificarDocentePTA, getPTAsConcertacion,
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
-
-const ESTADO_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  'PROPUESTO_POR_DIRECCION': { bg: '#EFF6FF', text: '#1E40AF', border: '#BFDBFE' },
-  'NOTIFICADO_DOCENTE': { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' },
-  'EN_CONCERTACION': { bg: '#F3E8FF', text: '#6B21A8', border: '#DDD6FE' },
-  'CONCERTADO': { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7' },
-  'ESCALADO_SNA': { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5' },
-};
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 export function ProgramacionAcademica() {
   const [programas, setProgramas] = useState<any[]>([]);
@@ -387,7 +380,8 @@ export function ProgramacionAcademica() {
           </div>
           <div className="divide-y divide-gray-100">
             {ptasConcertacion.map(pta => {
-              const sc = ESTADO_COLORS[pta.estado] || { bg: '#F3F4F6', text: '#4B5563', border: '#E5E7EB' };
+              const visual = getPtaStatusVisual(pta.estado);
+              const sc = { bg: visual.bg, text: visual.color, border: visual.border };
               return (
                 <div key={pta.id} className="px-4 py-3 flex items-center justify-between hover:bg-gray-50">
                   <div>

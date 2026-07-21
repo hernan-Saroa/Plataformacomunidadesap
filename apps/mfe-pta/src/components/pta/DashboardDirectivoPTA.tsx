@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { getDashboardDirectivo, getConfiguracionPTAGlobal } from '../../services/api/ptaApi';
 import { PTA_COLORS } from './shared/ptaColors';
+import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 
 const GAUGE_COLORS = ['#EF4444', '#F59E0B', '#10B981'];
 
@@ -100,18 +101,11 @@ export function DashboardDirectivoPTA() {
     { componente: 'Investigación', horas: horas?.investigacion ?? 0, color: PTA_COLORS.INVESTIGACION },
     { componente: 'Extensión', horas: horas?.extension ?? 0, color: PTA_COLORS.EXTENSION },
     { componente: 'Complementarias', horas: horas?.complementarias ?? 0, color: PTA_COLORS.COMPLEMENTARIAS },
-    { componente: 'Acad. Admin.', horas: horas?.academico_admin ?? 0, color: PTA_COLORS.ACAD_ADMIN },
   ].filter(d => d.horas > 0);
 
   function getStatusBadge(estado: string) {
-    const map: Record<string, { bg: string; color: string }> = {
-      'Aprobado': { bg: '#D1FAE5', color: '#065F46' },
-      'Rechazado': { bg: '#FEE2E2', color: '#991B1B' },
-      'Devuelto': { bg: '#FFF7ED', color: '#9A3412' },
-      'ESCALADO_SNA': { bg: '#FEE2E2', color: '#991B1B' },
-      'EN_CONCERTACION': { bg: '#F3E8FF', color: '#6B21A8' },
-    };
-    return map[estado] || { bg: '#F3F4F6', color: '#4B5563' };
+    const visual = getPtaStatusVisual(estado);
+    return { bg: visual.bg, color: visual.color };
   }
 
   // --- ANÁLISIS DE FUGA ACADÉMICA (Circular 003) ---

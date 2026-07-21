@@ -89,12 +89,42 @@ export class AsignaturasImportService {
     ];
 
     // Obtener CETAPs y catálogos de la BD para validación estricta y comparación de duplicados
-    const dbCetaps = await this.dataSource.query('SELECT id, codigo FROM academic_work_plan.cetap');
+    const dbCetaps = await this.dataSource.query(
+      `SELECT c.id, c.codigo, c.nombre_normalizado,
+              dt.codigo AS codigo_dt
+         FROM academic_work_plan.cetap c
+         INNER JOIN academic_work_plan.direccion_territorial dt
+                 ON dt.id = c.id_direccion_territorial`,
+    );
     const validCetapsMap = new Map<string, boolean>();
     const cetapsMap = new Map<string, string>();
+    const cetapRowByCode = new Map<string, any>();
+    const cetapRowByDtAndName = new Map<string, any>();
     for (const c of dbCetaps) {
-      validCetapsMap.set(c.codigo.toLowerCase().trim(), true);
-      cetapsMap.set(c.codigo.toLowerCase().trim(), c.id);
+      const codeKey = String(c.codigo || '').toLowerCase().trim();
+      const identityKey = `${String(c.codigo_dt || '').toLowerCase().trim()}::${this.normalizarIdentidadGeografica(c.nombre_normalizado)}`;
+      validCetapsMap.set(codeKey, true);
+      cetapsMap.set(codeKey, c.id);
+      cetapRowByCode.set(codeKey, c);
+      cetapRowByDtAndName.set(identityKey, c);
+    }
+
+    // Algunos archivos históricos de MATRIZ_OFERTA conservan códigos anteriores
+    // (caso Sede Central/OTRO). Si el código apunta a una sede con otro nombre,
+    // prevalece la identidad territorial + nombre del propio archivo. Este mapa
+    // es local a la importación: no renombra ni mueve el catálogo maestro.
+    for (const m of matrizOferta) {
+      const codeKey = String(m.codigo_cetap || '').toLowerCase().trim();
+      const dtKey = String(m.codigo_dt || '').toLowerCase().trim();
+      const nameKey = this.normalizarIdentidadGeografica(m.nombre_cetap);
+      const exact = cetapRowByCode.get(codeKey);
+      const sameIdentity = cetapRowByDtAndName.get(`${dtKey}::${nameKey}`);
+      const exactMatchesIdentity =
+        exact &&
+        String(exact.codigo_dt || '').toLowerCase().trim() === dtKey &&
+        this.normalizarIdentidadGeografica(exact.nombre_normalizado) === nameKey;
+      const resolved = exactMatchesIdentity ? exact : (sameIdentity || exact);
+      if (resolved) cetapsMap.set(codeKey, resolved.id);
     }
 
     const existingProgramas = await this.dataSource.query('SELECT * FROM academic_work_plan.programa');
@@ -874,6 +904,14 @@ export class AsignaturasImportService {
       .toUpperCase();
   }
 
+  private normalizarIdentidadGeografica(value: unknown): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+  }
+
   /**
    * Crea (si no existen) los CETAPs y Direcciones Territoriales referenciados en la
    * MATRIZ_OFERTA, usando los datos del propio archivo, y actualiza `cetapsMap`
@@ -892,11 +930,39 @@ export class AsignaturasImportService {
       dtMap.set(String(dt.codigo).toLowerCase().trim(), dt.id);
     }
 
+    const existingCetaps = await queryRunner.query(
+      `SELECT c.id, c.codigo, c.nombre_normalizado,
+              dt.codigo AS codigo_dt
+         FROM academic_work_plan.cetap c
+         INNER JOIN academic_work_plan.direccion_territorial dt
+                 ON dt.id = c.id_direccion_territorial`,
+    );
+    const byCode = new Map<string, any>();
+    const byDtAndName = new Map<string, any>();
+    for (const c of existingCetaps) {
+      byCode.set(String(c.codigo || '').toLowerCase().trim(), c);
+      byDtAndName.set(
+        `${String(c.codigo_dt || '').toLowerCase().trim()}::${this.normalizarIdentidadGeografica(c.nombre_normalizado)}`,
+        c,
+      );
+    }
+
     for (const m of matrizOferta) {
       const cetapKey = m.codigo_cetap.toLowerCase().trim();
-      if (cetapsMap.has(cetapKey)) continue;
-
       const dtKey = (m.codigo_dt || '').toLowerCase().trim();
+      const nameKey = this.normalizarIdentidadGeografica(m.nombre_cetap);
+      const exact = byCode.get(cetapKey);
+      const sameIdentity = byDtAndName.get(`${dtKey}::${nameKey}`);
+      const exactMatchesIdentity =
+        exact &&
+        String(exact.codigo_dt || '').toLowerCase().trim() === dtKey &&
+        this.normalizarIdentidadGeografica(exact.nombre_normalizado) === nameKey;
+      const resolved = exactMatchesIdentity ? exact : (sameIdentity || exact);
+      if (resolved) {
+        cetapsMap.set(cetapKey, resolved.id);
+        continue;
+      }
+
       let dtId = dtMap.get(dtKey);
       if (!dtId) {
         dtId = await this.ensureDireccionTerritorial(queryRunner, m.codigo_dt, m.nombre_dt);
@@ -982,13 +1048,62 @@ export class AsignaturasImportService {
     periodId: string,
     countDto: ImportCountDto,
   ): Promise<void> {
+    const catalogRows = await queryRunner.query(
+      'SELECT id, codigo FROM academic_work_plan.cetap',
+    );
+    const exactCetapIdByCode = new Map<string, string>();
+    for (const row of catalogRows) {
+      exactCetapIdByCode.set(
+        String(row.codigo || '').toLowerCase().trim(),
+        String(row.id),
+      );
+    }
+
     for (const matriz of matrizOferta) {
-      const cetapId = cetapsMap.get(matriz.codigo_cetap.toLowerCase().trim());
+      const codeKey = matriz.codigo_cetap.toLowerCase().trim();
+      const cetapId = cetapsMap.get(codeKey);
       if (!cetapId) continue;
+      const exactCodeCetapId = exactCetapIdByCode.get(codeKey);
 
       for (const progCode of matriz.programas_ofertados) {
         const progId = programasMap.get(progCode.toLowerCase().trim());
         if (!progId) continue;
+
+        // Si el código histórico apuntaba a otro CETAP pero territorial+nombre
+        // resolvieron la identidad correcta, trasladar únicamente esta oferta
+        // del período actual. Así una reimportación repara datos previos sin
+        // duplicar ni afectar programas/períodos que no estén en el archivo.
+        if (exactCodeCetapId && exactCodeCetapId !== String(cetapId)) {
+          await queryRunner.query(
+            `DELETE FROM academic_work_plan.oferta_cetap_programa source
+              WHERE source.id_cetap = $1
+                AND source.id_programa = $2
+                AND source.id_periodo_academico = $3
+                AND EXISTS (
+                      SELECT 1
+                        FROM academic_work_plan.oferta_cetap_programa target
+                       WHERE target.id_cetap = $4
+                         AND target.id_programa = source.id_programa
+                         AND target.id_periodo_academico = source.id_periodo_academico
+                    )`,
+            [exactCodeCetapId, progId, periodId, cetapId],
+          );
+          await queryRunner.query(
+            `UPDATE academic_work_plan.oferta_cetap_programa source
+                SET id_cetap = $4, updated_at = CURRENT_TIMESTAMP
+              WHERE source.id_cetap = $1
+                AND source.id_programa = $2
+                AND source.id_periodo_academico = $3
+                AND NOT EXISTS (
+                      SELECT 1
+                        FROM academic_work_plan.oferta_cetap_programa target
+                       WHERE target.id_cetap = $4
+                         AND target.id_programa = source.id_programa
+                         AND target.id_periodo_academico = source.id_periodo_academico
+                    )`,
+            [exactCodeCetapId, progId, periodId, cetapId],
+          );
+        }
 
         await queryRunner.query(`
           INSERT INTO academic_work_plan.oferta_cetap_programa (

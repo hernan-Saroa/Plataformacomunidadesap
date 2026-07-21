@@ -1,6 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Calculator, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Columns3, Tag, Lock, Info } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Calculator, ChevronDown, Plus, Trash2, Globe, GripVertical, X, Tag, Lock, Info } from 'lucide-react';
 import { PTARules, ExtItem } from '../ConfiguracionReglasPTA';
+import { BuilderSurfaceStyles } from './BuilderSurfaceStyles';
+import { DetailColumnChain } from './DetailColumnChain';
+import { DetailColumnModal } from './DetailColumnModal';
+import { HourLimitControl } from './HourLimitControl';
+import { toast } from 'sonner';
+import { createSectionActivityId } from './activityId';
 
 type CompSeccion = PTARules['comp_secciones'][number];
 type CompActividad = PTARules['comp_actividades_v2'][string][number];
@@ -10,6 +16,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   const [open2, setOpen2] = useState(true);   // Secciones y Actividades accordion
   const secciones: CompSeccion[] = draft.comp_secciones || [];
   const [seccionActiva, setSeccionActiva] = useState<string>(() => secciones[0]?.key || '');
+  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 
   // ── Drag & Drop State ──
   const [draggedActIdx, setDraggedActIdx] = useState<number | null>(null);
@@ -27,8 +34,6 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   // ── Modal "Agregar columna" ──
   const [colModal, setColModal] = useState<{ secKey: string; actIdx: number } | null>(null);
   const [colNombre, setColNombre] = useState('Evidencia');
-  const colInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (colModal && colInputRef.current) { colInputRef.current.focus(); colInputRef.current.select(); } }, [colModal]);
 
   // ── Activity Drag Handlers ──
   const handleDragStart = (e: React.DragEvent, secKey: string, idx: number) => {
@@ -78,16 +83,84 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     const raw = (actividades as any)[key] || [];
     return raw.map((act: any) => ({ ...act, items: act.items || [] }));
   };
+  // Despliegue independiente: abrir un bloque no cierra los demás.
+  const setBlockExpanded = (targetKey: string, expanded: boolean) => {
+    setExpandedBlocks(prev => ({ ...prev, [targetKey]: expanded }));
+  };
   const updateAct = (secKey: string, idx: number, field: string, val: any) => {
     const stringFields = ['nombre', 'id', 'linea'];
-    const next = actsDeSeccion(secKey).map((a, i) =>
-      i === idx ? { ...a, [field]: stringFields.includes(field) ? val : Number(val) } : a
+    const currentActs = actsDeSeccion(secKey);
+    if (field === 'id') {
+      const oldKey = `${secKey}:${currentActs[idx]?.id}`;
+      const newKey = `${secKey}:${val}`;
+      setExpandedBlocks(prev => {
+        if (!(oldKey in prev) || oldKey === newKey) return prev;
+        const nextState = { ...prev, [newKey]: prev[oldKey] };
+        delete nextState[oldKey];
+        return nextState;
+      });
+    }
+    const optionalNumberFields = ['max_horas', 'min_horas', 'porcentaje_pta'];
+    const next = currentActs.map((a, i) =>
+      i === idx
+        ? {
+            ...a,
+            [field]: stringFields.includes(field)
+              ? val
+              : optionalNumberFields.includes(field) && val === ''
+                ? undefined
+                : Number(val),
+          }
+        : a
     );
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
   };
-  const addAct = (secKey: string) => {
-    const next = [{ id: `COMP_${Date.now()}`, nombre: 'Nueva actividad', items: [] }, ...actsDeSeccion(secKey)];
+  // Tipo de horas del bloque (estructura de solo columna raíz): normaliza
+  // min/máx igual que los ítems al cambiar entre fija/hasta/intervalo.
+  const updateActTipo = (secKey: string, idx: number, tipo: string) => {
+    const currentActs = actsDeSeccion(secKey);
+    const act: any = currentActs[idx];
+    let patch: any;
+    if (tipo === 'intervalo') {
+      const currentMin = Number(act?.min_horas);
+      const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
+      const currentMax = Number(act?.max_horas);
+      const nextMax = Number.isFinite(currentMax) && currentMax > nextMin ? currentMax : Math.max(2, nextMin + 1);
+      patch = { tipo, min_horas: nextMin, max_horas: nextMax };
+    } else if (tipo === 'porcentaje') {
+      const currentPercentage = Number(act?.porcentaje_pta);
+      patch = {
+        tipo,
+        porcentaje_pta: Number.isFinite(currentPercentage)
+          ? Math.min(100, Math.max(1, currentPercentage))
+          : 1,
+      };
+    } else {
+      const currentMax = Number(act?.max_horas);
+      patch = { tipo, max_horas: Number.isFinite(currentMax) && currentMax > 0 ? currentMax : 1 };
+    }
+    const next = currentActs.map((a, i) => i === idx ? { ...a, ...patch } : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
+  };
+  const addAct = (secKey: string) => {
+    const section = secciones.find(item => item.key === secKey);
+    const existingIds = Object.values(actividades)
+      .flatMap(sectionActivities => Array.isArray(sectionActivities) ? sectionActivities : [])
+      .map(activity => String(activity?.id || ''));
+    const generated = createSectionActivityId({
+      sectionKey: secKey,
+      sectionLabel: section?.label,
+      existingIds,
+      sectionItemCount: actsDeSeccion(secKey).length,
+    });
+    const newId = generated.id;
+    // Con estructura de solo columna raíz el bloque nace con horas válidas
+    // (nunca vacío ni en 0): Hasta 1h por defecto.
+    const rootOnlyDefaults = getSeccionColumnas(secKey).length === 0 ? { tipo: 'hasta', max_horas: 1 } : {};
+    // El bloque nuevo se agrega al final, debajo de los ya configurados.
+    const next = [...actsDeSeccion(secKey), { id: newId, nombre: 'Nueva actividad', items: [], ...rootOnlyDefaults }];
+    handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
+    setBlockExpanded(`${secKey}:${newId}`, true);
   };
   const removeAct = (secKey: string, idx: number) => {
     const next = actsDeSeccion(secKey).filter((_, i) => i !== idx);
@@ -98,7 +171,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   const addItem = (secKey: string, actIdx: number, insertAt?: number, parentColIdx?: number) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
-    const newItem: ExtItem = { nombre: '', tipo: 'hasta', horas: 0, parent_col_idx: parentColIdx };
+    const newItem: ExtItem = { nombre: '', tipo: 'hasta', horas: 1, parent_col_idx: parentColIdx };
     const items = [...(act.items || [])];
     if (insertAt !== undefined && insertAt >= 0 && insertAt <= items.length) {
       items.splice(insertAt, 0, newItem);
@@ -112,9 +185,35 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   const updateItem = (secKey: string, actIdx: number, itemIdx: number, field: keyof ExtItem, val: any) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
-    const newItems = (act.items || []).map((it, ii) =>
-      ii === itemIdx ? { ...it, [field]: field === 'nombre' || field === 'tipo' || field === 'unidad' ? val : (val === '' ? '' : Number(val)) } : it
-    );
+    const newItems = (act.items || []).map((it, ii) => {
+      if (ii !== itemIdx) return it;
+      if (field === 'tipo') {
+        const nextType = val as ExtItem['tipo'];
+        if (nextType === 'intervalo') {
+          const currentMin = Number(it.horas_min);
+          const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
+          const currentMax = Number(it.horas);
+          const nextMax = Number.isFinite(currentMax) && currentMax > nextMin ? currentMax : Math.max(2, nextMin + 1);
+          return { ...it, tipo: nextType, horas_min: nextMin, horas: nextMax };
+        }
+        if (nextType === 'porcentaje') {
+          const currentPercentage = Number(it.porcentaje_pta);
+          return {
+            ...it,
+            tipo: nextType,
+            porcentaje_pta: Number.isFinite(currentPercentage)
+              ? Math.min(100, Math.max(1, currentPercentage))
+              : 1,
+          };
+        }
+        const currentHours = Number(it.horas);
+        return { ...it, tipo: nextType, horas: Number.isFinite(currentHours) && currentHours > 0 ? currentHours : 1 };
+      }
+      return {
+        ...it,
+        [field]: field === 'nombre' || field === 'unidad' ? val : (val === '' ? '' : Number(val)),
+      };
+    });
     const next = acts.map((a, i) => i === actIdx ? { ...a, items: newItems } : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
   };
@@ -137,95 +236,159 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
   };
 
-  // ── Per-item column values ──
-  const addItemColVal = (secKey: string, actIdx: number, itemIdx: number, colName: string) => {
+  // ── Reemplazo puntual de un ítem (usado por las columnas de detalle en escalera) ──
+  const replaceItem = (secKey: string, actIdx: number, itemIdx: number, nextItem: ExtItem) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
     const items = [...(act.items || [])];
-    const item = { ...items[itemIdx] };
-    const cv = { ...(item.col_valores || {}) };
-    cv[colName] = [...(cv[colName] || []), ''];
-    item.col_valores = cv;
-    items[itemIdx] = item;
-    const next = acts.map((a, i) => i === actIdx ? { ...a, items } : a);
-    handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
-  };
-  const updateItemColVal = (secKey: string, actIdx: number, itemIdx: number, colName: string, valIdx: number, val: string) => {
-    const acts = actsDeSeccion(secKey);
-    const act = acts[actIdx];
-    const items = [...(act.items || [])];
-    const item = { ...items[itemIdx] };
-    const cv = { ...(item.col_valores || {}) };
-    cv[colName] = (cv[colName] || []).map((v: string, i: number) => i === valIdx ? val : v);
-    item.col_valores = cv;
-    items[itemIdx] = item;
-    const next = acts.map((a, i) => i === actIdx ? { ...a, items } : a);
-    handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
-  };
-  const removeItemColVal = (secKey: string, actIdx: number, itemIdx: number, colName: string, valIdx: number) => {
-    const acts = actsDeSeccion(secKey);
-    const act = acts[actIdx];
-    const items = [...(act.items || [])];
-    const item = { ...items[itemIdx] };
-    const cv = { ...(item.col_valores || {}) };
-    cv[colName] = (cv[colName] || []).filter((_: string, i: number) => i !== valIdx);
-    item.col_valores = cv;
-    items[itemIdx] = item;
+    items[itemIdx] = nextItem;
     const next = acts.map((a, i) => i === actIdx ? { ...a, items } : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
   };
 
   // ── Columnas a nivel de sección ──
   const ITEMS_KEY = '_items_';
+  // Máximo de columnas creadas con "Agregar columna". La columna raíz y el
+  // nivel de actividades no cuentan (con ellas el total llega a 7).
+  const MAX_CUSTOM_COLUMNS = 5;
+  const getStructureLabels = (secKey: string) => {
+    const section = secciones.find(s => s.key === secKey);
+    return {
+      root: section?.columna_raiz_nombre || 'Componente',
+      rootEnabled: section?.columna_raiz_habilitada !== false,
+      items: section?.columna_items_nombre || 'Actividad / Ítem',
+    };
+  };
+  const updateStructureLabel = (secKey: string, field: 'columna_raiz_nombre' | 'columna_items_nombre', value: string) => {
+    if (!value.trim()) return;
+    handleChange('comp_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, [field]: value } : section,
+    ));
+  };
   const getSeccionColumnas = (secKey: string): string[] => {
     const sec = secciones.find(s => s.key === secKey);
     const raw = sec?.columnas;
     const cols = Array.isArray(raw) ? raw.filter((c): c is string => typeof c === 'string' && c.length > 0) : [];
-    if (!cols.includes(ITEMS_KEY)) return [ITEMS_KEY, ...cols];
+    if (!Array.isArray(raw)) return [ITEMS_KEY];
     return cols;
   };
-  const seccionTieneDatos = (secKey: string): boolean => {
-    const acts = actsDeSeccion(secKey);
-    return acts.some(a => {
-      const hasItems = (a.items || []).length > 0;
-      const hasColVals = Object.values(a.columnas_valores || {}).some((v: any) => Array.isArray(v) && v.length > 0);
-      const hasColMeta = Object.values(a.columnas_meta || {}).some((v: any) => Array.isArray(v) && v.length > 0);
-      return hasItems || hasColVals || hasColMeta;
-    });
-  };
+  const seccionTieneDatos = (secKey: string): boolean => actsDeSeccion(secKey).some(activity =>
+    (activity.items || []).length > 0
+    || Object.values(activity.columnas_valores || {}).some((values: any) => Array.isArray(values) && values.length > 0)
+    || Object.values(activity.columnas_meta || {}).some((values: any) => Array.isArray(values) && values.length > 0),
+  );
   const reorderColumnas = (secKey: string, fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx) return;
+    const cols = [...getSeccionColumnas(secKey)];
     if (seccionTieneDatos(secKey)) {
-      alert('⚠️ No se puede cambiar el orden de las columnas cuando ya hay actividades configuradas.\n\nPara cambiar el orden, primero elimine todas las actividades y valores de esta sección.');
+      toast.error('No se puede cambiar la jerarquía mientras tenga datos', {
+        description: 'Elimina primero los valores y actividades que usan estas columnas. Así se evita asociar información al nivel equivocado.',
+      });
       return;
     }
-    const cols = [...getSeccionColumnas(secKey)];
     const [moved] = cols.splice(fromIdx, 1);
     cols.splice(toIdx, 0, moved);
     const newSecs = secciones.map(s => s.key === secKey ? { ...s, columnas: cols } : s);
     handleChange('comp_secciones', newSecs);
   };
   const addColumnaSeccion = (secKey: string, nombre: string) => {
+    const labels = getStructureLabels(secKey);
+    const columns = getSeccionColumnas(secKey);
+    if (columns.filter(column => column !== ITEMS_KEY).length >= MAX_CUSTOM_COLUMNS) {
+      toast.error(`Se admiten máximo ${MAX_CUSTOM_COLUMNS} columnas adicionales`, {
+        description: 'La columna raíz y el nivel de actividades no cuentan dentro de este límite.',
+      });
+      return false;
+    }
+    if ([labels.root, labels.items, ...columns.filter(column => column !== ITEMS_KEY)]
+      .some(column => column.trim().toLocaleLowerCase() === nombre.trim().toLocaleLowerCase())) {
+      toast.error('Ya existe una columna con ese nombre');
+      return false;
+    }
     const newSecs = secciones.map(s => {
       if (s.key !== secKey) return s;
-      const existing = s.columnas || [];
-      const base = existing.includes(ITEMS_KEY) ? existing : [ITEMS_KEY, ...existing];
+      const base = Array.isArray(s.columnas) ? s.columnas : [ITEMS_KEY];
       return { ...s, columnas: [...base, nombre] };
     });
     handleChange('comp_secciones', newSecs);
+    return true;
   };
   const removeColumnaSeccion = (secKey: string, colName: string) => {
+    const isUsed = actsDeSeccion(secKey).some(activity =>
+      (activity.columnas_valores?.[colName] || []).some(value => String(value || '').trim())
+      || (activity.columnas_meta?.[colName] || []).length > 0
+      || (activity.items || []).some(item => (item.col_valores?.[colName] || []).some(value => String(value || '').trim())),
+    );
+    if (isUsed) {
+      toast.error(`La columna “${colName}” está siendo utilizada`, {
+        description: 'Elimina sus valores de todos los bloques antes de quitarla de la estructura.',
+      });
+      return;
+    }
     const newSecs = secciones.map(s =>
       s.key === secKey ? { ...s, columnas: (s.columnas || []).filter(c => c !== colName) } : s
     );
     handleChange('comp_secciones', newSecs);
+    // La columna de detalle siguiente en la cadena apuntaba sus padres a la
+    // columna eliminada: se limpian para volver al emparejamiento por orden.
+    const oldCols = getSeccionColumnas(secKey);
+    const itemsPosition = oldCols.indexOf(ITEMS_KEY);
+    const chainCols = itemsPosition >= 0 ? oldCols.slice(itemsPosition + 1) : [];
+    const chainPosition = chainCols.indexOf(colName);
+    const nextChainCol = chainPosition >= 0 && chainPosition + 1 < chainCols.length ? chainCols[chainPosition + 1] : null;
     const acts = actsDeSeccion(secKey);
     const cleaned = acts.map(a => {
       const cv = { ...(a.columnas_valores || {}) };
+      const cm = { ...(a.columnas_meta || {}) };
       delete cv[colName];
-      return { ...a, columnas_valores: cv };
+      delete cm[colName];
+      const items = (a.items || []).map(item => {
+        const itemValues = { ...(item.col_valores || {}) };
+        delete itemValues[colName];
+        const itemParents = { ...(item.col_parents || {}) };
+        delete itemParents[colName];
+        if (nextChainCol) delete itemParents[nextChainCol];
+        return { ...item, col_valores: itemValues, col_parents: itemParents };
+      });
+      return { ...a, columnas_valores: cv, columnas_meta: cm, items };
     });
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: cleaned });
+  };
+  const removeItemsColumn = (secKey: string) => {
+    const hasItems = actsDeSeccion(secKey).some(activity => (activity.items || []).length > 0);
+    if (hasItems) {
+      toast.error(`La columna “${getStructureLabels(secKey).items}” está siendo utilizada`, {
+        description: 'Elimina primero todas las actividades de los bloques; después podrás quitar este nivel.',
+      });
+      return;
+    }
+    handleChange('comp_secciones', secciones.map(section =>
+      section.key === secKey
+        ? { ...section, columnas: getSeccionColumnas(secKey).filter(column => column !== ITEMS_KEY) }
+        : section,
+    ));
+  };
+  const restoreItemsColumn = (secKey: string) => {
+    const columns = getSeccionColumnas(secKey);
+    handleChange('comp_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, columnas: [...columns, ITEMS_KEY] } : section,
+    ));
+  };
+  const removeRootColumn = (secKey: string) => {
+    if (actsDeSeccion(secKey).length > 0) {
+      toast.error(`La columna “${getStructureLabels(secKey).root}” está siendo utilizada`, {
+        description: 'Elimina primero todos los bloques principales de esta sección.',
+      });
+      return;
+    }
+    handleChange('comp_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, columna_raiz_habilitada: false } : section,
+    ));
+  };
+  const restoreRootColumn = (secKey: string) => {
+    handleChange('comp_secciones', secciones.map(section =>
+      section.key === secKey ? { ...section, columna_raiz_habilitada: true } : section,
+    ));
   };
   const renameColumnaSeccion = (secKey: string, oldName: string, newName: string) => {
     if (!newName.trim() || oldName === newName) return;
@@ -236,8 +399,29 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     const acts = actsDeSeccion(secKey);
     const updated = acts.map(a => {
       const cv = { ...(a.columnas_valores || {}) };
-      if (cv[oldName]) { cv[newName] = cv[oldName]; delete cv[oldName]; }
-      return { ...a, columnas_valores: cv };
+      const cm = { ...(a.columnas_meta || {}) };
+      if (Object.prototype.hasOwnProperty.call(cv, oldName)) {
+        cv[newName] = cv[oldName];
+        delete cv[oldName];
+      }
+      if (Object.prototype.hasOwnProperty.call(cm, oldName)) {
+        cm[newName] = cm[oldName];
+        delete cm[oldName];
+      }
+      const items = (a.items || []).map(item => {
+        const itemValues = { ...(item.col_valores || {}) };
+        if (Object.prototype.hasOwnProperty.call(itemValues, oldName)) {
+          itemValues[newName] = itemValues[oldName];
+          delete itemValues[oldName];
+        }
+        const itemParents = { ...(item.col_parents || {}) };
+        if (Object.prototype.hasOwnProperty.call(itemParents, oldName)) {
+          itemParents[newName] = itemParents[oldName];
+          delete itemParents[oldName];
+        }
+        return { ...item, col_valores: itemValues, col_parents: itemParents };
+      });
+      return { ...a, columnas_valores: cv, columnas_meta: cm, items };
     });
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: updated });
   };
@@ -258,7 +442,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     const updated = {
       ...act,
       columnas_valores: { ...(act.columnas_valores || {}), [colName]: [...vals, ''] },
-      columnas_meta: { ...(act.columnas_meta || {}), [colName]: [...meta, { tipo: 'hasta', horas: 0 }] },
+      columnas_meta: { ...(act.columnas_meta || {}), [colName]: [...meta, { tipo: 'hasta', horas: 1 }] },
     };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
@@ -271,12 +455,44 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
   };
-  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas' | 'horas_en', val: any) => {
+  const updateValorColumnaMeta = (secKey: string, actIdx: number, colName: string, valIdx: number, field: 'tipo' | 'horas' | 'horas_min' | 'horas_en' | 'porcentaje_pta', val: any) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
     const meta = [...(act.columnas_meta?.[colName] || [])];
-    while (meta.length <= valIdx) meta.push({ tipo: 'hasta', horas: 0 });
-    meta[valIdx] = { ...meta[valIdx], [field]: field === 'horas' ? (val === '' ? '' : Number(val)) : val };
+    while (meta.length <= valIdx) meta.push({ tipo: 'hasta', horas: 1 });
+    const isNumeric = field === 'horas' || field === 'horas_min' || field === 'porcentaje_pta';
+    const currentMeta = meta[valIdx] || { tipo: 'hasta', horas: 1 };
+    if (field === 'tipo' && val === 'intervalo') {
+      const currentMin = Number((currentMeta as any).horas_min);
+      const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
+      const currentMax = Number(currentMeta.horas);
+      const nextMax = Number.isFinite(currentMax) && currentMax > nextMin ? currentMax : Math.max(2, nextMin + 1);
+      meta[valIdx] = { ...currentMeta, tipo: 'intervalo', horas_min: nextMin, horas: nextMax };
+    } else if (field === 'tipo' && val === 'porcentaje') {
+      const currentPercentage = Number((currentMeta as any).porcentaje_pta);
+      meta[valIdx] = {
+        ...currentMeta,
+        tipo: 'porcentaje',
+        porcentaje_pta: Number.isFinite(currentPercentage)
+          ? Math.min(100, Math.max(1, currentPercentage))
+          : 1,
+      };
+    } else if (field === 'tipo') {
+      const currentHours = Number(currentMeta.horas);
+      meta[valIdx] = {
+        ...currentMeta,
+        tipo: val,
+        horas: Number.isFinite(currentHours) && currentHours > 0 ? currentHours : 1,
+      };
+    } else {
+      const numericValue = val === '' ? '' : Number(val) || 0;
+      meta[valIdx] = {
+        ...currentMeta,
+        [field]: field === 'porcentaje_pta' && numericValue !== ''
+          ? Math.min(100, Math.max(1, numericValue))
+          : isNumeric ? numericValue : val,
+      };
+    }
     const updated = { ...act, columnas_meta: { ...(act.columnas_meta || {}), [colName]: meta } };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('comp_actividades_v2', { ...actividades, [secKey]: next });
@@ -298,9 +514,10 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   // Modal confirm
   const confirmAddColumna = useCallback(() => {
     if (!colModal || !colNombre.trim()) return;
-    addColumnaSeccion(colModal.secKey, colNombre.trim());
-    setColModal(null);
-    setColNombre('Evidencia');
+    if (addColumnaSeccion(colModal.secKey, colNombre.trim())) {
+      setColModal(null);
+      setColNombre('Evidencia');
+    }
   }, [colModal, colNombre, secciones]);
 
   // ── Render input row helper ──
@@ -320,7 +537,8 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
   );
 
   return (
-    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="pta-config-builder space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <BuilderSurfaceStyles />
       <section>
         <div className="mb-6">
           <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
@@ -486,43 +704,89 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                         <span className="text-sm font-bold text-slate-700">Actividades de {sec.label}</span>
                         <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{actsDeSeccion(sec.key).length} actividades</span>
                       </div>
-                      <button onClick={() => addAct(sec.key)}
+                      <button onClick={() => {
+                        if (!getStructureLabels(sec.key).rootEnabled) {
+                          toast.error('Agrega primero una columna raíz para crear bloques principales');
+                          return;
+                        }
+                        addAct(sec.key);
+                      }}
                         className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border-none text-white text-xs font-bold shadow-sm"
                         style={{ background: sec.color }}>
-                        <Plus className="w-3.5 h-3.5" /> Agregar actividad
+                        <Plus className="w-3.5 h-3.5" /> Agregar bloque principal
                       </button>
                     </div>
 
                     {/* ── Columnas de la sección ── */}
                     {(() => {
                       const secCols = getSeccionColumnas(sec.key);
-                      const isLocked = seccionTieneDatos(sec.key);
+                      const hasConfiguredData = seccionTieneDatos(sec.key);
                       const firstCol = secCols.find(c => !!c) || '';
                       const firstIsItems = firstCol === ITEMS_KEY;
+                      const structureLabels = getStructureLabels(sec.key);
+                      const reachedColumnLimit = secCols.filter(column => column !== ITEMS_KEY).length >= MAX_CUSTOM_COLUMNS;
                       return (
+                        <>
                         <div className="mb-3 px-1 space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
                             {secCols.length > 0 && (
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Columnas:</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Estructura editable:</span>
                             )}
                             {secCols.length > 1 && (
                               <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
-                                ⚡ La 1ª columna ({firstIsItems ? 'Actividad/Ítem' : firstCol}) controla las horas
+                                ⚡ El primer nivel editable ({firstIsItems ? structureLabels.items : firstCol}) controla las horas
                               </span>
                             )}
-                            {isLocked && (
-                              <span className="text-[9px] bg-red-50 text-red-500 border border-red-200 rounded-full px-2 py-0.5 font-medium flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" /> Orden bloqueado (hay datos configurados)
+                            {hasConfiguredData && (
+                              <span className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-blue-700">
+                                <Lock className="h-2.5 w-2.5" /> Jerarquía protegida · detalles arrastrables
                               </span>
                             )}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
+                          {structureLabels.rootEnabled && <div
+                            className="flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 py-1 pl-1.5 pr-2 shadow-sm"
+                            title="Columna raíz: corresponde al nombre de cada bloque principal"
+                          >
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-[9px] font-black text-indigo-700">1</span>
+                            <Lock className="h-3 w-3 shrink-0 text-indigo-400" />
+                            <Globe className="h-3 w-3 shrink-0 text-indigo-500" />
+                            <input
+                              type="text"
+                              value={structureLabels.root}
+                              onChange={event => updateStructureLabel(sec.key, 'columna_raiz_nombre', event.target.value)}
+                              className="min-w-[72px] max-w-[130px] border-none bg-transparent text-[11px] font-bold text-indigo-800 outline-none"
+                              style={{ width: `${Math.max(72, structureLabels.root.length * 7)}px` }}
+                              aria-label="Nombre de la columna raíz"
+                            />
+                            <span className="rounded bg-indigo-100 px-1 text-[8px] font-bold uppercase text-indigo-600">Raíz</span>
+                            <button
+                              type="button"
+                              onClick={() => removeRootColumn(sec.key)}
+                              className="config-column-delete"
+                              title={`Eliminar columna ${structureLabels.root}`}
+                              aria-label={`Eliminar columna ${structureLabels.root}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>}
                           {secCols.map((colName, ci) => {
                             const isItemsChip = colName === ITEMS_KEY;
+                            const isLocked = hasConfiguredData;
+                            const itemsPosition = secCols.indexOf(ITEMS_KEY);
+                            const columnRole = itemsPosition < 0 || ci < itemsPosition ? 'Agrupa' : 'Detalle';
                             return (
                             <div key={`col-chip-${ci}`}
-                              draggable={!isLocked}
-                              onDragStart={e => { if (isLocked) { e.preventDefault(); return; } setDragColIdx(ci); setDragColSecKey(sec.key); e.dataTransfer.effectAllowed = 'move'; }}
+                              title="Arrastra para cambiar la posición de esta columna"
+                              draggable
+                              onDragStart={e => {
+                                if (isLocked) {
+                                  e.preventDefault();
+                                  toast.error('Esta columna está en uso', { description: 'Vacía los valores de la jerarquía antes de cambiar su posición.' });
+                                  return;
+                                }
+                                setDragColIdx(ci); setDragColSecKey(sec.key); e.dataTransfer.effectAllowed = 'move';
+                              }}
                               onDragOver={e => { e.preventDefault(); if (dragColSecKey === sec.key) setDragOverColIdx(ci); }}
                               onDrop={e => { e.preventDefault(); if (dragColIdx !== null && dragColSecKey === sec.key) { reorderColumnas(sec.key, dragColIdx, ci); } setDragColIdx(null); setDragOverColIdx(null); setDragColSecKey(null); }}
                               onDragEnd={() => { setDragColIdx(null); setDragOverColIdx(null); setDragColSecKey(null); }}
@@ -535,6 +799,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                       ? 'bg-violet-50 border border-violet-200 hover:border-violet-300'
                                       : 'bg-blue-50 border border-blue-200 hover:border-blue-300'
                               }`}>
+                              <span className={`flex w-4 h-4 items-center justify-center rounded-full bg-white/80 text-[9px] font-black ${isItemsChip ? 'text-violet-600' : 'text-blue-600'}`}>{ci + (structureLabels.rootEnabled ? 2 : 1)}</span>
                               {isLocked ? (
                                 <Lock className={`w-3 h-3 ${isItemsChip ? 'text-violet-300' : 'text-blue-300'} shrink-0`} />
                               ) : (
@@ -543,7 +808,26 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                               {isItemsChip ? (
                                 <>
                                   <Globe className="w-3 h-3 text-violet-400 shrink-0" />
-                                  <span className="text-[11px] font-semibold text-violet-700 px-0.5">Actividad / Ítem</span>
+                                  <input
+                                    type="text"
+                                    draggable={false}
+                                    value={structureLabels.items}
+                                    onChange={event => updateStructureLabel(sec.key, 'columna_items_nombre', event.target.value)}
+                                    className="min-w-[80px] max-w-[130px] border-none bg-transparent px-0.5 text-[11px] font-semibold text-violet-700 outline-none"
+                                    style={{ width: `${Math.max(80, structureLabels.items.length * 7)}px` }}
+                                    onMouseDown={event => event.stopPropagation()}
+                                    aria-label="Nombre de la columna de actividades"
+                                  />
+                                  <span className="rounded bg-violet-100 px-1 text-[8px] font-bold uppercase text-violet-600">Filas</span>
+                                  <button
+                                    type="button"
+                                    onClick={event => { event.stopPropagation(); removeItemsColumn(sec.key); }}
+                                    className="config-column-delete"
+                                    title={`Eliminar nivel ${structureLabels.items}`}
+                                    aria-label={`Eliminar nivel ${structureLabels.items}`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
                                 </>
                               ) : (
                                 <>
@@ -554,8 +838,11 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                     className="bg-transparent text-[11px] font-semibold text-blue-700 outline-none border-none w-auto min-w-[40px] max-w-[120px]"
                                     style={{ width: `${Math.max(40, colName.length * 7)}px` }}
                                     onMouseDown={e => e.stopPropagation()} />
+                                  <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-blue-600">{columnRole}</span>
                                   <button onClick={() => removeColumnaSeccion(sec.key, colName)}
-                                    className="w-4 h-4 rounded flex items-center justify-center text-blue-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
+                                    className="config-column-delete"
+                                    title={`Eliminar columna ${colName}`}
+                                    aria-label={`Eliminar columna ${colName}`}>
                                     <X className="w-3 h-3" />
                                   </button>
                                 </>
@@ -563,19 +850,48 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                             </div>
                             );
                           })}
-                          <button onClick={() => { setColModal({ secKey: sec.key, actIdx: 0 }); setColNombre('Evidencia'); }}
+                          {!structureLabels.rootEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => restoreRootColumn(sec.key)}
+                              className="flex items-center gap-1 rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:border-indigo-400 hover:bg-indigo-100"
+                            >
+                              <Plus className="h-3 w-3" /> Agregar columna raíz
+                            </button>
+                          )}
+                          {!secCols.includes(ITEMS_KEY) && (
+                            <button
+                              type="button"
+                              onClick={() => restoreItemsColumn(sec.key)}
+                              className="flex items-center gap-1 rounded-lg border border-dashed border-violet-300 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700 hover:border-violet-400 hover:bg-violet-100"
+                            >
+                              <Plus className="h-3 w-3" /> Agregar nivel de actividades
+                            </button>
+                          )}
+                          <button onClick={() => {
+                            if (reachedColumnLimit) {
+                              toast.error(`Se admiten máximo ${MAX_CUSTOM_COLUMNS} columnas adicionales`);
+                              return;
+                            }
+                            setColModal({ secKey: sec.key, actIdx: 0 });
+                            setColNombre('Evidencia');
+                          }}
+                            disabled={reachedColumnLimit}
+                            title={reachedColumnLimit ? `Máximo ${MAX_CUSTOM_COLUMNS} columnas adicionales alcanzado` : 'Agregar otro nivel o detalle a la jerarquía'}
                             className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-400 text-[11px] font-semibold hover:border-blue-400 hover:text-blue-600 transition-colors bg-white">
-                            <Plus className="w-3 h-3" /> Columna
+                            <Plus className="w-3 h-3" /> Agregar columna
                           </button>
                           </div>
                           {secCols.length > 0 && (
                             <div className="text-[9px] text-slate-400 leading-tight pl-1 mt-1">
-                              💡 <b>Orden importante:</b> La primera columna define la jerarquía y recibe las horas.
+                              <b>Jerarquía:</b> {[...(structureLabels.rootEnabled ? [structureLabels.root] : []), ...secCols.map(column => column === ITEMS_KEY ? structureLabels.items : column)].join(' → ')}.
+                              {' '}Las columnas posteriores a {structureLabels.items} se anidan en cascada dentro de cada actividad: cada columna vive dentro de los valores de la anterior.
                               {firstIsItems && ' Cada actividad tiene su propio tipo y horas.'}
                               {' '} • <b>Tipos:</b> 🟢 Fija (exacta), 🕒 Hasta (máximo), 📊 Intervalo (min—máx).
                             </div>
                           )}
                         </div>
+                        </>
                       );
                     })()}
 
@@ -591,6 +907,11 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                           if (!act) return null;
                           const isEtapa = Array.isArray(act.items);
                           const hasItems = isEtapa && (act.items?.length ?? 0) > 0;
+                          const blockKey = `${sec.key}:${act.id}`;
+                          // Estructura de solo columna raíz: el bloque es la actividad
+                          // misma y sus horas se configuran directamente en la fila.
+                          const isRootOnly = getSeccionColumnas(sec.key).length === 0;
+                          const blockExpanded = !isRootOnly && (expandedBlocks[blockKey] ?? aIdx === 0);
                           return (
                             <div key={act.id} draggable
                               onDragStart={(e) => handleDragStart(e, sec.key, aIdx)}
@@ -598,17 +919,20 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                               onDragLeave={handleDragLeave}
                               onDrop={(e) => handleDrop(e, sec.key, aIdx)}
                               onDragEnd={handleDragEnd}
-                              className={`border rounded-xl overflow-hidden shadow-sm transition-all bg-white
+                              className={`config-block-card border-2 rounded-2xl overflow-hidden transition-all bg-white
                                 ${draggedActIdx === aIdx && draggedSecKey === sec.key ? 'opacity-40 border-dashed border-blue-400' : ''}
-                                ${dragOverActIdx === aIdx && draggedSecKey === sec.key ? 'border-blue-500 shadow-blue-500/20 shadow-md scale-[1.01]' : 'border-slate-200'}
+                                ${dragOverActIdx === aIdx && draggedSecKey === sec.key ? 'border-blue-500 shadow-blue-500/20 shadow-lg scale-[1.01]' : blockExpanded ? 'border-violet-300 shadow-lg shadow-violet-900/5' : 'border-slate-200 shadow-sm hover:border-violet-200 hover:shadow-md'}
                               `}>
                               {/* ── Cabecera de Actividad ── */}
-                              <div className="flex flex-row items-center gap-3 p-3 bg-slate-50 border-b border-slate-100">
+                              <div className={`flex flex-row items-center gap-3 p-3 transition-colors ${blockExpanded ? 'bg-gradient-to-r from-violet-50 via-white to-blue-50 border-b border-violet-100' : 'bg-slate-50'}`}>
+                                <div className="flex h-10 w-7 shrink-0 cursor-grab items-center justify-center rounded-lg border border-violet-200 bg-white text-violet-400 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 active:cursor-grabbing" title="Arrastra para cambiar el orden del bloque">
+                                  <GripVertical className="h-4 w-4" />
+                                </div>
                                 <input
                                   type="text"
                                   key={`pos-${act.id}-${aIdx}`}
                                   defaultValue={aIdx + 1}
-                                  title={`Posición ${aIdx + 1}`}
+                                  title={`Orden ${aIdx + 1}: escribe otra posición o arrastra el control lateral`}
                                   onFocus={e => e.target.select()}
                                   onBlur={e => {
                                     const val = parseInt(e.target.value, 10);
@@ -634,31 +958,76 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                                    {isEtapa ? 'Etapa' : 'Nombre'}
+                                    {getStructureLabels(sec.key).root}
                                   </span>
                                   <input type="text" value={act.nombre}
                                     onChange={e => updateAct(sec.key, aIdx, 'nombre', e.target.value)}
-                                    placeholder="Nombre de la actividad..."
+                                    placeholder={`Valor de ${getStructureLabels(sec.key).root.toLocaleLowerCase()}...`}
                                     className="w-full bg-white border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none" />
                                 </div>
-                                {/* Total Horas */}
-                                {(() => {
-                                  const total = (act.items || []).reduce((sum: number, item: any) => sum + (Number(item.horas) || 0), 0);
-                                  return total > 0 || isEtapa ? (
+                                {!isRootOnly && (
+                                <div className="shrink-0">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Filas</span>
+                                  <div className="flex h-[34px] min-w-[58px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-extrabold text-slate-700">
+                                    {(act.items || []).length}
+                                  </div>
+                                </div>
+                                )}
+                                {/* Horas directas del bloque cuando la estructura es solo columna raíz */}
+                                {isRootOnly ? (
+                                  <div className="shrink-0">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Horas</span>
+                                    <HourLimitControl
+                                      type={(act as any).tipo || 'hasta'}
+                                      hours={(act as any).tipo === 'porcentaje' ? ((act as any).porcentaje_pta ?? 1) : ((act as any).max_horas ?? 1)}
+                                      minHours={(act as any).min_horas ?? 1}
+                                      onTypeChange={value => updateActTipo(sec.key, aIdx, value)}
+                                      onHoursChange={value => (act as any).tipo === 'porcentaje'
+                                        ? updateAct(sec.key, aIdx, 'porcentaje_pta', Math.min(100, Math.max(1, Number(value) || 1)))
+                                        : updateAct(sec.key, aIdx, 'max_horas', value === '' ? 1 : Math.max(1, Number(value) || 1))}
+                                      onMinHoursChange={value => updateAct(sec.key, aIdx, 'min_horas', value === '' ? 1 : Math.max(1, Number(value) || 1))}
+                                      compact
+                                    />
+                                  </div>
+                                ) : (() => {
+                                  let totalPercentage = 0;
+                                  const total = (act.items || []).reduce((sum: number, item: any) => {
+                                    if (item.tipo === 'porcentaje') {
+                                      totalPercentage += Math.min(100, Math.max(1, Number(item.porcentaje_pta) || 1));
+                                      return sum;
+                                    }
+                                    return sum + (Number(item.horas) || 0);
+                                  }, 0);
+                                  return total > 0 || totalPercentage > 0 || isEtapa ? (
                                     <div className="shrink-0">
                                       <span className="text-[10px] font-bold text-[#003DA5] uppercase block mb-1">Total Horas</span>
                                       <div className="flex items-center justify-center bg-blue-50/50 border border-blue-200 text-[#003DA5] font-extrabold text-[13px] rounded-lg px-3 py-1.5 h-[34px] min-w-[70px]">
-                                        {total}h
+                                        {totalPercentage > 0 ? `${totalPercentage}% PTA${total > 0 ? ` + ${total}h` : ''}` : `${total}h`}
                                       </div>
                                     </div>
                                   ) : null;
                                 })()}
+                                {!isRootOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => setBlockExpanded(blockKey, !blockExpanded)}
+                                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 text-[11px] font-bold text-violet-700 shadow-sm transition-all hover:border-violet-300 hover:bg-violet-50"
+                                  title={blockExpanded ? 'Cerrar bloque' : 'Editar este bloque'}
+                                >
+                                  <ChevronDown className={`h-4 w-4 transition-transform ${blockExpanded ? 'rotate-180' : ''}`} />
+                                  {blockExpanded ? 'Cerrar' : 'Editar'}
+                                </button>
+                                )}
                                 <button onClick={() => removeAct(sec.key, aIdx)}
-                                  className="w-9 h-9 shrink-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all shadow-sm self-end">
+                                  className="config-block-delete self-end"
+                                  title={`Eliminar bloque ${act.nombre}`}
+                                  aria-label={`Eliminar bloque ${act.nombre}`}>
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
 
+                              {blockExpanded && (
+                              <div className="config-block-body bg-slate-100/70 p-3">
                               {/* ── Columnas content ── */}
                               {(() => {
                                 try {
@@ -678,7 +1047,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                           <div className="p-3 pt-2 space-y-1">
                                             <div className="flex flex-row gap-2 px-1 mb-1">
                                               <span className="w-3.5 shrink-0" />
-                                              <span className="flex-1 text-[10px] font-bold text-slate-400 uppercase">Actividad / Ítem</span>
+                                              <span className="flex-1 text-[10px] font-bold text-slate-500 uppercase">{getStructureLabels(sec.key).items}</span>
                                               {showItemHoras && <span className="w-24 shrink-0 text-[10px] font-bold text-slate-400 uppercase">Tipo</span>}
                                               {showItemHoras && <span className="w-20 shrink-0 text-[10px] font-bold text-slate-400 uppercase">Horas</span>}
                                               <span className="w-7 shrink-0" />
@@ -686,13 +1055,13 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                             {(act.items || []).map((item, iIdx) => {
                                               const itemDragKey = `${sec.key}:${aIdx}`;
                                               return (
-                                              <div key={iIdx} className="space-y-1">
+                                              <div key={iIdx} className="config-activity-entry space-y-2">
                                                 <div draggable
                                                   onDragStart={e => { e.stopPropagation(); setDragItemIdx(iIdx); setDragItemKey(itemDragKey); e.dataTransfer.effectAllowed = 'move'; }}
                                                   onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (dragItemKey === itemDragKey) setDragOverItemIdx(iIdx); }}
                                                   onDrop={e => { e.preventDefault(); e.stopPropagation(); if (dragItemIdx !== null && dragItemKey === itemDragKey) { reorderItems(sec.key, aIdx, dragItemIdx, iIdx); } setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
                                                   onDragEnd={() => { setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
-                                                  className={`flex flex-row items-center gap-2 p-2 rounded-lg border transition-all select-none ${
+                                                  className={`config-activity-main-row flex flex-row items-center gap-2 p-2 rounded-lg border transition-all select-none ${
                                                     dragItemIdx === iIdx && dragItemKey === itemDragKey
                                                       ? 'opacity-40 scale-[0.98] bg-violet-50 border-violet-200'
                                                       : dragOverItemIdx === iIdx && dragItemKey === itemDragKey && dragItemIdx !== iIdx
@@ -707,76 +1076,39 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                                       className="w-full bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none" />
                                                   </div>
                                                   {showItemHoras && (
-                                                    <div className="w-24 shrink-0">
-                                                      <select value={item.tipo}
-                                                        onChange={e => updateItem(sec.key, aIdx, iIdx, 'tipo', e.target.value)}
-                                                        className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] rounded-md px-1.5 py-1.5 outline-none">
-                                                        <option value="fija">🟢 Fija</option>
-                                                        <option value="hasta">🕒 Hasta</option>
-                                                        <option value="intervalo">📊 Intervalo</option>
-                                                      </select>
-                                                    </div>
-                                                  )}
-                                                  {showItemHoras && (
-                                                    item.tipo === 'intervalo' ? (
-                                                      <div className="shrink-0 flex items-center gap-1">
-                                                        <input type="number" value={(item as any).horas_min ?? ''} min={0}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas_min', e.target.value)}
-                                                          className="w-14 bg-white border border-blue-200 text-blue-700 font-bold text-[11px] rounded-md px-1 py-1.5 text-center outline-none" title="Mínimo" />
-                                                        <span className="text-[9px] text-slate-400 font-bold">—</span>
-                                                        <input type="number" value={item.horas ?? ''} min={0}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas', e.target.value)}
-                                                          className="w-14 bg-white border border-amber-200 text-amber-700 font-bold text-[11px] rounded-md px-1 py-1.5 text-center outline-none" title="Máximo" />
-                                                        <span className="text-[9px] text-amber-500 font-bold">h</span>
-                                                      </div>
-                                                    ) : (
-                                                      <div className="shrink-0 flex items-center gap-1">
-                                                        <input type="number" value={item.horas ?? ''} min={0}
-                                                          onChange={e => updateItem(sec.key, aIdx, iIdx, 'horas', e.target.value)}
-                                                          className="w-16 bg-white border border-slate-200 text-slate-700 font-bold text-[12px] rounded-md px-2 py-1.5 text-center outline-none" />
-                                                        <span className="text-[9px] text-amber-500 font-bold">h</span>
-                                                      </div>
-                                                    )
+                                                    <HourLimitControl
+                                                      type={item.tipo}
+                                                      hours={item.tipo === 'porcentaje' ? (item.porcentaje_pta ?? 1) : item.horas}
+                                                      minHours={(item as any).horas_min}
+                                                      onTypeChange={value => updateItem(sec.key, aIdx, iIdx, 'tipo', value)}
+                                                      onHoursChange={value => item.tipo === 'porcentaje'
+                                                        ? updateItem(sec.key, aIdx, iIdx, 'porcentaje_pta', Math.min(100, Math.max(1, Number(value) || 1)))
+                                                        : updateItem(sec.key, aIdx, iIdx, 'horas', value)}
+                                                      onMinHoursChange={value => updateItem(sec.key, aIdx, iIdx, 'horas_min', value)}
+                                                      compact
+                                                    />
                                                   )}
                                                   <button onClick={() => removeItem(sec.key, aIdx, iIdx)}
-                                                    className="w-7 h-7 shrink-0 flex items-center justify-center rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all">
+                                                    className="config-inline-delete"
+                                                    title="Eliminar actividad"
+                                                    aria-label="Eliminar actividad">
                                                     <Trash2 className="w-3.5 h-3.5" />
                                                   </button>
                                                 </div>
 
-                                                {/* Per-item column values (evidencias etc) */}
+                                                {/* ── Columnas de detalle anidadas en escalera ── */}
                                                 {(() => {
                                                   const itemsPos = secCols.indexOf(ITEMS_KEY);
-                                                  const subCols = secCols.slice(itemsPos + 1).filter(c => c && c !== ITEMS_KEY);
-                                                  return subCols.map(subCol => {
-                                                    const itemColVals = item.col_valores || {};
-                                                    const vals = itemColVals[subCol] || [];
-                                                    return (
-                                                      <div key={subCol} className="ml-8 space-y-1">
-                                                        <div className="flex items-center justify-between">
-                                                          <span className="text-[10px] font-bold text-blue-500 uppercase flex items-center gap-1">
-                                                            <Tag className="w-2.5 h-2.5" /> {subCol}
-                                                          </span>
-                                                          <button onClick={() => addItemColVal(sec.key, aIdx, iIdx, subCol)}
-                                                            className="text-[10px] text-blue-500 font-semibold flex items-center gap-0.5 hover:text-blue-700">
-                                                            + Agregar
-                                                          </button>
-                                                        </div>
-                                                        {vals.map((v: string, vi: number) => (
-                                                          <div key={vi} className="flex items-center gap-1.5">
-                                                            <input type="text" value={v}
-                                                              onChange={e => updateItemColVal(sec.key, aIdx, iIdx, subCol, vi, e.target.value)}
-                                                              placeholder={`${subCol}...`}
-                                                              className="flex-1 bg-white border border-blue-100 text-slate-600 text-[11px] rounded-md px-2 py-1 focus:ring-2 focus:ring-blue-500/20 outline-none" />
-                                                            <button onClick={() => removeItemColVal(sec.key, aIdx, iIdx, subCol, vi)}
-                                                              className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors">
-                                                              <X className="w-3 h-3" />
-                                                            </button>
-                                                          </div>
-                                                        ))}
-                                                      </div>
-                                                    );
-                                                  });
+                                                  const subCols = itemsPos >= 0 ? secCols.slice(itemsPos + 1).filter(c => c && c !== ITEMS_KEY) : [];
+                                                  return subCols.length > 0 ? (
+                                                    <div className="ml-8 mr-2">
+                                                      <DetailColumnChain
+                                                        item={item}
+                                                        chain={subCols}
+                                                        onItemChange={next => replaceItem(sec.key, aIdx, iIdx, next)}
+                                                      />
+                                                    </div>
+                                                  ) : null;
                                                 })()}
                                               </div>
                                               );
@@ -794,10 +1126,19 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                     ) : null;
                                   }
 
+                                  // ─ Skip: las columnas posteriores a _items_ se renderizan
+                                  // anidadas en escalera dentro de cada ítem ─
+                                  const itemsPos2 = secCols.indexOf(ITEMS_KEY);
+                                  if (isEtapa && itemsPos2 >= 0 && secCols.indexOf(colName) > itemsPos2 && colName !== firstColName) {
+                                    return null;
+                                  }
                                   // ─ Bloque columna regular (Línea, Evidencia, etc.) ─
                                   const colVals = getActColValues(act, colName);
                                   const isFirst = colName === firstColName;
                                   const colMeta = act.columnas_meta?.[colName] || [];
+                                  const subColsB = itemsPos2 >= 0
+                                    ? secCols.slice(itemsPos2 + 1).filter(c => c && c !== ITEMS_KEY && c !== firstColName)
+                                    : [];
                                   return (
                                     <div key={colName} className="bg-white border-t border-slate-100">
                                       <div className="p-3 space-y-2">
@@ -826,22 +1167,22 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                                   placeholder={`${colName}...`}
                                                   className="flex-1 bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-blue-500/20 outline-none" />
                                                 {isFirst && (
-                                                  <>
-                                                    <select value={(meta as any).tipo || 'hasta'}
-                                                      onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'tipo', e.target.value)}
-                                                      className="bg-white border border-slate-200 text-[11px] rounded-md px-1 py-1.5 outline-none">
-                                                      <option value="fija">🟢 Fija</option>
-                                                      <option value="hasta">🕒 Hasta</option>
-                                                      <option value="intervalo">📊 Intervalo</option>
-                                                    </select>
-                                                    <input type="number" value={(meta as any).horas ?? ''} min={0}
-                                                      onChange={e => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'horas', e.target.value)}
-                                                      className="w-16 bg-white border border-amber-200 text-amber-700 font-bold text-[12px] rounded-md px-2 py-1.5 text-center outline-none" />
-                                                    <span className="text-[10px] text-amber-500 font-bold">h</span>
-                                                  </>
+                                                  <HourLimitControl
+                                                    type={(meta as any).tipo || 'hasta'}
+                                                    hours={(meta as any).tipo === 'porcentaje' ? ((meta as any).porcentaje_pta ?? 1) : (meta as any).horas}
+                                                    minHours={(meta as any).horas_min}
+                                                    onTypeChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'tipo', value)}
+                                                    onHoursChange={value => (meta as any).tipo === 'porcentaje'
+                                                      ? updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'porcentaje_pta', value)
+                                                      : updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'horas', value)}
+                                                    onMinHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, vIdx, 'horas_min', value)}
+                                                    compact
+                                                  />
                                                 )}
                                                 <button onClick={() => removeValorColumna(sec.key, aIdx, colName, vIdx)}
-                                                  className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors">
+                                                  className="config-inline-delete"
+                                                  title={`Eliminar valor de ${colName}`}
+                                                  aria-label={`Eliminar valor de ${colName}`}>
                                                   <X className="w-3 h-3" />
                                                 </button>
                                               </div>
@@ -865,30 +1206,44 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                                   {/* Nested items when horas_en === 'actividad' */}
                                                   {horasEn === 'actividad' && (
                                                     <div className="space-y-1 pl-2 border-l-2 border-violet-100">
-                                                      <span className="text-[9px] font-bold text-violet-500 uppercase">Actividad / Ítem</span>
+                                                      <span className="text-[9px] font-bold text-violet-500 uppercase">{getStructureLabels(sec.key).items}</span>
                                                       {childItems.map((cItem: any, ciIdx: number) => {
                                                         const realIdx = (act.items || []).indexOf(cItem);
                                                         return (
-                                                          <div key={ciIdx} className="flex items-center gap-2 p-1.5 rounded-lg bg-violet-50/30 border border-violet-100">
-                                                            <input type="text" value={cItem.nombre}
-                                                              onChange={e => updateItem(sec.key, aIdx, realIdx, 'nombre', e.target.value)}
-                                                              placeholder="Nombre..."
-                                                              className="flex-1 bg-white border border-slate-200 text-slate-700 text-[11px] rounded-md px-2 py-1 outline-none" />
-                                                            <select value={cItem.tipo}
-                                                              onChange={e => updateItem(sec.key, aIdx, realIdx, 'tipo', e.target.value)}
-                                                              className="bg-white border border-slate-200 text-[10px] rounded-md px-1 py-1 outline-none">
-                                                              <option value="fija">🟢 Fija</option>
-                                                              <option value="hasta">🕒 Hasta</option>
-                                                              <option value="intervalo">📊 Intervalo</option>
-                                                            </select>
-                                                            <input type="number" value={cItem.horas ?? ''} min={0}
-                                                              onChange={e => updateItem(sec.key, aIdx, realIdx, 'horas', e.target.value)}
-                                                              className="w-14 bg-white border border-amber-200 text-amber-700 font-bold text-[11px] rounded-md px-1 py-1 text-center outline-none" />
-                                                            <span className="text-[9px] text-amber-500 font-bold">h</span>
-                                                            <button onClick={() => removeItem(sec.key, aIdx, realIdx)}
-                                                              className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-red-500">
-                                                              <X className="w-3 h-3" />
-                                                            </button>
+                                                          <div key={ciIdx} className="config-activity-entry space-y-1.5">
+                                                            <div className="config-activity-main-row flex items-center gap-2 p-1.5 rounded-lg border">
+                                                              <input type="text" value={cItem.nombre}
+                                                                onChange={e => updateItem(sec.key, aIdx, realIdx, 'nombre', e.target.value)}
+                                                                placeholder="Nombre..."
+                                                                className="flex-1 bg-white border border-slate-200 text-slate-700 text-[11px] rounded-md px-2 py-1 outline-none" />
+                                                              <HourLimitControl
+                                                                type={cItem.tipo}
+                                                                hours={cItem.tipo === 'porcentaje' ? (cItem.porcentaje_pta ?? 1) : cItem.horas}
+                                                                minHours={(cItem as any).horas_min}
+                                                                onTypeChange={value => updateItem(sec.key, aIdx, realIdx, 'tipo', value)}
+                                                                onHoursChange={value => cItem.tipo === 'porcentaje'
+                                                                  ? updateItem(sec.key, aIdx, realIdx, 'porcentaje_pta', Math.min(100, Math.max(1, Number(value) || 1)))
+                                                                  : updateItem(sec.key, aIdx, realIdx, 'horas', value)}
+                                                                onMinHoursChange={value => updateItem(sec.key, aIdx, realIdx, 'horas_min', value)}
+                                                                compact
+                                                              />
+                                                              <button onClick={() => removeItem(sec.key, aIdx, realIdx)}
+                                                                className="config-inline-delete"
+                                                                title="Eliminar actividad"
+                                                                aria-label="Eliminar actividad">
+                                                                <X className="w-3 h-3" />
+                                                              </button>
+                                                            </div>
+                                                            {/* ── Columnas de detalle anidadas en escalera ── */}
+                                                            {subColsB.length > 0 && (
+                                                              <div className="ml-6 mr-1">
+                                                                <DetailColumnChain
+                                                                  item={cItem}
+                                                                  chain={subColsB}
+                                                                  onItemChange={next => replaceItem(sec.key, aIdx, realIdx, next)}
+                                                                />
+                                                              </div>
+                                                            )}
                                                           </div>
                                                         );
                                                       })}
@@ -909,6 +1264,8 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                 });
                                 } catch { return null; }
                               })()}
+                              </div>
+                              )}
                             </div>
                           );
                         })}
@@ -924,34 +1281,18 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
         </div>
       </section>
 
-      {/* ── Modal: Agregar Columna ── */}
-      {colModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm space-y-4 animate-in zoom-in-95 duration-200">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Columns3 className="w-4 h-4 text-blue-500" /> Agregar Columna
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Escribe el nombre de la columna (ej: Evidencia, Línea, Componente).
-            </p>
-            <input ref={colInputRef} type="text" value={colNombre}
-              onChange={e => setColNombre(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') confirmAddColumna(); if (e.key === 'Escape') setColModal(null); }}
-              placeholder="Nombre de la columna..."
-              className="w-full bg-white border border-slate-200 text-slate-800 font-semibold text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/20 outline-none" />
-            <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setColModal(null)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-semibold hover:bg-slate-50 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={confirmAddColumna}
-                className="px-4 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm">
-                Agregar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DetailColumnModal
+        open={!!colModal}
+        value={colNombre}
+        existingColumns={colModal ? [
+          getStructureLabels(colModal.secKey).root,
+          getStructureLabels(colModal.secKey).items,
+          ...getSeccionColumnas(colModal.secKey).filter(column => column !== ITEMS_KEY),
+        ] : []}
+        onChange={setColNombre}
+        onClose={() => { setColModal(null); setColNombre('Evidencia'); }}
+        onConfirm={confirmAddColumna}
+      />
     </div>
   );
 }

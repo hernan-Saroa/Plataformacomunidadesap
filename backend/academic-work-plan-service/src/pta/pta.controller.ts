@@ -146,6 +146,13 @@ export class PtaController {
     return { success: true, data };
   }
 
+  // Catálogo agrupado por sección (Complementarias unificado: docencia + académico-admin).
+  @Get('catalogos/actividades/complementarias-secciones')
+  async getCatalogoComplementariasSecciones() {
+    const data = await this.ptaService.getCatalogoComplementariasAgrupado();
+    return { success: true, data };
+  }
+
   @Post('catalogos/calcular-horas-programables')
   async calcularHorasProgramables(@Body() body: any) {
     const total_horas = await this.ptaService.calcHorasProgramables({
@@ -411,6 +418,20 @@ export class PtaController {
     return { success: true, ...data };
   }
 
+  // Firma del aprobador/concertador: envía el OTP al correo del usuario que aprueba.
+  @Post('firma-aprobador/request-code')
+  async requestFirmaAprobadorCode(@Body() body: any, @Req() req: Request) {
+    // Fallback al usuario autenticado (x-user-id) cuando el front no envía userId.
+    const userId = body?.userId || (req.headers['x-user-id'] as string) || '';
+    const data = await this.ptaService.requestFirmaAprobadorOtp({
+      ptaId: body?.ptaId,
+      userId,
+      periodo: body?.periodo,
+      etapaLabel: body?.etapaLabel,
+    });
+    return { success: true, message: 'Código enviado al correo registrado.', data };
+  }
+
   @Post(':id/generate-otp')
   generateOtp(@Param('id') id: string) {
     const data = this.ptaService.generateOtp(id);
@@ -611,7 +632,7 @@ export class PtaController {
         scorecards: { pctAprobacion: 0, aprobados: 0, enProceso: 0, rechazados: 0, borradores: 0, devueltos: 0 },
         alertas: { bloqueados7d: 0, escalados: 0, concertacionActiva: 0 },
         dedicacion: { tc: 0, mt: 0, cat: 0 },
-        horas: { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, academico_admin: 0, total: 0 },
+        horas: { docencia: 0, investigacion: 0, extension: 0, complementarias: 0, total: 0 },
         terRanking: [],
         atencionInmediata: [],
         historialReciente: [],

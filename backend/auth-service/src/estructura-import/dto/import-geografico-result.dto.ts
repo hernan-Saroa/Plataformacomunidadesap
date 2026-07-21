@@ -2,6 +2,7 @@ import { DataQualityError } from '../validators/geografico.validator';
 
 export class ImportGeograficoResultDto {
   success: boolean;
+  message?: string;
   dry_run: boolean;
   skip_invalid: boolean;
   tiempo_ms: number;

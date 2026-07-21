@@ -7,7 +7,7 @@
 import React from 'react';
 import {
   Search, FileDown,
-  SlidersHorizontal, Tag, Calendar, GraduationCap,
+  SlidersHorizontal, Tag, Calendar,
   FileText, Clock, CheckCircle, XCircle
 } from 'lucide-react';
 
@@ -25,9 +25,10 @@ interface PTAWorldClassToolbarProps {
   setSearchQuery: (v: string) => void;
   filtroPeriodo: string;
   setFiltroPeriodo: (v: string) => void;
-  filtroPrograma: string;
-  setFiltroPrograma: (v: string) => void;
-  programas: any[];
+  periodosAcademicos?: any[];
+  filtroEstadoRegistro: string;
+  setFiltroEstadoRegistro: (v: string) => void;
+  estadosRegistro: Array<{ key: string; label: string }>;
 
   // View mode
   vistaActual: string;
@@ -55,6 +56,40 @@ function normalizeEstadoKey(value?: string | null) {
     .trim()
     .toUpperCase()
     .replace(/\s+/g, '_');
+}
+
+function getPeriodoCode(periodo: any) {
+  return String(
+    periodo?.codigo ||
+      periodo?.periodo ||
+      (periodo?.anio && periodo?.semestre ? `${periodo.anio}-${periodo.semestre}` : ''),
+  ).trim();
+}
+
+function getEstadoPrincipalKey(estado: any) {
+  const key = normalizeEstadoKey(estado);
+  if (!key) return '';
+  if (key === 'BORRADOR') return 'BORRADOR';
+  if ([
+    'PENDIENTE_JEFATURA',
+    'PENDIENTE_DECANATURA',
+    'PENDIENTE_GESTION_PROFESORAL',
+    'PENDIENTE_APROBACION',
+    'CONCERTADO',
+  ].includes(key)) return 'PENDIENTES';
+  if (key === 'DEVUELTO') return 'DEVUELTO';
+  if ([
+    'EN_CONCERTACION',
+    'OBJETADO_DOCENTE',
+    'MODIFICADO_DOCENTE',
+    'PROPUESTO_POR_DIRECCION',
+    'NOTIFICADO_DOCENTE',
+  ].includes(key)) return 'CONCERTACION';
+  if (key === 'ESCALADO_SNA') return 'ESCALADO_SNA';
+  if (key === 'APROBADO') return 'APROBADO';
+  if (key === 'TERMINADO') return 'TERMINADO';
+  if (key === 'FINALIZADO') return 'FINALIZADO';
+  return key;
 }
 
 function getWorkflowStageId(pta: any) {
@@ -93,9 +128,10 @@ export function PTAWorldClassToolbar({
   setSearchQuery,
   filtroPeriodo,
   setFiltroPeriodo,
-  filtroPrograma,
-  setFiltroPrograma,
-  programas,
+  periodosAcademicos = [],
+  filtroEstadoRegistro,
+  setFiltroEstadoRegistro,
+  estadosRegistro,
   vistaActual,
   setVistaActual,
   exportAction,
@@ -109,17 +145,44 @@ export function PTAWorldClassToolbar({
     stageCounts[stageId] = (stageCounts[stageId] || 0) + 1;
   });
 
-  // Deduplicate programs by ID - Fix for duplicate key warnings
-  const uniqueProgramas = React.useMemo(() => {
-    const seen = new Set();
-    return programas.filter((p: any) => {
-      if (seen.has(p.id)) {
-        return false;
-      }
-      seen.add(p.id);
+  const estadoCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    ptas.forEach((pta: any) => {
+      const key = getEstadoPrincipalKey(pta?.estado);
+      if (key) counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  }, [ptas]);
+
+  const estadosDisponibles = React.useMemo(() => {
+    const seen = new Set<string>();
+    return estadosRegistro.filter(estado => {
+      const key = normalizeEstadoKey(estado.key);
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
-  }, [programas]);
+  }, [estadosRegistro]);
+
+  const periodosDisponibles = React.useMemo(() => {
+    const seen = new Set<string>();
+    const options = periodosAcademicos
+      .map((periodo: any) => ({
+        code: getPeriodoCode(periodo),
+        active: periodo?.estado === 'en_curso',
+      }))
+      .filter(periodo => {
+        if (!periodo.code || seen.has(periodo.code)) return false;
+        seen.add(periodo.code);
+        return true;
+      });
+
+    if (filtroPeriodo && !seen.has(filtroPeriodo)) {
+      options.unshift({ code: filtroPeriodo, active: false });
+    }
+
+    return options;
+  }, [periodosAcademicos, filtroPeriodo]);
 
   return (
     <div style={{
@@ -277,8 +340,9 @@ export function PTAWorldClassToolbar({
             zIndex: 1,
           }} />
           <select
-            value={filtroPeriodo}
+            value={periodosDisponibles.length > 0 ? filtroPeriodo : ''}
             onChange={e => setFiltroPeriodo(e.target.value)}
+            disabled={periodosDisponibles.length === 0}
             style={{
               width: '100%',
               padding: '7px 28px 7px 32px',
@@ -298,15 +362,19 @@ export function PTAWorldClassToolbar({
               backgroundPosition: 'right 10px center',
             }}
           >
-            <option value="2026-1">2026-1</option>
-            <option value="2026-2">2026-2</option>
-            <option value="2025-2">2025-2</option>
+            {periodosDisponibles.length > 0 ? periodosDisponibles.map(periodo => (
+              <option key={periodo.code} value={periodo.code}>
+                {periodo.code}{periodo.active ? ' (Actual)' : ''}
+              </option>
+            )) : (
+              <option value="">Sin periodos</option>
+            )}
           </select>
         </div>
 
-        {/* Programa filter */}
+        {/* Estado filter */}
         <div style={{ position: 'relative', flex: '0 1 auto', minWidth: 160 }}>
-          <GraduationCap style={{
+          <SlidersHorizontal style={{
             position: 'absolute',
             left: 10,
             top: '50%',
@@ -318,8 +386,8 @@ export function PTAWorldClassToolbar({
             zIndex: 1,
           }} />
           <select
-            value={filtroPrograma}
-            onChange={e => setFiltroPrograma(e.target.value)}
+            value={filtroEstadoRegistro}
+            onChange={e => setFiltroEstadoRegistro(e.target.value)}
             style={{
               width: '100%',
               padding: '7px 28px 7px 32px',
@@ -339,9 +407,12 @@ export function PTAWorldClassToolbar({
               backgroundPosition: 'right 10px center',
             }}
           >
-            <option value="">Todos los programas</option>
-            {uniqueProgramas.map((p: any) => (
-              <option key={p.id} value={p.id}>{p.nombre}</option>
+            {estadosDisponibles.map(estado => (
+              <option key={estado.key || '__all__'} value={estado.key}>
+                {estado.key
+                  ? `${estado.label}${estadoCounts[normalizeEstadoKey(estado.key)] ? ` (${estadoCounts[normalizeEstadoKey(estado.key)]})` : ''}`
+                  : estado.label}
+              </option>
             ))}
           </select>
         </div>

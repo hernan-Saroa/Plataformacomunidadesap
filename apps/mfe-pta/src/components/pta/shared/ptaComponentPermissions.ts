@@ -5,8 +5,7 @@ export type PTAComponentKey =
   | 'ext_procesos'
   | 'ext_fortalecimiento'
   | 'ext_gobierno'
-  | 'complementarias'
-  | 'academicas_admin';
+  | 'complementarias';
 
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica: 'pta.approve.academica',
@@ -15,8 +14,9 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   ext_procesos: 'pta.approve.extension.procesos_seleccion',
   ext_fortalecimiento: 'pta.approve.extension.fortalecimiento',
   ext_gobierno: 'pta.approve.extension.alto_gobierno',
+  // 'complementarias' cubre ambas secciones: complementarias a la docencia y
+  // académico-administrativas (AADM se fusionó como sección de complementarias).
   complementarias: 'pta.approve.complementarias',
-  academicas_admin: 'pta.approve.academicas_admin',
 };
 
 export const PTA_COMPONENT_KEYS = Object.keys(PTA_COMPONENT_PERMISSION) as PTAComponentKey[];
@@ -42,7 +42,6 @@ export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
   ext_procesos: 2,
   ext_fortalecimiento: 2,
   ext_gobierno: 2,
-  academicas_admin: 3,
 };
 
 export function componentKeysForApprovalLevel(level: number): PTAComponentKey[] {
@@ -74,15 +73,62 @@ export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolea
     case 'ext_gobierno':
       return hasExtensionSectionData(pta, ['alto_gobierno']);
     case 'complementarias':
+      // Complementarias ahora incluye la sección académico-administrativa; se cuenta
+      // también la data legacy de AADM para PTAs no migrados.
       return Number(pta?.horas_complementarias || 0) > 0
-        || (Array.isArray(pta?.complementarias) && pta.complementarias.length > 0);
-    case 'academicas_admin':
-      return Number(pta?.horas_acad_admin || 0) > 0
+        || Number(pta?.horas_acad_admin || 0) > 0
+        || (Array.isArray(pta?.complementarias) && pta.complementarias.length > 0)
         || (Array.isArray(pta?.academico_admin) && pta.academico_admin.length > 0)
         || (Array.isArray(pta?.academicas_admin) && pta.academicas_admin.length > 0);
     default:
       return false;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helper compartido: separa las actividades de Complementarias en sus dos
+// secciones (complementarias a la docencia + académico-administrativas),
+// normalizando por `seccion` y fusionando la data legacy `academico_admin`.
+// Úsalo en todo punto de lectura para no doble-contar ni divergir.
+// ═══════════════════════════════════════════════════════════════════════════
+export const COMP_SECCION_DOCENCIA = 'complementarias_docencia';
+export const COMP_SECCION_AADM = 'academico_administrativas';
+
+function normalizeComplementariaSeccion(item: any): string {
+  const s = String(item?.seccion || '');
+  if (s === COMP_SECCION_AADM || s === COMP_SECCION_DOCENCIA) return s;
+  // Heurística legacy: los ítems de AADM traen consumeTotalidad definido.
+  if (item && item.consumeTotalidad !== undefined && s === '') return COMP_SECCION_AADM;
+  return COMP_SECCION_DOCENCIA;
+}
+
+export function splitComplementarias(pta: any): {
+  docencia: any[];
+  aadm: any[];
+  horasDocencia: number;
+  horasAadm: number;
+} {
+  const rawComp = Array.isArray(pta?.complementarias)
+    ? pta.complementarias
+    : (Array.isArray(pta?.complementarias?.actividades) ? pta.complementarias.actividades : []);
+  const legacyAadm = Array.isArray(pta?.academico_admin)
+    ? pta.academico_admin
+    : (Array.isArray(pta?.acad_admin?.actividades) ? pta.acad_admin.actividades
+      : (Array.isArray(pta?.academico_administrativo?.actividades) ? pta.academico_administrativo.actividades : []));
+
+  const tagged = [
+    ...rawComp.map((a: any) => ({ ...a, seccion: normalizeComplementariaSeccion(a) })),
+    ...legacyAadm
+      .filter((a: any) => !rawComp.some((c: any) =>
+        (c?.actividad_id ?? c?.id) === (a?.actividad_id ?? a?.id) &&
+        normalizeComplementariaSeccion(c) === COMP_SECCION_AADM))
+      .map((a: any) => ({ ...a, seccion: COMP_SECCION_AADM })),
+  ];
+
+  const docencia = tagged.filter((a: any) => a.seccion !== COMP_SECCION_AADM);
+  const aadm = tagged.filter((a: any) => a.seccion === COMP_SECCION_AADM);
+  const sum = (arr: any[]) => arr.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+  return { docencia, aadm, horasDocencia: sum(docencia), horasAadm: sum(aadm) };
 }
 
 export function hasAnyComponentApprovalData(pta: any, keys: PTAComponentKey[]): boolean {
