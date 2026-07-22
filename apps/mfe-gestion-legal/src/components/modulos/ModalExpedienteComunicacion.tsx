@@ -25,7 +25,7 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
-import { isPreviewableInPlatform } from '../../../../utils/fileUtils';
+import { isPreviewableInPlatform } from '../../../utils/fileUtils';
 
 import { Input } from '@esap-mfe/shared-ui/input';
 import { legalService } from '../../../../services/api/legal.service';
