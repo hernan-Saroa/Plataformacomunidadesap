@@ -2130,8 +2130,8 @@ export function PublicTitleVerification({
                           className="font-semibold text-[#1e5da8] underline decoration-[#1e5da8]/30 underline-offset-2 hover:text-[#174a86]"
                         >
                           ventanillaunica@esap.edu.co
-                        </a>
-                        , la cual será resuelta en un plazo de quince (15) días
+                        </a>{" "}
+                        la cual será resuelta en un plazo de quince (15) días
                         hábiles.
                       </p>
                     </div>
@@ -2306,7 +2306,7 @@ export function PublicTitleVerification({
                           Pública (ESAP) para que, en los términos legalmente
                           establecidos, recolecte, almacene, use, circule,
                           suprima, comparta, actualice y transmita mis datos
-                          personales, de acuerdo con la{" "}
+                          personales de acuerdo con la{" "}
                           <strong>Ley 1581 de 2012</strong> y el{" "}
                           <strong>Decreto 1377 de 2013</strong>, compilado en el
                           capítulo 2.2.2.25 del{" "}
@@ -2328,8 +2328,8 @@ export function PublicTitleVerification({
                         <p>
                           Declaro que los datos suministrados son verídicos y
                           que conozco mis derechos como titular de la
-                          información: acceso, rectificación, actualización,
-                          supresión y revocación.
+                          información (acceso, rectificación, actualización,
+                          supresión y revocación)
                         </p>
                       </div>
                     </div>
