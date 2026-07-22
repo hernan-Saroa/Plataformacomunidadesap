@@ -338,6 +338,11 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
   const isNuevaComposicion = !isReply && !isForward;
   const draftsEnabled = isNuevaComposicion && !!onSaveDraft;
 
+  // Sólo hidrata el formulario al ABRIR el modal (isOpen pasa a true), nunca en
+  // renders posteriores mientras sigue abierto: el padre reconstruye `initialData`
+  // como objeto nuevo en cada uno de sus renders (p.ej. por el polling de correos),
+  // y si el efecto dependiera de esa referencia se re-ejecutaría en cada render y
+  // borraría lo que el usuario ya escribió/adjuntó (asunto, comentario, adjuntos).
   useEffect(() => {
     if (!isOpen) return;
 
@@ -378,7 +383,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
     const cco = splitEmails(initialData?.cco);
     setBccEmails(cco);
     setShowBcc(cco.length > 0);
-  }, [isOpen, initialData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intencional: sólo al abrir, ver comentario arriba
+  }, [isOpen]);
 
   // ── ¿Hay contenido que valga la pena guardar como borrador? ──
   const hasDraftContent = useCallback(

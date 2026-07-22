@@ -1469,20 +1469,6 @@ export class CorreosJuridicosService {
         return apiClient.get(`${SERVICE_PREFIX}/correos/${id}/historial`);
     }
 
-    /**
-     * Get comments for an email
-     */
-    async getComentarios(correoId: string): Promise<any[]> {
-        return apiClient.get(`${SERVICE_PREFIX}/correos/${correoId}/comentarios`);
-    }
-
-    /**
-     * Create a comment on an email
-     */
-    async createComentario(correoId: string, data: { mensaje: string; usuario: string; cargo?: string }): Promise<any> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/comentarios`, data);
-    }
-
 }
 
 // ===== PROCESOS COACTIVOS SERVICE =====

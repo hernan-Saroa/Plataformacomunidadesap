@@ -24,6 +24,8 @@ import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { isPreviewableInPlatform } from '../../../../utils/fileUtils';
 
 import { Input } from '@esap-mfe/shared-ui/input';
 import { legalService } from '../../../../services/api/legal.service';
@@ -125,6 +127,9 @@ export function ModalExpedienteComunicacion({
   const [adjuntos, setAdjuntos] = useState<AdjuntoCorreo[]>([]);
   const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [docParaVisor, setDocParaVisor] = useState<{ url: string; nombre: string } | null>(null);
 
   // Historial (Timeline)
   const [historial, setHistorial] = useState<any[]>([]);
@@ -298,6 +303,28 @@ export function ModalExpedienteComunicacion({
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  const handleVerAdjunto = async (adjunto: AdjuntoCorreo) => {
+    setPreviewingId(adjunto.id);
+    try {
+      const blobUrl = await correosJuridicosService.downloadAdjunto(adjunto.id);
+      setDocParaVisor({ url: blobUrl, nombre: adjunto.nombre });
+      setVisorAbierto(true);
+    } catch (error) {
+      console.error('Error previewing adjunto:', error);
+      toast.error('Error al abrir la vista previa del archivo');
+    } finally {
+      setPreviewingId(null);
+    }
+  };
+
+  const handleCerrarVisor = () => {
+    setVisorAbierto(false);
+    if (docParaVisor?.url) {
+      window.URL.revokeObjectURL(docParaVisor.url);
+    }
+    setDocParaVisor(null);
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -593,6 +620,21 @@ export function ModalExpedienteComunicacion({
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              {isPreviewableInPlatform(adjunto.nombre) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={previewingId === adjunto.id}
+                                  onClick={() => handleVerAdjunto(adjunto)}
+                                >
+                                  {previewingId === adjunto.id ? (
+                                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                  ) : (
+                                    <Eye className="w-4 h-4 mr-1" />
+                                  )}
+                                  Ver
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -926,7 +968,17 @@ export function ModalExpedienteComunicacion({
         </DialogContent>
       </Dialog>
 
-
+      {/* VISOR INLINE DE ADJUNTOS (PDF/Imágenes) */}
+      {docParaVisor && (
+        <VisorDocumentoModal
+          isOpen={visorAbierto}
+          onClose={handleCerrarVisor}
+          archivo={docParaVisor.url}
+          numero={docParaVisor.nombre}
+          asunto={comunicacion.asunto}
+          forcePdfJsViewer
+        />
+      )}
     </>
   );
 }

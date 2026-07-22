@@ -3102,7 +3102,7 @@ export class GraduationCertificatesService {
               <tr>
                 <td style="padding:32px 28px 8px 28px;">
                   <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Certificado de verificación de título</h1>
-                  <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Adjunto se encuentra el certificado solicitado. Conserve los siguientes datos para futuras consultas o validaciones.</p>
+                  <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Adjunto se encuentra el certificado solicitado. Guarde los siguientes datos para futuras consultas o verificaciones.</p>
                   <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
                     <tr><td style="padding:16px 20px;">
                       <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Datos de verificación</p>
