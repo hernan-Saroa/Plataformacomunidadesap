@@ -1049,6 +1049,7 @@ export class ProcessService {
     nuevaEtapa: ProcessStage,
     fechaAprobacion: Date,
     aprobadoPorId: string,
+    aprobadoPorNombre?: string,
   ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
     const proceso = await this.findById(id, false);
     const etapaAnterior = proceso.etapaActual;
@@ -1081,7 +1082,7 @@ export class ProcessService {
     const procesoGuardado = await this.processRepository.save(proceso);
 
     const profesionalAprobador = await this.professionalRepository.findOne({ where: { idUser: aprobadoPorId } });
-    const nombreAprobador = profesionalAprobador?.nombreCompleto || aprobadoPorId;
+    const nombreAprobador = profesionalAprobador?.nombreCompleto || aprobadoPorNombre || aprobadoPorId;
 
     await this.actuacionesRepository.save({
       processId: id,
