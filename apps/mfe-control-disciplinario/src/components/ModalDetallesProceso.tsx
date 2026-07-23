@@ -4037,7 +4037,7 @@ export function ModalDetallesProceso({
                           { label: 'NÚMERO',         value: proceso.numeroProceso },
                           { label: 'ETAPA',          value: proceso.etapaActual   },
                           { label: 'NOTICIA ORIGEN', value: proceso.noticiaOrigen  },
-                          { label: 'APERTURA',       value: proceso.fechaCreacion  },
+                          { label: 'APERTURA',       value: (proceso as any).news?.createdAt ? new Date((proceso as any).news.createdAt).toISOString().split('T')[0] : proceso.fechaCreacion },
                         ].map(({ label, value }) => (
                           <div key={label} className="px-3 py-2.5">
                             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{label}</p>
@@ -4097,7 +4097,7 @@ export function ModalDetallesProceso({
                               <span className="text-[9px] font-bold text-amber-600 uppercase tracking-widest">Fecha de Hechos</span>
                             </div>
                             <p className="text-xs font-bold text-gray-900">
-                              {new Date(proceso.fechaHechos).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}
+                              {new Date(proceso.fechaHechos).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Bogota' })}
                             </p>
                             {fechaCaducidad && (
                               <p className="text-[10px] text-amber-700 mt-1">Caducidad: {new Date(fechaCaducidad).toLocaleDateString('es-CO')}</p>
