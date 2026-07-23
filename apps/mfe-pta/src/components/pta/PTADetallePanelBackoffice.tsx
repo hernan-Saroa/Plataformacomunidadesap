@@ -663,7 +663,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return componentKeysForApprovalLevel(nivelAprobacion);
   }, [isSuperUser, apruebaTodo, puedePerm, permisosPta.componentesAprobables, nivelAprobacion]);
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
-  const shouldHideUnauthorizedComponents = !isSuperUser && visibleComponentKeys.length > 0;
+  // Ya no controla visibilidad (todos los componentes del PTA se muestran siempre para
+  // dar contexto completo); solo indica si el rol actual tiene su alcance de edición/
+  // aprobación restringido a un subconjunto de componentes (usado para el formulario de
+  // Concertar y sus textos, no para ocultar contenido de esta vista).
+  const hasRestrictedApprovalScope =
+    !isSuperUser
+    && !apruebaTodo
+    && visibleComponentKeys.length > 0
+    && visibleComponentKeys.length < PTA_COMPONENT_KEYS.length;
   const componentEditScopeLabel = useMemo(() => {
     const labels: Record<string, string> = {
       academica: 'Docencia',
@@ -1143,31 +1151,27 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Número de la versión del reporte actual (cuenta snapshots guardados)
   const reporteVersionActual = historialEstados.filter((h: any) => h.snapshotPta && typeof h.snapshotPta === 'object').length || 1;
 
-  const componentesAprobacionVisibles = useMemo(
-    () => shouldHideUnauthorizedComponents
-      ? componentesAprobacion.filter(c => visibleComponentKeySet.has(c.componente))
-      : componentesAprobacion,
-    [componentesAprobacion, shouldHideUnauthorizedComponents, visibleComponentKeySet],
-  );
+  // Todos los aprobadores visualizan la totalidad de los componentes del PTA para
+  // tener contexto completo; la restricción por rol aplica solo a las ACCIONES
+  // (aprobar/devolver/concertar), nunca a qué se muestra en esta vista de detalle.
+  const componentesAprobacionVisibles = componentesAprobacion;
   const componentesPendientes = componentesAprobacionVisibles.filter(c => c.estado === 'pendiente' || !c.estado).length;
   const TABS = [
-    ...(shouldHideUnauthorizedComponents ? [] : [{ key: 'resumen', label: 'Resumen', icon: BarChart3 }]),
+    { key: 'resumen', label: 'Resumen', icon: BarChart3 },
     // "Concertación" fusiona las antiguas pestañas "Componentes" (detalle) y "Aprobación"
     // (aprobar/devolver): en un mismo lugar se ve el detalle de cada componente y se
     // aprueba o devuelve, con comentario del revisor.
     { key: 'componentes', label: 'Concertación', icon: ShieldCheck, badge: componentesPendientes || undefined },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
     { key: 'trazabilidad', label: 'Trazabilidad', icon: Activity, badge: historialEstados.length || undefined },
-    ...(isConcertacion || concertacion.mensajes?.length > 0
+    // La etapa de concertación (coordinadores, durante la elaboración del PTA) ya fue
+    // ejecutada antes de que el PTA llegue a la bandeja de aprobación: la pestaña solo
+    // debe aparecer mientras esa etapa está activa, no de forma permanente por haber
+    // quedado mensajes históricos.
+    ...(isConcertacion
       ? [{ key: 'concertacion', label: 'Concertación', icon: MessageSquare, badge: concertacion.mensajes?.length || 0 }]
       : []),
   ];
-
-  useEffect(() => {
-    if (shouldHideUnauthorizedComponents && activeTab === 'resumen') {
-      setActiveTab('componentes');
-    }
-  }, [shouldHideUnauthorizedComponents, activeTab]);
 
   const getSubcomponentHours = (seccionKey: string) => {
     const acts = pta.extension_actividades || initialPta.extension_actividades || [];
@@ -1181,10 +1185,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       .reduce((s: number, e: any) => s + (e.horas || 0), 0);
   };
 
-  const shouldShowComponentKey = useCallback((key: string) => (
-    !shouldHideUnauthorizedComponents || visibleComponentKeySet.has(key)
-  ), [shouldHideUnauthorizedComponents, visibleComponentKeySet]);
+  // La vista de detalle conserva siempre el contexto completo del PTA. Los permisos
+  // granulares restringen las acciones y el formulario de concertación, no la
+  // visibilidad de los demás componentes.
+  const shouldShowComponentKey = useCallback((_key: string) => true, []);
 
+  // Una sección de Extensión también debe poder revisarse cuando quedó en 0 horas
+  // después de una edición parcial: eliminar sus actividades sigue siendo un cambio
+  // que requiere reaprobación.
   const extensionCards = useMemo(() => ([
     { key: 'ext_capacitacion', section: 'capacitacion', label: 'Dirección de Capacitación', icon: GraduationCap, color: '#059669' },
     { key: 'ext_procesos', section: 'seleccion', label: 'Dirección de Procesos de Selección', icon: Briefcase, color: '#0284C7' },
@@ -1195,10 +1203,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const requiereReaprobacionManual =
       approval?.scope === 'solicitud_edicion'
       && ['pendiente', 'devuelto'].includes(String(approval.estado || '').toLowerCase());
-    return shouldShowComponentKey(item.key)
-      && (getSubcomponentHours(item.section) > 0 || requiereReaprobacionManual);
+    return getSubcomponentHours(item.section) > 0 || requiereReaprobacionManual;
   }), [
-    shouldShowComponentKey,
     pta.extension_actividades,
     initialPta.extension_actividades,
     componentesAprobacion,
@@ -1219,10 +1225,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // de reabrir uno ya aprobado.
     const canEvaluateComponent = puedeAprobar && puedeActuarSobreComponentes && componentAuthorized && !isAutoAprobado &&
       (estado === 'pendiente' || !!evaluandoComponente[key]);
-
-    if (shouldHideUnauthorizedComponents && !componentAuthorized) {
-      return null;
-    }
 
     const getAssignmentDate = () => {
       const transition = (pta.historialEstados || []).find(
@@ -2210,7 +2212,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               estado={pta.estado}
               componentesAprobacion={componentesAprobacion}
               isMobile={isMobile}
-              visibleComponentKeys={shouldHideUnauthorizedComponents ? visibleComponentKeys : undefined}
             />
           </div>
         </div>
@@ -2265,7 +2266,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         ) : (
           <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '14px 14px 60px' : '16px 20px 60px' }}>
             {/* ═══ TAB: Resumen ═══ */}
-          {activeTab === 'resumen' && !shouldHideUnauthorizedComponents && (
+          {activeTab === 'resumen' && (
             <div>
               {/* KPI Row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 6 : 8, marginBottom: pta.semanas_prorrateo && pta.semanas_prorrateo < 16 ? 4 : 16 }}>
@@ -2524,7 +2525,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
                     {rolLabel === 'Docente'
                       ? 'Puede editar su PTA'
-                      : shouldHideUnauthorizedComponents
+                      : hasRestrictedApprovalScope
                         ? `Como revisor puede concertar solo: ${componentEditScopeLabel}`
                         : 'Como revisor puede concertar el PTA completo antes de aprobar'}
                   </span>
@@ -2537,7 +2538,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
                     }}
                   >
-                    <Edit2 style={{ width: 12, height: 12 }} /> {shouldHideUnauthorizedComponents ? 'Concertar componente' : 'Concertar'}
+                    <Edit2 style={{ width: 12, height: 12 }} /> {hasRestrictedApprovalScope ? 'Concertar componente' : 'Concertar'}
                   </button>
                 </div>
               )}
@@ -2885,7 +2886,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               )}
 
               {/* Extensión — aprobar/devolver (por subcomponente) */}
-              {(!shouldHideUnauthorizedComponents || extensionCards.length > 0) && (
+              {extensionCards.length > 0 && (
               <motion.div
                 whileHover={{ y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' }}
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -2951,46 +2952,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   gap: 12,
                   paddingLeft: 6,
                 }}>
-                  {/* Sub 1: Capacitación — solo si tiene horas */}
-                  {getSubcomponentHours('capacitacion') > 0 && renderComponentCard(
-                    'ext_capacitacion',
-                    'Dirección de Capacitación',
-                    GraduationCap,
-                    '#059669',
-                    `Horas: ${getSubcomponentHours('capacitacion')}h`,
-                    true
-                  )}
-
-                  {/* Sub 2: Procesos de Selección — solo si tiene horas */}
-                  {getSubcomponentHours('seleccion') > 0 && renderComponentCard(
-                    'ext_procesos',
-                    'Dirección de Procesos de Selección',
-                    Briefcase,
-                    '#0284C7',
-                    `Horas: ${getSubcomponentHours('seleccion')}h`,
-                    true
-                  )}
-
-                  {/* Sub 3: Fortalecimiento Institucional — solo si tiene horas */}
-                  {getSubcomponentHours('fortalecimiento') > 0 && renderComponentCard(
-                    'ext_fortalecimiento',
-                    'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal',
-                    Building2,
-                    '#7C3AED',
-                    `Horas: ${getSubcomponentHours('fortalecimiento')}h`,
-                    true
-                  )}
-
-                  {/* Sub 4: Escuela de Alto Gobierno — solo si tiene horas */}
-                  {getSubcomponentHours('alto_gobierno') > 0 && renderComponentCard(
-                    'ext_gobierno',
-                    'Escuela de Alto Gobierno',
-                    Shield,
-                    '#B45309',
-                    `Horas: ${getSubcomponentHours('alto_gobierno')}h`,
-                    true
-                  )}
-
+                  {extensionCards.map(item => renderComponentCard(
+                    item.key,
+                    item.label,
+                    item.icon,
+                    item.color,
+                    `Horas: ${getSubcomponentHours(item.section)}h`,
+                    true,
+                  ))}
                 </div>
               </motion.div>
               )}
@@ -3693,8 +3662,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               userPersonId={''}
               isAdminEdit={true}
               jefaturaTerritorialId={jefaturaTerritorialId}
-              allowedComponentKeys={shouldHideUnauthorizedComponents ? visibleComponentKeys : undefined}
-              componentEditScopeLabel={shouldHideUnauthorizedComponents ? componentEditScopeLabel : undefined}
+              allowedComponentKeys={hasRestrictedApprovalScope ? visibleComponentKeys : undefined}
+              componentEditScopeLabel={hasRestrictedApprovalScope ? componentEditScopeLabel : undefined}
               concertacionActorId={actorId}
               concertacionActorNombre={actorNombre || rolLabel}
               onBack={async () => {
