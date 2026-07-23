@@ -1079,7 +1079,10 @@ export class PtaService {
       (sum: number, a: any) => sum + (Number(a?.horas) || Number(a?.horas_total) || 0),
       0,
     );
-    const sumInv = invProyectoHoras > 0 ? invProyectoHoras : horasActividadesInv;
+    // Un proyecto y sus actividades son dos fuentes distintas de horas. Cuando
+    // coexisten deben contabilizarse ambas; la regla configurable decide si esa
+    // combinación puede enviarse, pero nunca se deben ocultar horas persistidas.
+    const sumInv = invProyectoHoras + horasActividadesInv;
 
     const extActsRaw = Array.isArray(body?.extension_actividades) ? body.extension_actividades : [];
     const extActs = extActsRaw.map((a: any) => {
@@ -1176,6 +1179,9 @@ export class PtaService {
       ext_max_horas_enlace: Number.isFinite(maxExtensionGlobal) ? maxExtensionGlobal : 200,
       comp_anexo1_validado: Boolean(rules.comp_anexo1_validado ?? false),
       comp_anexo1_fuente: String(rules.comp_anexo1_fuente || 'Pendiente de cotejo contra Anexo 1'),
+      inv_permitir_proyecto_actividades_simultaneos: Boolean(
+        rules.inv_permitir_proyecto_actividades_simultaneos ?? false,
+      ),
       ext_secciones: normalizeExtensionSections(rules.ext_secciones),
     };
 
@@ -1265,6 +1271,59 @@ export class PtaService {
     const rolLimit = Math.round(horasAProgramar * rolPct / 100);
 
     return Math.min(globalLimit, rolLimit);
+  }
+
+  private validateInvestigacionComponent(
+    body: any,
+    horas: ReturnType<PtaService['computeHorasTotales']>,
+    horasAProgramar: number,
+    rules: any,
+  ): void {
+    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
+    const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas || 0);
+    const actividades = Array.isArray(body?.investigacion_actividades)
+      ? body.investigacion_actividades
+      : [];
+    const horasActividades = actividades.reduce(
+      (sum: number, activity: any) => sum + (Number(activity?.horas_total ?? activity?.horas) || 0),
+      0,
+    );
+    const permiteCoexistencia = rules?.inv_permitir_proyecto_actividades_simultaneos === true;
+
+    if (!permiteCoexistencia && horasProyecto > 0 && horasActividades > 0) {
+      throw new BadRequestException(
+        'La configuracion actual de Investigacion permite registrar un proyecto o actividades, pero no ambos simultaneamente.',
+      );
+    }
+
+    const limiteProyecto = this.getInvestigacionLimit(body, rules, horasAProgramar);
+    if (rolInvestigacion) {
+      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > limiteProyecto) {
+        throw new BadRequestException(
+          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${limiteProyecto}h (hasta el tope dinamico de la bolsa RUND).`,
+        );
+      }
+    }
+
+    const limiteGlobal = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_investigacion',
+      50,
+      'max_horas_investigacion_global',
+      400,
+    );
+    const esCombinacionPermitida = permiteCoexistencia
+      && Boolean(rolInvestigacion)
+      && horasProyecto > 0
+      && horasActividades > 0;
+    const limiteComponente = esCombinacionPermitida ? limiteGlobal : limiteProyecto;
+
+    if (horas.sumInv > limiteComponente) {
+      throw new BadRequestException(
+        `El componente Investigacion excede el limite permitido: ${horas.sumInv}h / ${limiteComponente}h.`,
+      );
+    }
   }
 
   private validateDocenciaDateOverlaps(asignaturas: any[]): void {
@@ -1585,7 +1644,6 @@ export class PtaService {
       : [];
     this.validateDocenciaDateOverlaps(asignaturas);
 
-    const maxInvestigacion = this.getInvestigacionLimit(body, rules, horasAProgramar);
     const maxExtension = this.getScaledRuleLimit(
       rules,
       horasAProgramar,
@@ -1609,19 +1667,10 @@ export class PtaService {
       }
     };
 
-    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
-    if (rolInvestigacion) {
-      const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas);
-      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > maxInvestigacion) {
-        throw new BadRequestException(
-          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${maxInvestigacion}h (hasta el tope dinamico de la bolsa RUND).`,
-        );
-      }
-    }
+    this.validateInvestigacionComponent(body, horas, horasAProgramar, rules);
 
     // Docencia no tiene tope porcentual propio; el límite global anterior le
     // permite ocupar desde una fracción hasta el 100% de la bolsa disponible.
-    assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
     assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
@@ -1704,7 +1753,7 @@ export class PtaService {
     const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
-    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Aplicar multiplicador de sección (config-driven) para mantener consistencia con computeHorasTotales
     const extActsNorm = extActs.map((a: any) => {
@@ -2513,9 +2562,20 @@ export class PtaService {
     };
     const extMult = await this.getExtMultiplicadores();
     const horas = this.computeHorasTotales(input, extMult);
+    const ptaRules = (await this.getConfiguracionPTAGlobal()) || {};
+
+    // La edición de Concertación puede conservar el mismo estado y por eso no
+    // siempre pasa por la validación completa de envío. Si el revisor tiene el
+    // componente de Investigación en su alcance, se aplican igualmente la regla
+    // de coexistencia y sus topes antes de persistir los cambios.
+    const adminPuedeEditarInvestigacion = isAdminEdit
+      && (allowedComponentKeys.length === 0 || allowedComponentKeys.includes('investigacion'));
+    if (adminPuedeEditarInvestigacion) {
+      this.validateInvestigacionComponent(input, horas, horasAProgramar, ptaRules);
+    }
 
     if (isPendingRoleApprovalState(estado)) {
-      this.validatePtaForSubmission(input, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
+      this.validatePtaForSubmission(input, horas, horasAProgramar, ptaRules);
     }
 
     const patch: Partial<PlanTrabajoAcademicoEntity> = {
@@ -5272,7 +5332,7 @@ export class PtaService {
     const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
-    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Complementarias unificado = sección docencia + sección académico-administrativa.
     const hComp = compDocencia.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0)

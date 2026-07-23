@@ -201,11 +201,58 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
           </details>
 
 
-          {/* ── SECCIÓN 4: Resolución de Investigación ── */}
+          {/* ── SECCIÓN 4: Modalidad de registro ── */}
+          <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
+            <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-purple-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="font-bold text-slate-800 flex items-center gap-3">
+                <span className="w-6 h-6 rounded bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xs">4</span>
+                Modalidad de Registro de Investigación
+              </span>
+              <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
+            </summary>
+
+            <div className="p-4 border-t border-slate-100 bg-purple-50/10">
+              <div className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-purple-200 transition-colors shadow-sm">
+                <div className="flex-1 pr-4">
+                  <h4 className="text-[13px] font-bold text-slate-800 leading-tight mb-1">
+                    Permitir proyecto y actividades simultáneamente
+                  </h4>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Al activarlo, el docente puede registrar un Proyecto de Investigación y Actividades de Investigación en el mismo PTA. Las horas de ambos se suman y respetan el tope global del componente.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleChange(
+                    'inv_permitir_proyecto_actividades_simultaneos',
+                    !draft.inv_permitir_proyecto_actividades_simultaneos,
+                  )}
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500/30 ${
+                    draft.inv_permitir_proyecto_actividades_simultaneos
+                      ? 'bg-purple-600 border-purple-600'
+                      : 'bg-slate-200 border-slate-200'
+                  }`}
+                  role="switch"
+                  aria-label="Permitir proyecto y actividades de investigación simultáneamente"
+                  aria-checked={draft.inv_permitir_proyecto_actividades_simultaneos}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    draft.inv_permitir_proyecto_actividades_simultaneos ? 'translate-x-5' : 'translate-x-0.5'
+                  }`} />
+                </button>
+                <span className={`ml-3 text-xs font-bold min-w-[70px] text-right ${draft.inv_permitir_proyecto_actividades_simultaneos ? 'text-purple-700' : 'text-slate-400'}`}>
+                  {draft.inv_permitir_proyecto_actividades_simultaneos ? 'Permitido' : 'Excluyente'}
+                </span>
+              </div>
+            </div>
+          </details>
+
+
+          {/* ── SECCIÓN 5: Resolución de Investigación ── */}
           <details className="group border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden" open>
             <summary className="flex cursor-pointer list-none items-center justify-between p-4 bg-slate-50 group-open:bg-emerald-50/50 hover:bg-slate-100 transition-colors [&::-webkit-details-marker]:hidden">
               <span className="font-bold text-slate-800 flex items-center gap-3">
-                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">4</span>
+                <span className="w-6 h-6 rounded bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">5</span>
                 Resolución de Investigación — Documentación Soporte
               </span>
               <ChevronDown className="h-5 w-5 text-slate-400 transition transform group-open:rotate-180" />
