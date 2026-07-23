@@ -77,7 +77,13 @@ export function ProgramacionAcademica() {
   const totalDoc = asignaturas.reduce((t, a) => t + (a.total_horas || 0), 0);
   const totalInv = invProyecto.horas_solicitadas || 0;
   const totalExt = extActividades.reduce((t, e) => t + (e.horas || 0), 0);
-  const horasProgramables = selectedDocente?.dedicacion === 'Medio Tiempo' ? 400 : 800;
+  const horasProgramablesRaw = Number(
+    selectedDocente?.horasAsignables
+    ?? selectedDocente?.horas_asignables
+    ?? selectedDocente?.horas_programables
+    ?? 0,
+  );
+  const horasProgramables = Number.isFinite(horasProgramablesRaw) ? horasProgramablesRaw : 0;
   const totalPrecargado = totalDoc + totalInv + totalExt;
   const pendienteDocente = horasProgramables - totalPrecargado;
 
@@ -334,7 +340,7 @@ export function ProgramacionAcademica() {
                   </div>
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
                     <span>Pendiente para docente</span>
-                    <span className="font-semibold text-amber-600">{pendienteDocente}h ({((pendienteDocente / horasProgramables) * 100).toFixed(0)}%)</span>
+                    <span className="font-semibold text-amber-600">{pendienteDocente}h ({horasProgramables > 0 ? ((pendienteDocente / horasProgramables) * 100).toFixed(0) : 0}%)</span>
                   </div>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800">

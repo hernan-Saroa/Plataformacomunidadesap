@@ -134,7 +134,7 @@ export function GraduateCertificatesWrapper({
       <ResponsiveHeader
         key="header"
         title="Verificación de títulos"
-        description="Gestiona solicitudes de revisión y certificados generados"
+        description="Gestión de solicitudes de revisión y certificados generados"
         icon={FileSearch}
       />
       <motion.div

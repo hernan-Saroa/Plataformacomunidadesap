@@ -349,7 +349,7 @@ export function PanelSNA_PTA({ onVerDetalle, searchQuery = '', filtroPeriodo = '
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
                   {[
                     { label: 'Dedicación', value: selectedCaso.pta.dedicacion || 'TC' },
-                    { label: 'Horas Programadas', value: `${selectedCaso.pta.total_horas_programadas || 0}/${selectedCaso.pta.horas_a_programar || 800}` },
+                    { label: 'Horas Programadas', value: `${selectedCaso.pta.total_horas_programadas || 0}/${selectedCaso.pta.horas_asignables ?? selectedCaso.pta.horas_a_programar ?? 0}` },
                     { label: 'Días en SNA', value: `${calcularDiasEnSNA(selectedCaso.fecha_escalamiento)} días` },
                   ].map(item => (
                     <div key={item.label} style={{ padding: 12, borderRadius: 8, background: '#F9FAFB', border: '1px solid #E5E7EB' }}>

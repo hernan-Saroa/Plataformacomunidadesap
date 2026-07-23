@@ -66,6 +66,9 @@ export enum Permissions {
   GESTION_LEGAL_COMUNICACIONES_CREATE = 'gestion-legal.comunicaciones.create',
   GESTION_LEGAL_COMUNICACIONES_LEIDO = 'gestion-legal.comunicaciones.leido',
   GESTION_LEGAL_COMUNICACIONES_ARCHIVAR = 'gestion-legal.comunicaciones.archivar',
+  // Acceso por buzón institucional (segregación de funciones: cada buzón lo administran funcionarios distintos)
+  GESTION_LEGAL_COMUNICACIONES_BUZON_JUDICIAL = 'gestion-legal.comunicaciones.buzon.judicial',
+  GESTION_LEGAL_COMUNICACIONES_BUZON_CORREOS = 'gestion-legal.comunicaciones.buzon.correos',
 
   // Gestión Legal - Términos e Informaciones
   GESTION_LEGAL_TERMINOS_MANAGE = 'gestion-legal.terminos.manage',
@@ -199,6 +202,9 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT = 'control-disciplinario.configuraciones.cargo.edit',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE = 'control-disciplinario.configuraciones.cargo.delete',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_FIRMA_UPLOAD = 'control-disciplinario.configuraciones.firma.upload',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_CREATE = 'control-disciplinario.configuraciones.conductas.create',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_EDIT = 'control-disciplinario.configuraciones.conductas.edit',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_CONDUCTAS_DELETE = 'control-disciplinario.configuraciones.conductas.delete',
 
   // Control Disciplinario - Nuevos Permisos (Granulares)
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL = 'control-disciplinario.procesos.view_all',

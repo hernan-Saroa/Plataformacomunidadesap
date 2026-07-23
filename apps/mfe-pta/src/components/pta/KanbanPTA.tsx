@@ -87,7 +87,7 @@ function ptasToKanbanCards(ptas: any[], rules?: any): KanbanCard[] {
   
   return ptas.map(pta => {
     const horasProg = pta.total_horas_programadas || 0;
-    const horasDisp = pta.horas_a_programar || 800;
+    const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
     const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
     
     // Calcular días en estado actual

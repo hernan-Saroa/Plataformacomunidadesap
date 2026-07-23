@@ -286,6 +286,7 @@ export class MicrosoftGraphService {
         attachments?: { name: string; contentBytes: string; contentType: string }[],
         options?: { requestReadReceipt?: boolean; requestDeliveryReceipt?: boolean },
         fromAccount?: string,
+        bcc?: string[],
     ): Promise<boolean> {
         const toList = Array.isArray(to) ? to : [to];
         // Cuenta remitente: depende del buzón del correo (judicial vs correos). Default: primaria.
@@ -303,6 +304,12 @@ export class MicrosoftGraphService {
             // Build ccRecipients if provided
             const ccRecipients = cc?.length
                 ? cc.map(email => ({ emailAddress: { address: email.trim() } }))
+                : [];
+
+            // Build bccRecipients (Copia Oculta / CCO) if provided.
+            // These recipients are NOT visible to the other addressees.
+            const bccRecipients = bcc?.length
+                ? bcc.map(email => ({ emailAddress: { address: email.trim() } }))
                 : [];
 
             // Format body as HTML with clear separation
@@ -335,6 +342,7 @@ export class MicrosoftGraphService {
                         emailAddress: { address: addr.trim() },
                     })),
                     ...(ccRecipients.length > 0 && { ccRecipients }),
+                    ...(bccRecipients.length > 0 && { bccRecipients }),
                     ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                     ...(options?.requestReadReceipt && { isReadReceiptRequested: true }),
                     ...(options?.requestDeliveryReceipt && { isDeliveryReceiptRequested: true }),
@@ -351,7 +359,7 @@ export class MicrosoftGraphService {
                 .api(`/users/${mailbox}/sendMail`)
                 .post(message);
 
-            this.logger.log(`Email sent from ${mailbox} to ${to}${cc?.length ? ` (CC: ${cc.join(', ')})` : ''}${attachments?.length ? ` with ${attachments.length} attachment(s)` : ''} - Subject: ${subject}`);
+            this.logger.log(`Email sent from ${mailbox} to ${to}${cc?.length ? ` (CC: ${cc.join(', ')})` : ''}${bcc?.length ? ` (BCC: ${bcc.length} oculto[s])` : ''}${attachments?.length ? ` with ${attachments.length} attachment(s)` : ''} - Subject: ${subject}`);
             return true;
         } catch (error) {
             this.logger.error(`Error sending email to ${to}:`, error);

@@ -47,6 +47,29 @@ export function isViewableInBrowser(filename: string | null | undefined): boolea
     return VIEWABLE_EXTENSIONS.includes(extension);
 }
 
+// Extensions actually rendered inline by VisorDocumentoModal (pdf.js canvas / <img> / mammoth for .docx).
+// Narrower than VIEWABLE_EXTENSIONS: video, audio and plain-text formats fall back to
+// VisorDocumentoModal's "Vista previa no disponible" screen, so they must not offer a preview button.
+const PLATFORM_PREVIEW_EXTENSIONS = [
+    '.pdf',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp',
+    '.docx'
+];
+
+/**
+ * Check if a file can be rendered inline by VisorDocumentoModal (the in-platform document viewer)
+ * @param filename - The name of the file (with extension) or URL
+ * @returns true if VisorDocumentoModal has a real renderer for this file type
+ */
+export function isPreviewableInPlatform(filename: string | null | undefined): boolean {
+    if (!filename) return false;
+
+    const extension = getFileExtension(filename);
+    if (!extension) return false;
+
+    return PLATFORM_PREVIEW_EXTENSIONS.includes(extension);
+}
+
 /**
  * Check if a file should only be downloaded (not viewable)
  * @param filename - The name of the file (with extension) or URL

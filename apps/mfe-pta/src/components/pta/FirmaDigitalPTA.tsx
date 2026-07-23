@@ -30,7 +30,7 @@ interface FirmaDigitalPTAProps {
   etapaLabel: string;
   correoDestino?: string;
   onVerifyCodigo?: (codigo: string) => Promise<void>;
-  onFirmaCompleta: (firmaData: FirmaData) => void;
+  onFirmaCompleta: (firmaData: FirmaData) => void | boolean | Promise<void | boolean>;
   onCancelar: () => void;
 }
 
@@ -189,9 +189,17 @@ export function FirmaDigitalPTA({
   const confirmarFirma = () => {
     if (firmaData) {
       setStep('completado');
-      setTimeout(() => {
-        onFirmaCompleta(firmaData);
-        toast.success('Firma digital aplicada correctamente');
+      setTimeout(async () => {
+        try {
+          const completed = await onFirmaCompleta(firmaData);
+          // El certificado solo se confirma cuando la operacion del backend (guardar
+          // y/o cambiar estado) termino. Evita falsos positivos en QA/DEV.
+          if (completed !== false) {
+            toast.success('Firma digital aplicada correctamente');
+          }
+        } catch (error: any) {
+          toast.error(error?.message || 'No se pudo completar la firma y el envio del PTA.');
+        }
       }, 1500);
     }
   };

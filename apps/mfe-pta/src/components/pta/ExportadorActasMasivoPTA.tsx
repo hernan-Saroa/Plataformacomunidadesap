@@ -101,7 +101,7 @@ export function ExportadorActasMasivoPTA() {
           periodo: p.periodo || filtroPeriodo,
           resultado: p.estado === 'ESCALADO_SNA' ? 'ESCALADO_SNA' : 'CONCERTADO',
           fechaCierre: p.fecha_actualizacion || new Date(Date.now() - Math.random() * 30 * 86400000).toISOString(),
-          horasOriginal: p.horas_a_programar || 800,
+          horasOriginal: p.horas_asignables ?? p.horas_a_programar ?? 0,
           horasFinal: p.total_horas_programadas || Math.floor(700 + Math.random() * 100),
           numAcuerdos: Math.floor(2 + Math.random() * 5),
           numMensajes: Math.floor(4 + Math.random() * 12),

@@ -137,6 +137,28 @@ export class EmailsService {
   }
 
   private async sendMail(payload: EmailPayload): Promise<{ sent: boolean }> {
+    const redirectTo = process.env.EMAIL_REDIRECT_TO;
+
+    if (redirectTo && redirectTo.trim().length > 0) {
+      const originalRecipient = payload.to;
+      this.logger.log(`[Redirección] Redirigiendo correo de <${originalRecipient}> a <${redirectTo}>`);
+      
+      payload.to = redirectTo.trim();
+      payload.subject = `[Redirigido de: ${originalRecipient}] ${payload.subject}`;
+      
+      if (payload.html) {
+        payload.html = `
+          <div style="background-color: #ffe4e6; border: 1px solid #fda4af; padding: 12px; margin-bottom: 20px; font-family: sans-serif; color: #9f1239; border-radius: 6px;">
+            <strong>[Correo Redirigido]</strong> Este mensaje fue enviado originalmente a: <code>${originalRecipient}</code> (Entorno de desarrollo/pruebas).
+          </div>
+          ${payload.html}
+        `;
+      }
+      if (payload.text) {
+        payload.text = `[Correo Redirigido a: ${redirectTo} - Destinatario original: ${originalRecipient}]\n\n${payload.text}`;
+      }
+    }
+
     const provider = this.getConfiguredProvider();
 
     if (provider === 'microsoft_graph') {

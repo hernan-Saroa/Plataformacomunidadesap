@@ -48,7 +48,7 @@ import { ProgramacionAcademica } from './ProgramacionAcademica';
 import { MesaConcertacion } from './MesaConcertacion';
 import { esAdjuntoEvidencia, agruparEvidenciasPorJustificacion } from './shared/evidenciasJustificacion';
 import { resolvePtaFileUrl } from './shared/ptaFiles';
-import { PermisosPTAProvider, SelectorRolPTA, usePermisosPTA } from './PermisosPTAContext';
+import { PermisosPTAProvider, SelectorRolPTA, usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
@@ -60,9 +60,13 @@ import { PTAWorldClassToolbar } from './PTAWorldClassToolbar';
 import { ESAPLogoLoader } from '../common/ESAPLogoLoader';
 import {
   PTA_COMPONENT_KEYS,
+  PTA_COMPONENT_PERMISSION,
+  PTA_APPROVE_ALL_PERMISSION,
   PTA_EXTENSION_COMPONENT_KEYS,
   type PTAComponentKey,
   hasAnyComponentApprovalData,
+  componentKeyForEvidencia,
+  isEvidenciaAuthorized,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import '../../styles/pta-world-class.css';
@@ -558,6 +562,20 @@ function isDocumentoPendiente(evidencia: any) {
 }
 
 function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNombre: string; rolLabel: string }) {
+  // Autorización POR COMPONENTE basada EXCLUSIVAMENTE en los 7 permisos granulares
+  // pta.approve.<componente> (+ pta.approve.all y superuser). No se usa
+  // permisos.componentesAprobables porque muchos roles mapean a 'admin' por defecto y
+  // devolverían todos los componentes, ignorando los permisos reales del rol.
+  const { puede } = usePermisosPTAGranulares();
+  const apruebaTodo = puede(PTA_APPROVE_ALL_PERMISSION);
+  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || puede(PTA_COMPONENT_PERMISSION[key]);
+  const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
+  // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
+  const isSegComponentAuthorized = (compKey: string) => {
+    if (compKey === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(isComponentAuthorized);
+    const key = componentKeyForEvidencia(compKey, null);
+    return key ? isComponentAuthorized(key) : false;
+  };
   const [ptasData, setPtasData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroPeriodo, setFiltroPeriodo] = useState('');
@@ -598,18 +616,24 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   // Solo aplican al Seguimiento las PTAs que pueden tener documentos: aprobadas / en firme /
   // en ejecución, o las que ya tengan al menos una evidencia cargada (defensivo ante estados
   // con etiquetas inconsistentes). Así evitamos filas de Borrador/Pendiente que se despliegan vacías.
-  const aplicaSeguimiento = (p: any) =>
-    (p.evidencias || []).length > 0 || ESTADOS_CON_DOCUMENTOS_KEYS.has(normalizeEstadoKey(p.estado));
+  // Una PTA aplica al Seguimiento de ESTE usuario si: tiene evidencias suyas
+  // (autorizadas por componente), o —sin evidencias aún— está en un estado que las
+  // admite. Las PTAs cuyas evidencias son todas de otros componentes se ocultan.
+  const aplicaSeguimiento = (p: any) => {
+    const total = (p.evidencias || []).length;
+    if (total > 0) return evsAutorizadas(p).length > 0;
+    return ESTADOS_CON_DOCUMENTOS_KEYS.has(normalizeEstadoKey(p.estado));
+  };
 
   const filteredPtas = ptasData.filter((p: any) => {
     if (!aplicaSeguimiento(p)) return false;
     if (!filtroEstadoRev) return true;
-    return (p.evidencias || []).some((e: any) => getEstadoRevisionDocumento(e) === filtroEstadoRev);
+    return evsAutorizadas(p).some((e: any) => getEstadoRevisionDocumento(e) === filtroEstadoRev);
   });
 
   // Los adjuntos de soporte (0h) siguen la decisión de su documento principal:
-  // no se cuentan como pendientes propios.
-  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + (p.evidencias || []).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e)).length, 0);
+  // no se cuentan como pendientes propios. Solo se cuentan las evidencias autorizadas.
+  const totalPendientes = ptasData.reduce((acc: number, p: any) => acc + evsAutorizadas(p).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e)).length, 0);
 
   return (
     <div style={{ padding: '0 0 40px' }}>
@@ -618,6 +642,11 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
         <div>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0 }}>Seguimiento de Documentos</h2>
           <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Documentos de soporte subidos por docentes en PTAs aprobados</p>
+          {/* DIAGNÓSTICO TEMPORAL — muestra qué permisos de aprobación recibió el módulo.
+              Sirve para verificar el filtrado por componente. Eliminar tras validar. */}
+          <p style={{ fontSize: '0.68rem', color: '#B45309', background: '#FEF3C7', border: '1px dashed #FDE68A', borderRadius: 6, padding: '3px 8px', margin: '6px 0 0', fontWeight: 600 }}>
+            [debug] apruebaTodo(all/superuser): {String(apruebaTodo)} · componentes autorizados: {PTA_COMPONENT_KEYS.filter(isComponentAuthorized).join(', ') || '(ninguno)'}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {totalPendientes > 0 && (
@@ -657,7 +686,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {filteredPtas.map((pta: any) => {
-            const evsPendientes = (pta.evidencias || []).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e));
+            const evsPendientes = evsAutorizadas(pta).filter((e: any) => isDocumentoPendiente(e) && !esAdjuntoEvidencia(e));
             const isOpen = selectedPtaId === pta.pta_id;
             return (
               <div key={pta.pta_id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${evsPendientes.length > 0 ? '#FDE68A' : '#E5E7EB'}`, overflow: 'hidden' }}>
@@ -678,8 +707,8 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                   </div>
                   {/* Progress pills per component */}
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {COMPONENTES_SEG.map(comp => {
-                      // Se muestran SIEMPRE los 5 componentes fijos (aunque el PTA tenga 0h en alguno).
+                    {COMPONENTES_SEG.filter(comp => isSegComponentAuthorized(comp.key)).map(comp => {
+                      // Solo los componentes que el usuario está autorizado a revisar.
                       const horasTotal: number = (pta as any)[`horas_${comp.key}`] || 0;
                       const aprobadas = (pta.evidencias || [])
                         .filter((e: any) => e.componente_pta === comp.key && isDocumentoAprobado(e))
@@ -708,14 +737,14 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                   {isOpen && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden' }}>
                       <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {(pta.evidencias || []).length === 0 && (
+                        {evsAutorizadas(pta).length === 0 && (
                           <div style={{ textAlign: 'center', padding: '18px 12px', background: '#F9FAFB', borderRadius: 10, border: '1px dashed #E5E7EB' }}>
                             <FolderOpen style={{ width: 26, height: 26, color: '#D1D5DB', margin: '0 auto 6px' }} />
                             <p style={{ fontSize: '0.78rem', color: '#6B7280', margin: 0, fontWeight: 600 }}>Sin documentos de soporte</p>
                             <p style={{ fontSize: '0.68rem', color: '#9CA3AF', margin: '2px 0 0' }}>El docente aún no ha subido evidencias para esta PTA</p>
                           </div>
                         )}
-                        {agruparEvidenciasPorJustificacion(pta.evidencias || []).map((grupo: { main: any; adjuntos: any[] }) => {
+                        {agruparEvidenciasPorJustificacion(evsAutorizadas(pta)).map((grupo: { main: any; adjuntos: any[] }) => {
                           const ev = grupo.main;
                           const comp = COMPONENTES_SEG.find(c => c.key === ev.componente_pta);
                           const estadoRev = getEstadoRevisionDocumento(ev);
@@ -727,7 +756,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.nombre}</div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                                    {comp && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>{comp.label}</span>}
+                                    {comp && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>{comp.label}{(ev.seccion_extension ?? ev.seccionExtension) ? ` · ${ev.seccion_extension ?? ev.seccionExtension}` : ''}</span>}
                                     {ev.horas_avance > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF' }}>{ev.horas_avance}h</span>}
                                     {grupo.adjuntos.length > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#F1F5F9', color: '#475569' }}>+{grupo.adjuntos.length} soporte{grupo.adjuntos.length > 1 ? 's' : ''}</span>}
                                     <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: estadoRev === 'aprobado' ? '#D1FAE5' : estadoRev === 'rechazado' ? '#FEE2E2' : '#FEF3C7', color: estadoRev === 'aprobado' ? '#065F46' : estadoRev === 'rechazado' ? '#991B1B' : '#92400E' }}>
@@ -1176,11 +1205,24 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // ─── Periodo Académico (Selector Global) ───
   const [periodosPTA, setPeriodosPTA] = useState<any[]>([]);
   const [periodoSeleccionadoPTA, setPeriodoSeleccionadoPTA] = useState<string>('');
+  const [periodosInicializadosPTA, setPeriodosInicializadosPTA] = useState(false);
   const [showPeriodoDropdownPTA, setShowPeriodoDropdownPTA] = useState(false);
+  const cargarPeriodosRequestRef = useRef(0);
+  const loadDataRequestRef = useRef(0);
 
   const cargarPeriodosPTA = useCallback(async (preferredCode?: string) => {
+    const requestId = ++cargarPeriodosRequestRef.current;
+    // Un cambio del catálogo invalida de inmediato cualquier consulta PTA del
+    // período anterior, aunque esa petición todavía esté viajando por la red.
+    ++loadDataRequestRef.current;
+    setPeriodosInicializadosPTA(false);
+    if (preferredCode) {
+      setPeriodoSeleccionadoPTA(preferredCode);
+      setFiltroPeriodo(preferredCode);
+    }
     try {
       const res = await apiClient.get<any[]>('/pta/api/v1/periodos-academicos');
+      if (requestId !== cargarPeriodosRequestRef.current) return;
       const data = sortPeriodsByCreation(Array.isArray(res) ? res : []);
       setPeriodosPTA(data);
 
@@ -1191,10 +1233,23 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       const codigo = getPeriodCode(activo);
       setPeriodoSeleccionadoPTA(codigo);
       setFiltroPeriodo(codigo);
+      if (!codigo) {
+        setPtas([]);
+        setEstadisticas(null);
+        setLoading(false);
+      }
     } catch {
+      if (requestId !== cargarPeriodosRequestRef.current) return;
       setPeriodosPTA([]);
       setPeriodoSeleccionadoPTA('');
       setFiltroPeriodo('');
+      setPtas([]);
+      setEstadisticas(null);
+      setLoading(false);
+    } finally {
+      if (requestId === cargarPeriodosRequestRef.current) {
+        setPeriodosInicializadosPTA(true);
+      }
     }
   }, []);
 
@@ -1702,10 +1757,18 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   });
 
   const loadData = async () => {
+    // La primera renderización todavía no conoce el período activo. Consultar en
+    // ese instante sin `periodo` trae todos los PTAs y puede sobrescribir después
+    // la respuesta filtrada. Esperamos siempre la inicialización del selector.
+    if (!periodosInicializadosPTA || !filtroPeriodo) return;
+
+    const requestId = ++loadDataRequestRef.current;
+    const periodoConsulta = filtroPeriodo;
+    const estadoConsulta = filtroEstado;
     setLoading(true);
-    const estadoBackend = getBackendEstadoFilter(filtroEstado);
+    const estadoBackend = getBackendEstadoFilter(estadoConsulta);
     const ptaFilters: any = {
-      periodo: filtroPeriodo,
+      periodo: periodoConsulta,
       nivelAprobacion: permisos.nivelAprobacion,
       isSuperUser: auth.isSuperUser,
     };
@@ -1713,8 +1776,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     const [ptaRes, statsRes] = await Promise.all([
       getAllPTAs(ptaFilters),
-      getPTAEstadisticas(filtroPeriodo),
+      getPTAEstadisticas(periodoConsulta),
     ]);
+
+    // Si el usuario cambió de período mientras respondía la API, esta respuesta
+    // ya es obsoleta y no debe reemplazar los datos de la selección más reciente.
+    if (requestId !== loadDataRequestRef.current) return;
     
     // Auto-seed desactivado: la tabla solo muestra PTAs reales enviados por docentes
     
@@ -1731,7 +1798,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     setRefreshCountdown(120);
   };
 
-  useEffect(() => { loadData(); setCurrentPage(1); }, [filtroEstado, filtroPeriodo]);
+  useEffect(() => {
+    if (!periodosInicializadosPTA || !filtroPeriodo) return;
+    loadData();
+    setCurrentPage(1);
+  }, [filtroEstado, filtroPeriodo, periodosInicializadosPTA]);
   // Reset page when search changes
   useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstadoRegistro]);
 
@@ -1844,6 +1915,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const filteredPtas = useMemo(() => {
     let result = ptas;
+    // Defensa adicional: aun durante una recarga/cambio rápido, la tabla solo
+    // puede renderizar registros cuyo período coincide con el selector global.
+    if (filtroPeriodo) {
+      result = result.filter((p: any) => String(p?.periodo || '') === filtroPeriodo);
+    }
     // Apply territorial filter for Jefatura role — filtra por territoriales de las ASIGNATURAS del PTA
     if (permisos.filtroTerritorial && permisos.filtroTerritorial.length > 0) {
       result = result.filter((p: any) => {
@@ -1903,7 +1979,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     }
     
     return result;
-  }, [ptas, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro]);
+  }, [ptas, filtroPeriodo, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro]);
 
   // ═══ Feature 23/33: Comparador único de la tabla ═══
   // Anclados primero (el anclado más reciente queda de primero), luego prioridad
@@ -4025,7 +4101,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               const idx = group.startIdx + localIdx;
                       const sc = getStatusConfig(pta.estado);
                       const horasProg = pta.total_horas_programadas || 0;
-                      const horasDisp = pta.horas_a_programar || 800;
+                      const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
                       const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
                       const isPendiente = isEstadoPendienteAprobacion(pta.estado);
                       const isSelected = selectedIds.has(pta.id);
@@ -4468,7 +4544,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 {/* ═══ World-Class Unified Footer (Feature 15 & Pagination) ═══ */}
                 {viewMode === 'table' && paginated.length > 0 && (() => {
                   const totalHorasProg = paginated.reduce((sum: number, p: any) => sum + (p.total_horas_programadas || 0), 0);
-                  const totalHorasDisp = paginated.reduce((sum: number, p: any) => sum + (p.horas_a_programar || 800), 0);
+                  const totalHorasDisp = paginated.reduce((sum: number, p: any) => sum + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
                   const avgCarga = totalHorasDisp > 0 ? Math.round((totalHorasProg / totalHorasDisp) * 100) : 0;
                   const pendCount = paginated.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length;
                   const aprobCount = paginated.filter((p: any) => p.estado === 'Aprobado').length;
