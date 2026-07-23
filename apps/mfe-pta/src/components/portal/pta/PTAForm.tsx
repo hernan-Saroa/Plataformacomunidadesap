@@ -1366,6 +1366,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Devolución por componente: el revisor devolvió uno o más componentes al docente.
   // (No aplica en modo admin.)
   const esDevolucionComponentes = !isAdminEdit && devueltoComponentKeys.length > 0;
+  const esEdicionParcialAutorizada = useMemo(
+    () => componentesDevueltos.some(c => String(c?.scope || '') === 'solicitud_edicion'),
+    [componentesDevueltos],
+  );
   const respuestasDocentePorComponente = useMemo(() => {
     const entries = devueltoComponentKeys
       .map(key => [key, (respuestasDevolucionDocente[key] || '').trim()] as const)
@@ -1373,8 +1377,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return Object.fromEntries(entries);
   }, [devueltoComponentKeys, respuestasDevolucionDocente]);
   const respuestasDevolucionCompletas = useMemo(
-    () => devueltoComponentKeys.every(key => Boolean((respuestasDevolucionDocente[key] || '').trim())),
-    [devueltoComponentKeys, respuestasDevolucionDocente],
+    () => esEdicionParcialAutorizada
+      || devueltoComponentKeys.every(key => Boolean((respuestasDevolucionDocente[key] || '').trim())),
+    [devueltoComponentKeys, respuestasDevolucionDocente, esEdicionParcialAutorizada],
   );
   const resumenRespuestasDevolucion = useMemo(
     () => devueltoComponentKeys
@@ -3790,7 +3795,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       semanas_prorrateo: semanasProrrateo,
       horas_a_programar: horasAProgramar,
       // Admin: preserva estado actual. Docente: si envía usa estado actual, si guarda → Borrador
-      estado: isAdminEdit ? estado : (enviar ? estado : 'Borrador'),
+      // Un auto-guardado durante una corrección parcial debe conservar el estado de
+      // revisión. Convertirlo a Borrador perdería la reapertura selectiva y podría
+      // enviar nuevamente componentes que ya estaban aprobados.
+      estado: isAdminEdit
+        ? estado
+        : enviar
+          ? estado
+          : (isEnRevisionDocente || originalEstado === 'Devuelto')
+            ? (originalEstado || estado)
+            : 'Borrador',
       _adminEdit: isAdminEdit || undefined,
       _allowed_component_keys: isAdminComponentRestricted ? adminAllowedComponentKeys : undefined,
       _comentario_concertacion: isAdminEdit ? (comentarioConcertacion.trim() || undefined) : undefined,
@@ -4218,7 +4232,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           <h1 className="text-2xl md:text-3xl font-black text-gray-900 m-0 leading-tight tracking-tight">
             {ptaId
               ? esDevolucionComponentes
-                ? (componentesDevueltos.length === 1 ? 'Corregir componente devuelto' : 'Corregir componentes devueltos')
+                ? esEdicionParcialAutorizada
+                  ? (componentesDevueltos.length === 1 ? 'Editar componente autorizado' : 'Editar componentes autorizados')
+                  : (componentesDevueltos.length === 1 ? 'Corregir componente devuelto' : 'Corregir componentes devueltos')
                 : isEnRevisionDocente
                   ? 'Revisar PTA — Aprobado con modificaciones'
                   : originalEstado === 'Devuelto'
@@ -4235,8 +4251,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             </p>
           )}
           {esDevolucionComponentes && (
-            <p className="mt-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
-              Edición limitada a: {restrictedComponentKeys.map(componentLabel).join(', ')}
+            <p className={`mt-2 inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-bold ${
+              esEdicionParcialAutorizada
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-amber-200 bg-amber-50 text-amber-700'
+            }`}>
+              {esEdicionParcialAutorizada ? 'Edición autorizada de: ' : 'Edición limitada a: '}
+              {restrictedComponentKeys.map(componentLabel).join(', ')}
             </p>
           )}
         </div>
@@ -4453,37 +4474,41 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           Muestra QUÉ componente se devolvió y el comentario del revisor; el docente solo
           puede editar esos componentes y re-enviar. */}
       {esDevolucionComponentes && (
-        <div className="flex flex-col gap-3 p-4 rounded-xl mb-5 bg-amber-50 border border-amber-200">
+        <div className={`flex flex-col gap-3 p-4 rounded-xl mb-5 border ${esEdicionParcialAutorizada ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
           <div className="flex items-start gap-3">
-            <RotateCcw className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <RotateCcw className={`w-5 h-5 shrink-0 mt-0.5 ${esEdicionParcialAutorizada ? 'text-blue-600' : 'text-amber-600'}`} />
             <div className="flex-1">
-              <div className="font-semibold text-amber-900 text-sm">
-                {componentesDevueltos.length === 1
-                  ? 'Un componente de tu PTA fue devuelto para corrección'
-                  : `${componentesDevueltos.length} componentes de tu PTA fueron devueltos para corrección`}
+              <div className={`font-semibold text-sm ${esEdicionParcialAutorizada ? 'text-blue-900' : 'text-amber-900'}`}>
+                {esEdicionParcialAutorizada
+                  ? 'Tu solicitud de edición parcial fue aprobada'
+                  : componentesDevueltos.length === 1
+                    ? 'Un componente de tu PTA fue devuelto para corrección'
+                    : `${componentesDevueltos.length} componentes de tu PTA fueron devueltos para corrección`}
               </div>
-              <p className="text-sm text-amber-800 mt-1 leading-relaxed">
-                Corrige únicamente {componentesDevueltos.length === 1 ? 'el componente indicado' : 'los componentes indicados'} y usa
-                "Corregir y re-enviar". Los demás componentes quedan bloqueados.
+              <p className={`text-sm mt-1 leading-relaxed ${esEdicionParcialAutorizada ? 'text-blue-800' : 'text-amber-800'}`}>
+                {esEdicionParcialAutorizada
+                  ? 'Modifica únicamente los componentes autorizados y envíalos a reaprobación. Los demás componentes conservan su aprobación.'
+                  : <>Corrige únicamente {componentesDevueltos.length === 1 ? 'el componente indicado' : 'los componentes indicados'} y usa
+                    "Corregir y re-enviar". Los demás componentes quedan bloqueados.</>}
               </p>
               <div className="mt-3 flex flex-col gap-2">
                 {componentesDevueltos.map((c: any) => (
-                  <div key={c.componente} className="rounded-lg bg-white border border-amber-200 p-3">
+                  <div key={c.componente} className={`rounded-lg bg-white border p-3 ${esEdicionParcialAutorizada ? 'border-blue-200' : 'border-amber-200'}`}>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-xs font-bold">
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${esEdicionParcialAutorizada ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
                         {componentLabel(String(c.componente))}
                       </span>
                       {(c.aprobadorNombre || c.aprobador_nombre) && (
-                        <span className="text-[11px] text-amber-700">
-                          Devuelto por {c.aprobadorNombre || c.aprobador_nombre}
+                        <span className={`text-[11px] ${esEdicionParcialAutorizada ? 'text-blue-700' : 'text-amber-700'}`}>
+                          {esEdicionParcialAutorizada ? 'Autorizado por ' : 'Devuelto por '}{c.aprobadorNombre || c.aprobador_nombre}
                         </span>
                       )}
                     </div>
-                    <div className="mt-1.5 text-sm text-amber-900">
-                      <span className="font-semibold">Comentario del revisor: </span>
+                    <div className={`mt-1.5 text-sm ${esEdicionParcialAutorizada ? 'text-blue-900' : 'text-amber-900'}`}>
+                      <span className="font-semibold">{esEdicionParcialAutorizada ? 'Alcance autorizado: ' : 'Comentario del revisor: '}</span>
                       {c.comentarios?.trim() ? c.comentarios : 'Sin comentario.'}
                     </div>
-                    <div className="mt-3">
+                    {!esEdicionParcialAutorizada && <div className="mt-3">
                       <label className="block text-xs font-bold text-amber-900 mb-1">
                         Tu respuesta para este componente (obligatoria)
                       </label>
@@ -4497,7 +4522,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         placeholder="Explica que corregiste en este componente, o por que lo reenvias asi..."
                         className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm placeholder:text-slate-400 hover:border-amber-400 hover:shadow-md focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all duration-200 resize-y"
                       />
-                    </div>
+                    </div>}
                   </div>
                 ))}
               </div>
@@ -4514,9 +4539,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               }}
               disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
-              style={{ background: '#D97706' }}
+              style={{ background: esEdicionParcialAutorizada ? '#003DA5' : '#D97706' }}
             >
-              <RotateCcw className="w-4 h-4" /> Corregir y re-enviar al revisor
+              <RotateCcw className="w-4 h-4" /> {esEdicionParcialAutorizada ? 'Enviar cambios a reaprobación' : 'Corregir y re-enviar al revisor'}
             </button>
           </div>
         </div>
@@ -6692,8 +6717,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 }}
                   disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
                   className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : '#D97706' }}>
-                  <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
+                  style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : esEdicionParcialAutorizada ? '#003DA5' : '#D97706' }}>
+                  <RotateCcw className="w-3.5 h-3.5" /> {esEdicionParcialAutorizada ? 'Enviar a reaprobación' : 'Corregir y re-enviar'}
                 </button>
               ) : isEnRevisionDocente ? (
                 <>

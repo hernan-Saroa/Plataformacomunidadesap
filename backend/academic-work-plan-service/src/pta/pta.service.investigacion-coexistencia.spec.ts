@@ -165,7 +165,10 @@ describe('PtaService - coexistencia de proyecto y actividades de investigacion',
       componentePta: 'investigacion',
       horasAvance: 200,
       storageUrl: '/uploads/pta-resoluciones/resolucion.pdf',
-      estadoRevision: 'pendiente',
+      estadoRevision: 'aprobado',
+      revisadoPor: 'Sistema',
+      comentarioRevision:
+        'Aprobado automáticamente junto con el componente Investigación del PTA.',
     }));
   });
 });

@@ -12,9 +12,11 @@ export interface NotifUser {
 
 /** Etiquetas legibles por componente para los textos de notificación. */
 const COMPONENT_LABELS: Record<string, string> = {
+  docencia: 'Docencia',
   academica: 'Docencia',
   complementarias: 'Actividades Complementarias (incl. Académico-Administrativas)',
   investigacion: 'Investigación',
+  extension: 'Extensión',
   ext_capacitacion: 'Extensión — Capacitación',
   ext_procesos: 'Extensión — Procesos de Selección',
   ext_fortalecimiento: 'Extensión — Fortalecimiento',
@@ -305,6 +307,93 @@ export class PtaNotificationsService {
 
     this.logger.log(
       `PTA ${opts.ptaId}: profesor ${prof.idUser} notificado del envío a aprobación${prof.email ? ' (in-app + correo)' : ' (solo in-app: sin email)'}`,
+    );
+    return true;
+  }
+
+  /**
+   * Informa al docente el resultado de una solicitud de edición parcial. La
+   * notificación queda persistida en la campana global e incluye quién tomó la
+   * decisión, su rol y el motivo registrado por el aprobador.
+   */
+  async notifyProfesorSolicitudEdicionResuelta(opts: {
+    solicitudId: string;
+    ptaId: string;
+    docenteId: string | null | undefined;
+    decision: 'aprobado' | 'denegado';
+    componentes?: string[];
+    resueltoPor?: string | null;
+    resueltoPorRol?: string | null;
+    motivo?: string | null;
+    periodo?: string | null;
+  }): Promise<boolean> {
+    if (!opts.docenteId) return false;
+    const prof = await this.resolveUser(opts.docenteId);
+    if (!prof) {
+      this.logger.warn(
+        `Solicitud ${opts.solicitudId}: no se resolvió el profesor (${opts.docenteId}) para notificar la decisión`,
+      );
+      return false;
+    }
+
+    const aprobada = opts.decision === 'aprobado';
+    const componentes = Array.from(new Set((opts.componentes || []).filter(Boolean)));
+    const componentesLabel = componentes.map(componente => this.componentLabel(componente)).join(', ');
+    const responsable = String(opts.resueltoPor || 'Administrador PTA').trim();
+    const rol = String(opts.resueltoPorRol || '').trim();
+    const responsableCompleto = rol ? `${responsable} (${rol})` : responsable;
+    const motivoCompleto = String(opts.motivo || 'Sin observaciones adicionales.').trim();
+    const motivoVisible = motivoCompleto.length > 600
+      ? `${motivoCompleto.slice(0, 597)}...`
+      : motivoCompleto;
+    const periodoTxt = opts.periodo ? ` del período ${opts.periodo}` : '';
+    const componentesTxt = componentesLabel ? ` para ${componentesLabel}` : '';
+    const titulo = aprobada
+      ? 'Solicitud de edición del PTA aprobada'
+      : 'Solicitud de edición del PTA rechazada';
+    const mensaje = aprobada
+      ? `Tu solicitud${periodoTxt}${componentesTxt} fue aprobada por ${responsableCompleto}. Motivo: ${motivoVisible}`
+      : `Tu solicitud${periodoTxt}${componentesTxt} fue rechazada por ${responsableCompleto}. Motivo: ${motivoVisible}`;
+
+    await this.createInApp({
+      id_usuario_destinatario: prof.idUser,
+      tipo_notificacion: aprobada
+        ? 'pta_solicitud_edicion_aprobacion'
+        : 'pta_solicitud_edicion_rechazo',
+      titulo,
+      mensaje,
+      descripcion_corta: componentesLabel || 'Edición de componentes del PTA',
+      categoria: 'PTA',
+      prioridad: aprobada ? 'Media' : 'Alta',
+      icono: aprobada ? 'check-circle' : 'x-circle',
+      color: aprobada ? '#16A34A' : '#DC2626',
+      tiene_accion: true,
+      texto_boton_accion: 'Ver mi PTA',
+      url_accion: 'pta',
+      datos_adicionales: {
+        solicitudId: opts.solicitudId,
+        ptaId: opts.ptaId,
+        decision: opts.decision,
+        componentes,
+        resueltoPor: responsable,
+        resueltoPorRol: rol || null,
+        motivo: motivoCompleto,
+        periodo: opts.periodo ?? null,
+      },
+    });
+
+    if (prof.email) {
+      const linkAbsoluto = `${this.resolvePublicAppUrl()}/?view=portal`;
+      const html = `
+        <p>Hola ${this.escapeHtml(prof.nombre || '')},</p>
+        <p>${this.escapeHtml(mensaje)}</p>
+        <p><a href="${linkAbsoluto}">Ver mi PTA</a></p>
+      `;
+      void this.sendEmail(prof.email, titulo, mensaje, html);
+    }
+
+    this.logger.log(
+      `Solicitud ${opts.solicitudId}: profesor ${prof.idUser} notificado de decisión ${opts.decision}`,
     );
     return true;
   }
