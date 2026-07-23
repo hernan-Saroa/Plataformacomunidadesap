@@ -250,7 +250,10 @@ export class PtaController {
           payload.investigacion_proyecto = {
             ...(payload.investigacion_proyecto || {}),
             resolucion_archivo_url: url,
-            resolucion_nombre: f.originalname,
+            resolucion_nombre: payload.investigacion_proyecto?.resolucion_nombre || f.originalname,
+            resolucion_archivo_nombre: f.originalname,
+            resolucion_archivo_tipo: extname(f.originalname || '').replace('.', '').toLowerCase() || 'pdf',
+            resolucion_archivo_tamanio: Number(f.size) || 0,
           };
         } else {
           const m = /^inv_actividad_(\d+)_resolucion$/.exec(f.fieldname || '');

@@ -24,6 +24,31 @@ import { PtaNotificationsService } from './notifications/pta-notifications.servi
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
 
+const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION = 'Resolución proyecto de investigación';
+const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION =
+  `${CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION} · Creación`;
+
+function isCategoriaResolucionProyecto(value: unknown): boolean {
+  return normalizeEstadoFilter(value).startsWith(
+    normalizeEstadoFilter(CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION),
+  );
+}
+
+function isPtaHabilitadoParaSeguimientoPorEstado(value: unknown): boolean {
+  return new Set([
+    'APROBADO',
+    'EN_FIRME',
+    'RADICADO',
+    'EN_EJECUCION',
+    'FINALIZADO',
+    'TERMINADO',
+  ]).has(normalizeEstadoFilter(value));
+}
+
+function resolveHorasResolucionProyecto(proyecto: any): number {
+  return Math.max(0, Math.round(Number(proyecto?.horas_solicitadas) || 0));
+}
+
 function coalesceString(...values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -1079,7 +1104,10 @@ export class PtaService {
       (sum: number, a: any) => sum + (Number(a?.horas) || Number(a?.horas_total) || 0),
       0,
     );
-    const sumInv = invProyectoHoras > 0 ? invProyectoHoras : horasActividadesInv;
+    // Un proyecto y sus actividades son dos fuentes distintas de horas. Cuando
+    // coexisten deben contabilizarse ambas; la regla configurable decide si esa
+    // combinación puede enviarse, pero nunca se deben ocultar horas persistidas.
+    const sumInv = invProyectoHoras + horasActividadesInv;
 
     const extActsRaw = Array.isArray(body?.extension_actividades) ? body.extension_actividades : [];
     const extActs = extActsRaw.map((a: any) => {
@@ -1176,6 +1204,9 @@ export class PtaService {
       ext_max_horas_enlace: Number.isFinite(maxExtensionGlobal) ? maxExtensionGlobal : 200,
       comp_anexo1_validado: Boolean(rules.comp_anexo1_validado ?? false),
       comp_anexo1_fuente: String(rules.comp_anexo1_fuente || 'Pendiente de cotejo contra Anexo 1'),
+      inv_permitir_proyecto_actividades_simultaneos: Boolean(
+        rules.inv_permitir_proyecto_actividades_simultaneos ?? false,
+      ),
       ext_secciones: normalizeExtensionSections(rules.ext_secciones),
     };
 
@@ -1265,6 +1296,68 @@ export class PtaService {
     const rolLimit = Math.round(horasAProgramar * rolPct / 100);
 
     return Math.min(globalLimit, rolLimit);
+  }
+
+  private validateInvestigacionComponent(
+    body: any,
+    horas: ReturnType<PtaService['computeHorasTotales']>,
+    horasAProgramar: number,
+    rules: any,
+  ): void {
+    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
+    const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas || 0);
+    const actividades = Array.isArray(body?.investigacion_actividades)
+      ? body.investigacion_actividades
+      : [];
+    const horasActividades = actividades.reduce(
+      (sum: number, activity: any) => sum + (Number(activity?.horas_total ?? activity?.horas) || 0),
+      0,
+    );
+    const permiteCoexistencia = rules?.inv_permitir_proyecto_actividades_simultaneos === true;
+    const resolucionArchivoUrl = coalesceString(
+      body?.investigacion_proyecto?.resolucion_archivo_url,
+    );
+
+    if (!permiteCoexistencia && horasProyecto > 0 && horasActividades > 0) {
+      throw new BadRequestException(
+        'La configuracion actual de Investigacion permite registrar un proyecto o actividades, pero no ambos simultaneamente.',
+      );
+    }
+
+    const limiteProyecto = this.getInvestigacionLimit(body, rules, horasAProgramar);
+    if (rolInvestigacion) {
+      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > limiteProyecto) {
+        throw new BadRequestException(
+          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${limiteProyecto}h (hasta el tope dinamico de la bolsa RUND).`,
+        );
+      }
+
+      if (rules?.inv_adjunto_obligatorio === true && !resolucionArchivoUrl) {
+        throw new BadRequestException(
+          'El archivo adjunto de la resolución es obligatorio para enviar el proyecto de investigación.',
+        );
+      }
+    }
+
+    const limiteGlobal = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_investigacion',
+      50,
+      'max_horas_investigacion_global',
+      400,
+    );
+    const esCombinacionPermitida = permiteCoexistencia
+      && Boolean(rolInvestigacion)
+      && horasProyecto > 0
+      && horasActividades > 0;
+    const limiteComponente = esCombinacionPermitida ? limiteGlobal : limiteProyecto;
+
+    if (horas.sumInv > limiteComponente) {
+      throw new BadRequestException(
+        `El componente Investigacion excede el limite permitido: ${horas.sumInv}h / ${limiteComponente}h.`,
+      );
+    }
   }
 
   private validateDocenciaDateOverlaps(asignaturas: any[]): void {
@@ -1585,7 +1678,6 @@ export class PtaService {
       : [];
     this.validateDocenciaDateOverlaps(asignaturas);
 
-    const maxInvestigacion = this.getInvestigacionLimit(body, rules, horasAProgramar);
     const maxExtension = this.getScaledRuleLimit(
       rules,
       horasAProgramar,
@@ -1609,19 +1701,10 @@ export class PtaService {
       }
     };
 
-    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
-    if (rolInvestigacion) {
-      const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas);
-      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > maxInvestigacion) {
-        throw new BadRequestException(
-          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${maxInvestigacion}h (hasta el tope dinamico de la bolsa RUND).`,
-        );
-      }
-    }
+    this.validateInvestigacionComponent(body, horas, horasAProgramar, rules);
 
     // Docencia no tiene tope porcentual propio; el límite global anterior le
     // permite ocupar desde una fracción hasta el 100% de la bolsa disponible.
-    assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
     assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
@@ -1704,7 +1787,7 @@ export class PtaService {
     const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
-    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Aplicar multiplicador de sección (config-driven) para mantener consistencia con computeHorasTotales
     const extActsNorm = extActs.map((a: any) => {
@@ -2213,6 +2296,89 @@ export class PtaService {
     };
   }
 
+  /**
+   * Incorpora al Seguimiento la resolución registrada durante la creación del
+   * PTA una vez que este alcanza un estado aprobado. La categoría estable
+   * permite actualizar el mismo soporte sin generar duplicados.
+   */
+  private async syncResolucionProyectoInvestigacion(
+    ptaId: string,
+    input: SavePtaInput,
+  ): Promise<void> {
+    const proyecto = input?.investigacion_proyecto;
+    const storageUrl = coalesceString(proyecto?.resolucion_archivo_url);
+    const horasJustificar = resolveHorasResolucionProyecto(proyecto);
+    const existing = await this.evidenciaRepo.findOne({
+      where: {
+        ptaId,
+        categoria: CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION,
+      },
+      order: { updatedAt: 'DESC' },
+    });
+
+    if (!storageUrl || horasJustificar <= 0) {
+      // Un soporte ya aprobado forma parte de la trazabilidad y nunca se borra
+      // al editar el PTA. Los anticipados aún pendientes sí siguen al formulario.
+      if (existing && normalizeEstadoFilter(existing.estadoRevision) !== 'APROBADO') {
+        await this.evidenciaRepo.delete({ id: existing.id, ptaId });
+      }
+      return;
+    }
+
+    const nombre = coalesceString(
+      proyecto?.resolucion_archivo_nombre,
+      proyecto?.resolucion_nombre,
+    ) || storageUrl.split('/').pop() || 'Resolución de investigación';
+    const tipoArchivo = coalesceString(proyecto?.resolucion_archivo_tipo)
+      || nombre.split('.').pop()
+      || 'pdf';
+    const tamanioBytes = Math.max(0, Number(proyecto?.resolucion_archivo_tamanio) || 0);
+    const descripcion = [
+      'Resolución del proyecto',
+      coalesceString(proyecto?.nombre),
+      coalesceString(proyecto?.resolucion_nombre),
+    ].filter(Boolean).join(' · ');
+
+    if (!existing) {
+      await this.evidenciaRepo.save(this.evidenciaRepo.create({
+        ptaId,
+        nombre,
+        tipoArchivo,
+        tamanioBytes,
+        categoria: CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION,
+        componentePta: 'investigacion',
+        seccionExtension: null,
+        horasAvance: horasJustificar,
+        storageUrl,
+        subidoPor: coalesceString(input?.docente_nombre, input?.docenteNombre) as any,
+        descripcion,
+        estado: 'activo',
+        estadoRevision: 'pendiente',
+      }));
+      return;
+    }
+
+    const contenidoCambio = existing.storageUrl !== storageUrl
+      || existing.horasAvance !== horasJustificar
+      || existing.nombre !== nombre;
+    await this.evidenciaRepo.save({
+      ...existing,
+      nombre,
+      tipoArchivo,
+      tamanioBytes,
+      componentePta: 'investigacion',
+      horasAvance: horasJustificar,
+      storageUrl,
+      subidoPor: coalesceString(input?.docente_nombre, input?.docenteNombre)
+        ?? existing.subidoPor,
+      descripcion,
+      estado: 'activo',
+      estadoRevision: contenidoCambio ? 'pendiente' : existing.estadoRevision,
+      revisadoPor: contenidoCambio ? null : existing.revisadoPor,
+      comentarioRevision: contenidoCambio ? null : existing.comentarioRevision,
+    });
+  }
+
   async getAllPTAs(filters: any) {
     // Sweep perezoso: elimina PTAs vencidos (sin aprobar dentro del plazo) al
     // consultar el listado del backoffice, como máximo una vez por hora.
@@ -2505,6 +2671,17 @@ export class PtaService {
       ...input,
       horas_a_programar: horasAProgramar,
       horas_asignables: horasAProgramar,
+      investigacion_proyecto: input?.investigacion_proyecto
+        ? {
+            ...input.investigacion_proyecto,
+            // Compatibilidad para consumidores anteriores: el valor recibido se
+            // ignora y siempre replica la totalidad de horas del proyecto.
+            resolucion_horas_justificar: Math.max(
+              0,
+              Math.round(Number(input.investigacion_proyecto.horas_solicitadas) || 0),
+            ),
+          }
+        : input?.investigacion_proyecto,
       complementarias: Array.isArray(input?.complementarias)
         ? input.complementarias.map((activity: any) => activity?.consumeTotalidad === true
           ? { ...activity, horas: horasAProgramar }
@@ -2513,9 +2690,20 @@ export class PtaService {
     };
     const extMult = await this.getExtMultiplicadores();
     const horas = this.computeHorasTotales(input, extMult);
+    const ptaRules = (await this.getConfiguracionPTAGlobal()) || {};
+
+    // La edición de Concertación puede conservar el mismo estado y por eso no
+    // siempre pasa por la validación completa de envío. Si el revisor tiene el
+    // componente de Investigación en su alcance, se aplican igualmente la regla
+    // de coexistencia y sus topes antes de persistir los cambios.
+    const adminPuedeEditarInvestigacion = isAdminEdit
+      && (allowedComponentKeys.length === 0 || allowedComponentKeys.includes('investigacion'));
+    if (adminPuedeEditarInvestigacion) {
+      this.validateInvestigacionComponent(input, horas, horasAProgramar, ptaRules);
+    }
 
     if (isPendingRoleApprovalState(estado)) {
-      this.validatePtaForSubmission(input, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
+      this.validatePtaForSubmission(input, horas, horasAProgramar, ptaRules);
     }
 
     const patch: Partial<PlanTrabajoAcademicoEntity> = {
@@ -2545,6 +2733,11 @@ export class PtaService {
       }
     } else {
       saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, version: 1 }));
+    }
+
+    if (isPtaHabilitadoParaSeguimientoPorEstado(saved.estado)) {
+      await this.syncResolucionProyectoInvestigacion(saved.id, input);
+      await this.syncPtaSeguimientoEstado(saved.id);
     }
 
     // Registrar en historial cuando hay creación, cambio de estado, o edición admin.
@@ -3483,6 +3676,16 @@ export class PtaService {
   }
 
   async getEvidenciasPTA(ptaId: string) {
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (
+      pta?.datosEstructurados
+      && isPtaHabilitadoParaSeguimientoPorEstado(pta.estado)
+    ) {
+      await this.syncResolucionProyectoInvestigacion(
+        ptaId,
+        pta.datosEstructurados as SavePtaInput,
+      );
+    }
     const rows = await this.evidenciaRepo.find({ where: { ptaId }, order: { createdAt: 'DESC' } });
     return rows.map((row) => this.toEvidenciaDto(row));
   }
@@ -3492,16 +3695,49 @@ export class PtaService {
     const tipoArchivo = coalesceString(body?.tipoArchivo, body?.tipo_archivo, body?.tipo) || 'pdf';
     const tamanioBytes = Number(body?.tamanioBytes ?? body?.tamanio_bytes ?? body?.size ?? 0) || 0;
     const storageUrl = coalesceString(body?.storageUrl, body?.storage_url, body?.url);
+    const categoria = coalesceString(body?.categoria);
+    const componentePta = coalesceString(body?.componentePta, body?.componente_pta);
+    const horasAvance = Math.max(
+      0,
+      Math.round(Number(body?.horasAvance ?? body?.horas_avance ?? 0) || 0),
+    );
+    const esResolucionProyecto = isCategoriaResolucionProyecto(categoria);
+
+    if (esResolucionProyecto && horasAvance > 0) {
+      const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+      if (!pta) throw new NotFoundException('PTA no encontrado');
+      const proyecto = (pta.datosEstructurados as any)?.investigacion_proyecto;
+      const horasObjetivo = resolveHorasResolucionProyecto(proyecto);
+      if (componentePta !== 'investigacion' || horasObjetivo <= 0) {
+        throw new BadRequestException(
+          'El PTA no tiene horas configuradas para justificar con la resolución del proyecto.',
+        );
+      }
+
+      const soportesResolucion = (await this.evidenciaRepo.find({ where: { ptaId } }))
+        .filter(evidencia => isCategoriaResolucionProyecto(evidencia.categoria));
+      const horasReservadas = soportesResolucion.reduce((total, evidencia) => {
+        if (normalizeEstadoFilter(evidencia.estado) === 'ELIMINADO') return total;
+        if (normalizeEstadoFilter(evidencia.estadoRevision) === 'RECHAZADO') return total;
+        return total + Math.max(0, Number(evidencia.horasAvance) || 0);
+      }, 0);
+      const disponibles = Math.max(horasObjetivo - horasReservadas, 0);
+      if (horasAvance > disponibles) {
+        throw new BadRequestException(
+          `La resolución solo tiene ${disponibles}h pendientes por justificar (${horasObjetivo}h definidas).`,
+        );
+      }
+    }
 
     const entity = this.evidenciaRepo.create({
       ptaId,
       nombre,
       tipoArchivo,
       tamanioBytes,
-      categoria: coalesceString(body?.categoria) as any,
-      componentePta: coalesceString(body?.componentePta, body?.componente_pta) as any,
+      categoria: categoria as any,
+      componentePta: componentePta as any,
       seccionExtension: coalesceString(body?.seccionExtension, body?.seccion_extension) as any,
-      horasAvance: Number(body?.horasAvance ?? body?.horas_avance ?? 0) || 0,
+      horasAvance,
       storageUrl: storageUrl,
       subidoPor: coalesceString(body?.subidoPor, body?.subido_por) as any,
       descripcion: coalesceString(body?.descripcion) as any,
@@ -3798,6 +4034,18 @@ export class PtaService {
     qb.take(500);
     const ptas = await qb.getMany();
     if (ptas.length === 0) return [];
+
+    await Promise.all(
+      ptas
+        .filter(pta => isPtaHabilitadoParaSeguimientoPorEstado(pta.estado))
+        .filter(pta => Boolean(
+          coalesceString((pta.datosEstructurados as any)?.investigacion_proyecto?.resolucion_archivo_url),
+        ))
+        .map(pta => this.syncResolucionProyectoInvestigacion(
+          pta.id,
+          (pta.datosEstructurados || {}) as SavePtaInput,
+        )),
+    );
 
     const ids = ptas.map((p) => p.id);
     const evidencias = await this.evidenciaRepo
@@ -5272,7 +5520,7 @@ export class PtaService {
     const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
-    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Complementarias unificado = sección docencia + sección académico-administrativa.
     const hComp = compDocencia.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0)

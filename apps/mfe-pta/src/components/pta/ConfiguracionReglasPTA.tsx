@@ -129,6 +129,9 @@ export interface PTARules {
   // Resolución de investigación — obligatoriedad configurable
   inv_resolucion_obligatoria: boolean;
   inv_adjunto_obligatorio: boolean;
+  // Permite sumar simultáneamente las horas de un proyecto y sus actividades.
+  // Por defecto conserva el comportamiento histórico excluyente.
+  inv_permitir_proyecto_actividades_simultaneos: boolean;
 
   // Extensión: tope global del Enlace. Los topes por actividad SNPI viven en
   // ext_actividades[].max_horas (única fuente real). Los antiguos campos sueltos
@@ -369,6 +372,7 @@ export const defaultPTARules: PTARules = {
   inv_produccion_libro: 144,
   inv_resolucion_obligatoria: true,
   inv_adjunto_obligatorio: true,
+  inv_permitir_proyecto_actividades_simultaneos: false,
 
   ext_max_horas_enlace: 200,
 
@@ -1064,6 +1068,10 @@ export function normalizePTARules(input?: Partial<PTARules> | null): PTARules {
   merged.ext_max_horas_enlace = unifiedExtensionHours;
   merged.comp_anexo1_validado = Boolean((inputRules as any).comp_anexo1_validado ?? defaultPTARules.comp_anexo1_validado);
   merged.comp_anexo1_fuente = String((inputRules as any).comp_anexo1_fuente || defaultPTARules.comp_anexo1_fuente);
+  merged.inv_permitir_proyecto_actividades_simultaneos = Boolean(
+    (inputRules as any).inv_permitir_proyecto_actividades_simultaneos
+      ?? defaultPTARules.inv_permitir_proyecto_actividades_simultaneos,
+  );
   merged.ext_secciones = normalizeFixedExtSecciones((inputRules as any).ext_secciones);
   merged.ext_actividades = mergeExtActividades(defaultPTARules.ext_actividades, (inputRules as any).ext_actividades);
   merged.comp_secciones = normalizeFixedCompSecciones((inputRules as any).comp_secciones);
@@ -1079,6 +1087,14 @@ export function normalizePTARules(input?: Partial<PTARules> | null): PTARules {
   return merged;
 }
 
+const PTA_RULES_STORAGE_KEY = 'pta_rules_v2';
+const PTA_RULES_UPDATED_EVENT = 'pta-rules-updated';
+
+function cacheAndBroadcastPTARules(rules: PTARules): void {
+  localStorage.setItem(PTA_RULES_STORAGE_KEY, JSON.stringify(rules));
+  window.dispatchEvent(new CustomEvent(PTA_RULES_UPDATED_EVENT, { detail: rules }));
+}
+
 export function usePTARules() {
   const [rules, setRules] = useState<PTARules>(() => normalizePTARules(defaultPTARules));
   const [loading, setLoading] = useState(true);
@@ -1091,12 +1107,12 @@ export function usePTARules() {
           setRules(normalizePTARules(res.data));
         } else {
           // Fallback locale dev
-          const stored = localStorage.getItem("pta_rules_v2");
+          const stored = localStorage.getItem(PTA_RULES_STORAGE_KEY);
           if (stored) setRules(normalizePTARules(JSON.parse(stored)));
         }
       } catch (e) {
         console.error("Error fetching PTA rules v2", e);
-        const stored = localStorage.getItem("pta_rules_v2");
+        const stored = localStorage.getItem(PTA_RULES_STORAGE_KEY);
         if (stored) setRules(normalizePTARules(JSON.parse(stored)));
       } finally {
         setLoading(false);
@@ -1132,7 +1148,7 @@ export function usePTARules() {
           const { _warnings, _error, ...serverRules } = res.data as any;
           const merged = normalizePTARules(serverRules);
           setRules(merged);
-          localStorage.setItem("pta_rules_v2", JSON.stringify(merged));
+          cacheAndBroadcastPTARules(merged);
 
           // R3: Show validation warnings
           if (Array.isArray(_warnings) && _warnings.length > 0) {
@@ -1143,7 +1159,7 @@ export function usePTARules() {
           }
         } else {
           setRules(normalizedRules);
-          localStorage.setItem("pta_rules_v2", JSON.stringify(normalizedRules));
+          cacheAndBroadcastPTARules(normalizedRules);
         }
         toast.success('Configuración guardada exitosamente en la base de datos.');
         return true;
@@ -1153,7 +1169,7 @@ export function usePTARules() {
       }
     } catch (e) {
       setRules(normalizedRules);
-      localStorage.setItem("pta_rules_v2", JSON.stringify(normalizedRules));
+      cacheAndBroadcastPTARules(normalizedRules);
       toast.warning('No se pudo conectar con la base de datos. La configuración quedó guardada solo localmente.');
       return true;
     }

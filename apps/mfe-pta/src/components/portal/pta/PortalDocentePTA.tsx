@@ -47,6 +47,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import { formatPtaCompletionPercentage, formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PortalDocentePTAProps {
   onBack: () => void;
@@ -737,10 +738,12 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
             /* Bloqueado por PTA activo/aprobado o límite anual → permitir SOLICITAR un segundo PTA */
             <button
               onClick={() => setShowSolicitudModal(true)}
-              className="flex items-center justify-center gap-2 h-10 px-4 sm:px-5 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(217,119,6,0.3)] hover:shadow-[0_6px_20px_rgba(217,119,6,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-gradient-to-r from-[#D97706] to-[#F59E0B] hover:from-[#B45309] hover:to-[#D97706]"
+              className="flex w-full sm:w-auto items-center justify-center gap-2 h-9 px-4 sm:px-5 rounded-xl border border-blue-200 bg-white text-[#003DA5] whitespace-nowrap text-[12px] sm:text-[13px] font-bold shadow-sm hover:bg-blue-50 hover:border-blue-300 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:ring-offset-2"
               title={mensajeBloqueo ? `${mensajeBloqueo} Puedes solicitar un segundo PTA.` : 'Solicitar un segundo PTA'}
+              aria-label="Solicitar segundo Plan de Trabajo Académico"
             >
-              <Plus className="w-4 h-4" /> Solicitar <span className="hidden sm:inline">segundo</span> PTA
+              <Plus className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>Solicitar segundo PTA</span>
             </button>
           )}
         </div>
@@ -844,7 +847,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                     const needsAction = ['NOTIFICADO_DOCENTE', 'Devuelto', 'EN_CONCERTACION'].includes(pta.estado) || isEnRevisionDocente;
                     const horasTotal = pta.horas_totales ?? pta.total_horas_programadas ?? 0;
                     const horasMax = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
-                    const horasPct = horasMax > 0 ? Math.min(Math.round((horasTotal / horasMax) * 100), 100) : 0;
+                    const horasPct = Math.min(getPtaCompletionPercentage(horasTotal, horasMax), 100);
 
                     return (
                       <motion.div
@@ -913,7 +916,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                           <div className="mb-5">
                             <div className="flex items-center justify-between mb-1.5">
                               <span className="text-[0.62rem] font-semibold text-gray-400 uppercase tracking-wider">Progreso de horas</span>
-                              <span className="text-[0.65rem] font-bold text-gray-500">{horasPct}%</span>
+                              <span className="text-[0.65rem] font-bold text-gray-500">{formatPtaPercentage(horasPct)}%</span>
                             </div>
                             <div className="w-full h-[5px] rounded-full bg-gray-100 overflow-hidden">
                               <div
@@ -1049,7 +1052,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   {[
                     { label: 'Horas programadas', value: selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0 },
                     { label: 'Horas disponibles', value: selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0 },
-                    { label: '% Carga', value: `${(selectedPta.horas_asignables ?? selectedPta.horas_a_programar) ? Math.round(((selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0) / (selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0)) * 100) : 0}%` },
+                    { label: '% Carga', value: `${formatPtaCompletionPercentage(
+                      selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0,
+                      selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0,
+                    )}%` },
                     { label: 'Asignaturas', value: selectedPta.asignaturas?.length || selectedPta.num_asignaturas || 0 },
                   ].map(m => (
                     <div key={m.label} className="p-2.5 sm:p-3 rounded-xl bg-gray-50/80 border border-gray-100/60">
