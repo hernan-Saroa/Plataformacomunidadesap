@@ -118,6 +118,9 @@ interface Proceso {
   origenNoticia?: string;
   fechaRecepcionNoticia?: string;
   prioridadNoticia?: 'alta' | 'media' | 'baja';
+  news?: {
+    createdAt?: string;
+  };
   // Campos del mock enriquecido
   origen?: string;
   prioridad?: string;
@@ -1139,6 +1142,26 @@ function formatFechaActuacion(fecha?: string | null, withTime = false): string {
       ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
       : { year: 'numeric', month: 'short', day: '2-digit' }
   );
+}
+
+function formatFechaBogota(
+  fecha?: string | null,
+  options: Intl.DateTimeFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit' },
+): string {
+  if (!fecha) return '—';
+
+  // Las cadenas YYYY-MM-DD representan una fecha civil, no un instante UTC.
+  // Usar mediodía UTC mantiene el mismo día al presentarlo en America/Bogota.
+  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsed = soloFecha
+    ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
+    : new Date(fecha);
+
+  if (Number.isNaN(parsed.getTime())) return fecha;
+  return parsed.toLocaleDateString('es-CO', {
+    ...options,
+    timeZone: 'America/Bogota',
+  });
 }
 
 function mapActuacionFromApi(actuacion: DisciplinaryProcessActuacion): ActuacionItem {
@@ -4037,7 +4060,7 @@ export function ModalDetallesProceso({
                           { label: 'NÚMERO',         value: proceso.numeroProceso },
                           { label: 'ETAPA',          value: proceso.etapaActual   },
                           { label: 'NOTICIA ORIGEN', value: proceso.noticiaOrigen  },
-                          { label: 'APERTURA',       value: (proceso as any).news?.createdAt ? new Date((proceso as any).news.createdAt).toISOString().split('T')[0] : proceso.fechaCreacion },
+                          { label: 'APERTURA',       value: formatFechaBogota(proceso.news?.createdAt || proceso.fechaCreacion) },
                         ].map(({ label, value }) => (
                           <div key={label} className="px-3 py-2.5">
                             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{label}</p>
@@ -4097,10 +4120,10 @@ export function ModalDetallesProceso({
                               <span className="text-[9px] font-bold text-amber-600 uppercase tracking-widest">Fecha de Hechos</span>
                             </div>
                             <p className="text-xs font-bold text-gray-900">
-                              {new Date(proceso.fechaHechos).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Bogota' })}
+                              {formatFechaBogota(proceso.fechaHechos, { year: 'numeric', month: 'long', day: 'numeric' })}
                             </p>
                             {fechaCaducidad && (
-                              <p className="text-[10px] text-amber-700 mt-1">Caducidad: {new Date(fechaCaducidad).toLocaleDateString('es-CO')}</p>
+                              <p className="text-[10px] text-amber-700 mt-1">Caducidad: {formatFechaBogota(fechaCaducidad)}</p>
                             )}
                           </div>
                         )}

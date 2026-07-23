@@ -41,6 +41,7 @@ import { ReporteIndividualPTA } from './ReporteIndividualPTA';
 import { PTA_COLORS } from './shared/ptaColors';
 import { getExtensionSelectionInfo } from './shared/extensionSelection';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
+import { resolvePtaFileUrl } from './shared/ptaFiles';
 import {
   PTA_COMPONENT_KEYS,
   PTA_COMPONENT_LEVELS,
@@ -666,7 +667,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // dar contexto completo); solo indica si el rol actual tiene su alcance de edición/
   // aprobación restringido a un subconjunto de componentes (usado para el formulario de
   // Concertar y sus textos, no para ocultar contenido de esta vista).
-  const hasRestrictedApprovalScope = !isSuperUser && visibleComponentKeys.length > 0;
+  const hasRestrictedApprovalScope =
+    !isSuperUser
+    && !apruebaTodo
+    && visibleComponentKeys.length > 0
+    && visibleComponentKeys.length < PTA_COMPONENT_KEYS.length;
   const componentEditScopeLabel = useMemo(() => {
     const labels: Record<string, string> = {
       academica: 'Docencia',
@@ -838,7 +843,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const puedeActuarSobreComponentes = ESTADOS_ACCIONABLES_COMPONENTE.includes(pta.estado);
   const hayComponentesPendientesParaMi = puedeActuarSobreComponentes &&
     componentesAprobacion.some(c => isComponentAuthorized(c.componente) && (c.estado || 'pendiente') === 'pendiente');
-  const puedeAprobarNivelActual = puedeAprobar && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
+  const esReaprobacionEdicionParcial = componentesAprobacion.some(c =>
+    c.scope === 'solicitud_edicion'
+    && ['pendiente', 'devuelto'].includes(String(c.estado || '').toLowerCase())
+  );
+  const puedeAprobarNivelActual = !esReaprobacionEdicionParcial
+    && puedeAprobar
+    && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
   // Revisión de evidencias del tab Seguimiento: modelo POR COMPONENTE. Cada evidencia
   // se puede ver/aprobar/rechazar solo si el usuario está autorizado para el componente
   // (o la sección de extensión) al que pertenece. Superuser y pta.approve.all quedan
@@ -1174,10 +1185,30 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       .reduce((s: number, e: any) => s + (e.horas || 0), 0);
   };
 
-  // Visibilidad de componentes: siempre visible para dar contexto completo del PTA.
-  // La restricción por rol se aplica únicamente a las acciones de aprobar/devolver
-  // (ver isComponentAuthorized / componentAuthorized), no a qué se muestra aquí.
+  // La vista de detalle conserva siempre el contexto completo del PTA. Los permisos
+  // granulares restringen las acciones y el formulario de concertación, no la
+  // visibilidad de los demás componentes.
   const shouldShowComponentKey = useCallback((_key: string) => true, []);
+
+  // Una sección de Extensión también debe poder revisarse cuando quedó en 0 horas
+  // después de una edición parcial: eliminar sus actividades sigue siendo un cambio
+  // que requiere reaprobación.
+  const extensionCards = useMemo(() => ([
+    { key: 'ext_capacitacion', section: 'capacitacion', label: 'Dirección de Capacitación', icon: GraduationCap, color: '#059669' },
+    { key: 'ext_procesos', section: 'seleccion', label: 'Dirección de Procesos de Selección', icon: Briefcase, color: '#0284C7' },
+    { key: 'ext_fortalecimiento', section: 'fortalecimiento', label: 'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal', icon: Building2, color: '#7C3AED' },
+    { key: 'ext_gobierno', section: 'alto_gobierno', label: 'Escuela de Alto Gobierno', icon: Shield, color: '#B45309' },
+  ] as const).filter(item => {
+    const approval = componentesAprobacion.find(component => component.componente === item.key);
+    const requiereReaprobacionManual =
+      approval?.scope === 'solicitud_edicion'
+      && ['pendiente', 'devuelto'].includes(String(approval.estado || '').toLowerCase());
+    return getSubcomponentHours(item.section) > 0 || requiereReaprobacionManual;
+  }), [
+    pta.extension_actividades,
+    initialPta.extension_actividades,
+    componentesAprobacion,
+  ]);
 
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
     const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
@@ -1703,11 +1734,32 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Muestra cambios de estado PTA + aprobaciones individuales de componentes, ordenados por fecha.
   const renderHistorialTimeline = () => {
     const COMP_LABELS: Record<string, string> = {
+      docencia: 'Docencia',
       academica: 'Docencia', investigacion: 'Investigación',
+      extension: 'Extensión',
       ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
       ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
       complementarias: 'Complementarias',
       academicas_admin: 'Acad. Admin.',
+    };
+    const ACTION_LABELS: Record<string, string> = {
+      SOLICITUD_EDICION_CREADA: 'Solicitud de edición creada',
+      SOLICITUD_EDICION_APROBADA: 'Edición parcial habilitada',
+      SOLICITUD_EDICION_DENEGADA: 'Solicitud de edición rechazada',
+      EDICION_COMPONENTES_ENVIADA: 'Cambios enviados a reaprobación',
+      EDICION_COMPONENTES_APROBADA: 'Edición parcial aprobada',
+      APROBACION_COMPONENTE: 'Aprobación de componente',
+      DEVOLUCION_COMPONENTE: 'Devolución de componente',
+    };
+    const parseDetalles = (value: unknown): Record<string, any> => {
+      if (value && typeof value === 'object') return value as Record<string, any>;
+      if (typeof value !== 'string' || !value.trim()) return {};
+      try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        return {};
+      }
     };
 
     // Unificar eventos: cambios de estado + aprobaciones de componentes (solo manuales)
@@ -1823,43 +1875,92 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             const snap = step.snapshotPta;
             const hasSnapshot = snap && typeof snap === 'object';
             const reporteNumStep = hasSnapshot ? snapshotNums.get(step.id || String(event.idx)) : null;
+            const detalles = parseDetalles(step.detallesTransicion);
+            const isSolicitudEdicionRechazada = step.tipoAccion === 'SOLICITUD_EDICION_DENEGADA';
+            const estadoPtaLabel = step.estadoNuevo?.replace(/_/g, ' ') || 'Sin estado';
+            const eventColor = isSolicitudEdicionRechazada ? '#DC2626' : (hsc.color || '#4F46E5');
+            const eventBg = isSolicitudEdicionRechazada ? '#FEF2F2' : (hsc.bg || '#F3F4F6');
+            const eventBorder = isSolicitudEdicionRechazada ? '#FECACA' : `${eventColor}20`;
+            const responsableResolucion = typeof detalles.resueltoPor === 'string'
+              ? detalles.resueltoPor.trim()
+              : '';
+            const rolResolucion = typeof detalles.resueltoPorRol === 'string'
+              ? detalles.resueltoPorRol.trim()
+              : '';
+            const comentarioVisible = step.comentarios || detalles.motivoResolucion;
+            const componentesDetalle = Array.from(new Set(
+              [
+                ...(Array.isArray(detalles.componentes) ? detalles.componentes : []),
+                ...(Array.isArray(detalles.componentesSolicitud) ? detalles.componentesSolicitud : []),
+                detalles.componente,
+              ].filter(Boolean).map(String),
+            ));
+            const solicitudRef = typeof detalles.solicitudId === 'string' && detalles.solicitudId
+              ? detalles.solicitudId
+              : null;
+            const archivosDetalle = Array.isArray(detalles.archivos)
+              ? detalles.archivos.filter((archivo: any) => archivo?.url)
+              : [];
             return (
               <motion.div
                 key={step.id || idx}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.04 }}
-                onClick={() => { if (hasSnapshot) { setSelectedSnapshot(step); setSelectedSnapshotVersion(reporteNumStep || 1); } }}
                 style={{
                   display: 'flex', gap: 14, position: 'relative', zIndex: 1,
                   padding: '10px 12px', borderRadius: 10, marginLeft: 0,
-                  cursor: hasSnapshot ? 'pointer' : 'default',
-                  background: isLatest ? `${hsc.bg || '#F3F4F6'}` : 'transparent',
-                  border: isLatest ? `1px solid ${hsc.color}20` : '1px solid transparent',
+                  cursor: 'default',
+                  background: isSolicitudEdicionRechazada
+                    ? '#FFF7F7'
+                    : isLatest ? eventBg : 'transparent',
+                  border: isSolicitudEdicionRechazada || isLatest
+                    ? `1px solid ${eventBorder}`
+                    : '1px solid transparent',
                   transition: 'all 0.15s',
                 }}
-                onMouseEnter={e => { if (hasSnapshot) { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E1'; } }}
-                onMouseLeave={e => { if (!isLatest) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } else { e.currentTarget.style.background = hsc.bg || '#F3F4F6'; e.currentTarget.style.borderColor = `${hsc.color}20`; } }}
               >
                 <div style={{
                   width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                  background: isLatest ? (hsc.color || '#4F46E5') : 'white',
-                  border: `2.5px solid ${isLatest ? (hsc.color || '#4F46E5') : '#CBD5E1'}`,
+                  background: isLatest || isSolicitudEdicionRechazada ? eventColor : 'white',
+                  border: `2.5px solid ${isLatest || isSolicitudEdicionRechazada ? eventColor : '#CBD5E1'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: isLatest ? `0 0 0 3px ${hsc.color}18` : 'none',
+                  boxShadow: isLatest || isSolicitudEdicionRechazada ? `0 0 0 3px ${eventColor}18` : 'none',
                 }}>
-                  <CheckCircle style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />
+                  {isSolicitudEdicionRechazada
+                    ? <XCircle style={{ width: 14, height: 14, color: 'white' }} />
+                    : <CheckCircle style={{ width: 14, height: 14, color: isLatest ? 'white' : '#94A3B8' }} />}
                 </div>
                 <div style={{ flex: 1, paddingTop: 2, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
                     <span style={{
                       padding: '2px 8px', borderRadius: 6,
-                      background: hsc.bg || '#F3F4F6', color: hsc.color || '#374151',
+                      background: eventBg, color: eventColor,
                       fontSize: '0.72rem', fontWeight: 700,
-                      border: `1px solid ${hsc.color || '#D1D5DB'}20`,
+                      border: `1px solid ${eventBorder}`,
                     }}>
-                      {step.estadoNuevo?.replace(/_/g, ' ')}
+                      {isSolicitudEdicionRechazada
+                        ? 'Solicitud de edición rechazada'
+                        : estadoPtaLabel}
                     </span>
+                    {isSolicitudEdicionRechazada && (
+                      <span style={{
+                        padding: '2px 7px', borderRadius: 6, background: '#F8FAFC',
+                        color: '#475569', border: '1px solid #CBD5E1',
+                        fontSize: '0.63rem', fontWeight: 700,
+                      }}>
+                        PTA conserva: {estadoPtaLabel}
+                      </span>
+                    )}
+                    {!isSolicitudEdicionRechazada && step.tipoAccion && ACTION_LABELS[step.tipoAccion] && (
+                      <span style={{
+                        padding: '2px 7px', borderRadius: 6, background: '#EEF2FF',
+                        color: '#4338CA', border: '1px solid #C7D2FE',
+                        fontSize: '0.63rem', fontWeight: 700,
+                      }}>
+                        {ACTION_LABELS[step.tipoAccion]}
+                      </span>
+                    )}
                     {step.version && step.version > 1 && (
                       <span style={{ fontSize: '0.6rem', padding: '1px 6px', borderRadius: 6, background: '#F3E8FF', color: '#6B21A8', fontWeight: 700 }}>v{step.version}</span>
                     )}
@@ -1875,29 +1976,103 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                    {step.actorRol && (
+                    {isSolicitudEdicionRechazada && responsableResolucion ? (
+                      <span style={{ fontSize: '0.65rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <Users style={{ width: 10, height: 10 }} />
+                        Rechazada por {responsableResolucion}
+                        {(rolResolucion || step.actorRol) ? ` — ${rolResolucion || step.actorRol}` : ''}
+                      </span>
+                    ) : step.actorRol && (
                       <span style={{ fontSize: '0.65rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: 3 }}>
                         <Users style={{ width: 10, height: 10 }} /> {step.actorRol}
                       </span>
                     )}
                     {hasSnapshot && (
-                      <span style={{
+                      <button
+                        type="button"
+                        title={`Ver reporte histórico R-${String(reporteNumStep).padStart(2, '0')}`}
+                        aria-label={`Ver reporte histórico R-${String(reporteNumStep).padStart(2, '0')}`}
+                        onClick={() => {
+                          setSelectedSnapshot(step);
+                          setSelectedSnapshotVersion(reporteNumStep || 1);
+                        }}
+                        style={{
                         fontSize: '0.6rem', color: '#4F46E5', fontWeight: 700,
                         display: 'flex', alignItems: 'center', gap: 3,
                         padding: '2px 7px', borderRadius: 4, background: '#EEF2FF',
-                        border: '1px solid #C7D2FE',
+                        border: '1px solid #C7D2FE', cursor: 'pointer',
+                        fontFamily: 'inherit', lineHeight: 1.35,
                       }}>
-                        <Eye style={{ width: 10, height: 10 }} /> R-{String(reporteNumStep).padStart(2, '0')}
-                      </span>
+                        <Eye style={{ width: 10, height: 10 }} />
+                        Ver reporte R-{String(reporteNumStep).padStart(2, '0')}
+                      </button>
                     )}
                   </div>
-                  {step.comentarios && (
+                  {(componentesDetalle.length > 0 || solicitudRef) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+                      {solicitudRef && (
+                        <span
+                          title={solicitudRef}
+                          style={{
+                            fontSize: '0.6rem', color: '#475569', fontWeight: 700,
+                            padding: '2px 6px', borderRadius: 5, background: '#F8FAFC',
+                            border: '1px solid #CBD5E1',
+                          }}
+                        >
+                          Solicitud #{solicitudRef.slice(0, 8)}
+                        </span>
+                      )}
+                      {componentesDetalle.map(componente => (
+                        <span
+                          key={componente}
+                          style={{
+                            fontSize: '0.6rem', color: '#1E40AF', fontWeight: 700,
+                            padding: '2px 6px', borderRadius: 5, background: '#EFF6FF',
+                            border: '1px solid #BFDBFE',
+                          }}
+                        >
+                          {COMP_LABELS[componente] || componente.replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {archivosDetalle.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+                      {archivosDetalle.map((archivo: any, archivoIndex: number) => (
+                        <a
+                          key={`${archivo.url}-${archivoIndex}`}
+                          href={resolvePtaFileUrl(archivo.url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={event => event.stopPropagation()}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            maxWidth: '100%', padding: '2px 7px', borderRadius: 5,
+                            background: '#FEF2F2', border: '1px solid #FECACA',
+                            color: '#B91C1C', fontSize: '0.6rem', fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <FileText style={{ width: 10, height: 10, flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {archivo.nombre || `Soporte ${archivoIndex + 1}`}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {comentarioVisible && (
                     <p style={{
-                      fontSize: '0.72rem', color: '#64748B', margin: '5px 0 0',
-                      padding: '5px 8px', background: '#F8FAFC', borderRadius: 6,
-                      border: '1px solid #E2E8F0', lineHeight: 1.4, fontStyle: 'italic',
+                      fontSize: '0.72rem',
+                      color: isSolicitudEdicionRechazada ? '#991B1B' : '#64748B',
+                      margin: '5px 0 0', padding: '5px 8px',
+                      background: isSolicitudEdicionRechazada ? '#FFFFFF' : '#F8FAFC',
+                      borderRadius: 6,
+                      border: `1px solid ${isSolicitudEdicionRechazada ? '#FECACA' : '#E2E8F0'}`,
+                      lineHeight: 1.4, fontStyle: 'italic',
                     }}>
-                      "{step.comentarios}"
+                      {isSolicitudEdicionRechazada ? 'Motivo del rechazo: ' : ''}
+                      "{comentarioVisible}"
                     </p>
                   )}
                 </div>
@@ -2711,7 +2886,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               )}
 
               {/* Extensión — aprobar/devolver (por subcomponente) */}
-              {(
+              {extensionCards.length > 0 && (
               <motion.div
                 whileHover={{ y: -3, boxShadow: '0 12px 30px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.02)' }}
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -2777,46 +2952,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   gap: 12,
                   paddingLeft: 6,
                 }}>
-                  {/* Sub 1: Capacitación — solo si tiene horas */}
-                  {getSubcomponentHours('capacitacion') > 0 && renderComponentCard(
-                    'ext_capacitacion',
-                    'Dirección de Capacitación',
-                    GraduationCap,
-                    '#059669',
-                    `Horas: ${getSubcomponentHours('capacitacion')}h`,
-                    true
-                  )}
-
-                  {/* Sub 2: Procesos de Selección — solo si tiene horas */}
-                  {getSubcomponentHours('seleccion') > 0 && renderComponentCard(
-                    'ext_procesos',
-                    'Dirección de Procesos de Selección',
-                    Briefcase,
-                    '#0284C7',
-                    `Horas: ${getSubcomponentHours('seleccion')}h`,
-                    true
-                  )}
-
-                  {/* Sub 3: Fortalecimiento Institucional — solo si tiene horas */}
-                  {getSubcomponentHours('fortalecimiento') > 0 && renderComponentCard(
-                    'ext_fortalecimiento',
-                    'Dirección de Fortalecimiento y Apoyo a la Gestión Estatal',
-                    Building2,
-                    '#7C3AED',
-                    `Horas: ${getSubcomponentHours('fortalecimiento')}h`,
-                    true
-                  )}
-
-                  {/* Sub 4: Escuela de Alto Gobierno — solo si tiene horas */}
-                  {getSubcomponentHours('alto_gobierno') > 0 && renderComponentCard(
-                    'ext_gobierno',
-                    'Escuela de Alto Gobierno',
-                    Shield,
-                    '#B45309',
-                    `Horas: ${getSubcomponentHours('alto_gobierno')}h`,
-                    true
-                  )}
-
+                  {extensionCards.map(item => renderComponentCard(
+                    item.key,
+                    item.label,
+                    item.icon,
+                    item.color,
+                    `Horas: ${getSubcomponentHours(item.section)}h`,
+                    true,
+                  ))}
                 </div>
               </motion.div>
               )}
