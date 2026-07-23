@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import { getAllPTAs, updatePTAStatus, getConfiguracionPTAGlobal, getPTAsByDocente } from '../../services/api/ptaApi';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 
 interface KanbanCard {
   id: string;
@@ -88,7 +89,7 @@ function ptasToKanbanCards(ptas: any[], rules?: any): KanbanCard[] {
   return ptas.map(pta => {
     const horasProg = pta.total_horas_programadas || 0;
     const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
-    const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
+    const pctCarga = getPtaCompletionPercentage(horasProg, horasDisp);
     
     // Calcular días en estado actual
     const updatedAt = pta.updatedAt || pta.updated_at ? new Date(pta.updatedAt || pta.updated_at) : new Date();
@@ -224,7 +225,7 @@ function KanbanCard({
           {/* Meta row */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>
-              {card.horasProgramadas}h / {card.horasDisponibles}h ({card.pctCarga}%)
+              {card.horasProgramadas}h / {card.horasDisponibles}h ({formatPtaPercentage(card.pctCarga)}%)
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
               <Clock style={{ width: 9, height: 9, color: diasColor }} />
@@ -238,7 +239,7 @@ function KanbanCard({
 
       {compact && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
-          <span style={{ fontSize: '0.55rem', color: '#9CA3AF', fontWeight: 600 }}>{card.dedicacion} · {card.pctCarga}%</span>
+          <span style={{ fontSize: '0.55rem', color: '#9CA3AF', fontWeight: 600 }}>{card.dedicacion} · {formatPtaPercentage(card.pctCarga)}%</span>
           <span style={{ fontSize: '0.55rem', fontWeight: 700, color: diasColor }}>{card.diasEnEstado}d</span>
         </div>
       )}
@@ -681,7 +682,7 @@ export function KanbanPTA() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
                     {[
                       { label: 'Dedicación', value: selectedCard.dedicacion, color: '#003DA5', bg: '#EFF6FF' },
-                      { label: '% Carga', value: `${selectedCard.pctCarga}%`, color: selectedCard.pctCarga > 100 ? '#DC2626' : selectedCard.pctCarga > 90 ? '#D97706' : '#059669', bg: selectedCard.pctCarga > 100 ? '#FEE2E2' : '#D1FAE5' },
+                      { label: '% Carga', value: `${formatPtaPercentage(selectedCard.pctCarga)}%`, color: selectedCard.pctCarga > 100 ? '#DC2626' : selectedCard.pctCarga > 90 ? '#D97706' : '#059669', bg: selectedCard.pctCarga > 100 ? '#FEE2E2' : '#D1FAE5' },
                       { label: 'Días en estado', value: `${selectedCard.diasEnEstado}d`, color: diasColor, bg: diasColor + '15' },
                       { label: 'Programa', value: selectedCard.programa, color: '#374151', bg: '#F9FAFB' },
                       { label: 'Territorial', value: selectedCard.territorial, color: '#374151', bg: '#F9FAFB' },

@@ -17,6 +17,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -924,7 +925,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const hProg = Number(pta.total_horas_programadas || 0);
   const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
-  const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
+  const pctCarga = getPtaCompletionPercentage(horasProg, horasDisp);
 
   const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
@@ -2108,7 +2109,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 {[
                   { label: isMobile ? 'Prog.' : 'Horas Programadas', value: horasProg, color: '#003DA5', bg: '#EFF6FF' },
                   { label: isMobile ? 'Disp.' : 'Horas Disponibles', value: horasDisp, color: '#059669', bg: '#D1FAE5' },
-                  { label: 'Carga', value: `${pctCarga}%`, color: pctCarga > 100 ? '#DC2626' : pctCarga > 90 ? '#D97706' : '#059669', bg: pctCarga > 100 ? '#FEE2E2' : pctCarga > 90 ? '#FEF3C7' : '#D1FAE5' },
+                  { label: 'Carga', value: `${formatPtaPercentage(pctCarga)}%`, color: pctCarga > 100 ? '#DC2626' : pctCarga > 90 ? '#D97706' : '#059669', bg: pctCarga > 100 ? '#FEE2E2' : pctCarga > 90 ? '#FEF3C7' : '#D1FAE5' },
                 ].map(item => (
                   <div key={item.label} style={{ padding: isMobile ? '8px 8px' : '10px 12px', borderRadius: 10, background: item.bg, border: `1px solid ${item.color}15` }}>
                     <div style={{ fontSize: '0.6rem', fontWeight: 600, color: item.color, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>{item.label}</div>
@@ -2141,8 +2142,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   <span>
                     <strong>Sobrecarga:</strong>{' '}
                     {isMobile
-                      ? `${horasProg}h / ${horasDisp}h (${pctCarga}%)`
-                      : `El docente tiene ${horasProg}h programadas sobre un máximo de ${horasDisp}h (${pctCarga}%)`
+                      ? `${horasProg}h / ${horasDisp}h (${formatPtaPercentage(pctCarga)}%)`
+                      : `El docente tiene ${horasProg}h programadas sobre un máximo de ${horasDisp}h (${formatPtaPercentage(pctCarga)}%)`
                     }
                   </span>
                 </div>
@@ -2895,7 +2896,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               }}>
                 <span style={{ fontWeight: 700, color: '#111827' }}>Total PTA</span>
                 <span style={{ fontWeight: 800, color: '#003DA5', fontSize: '0.95rem' }}>
-                  {horasProg}h / {horasDisp}h ({pctCarga}%)
+                  {horasProg}h / {horasDisp}h ({formatPtaPercentage(pctCarga)}%)
                 </span>
               </div>
             </div>

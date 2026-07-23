@@ -18,6 +18,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -757,6 +758,11 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                   <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.nombre}</div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                                     {comp && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>{comp.label}{(ev.seccion_extension ?? ev.seccionExtension) ? ` · ${ev.seccion_extension ?? ev.seccionExtension}` : ''}</span>}
+                                    {String(ev.categoria || '').toLocaleLowerCase('es-CO').includes('resolución proyecto de investigación') && (
+                                      <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#F3E8FF', color: '#7E22CE' }}>
+                                        Resolución del proyecto
+                                      </span>
+                                    )}
                                     {ev.horas_avance > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF' }}>{ev.horas_avance}h</span>}
                                     {grupo.adjuntos.length > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#F1F5F9', color: '#475569' }}>+{grupo.adjuntos.length} soporte{grupo.adjuntos.length > 1 ? 's' : ''}</span>}
                                     <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: estadoRev === 'aprobado' ? '#D1FAE5' : estadoRev === 'rechazado' ? '#FEE2E2' : '#FEF3C7', color: estadoRev === 'aprobado' ? '#065F46' : estadoRev === 'rechazado' ? '#991B1B' : '#92400E' }}>
@@ -3225,7 +3231,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     formatter: (_v: any, row: any) => {
                       const disp = Number(row?.horas_a_programar || 0);
                       const tot = Number(row?.total_horas_programadas || 0);
-                      return disp > 0 ? `${Math.round((tot / disp) * 100)}%` : '0%';
+                      return `${formatPtaPercentage(getPtaCompletionPercentage(tot, disp))}%`;
                     },
                   },
                   { key: 'horas_docencia', label: 'Docencia (h)' },
@@ -4102,7 +4108,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const sc = getStatusConfig(pta.estado);
                       const horasProg = pta.total_horas_programadas || 0;
                       const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
-                      const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
+                      const pctCarga = getPtaCompletionPercentage(horasProg, horasDisp);
                       const isPendiente = isEstadoPendienteAprobacion(pta.estado);
                       const isSelected = selectedIds.has(pta.id);
                       const estadoLabel = pta.estado?.replace(/_/g, ' ') || 'Sin estado';
@@ -4408,7 +4414,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               fontSize: '0.82rem', fontWeight: 800, minWidth: 28,
                               color: pctCarga > 100 ? '#DC2626' : pctCarga > 90 ? '#D97706' : '#374151',
                             }}>
-                              {pctCarga}%
+                              {formatPtaPercentage(pctCarga)}%
                             </span>
                             <div style={{ display: 'flex', gap: 3 }}>
                               {[
@@ -5453,7 +5459,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           const initials = (name: string) => (name || 'PTA').split(' ').filter(Boolean).slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
           const cargaPct = (p: any) => {
             const disp = Number(p.horas_a_programar || 0);
-            return disp > 0 ? Math.min(100, Math.round((Number(p.total_horas_programadas || 0) / disp) * 100)) : 0;
+            return Math.min(100, getPtaCompletionPercentage(p.total_horas_programadas, disp));
           };
 
           const headerCard = (p: any, accent: string, bg: string, tag: string) => {

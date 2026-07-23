@@ -15,7 +15,7 @@ describe('PtaService - coexistencia de proyecto y actividades de investigacion',
     }],
   };
 
-  const createBody = (projectHours: number, activityHours: number) => ({
+  const createBody = (projectHours: number, activityHours: number): any => ({
     investigacion_proyecto: {
       rol: 'COINVESTIGADOR',
       horas_solicitadas: projectHours,
@@ -89,5 +89,83 @@ describe('PtaService - coexistencia de proyecto y actividades de investigacion',
       720,
       { ...baseRules, inv_permitir_proyecto_actividades_simultaneos: true },
     )).toThrow(/370h \/ 360h/);
+  });
+
+  it('permite enviar el proyecto sin adjuntar anticipadamente la resolucion', () => {
+    const body = createBody(200, 0);
+    const hours = service.computeHorasTotales(body);
+
+    expect(() => service.validateInvestigacionComponent(
+      body,
+      hours,
+      720,
+      { ...baseRules, inv_permitir_proyecto_actividades_simultaneos: false },
+    )).not.toThrow();
+  });
+
+  it('exige el archivo de resolucion cuando la regla documental esta activa', () => {
+    const body = createBody(200, 0);
+    const hours = service.computeHorasTotales(body);
+
+    expect(() => service.validateInvestigacionComponent(
+      body,
+      hours,
+      720,
+      {
+        ...baseRules,
+        inv_adjunto_obligatorio: true,
+        inv_permitir_proyecto_actividades_simultaneos: false,
+      },
+    )).toThrow(/archivo adjunto de la resolución es obligatorio/i);
+  });
+
+  it('acepta la resolucion sin solicitar un valor adicional de horas', () => {
+    const body = createBody(200, 0);
+    body.investigacion_proyecto.resolucion_archivo_url = '/uploads/pta-resoluciones/soporte.pdf';
+    const hours = service.computeHorasTotales(body);
+
+    expect(() => service.validateInvestigacionComponent(
+      body,
+      hours,
+      720,
+      {
+        ...baseRules,
+        inv_adjunto_obligatorio: true,
+        inv_permitir_proyecto_actividades_simultaneos: false,
+      },
+    )).not.toThrow();
+  });
+
+  it('convierte la resolucion en evidencia usando todas las horas del proyecto', async () => {
+    const syncService = Object.create(PtaService.prototype) as any;
+    syncService.evidenciaRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((value: any) => value),
+      save: jest.fn((value: any) => Promise.resolve(value)),
+      delete: jest.fn(),
+    };
+
+    await syncService.syncResolucionProyectoInvestigacion('pta-1', {
+      docente_nombre: 'Docente Prueba',
+      investigacion_proyecto: {
+        nombre: 'Proyecto Prueba',
+        horas_solicitadas: 200,
+        resolucion_nombre: 'Resolución 001',
+        resolucion_archivo_url: '/uploads/pta-resoluciones/resolucion.pdf',
+        resolucion_archivo_nombre: 'resolucion.pdf',
+        resolucion_archivo_tipo: 'pdf',
+        resolucion_archivo_tamanio: 1024,
+        // Un valor histórico distinto debe ignorarse.
+        resolucion_horas_justificar: 120,
+      },
+    });
+
+    expect(syncService.evidenciaRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      ptaId: 'pta-1',
+      componentePta: 'investigacion',
+      horasAvance: 200,
+      storageUrl: '/uploads/pta-resoluciones/resolucion.pdf',
+      estadoRevision: 'pendiente',
+    }));
   });
 });

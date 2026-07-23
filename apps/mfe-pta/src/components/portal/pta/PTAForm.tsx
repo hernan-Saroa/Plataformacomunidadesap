@@ -38,6 +38,7 @@ import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import type { PTAComponentKey } from '../../pta/shared/ptaComponentPermissions';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
 
@@ -1911,7 +1912,23 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         setEstado(d.estado || 'Borrador');
         setOriginalEstado(d.estado || '');
         setAsignaturas(d.asignaturas || []);
-        setInvProyecto(d.investigacion_proyecto || invProyecto);
+        const proyectoInvestigacion = d.investigacion_proyecto;
+        if (proyectoInvestigacion) {
+          setInvProyecto({
+            nombre: '', codigo: '', grupo: '', linea: '', rol: '',
+            horas_solicitadas: 0,
+            fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
+            resolucion_archivo: null, resolucion_archivo_url: '',
+            ...proyectoInvestigacion,
+          });
+        } else {
+          setInvProyecto({
+            nombre: '', codigo: '', grupo: '', linea: '', rol: '',
+            horas_solicitadas: 0,
+            fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
+            resolucion_archivo: null, resolucion_archivo_url: '',
+          });
+        }
         setInvActividades(d.investigacion_actividades || []);
         // Normalizar actividades de extensión al cargar: aplicar multiplicador x2 si no se hizo
         // (puede pasar con PTAs guardados antes del fix o en race condition)
@@ -2319,10 +2336,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
     setInvProyecto(previous => {
       const alreadyEmpty = !previous.nombre && !previous.codigo && !previous.grupo && !previous.linea &&
-        !previous.rol && !previous.horas_solicitadas && !previous.resolucion_nombre &&
+        !previous.rol && !previous.horas_solicitadas &&
+        !previous.resolucion_nombre &&
         !previous.resolucion_archivo && !previous.resolucion_archivo_url;
       return alreadyEmpty ? previous : {
-        nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0,
+        nombre: '', codigo: '', grupo: '', linea: '', rol: '',
+        horas_solicitadas: 0,
         fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null,
         resolucion_archivo_url: '',
       };
@@ -2355,7 +2374,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const totalHoras = docProrr + invProrr + extProrr + compProrr + acadProrr;
   const horasRestantes = horasAProgramar - totalHoras;
-  const porcentaje = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
+  const porcentaje = getPtaCompletionPercentage(totalHoras, horasAProgramar);
   // Horas por encima del límite programable (0 si no hay exceso).
   const horasExceso = Math.max(0, totalHoras - horasAProgramar);
 
@@ -2369,12 +2388,20 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const getCompCatalog = (secKey: string): any[] =>
     secKey === COMP_SECCION_AADM ? actAcadAdmin : actComplementarias;
 
-  // Bloqueo: la resolución y/o adjunto son obligatorios pero no se han llenado
+  // La configuración documental conserva su comportamiento original: cuando
+  // exige adjunto, el proyecto no es válido para envío sin la resolución. Las
+  // horas respaldadas se derivan siempre de las horas actuales del proyecto.
   const invResolucionPendiente = useMemo(() => {
     const faltaResolucion = ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim();
-    const faltaAdjunto = ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url;
-    return !!(faltaResolucion || faltaAdjunto);
-  }, [ptaRules, invProyecto.resolucion_nombre, invProyecto.resolucion_archivo, invProyecto.resolucion_archivo_url]);
+    const tieneArchivoResolucion = Boolean(invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url);
+    const faltaArchivo = Boolean(ptaRules?.inv_adjunto_obligatorio && !tieneArchivoResolucion);
+    return !!(faltaResolucion || faltaArchivo);
+  }, [
+    ptaRules,
+    invProyecto.resolucion_nombre,
+    invProyecto.resolucion_archivo,
+    invProyecto.resolucion_archivo_url,
+  ]);
 
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
@@ -2639,8 +2666,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim()) {
         warns.push('La resolución que respalda la investigación es obligatoria. Ingresa el N° o nombre de la resolución.');
       }
-      if (ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url) {
-        warns.push('El archivo adjunto de la resolución es obligatorio. Carga el documento de soporte (PDF, DOC).');
+      const tieneArchivoResolucion = Boolean(invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url);
+      if (ptaRules?.inv_adjunto_obligatorio && !tieneArchivoResolucion) {
+        warns.push('El archivo adjunto de la resolución es obligatorio para enviar el proyecto de investigación.');
       }
     }
 
@@ -3367,14 +3395,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             'N° / nombre de la resolución',
           );
         }
-        if (ptaRules?.inv_adjunto_obligatorio
-          && !invProyecto.resolucion_archivo
-          && !invProyecto.resolucion_archivo_url) {
+        const tieneArchivoResolucion = Boolean(
+          invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url,
+        );
+        if (ptaRules?.inv_adjunto_obligatorio && !tieneArchivoResolucion) {
           addIssue(
             ptaFieldKey.investigacionProyecto('resolucion_archivo'),
             'investigacion',
             'Archivo adjunto de la resolución',
-            'El archivo adjunto de la resolución es obligatorio.',
+            'El archivo adjunto de la resolución es obligatorio para enviar el proyecto de investigación.',
           );
         }
       }
@@ -3772,7 +3801,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
       investigacion_proyecto: (invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
-        ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacionProyecto : 0 }
+        ? {
+            ...invProyecto,
+            horas_solicitadas: invProyecto.rol ? hInvestigacionProyecto : 0,
+            // Compatibilidad con PTAs guardados durante la transición. No es un
+            // dato editable: siempre replica las horas completas del proyecto.
+            resolucion_horas_justificar: invProyecto.rol ? hInvestigacionProyecto : 0,
+          }
         : null,  // null explícito → backend borra los datos anteriores
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
       extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || (e.horas_ejecutadas ?? 0) > 0))),
@@ -4007,14 +4042,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     if (totalHoras < horasAProgramar) {
-      const porcentajeReal = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
-      setConfirmIncompletoData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje: porcentajeReal });
+      setConfirmIncompletoData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
       setShowConfirmIncompleto(true);
       return false; // Detener el flujo — el modal se encargará de continuar si el usuario acepta
     }
 
     return true;
-  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
+  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -4352,7 +4386,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     fontSize: '22px', fontWeight: 800,
                     color: confirmIncompletoData.porcentaje >= 80 ? '#D97706' : '#DC2626'
                   }}>
-                    {confirmIncompletoData.porcentaje}%
+                    {formatPtaPercentage(confirmIncompletoData.porcentaje)}%
                   </span>
                   <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '4px', fontWeight: 600 }}>
                     completado
@@ -4624,7 +4658,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         ? 'bg-green-50/50 text-green-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]'
                         : 'bg-blue-50/50 text-blue-700 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.15)]'
                 }`}>
-                  {totalHoras}h / {horasAProgramar}h ({porcentaje}%)
+                  {totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)
                 </div>
               </div>
             </div>
@@ -4644,7 +4678,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   <span className="font-bold">
                     {hasBlockingHourLimits ? componentLimitViolations[0]?.message : totalHoras >= horasAProgramar ? 'Topes por componente cumplidos. Listo para enviar.' : `PTA Incompleto: Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
                   </span>
-                  <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
+                  <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)</span>
                 </div>
               </div>
 
@@ -5286,11 +5320,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           const availableForProject = permiteCoexistenciaInvestigacion
                             ? Math.max(0, maxInvLimit - hInvestigacion_raw)
                             : maxH;
-                          setInvProyecto(p => ({
-                            ...p,
-                            rol: v,
-                            horas_solicitadas: Math.min(maxH, availableForProject),
-                          }));
+                          setInvProyecto(p => {
+                            const horasProyecto = Math.min(maxH, availableForProject);
+                            return {
+                              ...p,
+                              rol: v,
+                              horas_solicitadas: horasProyecto,
+                            };
+                          });
                           if (v && !permiteCoexistenciaInvestigacion) setInvActividades([]);
                         }}
                         options={rolesParaDropdown.map((r: any) => ({ value: r.nombre, label: `${r.nombre} (hasta ${rolesHorasMap[r.nombre] || 0}h)` }))}
@@ -5328,32 +5365,46 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                     {/* ── Resolución y soporte documental ── */}
                     <div className="mt-3 pt-3 border-t border-purple-200/60">
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <FileCheck2 className="w-3.5 h-3.5 text-purple-600" />
-                        <span className="text-xs font-bold text-purple-800 uppercase tracking-wide">Resolución que respalda la investigación</span>
+                      <div className="mb-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2">
+                          <FileCheck2 className="h-3.5 w-3.5 shrink-0 text-purple-600" />
+                          <span className="text-xs font-bold uppercase tracking-wide text-purple-800">
+                            Resolución que respalda la investigación
+                          </span>
+                        </div>
+                        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[9px] font-semibold text-blue-700">
+                          <Info className="h-3 w-3 shrink-0" />
+                          Justificará automáticamente {hInvestigacionProyecto}h en Seguimiento
+                        </span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <FormInput
-                          label="N° / Nombre de la Resolución"
-                          value={invProyecto.resolucion_nombre}
-                          disabled={!isEditable}
-                          required={Boolean(ptaRules?.inv_resolucion_obligatoria && projectResolutionRequired)}
-                          fieldKey={ptaFieldKey.investigacionProyecto('resolucion_nombre')}
-                          error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('resolucion_nombre')]}
-                          placeholder="Ej: Resolución No. 0234 de 2026"
-                          onChange={v => setInvProyecto(p => ({ ...p, resolucion_nombre: v }))}
-                        />
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start">
+                        <div className="min-w-0">
+                          <FormInput
+                            label="N° / Nombre de la Resolución"
+                            value={invProyecto.resolucion_nombre}
+                            disabled={!isEditable}
+                            required={Boolean(ptaRules?.inv_resolucion_obligatoria && projectResolutionRequired)}
+                            fieldKey={ptaFieldKey.investigacionProyecto('resolucion_nombre')}
+                            error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('resolucion_nombre')]}
+                            placeholder="Ej: Resolución No. 0234 de 2026"
+                            onChange={v => setInvProyecto(p => ({ ...p, resolucion_nombre: v }))}
+                          />
+                        </div>
                         <div
                           id={getPTAFieldDomId(ptaFieldKey.investigacionProyecto('resolucion_archivo'))}
                           data-pta-field={ptaFieldKey.investigacionProyecto('resolucion_archivo')}
+                          className="min-w-0"
                         >
                           <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">
-                            Archivo adjunto (Resolución){ptaRules?.inv_adjunto_obligatorio && projectResolutionRequired && <span className="text-red-500 ml-0.5">*</span>}
+                            Archivo adjunto (Resolución)
+                            {ptaRules?.inv_adjunto_obligatorio && projectResolutionRequired && (
+                              <span className="ml-0.5 text-red-500" aria-hidden="true">*</span>
+                            )}
                           </label>
                           {invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url ? (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 min-h-[36px]">
+                            <div className="flex min-h-[36px] min-w-0 items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2">
                               <Paperclip className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                              <span className="text-xs text-green-800 font-medium truncate flex-1">
+                              <span className="min-w-0 flex-1 truncate text-xs font-medium text-green-800">
                                 {invProyecto.resolucion_archivo?.name || invProyecto.resolucion_archivo_url || 'Archivo cargado'}
                               </span>
                               <ResolutionFilePreviewButton
@@ -5393,7 +5444,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={e => {
                                     const file = e.target.files?.[0];
                                     if (file) {
-                                      setInvProyecto(p => ({ ...p, resolucion_archivo: file, resolucion_archivo_url: '' }));
+                                      setInvProyecto(p => ({
+                                        ...p,
+                                        resolucion_archivo: file,
+                                        resolucion_archivo_url: '',
+                                      }));
                                     }
                                     e.target.value = '';
                                   }}
@@ -5419,10 +5474,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300">
                           <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
                           <div>
-                            <p className="text-xs font-bold text-amber-800">Completa la documentación de resolución para habilitar las horas</p>
+                            <p className="text-xs font-bold text-amber-800">Revisa los datos de la resolución</p>
                             <p className="text-[10px] text-amber-600 mt-0.5">
                               {ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim() ? 'Falta: N° / Nombre de la Resolución. ' : ''}
-                              {ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url ? 'Falta: Archivo adjunto.' : ''}
+                              {ptaRules?.inv_adjunto_obligatorio
+                                && !invProyecto.resolucion_archivo
+                                && !invProyecto.resolucion_archivo_url
+                                ? 'Falta: Archivo adjunto de la Resolución. '
+                                : ''}
                             </p>
                           </div>
                         </div>
@@ -6590,7 +6649,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <span className="text-[12px] font-bold leading-tight">
                 {hasBlockingHourLimits ? 'Limite excedido' : totalHoras >= horasAProgramar ? 'Horas completas' : `Faltan ${horasAProgramar - totalHoras}h`}
               </span>
-              <span className="text-[10px] font-medium opacity-80">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
+              <span className="text-[10px] font-medium opacity-80">{totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)</span>
             </div>
           </div>
 

@@ -291,12 +291,12 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                 </span>
               </div>
 
-              {/* Toggle: Adjunto obligatorio */}
+              {/* Toggle: soporte requerido al crear el proyecto */}
               <div className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-emerald-200 transition-colors shadow-sm">
                 <div className="flex-1 pr-4">
-                  <h4 className="text-[13px] font-bold text-slate-800 leading-tight mb-1">Archivo Adjunto (Resolución PDF)</h4>
+                  <h4 className="text-[13px] font-bold text-slate-800 leading-tight mb-1">Archivo Adjunto (Resolución)</h4>
                   <p className="text-[11px] text-slate-500 leading-tight">
-                    Si está activo, el docente debe cargar un archivo de soporte (PDF, DOC) junto con la resolución del proyecto.
+                    Si está activo, el proyecto no puede enviarse sin adjuntar la resolución. Al aprobarse el PTA, el soporte pasa a Seguimiento y justifica automáticamente todas las horas del proyecto.
                   </p>
                 </div>
                 <button
