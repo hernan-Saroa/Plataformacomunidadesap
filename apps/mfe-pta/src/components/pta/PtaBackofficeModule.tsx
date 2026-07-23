@@ -4152,7 +4152,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             gridTemplateColumns: gridCols,
                             columnGap: 16, rowGap: 0, padding: '16px 16px',
                             borderBottom: '1px solid #F3F4F6',
-                            cursor: isPendiente ? 'grab' : 'pointer',
+                            cursor: 'pointer',
                             transition: 'all 0.1s',
                             background: dragOverId === pta.id ? '#DBEAFE' : isFocused ? '#F0F4FF' : isSelected ? '#EFF6FF' : pinnedIds.has(pta.id) ? '#FFFBEB' : 'white',
                             borderLeft: pinnedIds.has(pta.id) ? '3px solid #F59E0B' : isPendiente ? `3px solid ${sc.color}` : '3px solid transparent',
@@ -4160,12 +4160,22 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             minWidth: tableMinWidth,
                             outline: isFocused ? '2px solid #003DA5' : dragOverId === pta.id ? '2px dashed #003DA5' : 'none',
                             outlineOffset: -2,
+                            boxShadow: 'none',
                           }}
                           onMouseEnter={e => {
-                            if (!isSelected && !isFocused) e.currentTarget.style.background = pinnedIds.has(pta.id) ? '#FEF3C7' : '#FAFAFA';
+                            if (!isSelected && !isFocused && dragOverId !== pta.id) {
+                              const isPinned = pinnedIds.has(pta.id);
+                              e.currentTarget.style.background = isPinned ? '#FEF3C7' : '#F4F7FC';
+                              e.currentTarget.style.boxShadow = isPinned
+                                ? 'inset 0 0 0 1px #FDE68A'
+                                : 'inset 0 0 0 1px #DCE6F4';
+                            }
                           }}
                           onMouseLeave={e => {
-                            if (!isSelected && !isFocused) e.currentTarget.style.background = pinnedIds.has(pta.id) ? '#FFFBEB' : 'white';
+                            if (!isSelected && !isFocused && dragOverId !== pta.id) {
+                              e.currentTarget.style.background = pinnedIds.has(pta.id) ? '#FFFBEB' : 'white';
+                              e.currentTarget.style.boxShadow = 'none';
+                            }
                           }}
                         >
 
@@ -4177,14 +4187,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             {isPendiente && (
                               <div
                                 style={{
-                                  cursor: 'grab', opacity: 0.3, transition: 'opacity 0.15s',
+                                  cursor: 'grab', opacity: 0.55, transition: 'opacity 0.15s',
                                   flexShrink: 0, display: 'flex', alignItems: 'center',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
-                                onMouseLeave={e => { e.currentTarget.style.opacity = '0.3'; }}
+                                onMouseEnter={e => { e.currentTarget.style.opacity = '0.9'; }}
+                                onMouseLeave={e => { e.currentTarget.style.opacity = '0.55'; }}
                                 title="Arrastrar para reordenar prioridad"
                               >
-                                <GripVertical style={{ width: 12, height: 12, color: '#9CA3AF' }} />
+                                <GripVertical style={{ width: 12, height: 12, color: '#64748B' }} />
                               </div>
                             )}
                             <div style={{ minWidth: 0, flex: 1 }}>
