@@ -1142,7 +1142,6 @@ export function ModalExpedienteComunicacion({
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={comunicacion.asunto}
-          forcePdfJsViewer
         />
       )}
 

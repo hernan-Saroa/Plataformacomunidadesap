@@ -1008,45 +1008,58 @@ export class CorreosJuridicosService {
 
         // El reenvío sale desde la cuenta del BUZÓN del correo original (depende del tab).
         const fromAccount = this.graphService.resolveAccount(original.buzon);
+        const forwardSubject = original.asunto?.startsWith('RV:') || original.asunto?.startsWith('FW:')
+            ? original.asunto
+            : `RV: ${original.asunto || 'Sin asunto'}`;
 
-        // Build comment that includes original body so the recipient sees both
-        const fullComment = this.buildForwardComment(comment, original);
-
-        // Send the native Graph forward — this carries the original body + original attachments
-        const sent = await this.graphService.forwardEmail(original.graphMessageId, to, fullComment, fromAccount);
-        if (!sent) return { success: false };
-
-        // If the user also uploaded new attachments, send them in a companion email
-        // referencing the same thread so they are grouped together.
-        if (additionalAttachments && additionalAttachments.length > 0) {
-            const companionSubject = original.asunto.startsWith('RV:') || original.asunto.startsWith('FW:')
-                ? original.asunto
-                : `RV: ${original.asunto}`;
-
-            const companionBody = `
-                <p>Adjuntos adicionales del reenvío:</p>
-                <blockquote style="border-left:3px solid #ccc;padding-left:12px;color:#555;">
-                    ${fullComment.replace(/\n/g, '<br/>')}
-                </blockquote>
-            `;
-
-            await this.graphService.sendEmail(to, companionSubject, companionBody, [], additionalAttachments, undefined, fromAccount);
+        // Recuperar los adjuntos ORIGINALES como base64 desde nuestro propio almacenamiento
+        // (cache local o Graph) para adjuntarlos EXPLÍCITAMENTE al reenvío.
+        // Antes se delegaba TODO al forward nativo de Graph (`/messages/{id}/forward`), que:
+        //   (a) fallaba cuando el correo no era un mensaje Graph vigente (reenvíos previos,
+        //       enviados o registros sintéticos con graphMessageId `fwd-...`) → el reenvío no salía;
+        //   (b) no dejaba ninguna fila de adjunto en el registro del reenvío → dentro de la
+        //       plataforma el adjunto original "no se conservaba".
+        // Enviar como correo normal con los archivos adjuntados es fiable e independiente de que
+        // el mensaje original siga existiendo en el buzón.
+        const originalAttachments: { name: string; contentBytes: string; contentType: string }[] = [];
+        for (const adj of (original.adjuntos || [])) {
+            const content = await this.loadAttachmentContent(adj);
+            if (content) {
+                originalAttachments.push({ name: content.name, contentBytes: content.contentBytes, contentType: content.contentType });
+            } else {
+                this.logger.warn(`No se pudo recuperar el adjunto original ${adj.id} (${adj.nombre}) para el reenvío`);
+            }
         }
+
+        const allAttachments = [...originalAttachments, ...(additionalAttachments || [])];
+
+        // Cuerpo del reenvío: comentario del usuario + contenido original (preserva formato HTML).
+        const forwardHtml = this.buildForwardHtml(comment, original);
+        const forwardText = this.buildForwardComment(comment, original);
+
+        const sent = await this.graphService.sendEmail(
+            to,
+            forwardSubject,
+            forwardHtml,
+            [],
+            allAttachments.length > 0 ? allAttachments : undefined,
+            undefined,
+            fromAccount,
+        );
+        if (!sent) return { success: false };
 
         // Persist the forward record in DB
         try {
-            const hasExtraAttachments = (additionalAttachments?.length ?? 0) > 0;
             const forwardCorreo = this.correoRepo.create({
                 graphMessageId: `fwd-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                asunto: original.asunto.startsWith('RV:') || original.asunto.startsWith('FW:') ? original.asunto : `RV: ${original.asunto}`,
+                asunto: forwardSubject,
                 remitenteEmail: fromAccount,
                 remitenteNombre: 'Oficina Jurídica ESAP',
                 destinatariosTo: to,
                 fechaRecepcion: new Date(),
-                cuerpoHtml: fullComment,
-                cuerpoTexto: comment,
-                // Original attachments go via Graph; flag reflects both sources
-                tieneAdjuntos: original.tieneAdjuntos || hasExtraAttachments,
+                cuerpoHtml: forwardHtml,
+                cuerpoTexto: forwardText,
+                tieneAdjuntos: allAttachments.length > 0,
                 leido: true,
                 archivado: false,
                 urgente: original.urgente,
@@ -1061,24 +1074,134 @@ export class CorreosJuridicosService {
 
             const savedForward = await this.correoRepo.save(forwardCorreo);
 
+            // Copiar las filas de adjunto al registro del reenvío para que se puedan
+            // ver/descargar dentro de la plataforma (no solo en el correo saliente).
+            const adjuntosCopia: AdjuntoCorreo[] = [];
+            // 1) Adjuntos ORIGINALES: reutilizan el mismo almacenamiento (cache local o
+            //    referencia Graph), sin duplicar el archivo.
+            for (const adj of (original.adjuntos || [])) {
+                adjuntosCopia.push(this.adjuntoRepo.create({
+                    correoId: savedForward.id,
+                    graphMessageId: adj.graphMessageId,
+                    graphAttachmentId: adj.graphAttachmentId,
+                    nombre: adj.nombre,
+                    contentType: adj.contentType,
+                    tamanio: adj.tamanio,
+                    archivoLocalUrl: adj.archivoLocalUrl,
+                    descargado: adj.descargado,
+                }));
+            }
+            // 2) Adjuntos NUEVOS subidos por el usuario: se guardan en disco para que también
+            //    queden visibles/descargables desde el registro del reenvío.
+            if (additionalAttachments && additionalAttachments.length > 0) {
+                const fs = require('fs');
+                const path = require('path');
+                const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+                try { if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); } catch { /* noop */ }
+                for (const att of additionalAttachments) {
+                    let localPath: string | undefined = undefined;
+                    let size = 0;
+                    try {
+                        const buffer = Buffer.from(att.contentBytes, 'base64');
+                        size = buffer.length;
+                        const safeName = `fwd_${savedForward.id}_${(att.name || 'adjunto').replace(/[^a-z0-9.]/gi, '_')}`;
+                        localPath = path.join(uploadsDir, safeName);
+                        fs.writeFileSync(localPath, buffer);
+                    } catch (e: any) {
+                        this.logger.warn(`No se pudo guardar en disco el adjunto nuevo del reenvío "${att.name}": ${e?.message || e}`);
+                        localPath = undefined;
+                    }
+                    adjuntosCopia.push(this.adjuntoRepo.create({
+                        correoId: savedForward.id,
+                        graphMessageId: '',
+                        graphAttachmentId: '',
+                        nombre: att.name,
+                        contentType: att.contentType,
+                        tamanio: size,
+                        archivoLocalUrl: localPath,
+                        descargado: !!localPath,
+                    }));
+                }
+            }
+            if (adjuntosCopia.length > 0) {
+                await this.adjuntoRepo.save(adjuntosCopia);
+            }
+
             // Mark original as forwarded
             original.isForwarded = true;
             await this.correoRepo.save(original);
 
-            const adjuntosDesc = hasExtraAttachments
-                ? `Correo reenviado a ${to} (con ${additionalAttachments!.length} adjunto(s) adicional(es))`
+            const adjuntosDesc = allAttachments.length > 0
+                ? `Correo reenviado a ${to} (con ${allAttachments.length} adjunto(s))`
                 : `Correo reenviado a ${to}`;
             await this.registrarAccion(original.id, 'REENVIADO', adjuntosDesc);
             // ── Trazabilidad: Registrar ENVIADO en el reenvío ──
             await this.registrarAccion(savedForward.id, 'ENVIADO', `Reenvío enviado a ${to}`, 'Sistema');
             await this.injectTrackingIntoEmail(savedForward, to, req);
 
-            this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id}`);
+            this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id} (${allAttachments.length} adjunto(s))`);
             return { success: true, correo: savedForward };
         } catch (dbError) {
             this.logger.error('Error saving forward to DB (forward was sent successfully):', dbError);
             return { success: true };
         }
+    }
+
+    /**
+     * Obtiene el contenido (base64) de un adjunto desde la cache local o Graph, SIN los
+     * efectos secundarios de trazabilidad de `downloadAttachment` (que registra
+     * DOCUMENTO_ABIERTO). Se usa para reenviar los adjuntos originales. Devuelve null si no
+     * se puede recuperar (para no bloquear el reenvío por un adjunto inaccesible).
+     */
+    private async loadAttachmentContent(adjunto: AdjuntoCorreo): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+        size: number;
+    } | null> {
+        try {
+            const fs = require('fs');
+            if (adjunto.descargado && adjunto.archivoLocalUrl && fs.existsSync(adjunto.archivoLocalUrl)) {
+                const buffer = fs.readFileSync(adjunto.archivoLocalUrl);
+                return {
+                    name: adjunto.nombre,
+                    contentType: adjunto.contentType || 'application/octet-stream',
+                    contentBytes: buffer.toString('base64'),
+                    size: buffer.length,
+                };
+            }
+            if (!adjunto.graphMessageId || !adjunto.graphAttachmentId) return null;
+            return await this.graphService.downloadAttachment(adjunto.graphMessageId, adjunto.graphAttachmentId);
+        } catch (e: any) {
+            this.logger.warn(`loadAttachmentContent falló para adjunto ${adjunto.id}: ${e?.message || e}`);
+            return null;
+        }
+    }
+
+    /**
+     * Construye el cuerpo HTML de un reenvío: comentario del usuario + contenido original.
+     * Preserva el HTML original (imágenes/formato) cuando existe; si no, usa el texto plano.
+     */
+    private buildForwardHtml(userComment: string, original: CorreoJuridico): string {
+        const formattedDate = new Intl.DateTimeFormat('es-CO', {
+            year: 'numeric', month: 'long', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        }).format(new Date(original.fechaRecepcion));
+
+        const originalHtml = original.cuerpoHtml
+            || (original.cuerpoTexto ? original.cuerpoTexto.replace(/\n/g, '<br/>') : '');
+        const commentHtml = (userComment || '').trim()
+            ? `${userComment.trim().replace(/\n/g, '<br/>')}<br/><br/>`
+            : '';
+
+        return `${commentHtml}` +
+            `<hr style="border:none;border-top:1px solid #ccc;margin:16px 0;"/>` +
+            `<p style="color:#666;font-size:12px;margin:0 0 8px;">` +
+            `<strong>De:</strong> ${original.remitenteNombre || original.remitenteEmail || ''}<br/>` +
+            `<strong>Fecha:</strong> ${formattedDate}<br/>` +
+            `<strong>Asunto:</strong> ${original.asunto || ''}` +
+            `</p>` +
+            `<blockquote style="border-left:3px solid #ccc;padding-left:12px;margin:12px 0;color:#555;">${originalHtml}</blockquote>`;
     }
 
     /**
