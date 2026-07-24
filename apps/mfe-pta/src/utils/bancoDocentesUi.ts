@@ -50,7 +50,7 @@ export function getBancoDocenteDedicacionShort(value: unknown): string {
 
 export function resolveBancoDocenteHours(dedicacion: unknown, explicitValue?: unknown): number {
   const explicit = parseInteger(explicitValue);
-  if (explicit !== null && explicit > 0) return explicit;
+  if (explicit !== null && explicit >= 0) return explicit;
 
   const normalized = normalizeBancoDocenteDedicacionCode(dedicacion);
   if (normalized === 'MT') return 400;

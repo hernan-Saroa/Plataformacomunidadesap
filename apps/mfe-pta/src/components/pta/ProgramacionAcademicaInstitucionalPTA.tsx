@@ -70,6 +70,9 @@ interface AsignacionDocente {
   horas_pendientes: number;
 }
 
+const porcentajeDeBolsa = (horas: number, bolsa: number): number =>
+  bolsa > 0 ? Math.round((horas / bolsa) * 100) : 0;
+
 const HORARIOS_OPCIONES = [
   'Lu-Mi 6:00am-8:00am', 'Lu-Mi 8:00am-10:00am', 'Lu-Mi 2:00pm-4:00pm', 'Lu-Mi 6:00pm-8:00pm',
   'Ma-Ju 6:00am-8:00am', 'Ma-Ju 8:00am-10:00am', 'Ma-Ju 2:00pm-4:00pm', 'Ma-Ju 6:00pm-8:00pm',
@@ -189,12 +192,13 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
         const docsData = docsRes.data || [];
         setDocentes(docsData);
         setAsignaciones(docsData.map((d: any) => {
-          let horasProg = 800;
-          const ded = (d.dedicacion || 'Tiempo Completo').toLowerCase();
-          if (ded.includes('medio')) horasProg = 400;
-          else if (ded.includes('catedra') || ded.includes('cátedra')) {
-            horasProg = (d.semanas_vinculacion || 18) * 12;
-          }
+          const horasBanco = Number(
+            d.horasAsignables
+            ?? d.horas_asignables
+            ?? d.horas_programables
+            ?? 0,
+          );
+          const horasProg = Number.isFinite(horasBanco) ? horasBanco : 0;
           return {
             docente_id: d.id,
             docente_nombre: d.nombre || `Docente ${d.id.slice(-4)}`,
@@ -427,7 +431,7 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
         ...a,
         asignaturas_asignadas: newAsig,
         total_precargado: total,
-        porcentaje: Math.round((total / a.horas_programables) * 100),
+        porcentaje: porcentajeDeBolsa(total, a.horas_programables),
         horas_pendientes: a.horas_programables - total,
       };
     }));
@@ -450,7 +454,7 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
         ...a,
         asignaturas_asignadas: newAsig,
         total_precargado: total,
-        porcentaje: Math.round((total / a.horas_programables) * 100),
+        porcentaje: porcentajeDeBolsa(total, a.horas_programables),
         horas_pendientes: a.horas_programables - total,
       };
     }));
@@ -469,7 +473,7 @@ export function ProgramacionAcademicaInstitucionalPTA({ onBack, periodo = '2025-
         ...a,
         investigacion: inv,
         total_precargado: total,
-        porcentaje: Math.round((total / a.horas_programables) * 100),
+        porcentaje: porcentajeDeBolsa(total, a.horas_programables),
         horas_pendientes: a.horas_programables - total,
       };
     }));
@@ -1590,8 +1594,8 @@ function AsignacionDocentesTab({
                         borderRadius: 8, background: '#F3F4F6', fontSize: '0.8rem',
                         flexWrap: 'wrap',
                       }}>
-                        <span>Docencia: <strong>{doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0)}h</strong> ({Math.round(doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0) / doc.horas_programables * 100)}%)</span>
-                        <span>Investigacion: <strong>{doc.investigacion?.horas || 0}h</strong> ({Math.round((doc.investigacion?.horas || 0) / doc.horas_programables * 100)}%)</span>
+                        <span>Docencia: <strong>{doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0)}h</strong> ({porcentajeDeBolsa(doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0), doc.horas_programables)}%)</span>
+                        <span>Investigacion: <strong>{doc.investigacion?.horas || 0}h</strong> ({porcentajeDeBolsa(doc.investigacion?.horas || 0, doc.horas_programables)}%)</span>
                         <span>Extension: <strong>{doc.extension.reduce((s: number, a: any) => s + a.horas, 0)}h</strong></span>
                         <span style={{ fontWeight: 700, color: pctColor }}>
                           Total: {doc.total_precargado}h / {doc.horas_programables}h
@@ -1735,7 +1739,7 @@ function AsignacionDocentesTab({
                             }}>
                               <div style={{ fontWeight: 600, color: '#6B21A8' }}>{doc.investigacion.proyecto}</div>
                               <div style={{ color: '#7C3AED', fontSize: '0.72rem' }}>
-                                Rol: {doc.investigacion.rol} | {doc.investigacion.horas}h ({Math.round(doc.investigacion.horas / doc.horas_programables * 100)}%)
+                                Rol: {doc.investigacion.rol} | {doc.investigacion.horas}h ({porcentajeDeBolsa(doc.investigacion.horas, doc.horas_programables)}%)
                               </div>
                             </div>
                           ) : (
@@ -1770,8 +1774,8 @@ function AsignacionDocentesTab({
                       }}>
                         <div style={{ fontSize: '0.82rem' }}>
                           <strong>Resumen Pre-carga:</strong>{' '}
-                          Docencia: {doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0)}h ({Math.round(doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0) / doc.horas_programables * 100)}%) |{' '}
-                          Investigacion: {doc.investigacion?.horas || 0}h ({Math.round((doc.investigacion?.horas || 0) / doc.horas_programables * 100)}%) |{' '}
+                          Docencia: {doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0)}h ({porcentajeDeBolsa(doc.asignaturas_asignadas.reduce((s: number, a: any) => s + a.horas, 0), doc.horas_programables)}%) |{' '}
+                          Investigacion: {doc.investigacion?.horas || 0}h ({porcentajeDeBolsa(doc.investigacion?.horas || 0, doc.horas_programables)}%) |{' '}
                           <strong>Total: {doc.total_precargado}h ({doc.porcentaje}%)</strong>
                         </div>
                         <span style={{
@@ -1835,7 +1839,7 @@ function AsignacionDocentesTab({
                     </div>
                     <div style={{ marginBottom: 16 }}>
                       <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                        Horas: <strong>{invHoras}</strong> ({Math.round(invHoras / doc.horas_programables * 100)}%)
+                        Horas: <strong>{invHoras}</strong> ({porcentajeDeBolsa(invHoras, doc.horas_programables)}%)
                       </label>
                       <input
                         type="range"

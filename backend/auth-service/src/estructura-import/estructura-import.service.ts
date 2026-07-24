@@ -956,7 +956,7 @@ export class EstructuraImportService {
     );
     const dtByNormalizedName = new Map<string, any>();
     for (const row of existingDts) {
-      const normalizedName = String(row.nombre_normalizado || '').trim();
+      const normalizedName = String(row.nombre_normalizado || '').trim().toLowerCase();
       if (normalizedName) dtByNormalizedName.set(normalizedName, row);
     }
 
@@ -964,10 +964,22 @@ export class EstructuraImportService {
     const skippedTerritoriales: any[] = [];
     const messages: string[] = [];
     const allowedDtCodes = new Set<string>();
+    const seenDtNamesInExcel = new Set<string>();
 
     for (const dt of territoriales) {
       const code = String(dt.codigo_dt || '').trim();
-      const normalizedName = String(dt.nombre_normalizado || '').trim();
+      const normalizedName = String(dt.nombre_normalizado || '').trim().toLowerCase();
+
+      // 1. Validar duplicados dentro del mismo archivo Excel (interno)
+      if (normalizedName && seenDtNamesInExcel.has(normalizedName)) {
+        skippedTerritoriales.push(dt);
+        messages.push(
+          `Se omitió la territorial ${code} porque su nombre "${dt.nombre_dt}" está duplicado dentro del mismo archivo Excel.`,
+        );
+        continue;
+      }
+
+      // 2. Validar conflictos con registros existentes en la BD
       const existingSameName = normalizedName
         ? dtByNormalizedName.get(normalizedName)
         : null;
@@ -978,11 +990,14 @@ export class EstructuraImportService {
       ) {
         skippedTerritoriales.push(dt);
         messages.push(
-          `Se omitio la territorial ${code} porque el nombre "${dt.nombre_dt}" ya existe con el codigo ${existingSameName.codigo}.`,
+          `Se omitió la territorial ${code} porque el nombre "${dt.nombre_dt}" ya existe en base de datos con el código ${existingSameName.codigo}.`,
         );
         continue;
       }
 
+      if (normalizedName) {
+        seenDtNamesInExcel.add(normalizedName);
+      }
       filteredDts.push(dt);
       if (code) allowedDtCodes.add(code);
     }
@@ -996,7 +1011,7 @@ export class EstructuraImportService {
     const cetapByDtAndName = new Map<string, any>();
     for (const row of existingCetaps) {
       const dtCode = String(row.codigo_dt || '').trim();
-      const normalizedName = String(row.nombre_normalizado || '').trim();
+      const normalizedName = String(row.nombre_normalizado || '').trim().toLowerCase();
       if (dtCode && normalizedName) {
         cetapByDtAndName.set(`${dtCode}::${normalizedName}`, row);
       }
@@ -1004,33 +1019,51 @@ export class EstructuraImportService {
 
     const filteredCetaps: any[] = [];
     const skippedCetaps: any[] = [];
+    const seenCetapNamesInExcel = new Set<string>();
+
     for (const cetap of cetaps) {
       const dtCode = String(cetap.codigo_dt || '').trim();
       const code = String(cetap.codigo_cetap || '').trim();
-      const normalizedName = String(cetap.nombre_normalizado || '').trim();
+      const normalizedName = String(cetap.nombre_normalizado || '').trim().toLowerCase();
 
       if (!allowedDtCodes.has(dtCode)) {
         skippedCetaps.push(cetap);
         messages.push(
-          `Se omitio el CETAP ${code} porque su territorial ${dtCode} fue omitida.`,
+          `Se omitió el CETAP ${code} porque su territorial ${dtCode} fue omitida.`,
         );
         continue;
       }
 
+      const compositeKey = `${dtCode}::${normalizedName}`;
+
+      // 1. Validar duplicados dentro del mismo archivo Excel (interno)
+      if (normalizedName && seenCetapNamesInExcel.has(compositeKey)) {
+        skippedCetaps.push(cetap);
+        messages.push(
+          `Se omitió el CETAP ${code} porque su nombre "${cetap.nombre_cetap}" está duplicado en la territorial ${dtCode} dentro del mismo archivo Excel.`,
+        );
+        continue;
+      }
+
+      // 2. Validar conflictos con registros existentes en la BD
       const existingSameName = normalizedName
-        ? cetapByDtAndName.get(`${dtCode}::${normalizedName}`)
+        ? cetapByDtAndName.get(compositeKey)
         : null;
+
       if (
         existingSameName &&
         String(existingSameName.codigo || '').trim() !== code
       ) {
         skippedCetaps.push(cetap);
         messages.push(
-          `Se omitio el CETAP ${code} porque el nombre "${cetap.nombre_cetap}" ya existe en la territorial ${dtCode} con el codigo ${existingSameName.codigo}.`,
+          `Se omitió el CETAP ${code} porque el nombre "${cetap.nombre_cetap}" ya existe en la territorial ${dtCode} con el código ${existingSameName.codigo}.`,
         );
         continue;
       }
 
+      if (normalizedName) {
+        seenCetapNamesInExcel.add(compositeKey);
+      }
       filteredCetaps.push(cetap);
     }
 

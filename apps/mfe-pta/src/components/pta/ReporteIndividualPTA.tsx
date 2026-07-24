@@ -101,7 +101,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
 
   if (!pta) return null;
 
-  const horasProgramables = pta.horas_a_programar || 800;
+  const horasProgramables = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
   const asignaturas = pta.asignaturas || [];
   const investigacion = pta.investigacion_proyecto || pta.investigacion || null;
   const invActividades = pta.investigacion_actividades || [];
@@ -419,8 +419,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                       <td style={{ padding: '6px 8px', fontWeight: 600, color: '#111827' }}>
                         {asig.asignatura_nombre || asig.nombre || asig.asignatura || 'N/A'}
                       </td>
-                      <td style={{ padding: '6px 8px', color: '#6B7280' }}>
-                        {asig.programa_nombre || asig.programa || asig.programa_id || 'N/A'}
+                      <td
+                        title={asig.programa_nombre_completo || asig.programa_nombre || asig.programa || undefined}
+                        style={{
+                          padding: '6px 8px', color: '#6B7280', whiteSpace: 'normal',
+                          overflowWrap: 'anywhere', lineHeight: 1.25,
+                        }}
+                      >
+                        {asig.programa_nombre_completo || asig.programa_nombre || asig.programa || asig.programa_id || 'N/A'}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>{asig.creditos || 3}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>

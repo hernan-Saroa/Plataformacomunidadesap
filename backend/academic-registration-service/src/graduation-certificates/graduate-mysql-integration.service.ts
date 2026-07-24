@@ -78,7 +78,7 @@ export class GraduateMysqlIntegrationService {
 
     if (!/^[A-Za-z0-9_$]+$/.test(normalized)) {
       throw new ServiceUnavailableException(
-        `El valor configurado para MYSQL_GRAD_${fieldName.toUpperCase()} no es valido.`,
+        `El valor configurado para MYSQL_GRAD_${fieldName.toUpperCase()} no es válido.`,
       );
     }
 
@@ -153,7 +153,7 @@ export class GraduateMysqlIntegrationService {
 
     if (!config.enabled) {
       throw new ServiceUnavailableException(
-        'La integracion MySQL graduados esta deshabilitada. Activa MYSQL_GRAD_ENABLED=true para usarla.',
+        'La integración MySQL de graduados está deshabilitada. Active MYSQL_GRAD_ENABLED=true para utilizarla.',
       );
     }
 
@@ -204,7 +204,7 @@ export class GraduateMysqlIntegrationService {
         await connection.end();
       } catch (error) {
         this.logger.warn(
-          `No se pudo cerrar la conexion MySQL graduados: ${this.extractErrorMessage(error)}`,
+          `No se pudo cerrar la conexión MySQL de graduados: ${this.extractErrorMessage(error)}`,
         );
       }
     }
@@ -225,7 +225,7 @@ export class GraduateMysqlIntegrationService {
   private sanitizeDocument(document: string): string {
     const cleaned = String(document || '').trim();
     if (!cleaned) {
-      throw new BadRequestException('Debes enviar un numero de documento.');
+      throw new BadRequestException('Debe enviar un número de documento.');
     }
     return cleaned;
   }

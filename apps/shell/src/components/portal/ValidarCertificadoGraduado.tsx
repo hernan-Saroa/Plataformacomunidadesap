@@ -83,7 +83,7 @@ export default function ValidarCertificadoGraduado({
 
   const validarPorCodigo = async (codigo: string) => {
     if (!codigo || codigo.length < 10) {
-      toast.error('Por favor ingresa un codigo de verificacion valido');
+      toast.error('Ingrese un código de verificación válido.');
       return;
     }
 
@@ -96,13 +96,13 @@ export default function ValidarCertificadoGraduado({
       setMostrarResultado(true);
 
       if (response.valido) {
-        toast.success('Certificado valido', { duration: 3000 });
+        toast.success('Certificado válido', { duration: 3000 });
       } else {
-        toast.error('Certificado no valido', { duration: 3000 });
+        toast.error('Certificado no válido', { duration: 3000 });
       }
     } catch (error: any) {
       console.error('Error al validar:', error);
-      toast.error('Error al validar el certificado. Intenta nuevamente.');
+      toast.error('Error al validar el certificado. Intente nuevamente.');
       setResultado({
         valido: false,
         mensaje: 'Error al conectar con el servidor',
@@ -120,7 +120,7 @@ export default function ValidarCertificadoGraduado({
 
   const handleValidarPorNumero = async () => {
     if (!numeroCertificado) {
-      toast.error('Por favor ingresa el número de certificado');
+      toast.error('Ingrese el número de certificado.');
       return;
     }
 
@@ -140,7 +140,7 @@ export default function ValidarCertificadoGraduado({
 
     } catch (error: any) {
       console.error('Error al validar:', error);
-      toast.error('Error al validar el certificado. Intenta nuevamente.');
+      toast.error('Error al validar el certificado. Intente nuevamente.');
       setResultado({
         valido: false,
         mensaje: 'Error al conectar con el servidor',
@@ -387,7 +387,7 @@ export default function ValidarCertificadoGraduado({
             Validación de Certificados de Graduados
           </h1>
           <p className="text-sm sm:text-base text-gray-600">
-            Verifica la autenticidad de un certificado de graduado de la ESAP
+            Verifique la autenticidad de un certificado de graduado de la ESAP
           </p>
         </div>
 
@@ -404,7 +404,7 @@ export default function ValidarCertificadoGraduado({
               >
                 {/* Selector de modo */}
                 <div>
-                  <Label className="mb-3 block">Selecciona el método de validación</Label>
+                  <Label className="mb-3 block">Seleccione el método de validación</Label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       onClick={() => setModoValidacion('codigo')}
@@ -445,7 +445,7 @@ export default function ValidarCertificadoGraduado({
                       className="mt-1"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Ingresa el código que aparece en el certificado o escanea el código QR
+                      Ingrese el código que aparece en el certificado o escanee el código QR
                     </p>
                   </div>
                 )}
@@ -462,7 +462,7 @@ export default function ValidarCertificadoGraduado({
                       className="mt-1"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Ingresa el número que aparece en el certificado
+                      Ingrese el número que aparece en el certificado
                     </p>
                   </div>
                 )}
@@ -516,7 +516,7 @@ export default function ValidarCertificadoGraduado({
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6">
             <h3 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5" />
-              ¿Qué puedes validar?
+              ¿Qué puede validar?
             </h3>
             <ul className="text-sm text-blue-800 space-y-2">
               <li className="flex items-start gap-2">

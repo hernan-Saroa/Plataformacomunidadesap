@@ -1,39 +1,50 @@
 /**
- * Portal API - Funciones de acceso a datos del Portal Transaccional
- * Conecta con el backend de Supabase para estadísticas y perfil del usuario
+ * API del portal consumida por el MFE de PTA.
+ *
+ * Todas las solicitudes pasan por el cliente compartido para respetar la URL del
+ * ambiente (`/services` en QA/DEV/produccion y el gateway local en desarrollo),
+ * las cookies HttpOnly y el refresh de sesion.
  */
 
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { apiClient } from '../../../../shell/src/services/api';
 
-const BASE_URL = `http://localhost:3000/api`;
+const PORTAL_PREFIX = '/auth/api/v1/portal';
 
-async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${publicAnonKey}`,
-      ...options.headers,
-    },
-  });
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => 'Unknown error');
-    throw new Error(`API Error ${res.status}: ${errorText}`);
+type PortalResult<T> = {
+  success: boolean;
+  data: T;
+};
+
+// apiClient desenvuelve la propiedad `data` de las respuestas del backend. El
+// formulario PTA historicamente consume `{ success, data }`, por lo que mantenemos
+// aqui ese contrato sin duplicar URLs ni autenticacion.
+function asPortalResult<T>(raw: T): PortalResult<T> {
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    'success' in raw &&
+    'data' in raw
+  ) {
+    return raw as PortalResult<T>;
   }
-  return res.json();
+  return { success: true, data: raw };
 }
 
 // ============================================================================
-// ESTADÍSTICAS DEL PORTAL
+// ESTADISTICAS DEL PORTAL
 // ============================================================================
 
 export async function getEstadisticasPortal(personaId: string) {
-  // Try fetching. If fails locally due to unimplemented endpoint, return silent mockup to avoid polluting the app errors.
   try {
-    return await fetchApi(`/portal/estadisticas/${personaId}`);
-  } catch (err) {
+    const data = await apiClient.get<any>(
+      `${PORTAL_PREFIX}/estadisticas/${encodeURIComponent(personaId)}`,
+      undefined,
+      { skipErrorToast: true },
+    );
+    return asPortalResult(data);
+  } catch {
     return {
-      success: true, // Falsified status to keep the visual widgets alive without error states
+      success: true,
       data: {
         procesosActivos: 0,
         pendientes: 0,
@@ -47,7 +58,7 @@ export async function getEstadisticasPortal(personaId: string) {
         incrementoMes: 'Sin cambios',
         certificadosLaborales: 0,
         documentosCarpeta: 0,
-      }
+      },
     };
   }
 }
@@ -57,7 +68,15 @@ export async function getEstadisticasPortal(personaId: string) {
 // ============================================================================
 
 export async function inicializarDatosPortal(personaId: string) {
-  return { ok: true };
+  try {
+    return await apiClient.post<any>(
+      `${PORTAL_PREFIX}/inicializar`,
+      { personaId },
+      { skipErrorToast: true },
+    );
+  } catch {
+    return { ok: true };
+  }
 }
 
 // ============================================================================
@@ -66,29 +85,23 @@ export async function inicializarDatosPortal(personaId: string) {
 
 export async function getPerfilPortal(personaId: string) {
   try {
-    const res = await fetch(`${BASE_URL}/portal/perfil/${personaId}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${publicAnonKey}`,
-      },
-    });
-    if (!res.ok) {
-      // Profile not found is expected for new users — return null silently
-      return null;
-    }
-    return await res.json();
-  } catch (err) {
-    // Network errors only — log quietly
-    console.debug('[Portal] Perfil no disponible:', personaId);
+    const data = await apiClient.get<any>(
+      `${PORTAL_PREFIX}/perfil/${encodeURIComponent(personaId)}`,
+      undefined,
+      { skipErrorToast: true },
+    );
+    return asPortalResult(data);
+  } catch {
     return null;
   }
 }
 
 export async function updatePerfilPortal(personaId: string, data: any) {
-  return fetchApi(`/portal/perfil/${personaId}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
+  const updated = await apiClient.put<any>(
+    `${PORTAL_PREFIX}/perfil/${encodeURIComponent(personaId)}`,
+    data,
+  );
+  return asPortalResult(updated);
 }
 
 // ============================================================================
@@ -96,10 +109,11 @@ export async function updatePerfilPortal(personaId: string, data: any) {
 // ============================================================================
 
 export async function updatePrivacidad(personaId: string, config: any) {
-  return fetchApi(`/portal/privacidad/${personaId}`, {
-    method: 'PUT',
-    body: JSON.stringify(config),
-  });
+  const updated = await apiClient.put<any>(
+    `${PORTAL_PREFIX}/privacidad/${encodeURIComponent(personaId)}`,
+    config,
+  );
+  return asPortalResult(updated);
 }
 
 // ============================================================================
@@ -111,18 +125,8 @@ export async function uploadFotoPerfil(file: File, personaId: string) {
   formData.append('file', file);
   formData.append('personaId', personaId);
 
-  const res = await fetch(`${BASE_URL}/portal/foto-perfil`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${publicAnonKey}`,
-    },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    throw new Error(`Error uploading photo: ${res.status}`);
-  }
-  return res.json();
+  const uploaded = await apiClient.upload<any>(`${PORTAL_PREFIX}/foto-perfil`, formData);
+  return asPortalResult(uploaded);
 }
 
 // ============================================================================
@@ -131,7 +135,12 @@ export async function uploadFotoPerfil(file: File, personaId: string) {
 
 export async function getCertificadosLaboralesPortal(personaId: string) {
   try {
-    return await fetchApi(`/portal/certificados-laborales/${personaId}`);
+    const data = await apiClient.get<any>(
+      `${PORTAL_PREFIX}/certificados-laborales/${encodeURIComponent(personaId)}`,
+      undefined,
+      { skipErrorToast: true },
+    );
+    return asPortalResult(data);
   } catch (err) {
     console.warn('Error obteniendo certificados laborales del portal:', err);
     return { success: true, data: [] };
@@ -145,8 +154,9 @@ export async function solicitarCertificadoLaboral(params: {
   destinatario?: string;
   observaciones?: string;
 }) {
-  return fetchApi('/portal/certificados-laborales/solicitar', {
-    method: 'POST',
-    body: JSON.stringify(params),
-  });
+  const data = await apiClient.post<any>(
+    `${PORTAL_PREFIX}/certificados-laborales/solicitar`,
+    params,
+  );
+  return asPortalResult(data);
 }

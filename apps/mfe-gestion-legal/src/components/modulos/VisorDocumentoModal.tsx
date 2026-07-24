@@ -34,6 +34,8 @@ interface VisorDocumentoModalProps {
   docId?: string;
   allowSigning?: boolean;
   onSignComplete?: (docId: string, signedData: FirmaData, pdfFile?: File) => Promise<void> | void;
+  /** Renderiza el PDF con el mismo motor pdf.js (canvas, página por página) usado en el modo de ubicación de firma, en lugar del visor nativo del navegador (iframe). Solo para visualización, sin lógica de firma. */
+  forcePdfJsViewer?: boolean;
 }
 
 // Deterministic offline SVG QR Code generator to avoid external dependencies
@@ -437,7 +439,8 @@ export function VisorDocumentoModal({
   descripcion,
   docId,
   allowSigning = false,
-  onSignComplete
+  onSignComplete,
+  forcePdfJsViewer = false
 }: VisorDocumentoModalProps) {
   const [showFirmaModal, setShowFirmaModal] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -568,12 +571,15 @@ export function VisorDocumentoModal({
 
       const nombreParaExtension = (numero || archivo || '').toLowerCase();
       const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i);
+      const isPdfFile = nombreParaExtension.includes('.pdf') || archivo.toLowerCase().includes('pdf');
 
-      setIsLoading(!isMock && isViewable !== null);
+      // El visor pdf.js (PdfjsPagesViewer) gestiona su propio indicador de carga interno,
+      // por lo que el spinner general del modal no debe superponerse y ocultarlo.
+      setIsLoading(!isMock && isViewable !== null && !(forcePdfJsViewer && isPdfFile));
       setHasError(false);
       setDocxHtml(null);
     }
-  }, [archivo, numero]);
+  }, [archivo, numero, forcePdfJsViewer]);
 
   // Cargar y convertir DOCX a HTML cuando aplica
   useEffect(() => {
@@ -1203,10 +1209,10 @@ export function VisorDocumentoModal({
               }
 
               if (isPdf) {
-                if (modoUbicacionActive) {
+                if (modoUbicacionActive || forcePdfJsViewer) {
                   return (
-                    <PdfjsPagesViewer 
-                      url={archivo} 
+                    <PdfjsPagesViewer
+                      url={archivo}
                       modoUbicacionActive={modoUbicacionActive}
                       onPageClick={(coords: any) => setPlacementCoords(coords)}
                       signatureCoords={placementCoords}

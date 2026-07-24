@@ -187,7 +187,7 @@ export function getTipoVinculacionLabel(code: any, fallback?: any): string | nul
 
 function getHorasAsignablesFromDedicacion(dedicacion: any, explicit?: any): number {
   const exp = parseMaybeInt(explicit);
-  if (exp && exp > 0) return exp;
+  if (exp !== null && exp >= 0) return exp;
   const n = normalizeDedicacionCode(dedicacion);
   if (n === 'MT') return 400;
   if (n === 'HC') return 0;
@@ -936,6 +936,7 @@ export class BancoDocentesService implements OnModuleInit {
           d."horasAsignables" AS horas_programables,
           d."regimenNormativo" AS regimen_normativo,
           d."periodoCarga" AS periodo_carga,
+          d."updatedAt" AS docente_updated_at,
           d.observaciones AS observaciones,
           d."idRund" AS id_rund,
           d.estado AS estado,
@@ -1052,16 +1053,22 @@ export class BancoDocentesService implements OnModuleInit {
     return { data: rows.map(buildAuthBancoDocenteResponse), total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  async getById(id: string) {
+  async getById(id: string, periodoCarga?: string) {
     const rows = await this.dataSource.query(
       `
       ${this.authDocentesBaseSql()}
       SELECT *
       FROM auth_docentes
       WHERE usuario_id::text = $1 OR persona_id::text = $1 OR docente_id::text = $1
+      ORDER BY
+        CASE WHEN $2::text IS NOT NULL AND periodo_carga = $2::text THEN 0 ELSE 1 END,
+        CASE WHEN id_rund IS NOT NULL THEN 0 ELSE 1 END,
+        CASE WHEN periodo_carga IS NOT NULL THEN 0 ELSE 1 END,
+        docente_updated_at DESC NULLS LAST,
+        updated_at DESC NULLS LAST
       LIMIT 1
       `,
-      [id],
+      [id, periodoCarga || null],
     );
     if (!rows[0]) throw new NotFoundException(`Docente ${id} no encontrado en auth.personas`);
     return buildAuthBancoDocenteResponse(rows[0]);

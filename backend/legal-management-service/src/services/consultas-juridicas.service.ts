@@ -98,13 +98,13 @@ export class ConsultasJuridicasService implements OnModuleInit {
         return consulta;
     }
 
-    async create(data: Partial<ConsultaJuridica>, file?: {
+    async create(data: Partial<ConsultaJuridica>, files?: Array<{
         filename: string;
         path: string;
         mimetype: string;
         size: number;
         originalname: string;
-    }): Promise<ConsultaJuridica> {
+    }>): Promise<ConsultaJuridica> {
         // Generate radicado number - Find max radicado for current year robustly
         const year = new Date().getFullYear();
         const prefix = `CJ-${year}-`;
@@ -141,8 +141,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
 
         const savedConsulta = await this.consultaRepository.save(nuevaConsulta);
 
-        // Si hay archivo adjunto, crearlo en DocumentosConsulta
-        if (file) {
+        // Si hay archivos adjuntos, crear un registro por cada uno en DocumentosConsulta
+        for (const file of files || []) {
             try {
                 await this.documentosService.create({
                     consultaId: savedConsulta.id,

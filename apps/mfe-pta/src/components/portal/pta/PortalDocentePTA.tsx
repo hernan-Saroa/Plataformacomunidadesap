@@ -843,7 +843,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                     const isEnRevisionDocente = ['REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado);
                     const needsAction = ['NOTIFICADO_DOCENTE', 'Devuelto', 'EN_CONCERTACION'].includes(pta.estado) || isEnRevisionDocente;
                     const horasTotal = pta.horas_totales ?? pta.total_horas_programadas ?? 0;
-                    const horasMax = pta.horas_asignables ?? pta.horas_a_programar ?? 800;
+                    const horasMax = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
                     const horasPct = horasMax > 0 ? Math.min(Math.round((horasTotal / horasMax) * 100), 100) : 0;
 
                     return (
@@ -1048,8 +1048,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                   {[
                     { label: 'Horas programadas', value: selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0 },
-                    { label: 'Horas disponibles', value: selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800 },
-                    { label: '% Carga', value: `${(selectedPta.horas_asignables ?? selectedPta.horas_a_programar) ? Math.round(((selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0) / (selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800)) * 100) : 0}%` },
+                    { label: 'Horas disponibles', value: selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0 },
+                    { label: '% Carga', value: `${(selectedPta.horas_asignables ?? selectedPta.horas_a_programar) ? Math.round(((selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0) / (selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0)) * 100) : 0}%` },
                     { label: 'Asignaturas', value: selectedPta.asignaturas?.length || selectedPta.num_asignaturas || 0 },
                   ].map(m => (
                     <div key={m.label} className="p-2.5 sm:p-3 rounded-xl bg-gray-50/80 border border-gray-100/60">
@@ -1069,7 +1069,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 // horas_complementarias ya incluye la sección académico-administrativa.
                 const horasComp = selectedPta.horas_complementarias ?? 0;
                 const horasTotal = selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp);
-                const horasMax = selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800;
+                const horasMax = selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0;
                 const comps = [
                   { label: 'Docencia', value: horasDoc, color: PTA_COLORS.DOCENCIA, icon: BookOpen },
                   { label: 'Investigación', value: horasInv, color: PTA_COLORS.INVESTIGACION, icon: FlaskConical },

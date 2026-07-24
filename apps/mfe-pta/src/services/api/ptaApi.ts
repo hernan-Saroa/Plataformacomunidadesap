@@ -132,9 +132,9 @@ export async function savePTA(data: any) {
 
     const normalized = normalizeResult<any>(raw, null);
     return { ...asObject(raw), success: normalized.success, data: normalized.data };
-  } catch (error) {
+  } catch (error: any) {
     console.error('[mfe-pta][savePTA] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: error?.message || 'Error al guardar el PTA' };
   }
 }
 
@@ -471,9 +471,9 @@ export async function updatePTAStatus(
       success: normalized.success,
       data: normalized.data,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('[mfe-pta][updatePTAStatus] Error:', error);
-    return { success: false };
+    return { success: false, data: null, message: error?.message || 'Error al cambiar el estado del PTA' };
   }
 }
 
@@ -1371,10 +1371,19 @@ export async function enviarAprobacionPTA(ptaId: string, data?: { enviado_por?: 
   try {
     const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/enviar-aprobacion`, data || {});
     const normalized = normalizeResult<any>(raw, null);
-    return { success: normalized.success, data: normalized.data };
-  } catch (error) {
+    const flattened =
+      normalized.data && typeof normalized.data === 'object' && !Array.isArray(normalized.data)
+        ? normalized.data
+        : {};
+    return {
+      ...asObject(raw),
+      ...flattened,
+      success: normalized.success,
+      data: normalized.data,
+    };
+  } catch (error: any) {
     console.error('[mfe-pta][enviarAprobacionPTA] Error:', error);
-    return { success: false };
+    return { success: false, data: null, message: error?.message || 'Error al enviar el PTA' };
   }
 }
 
@@ -1748,9 +1757,12 @@ export async function getBancoDocenteStats(filters?: { territorial?: string; ded
   }
 }
 
-export async function getBancoDocenteById(id: string) {
+export async function getBancoDocenteById(id: string, periodoCarga?: string) {
   try {
-    const raw = await apiClient.get<any>(`${BD_BASE}/${id}`);
+    const raw = await apiClient.get<any>(
+      `${BD_BASE}/${id}`,
+      periodoCarga ? { periodoCarga } : undefined,
+    );
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.warn('[mfe-pta][getBancoDocenteById] No encontrado o error al buscar docente:', error instanceof Error ? error.message : error);
