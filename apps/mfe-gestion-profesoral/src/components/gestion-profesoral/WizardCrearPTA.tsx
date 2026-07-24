@@ -294,15 +294,6 @@ export function WizardCrearPTA({
       });
     }
 
-    // RN-007: Al menos 1 función misional (Investigación O Extensión)
-    if (investigacion === 0 && extension === 0) {
-      errors.push({
-        field: 'misional',
-        message: 'Debes tener al menos actividades de Investigación O Extensión',
-        severity: 'warning'
-      });
-    }
-
     return errors;
   };
 
