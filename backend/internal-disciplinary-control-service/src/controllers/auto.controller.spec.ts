@@ -177,16 +177,17 @@ describe('AutoController', () => {
 
       mockAutoService.approve.mockResolvedValue(mockAuto);
 
-      const result = await controller.approve('auto-123', reviewAutoDto, 'user-123');
+      const req: any = { user: { userId: 'user-123', name: 'Jefe De Prueba' } };
+      const result = await controller.approve('auto-123', reviewAutoDto, 'user-123', req);
 
-      expect(mockAutoService.approve).toHaveBeenCalledWith('auto-123', reviewAutoDto, 'user-123');
+      expect(mockAutoService.approve).toHaveBeenCalledWith('auto-123', reviewAutoDto, 'user-123', 'Jefe De Prueba');
       expect(result).toEqual(mockAuto);
     });
 
     it('should throw error when aprobadoPorId is missing', async () => {
       const reviewAutoDto: ReviewAutoDto = { action: 'APPROVE' };
 
-      await expect(controller.approve('auto-123', reviewAutoDto, '')).rejects.toThrow('aprobadoPorId es requerido');
+      await expect(controller.approve('auto-123', reviewAutoDto, '', undefined as any)).rejects.toThrow('aprobadoPorId es requerido');
     });
   });
 

@@ -63,7 +63,8 @@ import {
   Users,
   UserPlus,
   X,
-  XCircle
+  XCircle,
+  ExternalLink
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -3814,7 +3815,8 @@ function TabDocumentacion({
 
           {/* Contenido */}
           <div
-            className="relative w-[90vw] h-[88vh] max-w-5xl bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            className="relative bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col z-10 border border-gray-200"
+            style={{ width: '92vw', maxWidth: '1320px', height: '95vh', maxHeight: '95vh' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

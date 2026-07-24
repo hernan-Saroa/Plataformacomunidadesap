@@ -16,7 +16,7 @@ import {
   ChevronLeft, ChevronRight, Save, Send, AlertCircle, Plus, Trash2, Calculator,
   BookOpen, FlaskConical, Globe, Briefcase, CheckCircle2, Info,
   ChevronDown, RotateCcw, AlertTriangle, Search, Shield, Clock, MessageSquare,
-  Paperclip, FileUp, FileCheck2, X as XIcon
+  Paperclip, FileUp, FileCheck2, Eye, X as XIcon
 } from 'lucide-react';
 import {
   savePTA, getPTAById, getCatalogoProgramas, getCatalogoAsignaturas,
@@ -36,7 +36,9 @@ import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
 import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import type { PTAComponentKey } from '../../pta/shared/ptaComponentPermissions';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
 
@@ -212,6 +214,46 @@ interface ComplementariaItem {
   filas_cantidades?: Record<string, number>;
   fecha_inicio: string;
   fecha_fin: string;
+}
+
+function ResolutionFilePreviewButton({
+  file,
+  storedUrl,
+  label = 'archivo adjunto',
+}: {
+  file?: File | null;
+  storedUrl?: string | null;
+  label?: string;
+}) {
+  const previewUrl = useMemo(() => {
+    if (file) return URL.createObjectURL(file);
+    const rawUrl = String(storedUrl || '').trim();
+    if (!rawUrl) return '';
+    if (/^(blob:|data:)/i.test(rawUrl)) return rawUrl;
+    return resolvePtaFileUrl(rawUrl);
+  }, [file, storedUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (file && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    };
+  }, [file, previewUrl]);
+
+  if (!previewUrl) return null;
+
+  return (
+    <a
+      href={previewUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={event => event.stopPropagation()}
+      title={`Visualizar ${label}`}
+      aria-label={`Visualizar ${label}`}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-green-200 bg-white text-green-700 shadow-sm transition-colors hover:border-green-300 hover:bg-green-100 hover:text-green-800"
+    >
+      <Eye className="h-3.5 w-3.5" />
+    </a>
+  );
 }
 
 type HourConstraintMode = 'fixed' | 'range' | 'upto' | 'exclusive' | 'percentage';
@@ -1223,6 +1265,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [actAcadAdmin, setActAcadAdmin] = useState<any[]>([]);
   const [rolesInvestigacion, setRolesInvestigacion] = useState<any[]>([]);
   const [ptaRules, setPtaRules] = useState<any>(null);
+  const permiteCoexistenciaInvestigacion =
+    ptaRules?.inv_permitir_proyecto_actividades_simultaneos === true;
   const [periodosDisponibles, setPeriodosDisponibles] = useState<any[]>([]);
   // Fechas del período académico activo — usadas como min/max en los date-pickers
   const [periodoFechaMin, setPeriodoFechaMin] = useState<string | undefined>(undefined);
@@ -1322,6 +1366,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Devolución por componente: el revisor devolvió uno o más componentes al docente.
   // (No aplica en modo admin.)
   const esDevolucionComponentes = !isAdminEdit && devueltoComponentKeys.length > 0;
+  const esEdicionParcialAutorizada = useMemo(
+    () => componentesDevueltos.some(c => String(c?.scope || '') === 'solicitud_edicion'),
+    [componentesDevueltos],
+  );
   const respuestasDocentePorComponente = useMemo(() => {
     const entries = devueltoComponentKeys
       .map(key => [key, (respuestasDevolucionDocente[key] || '').trim()] as const)
@@ -1329,8 +1377,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return Object.fromEntries(entries);
   }, [devueltoComponentKeys, respuestasDevolucionDocente]);
   const respuestasDevolucionCompletas = useMemo(
-    () => devueltoComponentKeys.every(key => Boolean((respuestasDevolucionDocente[key] || '').trim())),
-    [devueltoComponentKeys, respuestasDevolucionDocente],
+    () => esEdicionParcialAutorizada
+      || devueltoComponentKeys.every(key => Boolean((respuestasDevolucionDocente[key] || '').trim())),
+    [devueltoComponentKeys, respuestasDevolucionDocente, esEdicionParcialAutorizada],
   );
   const resumenRespuestasDevolucion = useMemo(
     () => devueltoComponentKeys
@@ -1505,6 +1554,46 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         setExtSubseccion(sorted[0]?.key || 'capacitacion');
       }
     });
+  }, []);
+
+  // Mantener la configuración global vigente incluso si este formulario ya está
+  // abierto. Cubre cambios hechos en la misma pestaña, en otra pestaña y por
+  // otro usuario (al recuperar el foco se consulta nuevamente al backend).
+  useEffect(() => {
+    let active = true;
+
+    const refreshRules = async () => {
+      try {
+        const response = await getConfiguracionPTAGlobal();
+        if (active && response.success && response.data) setPtaRules(response.data);
+      } catch {
+        // La configuración ya cargada sigue siendo una copia segura mientras
+        // el backend vuelve a estar disponible.
+      }
+    };
+    const handleRulesUpdated = (event: Event) => {
+      const rules = (event as CustomEvent<any>).detail;
+      if (rules && typeof rules === 'object') setPtaRules(rules);
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== 'pta_rules_v2' || !event.newValue) return;
+      try {
+        const rules = JSON.parse(event.newValue);
+        if (rules && typeof rules === 'object') setPtaRules(rules);
+      } catch {
+        // Ignorar una escritura local incompleta; el siguiente focus refresca.
+      }
+    };
+
+    window.addEventListener('pta-rules-updated', handleRulesUpdated);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', refreshRules);
+    return () => {
+      active = false;
+      window.removeEventListener('pta-rules-updated', handleRulesUpdated);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', refreshRules);
+    };
   }, []);
 
   // Load territoriales based on period
@@ -1828,7 +1917,23 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         setEstado(d.estado || 'Borrador');
         setOriginalEstado(d.estado || '');
         setAsignaturas(d.asignaturas || []);
-        setInvProyecto(d.investigacion_proyecto || invProyecto);
+        const proyectoInvestigacion = d.investigacion_proyecto;
+        if (proyectoInvestigacion) {
+          setInvProyecto({
+            nombre: '', codigo: '', grupo: '', linea: '', rol: '',
+            horas_solicitadas: 0,
+            fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
+            resolucion_archivo: null, resolucion_archivo_url: '',
+            ...proyectoInvestigacion,
+          });
+        } else {
+          setInvProyecto({
+            nombre: '', codigo: '', grupo: '', linea: '', rol: '',
+            horas_solicitadas: 0,
+            fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
+            resolucion_archivo: null, resolucion_archivo_url: '',
+          });
+        }
         setInvActividades(d.investigacion_actividades || []);
         // Normalizar actividades de extensión al cargar: aplicar multiplicador x2 si no se hizo
         // (puede pasar con PTAs guardados antes del fix o en race condition)
@@ -2174,20 +2279,39 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return base;
   }, [rolesParaDropdown, horasAProgramar, ptaRules]);
 
-  const hInvestigacion = useMemo(() => {
+  const hInvestigacionProyecto = useMemo(() => {
     // Con rol, la tabla normativa define un tope «hasta», no una cantidad fija.
     // Se conserva la cantidad elegida y se acota al máximo dinámico de la bolsa RUND.
-    if (invProyecto.rol) {
-      const requested = Number(invProyecto.horas_solicitadas);
-      if (!Number.isFinite(requested) || requested <= 0) return 0;
-      const hasRoleLimit = Object.prototype.hasOwnProperty.call(rolesHorasMap, invProyecto.rol);
-      return hasRoleLimit
-        ? Math.min(requested, Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0))
-        : requested;
+    if (!invProyecto.rol) return 0;
+    const requested = Number(invProyecto.horas_solicitadas);
+    if (!Number.isFinite(requested) || requested <= 0) return 0;
+    const hasRoleLimit = Object.prototype.hasOwnProperty.call(rolesHorasMap, invProyecto.rol);
+    return hasRoleLimit
+      ? Math.min(requested, Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0))
+      : requested;
+  }, [invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
+
+  const tieneProyectoYActividadesInvestigacion = Boolean(invProyecto.rol)
+    && hInvestigacionProyecto > 0
+    && hInvestigacion_raw > 0;
+  const conflictoCoexistenciaInvestigacion =
+    !permiteCoexistenciaInvestigacion && tieneProyectoYActividadesInvestigacion;
+
+  const hInvestigacion = useMemo(() => {
+    if (permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion) {
+      // Si la regla acaba de desactivarse, conservar temporalmente la suma hace
+      // visible toda la carga previa hasta que el usuario elija qué conservar.
+      return hInvestigacionProyecto + hInvestigacion_raw;
     }
-    // Sin rol, las horas provienen de las actividades individuales.
-    return hInvestigacion_raw;
-  }, [hInvestigacion_raw, invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
+    // Comportamiento histórico: el proyecto con rol reemplaza las actividades.
+    return invProyecto.rol ? hInvestigacionProyecto : hInvestigacion_raw;
+  }, [
+    permiteCoexistenciaInvestigacion,
+    conflictoCoexistenciaInvestigacion,
+    hInvestigacionProyecto,
+    hInvestigacion_raw,
+    invProyecto.rol,
+  ]);
 
   // La dedicación exclusiva consume el 100% de la bolsa. Docencia se conserva
   // durante la edición para no perder datos sin confirmación, pero cualquier suma
@@ -2217,10 +2341,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
     setInvProyecto(previous => {
       const alreadyEmpty = !previous.nombre && !previous.codigo && !previous.grupo && !previous.linea &&
-        !previous.rol && !previous.horas_solicitadas && !previous.resolucion_nombre &&
+        !previous.rol && !previous.horas_solicitadas &&
+        !previous.resolucion_nombre &&
         !previous.resolucion_archivo && !previous.resolucion_archivo_url;
       return alreadyEmpty ? previous : {
-        nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0,
+        nombre: '', codigo: '', grupo: '', linea: '', rol: '',
+        horas_solicitadas: 0,
         fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null,
         resolucion_archivo_url: '',
       };
@@ -2253,7 +2379,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const totalHoras = docProrr + invProrr + extProrr + compProrr + acadProrr;
   const horasRestantes = horasAProgramar - totalHoras;
-  const porcentaje = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
+  const porcentaje = getPtaCompletionPercentage(totalHoras, horasAProgramar);
   // Horas por encima del límite programable (0 si no hay exceso).
   const horasExceso = Math.max(0, totalHoras - horasAProgramar);
 
@@ -2267,12 +2393,20 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const getCompCatalog = (secKey: string): any[] =>
     secKey === COMP_SECCION_AADM ? actAcadAdmin : actComplementarias;
 
-  // Bloqueo: la resolución y/o adjunto son obligatorios pero no se han llenado
+  // La configuración documental conserva su comportamiento original: cuando
+  // exige adjunto, el proyecto no es válido para envío sin la resolución. Las
+  // horas respaldadas se derivan siempre de las horas actuales del proyecto.
   const invResolucionPendiente = useMemo(() => {
     const faltaResolucion = ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim();
-    const faltaAdjunto = ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url;
-    return !!(faltaResolucion || faltaAdjunto);
-  }, [ptaRules, invProyecto.resolucion_nombre, invProyecto.resolucion_archivo, invProyecto.resolucion_archivo_url]);
+    const tieneArchivoResolucion = Boolean(invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url);
+    const faltaArchivo = Boolean(ptaRules?.inv_adjunto_obligatorio && !tieneArchivoResolucion);
+    return !!(faltaResolucion || faltaArchivo);
+  }, [
+    ptaRules,
+    invProyecto.resolucion_nombre,
+    invProyecto.resolucion_archivo,
+    invProyecto.resolucion_archivo_url,
+  ]);
 
   // Límites excedidos
   // Límite Extensión: mínimo entre absoluto (ej. 200h) y porcentaje (ej. 25%)
@@ -2289,8 +2423,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     400,
   );
   const maxInvEffectiveLimit = invProyecto.rol
+    && (!permiteCoexistenciaInvestigacion || hInvestigacion_raw <= 0)
     ? Math.min(maxInvLimit, Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0))
     : maxInvLimit;
+  const maxHorasProyectoDisponible = invProyecto.rol
+    ? Math.min(
+        Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0),
+        permiteCoexistenciaInvestigacion
+          ? Math.max(0, maxInvLimit - hInvestigacion_raw)
+          : Number.POSITIVE_INFINITY,
+      )
+    : 0;
   // Límite Complementarias: mínimo entre el tope absoluto (ej. 200h) y el porcentaje
   // configurado sobre el PTA total (ej. 25% de 800h = 200h). Espejo del flujo de
   // Extensión/AADM: la config expresa el límite como % de las horas del PTA.
@@ -2366,6 +2509,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     // causa principal cuando coincide con otro tope individual.
     addViolation('global', 'Total PTA', totalHoras, horasAProgramar);
 
+    if (conflictoCoexistenciaInvestigacion) {
+      violations.push({
+        section: 'investigacion',
+        label: 'Modalidad de Investigacion',
+        hours: hInvestigacion,
+        limit: maxInvLimit,
+        message: 'La configuracion vigente permite conservar el proyecto o las actividades de Investigacion, pero no ambos. Elige una opcion antes de continuar.',
+      });
+    }
+
     if (!actividadTotalidad) {
       // Docencia no necesita una segunda regla porcentual: si por sí sola supera
       // la bolsa, la validación global anterior ya la bloquea.
@@ -2385,9 +2538,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     totalHoras,
     horasAProgramar,
     maxInvEffectiveLimit,
+    maxInvLimit,
     maxExtLimit,
     maxCompLimit,
     maxAadmLimit,
+    conflictoCoexistenciaInvestigacion,
   ]);
   const hasBlockingHourLimits = componentLimitViolations.length > 0;
 
@@ -2495,7 +2650,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const invWarnings = useMemo(() => {
     const warns: string[] = [];
     const rolProyecto = (invProyecto.rol || '').toUpperCase();
-    const horasProyecto = hInvestigacion;
+    const horasProyecto = hInvestigacionProyecto;
 
     if (rolProyecto) {
       const maxRol = Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0);
@@ -2516,13 +2671,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim()) {
         warns.push('La resolución que respalda la investigación es obligatoria. Ingresa el N° o nombre de la resolución.');
       }
-      if (ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url) {
-        warns.push('El archivo adjunto de la resolución es obligatorio. Carga el documento de soporte (PDF, DOC).');
+      const tieneArchivoResolucion = Boolean(invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url);
+      if (ptaRules?.inv_adjunto_obligatorio && !tieneArchivoResolucion) {
+        warns.push('El archivo adjunto de la resolución es obligatorio para enviar el proyecto de investigación.');
       }
     }
 
     return warns;
-  }, [invProyecto, invActividades, horasAProgramar, tipoVinculacion, ptaRules, hInvestigacion, hExtension, rolesHorasMap]);
+  }, [invProyecto, invActividades, horasAProgramar, tipoVinculacion, ptaRules, hInvestigacionProyecto, hExtension, rolesHorasMap]);
 
   // ═══ HANDLERS: DOCENCIA ═══════════════════════════════════════════
 
@@ -2638,10 +2794,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (hasFullPTAActivity) return;
     // Validar tope general (con o sin rol) antes de dejar agregar fila
     if (invProyecto.rol) {
-      const maxRol = rolesHorasMap[invProyecto.rol] || Infinity;
-      const rolLimit = maxRol;
-      if (hInvestigacion >= rolLimit) {
-        toast.error(`Máximo alcanzado: el rol "${invProyecto.rol}" permite ${rolLimit}h y ya tienes ${hInvestigacion}h asignadas.`);
+      const limite = permiteCoexistenciaInvestigacion
+        ? maxInvLimit
+        : (rolesHorasMap[invProyecto.rol] || Infinity);
+      if (hInvestigacion >= limite) {
+        const alcance = permiteCoexistenciaInvestigacion ? 'el componente de investigación' : `el rol "${invProyecto.rol}"`;
+        const accion = permiteCoexistenciaInvestigacion
+          ? ' Reduce primero las horas del proyecto o de otra actividad para liberar cupo.'
+          : '';
+        toast.error(`Máximo alcanzado: ${alcance} permite ${limite}h y ya tienes ${hInvestigacion}h asignadas.${accion}`);
         return;
       }
     } else {
@@ -2666,14 +2827,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       
       let maxLimit = 0;
       if (invProyecto.rol) {
-          const maxRol = rolesHorasMap[invProyecto.rol] || Infinity;
-          maxLimit = maxRol;
+          maxLimit = permiteCoexistenciaInvestigacion
+            ? maxInvLimit
+            : (rolesHorasMap[invProyecto.rol] || Infinity);
       } else {
           maxLimit = horasAProgramar * 0.25;
       }
 
       const otherSum = prev.filter(x => x.id !== id).reduce((sum, x) => sum + (x.horas_total || 0), 0);
-      const remainingLimit = Math.max(0, maxLimit - otherSum);
+      const projectHours = (permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion)
+        ? hInvestigacionProyecto
+        : 0;
+      const remainingLimit = Math.max(0, maxLimit - otherSum - projectHours);
       const isProyecto = !!(invProyecto.nombre && invProyecto.nombre.trim());
 
       if (field === 'actividad_id') {
@@ -3226,7 +3391,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           'Horas de investigación',
         );
       }
-      if (hInvestigacion > 0 && invProyecto.nombre) {
+      if (hInvestigacionProyecto > 0 && invProyecto.nombre) {
         if (ptaRules?.inv_resolucion_obligatoria) {
           requireText(
             invProyecto.resolucion_nombre,
@@ -3235,14 +3400,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             'N° / nombre de la resolución',
           );
         }
-        if (ptaRules?.inv_adjunto_obligatorio
-          && !invProyecto.resolucion_archivo
-          && !invProyecto.resolucion_archivo_url) {
+        const tieneArchivoResolucion = Boolean(
+          invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url,
+        );
+        if (ptaRules?.inv_adjunto_obligatorio && !tieneArchivoResolucion) {
           addIssue(
             ptaFieldKey.investigacionProyecto('resolucion_archivo'),
             'investigacion',
             'Archivo adjunto de la resolución',
-            'El archivo adjunto de la resolución es obligatorio.',
+            'El archivo adjunto de la resolución es obligatorio para enviar el proyecto de investigación.',
           );
         }
       }
@@ -3356,6 +3522,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     hasFullPTAActivity,
     hasDocencia,
     hInvestigacion,
+    hInvestigacionProyecto,
     horasAProgramar,
     invActividades,
     invProyecto,
@@ -3387,7 +3554,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     [requiredFieldIssues],
   );
   const projectFieldsRequired = Boolean(invProyecto.rol);
-  const projectResolutionRequired = hInvestigacion > 0 && Boolean(invProyecto.nombre);
+  const projectResolutionRequired = hInvestigacionProyecto > 0 && Boolean(invProyecto.nombre);
 
   const revealRequiredFieldIssue = useCallback((issue: PTARequiredFieldIssue) => {
     setActiveSection(issue.section);
@@ -3467,14 +3634,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return false;
     }
 
-    if (hInvestigacion <= 0 && hExtension <= 0) {
-      toast.error('El PTA debe incluir al menos una función misional adicional: Investigación o Extensión.');
-      setActiveSection('investigacion');
-      return false;
-    }
-
     return true;
-  }, [hasFullPTAActivity, hComplementarias, hInvestigacion, hExtension]);
+  }, [hasFullPTAActivity, hComplementarias]);
 
   const finishSaving = (result: boolean) => {
     setSaving(false);
@@ -3628,7 +3789,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       semanas_prorrateo: semanasProrrateo,
       horas_a_programar: horasAProgramar,
       // Admin: preserva estado actual. Docente: si envía usa estado actual, si guarda → Borrador
-      estado: isAdminEdit ? estado : (enviar ? estado : 'Borrador'),
+      // Un auto-guardado durante una corrección parcial debe conservar el estado de
+      // revisión. Convertirlo a Borrador perdería la reapertura selectiva y podría
+      // enviar nuevamente componentes que ya estaban aprobados.
+      estado: isAdminEdit
+        ? estado
+        : enviar
+          ? estado
+          : (isEnRevisionDocente || originalEstado === 'Devuelto')
+            ? (originalEstado || estado)
+            : 'Borrador',
       _adminEdit: isAdminEdit || undefined,
       _allowed_component_keys: isAdminComponentRestricted ? adminAllowedComponentKeys : undefined,
       _comentario_concertacion: isAdminEdit ? (comentarioConcertacion.trim() || undefined) : undefined,
@@ -3639,7 +3809,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
       investigacion_proyecto: (invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
-        ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
+        ? {
+            ...invProyecto,
+            horas_solicitadas: invProyecto.rol ? hInvestigacionProyecto : 0,
+            // Compatibilidad con PTAs guardados durante la transición. No es un
+            // dato editable: siempre replica las horas completas del proyecto.
+            resolucion_horas_justificar: invProyecto.rol ? hInvestigacionProyecto : 0,
+          }
         : null,  // null explícito → backend borra los datos anteriores
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
       extension_actividades: extActividades.filter(e => (e.actividad_id && e.actividad_id !== '') || (e.seccion && (e.horas > 0 || (e.horas_ejecutadas ?? 0) > 0))),
@@ -3874,14 +4050,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     if (totalHoras < horasAProgramar) {
-      const porcentajeReal = horasAProgramar > 0 ? Math.round((totalHoras / horasAProgramar) * 100) : 0;
-      setConfirmIncompletoData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje: porcentajeReal });
+      setConfirmIncompletoData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
       setShowConfirmIncompleto(true);
       return false; // Detener el flujo — el modal se encargará de continuar si el usuario acepta
     }
 
     return true;
-  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
+  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -4051,7 +4226,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           <h1 className="text-2xl md:text-3xl font-black text-gray-900 m-0 leading-tight tracking-tight">
             {ptaId
               ? esDevolucionComponentes
-                ? (componentesDevueltos.length === 1 ? 'Corregir componente devuelto' : 'Corregir componentes devueltos')
+                ? esEdicionParcialAutorizada
+                  ? (componentesDevueltos.length === 1 ? 'Editar componente autorizado' : 'Editar componentes autorizados')
+                  : (componentesDevueltos.length === 1 ? 'Corregir componente devuelto' : 'Corregir componentes devueltos')
                 : isEnRevisionDocente
                   ? 'Revisar PTA — Aprobado con modificaciones'
                   : originalEstado === 'Devuelto'
@@ -4068,8 +4245,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             </p>
           )}
           {esDevolucionComponentes && (
-            <p className="mt-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-bold text-amber-700">
-              Edición limitada a: {restrictedComponentKeys.map(componentLabel).join(', ')}
+            <p className={`mt-2 inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-bold ${
+              esEdicionParcialAutorizada
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-amber-200 bg-amber-50 text-amber-700'
+            }`}>
+              {esEdicionParcialAutorizada ? 'Edición autorizada de: ' : 'Edición limitada a: '}
+              {restrictedComponentKeys.map(componentLabel).join(', ')}
             </p>
           )}
         </div>
@@ -4219,7 +4401,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     fontSize: '22px', fontWeight: 800,
                     color: confirmIncompletoData.porcentaje >= 80 ? '#D97706' : '#DC2626'
                   }}>
-                    {confirmIncompletoData.porcentaje}%
+                    {formatPtaPercentage(confirmIncompletoData.porcentaje)}%
                   </span>
                   <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '4px', fontWeight: 600 }}>
                     completado
@@ -4286,37 +4468,41 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           Muestra QUÉ componente se devolvió y el comentario del revisor; el docente solo
           puede editar esos componentes y re-enviar. */}
       {esDevolucionComponentes && (
-        <div className="flex flex-col gap-3 p-4 rounded-xl mb-5 bg-amber-50 border border-amber-200">
+        <div className={`flex flex-col gap-3 p-4 rounded-xl mb-5 border ${esEdicionParcialAutorizada ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
           <div className="flex items-start gap-3">
-            <RotateCcw className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <RotateCcw className={`w-5 h-5 shrink-0 mt-0.5 ${esEdicionParcialAutorizada ? 'text-blue-600' : 'text-amber-600'}`} />
             <div className="flex-1">
-              <div className="font-semibold text-amber-900 text-sm">
-                {componentesDevueltos.length === 1
-                  ? 'Un componente de tu PTA fue devuelto para corrección'
-                  : `${componentesDevueltos.length} componentes de tu PTA fueron devueltos para corrección`}
+              <div className={`font-semibold text-sm ${esEdicionParcialAutorizada ? 'text-blue-900' : 'text-amber-900'}`}>
+                {esEdicionParcialAutorizada
+                  ? 'Tu solicitud de edición parcial fue aprobada'
+                  : componentesDevueltos.length === 1
+                    ? 'Un componente de tu PTA fue devuelto para corrección'
+                    : `${componentesDevueltos.length} componentes de tu PTA fueron devueltos para corrección`}
               </div>
-              <p className="text-sm text-amber-800 mt-1 leading-relaxed">
-                Corrige únicamente {componentesDevueltos.length === 1 ? 'el componente indicado' : 'los componentes indicados'} y usa
-                "Corregir y re-enviar". Los demás componentes quedan bloqueados.
+              <p className={`text-sm mt-1 leading-relaxed ${esEdicionParcialAutorizada ? 'text-blue-800' : 'text-amber-800'}`}>
+                {esEdicionParcialAutorizada
+                  ? 'Modifica únicamente los componentes autorizados y envíalos a reaprobación. Los demás componentes conservan su aprobación.'
+                  : <>Corrige únicamente {componentesDevueltos.length === 1 ? 'el componente indicado' : 'los componentes indicados'} y usa
+                    "Corregir y re-enviar". Los demás componentes quedan bloqueados.</>}
               </p>
               <div className="mt-3 flex flex-col gap-2">
                 {componentesDevueltos.map((c: any) => (
-                  <div key={c.componente} className="rounded-lg bg-white border border-amber-200 p-3">
+                  <div key={c.componente} className={`rounded-lg bg-white border p-3 ${esEdicionParcialAutorizada ? 'border-blue-200' : 'border-amber-200'}`}>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-xs font-bold">
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${esEdicionParcialAutorizada ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
                         {componentLabel(String(c.componente))}
                       </span>
                       {(c.aprobadorNombre || c.aprobador_nombre) && (
-                        <span className="text-[11px] text-amber-700">
-                          Devuelto por {c.aprobadorNombre || c.aprobador_nombre}
+                        <span className={`text-[11px] ${esEdicionParcialAutorizada ? 'text-blue-700' : 'text-amber-700'}`}>
+                          {esEdicionParcialAutorizada ? 'Autorizado por ' : 'Devuelto por '}{c.aprobadorNombre || c.aprobador_nombre}
                         </span>
                       )}
                     </div>
-                    <div className="mt-1.5 text-sm text-amber-900">
-                      <span className="font-semibold">Comentario del revisor: </span>
+                    <div className={`mt-1.5 text-sm ${esEdicionParcialAutorizada ? 'text-blue-900' : 'text-amber-900'}`}>
+                      <span className="font-semibold">{esEdicionParcialAutorizada ? 'Alcance autorizado: ' : 'Comentario del revisor: '}</span>
                       {c.comentarios?.trim() ? c.comentarios : 'Sin comentario.'}
                     </div>
-                    <div className="mt-3">
+                    {!esEdicionParcialAutorizada && <div className="mt-3">
                       <label className="block text-xs font-bold text-amber-900 mb-1">
                         Tu respuesta para este componente (obligatoria)
                       </label>
@@ -4330,7 +4516,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         placeholder="Explica que corregiste en este componente, o por que lo reenvias asi..."
                         className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm placeholder:text-slate-400 hover:border-amber-400 hover:shadow-md focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 transition-all duration-200 resize-y"
                       />
-                    </div>
+                    </div>}
                   </div>
                 ))}
               </div>
@@ -4347,9 +4533,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               }}
               disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
-              style={{ background: '#D97706' }}
+              style={{ background: esEdicionParcialAutorizada ? '#003DA5' : '#D97706' }}
             >
-              <RotateCcw className="w-4 h-4" /> Corregir y re-enviar al revisor
+              <RotateCcw className="w-4 h-4" /> {esEdicionParcialAutorizada ? 'Enviar cambios a reaprobación' : 'Corregir y re-enviar al revisor'}
             </button>
           </div>
         </div>
@@ -4491,7 +4677,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         ? 'bg-green-50/50 text-green-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.15)]'
                         : 'bg-blue-50/50 text-blue-700 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.15)]'
                 }`}>
-                  {totalHoras}h / {horasAProgramar}h ({porcentaje}%)
+                  {totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)
                 </div>
               </div>
             </div>
@@ -4511,7 +4697,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   <span className="font-bold">
                     {hasBlockingHourLimits ? componentLimitViolations[0]?.message : totalHoras >= horasAProgramar ? 'Topes por componente cumplidos. Listo para enviar.' : `PTA Incompleto: Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
                   </span>
-                  <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
+                  <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)</span>
                 </div>
               </div>
 
@@ -5072,17 +5258,52 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                   </div>
                 )}
 
+                {conflictoCoexistenciaInvestigacion && (
+                  <div className="mx-4 md:mx-6 mt-3 flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 rounded-xl bg-red-50 border border-red-300">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-red-800">La configuración actual ya no permite proyecto y actividades simultáneamente</p>
+                        <p className="text-[11px] text-red-700 mt-0.5">
+                          Este PTA conserva ambos registros para no perder información. Elige cuál mantener antes de guardar o concertar el componente de Investigación.
+                        </p>
+                      </div>
+                    </div>
+                    {isEditable && (
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setInvActividades([])}
+                          className="px-3 py-1.5 rounded-lg bg-purple-700 text-white text-xs font-bold hover:bg-purple-800 transition-colors"
+                        >
+                          Conservar proyecto
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' })}
+                          className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
+                        >
+                          Conservar actividades
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="p-4 md:p-6 space-y-6">
                   {/* Proyecto principal */}
                   <div className="border border-purple-200 rounded-2xl p-4 md:p-5 bg-purple-50/40 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-purple-300/20 rounded-full blur-3xl -mr-10 -mt-10" />
                     <div className="flex items-center justify-between mb-4 relative z-10">
                       <h4 className="text-sm font-extrabold text-purple-900">Proyecto de Investigación</h4>
-                      {isEditable && (invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol || invActividades.length > 0) && (
+                      {isEditable && (
+                        invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol ||
+                        (!permiteCoexistenciaInvestigacion && invActividades.length > 0)
+                      ) && (
                         <button
                           onClick={() => {
                             setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
-                            setInvActividades([]);
+                            if (!permiteCoexistenciaInvestigacion && !conflictoCoexistenciaInvestigacion) setInvActividades([]);
                           }}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-red-200 bg-red-50 text-red-600 text-xs font-semibold cursor-pointer hover:bg-red-100 transition-colors">
                           <Trash2 className="w-3 h-3" /> Limpiar
@@ -5115,8 +5336,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       <FormSelect label="Rol en el Proyecto" value={invProyecto.rol} disabled={!isEditable}
                         onChange={v => {
                           const maxH = rolesHorasMap[v] || 0;
-                          setInvProyecto(p => ({ ...p, rol: v, horas_solicitadas: maxH }));
-                          if (v) setInvActividades([]);
+                          const availableForProject = permiteCoexistenciaInvestigacion
+                            ? Math.max(0, maxInvLimit - hInvestigacion_raw)
+                            : maxH;
+                          setInvProyecto(p => {
+                            const horasProyecto = Math.min(maxH, availableForProject);
+                            return {
+                              ...p,
+                              rol: v,
+                              horas_solicitadas: horasProyecto,
+                            };
+                          });
+                          if (v && !permiteCoexistenciaInvestigacion) setInvActividades([]);
                         }}
                         options={rolesParaDropdown.map((r: any) => ({ value: r.nombre, label: `${r.nombre} (hasta ${rolesHorasMap[r.nombre] || 0}h)` }))}
                         placeholder="Seleccionar rol..." />
@@ -5125,63 +5356,81 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div>
                           <FormInput
-                            label={`Horas de Investigación (Hasta ${rolesHorasMap[invProyecto.rol] || 0}h)`}
+                            label={`Horas de Investigación (Hasta ${maxHorasProyectoDisponible}h)`}
                             type="number"
                             min={1}
-                            max={rolesHorasMap[invProyecto.rol] || 0}
+                            max={maxHorasProyectoDisponible}
                             step={1}
-                            value={hInvestigacion}
+                            value={hInvestigacionProyecto}
                             disabled={!isEditable}
                             required
                             fieldKey={ptaFieldKey.investigacionProyecto('horas_solicitadas')}
                             error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('horas_solicitadas')]}
                             onChange={v => {
-                              const maxRol = Math.max(0, Number(rolesHorasMap[invProyecto.rol]) || 0);
                               const parsed = Number(v);
                               const horas = Number.isFinite(parsed)
-                                ? Math.min(maxRol, Math.max(0, Math.round(parsed)))
+                                ? Math.min(maxHorasProyectoDisponible, Math.max(0, Math.round(parsed)))
                                 : 0;
                               setInvProyecto(p => ({ ...p, horas_solicitadas: horas }));
                             }}
                           />
                           <p className="text-[9px] text-purple-600 mt-1 ml-1">
-                            Valor graduable entre 1h y {rolesHorasMap[invProyecto.rol] || 0}h, según la bolsa RUND.
+                            Valor graduable entre 1h y {maxHorasProyectoDisponible}h, según el rol, las actividades y la bolsa RUND.
                           </p>
                         </div>
-                        <ReadonlyField label="% del PTA" value={`${horasAProgramar > 0 ? ((hInvestigacion / horasAProgramar) * 100).toFixed(1) : 0}%`} />
+                        <ReadonlyField label="% del PTA" value={`${horasAProgramar > 0 ? ((hInvestigacionProyecto / horasAProgramar) * 100).toFixed(1) : 0}%`} />
                       </div>
                     )}
 
                     {/* ── Resolución y soporte documental ── */}
                     <div className="mt-3 pt-3 border-t border-purple-200/60">
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <FileCheck2 className="w-3.5 h-3.5 text-purple-600" />
-                        <span className="text-xs font-bold text-purple-800 uppercase tracking-wide">Resolución que respalda la investigación</span>
+                      <div className="mb-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2">
+                          <FileCheck2 className="h-3.5 w-3.5 shrink-0 text-purple-600" />
+                          <span className="text-xs font-bold uppercase tracking-wide text-purple-800">
+                            Resolución que respalda la investigación
+                          </span>
+                        </div>
+                        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[9px] font-semibold text-blue-700">
+                          <Info className="h-3 w-3 shrink-0" />
+                          Justificará automáticamente {hInvestigacionProyecto}h en Seguimiento
+                        </span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <FormInput
-                          label="N° / Nombre de la Resolución"
-                          value={invProyecto.resolucion_nombre}
-                          disabled={!isEditable}
-                          required={Boolean(ptaRules?.inv_resolucion_obligatoria && projectResolutionRequired)}
-                          fieldKey={ptaFieldKey.investigacionProyecto('resolucion_nombre')}
-                          error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('resolucion_nombre')]}
-                          placeholder="Ej: Resolución No. 0234 de 2026"
-                          onChange={v => setInvProyecto(p => ({ ...p, resolucion_nombre: v }))}
-                        />
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start">
+                        <div className="min-w-0">
+                          <FormInput
+                            label="N° / Nombre de la Resolución"
+                            value={invProyecto.resolucion_nombre}
+                            disabled={!isEditable}
+                            required={Boolean(ptaRules?.inv_resolucion_obligatoria && projectResolutionRequired)}
+                            fieldKey={ptaFieldKey.investigacionProyecto('resolucion_nombre')}
+                            error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('resolucion_nombre')]}
+                            placeholder="Ej: Resolución No. 0234 de 2026"
+                            onChange={v => setInvProyecto(p => ({ ...p, resolucion_nombre: v }))}
+                          />
+                        </div>
                         <div
                           id={getPTAFieldDomId(ptaFieldKey.investigacionProyecto('resolucion_archivo'))}
                           data-pta-field={ptaFieldKey.investigacionProyecto('resolucion_archivo')}
+                          className="min-w-0"
                         >
                           <label className="block text-[10px] font-semibold text-gray-500 tracking-wider uppercase mb-1 ml-1">
-                            Archivo adjunto (Resolución){ptaRules?.inv_adjunto_obligatorio && projectResolutionRequired && <span className="text-red-500 ml-0.5">*</span>}
+                            Archivo adjunto (Resolución)
+                            {ptaRules?.inv_adjunto_obligatorio && projectResolutionRequired && (
+                              <span className="ml-0.5 text-red-500" aria-hidden="true">*</span>
+                            )}
                           </label>
                           {invProyecto.resolucion_archivo || invProyecto.resolucion_archivo_url ? (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 border border-green-200 min-h-[36px]">
+                            <div className="flex min-h-[36px] min-w-0 items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2">
                               <Paperclip className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                              <span className="text-xs text-green-800 font-medium truncate flex-1">
+                              <span className="min-w-0 flex-1 truncate text-xs font-medium text-green-800">
                                 {invProyecto.resolucion_archivo?.name || invProyecto.resolucion_archivo_url || 'Archivo cargado'}
                               </span>
+                              <ResolutionFilePreviewButton
+                                file={invProyecto.resolucion_archivo}
+                                storedUrl={invProyecto.resolucion_archivo_url}
+                                label={invProyecto.resolucion_archivo?.name || invProyecto.resolucion_nombre || 'resolución del proyecto'}
+                              />
                               {isEditable && (
                                 <button
                                   type="button"
@@ -5214,7 +5463,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={e => {
                                     const file = e.target.files?.[0];
                                     if (file) {
-                                      setInvProyecto(p => ({ ...p, resolucion_archivo: file, resolucion_archivo_url: '' }));
+                                      setInvProyecto(p => ({
+                                        ...p,
+                                        resolucion_archivo: file,
+                                        resolucion_archivo_url: '',
+                                      }));
                                     }
                                     e.target.value = '';
                                   }}
@@ -5231,55 +5484,76 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     </div>
                   </div>
 
-                  {/* Actividades — modo depende de si se llenó el proyecto y si tiene rol */}
-                  <div>
-                    {invProyecto.rol ? (
-                      /* ── MODO ROL: horas graduables hasta el tope, sin actividades ── */
-                      invResolucionPendiente ? (
+                  {/* El proyecto conserva su propio tope por rol. Si la regla de
+                      coexistencia está activa, las actividades se muestran debajo
+                      y ambas fuentes de horas se suman dentro del tope global. */}
+                  <div className="space-y-4">
+                    {invProyecto.rol && (
+                      invResolucionPendiente && (
                         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300">
                           <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
                           <div>
-                            <p className="text-xs font-bold text-amber-800">Completa la documentación de resolución para habilitar las horas</p>
+                            <p className="text-xs font-bold text-amber-800">Revisa los datos de la resolución</p>
                             <p className="text-[10px] text-amber-600 mt-0.5">
                               {ptaRules?.inv_resolucion_obligatoria && !invProyecto.resolucion_nombre?.trim() ? 'Falta: N° / Nombre de la Resolución. ' : ''}
-                              {ptaRules?.inv_adjunto_obligatorio && !invProyecto.resolucion_archivo && !invProyecto.resolucion_archivo_url ? 'Falta: Archivo adjunto.' : ''}
+                              {ptaRules?.inv_adjunto_obligatorio
+                                && !invProyecto.resolucion_archivo
+                                && !invProyecto.resolucion_archivo_url
+                                ? 'Falta: Archivo adjunto de la Resolución. '
+                                : ''}
                             </p>
                           </div>
                         </div>
-                      ) : (
-                      <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-purple-100 border border-purple-300">
-                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">Horas asignadas (hasta {rolesHorasMap[invProyecto.rol] || 0}h)</span>
-                        <span className="text-lg font-black text-purple-800">{hInvestigacion}h</span>
-                      </div>
                       )
-                    ) : (
-                      <>
-                    <div className="flex justify-between items-center mb-2">
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-800">Actividades de Investigación</h4>
-                        {tieneProyecto && (
-                          <p className="text-xs text-purple-600 mt-0.5">
-                            Escribe el nombre de cada actividad y sus horas
+                    )}
+                    {(!invProyecto.rol || permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion) && (
+                      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
+                          <FlaskConical className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Actividades de Investigación</h4>
+                          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+                            {tieneProyecto
+                              ? `Las horas registradas aquí se suman a las del proyecto y respetan el tope de ${Math.round(maxInvLimit)}h.`
+                              : 'Selecciona una actividad del catálogo y registra las horas correspondientes.'}
                           </p>
-                        )}
+                        </div>
                       </div>
-                      {isEditable && (() => {
+                      {isEditable && (!invProyecto.rol || permiteCoexistenciaInvestigacion) && (() => {
                         const cupoInv = Math.max(0, maxInvLimit - hInvestigacion);
-                        if (cupoInv <= 0) return null;
+                        if (cupoInv <= 0 && !permiteCoexistenciaInvestigacion) return null;
                         return (
                           <button onClick={handleAddInvActividad}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-none text-white text-xs font-semibold cursor-pointer"
+                            className="flex shrink-0 items-center justify-center gap-1 rounded-lg border-none px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
                             style={{ background: PTA_COLORS.INVESTIGACION }}>
-                            <Plus className="w-3 h-3" /> Agregar
+                            <Plus className="w-3 h-3" /> Agregar actividad
                           </button>
                         );
                       })()}
                     </div>
 
+                    {invProyecto.rol && (permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion) && (
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-100 px-4 py-2.5 text-[11px] text-slate-500">
+                        <span>
+                          Proyecto <strong className="ml-1 text-slate-800">{hInvestigacionProyecto}h</strong>
+                        </span>
+                        <span>
+                          Actividades <strong className="ml-1 text-slate-800">{hInvestigacion_raw}h</strong>
+                        </span>
+                        <span className="sm:ml-auto">
+                          Cupo disponible <strong className="ml-1 text-orange-700">{Math.max(0, maxInvLimit - hInvestigacion)}h</strong>
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="p-4">
                     {invActividades.length === 0 ? (
                       <EmptyState icon={FlaskConical}
-                        text="Sin actividades"
-                        sub={tieneProyecto ? "Agrega actividades relacionadas con el proyecto" : "Ej: Semilleros, publicaciones, pares evaluadores"}
+                        text="Sin actividades adicionales"
+                        sub={tieneProyecto ? "Puedes agregar actividades relacionadas con este proyecto" : "Ej: Semilleros, publicaciones, pares evaluadores"}
                         small />
                     ) : tieneProyecto ? (
                       /* ── MODO LIBRE: nombre + horas directo ── */
@@ -5326,7 +5600,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     if (val < 0) val = 0;
                                     const limiteMax = maxInvLimit;
                                     const otherActsSum = invActividades.filter(a => a.id !== act.id).reduce((sum, a) => sum + (a.horas_total || 0), 0);
-                                    const remaining = Math.max(0, limiteMax - otherActsSum);
+                                    const projectHours = (permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion)
+                                      ? hInvestigacionProyecto
+                                      : 0;
+                                    const remaining = Math.max(0, limiteMax - otherActsSum - projectHours);
                                     if (val > remaining) val = remaining;
                                     setInvActividades(prev => prev.map(a =>
                                       a.id === act.id ? { ...a, horas_total: val, horas_unitarias: val, cantidad: 1 } : a
@@ -5385,6 +5662,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                       <span className="text-xs text-green-800 font-medium truncate flex-1">
                                         {act.resolucion_archivo?.name || act.resolucion_archivo_url || 'Archivo cargado'}
                                       </span>
+                                      <ResolutionFilePreviewButton
+                                        file={act.resolucion_archivo}
+                                        storedUrl={act.resolucion_archivo_url}
+                                        label={act.resolucion_archivo?.name || act.resolucion_nombre || `resolución de la actividad ${idx + 1}`}
+                                      />
                                       {isEditable && (
                                         <button type="button"
                                           onClick={() => setInvActividades(prev => prev.map(a =>
@@ -5496,6 +5778,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                       <span className="text-xs text-green-800 font-medium truncate flex-1">
                                         {act.resolucion_archivo?.name || act.resolucion_archivo_url || 'Archivo cargado'}
                                       </span>
+                                      <ResolutionFilePreviewButton
+                                        file={act.resolucion_archivo}
+                                        storedUrl={act.resolucion_archivo_url}
+                                        label={act.resolucion_archivo?.name || act.resolucion_nombre || `resolución de la actividad ${idx + 1}`}
+                                      />
                                       {isEditable && (
                                         <button type="button"
                                           onClick={() => setInvActividades(prev => prev.map(a =>
@@ -5536,19 +5823,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         ))}
                       </div>
                     )}
-
-                    {/* Total de Horas */}
-                    {hInvestigacion > 0 && (
-                      <div className="mt-3 flex items-center justify-between px-4 py-3 rounded-xl bg-purple-50 border border-purple-200">
-                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wide">Total Investigación</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-lg font-black text-purple-800">
-                            {hInvestigacion}h
-                          </span>
-                        </div>
+                    </div>
                       </div>
-                    )}
-                      </>
                     )}
                   </div>
                 </div>
@@ -6392,7 +6668,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <span className="text-[12px] font-bold leading-tight">
                 {hasBlockingHourLimits ? 'Limite excedido' : totalHoras >= horasAProgramar ? 'Horas completas' : `Faltan ${horasAProgramar - totalHoras}h`}
               </span>
-              <span className="text-[10px] font-medium opacity-80">{totalHoras}h / {horasAProgramar}h ({porcentaje}%)</span>
+              <span className="text-[10px] font-medium opacity-80">{totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)</span>
             </div>
           </div>
 
@@ -6435,8 +6711,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 }}
                   disabled={saving || requestingFirmaCode || hasBlockingHourLimits}
                   className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : '#D97706' }}>
-                  <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
+                  style={{ background: (saving || requestingFirmaCode || hasBlockingHourLimits) ? '#9CA3AF' : esEdicionParcialAutorizada ? '#003DA5' : '#D97706' }}>
+                  <RotateCcw className="w-3.5 h-3.5" /> {esEdicionParcialAutorizada ? 'Enviar a reaprobación' : 'Corregir y re-enviar'}
                 </button>
               ) : isEnRevisionDocente ? (
                 <>
