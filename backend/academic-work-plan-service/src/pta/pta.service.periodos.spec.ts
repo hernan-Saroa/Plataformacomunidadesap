@@ -18,6 +18,9 @@ describe('PtaService - cierre reversible por periodo académico', () => {
       ],
     );
     expect(query.mock.calls[0][0]).not.toContain('updatedAt');
+    expect(query.mock.calls[0][0]).toContain('s."tipoSolicitud" = \'edicion_componentes\'');
+    expect(query.mock.calls[0][0]).toContain("s.estado IN ('aprobado', 'en_aprobacion')");
+    expect(query.mock.calls[0][0]).not.toContain("s.estado IN ('pendiente'");
   });
 
   it('restaura el estado guardado o el estado legacy del JSON al reactivar el periodo', async () => {

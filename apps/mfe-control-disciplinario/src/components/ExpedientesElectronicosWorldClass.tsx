@@ -445,6 +445,9 @@ export function ExpedientesElectronicosWorldClass() {
   const [showModalCompartir, setShowModalCompartir] = useState(false);
   const [expedienteParaCompartir, setExpedienteParaCompartir] = useState<ExpedienteElectronico | null>(null);
 
+  // ✅ NUEVO: Expediente destino al subir un documento adicional desde la vista cronológica
+  const [expedienteParaSubir, setExpedienteParaSubir] = useState<ExpedienteElectronico | null>(null);
+
   // ✅ NUEVO: Estado para modal de visor de documentos
   const [showModalVisor, setShowModalVisor] = useState(false);
   const [documentoParaVer, setDocumentoParaVer] = useState<Documento | null>(null);
@@ -835,12 +838,46 @@ export function ExpedientesElectronicosWorldClass() {
     setShowModalSubirDocumento(true);
   };
 
+  // ✅ NUEVO: Abrir el modal de carga apuntando a un expediente concreto (vista cronológica)
+  const handleAbrirSubirDocumento = (expediente: ExpedienteElectronico) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD)) {
+      toast.error('No tiene permisos para subir documentos');
+      return;
+    }
+    setExpedienteParaSubir(expediente);
+    setShowModalSubirDocumento(true);
+  };
+
   // ✅ Handler para confirmar documentos cargados desde el ModalSubirDocumento
-  const handleConfirmarDocumentos = (documentos: any[]) => {
-    console.log('Documentos cargados:', documentos);
-    // Aquí iría la lógica para agregar los documentos al expediente
-    // Por ahora solo mostramos el toast de confirmación
+  const handleConfirmarDocumentos = async (documentos: { archivo: File; etapaAsociada: string; tipoDocumento: string; descripcion: string }[]) => {
+    const expedienteDestino = expedienteParaSubir;
     setShowModalSubirDocumento(false);
+
+    if (!expedienteDestino) {
+      setExpedienteParaSubir(null);
+      return;
+    }
+
+    try {
+      for (const doc of documentos) {
+        await disciplinaryService.uploadDocumento(
+          expedienteDestino.id,
+          doc.archivo,
+          doc.tipoDocumento,
+          doc.descripcion,
+          undefined,
+          doc.etapaAsociada,
+        );
+      }
+      await cargarDatos();
+    } catch (error) {
+      console.error('Error al subir documentos al expediente:', error);
+      toast.error('No se pudieron subir uno o más documentos', {
+        description: `Expediente ${expedienteDestino.radicado}`
+      });
+    } finally {
+      setExpedienteParaSubir(null);
+    }
   };
 
   const handleVerHojaControl = (doc: Documento) => {
@@ -1658,6 +1695,19 @@ export function ExpedientesElectronicosWorldClass() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
+                              {grupo.expediente.estado !== 'radicada' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAbrirSubirDocumento(grupo.expediente);
+                                }}
+                                className="px-2.5 py-1.5 rounded-md border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition text-xs font-bold flex items-center gap-1.5"
+                                title="Subir Documento al Expediente"
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                Subir Documento
+                              </button>
+                              )}
                               {grupo.expediente.estado !== 'radicada' && (
                               <button
                                 onClick={(e) => {
@@ -2202,13 +2252,15 @@ export function ExpedientesElectronicosWorldClass() {
       )}
 
       {/* ✅ Modal Subir Documento/Evidencia - USANDO COMPONENTE COMPLETO */}
-      {showModalSubirDocumento && (
+      {showModalSubirDocumento && expedienteParaSubir && (
         <ModalSubirDocumento
           proceso={{
-            numero: expedientesFiltrados[0]?.radicado || 'CD-2025-XXX',
-            etapaActual: 'Investigación'
+            numero: expedienteParaSubir.radicado
           }}
-          onClose={() => setShowModalSubirDocumento(false)}
+          onClose={() => {
+            setShowModalSubirDocumento(false);
+            setExpedienteParaSubir(null);
+          }}
           onConfirm={handleConfirmarDocumentos}
         />
       )}

@@ -210,6 +210,7 @@ export class AutoService {
     id: string,
     reviewAutoDto: ReviewAutoDto,
     aprobadoPorId: string,
+    aprobadoPorNombre?: string,
   ): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
     const previousSnapshot = {
@@ -265,6 +266,7 @@ export class AutoService {
           auto.etapaDestino as ProcessStage,
           new Date(),
           aprobadoPorId,
+          aprobadoPorNombre,
         );
       }
 

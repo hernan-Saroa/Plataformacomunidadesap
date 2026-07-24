@@ -74,7 +74,12 @@ export function PTAPortalModule({
             )}
 
             <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
-              <PortalDocentePTA onBack={onBack} userPersonId={userPersonId} userName={userName} />
+              <PortalDocentePTA
+                onBack={onBack}
+                userPersonId={userPersonId}
+                userName={userName}
+                userEmail={userEmail}
+              />
             </div>
           </div>
         </>
