@@ -3634,14 +3634,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return false;
     }
 
-    if (hInvestigacion <= 0 && hExtension <= 0) {
-      toast.error('El PTA debe incluir al menos una función misional adicional: Investigación o Extensión.');
-      setActiveSection('investigacion');
-      return false;
-    }
-
     return true;
-  }, [hasFullPTAActivity, hComplementarias, hInvestigacion, hExtension]);
+  }, [hasFullPTAActivity, hComplementarias]);
 
   const finishSaving = (result: boolean) => {
     setSaving(false);

@@ -1818,10 +1818,6 @@ export class PtaService {
       throw new BadRequestException('El PTA debe incluir actividades complementarias a la docencia antes de enviarse.');
     }
 
-    if (horas.sumInv <= 0 && horas.sumExt <= 0) {
-      throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
-    }
-
     const maxAadm = this.getScaledRuleLimit(
       rules,
       horasAProgramar,
