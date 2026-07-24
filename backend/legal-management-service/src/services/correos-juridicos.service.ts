@@ -5,6 +5,10 @@ import { CorreoJuridico } from '../entities/correo-juridico.entity';
 import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
 import { CorreoJuridicoHistorial } from '../entities/correo-juridico-historial.entity';
 import { CorreoTrackingToken } from '../entities/correo-tracking-token.entity';
+import { Documento } from '../entities/documento.entity';
+import { DocumentoConsulta } from '../entities/documento-consulta.entity';
+import { Expediente } from '../entities/expediente.entity';
+import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
 import { SmartClassificationService } from './smart-classification.service';
 import { NotificationClientService } from './notification-client.service';
@@ -56,6 +60,14 @@ export class CorreosJuridicosService {
         private readonly historialRepo: Repository<CorreoJuridicoHistorial>,
         @InjectRepository(CorreoTrackingToken)
         private readonly trackingRepo: Repository<CorreoTrackingToken>,
+        @InjectRepository(Documento)
+        private readonly documentoRepo: Repository<Documento>,
+        @InjectRepository(DocumentoConsulta)
+        private readonly documentoConsultaRepo: Repository<DocumentoConsulta>,
+        @InjectRepository(Expediente)
+        private readonly expedienteRepo: Repository<Expediente>,
+        @InjectRepository(ConsultaJuridica)
+        private readonly consultaRepo: Repository<ConsultaJuridica>,
         private readonly graphService: MicrosoftGraphService,
         private readonly smartService: SmartClassificationService,
         private readonly actuacionService: ActuacionService,
@@ -1299,17 +1311,112 @@ export class CorreosJuridicosService {
      * Link email to an expediente
      * Creates an Actuacion automatically to ensure visibility in legal process
      */
-    async linkToProcess(id: string, expedienteId: string, targetModule?: string): Promise<CorreoJuridico> {
+    /**
+     * Normaliza el módulo destino recibido desde el frontend ('DEFENSA', 'DISCIPLINARIO',
+     * 'ASESORIA', etc.) a los valores canónicos usados para trazabilidad.
+     */
+    private normalizarModuloDestino(targetModule?: string): 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO' | 'ASESORIA_JURIDICA' {
+        const m = (targetModule || '').toUpperCase();
+        if (m.includes('ASESORIA')) return 'ASESORIA_JURIDICA';
+        if (m.includes('DISCIPLINARIO') || m.includes('JUZGAMIENTO')) return 'JUZGAMIENTO_DISCIPLINARIO';
+        return 'DEFENSA_JUDICIAL';
+    }
+
+    /**
+     * Copia los adjuntos de una comunicación a la pestaña Documentos del proceso destino.
+     * Asesoría Jurídica → tabla `documentos_consulta`; Defensa/Juzgamiento → tabla `documentos`.
+     * Reutiliza {@link downloadAttachment} para obtener los bytes (local o Graph con caché).
+     * Devuelve la cantidad de adjuntos copiados. No lanza: los errores por adjunto se registran.
+     */
+    private async copiarAdjuntosADocumentos(
+        correo: CorreoJuridico,
+        procesoId: string,
+        modulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO' | 'ASESORIA_JURIDICA',
+    ): Promise<number> {
+        const fs = require('fs');
+        const path = require('path');
+
+        const adjuntos = await this.adjuntoRepo.find({ where: { correoId: correo.id } });
+        if (!adjuntos.length) return 0;
+
+        const uploadsDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+        let copiados = 0;
+        for (const adj of adjuntos) {
+            try {
+                const data = await this.downloadAttachment(adj.id);
+                const buffer = Buffer.from(data.contentBytes, 'base64');
+
+                const ext = path.extname(adj.nombre || '') || '';
+                const filename = `${randomUUID()}${ext}`;
+                fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+
+                const descripcion = `Documento recibido en la comunicación: ${correo.asunto}`;
+
+                if (modulo === 'ASESORIA_JURIDICA') {
+                    await this.documentoConsultaRepo.save(this.documentoConsultaRepo.create({
+                        consultaId: procesoId,
+                        nombre: adj.nombre,
+                        tipoDocumento: 'otro',
+                        descripcion,
+                        archivoUrl: `files/${filename}`,
+                        archivoNombreOriginal: adj.nombre,
+                        tamanoBytes: adj.tamanio,
+                        mimeType: adj.contentType || data.contentType,
+                        subidoPor: 'Sistema (Derivación de Comunicación)',
+                    }));
+                } else {
+                    await this.documentoRepo.save(this.documentoRepo.create({
+                        expedienteId: procesoId,
+                        nombre: adj.nombre,
+                        tipo: 'OTRO',
+                        categoria: 'documentos',
+                        descripcion,
+                        archivoUrl: `files/${filename}`,
+                        archivoNombreOriginal: adj.nombre,
+                        archivoTamano: adj.tamanio,
+                        archivoMimeType: adj.contentType || data.contentType,
+                        subidoPor: 'Sistema (Derivación de Comunicación)',
+                    }));
+                }
+                copiados++;
+            } catch (err) {
+                this.logger.warn(`No se pudo copiar el adjunto ${adj.id} al proceso ${procesoId}: ${err}`);
+            }
+        }
+        return copiados;
+    }
+
+    /**
+     * ASOCIAR una comunicación a un proceso / expediente / consulta EXISTENTE.
+     * Persiste el módulo destino y, para Asesoría Jurídica, la consulta asociada
+     * (correos_juridicos.consulta_id). Para Defensa/Juzgamiento crea además una
+     * Actuación para dar visibilidad al oficio dentro del expediente.
+     */
+    async linkToProcess(id: string, procesoId: string, targetModule?: string): Promise<CorreoJuridico> {
         const correo = await this.correoRepo.findOne({ where: { id } });
         if (!correo) throw new NotFoundException('Correo no encontrado');
 
-        // 1. Update Email relation
-        correo.expedienteId = expedienteId;
-        // Optional: Save targetModule in email if column exists? Not for now.
-        const savedCorreo = await this.correoRepo.save(correo);
-        await this.registrarAccion(correo.id, 'ASOCIADO_PROCESO', `Asociado al proceso: ${expedienteId}`);
+        const modulo = this.normalizarModuloDestino(targetModule);
+        correo.moduloDestino = modulo;
 
-        // 2. Create Actuacion
+        // Asesoría Jurídica usa una tabla independiente (consultas_juridicas)
+        if (modulo === 'ASESORIA_JURIDICA') {
+            correo.consultaId = procesoId;
+            const savedCorreo = await this.correoRepo.save(correo);
+            await this.registrarAccion(correo.id, 'ASOCIADO_PROCESO', `Asociado a consulta de Asesoría Jurídica: ${procesoId}`);
+            // Sin concepto de "Actuación" en Asesoría: adjuntamos los documentos a la consulta
+            await this.copiarAdjuntosADocumentos(correo, procesoId, modulo).catch(() => 0);
+            return savedCorreo;
+        }
+
+        // Defensa Judicial / Juzgamiento Disciplinario (comparten la tabla expedientes)
+        correo.expedienteId = procesoId;
+        const savedCorreo = await this.correoRepo.save(correo);
+        await this.registrarAccion(correo.id, 'ASOCIADO_PROCESO', `Asociado al proceso: ${procesoId}`);
+
+        // Crear Actuacion (visibilidad del oficio en el expediente)
         try {
             const adjuntos = await this.adjuntoRepo.find({ where: { correoId: id } });
             let documentoUrl: string | undefined = undefined;
@@ -1322,11 +1429,7 @@ export class CorreosJuridicosService {
 
             const descripcionDetallada = `${correo.asunto} - REMITENTE: ${correo.remitenteNombre || correo.remitenteEmail} - RECIBIDO`;
 
-            // If target is DISCIPLINARIO, we might need a specific handling if the system separates tables.
-            // For now, assuming ActuacionService handles 'expedienteId' universally (since UUIDs are unique)
-            // But we will add it to metadata to be sure.
-
-            await this.actuacionService.registrarActuacion(expedienteId, {
+            await this.actuacionService.registrarActuacion(procesoId, {
                 tipoActuacion: 'OFICIO',
                 descripcion: descripcionDetallada,
                 fechaActuacion: correo.fechaRecepcion,
@@ -1338,17 +1441,51 @@ export class CorreosJuridicosService {
                     remitente: correo.remitenteNombre || correo.remitenteEmail,
                     destinatarios: correo.destinatarios,
                     source: 'EMAIL_LINK',
-                    targetModule: targetModule || 'DEFENSA_JUDICIAL'
+                    targetModule: modulo
                 },
                 usuarioResponsable: 'Sistema (Vinculación Automática)'
             });
 
-            this.logger.log(`Actuacion created for linked email ${id} in expediente ${expedienteId} (Module: ${targetModule})`);
+            this.logger.log(`Actuacion created for linked email ${id} in expediente ${procesoId} (Module: ${modulo})`);
 
         } catch (error) {
             this.logger.error(`Error creating atuacion for linked email ${id}`, error);
             // Non-blocking error
         }
+
+        return savedCorreo;
+    }
+
+    /**
+     * DERIVAR una comunicación a un proceso RECIÉN CREADO desde el Centro de
+     * Comunicaciones → Clasificación IA. Además de asociar (módulo destino + relación
+     * recíproca), registra la comunicación de origen en el proceso/consulta creado
+     * (origen_comunicacion_id) y copia los adjuntos recibidos a su pestaña Documentos.
+     */
+    async derivarANuevoProceso(id: string, procesoId: string, targetModule?: string): Promise<CorreoJuridico> {
+        const correo = await this.correoRepo.findOne({ where: { id } });
+        if (!correo) throw new NotFoundException('Correo no encontrado');
+
+        const modulo = this.normalizarModuloDestino(targetModule);
+        correo.moduloDestino = modulo;
+
+        if (modulo === 'ASESORIA_JURIDICA') {
+            correo.consultaId = procesoId;
+            await this.consultaRepo.update({ id: procesoId }, { origenComunicacionId: correo.id });
+        } else {
+            correo.expedienteId = procesoId;
+            await this.expedienteRepo.update({ id: procesoId }, { origenComunicacionId: correo.id });
+        }
+        const savedCorreo = await this.correoRepo.save(correo);
+
+        // Copiar los documentos recibidos a la pestaña Documentos del proceso creado
+        const copiados = await this.copiarAdjuntosADocumentos(correo, procesoId, modulo).catch(() => 0);
+
+        await this.registrarAccion(
+            correo.id,
+            'PROCESO_CREADO',
+            `Proceso creado a partir de esta comunicación (${modulo})${copiados ? ` — ${copiados} documento(s) adjuntado(s)` : ''}`,
+        );
 
         return savedCorreo;
     }

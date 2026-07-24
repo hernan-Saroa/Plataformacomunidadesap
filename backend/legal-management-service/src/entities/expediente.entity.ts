@@ -217,6 +217,11 @@ export class Expediente {
     @Column({ name: 'campos_adicionales', type: 'jsonb', nullable: true })
     camposAdicionales: Record<string, any>;
 
+    // Trazabilidad inversa: comunicación (correo jurídico) que dio origen a este
+    // proceso cuando se crea desde el Centro de Comunicaciones → Clasificación IA.
+    @Column({ name: 'origen_comunicacion_id', type: 'uuid', nullable: true })
+    origenComunicacionId: string;
+
     @Column({ name: 'fecha_limite_etapa', type: 'timestamp', nullable: true })
     fechaLimiteEtapa: Date;
 
