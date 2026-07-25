@@ -1426,6 +1426,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
           onLink={linkProcess}
+          onDerivado={() => { setModalExpedienteOpen(false); loadCorreosFromAPI(); }}
         />
       )}
 

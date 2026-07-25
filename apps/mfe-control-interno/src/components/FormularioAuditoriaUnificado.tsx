@@ -248,6 +248,9 @@ const ROLES_DECRETO_648 = [
   'Evaluación y Seguimiento'
 ];
 
+const fourWeek = 4 * 7;
+const fiveWeek = 5 * 7;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENTE AUXILIAR: FIELD WRAPPER
 // ═══════════════════════════════════════════════════════════════════════════
@@ -300,6 +303,18 @@ const parseLocalDate = (dateString: string) => {
   if (!dateString) return new Date();
   const [year, month, day] = dateString.split('-').map(Number);
   return new Date(year, month - 1, day);
+};
+
+const addDaysToDateString = (dateStr: string, days: number): string => {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+  if (!year || !month || !day) return '';
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 const formatDateLabel = (dateString?: string) => {
@@ -623,45 +638,7 @@ export function FormularioAuditoriaUnificado({
     cargarSeccionales();
   }, [open]);
 
-  // Auto-calcular etapas del cronograma (PROMPT: 4-4-5 semanas)
-  useEffect(() => {
-    if (formData.fechaInicioPlaneacion && !formData.fechaFinPlaneacion && mode === 'create') {
-      const inicioP = parseLocalDate(formData.fechaInicioPlaneacion);
-      
-      // 1. Planeación: 4 semanas (28 días)
-      const finP = new Date(inicioP.getTime());
-      finP.setDate(finP.getDate() + 27);
-      const fechaFinP = finP.toISOString().split('T')[0];
-      
-      // 2. Ejecución: 4 semanas (28 días)
-      const inicioE = new Date(finP.getTime());
-      inicioE.setDate(inicioE.getDate() + 1);
-      const fechaInicioE = inicioE.toISOString().split('T')[0];
-      
-      const finE = new Date(inicioE.getTime());
-      finE.setDate(finE.getDate() + 27);
-      const fechaFinE = finE.toISOString().split('T')[0];
-      
-      // 3. Comunicación: 5 semanas (35 días)
-      const inicioC = new Date(finE.getTime());
-      inicioC.setDate(inicioC.getDate() + 1);
-      const fechaInicioC = inicioC.toISOString().split('T')[0];
-      
-      const finC = new Date(inicioC.getTime());
-      finC.setDate(finC.getDate() + 34);
-      const fechaFinC = finC.toISOString().split('T')[0];
-      
-      setFormData(prev => ({
-        ...prev,
-        fechaFinPlaneacion: fechaFinP,
-        fechaInicioEjecucion: fechaInicioE,
-        fechaFinEjecucion: fechaFinE,
-        fechaInicioComunicacion: fechaInicioC,
-        fechaFinComunicacion: fechaFinC,
-        fechaFin: fechaFinC // Compatibilidad legacy
-      }));
-    }
-  }, [formData.fechaInicioPlaneacion, mode]);
+
 
   useEffect(() => {
     const equipoAuditores = (formData.equipoAuditores || []).filter(Boolean);
@@ -2512,6 +2489,95 @@ function Paso4Programacion({
     return Math.ceil((parseLocalDate(fin).getTime() - parseLocalDate(inicio).getTime()) / (1000 * 60 * 60 * 24));
   };
 
+  // Handlers para auto-calcular etapas del cronograma (13 Semanas: 4-4-5)
+  const handleFechaInicioPlaneacionChange = (val: string) => {
+    if (!val) {
+      onChange('fechaInicioPlaneacion', '');
+      onChange('fechaInicio', '');
+      return;
+    }
+    const fechaFinP = addDaysToDateString(val, fourWeek-1); // 4 Semanas
+    const fechaInicioE = addDaysToDateString(fechaFinP, 1);
+    const fechaFinE = addDaysToDateString(fechaInicioE, fourWeek-1); // 4 Semanas
+    const fechaInicioC = addDaysToDateString(fechaFinE, 1);
+    const fechaFinC = addDaysToDateString(fechaInicioC, fiveWeek-1); // 5 Semanas
+    
+
+    onChange('fechaInicioPlaneacion', val);
+    onChange('fechaInicio', val);
+    onChange('fechaFinPlaneacion', fechaFinP);
+    onChange('fechaInicioEjecucion', fechaInicioE);
+    onChange('fechaFinEjecucion', fechaFinE);
+    onChange('fechaInicioComunicacion', fechaInicioC);
+    onChange('fechaFinComunicacion', fechaFinC);
+    onChange('fechaFin', fechaFinC);
+  };
+
+  const handleFechaFinPlaneacionChange = (val: string) => {
+    if (!val) {
+      onChange('fechaFinPlaneacion', '');
+      return;
+    }
+    const fechaInicioE = val;
+    const fechaFinE = addDaysToDateString(fechaInicioE, fourWeek-1); // 4 Semanas
+    const fechaInicioC = addDaysToDateString(fechaFinE, 1);
+    const fechaFinC = addDaysToDateString(fechaInicioC, fiveWeek-1); // 5 Semanas
+
+    onChange('fechaFinPlaneacion', val);
+    onChange('fechaInicioEjecucion', fechaInicioE);
+    onChange('fechaFinEjecucion', fechaFinE);
+    onChange('fechaInicioComunicacion', fechaInicioC);
+    onChange('fechaFinComunicacion', fechaFinC);
+    onChange('fechaFin', fechaFinC);
+  };
+
+  const handleFechaInicioEjecucionChange = (val: string) => {
+    if (!val) {
+      onChange('fechaInicioEjecucion', '');
+      return;
+    }
+    const fechaFinE = addDaysToDateString(val, fourWeek-1); // 4 Semanas
+    const fechaInicioC = addDaysToDateString(fechaFinE, 1);
+    const fechaFinC = addDaysToDateString(fechaInicioC, fiveWeek-1); // 5 Semanas
+
+    onChange('fechaInicioEjecucion', val);
+    onChange('fechaFinEjecucion', fechaFinE);
+    onChange('fechaInicioComunicacion', fechaInicioC);
+    onChange('fechaFinComunicacion', fechaFinC);
+    onChange('fechaFin', fechaFinC);
+  };
+
+  const handleFechaFinEjecucionChange = (val: string) => {
+    if (!val) {
+      onChange('fechaFinEjecucion', '');
+      return;
+    }
+    const fechaInicioC = val;
+    const fechaFinC = addDaysToDateString(val, fiveWeek-1); // 5 Semanas
+
+    onChange('fechaFinEjecucion', val);
+    onChange('fechaInicioComunicacion', fechaInicioC);
+    onChange('fechaFinComunicacion', fechaFinC);
+    onChange('fechaFin', fechaFinC);
+  };
+
+  const handleFechaInicioComunicacionChange = (val: string) => {
+    if (!val) {
+      onChange('fechaInicioComunicacion', '');
+      return;
+    }
+    const fechaFinC = addDaysToDateString(val, fiveWeek-1); // 5 Semanas
+
+    onChange('fechaInicioComunicacion', val);
+    onChange('fechaFinComunicacion', fechaFinC);
+    onChange('fechaFin', fechaFinC);
+  };
+
+  const handleFechaFinComunicacionChange = (val: string) => {
+    onChange('fechaFinComunicacion', val);
+    onChange('fechaFin', val);
+  };
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -2554,7 +2620,7 @@ function Paso4Programacion({
         <div className="flex items-center gap-3 mb-4">
           <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">1</div>
           <div>
-            <h4 className="font-bold text-gray-900">Etapa de Planeación</h4>
+            <h4 className="font-bold text-gray-900">Etapa de Planeación 1</h4>
             <p className="text-xs text-gray-600">Fase inicial de preparación de la auditoría</p>
           </div>
           {planeacionCompleta && (
@@ -2574,11 +2640,7 @@ function Paso4Programacion({
             <Input
               type="date"
               value={formData.fechaInicioPlaneacion || ''}
-              onChange={(e) => {
-                onChange('fechaInicioPlaneacion', e.target.value);
-                // También actualizar fechaInicio para compatibilidad
-                onChange('fechaInicio', e.target.value);
-              }}
+              onChange={(e) => handleFechaInicioPlaneacionChange(e.target.value)}
               className="border-gray-300"
               min={minDate}
               max={maxDate}
@@ -2593,7 +2655,7 @@ function Paso4Programacion({
             <Input
               type="date"
               value={formData.fechaFinPlaneacion || ''}
-              onChange={(e) => onChange('fechaFinPlaneacion', e.target.value)}
+              onChange={(e) => handleFechaFinPlaneacionChange(e.target.value)}
               className="border-gray-300"
               min={formData.fechaInicioPlaneacion || minDate}
               max={maxDate}
@@ -2639,7 +2701,7 @@ function Paso4Programacion({
             <Input
               type="date"
               value={formData.fechaInicioEjecucion || ''}
-              onChange={(e) => onChange('fechaInicioEjecucion', e.target.value)}
+              onChange={(e) => handleFechaInicioEjecucionChange(e.target.value)}
               className="border-gray-300"
               disabled={!planeacionCompleta}
               min={formData.fechaFinPlaneacion || minDate}
@@ -2655,7 +2717,7 @@ function Paso4Programacion({
             <Input
               type="date"
               value={formData.fechaFinEjecucion || ''}
-              onChange={(e) => onChange('fechaFinEjecucion', e.target.value)}
+              onChange={(e) => handleFechaFinEjecucionChange(e.target.value)}
               className="border-gray-300"
               disabled={!planeacionCompleta}
               min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || minDate}
@@ -2702,7 +2764,7 @@ function Paso4Programacion({
             <Input
               type="date"
               value={formData.fechaInicioComunicacion || ''}
-              onChange={(e) => onChange('fechaInicioComunicacion', e.target.value)}
+              onChange={(e) => handleFechaInicioComunicacionChange(e.target.value)}
               className="border-gray-300"
               disabled={!ejecucionCompleta}
               min={formData.fechaFinEjecucion || minDate}
@@ -2718,11 +2780,7 @@ function Paso4Programacion({
             <Input
               type="date"
               value={formData.fechaFinComunicacion || ''}
-              onChange={(e) => {
-                onChange('fechaFinComunicacion', e.target.value);
-                // También actualizar fechaFin para compatibilidad
-                onChange('fechaFin', e.target.value);
-              }}
+              onChange={(e) => handleFechaFinComunicacionChange(e.target.value)}
               className="border-gray-300"
               disabled={!ejecucionCompleta}
               min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || minDate}
