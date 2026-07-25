@@ -75,6 +75,18 @@ export class CorreoJuridico {
     @Column({ name: 'expediente_id', nullable: true })
     expedienteId: string;
 
+    // Trazabilidad de derivación: consulta de Asesoría Jurídica asociada. Asesoría
+    // usa la tabla `consultas_juridicas` (no comparte `expedientes`), por eso se guarda
+    // en columna propia en lugar de reutilizar `expediente_id`.
+    @Column({ name: 'consulta_id', type: 'uuid', nullable: true })
+    consultaId: string;
+
+    // Módulo destino al que se derivó la comunicación: 'DEFENSA_JUDICIAL',
+    // 'JUZGAMIENTO_DISCIPLINARIO' o 'ASESORIA_JURIDICA'. Persiste la intención de
+    // derivación de forma consultable (antes solo vivía en el metadata de la Actuación).
+    @Column({ name: 'modulo_destino', length: 50, nullable: true })
+    moduloDestino: string;
+
     @Column({ length: 20, default: 'ENTRANTE' })
     direccion: string; // ENTRANTE, ENVIADO
 

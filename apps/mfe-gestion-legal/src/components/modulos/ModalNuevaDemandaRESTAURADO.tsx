@@ -47,6 +47,7 @@ import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { SPLIT_TOP_CONTENT_CLASS, SPLIT_TOP_OVERLAY_CLASS } from './utils/splitScreen';
 import type { ExpedienteJudicial, ParteProcesal } from '../core/types';
 
 // ==================== INTERFACES ====================
@@ -135,6 +136,8 @@ interface ModalNuevaDemandaRESTAURADOProps {
   onSave: (data: NuevaDemandaData, isEdit?: boolean, originalId?: string) => void;
   expedienteEdit?: ExpedienteJudicial;
   tableroSeleccionado?: string;
+  /** Renderiza el wizard anclado a la mitad superior (pantalla dividida al derivar desde Comunicaciones). */
+  splitTop?: boolean;
 }
 
 // ==================== DEMANDADO POR DEFECTO (ESAP) ====================
@@ -328,7 +331,7 @@ function limpiarDocumentosParaCarga(campos: Record<string, any> | undefined | nu
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit, tableroSeleccionado }: ModalNuevaDemandaRESTAURADOProps) {
+export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit, tableroSeleccionado, splitTop = false }: ModalNuevaDemandaRESTAURADOProps) {
   // Obtener datos dinámicos del submódulo de configuración
   const { mediosControlActivos, tiposProcesosActivos: allTiposProcesos, estadosActivos, dependenciasActivas } = useConfiguracionModulo('defensa-judicial');
 
@@ -1855,10 +1858,11 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
-        <DialogContent 
-          hideCloseButton 
-          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden"
+      <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()} modal={splitTop ? false : undefined}>
+        <DialogContent
+          hideCloseButton
+          overlayClassName={splitTop ? SPLIT_TOP_OVERLAY_CLASS : undefined}
+          className={`!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden ${splitTop ? SPLIT_TOP_CONTENT_CLASS + ' !overflow-y-auto' : ''}`}
           style={{ width: '80vw', maxWidth: '80vw' }}
         >
           <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">

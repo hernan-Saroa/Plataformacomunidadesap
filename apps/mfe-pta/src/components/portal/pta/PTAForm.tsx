@@ -323,6 +323,19 @@ function isFullPTAActivity(activity: any): boolean {
   );
 }
 
+function isMisionesProfesoralesActivity(activity: any): boolean {
+  const activityId = String(activity?.id ?? activity?.actividad_id ?? '').trim().toUpperCase();
+  if (activityId === 'AA_06') return true;
+
+  const normalizedName = String(activity?.nombre || '')
+    .trim()
+    .toLocaleLowerCase('es')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[.\s]+$/g, '');
+  return normalizedName === 'misiones profesorales';
+}
+
 function getPercentageHours(activity: any, horasAProgramar: number): number {
   return Math.round(Math.max(0, Number(horasAProgramar) || 0) * getPTAPercentage(activity) / 100);
 }
@@ -2567,11 +2580,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const constraint = getAcademicoAdminConstraint(cat, ptaRules, horasAProgramar);
       const activityHours = isFullPTAActivity(cat) ? horasAProgramar : Number(a.horas || 0);
       const error = getConstraintErrorMessage(cat.nombre || a.nombre || a.actividad_id, activityHours, constraint);
-      const isMisiones = cat?.nombre?.includes('Misiones');
       if (error) warns.push(error);
-      if ((isFullPTAActivity(cat) || isMisiones) && (!a.descripcion || a.descripcion.trim().length < 3)) {
-        warns.push(`La actividad "${cat?.nombre || a.nombre}" requiere obligatoriamente el Número de Acto Administrativo o Comunicación Oficial en el soporte.`);
-      }
     });
     if (!actividadTotalidad && hAcademicoAdmin > maxAadmLimit) {
       warns.push(`Las actividades académico-administrativas (${hAcademicoAdmin}h) superan el tope global permitido (${maxAadmLimit}h).`);
@@ -3479,9 +3488,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       academicoAdmin.forEach((activity, index) => {
         const itemLabel = `la actividad académico-administrativa ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.academico(activity.id, field);
-        const catalogActivity = actAcadAdmin.find((item: any) => item.id === activity.actividad_id) || activity;
-        const requiresOfficialSupport = isFullPTAActivity(catalogActivity)
-          || String(catalogActivity?.nombre || '').includes('Misiones');
         requireText(activity.actividad_id, keyFor('actividad_id'), 'complementarias', `Actividad académico-administrativa ${index + 1}`, COMP_SECCION_AADM);
         if (activity.actividad_id) {
           requirePositiveHours(
@@ -3489,16 +3495,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             keyFor('horas'),
             'complementarias',
             `Horas de ${itemLabel}`,
-            COMP_SECCION_AADM,
-          );
-        }
-        requireText(activity.descripcion, keyFor('descripcion'), 'complementarias', `Descripción de ${itemLabel}`, COMP_SECCION_AADM);
-        if (requiresOfficialSupport && activity.descripcion?.trim() && activity.descripcion.trim().length < 3) {
-          addIssue(
-            keyFor('descripcion'),
-            'complementarias',
-            'Número de acto administrativo / comunicación oficial',
-            'El número de acto administrativo o comunicación oficial debe tener al menos 3 caracteres.',
             COMP_SECCION_AADM,
           );
         }
@@ -6515,6 +6511,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const acadCat = actAcadAdmin.find((a: any) => a.id === comp.actividad_id) || comp;
                         const acadConstraint = getAcademicoAdminConstraint(acadCat, ptaRules, horasAProgramar);
                         const acadConsumesFullPTA = isFullPTAActivity(acadCat);
+                        const acadUsesOfficialSupportField = acadConsumesFullPTA || isMisionesProfesoralesActivity(acadCat);
                         const acadRecognitionRows = getConfiguredRecognitionRows(acadCat, horasAProgramar);
 
                         return (
@@ -6598,13 +6595,23 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             <div className="flex flex-col sm:flex-row gap-2">
                               <div className="flex-1">
                                 <FormInput
-                                  label={(acadConsumesFullPTA || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? "Número de Acto Administrativo / Comunicación Oficial" : "Descripción"}
+                                  label={acadUsesOfficialSupportField
+                                    ? 'Número de Acto Administrativo / Comunicación Oficial (opcional)'
+                                    : 'Descripción (opcional)'}
                                   type="text" value={comp.descripcion} disabled={!isEditable}
-                                  required
+                                  required={false}
                                   fieldKey={ptaFieldKey.academico(comp.id, 'descripcion')}
                                   error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'descripcion')]}
-                                  placeholder={(acadConsumesFullPTA || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? "Requerido: Escriba el radicado de soporte..." : "Solo letras..."}
-                                  onChange={v => handleAcadChange(comp.id, 'descripcion', (acadConsumesFullPTA || actAcadAdmin.find((a: any) => a.id === comp.actividad_id)?.nombre?.includes('Misiones')) ? v : v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]/g, ''))} />
+                                  placeholder={acadUsesOfficialSupportField
+                                    ? 'Opcional: escriba el radicado si ya fue emitido...'
+                                    : 'Opcional: describa brevemente la actividad...'}
+                                  onChange={v => handleAcadChange(
+                                    comp.id,
+                                    'descripcion',
+                                    acadUsesOfficialSupportField
+                                      ? v
+                                      : v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]/g, ''),
+                                  )} />
                               </div>
                               <div className="w-36">
                                 <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!isEditable}
