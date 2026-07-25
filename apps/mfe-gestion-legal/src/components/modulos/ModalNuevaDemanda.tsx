@@ -5,6 +5,8 @@ interface ModalNuevaDemandaProps {
   onClose: () => void;
   onSave: (demanda: NuevaDemandaData) => void;
   tableroSeleccionado?: string;
+  /** Renderiza el modal anclado a la mitad superior (pantalla dividida al derivar desde Comunicaciones). */
+  splitTop?: boolean;
 }
 
 export interface NuevaDemandaData {
@@ -137,7 +139,7 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
   };
 }
 
-export function ModalNuevaDemanda({ isOpen, onClose, onSave, tableroSeleccionado }: ModalNuevaDemandaProps) {
+export function ModalNuevaDemanda({ isOpen, onClose, onSave, tableroSeleccionado, splitTop = false }: ModalNuevaDemandaProps) {
   const handleSave = (data: NuevaDemandaDataRestaurado) => {
     onSave(mapDemandaData(data));
   };
@@ -148,6 +150,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave, tableroSeleccionado
       onClose={onClose}
       onSave={handleSave}
       tableroSeleccionado={tableroSeleccionado}
+      splitTop={splitTop}
     />
   );
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -220,6 +221,7 @@ export class PtaController {
   }
 
   @Post('save')
+  @UseGuards(PtaAuthGuard)
   @UseInterceptors(
     // El front envía multipart/form-data cuando hay archivos de resolución de
     // investigación (campos con nombres variables: inv_proyecto_resolucion,
@@ -250,7 +252,10 @@ export class PtaController {
           payload.investigacion_proyecto = {
             ...(payload.investigacion_proyecto || {}),
             resolucion_archivo_url: url,
-            resolucion_nombre: f.originalname,
+            resolucion_nombre: payload.investigacion_proyecto?.resolucion_nombre || f.originalname,
+            resolucion_archivo_nombre: f.originalname,
+            resolucion_archivo_tipo: extname(f.originalname || '').replace('.', '').toLowerCase() || 'pdf',
+            resolucion_archivo_tamanio: Number(f.size) || 0,
           };
         } else {
           const m = /^inv_actividad_(\d+)_resolucion$/.exec(f.fieldname || '');
@@ -276,7 +281,7 @@ export class PtaController {
       const headerUserId = (req.headers['x-user-id'] as string) || '';
       if (headerUserId) payload.docente_id = headerUserId;
     }
-    const data = await this.ptaService.savePTA(payload);
+    const data = await this.ptaService.savePTA(payload, req.ptaAuth);
     return { success: true, data };
   }
 
@@ -515,46 +520,61 @@ export class PtaController {
   // Solicitudes
   // ─────────────────────────────
   @Get('solicitudes')
-  async getSolicitudes(@Query() query: any) {
-    const data = await this.ptaService.getSolicitudesPTA({ estado: query?.estado });
+  @UseGuards(PtaAuthGuard)
+  async getSolicitudes(@Query() query: any, @Req() req: Request) {
+    const data = await this.ptaService.getSolicitudesPTA({ estado: query?.estado }, req.ptaAuth);
     return { success: true, data };
   }
 
   @Post('solicitudes')
-  async crearSolicitud(@Body() body: any) {
-    const data = await this.ptaService.crearSolicitudPTA(body || {});
+  @UseGuards(PtaAuthGuard)
+  async crearSolicitud(@Body() body: any, @Req() req: Request) {
+    const data = await this.ptaService.crearSolicitudPTA(body || {}, req.ptaAuth);
     return { success: true, data };
   }
 
   @Get('solicitudes/docente/:docenteId')
-  async getSolicitudesDocente(@Param('docenteId') docenteId: string) {
+  @UseGuards(PtaAuthGuard)
+  async getSolicitudesDocente(@Param('docenteId') docenteId: string, @Req() req: Request) {
     try {
-      const data = await this.ptaService.getMisSolicitudesPTA(docenteId);
+      const data = await this.ptaService.getMisSolicitudesPTA(docenteId, req.ptaAuth);
       return { success: true, data };
     } catch (error: any) {
       this.logger.warn(`getMisSolicitudesPTA failed for docente ${docenteId}: ${error.message}`);
-      return { success: true, data: [] };
+      throw error;
     }
   }
 
   @Patch('solicitudes/:solicitudId/resolver')
-  async resolverSolicitud(@Param('solicitudId') solicitudId: string, @Body() body: any) {
-    const data = await this.ptaService.resolverSolicitudPTA(solicitudId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async resolverSolicitud(
+    @Param('solicitudId') solicitudId: string,
+    @Body() body: any,
+    @Req() req: Request,
+  ) {
+    const data = await this.ptaService.resolverSolicitudPTA(solicitudId, body || {}, req.ptaAuth);
     return { success: true, data };
   }
 
   @Patch('solicitudes/:solicitudId/leida')
+  @UseGuards(PtaAuthGuard)
   @HttpCode(200)
-  async marcarLeida(@Param('solicitudId') solicitudId: string) {
-    const data = await this.ptaService.marcarSolicitudLeida(solicitudId);
+  async marcarLeida(@Param('solicitudId') solicitudId: string, @Req() req: Request) {
+    const data = await this.ptaService.marcarSolicitudLeida(solicitudId, req.ptaAuth);
     return { success: true, data };
   }
 
   @Post('solicitudes/upload')
+  @UseGuards(PtaAuthGuard)
   @UseInterceptors(
     FilesInterceptor('files', 5, {
       storage: buildDiskStorage('pta-solicitudes', 'pta-solicitud'),
       limits: { files: 5, fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const esPdf = extname(file.originalname || '').toLowerCase() === '.pdf'
+          && ['application/pdf', 'application/x-pdf'].includes(String(file.mimetype || '').toLowerCase());
+        cb(esPdf ? null : new BadRequestException('Solo se permiten documentos PDF.'), esPdf);
+      },
     }),
   )
   uploadSolicitudFiles(@UploadedFiles() files: any[]) {

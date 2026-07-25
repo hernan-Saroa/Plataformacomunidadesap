@@ -736,7 +736,7 @@ export function ModalReunionApertura({
       <DialogContent
         layer="nested"
         className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
-        style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+        style={{ width: 620, maxWidth: 620, boxShadow: "0px 0px 50px" }}
         {...propsDialogEvitarCerrarCombobox}
       >
         <DialogHeader className="pb-2">
@@ -935,7 +935,7 @@ export function ModalReunionCierre({
       <DialogContent
         layer="nested"
         className="block overflow-y-auto overflow-x-visible p-8 bg-white rounded-2xl shadow-2xl"
-        style={{ width: 620, maxWidth: 620, maxHeight: 'min(90dvh, 720px)' }}
+        style={{ width: 620, maxWidth: 620, boxShadow: "0px 0px 50px" }}
         {...propsDialogEvitarCerrarCombobox}
       >
         <DialogHeader className="pb-2">

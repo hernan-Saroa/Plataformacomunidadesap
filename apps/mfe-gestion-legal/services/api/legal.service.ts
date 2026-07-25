@@ -1428,6 +1428,16 @@ export class CorreosJuridicosService {
     }
 
     /**
+     * Derivar comunicación a un proceso RECIÉN CREADO desde Clasificación IA.
+     * Registra la comunicación de origen en el proceso creado y copia sus adjuntos
+     * a la pestaña Documentos del proceso destino.
+     * @param targetModule 'DEFENSA' | 'DISCIPLINARIO' | 'ASESORIA' (o los valores canónicos)
+     */
+    async derivarNuevoProceso(id: string, procesoId: string, targetModule: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/derivar-nuevo-proceso`, { procesoId, targetModule });
+    }
+
+    /**
      * Reply to an email (maintains thread)
      */
     async replyEmail(id: string, body: string, attachments?: { name: string; contentBytes: string; contentType: string }[]): Promise<{ success: boolean }> {

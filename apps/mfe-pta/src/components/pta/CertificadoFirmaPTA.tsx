@@ -20,6 +20,7 @@ import {
   ChevronLeft, ExternalLink, Lock, X, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 
 interface CertificadoFirmaPTAProps {
   ptaId: string;
@@ -142,7 +143,7 @@ export function CertificadoFirmaPTA({
   const printRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
 
-  const pctCarga = horasDisponibles > 0 ? Math.round((totalHoras / horasDisponibles) * 100) : 0;
+  const pctCarga = getPtaCompletionPercentage(totalHoras, horasDisponibles);
   const qrData = `ESAP-PTA:${firmaData.certificado_id}|${ptaId}|${firmaData.hash}`;
   const verificationUrl = `https://esap.gov.co/verificar/${firmaData.certificado_id}`;
 
@@ -245,7 +246,7 @@ export function CertificadoFirmaPTA({
                   </div>
                   <div>
                     <div style={{ fontSize: '0.62rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>Horas programadas</div>
-                    <div style={{ fontWeight: 700, color: '#111827' }}>{totalHoras} / {horasDisponibles}h ({pctCarga}%)</div>
+                    <div style={{ fontWeight: 700, color: '#111827' }}>{totalHoras} / {horasDisponibles}h ({formatPtaPercentage(pctCarga)}%)</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.62rem', fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase' }}>Estado</div>

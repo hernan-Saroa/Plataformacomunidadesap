@@ -11,12 +11,13 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  Req,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
   UseGuards,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -39,6 +40,15 @@ import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
+
+type AuthenticatedRequest = Request & {
+  user?: {
+    userId?: string;
+    email?: string;
+    name?: string;
+    roles?: unknown;
+  };
+};
 
 @ApiTags('Autos Legales')
 @Controller('disciplinary-autos')
@@ -186,11 +196,12 @@ export class AutoController {
     @Param('id') id: string,
     @Body() reviewAutoDto: ReviewAutoDto,
     @Query('aprobadoPorId') aprobadoPorId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<LegalAuto> {
     if (!aprobadoPorId) {
       throw new Error('aprobadoPorId es requerido');
     }
-    return await this.autoService.approve(id, reviewAutoDto, aprobadoPorId);
+    return await this.autoService.approve(id, reviewAutoDto, aprobadoPorId, req?.user?.name);
   }
 
   /**

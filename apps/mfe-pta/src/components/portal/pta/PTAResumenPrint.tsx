@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PTAResumenPrintProps {
   pta: any;
@@ -252,7 +253,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                 <Dato label="Programa Académico" value={pta?.programa} />
                 <Dato label="Semanas de Vinculación" value={pta?.semanas_vinculacion} />
                 <Dato label="Horas Programadas" value={`${horasProg} de ${horasDisp} h disponibles`} />
-                <Dato label="% de Carga" value={`${horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0}%`} />
+                <Dato label="% de Carga" value={`${formatPtaCompletionPercentage(horasProg, horasDisp)}%`} />
               </div>
             </div>
 
@@ -470,7 +471,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                       <td style={{ ...TD, fontWeight: 900, background: '#F3F4F6' }}>TOTAL PROGRAMADO</td>
                       <td style={{ ...TDC, background: '#F3F4F6', fontSize: '0.66rem', color: '#6B7280', fontWeight: 700 }}>{horasDisp} h disponibles</td>
                       <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasProg}</td>
-                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0}% de carga</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{formatPtaCompletionPercentage(horasProg, horasDisp)}% de carga</td>
                     </tr>
                   </tbody>
                 </table>
