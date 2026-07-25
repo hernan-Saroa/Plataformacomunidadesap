@@ -29,6 +29,7 @@ import { Label } from '@esap-mfe/shared-ui/label';
 import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
 import { FormField, FormSection, FormProgress } from '../design-system/FormField';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { SPLIT_TOP_CONTENT_CLASS, SPLIT_TOP_OVERLAY_CLASS } from './utils/splitScreen';
 
 // Parte vacía reutilizable para disciplinados / denunciantes
 const parteVacia = (rol: string): ParteDisciplinaria => ({
@@ -43,12 +44,15 @@ interface ModalNuevoProcesoDisciplinarioProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit?: (proceso: any) => void;
+  /** Renderiza el modal anclado a la mitad superior (pantalla dividida al derivar desde Comunicaciones). */
+  splitTop?: boolean;
 }
 
 export function ModalNuevoProcesoDisciplinario({
   isOpen,
   onClose,
-  onSubmit
+  onSubmit,
+  splitTop = false
 }: ModalNuevoProcesoDisciplinarioProps) {
 
   // ========== DATOS INICIALES ==========
@@ -379,14 +383,16 @@ export function ModalNuevoProcesoDisciplinario({
   const keyboardVisible = useKeyboardVisible();
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCancel}>
+    <Dialog open={isOpen} onOpenChange={handleCancel} modal={splitTop ? false : undefined}>
       <DialogContent
         hideCloseButton
+        overlayClassName={splitTop ? SPLIT_TOP_OVERLAY_CLASS : undefined}
         className={`
           w-[100vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:max-w-[900px]
           ${keyboardVisible ? 'h-[60vh]' : 'h-auto max-h-[95vh] sm:max-h-[90vh]'}
           flex flex-col p-0 gap-0
           transition-all duration-200
+          ${splitTop ? SPLIT_TOP_CONTENT_CLASS : ''}
         `}
       >
         <DialogTitle className="sr-only">

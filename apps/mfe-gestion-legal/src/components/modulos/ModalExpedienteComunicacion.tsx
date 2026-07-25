@@ -10,7 +10,8 @@ import {
   Mail, Gavel, FileText, User, Calendar, Clock, AlertTriangle,
   Download, Eye, Paperclip, CheckCircle, Share, Send,
   Building2, Activity, MessageSquare, History, Archive,
-  ExternalLink, Target, Flag, Loader2, Scale, Search
+  ExternalLink, Target, Flag, Loader2, Scale, Search,
+  FileQuestion, Plus, Link2
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -29,6 +30,15 @@ import { isPreviewableInPlatform } from '../../../utils/fileUtils';
 
 import { Input } from '@esap-mfe/shared-ui/input';
 import { legalService } from '../../../../services/api/legal.service';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
+import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
+import { ModalNuevaConsulta } from './ModalNuevaConsulta';
+import { construirExpedienteDesdeDemanda } from './utils/construirExpedienteDesdeDemanda';
+import { SPLIT_BOTTOM_CONTENT_CLASS } from './utils/splitScreen';
+
+// Módulos destino de derivación. 'ASESORIA' usa la tabla consultas_juridicas.
+type ModuloDerivacion = 'DEFENSA' | 'DISCIPLINARIO' | 'ASESORIA';
 
 interface ComunicacionUnificada {
   id: string;
@@ -58,6 +68,8 @@ interface ModalExpedienteComunicacionProps {
   onMarcarLeida?: (id: string) => void;
   onArchivar?: (id: string) => void;
   onLink?: (id: string, expedienteId: string, targetModule: string) => Promise<any>;
+  /** Se invoca tras crear un proceso desde esta comunicación (para refrescar el listado). */
+  onDerivado?: () => void;
 }
 
 export function ModalExpedienteComunicacion({
@@ -66,22 +78,40 @@ export function ModalExpedienteComunicacion({
   comunicacion,
   onMarcarLeida,
   onArchivar,
-  onLink
+  onLink,
+  onDerivado
 }: ModalExpedienteComunicacionProps) {
   const [tabActivo, setTabActivo] = useState('general');
   // Linking State
-  const [selectedModule, setSelectedModule] = useState<'DEFENSA' | 'DISCIPLINARIO' | null>(null);
+  const [selectedModule, setSelectedModule] = useState<ModuloDerivacion | null>(null);
+  const [modoDerivacion, setModoDerivacion] = useState<'asociar' | 'crear'>('asociar');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedProcess, setSelectedProcess] = useState<any | null>(null);
   const [linking, setLinking] = useState(false);
 
-  // Auto-fetch when module changes
+  // Tipo de proceso judicial (Defensa) elegido antes de abrir el formulario de creación.
+  // Se resuelve desde configuración (parametrizable), igual que el tablero del Kanban.
+  const { tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+  const [tipoProcesoDefensa, setTipoProcesoDefensa] = useState('');
+
+  // Formulario de creación abierto en split-screen (mitad superior) + estado de derivación.
+  const [creando, setCreando] = useState<ModuloDerivacion | null>(null);
+  const [derivando, setDerivando] = useState(false);
+
+  // Auto-fetch al asociar cuando cambia el módulo (solo en modo "asociar")
   useEffect(() => {
-    if (selectedModule) {
+    if (selectedModule && modoDerivacion === 'asociar') {
       handleSearch();
     }
+  }, [selectedModule, modoDerivacion]);
+
+  // Al cambiar de módulo se reinicia la selección
+  useEffect(() => {
+    setSelectedProcess(null);
+    setSearchResults([]);
+    setTipoProcesoDefensa('');
   }, [selectedModule]);
 
   const handleSearch = async () => {
@@ -99,6 +129,15 @@ export function ModalExpedienteComunicacion({
         const filtered = !searchTerm ? procesos : procesos.filter((p: any) =>
           (p.radicado && p.radicado.includes(searchTerm)) ||
           (p.investigado && p.investigado.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+        setSearchResults(filtered);
+      } else if (selectedModule === 'ASESORIA') {
+        const consultas = await legalService.getConsultasJuridicas();
+        const term = searchTerm.toLowerCase();
+        const filtered = !searchTerm ? consultas : consultas.filter((c: any) =>
+          (c.numeroRadicado && c.numeroRadicado.toLowerCase().includes(term)) ||
+          (c.nombreSolicitante && c.nombreSolicitante.toLowerCase().includes(term)) ||
+          (c.dependenciaSolicitante && c.dependenciaSolicitante.toLowerCase().includes(term))
         );
         setSearchResults(filtered);
       }
@@ -122,6 +161,77 @@ export function ModalExpedienteComunicacion({
       // Handled by parent
     } finally {
       setLinking(false);
+    }
+  };
+
+  // Etiquetas normalizadas por módulo para la lista de resultados (asociar a existente)
+  const getResultLabels = (proc: any, modulo: ModuloDerivacion) => {
+    if (modulo === 'ASESORIA') {
+      return {
+        titulo: proc.numeroRadicado || proc.id,
+        badge: 'Asesoría',
+        detalle: `Solicitante: ${proc.nombreSolicitante || proc.dependenciaSolicitante || 'N/D'}${proc.materiaJuridica ? ` — ${proc.materiaJuridica}` : ''}`,
+      };
+    }
+    if (modulo === 'DEFENSA') {
+      return {
+        titulo: proc.radicado || proc.id,
+        badge: 'Judicial',
+        detalle: `Dte: ${proc.demandante || 'N/D'} - Dda: ${proc.demandado || 'N/D'}`,
+      };
+    }
+    return {
+      titulo: proc.radicado || proc.id,
+      badge: 'Disciplinario',
+      detalle: `Inv: ${proc.investigado || proc.nombreInvestigado || 'N/D'}`,
+    };
+  };
+
+  // Abre el formulario de creación en split-screen (mitad superior)
+  const iniciarCreacion = () => {
+    if (!selectedModule) return;
+    if (selectedModule === 'DEFENSA' && !tipoProcesoDefensa) {
+      toast.error('Seleccione el tipo de proceso judicial');
+      return;
+    }
+    setCreando(selectedModule);
+  };
+
+  // Tras crear el proceso: registra origen, copia adjuntos y trazabilidad en el backend
+  const handleProcesoCreado = async (procesoId: string | undefined, modulo: ModuloDerivacion) => {
+    if (!procesoId) {
+      toast.error('No se pudo obtener el proceso creado');
+      return;
+    }
+    setDerivando(true);
+    try {
+      await correosJuridicosService.derivarNuevoProceso(comunicacion.id, procesoId, modulo);
+      toast.success('✅ Proceso creado y comunicación derivada', {
+        description: 'Los documentos de la comunicación se agregaron al proceso',
+      });
+      setCreando(null);
+      onDerivado?.();
+      onClose();
+    } catch (err) {
+      console.error('Error derivando comunicación al nuevo proceso:', err);
+      toast.error('El proceso se creó, pero no se pudo vincular la comunicación');
+      setCreando(null);
+    } finally {
+      setDerivando(false);
+    }
+  };
+
+  // Persiste una demanda de Defensa Judicial creada desde la comunicación y la deriva
+  const handleGuardarDemandaDesdeComunicacion = async (demanda: NuevaDemandaData) => {
+    try {
+      const tipo = tiposProcesosActivos?.find((t: any) => t.id === tipoProcesoDefensa);
+      const columnas = (tipo?.estados as any[]) || [];
+      const expedienteData = construirExpedienteDesdeDemanda(demanda, columnas);
+      const creado = await legalService.crearExpediente(expedienteData);
+      await handleProcesoCreado((creado as any)?.id, 'DEFENSA');
+    } catch (err: any) {
+      console.error('Error creando expediente desde comunicación:', err);
+      toast.error(err?.message || 'Error al crear el proceso judicial');
     }
   };
   const [adjuntos, setAdjuntos] = useState<AdjuntoCorreo[]>([]);
@@ -398,8 +508,8 @@ export function ModalExpedienteComunicacion({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl h-[95vh] flex flex-col p-0">
+      <Dialog open={isOpen} onOpenChange={onClose} modal={creando ? false : undefined}>
+        <DialogContent hideCloseButton className={`w-[95vw] max-w-[900px] lg:max-w-4xl h-[95vh] flex flex-col p-0 ${creando ? SPLIT_BOTTOM_CONTENT_CLASS : ''}`}>
           <DialogTitle className="sr-only">Expediente Comunicación {comunicacion.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa de la comunicación
@@ -700,102 +810,158 @@ export function ModalExpedienteComunicacion({
                             Derivar a Proceso / Expediente
                           </h4>
 
-                          {/* Selector de Módulo */}
-                          <div className="grid grid-cols-2 gap-3 mb-4">
-                            <button
-                              onClick={() => setSelectedModule('DEFENSA')}
-                              className={`py-2 px-3 rounded-md border text-sm transition-all flex items-center justify-center gap-2 ${selectedModule === 'DEFENSA'
-                                ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold shadow-sm'
-                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                                }`}
-                            >
-                              <Gavel className="w-4 h-4" />
-                              Defensa Judicial
-                            </button>
-                            <button
-                              onClick={() => setSelectedModule('DISCIPLINARIO')}
-                              className={`py-2 px-3 rounded-md border text-sm transition-all flex items-center justify-center gap-2 ${selectedModule === 'DISCIPLINARIO'
-                                ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold shadow-sm'
-                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                                }`}
-                            >
-                              <Scale className="w-4 h-4" />
-                              Disciplinario
-                            </button>
+                          {/* Selector de Módulo destino (3 módulos) */}
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                            {([
+                              { id: 'DEFENSA', label: 'Defensa Judicial', icon: Gavel },
+                              { id: 'ASESORIA', label: 'Asesoría Jurídica', icon: FileQuestion },
+                              { id: 'DISCIPLINARIO', label: 'Juzgamiento Disciplinario', icon: Scale },
+                            ] as const).map((m) => {
+                              const Icono = m.icon;
+                              return (
+                                <button
+                                  key={m.id}
+                                  onClick={() => setSelectedModule(m.id)}
+                                  className={`py-2 px-2 rounded-md border text-xs transition-all flex flex-col items-center justify-center gap-1 text-center ${selectedModule === m.id
+                                    ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold shadow-sm'
+                                    : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                >
+                                  <Icono className="w-4 h-4" />
+                                  {m.label}
+                                </button>
+                              );
+                            })}
                           </div>
 
-                          {/* Buscador (Solo si hay módulo seleccionado) */}
                           {selectedModule && (
                             <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                              <div className="flex gap-2">
-                                <div className="relative flex-1">
-                                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                  <Input
-                                    placeholder={selectedModule === 'DEFENSA' ? "Filtrar por radicado, demandante o ID..." : "Filtrar por radicado o investigado..."}
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-9 bg-white"
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                  />
-                                </div>
-                                <Button onClick={handleSearch} disabled={isSearching} variant="default" className="bg-purple-600 hover:bg-purple-700">
-                                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                                </Button>
+                              {/* Toggle: Asociar existente / Crear nuevo */}
+                              <div className="grid grid-cols-2 gap-1 p-1 bg-purple-50 rounded-lg border border-purple-100">
+                                <button
+                                  onClick={() => setModoDerivacion('asociar')}
+                                  className={`py-1.5 px-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${modoDerivacion === 'asociar' ? 'bg-white shadow-sm text-purple-700' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                  <Link2 className="w-3.5 h-3.5" />
+                                  Asociar existente
+                                </button>
+                                <button
+                                  onClick={() => setModoDerivacion('crear')}
+                                  className={`py-1.5 px-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${modoDerivacion === 'crear' ? 'bg-white shadow-sm text-purple-700' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Crear nuevo proceso
+                                </button>
                               </div>
 
-                              {/* Resultados */}
-                              {searchResults.length > 0 && (
-                                <div className="bg-white border border-gray-200 rounded-md max-h-[180px] overflow-y-auto shadow-inner">
-                                  {searchResults.map((proc) => (
-                                    <div
-                                      key={proc.id}
-                                      onClick={() => setSelectedProcess(proc)}
-                                      className={`p-3 text-sm border-b border-gray-100 cursor-pointer hover:bg-purple-50 transition-colors ${selectedProcess?.id === proc.id ? 'bg-purple-50 border-l-4 border-purple-600 pl-2' : ''
-                                        }`}
-                                    >
-                                      <div className="flex justify-between items-start">
-                                        <p className="font-bold text-gray-900">{proc.radicado}</p>
-                                        <Badge variant="outline" className="text-[10px]">{selectedModule === 'DEFENSA' ? 'Judicial' : 'Disciplinario'}</Badge>
-                                      </div>
-                                      <p className="text-gray-600 truncate mt-1">
-                                        {selectedModule === 'DEFENSA'
-                                          ? `Dte: ${proc.demandante} - Dda: ${proc.demandado}`
-                                          : `Inv: ${proc.investigado || proc.nombreInvestigado}`}
+                              {modoDerivacion === 'asociar' ? (
+                                <>
+                                  <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                      <Input
+                                        placeholder={
+                                          selectedModule === 'DEFENSA' ? 'Filtrar por radicado, demandante o ID...'
+                                            : selectedModule === 'ASESORIA' ? 'Filtrar por radicado, solicitante o dependencia...'
+                                              : 'Filtrar por radicado o investigado...'
+                                        }
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-9 bg-white"
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                      />
+                                    </div>
+                                    <Button onClick={handleSearch} disabled={isSearching} variant="default" className="bg-purple-600 hover:bg-purple-700">
+                                      {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                                    </Button>
+                                  </div>
+
+                                  {searchResults.length > 0 && (
+                                    <div className="bg-white border border-gray-200 rounded-md max-h-[180px] overflow-y-auto shadow-inner">
+                                      {searchResults.map((proc) => {
+                                        const labels = getResultLabels(proc, selectedModule);
+                                        return (
+                                          <div
+                                            key={proc.id}
+                                            onClick={() => setSelectedProcess(proc)}
+                                            className={`p-3 text-sm border-b border-gray-100 cursor-pointer hover:bg-purple-50 transition-colors ${selectedProcess?.id === proc.id ? 'bg-purple-50 border-l-4 border-purple-600 pl-2' : ''}`}
+                                          >
+                                            <div className="flex justify-between items-start">
+                                              <p className="font-bold text-gray-900">{labels.titulo}</p>
+                                              <Badge variant="outline" className="text-[10px]">{labels.badge}</Badge>
+                                            </div>
+                                            <p className="text-gray-600 truncate mt-1">{labels.detalle}</p>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {searchResults.length === 0 && !isSearching && (
+                                    <div className="text-center py-4 text-gray-500 italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                      No se encontraron procesos con ese criterio
+                                    </div>
+                                  )}
+
+                                  <Button
+                                    className="w-full h-10 font-bold shadow-md transform active:scale-95 transition-all"
+                                    style={{ background: '#003DA5' }}
+                                    disabled={!selectedProcess || linking}
+                                    onClick={executeLink}
+                                  >
+                                    {linking ? (
+                                      <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Vinculando Correo...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ExternalLink className="w-4 h-4 mr-2" />
+                                        Confirmar Vinculación
+                                      </>
+                                    )}
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  {/* Defensa Judicial: el formulario depende del tipo de proceso (parametrizable) */}
+                                  {selectedModule === 'DEFENSA' && (
+                                    <div>
+                                      <label className="text-xs font-semibold text-gray-700 mb-1 block">Tipo de proceso judicial</label>
+                                      <select
+                                        value={tipoProcesoDefensa}
+                                        onChange={(e) => setTipoProcesoDefensa(e.target.value)}
+                                        className="w-full h-9 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                      >
+                                        <option value="">Seleccione el tipo de proceso…</option>
+                                        {(tiposProcesosActivos || []).map((t: any) => (
+                                          <option key={t.id} value={t.id}>{t.nombre}</option>
+                                        ))}
+                                      </select>
+                                      <p className="text-[11px] text-gray-500 mt-1">
+                                        Los tipos se administran en Configuración (Tipos de Procesos Judiciales).
                                       </p>
                                     </div>
-                                  ))}
-                                </div>
-                              )}
+                                  )}
 
-                              {searchResults.length === 0 && !isSearching && (
-                                <div className="text-center py-4 text-gray-500 italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                                  No se encontraron procesos con ese criterio
-                                </div>
-                              )}
+                                  <div className="text-xs text-purple-800 bg-purple-50/60 rounded-lg border border-dashed border-purple-200 p-3">
+                                    Se abrirá el formulario de creación en la parte superior, manteniendo visible el detalle de la comunicación. Los documentos adjuntos se agregarán automáticamente al nuevo proceso.
+                                  </div>
 
-                              {/* Botón Acción Final */}
-                              <Button
-                                className="w-full h-10 font-bold shadow-md transform active:scale-95 transition-all"
-                                style={{ background: '#003DA5' }} // Corporate Blue
-                                disabled={!selectedProcess || linking}
-                                onClick={executeLink}
-                              >
-                                {linking ? (
-                                  <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Vinculando Correo...
-                                  </>
-                                ) : (
-                                  <>
-                                    <ExternalLink className="w-4 h-4 mr-2" />
-                                    Confirmar Vinculación al Expediente
-                                  </>
-                                )}
-                              </Button>
+                                  <Button
+                                    className="w-full h-10 font-bold shadow-md transform active:scale-95 transition-all"
+                                    style={{ background: '#003DA5' }}
+                                    disabled={derivando || (selectedModule === 'DEFENSA' && !tipoProcesoDefensa)}
+                                    onClick={iniciarCreacion}
+                                  >
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    Crear nuevo proceso
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           )}
 
-                          {/* Info Default (Sin selección) */}
                           {!selectedModule && (
                             <div className="text-center p-4 bg-purple-50/50 rounded-lg border border-dashed border-purple-200 text-purple-800 text-sm">
                               Seleccione el módulo destino para derivar esta comunicación
@@ -976,7 +1142,33 @@ export function ModalExpedienteComunicacion({
           archivo={docParaVisor.url}
           numero={docParaVisor.nombre}
           asunto={comunicacion.asunto}
-          forcePdfJsViewer
+        />
+      )}
+
+      {/* ── Split-screen: formulario de creación (mitad superior) sobre el detalle de la comunicación ── */}
+      {creando === 'DEFENSA' && (
+        <ModalNuevaDemanda
+          isOpen
+          splitTop
+          tableroSeleccionado={tipoProcesoDefensa}
+          onClose={() => setCreando(null)}
+          onSave={handleGuardarDemandaDesdeComunicacion}
+        />
+      )}
+      {creando === 'DISCIPLINARIO' && (
+        <ModalNuevoProcesoDisciplinario
+          isOpen
+          splitTop
+          onClose={() => setCreando(null)}
+          onSubmit={(proceso: any) => handleProcesoCreado(proceso?.id, 'DISCIPLINARIO')}
+        />
+      )}
+      {creando === 'ASESORIA' && (
+        <ModalNuevaConsulta
+          isOpen
+          splitTop
+          onClose={() => setCreando(null)}
+          onSuccess={(creada: any) => handleProcesoCreado(creada?.id, 'ASESORIA')}
         />
       )}
     </>

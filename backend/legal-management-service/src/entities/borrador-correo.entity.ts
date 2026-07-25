@@ -27,7 +27,7 @@ export class BorradorCorreo {
     @Column({ name: 'usuario_id', length: 100 })
     usuarioId: string;
 
-    @Column({ name: 'usuario_nombre', length: 255, nullable: true })
+    @Column({ name: 'usuario_nombre', type: 'varchar', length: 255, nullable: true })
     usuarioNombre: string | null;
 
     // Cuenta remitente / bandeja de origen: JUDICIAL | CORREOS.
@@ -44,7 +44,7 @@ export class BorradorCorreo {
     @Column({ name: 'destinatarios_cco', type: 'text', nullable: true })
     destinatariosCco: string | null; // CCO
 
-    @Column({ length: 500, nullable: true })
+    @Column({ type: 'varchar', length: 500, nullable: true })
     asunto: string | null;
 
     @Column({ type: 'text', nullable: true })

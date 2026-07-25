@@ -18,6 +18,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -38,7 +39,7 @@ import {
   Bookmark, Keyboard, Sigma, Columns3, Activity, Zap,
   Sliders, Star, StickyNote, GitCompare, RefreshCw, Layers,
   Command, ChevronUp, Tag, Bell, GripVertical, Shield, FolderOpen, MoreHorizontal, Trash2, Download,
-  GraduationCap, MapPin,
+  GraduationCap, MapPin, Mail,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotifications } from '../esap/NotificationsContext';
@@ -267,7 +268,23 @@ function SortableHeader({ label, field, sortBy, sortDir, onSort }: {
 
 // resolvePtaFileUrl ahora vive en shared/ptaFiles.ts (se usa también en el portal docente).
 
-function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
+const SOLICITUD_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('es-CO', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function formatSolicitudDateTime(value: unknown): string {
+  if (!value) return 'Fecha no disponible';
+  const date = new Date(value as any);
+  return Number.isNaN(date.getTime())
+    ? 'Fecha no disponible'
+    : SOLICITUD_DATE_TIME_FORMATTER.format(date);
+}
+
+function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre: string; syncCounter?: number }) {
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState('');
@@ -284,7 +301,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [filtro]);
+  useEffect(() => { load(); }, [filtro, syncCounter]);
 
   // Cargar territoriales para caso 1 (vía apiClient/gateway, no fetch a localhost:5000
   // que rompía por CSP en QA/prod).
@@ -318,17 +335,33 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
   const pendientes = solicitudes.filter(s => s.estado === 'pendiente').length;
 
   const CASO_LABELS: Record<string, { label: string; color: string }> = {
+    edicion_pta: { label: 'Edición de PTA', color: '#003DA5' },
     caso_1: { label: 'Otra territorial', color: '#003DA5' },
     caso_2: { label: 'Rehacer PTA', color: '#D97706' },
     caso_3: { label: 'Otro caso', color: '#6B21A8' },
+  };
+
+  const COMPONENTE_SOLICITUD: Record<string, { label: string; color: string }> = {
+    docencia: { label: 'Docencia', color: '#003DA5' },
+    investigacion: { label: 'Investigación', color: '#7C3AED' },
+    extension: { label: 'Extensión', color: '#059669' },
+    complementarias: { label: 'Complementarias', color: '#D97706' },
+  };
+
+  const getSolicitudEstadoVisual = (estado: string) => {
+    if (estado === 'pendiente') return { label: 'Pendiente', bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' };
+    if (estado === 'aprobado') return { label: 'Edición habilitada', bg: '#DBEAFE', color: '#1E40AF', border: '#93C5FD' };
+    if (estado === 'en_aprobacion') return { label: 'En reaprobación', bg: '#F3E8FF', color: '#6B21A8', border: '#C4B5FD' };
+    if (estado === 'gestionada') return { label: 'Completada', bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7' };
+    return { label: 'Denegada', bg: '#FEE2E2', color: '#991B1B', border: '#FCA5A5' };
   };
 
   return (
     <div style={{ padding: '0 0 40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0 }}>Solicitudes de creacion de PTA</h2>
-          <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Docentes que solicitan crear un segundo PTA</p>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0 }}>Solicitudes PTA</h2>
+          <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Creación de planes y edición parcial de componentes aprobados</p>
         </div>
         {pendientes > 0 && (
           <span style={{ padding: '4px 10px', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: '0.72rem', fontWeight: 700 }}>
@@ -338,8 +371,15 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
       </div>
 
       {/* Filtros */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[{ k: '', l: 'Todas' }, { k: 'pendiente', l: 'Pendientes' }, { k: 'aprobado', l: 'Aprobadas' }, { k: 'denegado', l: 'Denegadas' }].map(f => (
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+        {[
+          { k: '', l: 'Todas' },
+          { k: 'pendiente', l: 'Pendientes' },
+          { k: 'aprobado', l: 'Habilitadas' },
+          { k: 'en_aprobacion', l: 'En reaprobación' },
+          { k: 'gestionada', l: 'Completadas' },
+          { k: 'denegado', l: 'Denegadas' },
+        ].map(f => (
           <button key={f.k} onClick={() => setFiltro(f.k)}
             style={{ padding: '5px 12px', borderRadius: 7, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', border: filtro === f.k ? '1.5px solid #003DA5' : '1px solid #E5E7EB', background: filtro === f.k ? '#EFF6FF' : 'white', color: filtro === f.k ? '#003DA5' : '#6B7280' }}>
             {f.l}
@@ -360,25 +400,95 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
             const isOpen = expandedId === sol.id;
             const casoLabel = CASO_LABELS[sol.caso] || { label: sol.caso, color: '#6B7280' };
             const isPendiente = sol.estado === 'pendiente';
+            const esEdicion = (sol.tipoSolicitud || 'creacion') === 'edicion_componentes' || sol.caso === 'edicion_pta';
+            const estadoVisualBase = getSolicitudEstadoVisual(sol.estado);
+            const estadoVisual = !esEdicion && sol.estado === 'aprobado'
+              ? { ...estadoVisualBase, label: 'Aprobada', bg: '#D1FAE5', color: '#065F46', border: '#6EE7B7' }
+              : estadoVisualBase;
             const form = resForm[sol.id] || {};
             const archivos = Array.isArray(sol.archivos) ? sol.archivos : [];
+            const componentesSolicitud = Array.isArray(sol.componentes) ? sol.componentes : [];
+            const docenteNombre = sol.docenteNombre
+              || sol.docente?.nombreCompleto
+              || sol.docente?.persona?.nombreCompleto
+              || 'Docente';
+            const docenteEmail = sol.docenteEmail
+              || sol.docente?.correoInstitucional
+              || 'Sin correo registrado';
+            const territorialesSolicitud = Array.isArray(sol.territoriales)
+              ? sol.territoriales.filter(Boolean)
+              : [];
+            const territorialCompleta = sol.territorial
+              || territorialesSolicitud.join(', ')
+              || sol.docente?.territorial?.nombre
+              || 'Sin territorial registrada';
+            const territorialPreview = territorialesSolicitud.length > 1
+              ? `${territorialesSolicitud[0]} +${territorialesSolicitud.length - 1}`
+              : territorialCompleta;
+            const ptaResumen = sol.ptaResumen || null;
+            const tieneCargaPta = ptaResumen
+              && (Number(ptaResumen.horasProgramadas) > 0 || Number(ptaResumen.horasRequeridas) > 0);
 
             return (
-              <div key={sol.id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${isPendiente ? '#FDE68A' : sol.estado === 'aprobado' ? '#6EE7B7' : '#FCA5A5'}`, overflow: 'hidden' }}>
+              <div key={sol.id} style={{ background: 'white', borderRadius: 12, border: `1px solid ${estadoVisual.border}`, overflow: 'hidden' }}>
                 {/* Header */}
                 <div onClick={() => setExpandedId(isOpen ? null : sol.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', cursor: 'pointer', background: isOpen ? '#FAFAFA' : 'white' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>{sol.docenteNombre || sol.docente?.persona?.nombreCompleto || 'Docente'}</div>
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 18px', cursor: 'pointer', background: isOpen ? '#FAFAFA' : 'white' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 750, color: '#111827', overflowWrap: 'anywhere' }}>{docenteNombre}</div>
                     <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: `${casoLabel.color}15`, color: casoLabel.color }}>{casoLabel.label}</span>
-                      <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: isPendiente ? '#FEF3C7' : sol.estado === 'aprobado' ? '#D1FAE5' : '#FEE2E2', color: isPendiente ? '#92400E' : sol.estado === 'aprobado' ? '#065F46' : '#991B1B' }}>
-                        {isPendiente ? 'Pendiente' : sol.estado === 'aprobado' ? 'Aprobada' : 'Denegada'}
+                      <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.62rem', fontWeight: 700, background: estadoVisual.bg, color: estadoVisual.color }}>
+                        {estadoVisual.label}
                       </span>
-                      <span style={{ fontSize: '0.62rem', color: '#9CA3AF' }}>{new Date(sol.createdAt).toLocaleDateString('es-CO')}</span>
+                      {componentesSolicitud.map((key: string) => {
+                        const componente = COMPONENTE_SOLICITUD[key] || { label: key, color: '#475569' };
+                        return (
+                          <span key={key} style={{ padding: '2px 7px', borderRadius: 5, fontSize: '0.6rem', fontWeight: 700, background: `${componente.color}0D`, color: componente.color, border: `1px solid ${componente.color}22` }}>
+                            {componente.label}
+                          </span>
+                        );
+                      })}
                     </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px 14px', marginTop: 8, flexWrap: 'wrap', color: '#64748B', fontSize: '0.66rem' }}>
+                      <span title={docenteEmail} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                        <Mail style={{ width: 11, height: 11, flexShrink: 0 }} />
+                        <span style={{ overflowWrap: 'anywhere' }}>{docenteEmail}</span>
+                      </span>
+                      <span title={territorialCompleta} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <MapPin style={{ width: 11, height: 11, flexShrink: 0 }} />
+                        {territorialPreview}
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Calendar style={{ width: 11, height: 11, flexShrink: 0 }} />
+                        Solicitada: {formatSolicitudDateTime(sol.createdAt ?? sol.created_at)}
+                      </span>
+                    </div>
+
+                    {(ptaResumen || sol.resolucionFecha) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px 12px', marginTop: 5, flexWrap: 'wrap', color: '#64748B', fontSize: '0.64rem' }}>
+                        {ptaResumen && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <FileText style={{ width: 11, height: 11, flexShrink: 0 }} />
+                            PTA {ptaResumen.periodo || 'sin período'}
+                            {ptaResumen.dedicacion ? ` · ${ptaResumen.dedicacion}` : ''}
+                            {tieneCargaPta
+                              ? ` · ${formatHorasSeguimiento(Number(ptaResumen.horasProgramadas) || 0)}/${formatHorasSeguimiento(Number(ptaResumen.horasRequeridas) || 0)}h`
+                              : ''}
+                          </span>
+                        )}
+                        {sol.resolucionFecha && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Clock style={{ width: 11, height: 11, flexShrink: 0 }} />
+                            Resuelta: {formatSolicitudDateTime(sol.resolucionFecha)}
+                            {sol.resueltoPor ? ` · ${sol.resueltoPor}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <ChevronDown style={{ width: 16, height: 16, color: '#9CA3AF', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                  <ChevronDown style={{ width: 16, height: 16, color: '#9CA3AF', flexShrink: 0, marginTop: 3, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                 </div>
 
                 {/* Detalle expandido */}
@@ -387,25 +497,54 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden' }}>
                       <div style={{ padding: '14px 18px', borderTop: '1px solid #E5E7EB' }}>
                         {/* Info docente */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 14 }}>
                           <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
-                            <strong>Territorial:</strong> {sol.docente?.territorial?.nombre || 'N/A'}
+                            <strong>Territorial:</strong>{' '}
+                            {sol.territorial
+                              || (Array.isArray(sol.territoriales) ? sol.territoriales.join(', ') : '')
+                              || sol.docente?.territorial?.nombre
+                              || 'Sin territorial registrada'}
                           </div>
                           <div style={{ fontSize: '0.72rem', color: '#6B7280' }}>
-                            <strong>Email:</strong> {sol.docenteEmail || sol.docente?.correoInstitucional || 'N/A'}
+                            <strong>Email:</strong>{' '}
+                            {sol.docenteEmail || sol.docente?.correoInstitucional || 'Sin correo registrado'}
                           </div>
                         </div>
 
+                        {esEdicion && (
+                          <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 9, background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 7 }}>
+                              <div style={{ fontSize: '0.7rem', color: '#1E3A8A', overflowWrap: 'anywhere' }}>
+                                <strong>PTA:</strong> {sol.ptaId || 'No identificado'}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: '#1E3A8A' }}>
+                                <strong>Estado previo:</strong> {sol.estadoPtaAnterior || 'No registrado'}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1E3A8A', marginBottom: 5 }}>Componentes solicitados:</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                              {componentesSolicitud.map((key: string) => {
+                                const componente = COMPONENTE_SOLICITUD[key] || { label: key, color: '#475569' };
+                                return (
+                                  <span key={key} style={{ padding: '3px 8px', borderRadius: 6, background: 'white', border: `1px solid ${componente.color}55`, color: componente.color, fontSize: '0.66rem', fontWeight: 700 }}>
+                                    {componente.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Razon */}
                         <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#374151', marginBottom: 3 }}>Razon:</div>
+                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#374151', marginBottom: 3 }}>Razón:</div>
                           <p style={{ fontSize: '0.78rem', color: '#4B5563', margin: 0 }}>{sol.razon}</p>
                           {sol.casoLibre && <p style={{ fontSize: '0.78rem', color: '#6B21A8', margin: '4px 0 0', fontStyle: 'italic' }}>{sol.casoLibre}</p>}
                         </div>
 
                         {/* Justificacion */}
                         <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#374151', marginBottom: 3 }}>Justificacion:</div>
+                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#374151', marginBottom: 3 }}>{esEdicion ? 'Descripción de los cambios:' : 'Justificación:'}</div>
                           <p style={{ fontSize: '0.78rem', color: '#4B5563', margin: 0, lineHeight: 1.5, background: '#F9FAFB', padding: '8px 12px', borderRadius: 8, border: '1px solid #E5E7EB' }}>{sol.justificacion}</p>
                         </div>
 
@@ -426,9 +565,9 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
 
                         {/* Resolución anterior */}
                         {sol.estado !== 'pendiente' && sol.resolucionMotivo && (
-                          <div style={{ padding: '8px 12px', borderRadius: 8, background: sol.estado === 'aprobado' ? '#F0FDF4' : '#FEF2F2', border: `1px solid ${sol.estado === 'aprobado' ? '#BBF7D0' : '#FECACA'}`, marginBottom: 10 }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: sol.estado === 'aprobado' ? '#065F46' : '#991B1B' }}>
-                              {sol.estado === 'aprobado' ? 'Aprobada' : 'Denegada'} por {sol.resueltoPor} — {sol.resolucionFecha ? new Date(sol.resolucionFecha).toLocaleDateString('es-CO') : ''}
+                          <div style={{ padding: '8px 12px', borderRadius: 8, background: estadoVisual.bg, border: `1px solid ${estadoVisual.border}`, marginBottom: 10 }}>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: estadoVisual.color }}>
+                              {estadoVisual.label} por {sol.resueltoPor || 'Responsable no registrado'} — {formatSolicitudDateTime(sol.resolucionFecha)}
                             </div>
                             <p style={{ fontSize: '0.75rem', color: '#4B5563', margin: '4px 0 0' }}>{sol.resolucionMotivo}</p>
                           </div>
@@ -437,7 +576,12 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
                         {/* Formulario de resolución (solo pendientes) */}
                         {isPendiente && (
                           <div style={{ padding: '14px', borderRadius: 10, background: '#F8FAFC', border: '1px solid #E2E8F0', marginTop: 10 }}>
-                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginBottom: 10 }}>Resolver solicitud</div>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>Resolver solicitud</div>
+                            {esEdicion && (
+                              <p style={{ fontSize: '0.68rem', color: '#64748B', lineHeight: 1.4, margin: '0 0 10px' }}>
+                                Al aprobar, solo los componentes seleccionados pasarán a edición y reaprobación. El PTA conservará su identidad y los demás componentes permanecerán aprobados.
+                              </p>
+                            )}
 
                             {/* Si es caso 3, elegir acción */}
                             {sol.caso === 'caso_3' && (
@@ -454,7 +598,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
 
                             {/* Caso 1: territorial + horas */}
                             {(sol.caso === 'caso_1' || form.accion === 'caso_1') && (
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 8, marginBottom: 10 }}>
                                 <div>
                                   <label style={{ fontSize: '0.65rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 3 }}>Territorial nueva *</label>
                                   <select value={form.territorial || ''} onChange={e => updateForm(sol.id, 'territorial', e.target.value)}
@@ -485,10 +629,10 @@ function SolicitudesPTAAdmin({ aprobadorNombre }: { aprobadorNombre: string }) {
                             </div>
 
                             {/* Botones */}
-                            <div style={{ display: 'flex', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               <button onClick={() => handleResolver(sol.id, 'aprobado')} disabled={procesando === sol.id}
                                 style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#059669', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
-                                <CheckCircle style={{ width: 14, height: 14 }} /> Aprobar
+                                <CheckCircle style={{ width: 14, height: 14 }} /> {esEdicion ? 'Habilitar edición' : 'Aprobar'}
                               </button>
                               <button onClick={() => handleResolver(sol.id, 'denegado')} disabled={procesando === sol.id || !(form.motivo?.trim())}
                                 style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: !(form.motivo?.trim()) ? '#D1D5DB' : '#DC2626', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: !(form.motivo?.trim()) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
@@ -559,6 +703,48 @@ function isDocumentoAprobado(evidencia: any) {
 
 function isDocumentoPendiente(evidencia: any) {
   return getEstadoRevisionDocumento(evidencia) === 'pendiente';
+}
+
+function normalizeComponenteSeguimiento(value: unknown): string {
+  const key = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  if (key === 'academica' || key === 'docencia_academica') return 'docencia';
+  if (key === 'acad_admin' || key === 'aadm' || key === 'academico_administrativa') {
+    return 'complementarias';
+  }
+  if (key.startsWith('ext_')) return 'extension';
+  return key;
+}
+
+function getResumenHorasSeguimiento(pta: any, componente: string) {
+  const total = Math.max(0, Number(pta?.[`horas_${componente}`]) || 0);
+  const aprobadas = Math.max(0, (Array.isArray(pta?.evidencias) ? pta.evidencias : [])
+    .filter((evidencia: any) =>
+      normalizeComponenteSeguimiento(
+        evidencia?.componente_pta ?? evidencia?.componentePta,
+      ) === componente && isDocumentoAprobado(evidencia))
+    .reduce(
+      (suma: number, evidencia: any) =>
+        suma + Math.max(0, Number(evidencia?.horas_avance ?? evidencia?.horasAvance) || 0),
+      0,
+    ));
+  const faltantes = Math.max(total - aprobadas, 0);
+  const porcentaje = total > 0
+    ? Math.min(Math.round((aprobadas / total) * 100), 100)
+    : 0;
+  return { total, aprobadas, faltantes, porcentaje };
+}
+
+const HORAS_SEGUIMIENTO_FORMATTER = new Intl.NumberFormat('es-CO', {
+  maximumFractionDigits: 2,
+});
+
+function formatHorasSeguimiento(value: number) {
+  return HORAS_SEGUIMIENTO_FORMATTER.format(value);
 }
 
 function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNombre: string; rolLabel: string }) {
@@ -642,11 +828,6 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
         <div>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0 }}>Seguimiento de Documentos</h2>
           <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Documentos de soporte subidos por docentes en PTAs aprobados</p>
-          {/* DIAGNÓSTICO TEMPORAL — muestra qué permisos de aprobación recibió el módulo.
-              Sirve para verificar el filtrado por componente. Eliminar tras validar. */}
-          <p style={{ fontSize: '0.68rem', color: '#B45309', background: '#FEF3C7', border: '1px dashed #FDE68A', borderRadius: 6, padding: '3px 8px', margin: '6px 0 0', fontWeight: 600 }}>
-            [debug] apruebaTodo(all/superuser): {String(apruebaTodo)} · componentes autorizados: {PTA_COMPONENT_KEYS.filter(isComponentAuthorized).join(', ') || '(ninguno)'}
-          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {totalPendientes > 0 && (
@@ -693,9 +874,9 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                 {/* PTA header */}
                 <div
                   onClick={() => setSelectedPtaId(isOpen ? null : pta.pta_id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', cursor: 'pointer', background: isOpen ? '#FAFAFA' : 'white', borderBottom: isOpen ? '1px solid #E5E7EB' : 'none' }}
+                  style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '14px 18px', cursor: 'pointer', background: isOpen ? '#FAFAFA' : 'white', borderBottom: isOpen ? '1px solid #E5E7EB' : 'none' }}
                 >
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: '1 1 230px', minWidth: 0 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#111827' }}>{pta.docente_nombre}</div>
                     <div style={{ fontSize: '0.68rem', color: '#9CA3AF', display: 'flex', gap: 8, marginTop: 2 }}>
                       <span>{pta.periodo}</span>
@@ -706,18 +887,36 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                     </div>
                   </div>
                   {/* Progress pills per component */}
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flex: '0 1 auto' }}>
                     {COMPONENTES_SEG.filter(comp => isSegComponentAuthorized(comp.key)).map(comp => {
                       // Solo los componentes que el usuario está autorizado a revisar.
-                      const horasTotal: number = (pta as any)[`horas_${comp.key}`] || 0;
-                      const aprobadas = (pta.evidencias || [])
-                        .filter((e: any) => e.componente_pta === comp.key && isDocumentoAprobado(e))
-                        .reduce((s: number, e: any) => s + (Number(e.horas_avance) || 0), 0);
-                      const pct = horasTotal > 0 ? Math.min(Math.round((aprobadas / horasTotal) * 100), 100) : 0;
+                      const resumen = getResumenHorasSeguimiento(pta, comp.key);
+                      const aprobadasLabel = formatHorasSeguimiento(resumen.aprobadas);
+                      const totalLabel = formatHorasSeguimiento(resumen.total);
+                      const faltantesLabel = formatHorasSeguimiento(resumen.faltantes);
                       return (
-                        <div key={comp.key} title={`${comp.label}: ${aprobadas}h / ${horasTotal}h`}
-                          style={{ padding: '2px 8px', borderRadius: 5, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>
-                          {comp.label.substring(0, 3)}. {pct}%
+                        <div
+                          key={comp.key}
+                          title={`${comp.label}: ${aprobadasLabel}h aprobadas de ${totalLabel}h · Faltan ${faltantesLabel}h`}
+                          style={{
+                            minWidth: 112,
+                            padding: '5px 8px',
+                            borderRadius: 7,
+                            background: `${comp.color}0D`,
+                            border: `1px solid ${comp.color}20`,
+                            color: comp.color,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: '0.61rem', fontWeight: 750 }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.label}</span>
+                            <strong style={{ fontSize: '0.64rem' }}>{resumen.porcentaje}%</strong>
+                          </div>
+                          <div style={{ marginTop: 2, display: 'flex', alignItems: 'baseline', gap: 4, fontSize: '0.58rem', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                            <strong>{aprobadasLabel}/{totalLabel}h</strong>
+                            <span style={{ color: '#64748B', fontWeight: 600 }}>
+                              · {resumen.total === 0 ? 'Sin horas' : resumen.faltantes === 0 ? 'Completo' : `Faltan ${faltantesLabel}h`}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
@@ -757,6 +956,11 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
                                   <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.nombre}</div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                                     {comp && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: `${comp.color}15`, color: comp.color }}>{comp.label}{(ev.seccion_extension ?? ev.seccionExtension) ? ` · ${ev.seccion_extension ?? ev.seccionExtension}` : ''}</span>}
+                                    {String(ev.categoria || '').toLocaleLowerCase('es-CO').includes('resolución proyecto de investigación') && (
+                                      <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#F3E8FF', color: '#7E22CE' }}>
+                                        Resolución del proyecto
+                                      </span>
+                                    )}
                                     {ev.horas_avance > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF' }}>{ev.horas_avance}h</span>}
                                     {grupo.adjuntos.length > 0 && <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: '#F1F5F9', color: '#475569' }}>+{grupo.adjuntos.length} soporte{grupo.adjuntos.length > 1 ? 's' : ''}</span>}
                                     <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 700, background: estadoRev === 'aprobado' ? '#D1FAE5' : estadoRev === 'rechazado' ? '#FEE2E2' : '#FEF3C7', color: estadoRev === 'aprobado' ? '#065F46' : estadoRev === 'rechazado' ? '#991B1B' : '#92400E' }}>
@@ -2829,7 +3033,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           onNavigate={(view: string) => setModuleView(view as ModuleView)}
         />
       ) : moduleView === 'solicitudes_pta' ? (
-        <SolicitudesPTAAdmin aprobadorNombre={aprobadorNombre} />
+        <SolicitudesPTAAdmin aprobadorNombre={aprobadorNombre} syncCounter={syncState.lastCounter} />
       ) : moduleView === 'seguimiento_docs' ? (
         <SeguimientoDocumentosAdmin aprobadorNombre={aprobadorNombre} rolLabel={rolLabel} />
       ) : moduleView === 'programacion' ? (
@@ -3225,7 +3429,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     formatter: (_v: any, row: any) => {
                       const disp = Number(row?.horas_a_programar || 0);
                       const tot = Number(row?.total_horas_programadas || 0);
-                      return disp > 0 ? `${Math.round((tot / disp) * 100)}%` : '0%';
+                      return `${formatPtaPercentage(getPtaCompletionPercentage(tot, disp))}%`;
                     },
                   },
                   { key: 'horas_docencia', label: 'Docencia (h)' },
@@ -4102,7 +4306,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       const sc = getStatusConfig(pta.estado);
                       const horasProg = pta.total_horas_programadas || 0;
                       const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
-                      const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
+                      const pctCarga = getPtaCompletionPercentage(horasProg, horasDisp);
                       const isPendiente = isEstadoPendienteAprobacion(pta.estado);
                       const isSelected = selectedIds.has(pta.id);
                       const estadoLabel = pta.estado?.replace(/_/g, ' ') || 'Sin estado';
@@ -4146,7 +4350,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             gridTemplateColumns: gridCols,
                             columnGap: 16, rowGap: 0, padding: '16px 16px',
                             borderBottom: '1px solid #F3F4F6',
-                            cursor: isPendiente ? 'grab' : 'pointer',
+                            cursor: 'pointer',
                             transition: 'all 0.1s',
                             background: dragOverId === pta.id ? '#DBEAFE' : isFocused ? '#F0F4FF' : isSelected ? '#EFF6FF' : pinnedIds.has(pta.id) ? '#FFFBEB' : 'white',
                             borderLeft: pinnedIds.has(pta.id) ? '3px solid #F59E0B' : isPendiente ? `3px solid ${sc.color}` : '3px solid transparent',
@@ -4154,12 +4358,22 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             minWidth: tableMinWidth,
                             outline: isFocused ? '2px solid #003DA5' : dragOverId === pta.id ? '2px dashed #003DA5' : 'none',
                             outlineOffset: -2,
+                            boxShadow: 'none',
                           }}
                           onMouseEnter={e => {
-                            if (!isSelected && !isFocused) e.currentTarget.style.background = pinnedIds.has(pta.id) ? '#FEF3C7' : '#FAFAFA';
+                            if (!isSelected && !isFocused && dragOverId !== pta.id) {
+                              const isPinned = pinnedIds.has(pta.id);
+                              e.currentTarget.style.background = isPinned ? '#FEF3C7' : '#F4F7FC';
+                              e.currentTarget.style.boxShadow = isPinned
+                                ? 'inset 0 0 0 1px #FDE68A'
+                                : 'inset 0 0 0 1px #DCE6F4';
+                            }
                           }}
                           onMouseLeave={e => {
-                            if (!isSelected && !isFocused) e.currentTarget.style.background = pinnedIds.has(pta.id) ? '#FFFBEB' : 'white';
+                            if (!isSelected && !isFocused && dragOverId !== pta.id) {
+                              e.currentTarget.style.background = pinnedIds.has(pta.id) ? '#FFFBEB' : 'white';
+                              e.currentTarget.style.boxShadow = 'none';
+                            }
                           }}
                         >
 
@@ -4171,14 +4385,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             {isPendiente && (
                               <div
                                 style={{
-                                  cursor: 'grab', opacity: 0.3, transition: 'opacity 0.15s',
+                                  cursor: 'grab', opacity: 0.55, transition: 'opacity 0.15s',
                                   flexShrink: 0, display: 'flex', alignItems: 'center',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
-                                onMouseLeave={e => { e.currentTarget.style.opacity = '0.3'; }}
+                                onMouseEnter={e => { e.currentTarget.style.opacity = '0.9'; }}
+                                onMouseLeave={e => { e.currentTarget.style.opacity = '0.55'; }}
                                 title="Arrastrar para reordenar prioridad"
                               >
-                                <GripVertical style={{ width: 12, height: 12, color: '#9CA3AF' }} />
+                                <GripVertical style={{ width: 12, height: 12, color: '#64748B' }} />
                               </div>
                             )}
                             <div style={{ minWidth: 0, flex: 1 }}>
@@ -4408,7 +4622,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               fontSize: '0.82rem', fontWeight: 800, minWidth: 28,
                               color: pctCarga > 100 ? '#DC2626' : pctCarga > 90 ? '#D97706' : '#374151',
                             }}>
-                              {pctCarga}%
+                              {formatPtaPercentage(pctCarga)}%
                             </span>
                             <div style={{ display: 'flex', gap: 3 }}>
                               {[
@@ -5453,7 +5667,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           const initials = (name: string) => (name || 'PTA').split(' ').filter(Boolean).slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
           const cargaPct = (p: any) => {
             const disp = Number(p.horas_a_programar || 0);
-            return disp > 0 ? Math.min(100, Math.round((Number(p.total_horas_programadas || 0) / disp) * 100)) : 0;
+            return Math.min(100, getPtaCompletionPercentage(p.total_horas_programadas, disp));
           };
 
           const headerCard = (p: any, accent: string, bg: string, tag: string) => {

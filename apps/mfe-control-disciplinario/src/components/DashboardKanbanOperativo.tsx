@@ -787,7 +787,7 @@ function TarjetaProceso({
               <div
                 className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-offset-1"
                 style={{ background: semaforo.color, ringColor: semaforo.color + '40' }}
-                title={`${semaforo.label} · ${proceso.diasRestantes} días`}
+                title={`${semaforo.label} · ${formatDiasRestantes(proceso.diasRestantes)}`}
               />
             }
           />
@@ -911,7 +911,7 @@ function TarjetaProceso({
             )}
             <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-gray-50 border border-gray-200 flex items-center gap-1" style={{ color: semaforo.color }}>
               <span className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-              {proceso.diasRestantes}d
+              {formatDiasRestantes(proceso.diasRestantes)}
             </span>
             {noticiasSeguras.length > 0 && (
               <button
@@ -1442,7 +1442,7 @@ function VistaLista({
                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: semaforo.bg }}>
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: semaforo.color }} />
                         <span className="text-xs font-semibold" style={{ color: semaforo.color }}>
-                          {proceso.diasRestantes}d
+                          {formatDiasRestantes(proceso.diasRestantes)}
                         </span>
                       </div>
                     )}
@@ -1739,17 +1739,15 @@ function VistaLista({
                           </div>
                         ) : (
                           <div>
-                            <p className="text-sm font-bold" style={{
-                              color: proceso!.diasRestantes < 5 ? '#DC2626' : proceso!.diasRestantes < 10 ? '#F59E0B' : '#10B981'
-                            }}>
-                              {proceso!.diasRestantes} días
+                            <p className="text-sm font-bold" style={{ color: semaforo?.color || '#10B981' }}>
+                              {formatDiasRestantes(proceso!.diasRestantes)}
                             </p>
                             <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
                               <div
                                 className="h-full rounded-full transition-all"
                                 style={{
                                   width: `${proceso!.porcentajeTiempo}%`,
-                                  background: proceso!.porcentajeTiempo >= 80 ? '#DC2626' : proceso!.porcentajeTiempo >= 60 ? '#F59E0B' : '#10B981'
+                                  background: semaforo?.color || '#10B981'
                                 }}
                               />
                             </div>
@@ -2943,6 +2941,36 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     };
   };
 
+  // Calcula el nivel del semáforo con base en los porcentajes de riesgo/crítico configurados
+  function calcularNivelSemaforo(
+    diasRestantes: number,
+    porcentajeTiempo: number,
+    porcentajeRiesgo: number = 85,
+    porcentajeCritico: number = 95
+  ): 'verde' | 'amarillo' | 'rojo' {
+    if (diasRestantes <= 0 || porcentajeTiempo >= porcentajeCritico) return 'rojo';
+    if (porcentajeTiempo >= porcentajeRiesgo) return 'amarillo';
+    return 'verde';
+  }
+
+  // Colores/etiqueta del semáforo por nivel (misma paleta usada en las demás vistas)
+  function getSemaforoDisplay(semaforo?: 'verde' | 'amarillo' | 'rojo'): { color: string; bg: string; label: string } {
+    switch (semaforo) {
+      case 'verde': return { color: '#059669', bg: '#D1FAE5', label: 'En término' };
+      case 'amarillo': return { color: '#D97706', bg: '#FEF3C7', label: 'Próximo a vencer' };
+      case 'rojo': return { color: '#DC2626', bg: '#FEE2E2', label: 'Vencido' };
+      default: return { color: '#6B7280', bg: '#F3F4F6', label: 'N/A' };
+    }
+  }
+
+  // Mensaje estándar de tiempo restante para etapas/procesos
+  function formatDiasRestantes(diasRestantes: number): string {
+    if (diasRestantes === 0) return 'Vence Hoy';
+    if (diasRestantes > 0) return `Faltan ${diasRestantes} Día${diasRestantes === 1 ? '' : 's'}`;
+    const dias = Math.abs(diasRestantes);
+    return `Vencido por ${dias} Día${dias === 1 ? '' : 's'}`;
+  }
+
   // Transformar proceso desde API al formato interno
   export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
     let etapa = proceso.kanbanStage || proceso.etapaActual;
@@ -3299,6 +3327,13 @@ export function DashboardKanbanOperativo({
   const [etapasLoading, setEtapasLoading] = useState(true);
   const [datosCargados, setDatosCargados] = useState(false);
 
+  // ✅ NUEVO: Umbrales de porcentaje del semáforo (Términos/Tiempos) desde configuración global
+  const [umbralesAlerta, setUmbralesAlerta] = useState<{ porcentajeRiesgo: number; porcentajeCritico: number }>({
+    porcentajeRiesgo: 85,
+    porcentajeCritico: 95
+  });
+  const [umbralesLoading, setUmbralesLoading] = useState(true);
+
   // ✅ NUEVO: Función helper para obtener datos de arrays seguros (evita errores cuando backend retorna objeto en vez de array)
   const getDataArray = <T,>(data: any): T[] => {
     if (!data) return [];
@@ -3453,17 +3488,38 @@ export function DashboardKanbanOperativo({
     }
   };
 
-  // ✅ Cargar etapas primero, luego cargar datos cuando estén listas
+  // ✅ NUEVO: Cargar umbrales de porcentaje del semáforo desde configuración global
+  const cargarUmbrales = async () => {
+    setUmbralesLoading(true);
+    try {
+      const config: any = await disciplinaryService.getGlobalConfig();
+      const alertSettings = config?.alertSettings;
+      if (alertSettings?.porcentajeRiesgo && alertSettings?.porcentajeCritico) {
+        setUmbralesAlerta({
+          porcentajeRiesgo: alertSettings.porcentajeRiesgo,
+          porcentajeCritico: alertSettings.porcentajeCritico
+        });
+      }
+    } catch (error: any) {
+      console.error('Error al cargar umbrales de alerta:', error);
+      // Se mantienen los valores por defecto (85% / 95%)
+    } finally {
+      setUmbralesLoading(false);
+    }
+  };
+
+  // ✅ Cargar etapas y umbrales primero, luego cargar datos cuando estén listos
   useEffect(() => {
     cargarEtapas();
+    cargarUmbrales();
   }, []);
 
-  // ✅ NUEVO: Cargar noticias y procesos cuando las etapas estén listas
+  // ✅ NUEVO: Cargar noticias y procesos cuando las etapas y umbrales estén listos
   useEffect(() => {
-    if (!etapasLoading && etapasConfig !== undefined) {
+    if (!etapasLoading && !umbralesLoading && etapasConfig !== undefined) {
       cargarDatos();
     }
-  }, [etapasLoading, etapasConfig]);
+  }, [etapasLoading, umbralesLoading, etapasConfig, umbralesAlerta]);
 
   // ==================== TRANSFORMADORES DE DATOS DESDE API ====================
   const stageLabelMap: Record<string, string> = {
@@ -3679,7 +3735,7 @@ export function DashboardKanbanOperativo({
     };
   };
 
-  const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+  const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [], umbrales: { porcentajeRiesgo: number; porcentajeCritico: number } = umbralesAlerta): Proceso => {
     let etapa = proceso.kanbanStage || proceso.etapaActual;
 
     if (!etapa) {
@@ -3709,9 +3765,7 @@ export function DashboardKanbanOperativo({
         return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
       })();
 
-    const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0
-      ? 'rojo'
-      : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+    const semaforo = calcularNivelSemaforo(diasRestantes, porcentajeTiempo, umbrales.porcentajeRiesgo, umbrales.porcentajeCritico);
 
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
@@ -6536,8 +6590,11 @@ export function DashboardKanbanOperativo({
                                 <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).etapaActual}</p>
                               </div>
                               <div>
-                                <p className="text-gray-600">Días Restantes:</p>
-                                <p className="font-bold text-gray-900"> {(itemSeleccionado as Proceso).diasRestantes}d</p>
+                                <p className="text-gray-600">Tiempo Restante:</p>
+                                <p className="font-bold flex items-center gap-1.5" style={{ color: getSemaforoDisplay((itemSeleccionado as Proceso).semaforo).color }}>
+                                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: getSemaforoDisplay((itemSeleccionado as Proceso).semaforo).color }} />
+                                  {formatDiasRestantes((itemSeleccionado as Proceso).diasRestantes)}
+                                </p>
                               </div>
                             </div>
                           </div>
