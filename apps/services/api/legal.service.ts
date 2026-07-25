@@ -1913,7 +1913,12 @@ export class BorradoresCorreosService {
     /** Lista los borradores del usuario (más recientes primero). */
     async getBorradores(usuarioId: string): Promise<BorradorCorreo[]> {
         if (!usuarioId) return [];
-        return apiClient.get(`${SERVICE_PREFIX}/borradores-correos`, { params: { usuarioId } });
+        // OJO: apiClient.get(endpoint, params) recibe los query params como objeto PLANO
+        // (buildURL hace Object.entries(params)). Envolverlos en { params: { usuarioId } }
+        // serializa la clave literal "params" (?params=[object Object]) y el backend nunca
+        // recibe usuarioId -> findByUsuario(undefined) devuelve [] y el borrador nunca se
+        // lista (aunque sí se guarda). Debe pasarse plano: { usuarioId }.
+        return apiClient.get(`${SERVICE_PREFIX}/borradores-correos`, { usuarioId });
     }
 
     async getBorrador(id: string): Promise<BorradorCorreo> {
