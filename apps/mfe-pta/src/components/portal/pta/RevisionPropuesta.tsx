@@ -17,7 +17,7 @@ import {
 import {
   getPTAById, responderPropuestaPTA, getCatalogoActividadesComplementarias,
 } from '../../../services/api/ptaApi';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 
 interface RevisionPropuestaProps {

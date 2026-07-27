@@ -19,7 +19,7 @@ import {
   Star, Users, Zap, Info, Lock, Check, X, FlaskConical,
   Briefcase, Send, RefreshCw, CheckCircle2, XCircle,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { agruparEvidenciasPorJustificacion, ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';

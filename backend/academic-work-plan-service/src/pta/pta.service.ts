@@ -764,7 +764,19 @@ export class PtaService {
   }
 
   private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean; periodo?: string }): Promise<{ personId: string, email: string | null, fullName: string }> {
-    const { personId, email, fullName } = await this.fetchAuthDocenteInfo(docenteKey, { adminEdit: options?.adminEdit });
+    // Los llamadores históricos no siempre usan el mismo identificador: el portal
+    // envía id_person/id_user, mientras que un PTA ya persistido guarda el id de la
+    // fila academic_work_plan."Docente". Antes, al editar un PTA existente, ese id
+    // interno se buscaba directamente en auth.personas y producía el falso mensaje
+    // "no tiene el rol DOCENTE". Normalizar primero a personaId permite aceptar de
+    // forma segura cualquiera de los identificadores sin relajar la validación del rol.
+    const docenteByInternalId = await this.docenteRepo
+      .createQueryBuilder('d')
+      .where('d.id::text = :docenteKey', { docenteKey })
+      .getOne();
+    const authDocenteKey = coalesceString(docenteByInternalId?.personaId) || docenteKey;
+
+    const { personId, email, fullName } = await this.fetchAuthDocenteInfo(authDocenteKey, { adminEdit: options?.adminEdit });
 
     // Mapear a academic_work_plan."Docente" (para mantener compatibilidad con FK de PTA).
     // Se prioriza la vinculacion oficial del periodo sobre un registro dummy antiguo

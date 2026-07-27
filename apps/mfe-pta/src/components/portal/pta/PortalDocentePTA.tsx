@@ -36,7 +36,7 @@ import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
 import { SolicitudPTAModal } from './SolicitudPTAModal';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { usePTARealtimeSync } from '../../../hooks/usePTARealtimeSync';
 import { PTASyncIndicator } from '../../pta/PTASyncIndicator';
 import { useNotifications } from '../../esap/NotificationsContext';

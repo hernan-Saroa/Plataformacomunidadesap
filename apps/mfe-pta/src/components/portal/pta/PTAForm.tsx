@@ -30,7 +30,8 @@ import {
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
-import { toast } from 'sonner';
+import { toast as systemToast } from 'sonner';
+import { docentePtaAlert } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
@@ -1235,6 +1236,9 @@ function componentKeyForExtensionSubsection(section: string): PTAComponentKey {
 }
 
 export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel, concertacionActorId, concertacionActorNombre }: PTAFormProps) {
+  // El mismo formulario se reutiliza en el backoffice. Solo el flujo docente
+  // solicitado cambia sus avisos; la experiencia administrativa se conserva.
+  const toast = isAdminEdit ? systemToast : docentePtaAlert;
   const [saving, setSaving] = useState(false);
   // Comentario obligatorio al "Concertar" (editar y enviar como admin/revisor): editar y
   // mandar un PTA de un docente es, en la práctica, devolver el/los componente(s)
@@ -4130,10 +4134,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (autoSaveCountdownRef.current <= 0) {
         if (!savingRef.current && handleSaveRef.current) {
           setAutoSaveStatus('saving');
-          await handleSaveRef.current(false, true);
-          setAutoSaveStatus('saved');
-          setLastAutoSaveTime(new Date());
-          setTimeout(() => setAutoSaveStatus('idle'), 3000);
+          const saved = await handleSaveRef.current(false, true);
+          if (saved) {
+            setAutoSaveStatus('saved');
+            setLastAutoSaveTime(new Date());
+            setTimeout(() => setAutoSaveStatus('idle'), 3000);
+          } else {
+            // Nunca informar "Guardado" ni actualizar la hora cuando el servidor
+            // rechazó la operación. El aviso de error ya explica el problema.
+            setAutoSaveStatus('idle');
+          }
         }
         autoSaveCountdownRef.current = 120;
         setAutoSaveCountdown(120);
@@ -5441,7 +5451,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           ) : (
                             <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
                               requiredFieldErrors[ptaFieldKey.investigacionProyecto('resolucion_archivo')]
-                                ? 'border-red-400 bg-red-50/40 ring-4 ring-red-500/10 cursor-pointer'
+                                ? 'border-red-400 bg-red-50/40 shadow-sm hover:border-red-500 cursor-pointer'
                                 :
                               isEditable
                                 ? 'border-purple-300 bg-white shadow-sm hover:border-purple-400 hover:bg-purple-50/40 hover:shadow-md cursor-pointer'
@@ -6919,7 +6929,7 @@ function FormSelect({ label, value, onChange, options, disabled, placeholder, re
         <select id={controlId} value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
           required={required} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined}
           className={`w-full px-3 py-2 rounded-xl border bg-white text-[12px] font-semibold text-slate-800 outline-none disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200 shadow-sm cursor-pointer appearance-none min-h-[36px] ${error
-            ? 'border-red-400 bg-red-50/40 ring-4 ring-red-500/10 hover:border-red-500 focus:border-red-500 focus:ring-red-500/15'
+            ? 'border-red-400 bg-red-50/40 hover:border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-100'
             : 'border-slate-300 hover:border-blue-300 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'}`}>
           {placeholder && <option value="" disabled className="text-gray-400">{placeholder}</option>}
           {options.map(o => <option key={o.value} value={o.value} className="text-gray-900 font-medium">{o.label}</option>)}
@@ -6947,7 +6957,7 @@ function FormInput({ label, value, onChange, disabled, type = 'text', placeholde
       <input id={controlId} type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} placeholder={placeholder} min={min} max={max} step={step}
         required={required} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined}
         className={`w-full px-3 py-2 rounded-xl border bg-white text-[12px] font-semibold text-slate-800 outline-none disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-600 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200 shadow-sm placeholder:text-slate-400 min-h-[36px] ${error
-          ? 'border-red-400 bg-red-50/40 ring-4 ring-red-500/10 hover:border-red-500 focus:border-red-500 focus:ring-red-500/15'
+          ? 'border-red-400 bg-red-50/40 hover:border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-100'
           : 'border-slate-300 hover:border-blue-300 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'}`} />
       {error && <FieldErrorMessage id={errorId} message={error} />}
     </div>
