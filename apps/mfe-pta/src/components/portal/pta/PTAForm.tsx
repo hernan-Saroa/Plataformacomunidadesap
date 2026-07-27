@@ -16,7 +16,7 @@ import {
   ChevronLeft, ChevronRight, Save, Send, AlertCircle, Plus, Trash2, Calculator,
   BookOpen, FlaskConical, Globe, Briefcase, CheckCircle2, Info,
   ChevronDown, RotateCcw, AlertTriangle, Search, Shield, Clock, MessageSquare,
-  Paperclip, FileUp, FileCheck2, Eye, X as XIcon
+  Paperclip, FileUp, FileCheck2, Eye, LoaderCircle, X as XIcon
 } from 'lucide-react';
 import {
   savePTA, getPTAById, getCatalogoProgramas, getCatalogoAsignaturas,
@@ -1324,15 +1324,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [pendingDocenteAccion, setPendingDocenteAccion] = useState<'via_save' | 'avanzar_sin_cambios' | null>(null);
   const [docenteName, setDocenteName] = useState('');
   const [requestingFirmaCode, setRequestingFirmaCode] = useState(false);
+  const requestingFirmaCodeRef = useRef(false);
   const [firmaVerificationId, setFirmaVerificationId] = useState('');
   const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
-  // Modal de confirmación PTA incompleto (reemplaza window.confirm nativo)
-  const [showConfirmIncompleto, setShowConfirmIncompleto] = useState(false);
-  const [confirmIncompletoData, setConfirmIncompletoData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
+  // Resumen visual previo a la firma y al envío.
+  const [showConfirmResumen, setShowConfirmResumen] = useState(false);
+  const [confirmResumenData, setConfirmResumenData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
+  const [isClosingConfirmResumen, setIsClosingConfirmResumen] = useState(false);
+  const confirmResumenCloseTimerRef = useRef<number | null>(null);
+  const confirmResumenClosingRef = useRef(false);
   // Legacy — conservados por compatibilidad
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
   const [savedPtaIdForSignature, setSavedPtaIdForSignature] = useState('');
   const [targetEstado, setTargetEstado] = useState('Pendiente Jefatura');
+
+  useEffect(() => () => {
+    if (confirmResumenCloseTimerRef.current !== null) {
+      window.clearTimeout(confirmResumenCloseTimerRef.current);
+    }
+  }, []);
 
   // Recalcular horas cuando cambia tipo vinculación
   const tipoVincData = TIPOS_VINCULACION.find(t => t.codigo === tipoVinculacion);
@@ -4049,13 +4059,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return false;
     }
 
-    if (totalHoras < horasAProgramar) {
-      setConfirmIncompletoData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
-      setShowConfirmIncompleto(true);
-      return false; // Detener el flujo — el modal se encargará de continuar si el usuario acepta
+    if (confirmResumenCloseTimerRef.current !== null) {
+      window.clearTimeout(confirmResumenCloseTimerRef.current);
+      confirmResumenCloseTimerRef.current = null;
     }
-
-    return true;
+    confirmResumenClosingRef.current = false;
+    setIsClosingConfirmResumen(false);
+    setConfirmResumenData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
+    setShowConfirmResumen(true);
+    return false; // El resumen se muestra siempre antes de solicitar la firma del docente.
   }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
 
   const getFirmaEtapaLabel = useCallback(() => {
@@ -4075,13 +4087,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     accion: 'via_save' | 'avanzar_sin_cambios',
     validationAlreadyConfirmed = false,
   ) => {
-    if (requestingFirmaCode) return;
-    if (accion === 'via_save' && !validationAlreadyConfirmed && !validateEnvioDocente()) return;
+    if (requestingFirmaCodeRef.current) return false;
+    if (accion === 'via_save' && !validationAlreadyConfirmed && !validateEnvioDocente()) return false;
     if (hasBlockingHourLimits) {
       toast.error(componentLimitViolations[0]?.message || 'El PTA excede el tope permitido de horas.');
-      return;
+      return false;
     }
 
+    requestingFirmaCodeRef.current = true;
     setRequestingFirmaCode(true);
     try {
       const etapaLabel = getFirmaEtapaLabel();
@@ -4100,20 +4113,35 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       setFirmaCorreoDestino(res.data.email || 'tu correo institucional');
       setPendingDocenteAccion(accion);
       setShowFirmaDocente(true);
-      if (res.data.devCode) {
-        console.log('🔑 [PRUEBAS] Código de validación OTP recibido:', res.data.devCode);
-        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { duration: Infinity });
-      }
       toast.success('Código de validación enviado al correo registrado.');
+      return true;
     } catch (error: any) {
       setPendingDocenteAccion(null);
       setFirmaVerificationId('');
       setFirmaCorreoDestino('');
       toast.error(error?.message || 'No se pudo enviar el código de validación.');
+      return false;
     } finally {
+      requestingFirmaCodeRef.current = false;
       setRequestingFirmaCode(false);
     }
-  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, requestingFirmaCode, userPersonId, validateEnvioDocente]);
+  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, userPersonId, validateEnvioDocente]);
+
+  const closeConfirmResumen = useCallback((afterClose?: () => void) => {
+    if (confirmResumenClosingRef.current) return;
+
+    confirmResumenClosingRef.current = true;
+    setIsClosingConfirmResumen(true);
+    const closeDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 180;
+    confirmResumenCloseTimerRef.current = window.setTimeout(() => {
+      setShowConfirmResumen(false);
+      setConfirmResumenData(null);
+      setIsClosingConfirmResumen(false);
+      confirmResumenClosingRef.current = false;
+      confirmResumenCloseTimerRef.current = null;
+      afterClose?.();
+    }, closeDuration);
+  }, []);
 
   const verificarCodigoFirmaDocente = useCallback(async (codigo: string) => {
     if (!firmaVerificationId) throw new Error('No hay código activo. Solicita uno nuevo.');
@@ -4337,135 +4365,206 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         />
       )}
 
-      {/* Modal de confirmación PTA incompleto — reemplaza window.confirm nativo */}
-      {showConfirmIncompleto && confirmIncompletoData && createPortal(
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 99999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: '20px', maxWidth: '460px', width: '92%',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-            overflow: 'hidden', animation: 'scaleIn 0.25s ease'
-          }}>
-            {/* Header con icono de advertencia */}
-            <div style={{
-              background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%)',
-              padding: '28px 28px 20px', borderBottom: '1px solid #FDE68A',
-              display: 'flex', alignItems: 'flex-start', gap: '16px'
-            }}>
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
-                background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
-              }}>
-                <AlertTriangle style={{ width: '24px', height: '24px', color: '#fff' }} />
+      {/* Resumen visual que el docente revisa siempre antes de firmar y enviar. */}
+      {showConfirmResumen && confirmResumenData && createPortal(
+        <div className={`${isClosingConfirmResumen ? 'docente-pta-alert-backdrop-exit' : 'docente-pta-alert-backdrop-enter'} fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm`}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-busy={requestingFirmaCode}
+            aria-labelledby="pta-summary-title"
+            aria-describedby="pta-summary-description"
+            className={`${isClosingConfirmResumen ? 'docente-pta-alert-card-exit' : 'docente-pta-alert-card-enter'} max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl`}
+          >
+            <div className={`border-b px-6 py-5 sm:px-7 ${
+              confirmResumenData.porcentaje >= 100
+                ? 'border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-teal-50'
+                : 'border-blue-100 bg-gradient-to-br from-blue-50 via-white to-blue-50'
+            }`}>
+              <div className="flex items-start gap-3.5">
+                <div className={`pta-submit-summary-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white ${
+                  confirmResumenData.porcentaje >= 100
+                    ? 'bg-emerald-600 shadow-lg'
+                    : 'bg-[#003DA5] shadow-lg'
+                }`}>
+                  {confirmResumenData.porcentaje >= 100
+                    ? <CheckCircle2 className="h-5 w-5" />
+                    : <FileCheck2 className="h-5 w-5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className={`mb-1 inline-flex rounded-full border bg-white/90 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest ${
+                    confirmResumenData.porcentaje >= 100
+                      ? 'border-emerald-100 text-emerald-700'
+                      : 'border-blue-100 text-blue-700'
+                  }`}>
+                    Antes de enviar
+                  </span>
+                  <h3 id="pta-summary-title" className="m-0 text-lg font-extrabold leading-tight text-slate-900">
+                    {confirmResumenData.porcentaje >= 100 ? 'Tu PTA está listo' : 'Resumen de tu PTA'}
+                  </h3>
+                  <p id="pta-summary-description" className="mb-0 mt-1 text-xs font-medium leading-relaxed text-slate-600">
+                    Revisa cómo están distribuidas tus horas antes de confirmar el envío.
+                  </p>
+                </div>
               </div>
+            </div>
+
+            <div className="space-y-4 px-6 py-5 sm:px-6">
+              <div className="pta-submit-summary-overview rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="m-0 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      Horas programadas
+                    </p>
+                    <div className="mt-0.5 flex items-baseline gap-1.5">
+                      <span className="text-2xl font-black leading-none text-slate-900 tabular-nums">
+                        {confirmResumenData.totalHoras}h
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        de {confirmResumenData.horasRequeridas}h
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`pta-submit-summary-percentage rounded-xl border bg-white px-3 py-1.5 text-right shadow-sm ${
+                    confirmResumenData.porcentaje >= 100 ? 'border-emerald-100' : 'border-blue-100'
+                  }`}>
+                    <span className={`block text-base font-extrabold leading-none tabular-nums ${
+                      confirmResumenData.porcentaje >= 100 ? 'text-emerald-700' : 'text-[#003DA5]'
+                    }`}>
+                      {formatPtaPercentage(confirmResumenData.porcentaje)}%
+                    </span>
+                    <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                      programado
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200"
+                  role="progressbar"
+                  aria-label="Progreso de horas programadas"
+                  aria-valuemin={0}
+                  aria-valuemax={confirmResumenData.horasRequeridas}
+                  aria-valuenow={Math.min(confirmResumenData.totalHoras, confirmResumenData.horasRequeridas)}
+                >
+                  {allSections.map((component, index) => component.hours > 0 && (
+                    <span
+                      key={component.key}
+                      className="pta-submit-summary-main-segment h-full"
+                      style={{
+                        width: `${Math.min(100, (component.hours / Math.max(confirmResumenData.horasRequeridas, 1)) * 100)}%`,
+                        backgroundColor: component.color,
+                        animationDelay: `${180 + index * 85}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <div className="mt-2.5 flex items-center justify-between gap-3 text-[10px] font-semibold">
+                  <span className="text-slate-500">Meta del período: {confirmResumenData.horasRequeridas}h</span>
+                  <span className={confirmResumenData.porcentaje >= 100 ? 'text-emerald-700' : 'text-blue-700'}>
+                    {confirmResumenData.porcentaje >= 100
+                      ? 'Meta de horas alcanzada'
+                      : `${Math.max(0, confirmResumenData.horasRequeridas - confirmResumenData.totalHoras)}h disponibles por programar`}
+                  </span>
+                </div>
+              </div>
+
               <div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#92400E', lineHeight: 1.3 }}>
-                  PTA Incompleto
-                </h3>
-                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#B45309', fontWeight: 500 }}>
-                  El plan no alcanza las horas requeridas
+                <div className="mb-2.5 flex items-center justify-between">
+                  <h4 className="m-0 text-[12px] font-extrabold uppercase tracking-wide text-slate-700">
+                    Distribución de horas
+                  </h4>
+                  <span className="text-[10px] font-semibold text-slate-400">% de lo programado</span>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  {allSections.map((component, index) => {
+                    const ComponentIcon = component.icon;
+                    const componentPercentage = confirmResumenData.totalHoras > 0
+                      ? (component.hours / confirmResumenData.totalHoras) * 100
+                      : 0;
+                    return (
+                      <div
+                        key={component.key}
+                        className={`pta-submit-summary-row flex items-center gap-3 px-3.5 py-2.5 ${index > 0 ? 'border-t border-slate-100' : ''}`}
+                        style={{ animationDelay: `${140 + index * 65}ms` }}
+                        aria-label={`${component.label}: ${component.hours} horas, ${formatPtaPercentage(componentPercentage)} por ciento de lo programado`}
+                      >
+                        <div
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                          style={{ backgroundColor: `${component.color}14`, color: component.color }}
+                        >
+                          <ComponentIcon className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-bold text-slate-700">{component.label}</span>
+                          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="pta-submit-summary-row-progress h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, componentPercentage)}%`,
+                                backgroundColor: component.color,
+                                animationDelay: `${260 + index * 65}ms`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex min-w-[86px] shrink-0 items-baseline justify-end gap-2 text-right tabular-nums">
+                          <span className="text-xs font-extrabold text-slate-800">{component.hours}h</span>
+                          <span className="w-9 text-[10px] font-semibold text-slate-400">
+                            {formatPtaPercentage(componentPercentage)}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pta-submit-summary-info flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                <p className="m-0 text-[11px] font-medium leading-relaxed text-blue-900">
+                  Al confirmar, tu PTA pasará a revisión. Podrás consultar su estado desde tu bandeja.
                 </p>
               </div>
             </div>
 
-            {/* Body */}
-            <div style={{ padding: '24px 28px' }}>
-              {/* Indicador visual de progreso */}
-              <div style={{
-                background: '#F9FAFB', borderRadius: '14px', padding: '16px 20px',
-                border: '1px solid #E5E7EB', marginBottom: '20px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#374151' }}>
-                    {confirmIncompletoData.totalHoras}h programadas
-                  </span>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#9CA3AF' }}>
-                    de {confirmIncompletoData.horasRequeridas}h requeridas
-                  </span>
-                </div>
-                <div style={{
-                  width: '100%', height: '10px', borderRadius: '999px',
-                  background: '#E5E7EB', overflow: 'hidden'
-                }}>
-                  <div style={{
-                    width: `${Math.min(confirmIncompletoData.porcentaje, 100)}%`,
-                    height: '100%', borderRadius: '999px',
-                    background: confirmIncompletoData.porcentaje >= 80
-                      ? 'linear-gradient(90deg, #F59E0B, #EAB308)'
-                      : 'linear-gradient(90deg, #EF4444, #F97316)',
-                    transition: 'width 0.5s ease'
-                  }} />
-                </div>
-                <div style={{ textAlign: 'center', marginTop: '8px' }}>
-                  <span style={{
-                    fontSize: '22px', fontWeight: 800,
-                    color: confirmIncompletoData.porcentaje >= 80 ? '#D97706' : '#DC2626'
-                  }}>
-                    {formatPtaPercentage(confirmIncompletoData.porcentaje)}%
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '4px', fontWeight: 600 }}>
-                    completado
-                  </span>
-                </div>
-              </div>
-
-              <p style={{
-                margin: 0, fontSize: '13.5px', lineHeight: 1.65, color: '#4B5563', fontWeight: 500
-              }}>
-                Un PTA incompleto <strong style={{ color: '#DC2626' }}>incide negativamente</strong> en la evaluación de desempeño docente.
-              </p>
-              <p style={{
-                margin: '12px 0 0', fontSize: '13.5px', lineHeight: 1.65, color: '#6B7280', fontWeight: 500
-              }}>
-                ¿Desea enviarlo de todas formas?
-              </p>
-            </div>
-
-            {/* Footer con botones */}
-            <div style={{
-              padding: '0 28px 24px', display: 'flex', gap: '12px', justifyContent: 'flex-end'
-            }}>
+            <div className="flex flex-col-reverse gap-2.5 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
               <button
-                onClick={() => { setShowConfirmIncompleto(false); setConfirmIncompletoData(null); }}
-                style={{
-                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
-                  border: '2px solid #E5E7EB', background: '#fff', color: '#374151',
-                  cursor: 'pointer', transition: 'all 0.2s'
-                }}
-                onMouseOver={e => { (e.target as HTMLElement).style.background = '#F3F4F6'; }}
-                onMouseOut={e => { (e.target as HTMLElement).style.background = '#fff'; }}
+                onClick={() => closeConfirmResumen()}
+                disabled={isClosingConfirmResumen || requestingFirmaCode}
+                className="pta-submit-summary-button pta-submit-summary-button-secondary inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-wait disabled:opacity-60"
               >
-                Cancelar
+                {requestingFirmaCode ? 'Espera un momento' : 'Revisar antes'}
               </button>
               <button
                 onClick={() => {
-                  setShowConfirmIncompleto(false);
-                  setConfirmIncompletoData(null);
-                  solicitarFirmaDocente('via_save', true);
+                  void (async () => {
+                    const firmaSolicitada = await solicitarFirmaDocente('via_save', true);
+                    if (firmaSolicitada) {
+                      closeConfirmResumen();
+                    }
+                  })();
                 }}
-                style={{
-                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
-                  border: 'none', background: '#D97706', color: '#fff',
-                  cursor: 'pointer', transition: 'all 0.2s',
-                  boxShadow: '0 4px 12px rgba(217,119,6,0.3)'
-                }}
-                onMouseOver={e => { (e.target as HTMLElement).style.background = '#B45309'; }}
-                onMouseOut={e => { (e.target as HTMLElement).style.background = '#D97706'; }}
+                disabled={isClosingConfirmResumen || requestingFirmaCode}
+                className={`pta-submit-summary-button pta-submit-summary-button-primary inline-flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-[#003DA5] bg-[#003DA5] px-5 py-2.5 text-xs font-bold text-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-90 ${
+                  requestingFirmaCode ? 'pta-submit-summary-button-loading' : ''
+                }`}
               >
-                Sí, enviar de todas formas
+                {requestingFirmaCode ? (
+                  <>
+                    <LoaderCircle className="pta-submit-summary-spinner h-4 w-4" aria-hidden="true" />
+                    <span role="status" aria-live="polite">Procesando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    Enviar PTA
+                  </>
+                )}
               </button>
             </div>
           </div>
-          <style>{`
-            @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-            @keyframes scaleIn { from { opacity: 0; transform: scale(0.95) } to { opacity: 1; transform: scale(1) } }
-          `}</style>
         </div>,
         document.body
       )}

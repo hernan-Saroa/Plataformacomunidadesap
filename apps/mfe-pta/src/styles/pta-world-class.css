@@ -896,12 +896,189 @@
   pointer-events: none;
 }
 
+@keyframes ptaSubmitSummaryIconIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.78) rotate(-5deg);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.05) rotate(1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0);
+  }
+}
+
+@keyframes ptaSubmitSummaryContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ptaSubmitSummaryBarIn {
+  from {
+    opacity: 0.45;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes ptaSubmitSummarySpinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ptaSubmitSummaryLoadingSheen {
+  from {
+    transform: translateX(-135%);
+  }
+  to {
+    transform: translateX(135%);
+  }
+}
+
+.pta-submit-summary-icon {
+  animation: ptaSubmitSummaryIconIn 520ms cubic-bezier(0.22, 1, 0.36, 1) 70ms both;
+  transform-origin: center;
+}
+
+.pta-submit-summary-overview {
+  animation: ptaSubmitSummaryContentIn 420ms cubic-bezier(0.22, 1, 0.36, 1) 90ms both;
+}
+
+.pta-submit-summary-percentage {
+  animation: ptaSubmitSummaryIconIn 440ms cubic-bezier(0.22, 1, 0.36, 1) 150ms both;
+}
+
+.pta-submit-summary-main-segment,
+.pta-submit-summary-row-progress {
+  animation: ptaSubmitSummaryBarIn 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.pta-submit-summary-row {
+  opacity: 0;
+  animation: ptaSubmitSummaryContentIn 430ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: background-color 180ms ease;
+}
+
+.pta-submit-summary-row:hover {
+  background: rgba(239, 246, 255, 0.55);
+}
+
+.pta-submit-summary-info {
+  animation: ptaSubmitSummaryContentIn 430ms cubic-bezier(0.22, 1, 0.36, 1) 390ms both;
+}
+
+.pta-submit-summary-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    opacity 180ms ease;
+}
+
+.pta-submit-summary-button:disabled {
+  pointer-events: none;
+}
+
+.pta-submit-summary-button-secondary:hover {
+  transform: translateY(-1px);
+  border-color: #94a3b8;
+  background: #f8fafc;
+  box-shadow: 0 7px 16px rgba(15, 23, 42, 0.1);
+}
+
+.pta-submit-summary-button-primary:hover {
+  transform: translateY(-2px);
+  background: #002f80;
+  box-shadow: 0 11px 24px rgba(0, 61, 165, 0.28);
+}
+
+.pta-submit-summary-button-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
+  transform: translateX(-130%);
+  transition: transform 520ms ease;
+}
+
+.pta-submit-summary-button-primary:hover::after {
+  transform: translateX(130%);
+}
+
+.pta-submit-summary-button-loading {
+  background: #00358f;
+  box-shadow: 0 8px 22px rgba(0, 61, 165, 0.24);
+}
+
+.pta-submit-summary-button-loading::after {
+  animation: ptaSubmitSummaryLoadingSheen 1.15s ease-in-out infinite;
+}
+
+.pta-submit-summary-button-primary .pta-submit-summary-spinner {
+  animation: ptaSubmitSummarySpinner 780ms linear infinite;
+  transition: none;
+}
+
+.pta-submit-summary-button-primary svg {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pta-submit-summary-button-primary:hover svg {
+  transform: translateX(2px) rotate(-4deg);
+}
+
+.pta-submit-summary-button:active {
+  transform: translateY(0) scale(0.975);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.14);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .docente-pta-alert-backdrop-enter,
   .docente-pta-alert-backdrop-exit,
   .docente-pta-alert-card-enter,
-  .docente-pta-alert-card-exit {
+  .docente-pta-alert-card-exit,
+  .pta-submit-summary-icon,
+  .pta-submit-summary-overview,
+  .pta-submit-summary-percentage,
+  .pta-submit-summary-main-segment,
+  .pta-submit-summary-row-progress,
+  .pta-submit-summary-row,
+  .pta-submit-summary-info {
     animation-duration: 1ms;
+    animation-delay: 0ms !important;
+  }
+
+  .pta-submit-summary-button,
+  .pta-submit-summary-button-primary::after,
+  .pta-submit-summary-button-primary svg {
+    transition-duration: 1ms;
+  }
+
+  .pta-submit-summary-button-loading::after,
+  .pta-submit-summary-button-primary .pta-submit-summary-spinner {
+    animation: none;
   }
 }
 
