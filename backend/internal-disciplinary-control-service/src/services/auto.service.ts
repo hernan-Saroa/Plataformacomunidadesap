@@ -118,6 +118,7 @@ export class AutoService {
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
         tipo: createAutoDto.tipoAuto,
+        autoConfigurationId: createAutoDto.autoConfigurationId ?? null,
         numero: createAutoDto.numero,
         contenido: createAutoDto.contenidoHtml ?? '',
         process: { id: createAutoDto.processId },
