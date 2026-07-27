@@ -151,6 +151,7 @@ interface AsignaturaItem {
 }
 
 interface InvestigacionProyecto {
+  territorial_id: string;
   nombre: string;
   codigo: string;
   grupo: string;
@@ -166,6 +167,7 @@ interface InvestigacionProyecto {
 
 interface InvestigacionActividad {
   id: number;
+  territorial_id: string;
   actividad_id: string;
   nombre: string;
   descripcion: string;
@@ -181,6 +183,7 @@ interface InvestigacionActividad {
 
 interface ExtensionActividad {
   id: number;
+  territorial_id: string;
   seccion: string;
   actividad_id: string;
   nombre: string;
@@ -203,6 +206,7 @@ interface ExtensionSelectionDetail {
 
 interface ComplementariaItem {
   id: number;
+  territorial_id: string;
   actividad_id: string;
   nombre: string;
   horas: number;
@@ -1366,6 +1370,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Componentes
   const [asignaturas, setAsignaturas] = useState<AsignaturaItem[]>([]);
   const [invProyecto, setInvProyecto] = useState<InvestigacionProyecto>({
+    territorial_id: '',
     nombre: '', codigo: '', grupo: '', linea: '', rol: '',
     horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '',
     resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '',
@@ -1947,6 +1952,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const proyectoInvestigacion = d.investigacion_proyecto;
         if (proyectoInvestigacion) {
           setInvProyecto({
+            territorial_id: '',
             nombre: '', codigo: '', grupo: '', linea: '', rol: '',
             horas_solicitadas: 0,
             fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
@@ -1955,19 +1961,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           });
         } else {
           setInvProyecto({
+            territorial_id: '',
             nombre: '', codigo: '', grupo: '', linea: '', rol: '',
             horas_solicitadas: 0,
             fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
             resolucion_archivo: null, resolucion_archivo_url: '',
           });
         }
-        setInvActividades(d.investigacion_actividades || []);
+        setInvActividades((d.investigacion_actividades || []).map((activity: any) => ({
+          ...activity,
+          territorial_id: String(activity?.territorial_id || ''),
+        })));
         // Normalizar actividades de extensión al cargar: aplicar multiplicador x2 si no se hizo
         // (puede pasar con PTAs guardados antes del fix o en race condition)
         const rawExtActs: ExtensionActividad[] = d.extension_actividades || [];
         const normalizedExtActs = rawExtActs.map(e => {
           const normalizedSection = normalizeExtensionSectionKey(e.seccion);
-          const baseAct = normalizedSection === e.seccion ? e : { ...e, seccion: normalizedSection };
+          const baseAct = {
+            ...e,
+            territorial_id: String(e?.territorial_id || ''),
+            seccion: normalizedSection,
+          };
           const secConfig = extSecciones.find(s => s.key === normalizedSection);
           const mult = secConfig?.multiplicador || 1;
           if (mult <= 1) return baseAct;
@@ -1992,10 +2006,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             || (c?.seccion == null && c?.consumeTotalidad !== undefined);
           const compAadm = rawComp.filter((c: any) => isAadm(c));
           const legacyAadm = Array.isArray(d.academico_admin) ? d.academico_admin : [];
-          setComplementarias(rawComp.filter((c: any) => !isAadm(c)));
+          setComplementarias(rawComp
+            .filter((c: any) => !isAadm(c))
+            .map((activity: any) => ({
+              ...activity,
+              territorial_id: String(activity?.territorial_id || ''),
+            })));
           // Si complementarias ya trae la sección AADM se usa esa (PTA migrado/guardado nuevo);
           // el array legacy solo aplica a PTAs viejos sin la sección dentro de complementarias.
-          setAcademicoAdmin(compAadm.length > 0 ? compAadm : legacyAadm);
+          setAcademicoAdmin((compAadm.length > 0 ? compAadm : legacyAadm).map((activity: any) => ({
+            ...activity,
+            territorial_id: String(activity?.territorial_id || ''),
+          })));
         }
         setObservacionesDocente(d.observaciones_docente || '');
         if (d.camposModificadosPorRevisor) setCamposModificados(d.camposModificadosPorRevisor);
@@ -2367,11 +2389,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (!actividadTotalidadGuardada) return;
 
     setInvProyecto(previous => {
-      const alreadyEmpty = !previous.nombre && !previous.codigo && !previous.grupo && !previous.linea &&
+      const alreadyEmpty = !previous.territorial_id && !previous.nombre && !previous.codigo && !previous.grupo && !previous.linea &&
         !previous.rol && !previous.horas_solicitadas &&
         !previous.resolucion_nombre &&
         !previous.resolucion_archivo && !previous.resolucion_archivo_url;
       return alreadyEmpty ? previous : {
+        territorial_id: '',
         nombre: '', codigo: '', grupo: '', linea: '', rol: '',
         horas_solicitadas: 0,
         fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null,
@@ -2837,7 +2860,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     setInvActividades(prev => [...prev, {
-      id: Date.now(), actividad_id: '', nombre: '', descripcion: '',
+      id: Date.now(), territorial_id: '', actividad_id: '', nombre: '', descripcion: '',
       cantidad: 1, horas_unitarias: 0, horas_total: 0, fecha_inicio: '', fecha_fin: '',
       resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '',
     }]);
@@ -2906,7 +2929,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
     setExtActividades(prev => [...prev, {
-      id: Date.now(), seccion: normalizedSection, actividad_id: '', nombre: '', horas: 0, horas_ejecutadas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
+      id: Date.now(), territorial_id: '', seccion: normalizedSection, actividad_id: '', nombre: '', horas: 0, horas_ejecutadas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
   };
 
@@ -3121,7 +3144,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
     setComplementarias(prev => [...prev, {
-      id: Date.now(), actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
+      id: Date.now(), territorial_id: '', actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
   };
 
@@ -3225,7 +3248,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
     setAcademicoAdmin(prev => [...prev, {
-      id: Date.now(), actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
+      id: Date.now(), territorial_id: '', actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
   };
 
@@ -3403,6 +3426,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       // El bloque de proyecto es opcional. Al seleccionar un rol se activa y sus
       // cuatro datos de identificación pasan a ser obligatorios.
       if (invProyecto.rol) {
+        requireText(
+          invProyecto.territorial_id,
+          ptaFieldKey.investigacionProyecto('territorial_id'),
+          'investigacion',
+          'Territorial del proyecto de investigación',
+        );
         requireText(invProyecto.nombre, ptaFieldKey.investigacionProyecto('nombre'), 'investigacion', 'Nombre del proyecto');
         requireText(invProyecto.codigo, ptaFieldKey.investigacionProyecto('codigo'), 'investigacion', 'Código del proyecto');
         requireText(invProyecto.grupo, ptaFieldKey.investigacionProyecto('grupo'), 'investigacion', 'Grupo de investigación');
@@ -3439,6 +3468,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       invActividades.forEach((activity, index) => {
         const itemLabel = `la actividad de investigación ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.investigacionActividad(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'investigacion', `Territorial de ${itemLabel}`);
         if (tieneProyecto) {
           requireText(activity.nombre, keyFor('nombre'), 'investigacion', `Nombre de ${itemLabel}`);
         } else {
@@ -3459,6 +3489,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const displayIndex = extensionIndexBySubsection[subsection];
         const itemLabel = `la actividad de extensión ${displayIndex}`;
         const keyFor = (field: string) => ptaFieldKey.extension(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'extension', `Territorial de ${itemLabel}`, subsection);
         requireText(activity.actividad_id, keyFor('actividad_id'), 'extension', `Actividad de extensión ${displayIndex}`, subsection);
         const section = extSecciones.find(item => item.key === subsection);
         const catalogActivity = (actExtension?.[subsection] || [])
@@ -3489,6 +3520,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       complementarias.forEach((activity, index) => {
         const itemLabel = `la actividad complementaria ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.complementaria(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'complementarias', `Territorial de ${itemLabel}`, COMP_SECCION_DOCENCIA);
         requireText(activity.actividad_id, keyFor('actividad_id'), 'complementarias', `Actividad complementaria ${index + 1}`, COMP_SECCION_DOCENCIA);
         if (activity.actividad_id) {
           requirePositiveHours(activity.horas, keyFor('horas'), 'complementarias', `Horas de ${itemLabel}`, COMP_SECCION_DOCENCIA);
@@ -3502,6 +3534,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       academicoAdmin.forEach((activity, index) => {
         const itemLabel = `la actividad académico-administrativa ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.academico(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'complementarias', `Territorial de ${itemLabel}`, COMP_SECCION_AADM);
         requireText(activity.actividad_id, keyFor('actividad_id'), 'complementarias', `Actividad académico-administrativa ${index + 1}`, COMP_SECCION_AADM);
         if (activity.actividad_id) {
           requirePositiveHours(
@@ -3818,7 +3851,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       asignaturas: asignaturasPayload,
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
-      investigacion_proyecto: (invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
+      investigacion_proyecto: (invProyecto.territorial_id || invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
         ? {
             ...invProyecto,
             horas_solicitadas: invProyecto.rol ? hInvestigacionProyecto : 0,
@@ -4213,6 +4246,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const seccionModificada = (key: string) =>
     isEnRevisionDocente && Object.keys(camposModificados).length > 0 &&
     (CAMPOS_POR_SECCION[key] || []).some(f => camposModificados[f]);
+  const territorialOptions = territoriales.map((territorial: any) => ({
+    value: String(territorial.id),
+    label: territorial.nombre,
+  }));
 
   const allSections = [
     { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: docProrr, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: `${maxDocenciaLimit}h`, excede: docExcede, bloqueada: false, modificada: seccionModificada('docencia') },
@@ -5385,7 +5422,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </button>
                         <button
                           type="button"
-                          onClick={() => setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' })}
+                          onClick={() => setInvProyecto({ territorial_id: '', nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' })}
                           className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
                         >
                           Conservar actividades
@@ -5402,12 +5439,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <div className="flex items-center justify-between mb-4 relative z-10">
                       <h4 className="text-sm font-extrabold text-purple-900">Proyecto de Investigación</h4>
                       {isEditable && (
-                        invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol ||
+                        invProyecto.territorial_id || invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol ||
                         (!permiteCoexistenciaInvestigacion && invActividades.length > 0)
                       ) && (
                         <button
                           onClick={() => {
-                            setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
+                            setInvProyecto({ territorial_id: '', nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
                             if (!permiteCoexistenciaInvestigacion && !conflictoCoexistenciaInvestigacion) setInvActividades([]);
                           }}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-red-200 bg-red-50 text-red-600 text-xs font-semibold cursor-pointer hover:bg-red-100 transition-colors">
@@ -5586,6 +5623,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           )}
                         </div>
                       </div>
+                    </div>
+                    <div className="mt-3 border-t border-purple-200/60 pt-3">
+                      <FormSelect
+                        label="Territorial"
+                        value={invProyecto.territorial_id}
+                        disabled={!isEditable}
+                        required={projectFieldsRequired}
+                        fieldKey={ptaFieldKey.investigacionProyecto('territorial_id')}
+                        error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('territorial_id')]}
+                        onChange={v => setInvProyecto(project => ({ ...project, territorial_id: v }))}
+                        options={territorialOptions}
+                        placeholder="Seleccionar territorial..."
+                      />
                     </div>
                   </div>
 
@@ -5808,6 +5858,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 </div>
                               </div>
                             </div>
+                            <div className="mt-1 border-t border-purple-100/80 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -5923,6 +5986,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   )}
                                 </div>
                               </div>
+                            </div>
+                            <div className="mt-1 border-t border-gray-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
                             </div>
                           </div>
                         ))}
@@ -6382,6 +6458,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleExtActChange(ext.id, 'fecha_fin', v)} />
                               </div>
                             </div>
+                            <div className="mt-1 border-t border-emerald-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={ext.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.extension(ext.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.extension(ext.id, 'territorial_id')]}
+                                onChange={v => handleExtActChange(ext.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                           </div>
                         );
                       })}
@@ -6558,6 +6647,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleCompChange(comp.id, 'fecha_fin', v)} />
                               </div>
+                            </div>
+                            <div className="mt-1 border-t border-amber-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.complementaria(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'territorial_id')]}
+                                onChange={v => handleCompChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
                             </div>
                           </div>
                         );
@@ -6740,6 +6842,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleAcadChange(comp.id, 'fecha_fin', v)} />
                               </div>
+                            </div>
+                            <div className="mt-1 border-t border-blue-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.academico(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'territorial_id')]}
+                                onChange={v => handleAcadChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
                             </div>
                           </div>
                         );
