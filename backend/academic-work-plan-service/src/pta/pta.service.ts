@@ -311,6 +311,162 @@ function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[]
   return groups.filter((group): group is NonNullable<typeof group> => Boolean(group));
 }
 
+type HierarchyBranch = {
+  clave: string;
+  nombre: string;
+  ruta: Array<{ columna: string; valor: string }>;
+};
+
+function normalizeHierarchyKeyPart(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('es')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'opcion';
+}
+
+function getHierarchyGroupSelectionKey(
+  levels: Array<{ columna: string; valor: string }>,
+): string {
+  const path = levels
+    .map(level =>
+      `${normalizeHierarchyKeyPart(level?.columna)}:${normalizeHierarchyKeyPart(level?.valor)}`,
+    )
+    .join('/');
+  return `grupo:${path}`;
+}
+
+function getHierarchySelectionCandidates(branches: HierarchyBranch[]): Map<
+  string,
+  HierarchyBranch & { isGroup: boolean }
+> {
+  const candidates = new Map<string, HierarchyBranch & { isGroup: boolean }>();
+  branches.forEach(branch => {
+    const route = Array.isArray(branch?.ruta) ? branch.ruta : [];
+    candidates.set(String(branch?.clave || ''), {
+      ...branch,
+      ruta: route,
+      isGroup: false,
+    });
+    for (let length = 1; length < route.length; length += 1) {
+      const groupRoute = route.slice(0, length);
+      const groupKey = getHierarchyGroupSelectionKey(groupRoute);
+      if (!candidates.has(groupKey)) {
+        candidates.set(groupKey, {
+          clave: groupKey,
+          nombre: String(groupRoute[groupRoute.length - 1]?.valor || ''),
+          ruta: groupRoute,
+          isGroup: true,
+        });
+      }
+    }
+  });
+  candidates.delete('');
+  return candidates;
+}
+
+function isHierarchyRoutePrefix(
+  possibleParent: Array<{ columna: string; valor: string }>,
+  possibleChild: Array<{ columna: string; valor: string }>,
+): boolean {
+  return possibleParent.length < possibleChild.length
+    && possibleParent.every((level, index) =>
+      level.columna === possibleChild[index]?.columna
+      && level.valor === possibleChild[index]?.valor,
+    );
+}
+
+function buildHierarchyBranches(
+  item: any,
+  detailColumns: string[],
+  itemColumnLabel = 'Actividad / Ítem',
+  includeItem = true,
+): HierarchyBranch[] {
+  const prefix = includeItem && String(item?.nombre || '').trim()
+    ? [{ columna: itemColumnLabel, valor: String(item.nombre).trim() }]
+    : [];
+  const valuesByColumn = detailColumns.map(column =>
+    (Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [])
+      .map((value: any) => String(value || '').trim()),
+  );
+  const parentsByColumn = detailColumns.map((column, level) => {
+    if (level === 0) return [];
+    const previousCount = valuesByColumn[level - 1].length;
+    return valuesByColumn[level].map((_: string, index: number) => {
+      const stored = item?.col_parents?.[column]?.[index];
+      const fallback = previousCount > 0 ? Math.min(index, previousCount - 1) : -1;
+      const candidate = Number.isFinite(Number(stored)) ? Number(stored) : fallback;
+      return previousCount > 0 ? Math.max(0, Math.min(candidate, previousCount - 1)) : -1;
+    });
+  });
+  const branches: Array<{ nombre: string; ruta: Array<{ columna: string; valor: string }> }> = [];
+
+  const visit = (
+    level: number,
+    parentIndex: number | null,
+    path: Array<{ columna: string; valor: string }>,
+  ) => {
+    if (level >= detailColumns.length) {
+      if (path.length > prefix.length) {
+        branches.push({ nombre: path[path.length - 1].valor, ruta: path });
+      }
+      return;
+    }
+    const column = detailColumns[level];
+    const indexes = valuesByColumn[level]
+      .map((_: string, index: number) => index)
+      .filter(index => {
+        if (!valuesByColumn[level][index]) return false;
+        if (level === 0 || parentIndex === null) return true;
+        return parentsByColumn[level][index] === parentIndex;
+      });
+    if (indexes.length === 0) {
+      if (path.length > prefix.length) {
+        branches.push({ nombre: path[path.length - 1].valor, ruta: path });
+      }
+      return;
+    }
+    indexes.forEach(index => visit(
+      level + 1,
+      index,
+      [...path, { columna: column, valor: valuesByColumn[level][index] }],
+    ));
+  };
+
+  if (detailColumns.length > 0) visit(0, null, prefix);
+  if (branches.length === 0 && prefix.length > 0) {
+    branches.push({ nombre: prefix[0].valor, ruta: prefix });
+  }
+
+  const occurrences = new Map<string, number>();
+  return branches.map(branch => {
+    const base = branch.ruta
+      .map(value => `${normalizeHierarchyKeyPart(value.columna)}:${normalizeHierarchyKeyPart(value.valor)}`)
+      .join('/');
+    const occurrence = (occurrences.get(base) || 0) + 1;
+    occurrences.set(base, occurrence);
+    return { ...branch, clave: `${base}#${occurrence}` };
+  });
+}
+
+function getStableCatalogRowDescriptors(rows: any[]): Array<{ row: any; index: number; key: string }> {
+  const occurrences = new Map<string, number>();
+  return rows.map((row, index) => {
+    const explicitKey = String(row?.clave ?? row?.id ?? row?.key ?? '').trim();
+    if (explicitKey && String(row?.clave || '').trim()) {
+      return { row, index, key: explicitKey };
+    }
+    const base = explicitKey
+      ? `id:${explicitKey}`
+      : `nombre:${normalizeHierarchyKeyPart(row?.nombre || `fila-${index + 1}`)}`;
+    const occurrence = (occurrences.get(base) || 0) + 1;
+    occurrences.set(base, occurrence);
+    return { row, index, key: `${base}#${occurrence}` };
+  });
+}
+
 function getExtensionCatalogHourRows(activity: any, section: any): any[] {
   const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
   if (columns && columns.length > 0 && columns[0] !== EXTENSION_ITEMS_COLUMN_KEY) {
@@ -326,6 +482,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
     const items = Array.isArray(activity?.items) ? activity.items : [];
     const rows: any[] = [];
     const rowCount = Math.max(values.length, metadata.length);
+    const itemColumnLabel = String(section?.columna_items_nombre || 'Actividad / Ítem').trim();
     const decorateItem = (item: any) => ({
       ...item,
       _detailValues: detailColumns.flatMap((column: string) => {
@@ -334,6 +491,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
           .filter((value: any) => String(value || '').trim())
           .map((value: any) => ({ column, value: String(value) }));
       }),
+      _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, true),
     });
     for (let index = 0; index < rowCount; index += 1) {
       const meta = metadata[index] || {};
@@ -346,6 +504,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
           ...item,
           nombre: `${rowName} — ${String(item?.nombre || 'Actividad')}`,
           _detailGroups: [{ name: String(item?.nombre || 'Actividad'), values: item._detailValues || [] }],
+          _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, false),
         }));
       } else {
         rows.push({
@@ -355,6 +514,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
             name: String(item?.nombre || 'Actividad'),
             values: item._detailValues || [],
           })),
+          _ramificaciones: childItems.flatMap((item: any) => item._ramificaciones || []),
         });
       }
     }
@@ -365,9 +525,11 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
     const detailColumns = columns && columns[0] === EXTENSION_ITEMS_COLUMN_KEY
       ? columns.slice(1)
       : [];
+    const itemColumnLabel = String(section?.columna_items_nombre || 'Actividad / Ítem').trim();
     return activity.items.map((item: any) => ({
       ...item,
       _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+      _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, false),
     }));
   }
   return [];
@@ -475,6 +637,18 @@ function flattenConfiguredComplementaryActivity(
       porcentaje_pta: rowType === 'porcentaje'
         ? Math.min(100, Math.max(1, Number(row?.porcentaje_pta) || 1))
         : undefined,
+      ramificaciones: Array.isArray(row?._ramificaciones)
+        ? row._ramificaciones.map((branch: any) => ({
+            clave: String(branch?.clave || ''),
+            nombre: String(branch?.nombre || ''),
+            ruta: Array.isArray(branch?.ruta)
+              ? branch.ruta.map((value: any) => ({
+                  columna: String(value?.columna || ''),
+                  valor: String(value?.valor || ''),
+                }))
+              : [],
+          }))
+        : [],
     };
   });
 
@@ -492,6 +666,7 @@ function flattenConfiguredComplementaryActivity(
     // Permite calcular correctamente bloques que mezclan, por ejemplo, una fila
     // fija con otra porcentual. El resumen plano se conserva por compatibilidad.
     filas_reconocimiento: recognitionRows,
+    requiere_seleccion_jerarquica: recognitionRows.length > 0,
     consumeTotalidad: consumesFullPTA,
   };
 }
@@ -1158,22 +1333,25 @@ export class PtaService {
 
   // Lee complementarias separando por sección y fusionando cualquier array legacy
   // `academico_admin` (PTAs no migrados o saves en tránsito). Mantiene separadas las
-  // dos sumas para que el prorrateo/topes por sección no se mezclen.
+  // dos sumas para que el prorrateo/topes por sección no se mezclen. Se conservan
+  // las referencias originales: la validación autoritativa puede sanear la
+  // instantánea jerárquica que finalmente se persiste en datosEstructurados.
   private readComplementariasSecciones(ds: any): { all: any[]; docencia: any[]; aadm: any[] } {
     const comp = Array.isArray(ds?.complementarias) ? ds.complementarias : [];
     const legacyAadm = Array.isArray(ds?.academico_admin) ? ds.academico_admin : [];
-    const tagged = [
-      ...comp.map((a: any) => ({ ...a, seccion: this.normalizeCompSeccion(a?.seccion, a) })),
-      // Fusiona el array legacy academico_admin evitando duplicar lo ya migrado a complementarias.
-      ...legacyAadm
-        .filter((a: any) => !comp.some((c: any) =>
-          (c?.actividad_id ?? c?.id) === (a?.actividad_id ?? a?.id) &&
-          this.normalizeCompSeccion(c?.seccion, c) === 'academico_administrativas'))
-        .map((a: any) => ({ ...a, seccion: 'academico_administrativas' as const })),
+    // Fusiona el array legacy academico_admin evitando duplicar lo ya migrado a complementarias.
+    const legacyAadmUnique = legacyAadm
+      .filter((a: any) => !comp.some((c: any) =>
+        (c?.actividad_id ?? c?.id) === (a?.actividad_id ?? a?.id) &&
+        this.normalizeCompSeccion(c?.seccion, c) === 'academico_administrativas'));
+    const docencia = comp.filter(
+      a => this.normalizeCompSeccion(a?.seccion, a) !== 'academico_administrativas',
+    );
+    const aadm = [
+      ...comp.filter(a => this.normalizeCompSeccion(a?.seccion, a) === 'academico_administrativas'),
+      ...legacyAadmUnique,
     ];
-    const docencia = tagged.filter(a => a.seccion !== 'academico_administrativas');
-    const aadm = tagged.filter(a => a.seccion === 'academico_administrativas');
-    return { all: tagged, docencia, aadm };
+    return { all: [...comp, ...legacyAadmUnique], docencia, aadm };
   }
 
   private computeHorasTotales(body: any, extMult: Record<string, number> = { capacitacion: 2 }) {
@@ -1560,6 +1738,118 @@ export class PtaService {
         throw new BadRequestException(`La actividad ${label} debe registrar entre ${min}h y ${max}h.`);
       }
     };
+    const resolveSubmittedHierarchyRows = (
+      label: string,
+      submittedActivity: any,
+      descriptors: Array<{ row: any; index: number; key: string }>,
+      rowLabel = 'Actividad / Ítem',
+    ): Array<{ row: any; index: number; key: string }> | null => {
+      if (!Array.isArray(submittedActivity?.filas_seleccionadas)) return null;
+      const selectedKeys = submittedActivity.filas_seleccionadas
+        .map((key: any) => String(key || '').trim())
+        .filter(Boolean);
+      if (selectedKeys.length === 0) {
+        throw new BadRequestException(
+          `La actividad ${label} requiere seleccionar al menos una opción de su desglose.`,
+        );
+      }
+      if (new Set(selectedKeys).size !== selectedKeys.length) {
+        throw new BadRequestException(`La actividad ${label} contiene opciones jerárquicas duplicadas.`);
+      }
+      const descriptorByKey = new Map(descriptors.map(descriptor => [descriptor.key, descriptor]));
+      const selected = selectedKeys.map((key: string) => descriptorByKey.get(key));
+      if (selected.some(entry => !entry)) {
+        throw new BadRequestException(
+          `La actividad ${label} contiene una opción que ya no existe en la configuración vigente.`,
+        );
+      }
+
+      const submittedBranches = submittedActivity?.ramificaciones_seleccionadas;
+      const hasExplicitBranchMap = Boolean(
+        submittedBranches
+        && typeof submittedBranches === 'object'
+        && !Array.isArray(submittedBranches),
+      );
+      const sanitizedBranchMap: Record<string, string[]> = {};
+      const sanitizedHoursByKey: Record<string, number> = {};
+      const sanitizedHoursByIndex: Record<number, number> = {};
+      const sanitizedSelections: any[] = [];
+      for (const descriptor of selected as Array<{ row: any; index: number; key: string }>) {
+        const configuredBranches = Array.isArray(descriptor.row?.ramificaciones)
+          ? descriptor.row.ramificaciones
+          : (Array.isArray(descriptor.row?._ramificaciones) ? descriptor.row._ramificaciones : []);
+        // Compatibilidad con la primera transición del formato jerárquico: si
+        // ya había filas seleccionadas pero todavía no existía el mapa de
+        // ramificaciones, el comportamiento histórico equivalía a incluirlas
+        // todas. Un mapa explícito sí exige una selección explícita.
+        const branchKeys = Array.isArray(submittedBranches?.[descriptor.key])
+          ? submittedBranches[descriptor.key].map((key: any) => String(key || '').trim()).filter(Boolean)
+          : (!hasExplicitBranchMap
+              ? configuredBranches.map((branch: any) => String(branch?.clave || '')).filter(Boolean)
+              : []);
+        if (configuredBranches.length > 0 && branchKeys.length === 0) {
+          throw new BadRequestException(
+            `La opción ${descriptor.row?.nombre || descriptor.index + 1} de ${label} requiere seleccionar al menos una ramificación.`,
+          );
+        }
+        const normalizedConfiguredBranches: HierarchyBranch[] = configuredBranches.map((branch: any) => ({
+          clave: String(branch?.clave || ''),
+          nombre: String(branch?.nombre || ''),
+          ruta: (Array.isArray(branch?.ruta) ? branch.ruta : []).map((value: any) => ({
+            columna: String(value?.columna || value?.column || ''),
+            valor: String(value?.valor || value?.value || ''),
+          })),
+        }));
+        const selectionCandidates = getHierarchySelectionCandidates(normalizedConfiguredBranches);
+        if (branchKeys.some((key: string) => !selectionCandidates.has(key))) {
+          throw new BadRequestException(
+            `La opción ${descriptor.row?.nombre || descriptor.index + 1} de ${label} contiene una ramificación inválida.`,
+          );
+        }
+        const uniqueBranchKeys = [...new Set(branchKeys)] as string[];
+        const selectedCandidates = uniqueBranchKeys
+          .map(key => selectionCandidates.get(key))
+          .filter((candidate): candidate is HierarchyBranch & { isGroup: boolean } => Boolean(candidate));
+        const hasOverlappingSelection = selectedCandidates.some((candidate, index) =>
+          candidate.isGroup
+          && selectedCandidates.some((other, otherIndex) =>
+            index !== otherIndex && isHierarchyRoutePrefix(candidate.ruta, other.ruta),
+          ),
+        );
+        if (hasOverlappingSelection) {
+          throw new BadRequestException(
+            `La opción ${descriptor.row?.nombre || descriptor.index + 1} de ${label} contiene niveles jerárquicos solapados.`,
+          );
+        }
+        if (uniqueBranchKeys.length > 0) sanitizedBranchMap[descriptor.key] = uniqueBranchKeys;
+        const selectedBranches = selectedCandidates
+          .map(({ isGroup: _isGroup, ...branch }) => branch);
+        const rawRowHours = submittedActivity?.filas_cantidades?.[descriptor.key]
+          ?? submittedActivity?.items_cantidades?.[descriptor.index];
+        const rowHours = Number(rawRowHours) || 0;
+        if (rawRowHours !== undefined && rawRowHours !== null) {
+          sanitizedHoursByKey[descriptor.key] = rowHours;
+          sanitizedHoursByIndex[descriptor.index] = rowHours;
+        }
+        sanitizedSelections.push({
+          clave: descriptor.key,
+          nombre: String(descriptor.row?.nombre || `Opción ${descriptor.index + 1}`),
+          etiqueta: rowLabel,
+          horas: rowHours,
+          ramificaciones: selectedBranches,
+        });
+      }
+      submittedActivity.filas_seleccionadas = selectedKeys;
+      submittedActivity.filas_cantidades = Object.keys(sanitizedHoursByKey).length > 0
+        ? sanitizedHoursByKey
+        : undefined;
+      submittedActivity.items_cantidades = Object.keys(sanitizedHoursByIndex).length > 0
+        ? sanitizedHoursByIndex
+        : undefined;
+      submittedActivity.ramificaciones_seleccionadas = sanitizedBranchMap;
+      submittedActivity.seleccion_jerarquica = sanitizedSelections;
+      return selected as Array<{ row: any; index: number; key: string }>;
+    };
     const validateSubmittedRecognitionRows = (
       label: string,
       submittedActivity: any,
@@ -1568,17 +1858,33 @@ export class PtaService {
       const recognitionRows = Array.isArray(configuredActivity?.filas_reconocimiento)
         ? configuredActivity.filas_reconocimiento
         : [];
-      if (recognitionRows.length <= 1) return false;
+      if (recognitionRows.length === 0) return false;
+
+      const descriptors = getStableCatalogRowDescriptors(recognitionRows);
+      const selectedDescriptors = resolveSubmittedHierarchyRows(
+        label,
+        submittedActivity,
+        descriptors,
+      );
+      // Sin el nuevo marcador se conserva exactamente la validación legacy.
+      if (!selectedDescriptors && recognitionRows.length <= 1) return false;
 
       const keyedValues = submittedActivity?.filas_cantidades;
       const indexedValues = submittedActivity?.items_cantidades;
       const hasKeyedValues = keyedValues && typeof keyedValues === 'object';
       const hasIndexedValues = indexedValues && typeof indexedValues === 'object';
-      if (!hasKeyedValues && !hasIndexedValues) return false;
+      if (!hasKeyedValues && !hasIndexedValues) {
+        if (selectedDescriptors) {
+          throw new BadRequestException(
+            `La actividad ${label} no tiene horas registradas para sus opciones seleccionadas.`,
+          );
+        }
+        return false;
+      }
 
       let submittedTotal = 0;
-      recognitionRows.forEach((row: any, index: number) => {
-        const rowKey = String(row?.clave || '');
+      const rowsToValidate = selectedDescriptors || descriptors;
+      rowsToValidate.forEach(({ row, index, key: rowKey }) => {
         const submitted = (hasKeyedValues && rowKey ? keyedValues[rowKey] : undefined)
           ?? (hasIndexedValues ? indexedValues[index] : undefined);
         if (submitted === undefined || submitted === null) {
@@ -1591,7 +1897,7 @@ export class PtaService {
           submitted,
           row,
           'fija',
-          recognitionRows.length > 1,
+          rowsToValidate.length > 1,
         );
         submittedTotal += Number(submitted) || 0;
       });
@@ -1640,6 +1946,22 @@ export class PtaService {
             if (type === 'porcentaje') return (expectedPercentageHours(row) || 0) > 0;
             return Number(row?.horas) > 0;
           });
+        // El portal construye la selección sobre las filas que realmente tienen
+        // horas. Generar aquí las claves sobre ese mismo arreglo evita desfases si
+        // la configuración conserva filas informativas sin reconocimiento.
+        const hierarchyDescriptors = getStableCatalogRowDescriptors(
+          configuredRows.map((entry: any) => entry.row),
+        );
+        const firstColumn = String(section?.columnas?.[0] || '').trim();
+        const hierarchyRowLabel = firstColumn === EXTENSION_ITEMS_COLUMN_KEY
+          ? String(section?.columna_items_nombre || 'Actividad / Ítem').trim()
+          : (!firstColumn || /^_.*_$/.test(firstColumn) ? 'Opción del bloque' : firstColumn);
+        const selectedHierarchyRows = resolveSubmittedHierarchyRows(
+          configured?.nombre || activity?.nombre || 'de extensión',
+          activity,
+          hierarchyDescriptors,
+          hierarchyRowLabel,
+        );
         const mandatoryHours = configuredRows.reduce(
           (sum: number, entry: any) => sum + configuredRowHours(
             entry.row,
@@ -1649,7 +1971,38 @@ export class PtaService {
         );
         const requiresRowSelection = configuredRows.length > 1
           && mandatoryHours > extensionComponentLimit;
-        if (requiresRowSelection) {
+        if (selectedHierarchyRows) {
+          const keyedValues = activity?.filas_cantidades;
+          const indexedValues = activity?.items_cantidades;
+          let submittedTotal = 0;
+          selectedHierarchyRows.forEach(({ row, index, key }) => {
+            const submitted = (keyedValues && typeof keyedValues === 'object' ? keyedValues[key] : undefined)
+              ?? (indexedValues && typeof indexedValues === 'object' ? indexedValues[index] : undefined);
+            if (submitted === undefined || submitted === null) {
+              throw new BadRequestException(
+                `La fila ${row?.nombre || index + 1} de ${configured?.nombre || activity?.nombre || 'la actividad de extensión'} no tiene horas registradas.`,
+              );
+            }
+            assertConfiguredHours(
+              String(row?.nombre || index + 1),
+              submitted,
+              row,
+              'fija',
+              selectedHierarchyRows.length > 1,
+            );
+            submittedTotal += Number(submitted) || 0;
+          });
+          if (submittedTotal <= 0) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar al menos 1h en una de sus opciones seleccionadas.`,
+            );
+          }
+          if ((Number(activity?.horas) || 0) !== submittedTotal) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe totalizar ${submittedTotal}h según sus opciones seleccionadas.`,
+            );
+          }
+        } else if (requiresRowSelection) {
           const selectedRowIndex = Number(activity?.fila_seleccionada);
           if (!Number.isInteger(selectedRowIndex)
             || selectedRowIndex < 0
@@ -2293,9 +2646,14 @@ export class PtaService {
 
         const hayActividades = Object.values(horasPorComp).some(h => h > 0);
         const recs = estadoByPta.get(dto.id) || new Map<string, string>();
+        const esBorrador = isDraftPtaState(dto?.estado);
         // Un componente cuenta como aprobado si su registro está aprobado o si está vacío
-        // (auto-aprobación cuando el PTA tiene actividades) — consistente con getComponentesAprobacion.
-        const estaAprobado = (k: string) => recs.get(k) === 'aprobado' || (hayActividades && (horasPorComp[k] || 0) === 0);
+        // (auto-aprobación cuando el PTA tiene actividades), pero únicamente después
+        // de que el PTA haya salido de Borrador y comience realmente su revisión.
+        const estaAprobado = (k: string) => !esBorrador && (
+          recs.get(k) === 'aprobado'
+          || (hayActividades && (horasPorComp[k] || 0) === 0)
+        );
 
         // Componentes de ALTO NIVEL que ve el administrador (5): Docencia, Investigación,
         // Extensión (UNA sola, NO desglosada en sus 4 subsecciones), Complementarias, Acad-Admin.
@@ -2310,7 +2668,7 @@ export class PtaService {
           componentesEstado.push({
             key: c,
             label: c === 'academica' ? 'Docencia' : c === 'investigacion' ? 'Investigacion' : 'Complementarias',
-            estado: aprobado ? 'aprobado' : (recs.get(c) || 'pendiente'),
+            estado: esBorrador ? 'no_iniciado' : (aprobado ? 'aprobado' : (recs.get(c) || 'pendiente')),
           });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
@@ -2323,7 +2681,9 @@ export class PtaService {
           componentesEstado.push({
             key: 'extension',
             label: 'Extension',
-            estado: extAprobada ? 'aprobado' : (extEstados.includes('devuelto') ? 'devuelto' : 'pendiente'),
+            estado: esBorrador
+              ? 'no_iniciado'
+              : (extAprobada ? 'aprobado' : (extEstados.includes('devuelto') ? 'devuelto' : 'pendiente')),
           });
         }
 

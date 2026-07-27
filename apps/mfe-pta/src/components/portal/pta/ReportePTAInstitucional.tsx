@@ -14,7 +14,7 @@ import {
   Tooltip as RechartsTooltip, Cell, PieChart, Pie, Legend, LabelList,
 } from 'recharts';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
-import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
+import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 
 interface ReportePTAInstitucionalProps {
   pta: any;
@@ -318,8 +318,26 @@ export function ReportePTAInstitucional({
   const compLegacy = pta?.complementarias && !Array.isArray(pta.complementarias)
     ? pta.complementarias.actividades
     : [];
-  const compActs: any[] = (Array.isArray(pta?.complementarias) ? pta.complementarias : (Array.isArray(compLegacy) ? compLegacy : []))
-    .filter((a: any) => a && (a.nombre || a.actividad_nombre || a.actividad_id || numero(a.horas) > 0));
+  const compActsPrimary: any[] = (
+    Array.isArray(pta?.complementarias)
+      ? pta.complementarias
+      : (Array.isArray(compLegacy) ? compLegacy : [])
+  ).filter((a: any) => a && (a.nombre || a.actividad_nombre || a.actividad_id || numero(a.horas) > 0));
+  const compActsLegacyAadm: any[] = Array.isArray(pta?.academico_admin) ? pta.academico_admin : [];
+  const compActs: any[] = [
+    ...compActsPrimary.map((activity: any) =>
+      activity?.seccion == null && activity?.consumeTotalidad !== undefined
+        ? { ...activity, seccion: 'academico_administrativas' }
+        : activity),
+    ...compActsLegacyAadm
+      .filter((legacy: any) => !compActsPrimary.some((current: any) =>
+        String(current?.actividad_id ?? current?.id) === String(legacy?.actividad_id ?? legacy?.id)
+        && (
+          current?.seccion === 'academico_administrativas'
+          || (current?.seccion == null && current?.consumeTotalidad !== undefined)
+        )))
+      .map((activity: any) => ({ ...activity, seccion: 'academico_administrativas' })),
+  ].filter((a: any) => a && (a.nombre || a.actividad_nombre || a.actividad_id || numero(a.horas) > 0));
 
   // Los agregados del backend tienen prioridad porque incluyen las reglas y multiplicadores institucionales.
   const horasDocencia = numero(pta?.horas_docencia ?? asignaturas.reduce((sum: number, a: any) => sum + numero(a.total_horas ?? a.horas), 0));
@@ -838,6 +856,7 @@ export function ReportePTAInstitucional({
                                   <div style={{ fontWeight: 800 }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
                                   <InfoSecundaria>{a.nucleo_tematico || null}</InfoSecundaria>
                                   <InfoSecundaria>{a.observaciones ? `Observaciones: ${a.observaciones}` : null}</InfoSecundaria>
+                                  <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div>{a.programa_nombre || a.programa || programas || '—'}</div>
@@ -890,6 +909,7 @@ export function ReportePTAInstitucional({
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div style={{ fontWeight: 800 }}>{proyecto.nombre || proyecto.nombre_proyecto || 'Proyecto de investigación'}</div>
                                   <InfoSecundaria>Proyecto de investigación</InfoSecundaria>
+                                  <HierarchySelectionSummary activity={proyecto} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   {textoConSeparador([
@@ -909,6 +929,7 @@ export function ReportePTAInstitucional({
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div style={{ fontWeight: 800 }}>{actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad de investigación'}</div>
                                   <InfoSecundaria>{actividad.descripcion || null}</InfoSecundaria>
+                                  <HierarchySelectionSummary activity={actividad} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   {textoConSeparador([
@@ -941,31 +962,20 @@ export function ReportePTAInstitucional({
                             </tr>
                           </thead>
                           <tbody>
-                            {extActs.map((actividad: any, index: number) => {
-                              const selection = getExtensionSelectionInfo(actividad);
-                              return (
+                            {extActs.map((actividad: any, index: number) => (
                                 <tr key={actividad.id || actividad.actividad_id || index}>
                                   <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                     <div style={{ fontWeight: 800 }}>{actividad.nombre || actividad.nombre_actividad || actividad.actividad_nombre || actividad.actividad_id || 'Actividad de extensión'}</div>
+                                    <HierarchySelectionSummary activity={actividad} accent={PTA_COLORS.EXTENSION} compact className="mt-1" />
                                     <InfoSecundaria>{actividad.descripcion || null}</InfoSecundaria>
                                   </td>
                                   <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                     <div>{textoSeccion(actividad.seccion) || 'Extensión académica'}</div>
-                                    {selection && (
-                                      <InfoSecundaria>
-                                        {selection.etiqueta}: {selection.nombre}
-                                        {selection.detalles.map((detail: any) => textoConSeparador([
-                                          detail.nombre,
-                                          ...detail.valores.map((value: any) => value.columna ? `${value.columna}: ${value.valor}` : value.valor),
-                                        ])).filter(Boolean).map((detail: string, detailIndex: number) => <React.Fragment key={detailIndex}><br />{detail}</React.Fragment>)}
-                                      </InfoSecundaria>
-                                    )}
                                   </td>
                                   <td style={{ ...celdaTd, verticalAlign: 'top' }}>{rangoFechas(actividad.fecha_inicio, actividad.fecha_fin) || '—'}</td>
                                   <td style={{ ...celdaTd, verticalAlign: 'top', fontWeight: 900, color: PTA_COLORS.EXTENSION }}>{numero(actividad.horas ?? actividad.horas_ejecutadas)}</td>
                                 </tr>
-                              );
-                            })}
+                            ))}
                           </tbody>
                         </table>
                       </div>
@@ -990,6 +1000,7 @@ export function ReportePTAInstitucional({
                               <tr key={actividad.id || actividad.actividad_id || index}>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div style={{ fontWeight: 800 }}>{actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad complementaria'}</div>
+                                  <HierarchySelectionSummary activity={actividad} accent="#A16207" compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div>{textoSeccion(actividad.seccion) || 'Complementarias de docencia'}</div>
