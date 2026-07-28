@@ -15,6 +15,24 @@ const compSections = [
 ];
 
 describe('PtaService - catálogos derivados de la configuración', () => {
+  it('mantiene las referencias y la clasificación del arreglo académico-administrativo legacy', () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const legacyActivity = {
+      actividad_id: 'AA_LEGACY',
+      nombre: 'Actividad administrativa anterior',
+      horas: 16,
+    };
+    const result = service.readComplementariasSecciones({
+      complementarias: [],
+      academico_admin: [legacyActivity],
+    });
+
+    expect(result.docencia).toEqual([]);
+    expect(result.aadm).toEqual([legacyActivity]);
+    expect(result.all).toEqual([legacyActivity]);
+    expect(result.aadm[0]).toBe(legacyActivity);
+  });
+
   it('usa el intervalo configurado en la fila aunque el ID tuviera otro significado legacy', async () => {
     const service = Object.create(PtaService.prototype) as any;
     service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue({
@@ -118,6 +136,414 @@ describe('PtaService - catálogos derivados de la configuración', () => {
         ],
       }),
     ]);
+  });
+
+  it('entrega las ramificaciones configuradas debajo de la fila que reconoce horas', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue({
+      comp_secciones: [{
+        key: 'complementarias_docencia',
+        label: 'Complementarias',
+        columnas: ['Línea', '_items_', 'Evidencias'],
+        columna_items_nombre: 'Actividad',
+      }],
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_TREE',
+          nombre: 'Acompañamiento',
+          columnas_valores: { Línea: ['20 horas por estudiante'] },
+          columnas_meta: { Línea: [{ tipo: 'hasta', horas: 20, horas_en: 'linea' }] },
+          items: [
+            {
+              nombre: 'Práctica administrativa',
+              parent_col_idx: 0,
+              col_valores: { Evidencias: ['Informe final'] },
+            },
+            {
+              nombre: 'Proyecto aplicado',
+              parent_col_idx: 0,
+              col_valores: { Evidencias: ['Producto entregado'] },
+            },
+          ],
+        }],
+      },
+    });
+
+    const [activity] = await service.getCatalogoActividadesComplementarias();
+    expect(activity.requiere_seleccion_jerarquica).toBe(true);
+    expect(activity.filas_reconocimiento).toEqual([
+      expect.objectContaining({
+        nombre: '20 horas por estudiante',
+        max_horas: 20,
+        ramificaciones: [
+          expect.objectContaining({
+            nombre: 'Informe final',
+            ruta: [
+              { columna: 'Actividad', valor: 'Práctica administrativa' },
+              { columna: 'Evidencias', valor: 'Informe final' },
+            ],
+          }),
+          expect.objectContaining({
+            nombre: 'Producto entregado',
+            ruta: [
+              { columna: 'Actividad', valor: 'Proyecto aplicado' },
+              { columna: 'Evidencias', valor: 'Producto entregado' },
+            ],
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it('valida únicamente las filas seleccionadas sin obligar a sumar todo el bloque', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rules = {
+      comp_secciones: compSections,
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_SUBSET',
+          nombre: 'Bloque combinable',
+          items: [
+            { nombre: 'Opción 20', tipo: 'fija', horas: 20 },
+            { nombre: 'Opción 30', tipo: 'fija', horas: 30 },
+          ],
+        }],
+      },
+    };
+    service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue(rules);
+    const [catalogActivity] = await service.getCatalogoActividadesComplementarias();
+    const selectedKey = catalogActivity.filas_reconocimiento[0].clave;
+
+    expect(() => service.validatePtaForSubmission(
+      {
+        complementarias: [{
+          actividad_id: 'COMP_SUBSET',
+          seccion: 'complementarias_docencia',
+          horas: 20,
+          filas_seleccionadas: [selectedKey],
+          filas_cantidades: { [selectedKey]: 20 },
+          ramificaciones_seleccionadas: {},
+        }],
+      },
+      { sumDocencia: 0, sumInv: 0, sumExt: 0, sumComp: 20, sumAcad: 0, total: 20 },
+      800,
+      rules,
+    )).toThrow('Debe incluir al menos una asignatura');
+  });
+
+  it('rechaza ramificaciones que no pertenecen a la configuración vigente', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const section = {
+      key: 'complementarias_docencia',
+      label: 'Complementarias',
+      columnas: ['Línea', '_items_'],
+    };
+    const rules = {
+      comp_secciones: [section],
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_BRANCH_VALIDATION',
+          nombre: 'Bloque',
+          columnas_valores: { Línea: ['Fila'] },
+          columnas_meta: { Línea: [{ tipo: 'fija', horas: 20, horas_en: 'linea' }] },
+          items: [{ nombre: 'Ramificación válida', parent_col_idx: 0 }],
+        }],
+      },
+    };
+    service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue(rules);
+    const [catalogActivity] = await service.getCatalogoActividadesComplementarias();
+    const row = catalogActivity.filas_reconocimiento[0];
+
+    expect(() => service.validatePtaForSubmission(
+      {
+        complementarias: [{
+          actividad_id: 'COMP_BRANCH_VALIDATION',
+          seccion: 'complementarias_docencia',
+          horas: 20,
+          filas_seleccionadas: [row.clave],
+          filas_cantidades: { [row.clave]: 20 },
+          ramificaciones_seleccionadas: { [row.clave]: ['ramificacion-inventada'] },
+        }],
+      },
+      { sumDocencia: 0, sumInv: 0, sumExt: 0, sumComp: 20, sumAcad: 0, total: 20 },
+      800,
+      rules,
+    )).toThrow('ramificación inválida');
+  });
+
+  it('mantiene válido un PTA anterior sin marcadores jerárquicos ni redistribuye su total', () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rules = {
+      comp_secciones: [{
+        key: 'complementarias_docencia',
+        label: 'Complementarias',
+        columnas: ['Línea', '_items_'],
+      }],
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_LEGACY_TREE',
+          nombre: 'Actividad histórica',
+          columnas_valores: { Línea: ['Hasta 20 horas'] },
+          columnas_meta: { Línea: [{ tipo: 'hasta', horas: 20, horas_en: 'linea' }] },
+          items: [{ nombre: 'Detalle configurado', parent_col_idx: 0 }],
+        }],
+      },
+    };
+    const legacyActivity = {
+      actividad_id: 'COMP_LEGACY_TREE',
+      seccion: 'complementarias_docencia',
+      horas: 12,
+    };
+
+    expect(() => service.validatePtaForSubmission(
+      { complementarias: [legacyActivity] },
+      { sumDocencia: 0, sumInv: 0, sumExt: 0, sumComp: 12, sumAcad: 0, total: 12 },
+      800,
+      rules,
+    )).toThrow('Debe incluir al menos una asignatura');
+    expect(legacyActivity).toEqual({
+      actividad_id: 'COMP_LEGACY_TREE',
+      seccion: 'complementarias_docencia',
+      horas: 12,
+    });
+  });
+
+  it('completa de forma compatible las ramificaciones de una transición parcial', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rules = {
+      comp_secciones: [{
+        key: 'complementarias_docencia',
+        label: 'Complementarias',
+        columnas: ['Línea', '_items_'],
+      }],
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_TRANSITION',
+          nombre: 'Actividad en transición',
+          columnas_valores: { Línea: ['20 horas'] },
+          columnas_meta: { Línea: [{ tipo: 'fija', horas: 20, horas_en: 'linea' }] },
+          items: [{ nombre: 'Ramificación existente', parent_col_idx: 0 }],
+        }],
+      },
+    };
+    service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue(rules);
+    const [catalogActivity] = await service.getCatalogoActividadesComplementarias();
+    const row = catalogActivity.filas_reconocimiento[0];
+    const submittedActivity: any = {
+      actividad_id: 'COMP_TRANSITION',
+      seccion: 'complementarias_docencia',
+      horas: 20,
+      filas_seleccionadas: [row.clave],
+      filas_cantidades: { [row.clave]: 20, 'fila-obsoleta': 999 },
+      items_cantidades: { 0: 20, 99: 999 },
+      // La primera versión transitoria todavía no persistía este mapa.
+      ramificaciones_seleccionadas: undefined,
+    };
+
+    expect(() => service.validatePtaForSubmission(
+      { complementarias: [submittedActivity] },
+      { sumDocencia: 0, sumInv: 0, sumExt: 0, sumComp: 20, sumAcad: 0, total: 20 },
+      800,
+      rules,
+    )).toThrow('Debe incluir al menos una asignatura');
+    expect(submittedActivity.ramificaciones_seleccionadas[row.clave]).toEqual(
+      row.ramificaciones.map((branch: any) => branch.clave),
+    );
+    expect(submittedActivity.filas_cantidades).toEqual({ [row.clave]: 20 });
+    expect(submittedActivity.items_cantidades).toEqual({ 0: 20 });
+    expect(submittedActivity.seleccion_jerarquica[0]).toEqual(expect.objectContaining({
+      clave: row.clave,
+      horas: 20,
+      ramificaciones: row.ramificaciones,
+    }));
+  });
+
+  it('permite seleccionar una actividad padre sin exigir sus evidencias', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rules = {
+      comp_secciones: [{
+        key: 'complementarias_docencia',
+        label: 'Complementarias',
+        columnas: ['Línea', '_items_', 'Evidencias'],
+        columna_items_nombre: 'Actividad',
+      }],
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_PARENT_SELECTION',
+          nombre: 'Bloque jerárquico',
+          columnas_valores: { Línea: ['20 horas'] },
+          columnas_meta: { Línea: [{ tipo: 'fija', horas: 20, horas_en: 'linea' }] },
+          items: [{
+            nombre: 'Acompañamiento institucional',
+            parent_col_idx: 0,
+            col_valores: { Evidencias: ['Informe', 'Acta'] },
+          }],
+        }],
+      },
+    };
+    service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue(rules);
+    const [catalogActivity] = await service.getCatalogoActividadesComplementarias();
+    const row = catalogActivity.filas_reconocimiento[0];
+    const parentKey = 'grupo:actividad:acompanamiento-institucional';
+    const submittedActivity: any = {
+      actividad_id: 'COMP_PARENT_SELECTION',
+      seccion: 'complementarias_docencia',
+      horas: 20,
+      filas_seleccionadas: [row.clave],
+      filas_cantidades: { [row.clave]: 20 },
+      ramificaciones_seleccionadas: { [row.clave]: [parentKey] },
+    };
+
+    expect(() => service.validatePtaForSubmission(
+      { complementarias: [submittedActivity] },
+      { sumDocencia: 0, sumInv: 0, sumExt: 0, sumComp: 20, sumAcad: 0, total: 20 },
+      800,
+      rules,
+    )).toThrow('Debe incluir al menos una asignatura');
+    expect(submittedActivity.ramificaciones_seleccionadas).toEqual({
+      [row.clave]: [parentKey],
+    });
+    expect(submittedActivity.seleccion_jerarquica[0].ramificaciones).toEqual([{
+      clave: parentKey,
+      nombre: 'Acompañamiento institucional',
+      ruta: [{ columna: 'Actividad', valor: 'Acompañamiento institucional' }],
+    }]);
+  });
+
+  it('rechaza seleccionar simultáneamente un padre y una evidencia descendiente', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rules = {
+      comp_secciones: [{
+        key: 'complementarias_docencia',
+        label: 'Complementarias',
+        columnas: ['Línea', '_items_', 'Evidencias'],
+        columna_items_nombre: 'Actividad',
+      }],
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_OVERLAPPING_SELECTION',
+          nombre: 'Bloque jerárquico',
+          columnas_valores: { Línea: ['20 horas'] },
+          columnas_meta: { Línea: [{ tipo: 'fija', horas: 20, horas_en: 'linea' }] },
+          items: [{
+            nombre: 'Acompañamiento institucional',
+            parent_col_idx: 0,
+            col_valores: { Evidencias: ['Informe'] },
+          }],
+        }],
+      },
+    };
+    service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue(rules);
+    const [catalogActivity] = await service.getCatalogoActividadesComplementarias();
+    const row = catalogActivity.filas_reconocimiento[0];
+    const parentKey = 'grupo:actividad:acompanamiento-institucional';
+
+    expect(() => service.validatePtaForSubmission(
+      {
+        complementarias: [{
+          actividad_id: 'COMP_OVERLAPPING_SELECTION',
+          seccion: 'complementarias_docencia',
+          horas: 20,
+          filas_seleccionadas: [row.clave],
+          filas_cantidades: { [row.clave]: 20 },
+          ramificaciones_seleccionadas: {
+            [row.clave]: [parentKey, row.ramificaciones[0].clave],
+          },
+        }],
+      },
+      { sumDocencia: 0, sumInv: 0, sumExt: 0, sumComp: 20, sumAcad: 0, total: 20 },
+      800,
+      rules,
+    )).toThrow('niveles jerárquicos solapados');
+  });
+
+  it('no permite omitir las horas de filas seleccionadas en el formato nuevo', async () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rules = {
+      comp_secciones: compSections,
+      comp_actividades_v2: {
+        complementarias_docencia: [{
+          id: 'COMP_WITHOUT_ROW_HOURS',
+          nombre: 'Actividad incompleta',
+          items: [{ nombre: 'Fila fija', tipo: 'fija', horas: 20 }],
+        }],
+      },
+    };
+    service.getConfiguracionPTAGlobal = jest.fn().mockResolvedValue(rules);
+    const [catalogActivity] = await service.getCatalogoActividadesComplementarias();
+    const row = catalogActivity.filas_reconocimiento[0];
+
+    expect(() => service.validatePtaForSubmission(
+      {
+        complementarias: [{
+          actividad_id: 'COMP_WITHOUT_ROW_HOURS',
+          seccion: 'complementarias_docencia',
+          horas: 20,
+          filas_seleccionadas: [row.clave],
+          ramificaciones_seleccionadas: {},
+        }],
+      },
+      { sumDocencia: 0, sumInv: 0, sumExt: 0, sumComp: 20, sumAcad: 0, total: 20 },
+      800,
+      rules,
+    )).toThrow('no tiene horas registradas para sus opciones seleccionadas');
+  });
+
+  it('usa en Extensión las mismas claves filtradas que el portal cuando existen filas informativas', () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const rowKey = 'nombre:con-horas#1';
+    const branchKey = 'actividad:detalle-ejecutable/evidencia:acta-final#1';
+    const rules = {
+      ext_secciones: [{
+        key: 'fortalecimiento',
+        label: 'Fortalecimiento',
+        multiplicador: 1,
+        columnas: ['Línea', '_items_', 'Evidencia'],
+        columna_items_nombre: 'Actividad',
+      }],
+      ext_actividades: {
+        fortalecimiento: [{
+          id: 'EXT_FILTERED_TREE',
+          nombre: 'Bloque con fila informativa',
+          columnas_valores: { Línea: ['Solo información', 'Con horas'] },
+          columnas_meta: {
+            Línea: [
+              { tipo: 'hasta', horas: 0, horas_en: 'linea' },
+              { tipo: 'fija', horas: 20, horas_en: 'linea' },
+            ],
+          },
+          items: [
+            { nombre: 'Texto auxiliar', parent_col_idx: 0 },
+            {
+              nombre: 'Detalle ejecutable',
+              parent_col_idx: 1,
+              col_valores: { Evidencia: ['Acta final'] },
+            },
+          ],
+        }],
+      },
+    };
+    const submittedActivity: any = {
+      actividad_id: 'EXT_FILTERED_TREE',
+      seccion: 'fortalecimiento',
+      horas: 20,
+      horas_ejecutadas: 20,
+      filas_seleccionadas: [rowKey],
+      filas_cantidades: { [rowKey]: 20 },
+      ramificaciones_seleccionadas: { [rowKey]: [branchKey] },
+    };
+
+    expect(() => service.validatePtaForSubmission(
+      { extension_actividades: [submittedActivity] },
+      { sumDocencia: 0, sumInv: 0, sumExt: 20, sumComp: 0, sumAcad: 0, total: 20 },
+      800,
+      rules,
+    )).toThrow('Debe incluir al menos una asignatura');
+    expect(submittedActivity.seleccion_jerarquica[0]).toEqual(expect.objectContaining({
+      clave: rowKey,
+      horas: 20,
+      ramificaciones: [expect.objectContaining({ clave: branchKey, nombre: 'Acta final' })],
+    }));
   });
 
   it('respeta horas fijas de una tabla simple sin filas', async () => {

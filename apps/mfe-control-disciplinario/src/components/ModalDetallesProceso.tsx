@@ -35,7 +35,7 @@ import {
   type DisciplinaryProcessActuacion,
   type DisciplinaryProcessNote,
   type DisciplinaryProcessTask,
-} from '../../../services/api/disciplinary.service';
+} from '../../services/api/disciplinary.service';
 import { API_MODE, buildApiUrl } from '../../../config/environment';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────

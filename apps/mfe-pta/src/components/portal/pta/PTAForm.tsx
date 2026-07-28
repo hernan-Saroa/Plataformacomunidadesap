@@ -16,7 +16,7 @@ import {
   ChevronLeft, ChevronRight, Save, Send, AlertCircle, Plus, Trash2, Calculator,
   BookOpen, FlaskConical, Globe, Briefcase, CheckCircle2, Info,
   ChevronDown, RotateCcw, AlertTriangle, Search, Shield, Clock, MessageSquare,
-  Paperclip, FileUp, FileCheck2, Eye, X as XIcon
+  Paperclip, FileUp, FileCheck2, Eye, LoaderCircle, X as XIcon
 } from 'lucide-react';
 import {
   savePTA, getPTAById, getCatalogoProgramas, getCatalogoAsignaturas,
@@ -30,7 +30,8 @@ import {
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
-import { toast } from 'sonner';
+import { toast as systemToast } from 'sonner';
+import { docentePtaAlert } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
@@ -38,6 +39,11 @@ import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import type { PTAComponentKey } from '../../pta/shared/ptaComponentPermissions';
+import { HierarchyBranchTree } from '../../pta/shared/HierarchySelectionSummary';
+import {
+  getHierarchySelectableKeys,
+  resolveHierarchySelectionBranches,
+} from '../../pta/shared/extensionSelection';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
@@ -150,6 +156,7 @@ interface AsignaturaItem {
 }
 
 interface InvestigacionProyecto {
+  territorial_id: string;
   nombre: string;
   codigo: string;
   grupo: string;
@@ -165,6 +172,7 @@ interface InvestigacionProyecto {
 
 interface InvestigacionActividad {
   id: number;
+  territorial_id: string;
   actividad_id: string;
   nombre: string;
   descripcion: string;
@@ -180,6 +188,7 @@ interface InvestigacionActividad {
 
 interface ExtensionActividad {
   id: number;
+  territorial_id: string;
   seccion: string;
   actividad_id: string;
   nombre: string;
@@ -189,6 +198,10 @@ interface ExtensionActividad {
   fecha_inicio: string;
   fecha_fin: string;
   items_cantidades?: Record<number, number>; // índice del ítem → cantidad (para tipo 'por_unidad')
+  filas_cantidades?: Record<string, number>;
+  filas_seleccionadas?: string[];
+  ramificaciones_seleccionadas?: Record<string, string[]>;
+  seleccion_jerarquica?: HierarchySelectionSnapshot[];
   fila_seleccionada?: number; // fila horaria elegida cuando el bloque padre no cabe completo en Extensión
   fila_seleccionada_nombre?: string;
   fila_seleccionada_etiqueta?: string;
@@ -200,8 +213,23 @@ interface ExtensionSelectionDetail {
   valores: Array<{ columna: string; valor: string }>;
 }
 
+interface HierarchyBranch {
+  clave: string;
+  nombre: string;
+  ruta: Array<{ columna: string; valor: string }>;
+}
+
+interface HierarchySelectionSnapshot {
+  clave: string;
+  nombre: string;
+  etiqueta: string;
+  horas: number;
+  ramificaciones: HierarchyBranch[];
+}
+
 interface ComplementariaItem {
   id: number;
+  territorial_id: string;
   actividad_id: string;
   nombre: string;
   horas: number;
@@ -212,6 +240,12 @@ interface ComplementariaItem {
   items_cantidades?: Record<number, number>;
   /** Cantidades por clave estable de la fila configurada (resiste reordenamientos). */
   filas_cantidades?: Record<string, number>;
+  /** Filas horarias elegidas; cada fila aporta sus horas una sola vez. */
+  filas_seleccionadas?: string[];
+  /** Ramificaciones elegidas dentro de cada fila horaria. */
+  ramificaciones_seleccionadas?: Record<string, string[]>;
+  /** Instantánea legible para aprobaciones, reportes y auditoría. */
+  seleccion_jerarquica?: HierarchySelectionSnapshot[];
   fecha_inicio: string;
   fecha_fin: string;
 }
@@ -371,7 +405,15 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
     const hours = getPercentageHours(activity, Number(horasAProgramar) || 0);
     return { ...buildHourConstraint(hours, hours, false, 'percentage'), percentage };
   }
-  const configuredMax = Number(activity?.max_horas);
+  // Los catálogos normalizados (Complementarias/Acad. Administrativas) exponen
+  // `max_horas`, mientras que las filas configurables de Extensión conservan
+  // `horas`/`horas_min`. Aceptar ambos contratos evita descartar visualmente
+  // líneas válidas sin alterar el formato persistido de ningún PTA.
+  const configuredMax = Number(
+    activity?.max_horas
+      ?? activity?.horas_max
+      ?? activity?.horas,
+  );
   if (!Number.isFinite(configuredMax) || configuredMax <= 0) return null;
 
   if (configuredType === 'fija') {
@@ -379,7 +421,12 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
   }
   if (configuredType === 'intervalo') {
     return buildHourConstraint(
-      getPositiveRuleNumber(activity?.min_horas, 1),
+      getPositiveRuleNumber(
+        activity?.min_horas
+          ?? activity?.horas_min
+          ?? activity?.min,
+        1,
+      ),
       configuredMax,
       true,
       'range',
@@ -803,6 +850,98 @@ function hasConfiguredCatalogHours(activity: any, horasAProgramar: number): bool
     .some(value => Number.isFinite(Number(value)) && Number(value) > 0);
 }
 
+function normalizeHierarchyKeyPart(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('es')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'opcion';
+}
+
+function buildHierarchyBranches(
+  item: any,
+  detailColumns: string[],
+  itemColumnLabel = 'Actividad / Ítem',
+  includeItem = true,
+): HierarchyBranch[] {
+  const prefix = includeItem && String(item?.nombre || '').trim()
+    ? [{ columna: itemColumnLabel, valor: String(item.nombre).trim() }]
+    : [];
+  const valuesByColumn = detailColumns.map(column =>
+    (Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [])
+      .map((value: any) => String(value || '').trim()),
+  );
+  const parentsByColumn = detailColumns.map((column, level) => {
+    if (level === 0) return [];
+    const previousCount = valuesByColumn[level - 1].length;
+    return valuesByColumn[level].map((_: string, index: number) => {
+      const stored = item?.col_parents?.[column]?.[index];
+      const fallback = previousCount > 0 ? Math.min(index, previousCount - 1) : -1;
+      const candidate = Number.isFinite(Number(stored)) ? Number(stored) : fallback;
+      return previousCount > 0 ? Math.max(0, Math.min(candidate, previousCount - 1)) : -1;
+    });
+  });
+  const branches: Array<{ nombre: string; ruta: Array<{ columna: string; valor: string }> }> = [];
+
+  const visit = (
+    level: number,
+    parentIndex: number | null,
+    path: Array<{ columna: string; valor: string }>,
+  ) => {
+    if (level >= detailColumns.length) {
+      if (path.length > prefix.length) branches.push({ nombre: path[path.length - 1].valor, ruta: path });
+      return;
+    }
+    const column = detailColumns[level];
+    const indexes = valuesByColumn[level]
+      .map((_: string, index: number) => index)
+      .filter(index => {
+        if (!valuesByColumn[level][index]) return false;
+        if (level === 0 || parentIndex === null) return true;
+        return parentsByColumn[level][index] === parentIndex;
+      });
+    if (indexes.length === 0) {
+      if (path.length > prefix.length) branches.push({ nombre: path[path.length - 1].valor, ruta: path });
+      return;
+    }
+    indexes.forEach(index => visit(
+      level + 1,
+      index,
+      [...path, { columna: column, valor: valuesByColumn[level][index] }],
+    ));
+  };
+
+  if (detailColumns.length > 0) visit(0, null, prefix);
+  if (branches.length === 0 && prefix.length > 0) {
+    branches.push({ nombre: prefix[0].valor, ruta: prefix });
+  }
+  const occurrences = new Map<string, number>();
+  return branches.map(branch => {
+    const base = branch.ruta
+      .map(value => `${normalizeHierarchyKeyPart(value.columna)}:${normalizeHierarchyKeyPart(value.valor)}`)
+      .join('/');
+    const occurrence = (occurrences.get(base) || 0) + 1;
+    occurrences.set(base, occurrence);
+    return { ...branch, clave: `${base}#${occurrence}` };
+  });
+}
+
+function getStableCatalogRowDescriptors(rows: any[]): Array<{ row: any; index: number; key: string }> {
+  const occurrences = new Map<string, number>();
+  return rows.map((row, index) => {
+    const explicitKey = String(row?.clave ?? row?.id ?? row?.key ?? '').trim();
+    if (explicitKey && String(row?.clave || '').trim()) return { row, index, key: explicitKey };
+    const base = explicitKey
+      ? `id:${explicitKey}`
+      : `nombre:${normalizeHierarchyKeyPart(row?.nombre || `fila-${index + 1}`)}`;
+    const occurrence = (occurrences.get(base) || 0) + 1;
+    occurrences.set(base, occurrence);
+    return { row, index, key: `${base}#${occurrence}` };
+  });
+}
+
 function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[] {
   if (!detailColumns.length) return [];
   const primaryColumn = detailColumns[0];
@@ -867,6 +1006,7 @@ function getExtensionConfiguredHourRows(
     const items = Array.isArray(activity?.items) ? activity.items : [];
     const rowCount = Math.max(values.length, metadata.length);
     const rows: any[] = [];
+    const itemColumnLabel = String(section?.columna_items_nombre || 'Actividad / Ítem').trim();
     const decorateItem = (item: any) => ({
       ...item,
       _detailValues: detailColumns.flatMap(column => {
@@ -875,6 +1015,7 @@ function getExtensionConfiguredHourRows(
           .filter((value: any) => String(value || '').trim())
           .map((value: any) => ({ column, value: String(value) }));
       }),
+      _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, true),
     });
 
     for (let index = 0; index < rowCount; index += 1) {
@@ -887,6 +1028,7 @@ function getExtensionConfiguredHourRows(
         childItems.forEach((item: any) => rows.push({
           ...normalizeRow(item, `${valueName} — ${item?.nombre || 'Actividad'}`),
           _detailGroups: [{ name: item?.nombre || 'Actividad', values: item._detailValues || [] }],
+          _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, false),
         }));
       } else {
         rows.push({
@@ -895,6 +1037,7 @@ function getExtensionConfiguredHourRows(
             name: item?.nombre || 'Actividad',
             values: item._detailValues || [],
           })),
+          _ramificaciones: childItems.flatMap((item: any) => item._ramificaciones || []),
         });
       }
     }
@@ -906,9 +1049,11 @@ function getExtensionConfiguredHourRows(
     const detailColumns = Array.isArray(columns) && columns[0] === EXT_ITEMS_COLUMN_KEY
       ? columns.slice(1)
       : [];
+    const itemColumnLabel = String(section?.columna_items_nombre || 'Actividad / Ítem').trim();
     return activity.items.map((item: any) => ({
       ...normalizeRow(item),
       _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+      _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, false),
     }));
   }
   return [];
@@ -964,6 +1109,271 @@ function getRecognitionRowKey(row: any, index: number): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-');
   return `${normalizedName || 'fila'}#${index + 1}`;
+}
+
+function getHierarchyBranches(row: any): HierarchyBranch[] {
+  const raw = Array.isArray(row?.ramificaciones)
+    ? row.ramificaciones
+    : (Array.isArray(row?._ramificaciones) ? row._ramificaciones : []);
+  return raw
+    .map((branch: any) => ({
+      clave: String(branch?.clave || '').trim(),
+      nombre: String(branch?.nombre || '').trim(),
+      ruta: (Array.isArray(branch?.ruta) ? branch.ruta : [])
+        .map((value: any) => ({
+          columna: String(value?.columna || value?.column || '').trim(),
+          valor: String(value?.valor || value?.value || '').trim(),
+        }))
+        .filter((value: any) => value.valor),
+    }))
+    .filter((branch: HierarchyBranch) => branch.clave && (branch.nombre || branch.ruta.length > 0));
+}
+
+/**
+ * La presencia del arreglo (incluso vacío) identifica el formato nuevo. Los
+ * PTAs anteriores no deben migrarse solo por abrir el formulario: el
+ * autoguardado podría persistir una redistribución que el docente nunca eligió.
+ */
+function hasExplicitHierarchySelection(item: ExtensionActividad | ComplementariaItem): boolean {
+  return Array.isArray(item?.filas_seleccionadas);
+}
+
+function getSelectedHierarchyRowKeys(
+  item: ExtensionActividad | ComplementariaItem,
+  descriptors: Array<{ row: any; index: number; key: string }>,
+): string[] {
+  const allowed = new Set(descriptors.map(descriptor => descriptor.key));
+  if (Array.isArray(item?.filas_seleccionadas)) {
+    return [...new Set(item.filas_seleccionadas.map(String).filter(key => allowed.has(key)))];
+  }
+  if ('fila_seleccionada' in item && Number.isInteger(item.fila_seleccionada)) {
+    const legacy = descriptors.find(descriptor => descriptor.index === item.fila_seleccionada);
+    if (legacy) return [legacy.key];
+  }
+  const keyed = item?.filas_cantidades;
+  if (keyed && typeof keyed === 'object') {
+    const selected = descriptors
+      .filter(descriptor => Number(keyed[descriptor.key]) > 0)
+      .map(descriptor => descriptor.key);
+    if (selected.length > 0) return selected;
+  }
+  const indexed = item?.items_cantidades;
+  if (indexed && typeof indexed === 'object') {
+    const selected = descriptors
+      .filter(descriptor => Number(indexed[descriptor.index]) > 0)
+      .map(descriptor => descriptor.key);
+    if (selected.length > 0) return selected;
+  }
+  // Un PTA histórico no distinguía selección de desglose: todo lo mostrado se
+  // consideraba incluido. Se conserva así al abrirlo para no perder horas.
+  return Number(item?.horas || 0) > 0 ? descriptors.map(descriptor => descriptor.key) : [];
+}
+
+function getSelectedHierarchyBranchKeys(
+  item: ExtensionActividad | ComplementariaItem,
+  rowKey: string,
+  branches: HierarchyBranch[],
+  rowSelected: boolean,
+): string[] {
+  const storedMap = item?.ramificaciones_seleccionadas;
+  if (storedMap && Object.prototype.hasOwnProperty.call(storedMap, rowKey)) {
+    const allowed = new Set(getHierarchySelectableKeys(branches));
+    return [...new Set((storedMap[rowKey] || []).map(String).filter(key => allowed.has(key)))];
+  }
+  // Compatibilidad: antes el desglose se incorporaba completo y solo se mostraba.
+  return rowSelected ? branches.map(branch => branch.clave) : [];
+}
+
+function getHierarchyRowHours(
+  row: any,
+  horasAProgramar: number,
+  storedValue: unknown,
+  selectedRowCount: number,
+): number {
+  const rowType = String(row?.tipo || '').toLowerCase();
+  if (rowType === 'por_unidad') {
+    const unitHours = Math.max(0, Number(row?.horas) || 0);
+    const maxUnits = Math.max(1, Number(row?.max_unidades) || 1);
+    const maxHours = unitHours * maxUnits;
+    const candidate = storedValue !== undefined && storedValue !== null
+      ? Number(storedValue)
+      : unitHours;
+    return Math.min(maxHours, Math.max(unitHours, Number.isFinite(candidate) ? candidate : unitHours));
+  }
+  const constraint = getRecognitionRowConstraint(row, Math.max(1, selectedRowCount), horasAProgramar)
+    || getConfiguredActivityConstraint(row, horasAProgramar);
+  if (!constraint) return Math.max(0, Number(storedValue) || 0);
+  if (storedValue !== undefined && storedValue !== null && Number.isFinite(Number(storedValue))) {
+    return clampConstraintValue(Number(storedValue), constraint);
+  }
+  return getInitialConstraintValue(constraint);
+}
+
+function buildHierarchySelectionSnapshot(
+  item: ExtensionActividad | ComplementariaItem,
+  descriptors: Array<{ row: any; index: number; key: string }>,
+  rowLabel: string,
+): HierarchySelectionSnapshot[] {
+  const selectedKeys = getSelectedHierarchyRowKeys(item, descriptors);
+  const selectedSet = new Set(selectedKeys);
+  return descriptors
+    .filter(descriptor => selectedSet.has(descriptor.key))
+    .map(descriptor => {
+      const branches = getHierarchyBranches(descriptor.row);
+      const selectedBranches = new Set(getSelectedHierarchyBranchKeys(item, descriptor.key, branches, true));
+      return {
+        clave: descriptor.key,
+        nombre: String(descriptor.row?.nombre || `Opción ${descriptor.index + 1}`),
+        etiqueta: rowLabel,
+        horas: Number(item?.filas_cantidades?.[descriptor.key]
+          ?? item?.items_cantidades?.[descriptor.index]
+          ?? 0) || 0,
+        ramificaciones: resolveHierarchySelectionBranches(branches, selectedBranches),
+      };
+    });
+}
+
+function reconcileSelectedHierarchyRows<T extends ExtensionActividad | ComplementariaItem>(
+  item: T,
+  rows: any[],
+  horasAProgramar: number,
+  rowLabel: string,
+): T {
+  const descriptors = getStableCatalogRowDescriptors(rows);
+  const selectedKeys = getSelectedHierarchyRowKeys(item, descriptors);
+  const selectedSet = new Set(selectedKeys);
+  const nextByKey: Record<string, number> = {};
+  const nextByIndex: Record<number, number> = {};
+  const nextBranchesByRow: Record<string, string[]> = {};
+  descriptors.forEach(descriptor => {
+    if (!selectedSet.has(descriptor.key)) return;
+    const keyedStored = item?.filas_cantidades?.[descriptor.key];
+    const indexedStored = item?.items_cantidades?.[descriptor.index];
+    const stored = keyedStored ?? (
+      String(descriptor.row?.tipo || '').toLowerCase() === 'por_unidad'
+        && indexedStored !== undefined
+        ? Number(indexedStored) * Math.max(0, Number(descriptor.row?.horas) || 0)
+        : indexedStored
+    );
+    const hours = getHierarchyRowHours(descriptor.row, horasAProgramar, stored, selectedKeys.length);
+    nextByKey[descriptor.key] = hours;
+    nextByIndex[descriptor.index] = hours;
+    const branches = getHierarchyBranches(descriptor.row);
+    if (branches.length > 0) {
+      nextBranchesByRow[descriptor.key] = getSelectedHierarchyBranchKeys(
+        item,
+        descriptor.key,
+        branches,
+        true,
+      );
+    }
+  });
+  const total = Object.values(nextByKey).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  const reconciled = {
+    ...item,
+    filas_seleccionadas: selectedKeys,
+    filas_cantidades: nextByKey,
+    items_cantidades: nextByIndex,
+    ramificaciones_seleccionadas: nextBranchesByRow,
+    horas: total,
+  } as T;
+  return {
+    ...reconciled,
+    seleccion_jerarquica: buildHierarchySelectionSnapshot(reconciled, descriptors, rowLabel),
+  };
+}
+
+function toggleHierarchyChoice<T extends ExtensionActividad | ComplementariaItem>(
+  item: T,
+  rows: any[],
+  rowIndex: number,
+  branchKey: string | undefined,
+  conflictingBranchKeys: string[] | undefined,
+  clearOnly: boolean | undefined,
+  horasAProgramar: number,
+  rowLabel: string,
+): T {
+  const descriptors = getStableCatalogRowDescriptors(rows);
+  const descriptor = descriptors.find(entry => entry.index === rowIndex);
+  if (!descriptor) return item;
+  const selectedKeys = new Set(getSelectedHierarchyRowKeys(item, descriptors));
+  const branches = getHierarchyBranches(descriptor.row);
+  const nextBranchesMap = { ...(item.ramificaciones_seleccionadas || {}) };
+
+  if (branchKey) {
+    const branchKeys = new Set(getSelectedHierarchyBranchKeys(
+      item,
+      descriptor.key,
+      branches,
+      selectedKeys.has(descriptor.key),
+    ));
+    if (clearOnly) {
+      branchKeys.delete(branchKey);
+      (conflictingBranchKeys || []).forEach(key => branchKeys.delete(key));
+    } else if (branchKeys.has(branchKey)) branchKeys.delete(branchKey);
+    else {
+      (conflictingBranchKeys || []).forEach(key => branchKeys.delete(key));
+      branchKeys.add(branchKey);
+    }
+    nextBranchesMap[descriptor.key] = [...branchKeys];
+    if (branchKeys.size > 0) selectedKeys.add(descriptor.key);
+    else selectedKeys.delete(descriptor.key);
+  } else if (selectedKeys.has(descriptor.key)) {
+    selectedKeys.delete(descriptor.key);
+    delete nextBranchesMap[descriptor.key];
+  } else {
+    selectedKeys.add(descriptor.key);
+  }
+
+  const toggled = {
+    ...item,
+    filas_seleccionadas: descriptors
+      .filter(entry => selectedKeys.has(entry.key))
+      .map(entry => entry.key),
+    ramificaciones_seleccionadas: nextBranchesMap,
+  } as T;
+  return reconcileSelectedHierarchyRows(toggled, rows, horasAProgramar, rowLabel);
+}
+
+function updateHierarchyRowHours<T extends ExtensionActividad | ComplementariaItem>(
+  item: T,
+  rows: any[],
+  rowIndex: number,
+  value: number,
+  horasAProgramar: number,
+  rowLabel: string,
+): T {
+  const descriptors = getStableCatalogRowDescriptors(rows);
+  const descriptor = descriptors.find(entry => entry.index === rowIndex);
+  if (!descriptor) return item;
+  const selectedKeys = getSelectedHierarchyRowKeys(item, descriptors);
+  if (!selectedKeys.includes(descriptor.key)) return item;
+  const constraint = getRecognitionRowConstraint(
+    descriptor.row,
+    Math.max(1, selectedKeys.length),
+    horasAProgramar,
+  ) || getConfiguredActivityConstraint(descriptor.row, horasAProgramar)
+    || (String(descriptor.row?.tipo || '').toLowerCase() === 'por_unidad'
+      ? buildHourConstraint(
+          Math.max(1, Number(descriptor.row?.horas) || 1),
+          Math.max(1, Number(descriptor.row?.horas) || 1)
+            * Math.max(1, Number(descriptor.row?.max_unidades) || 1),
+          Number(descriptor.row?.max_unidades) > 1,
+          Number(descriptor.row?.max_unidades) > 1 ? 'range' : 'fixed',
+        )
+      : null);
+  if (!constraint) return item;
+  const nextValue = clampConstraintValue(value, constraint);
+  const updated = {
+    ...item,
+    // Si el registro era legacy, editar las horas convierte explícitamente la
+    // selección que el usuario estaba viendo; no debe desaparecer el resto de
+    // filas históricas por haber modificado solo una.
+    filas_seleccionadas: selectedKeys,
+    filas_cantidades: { ...(item.filas_cantidades || {}), [descriptor.key]: nextValue },
+    items_cantidades: { ...(item.items_cantidades || {}), [descriptor.index]: nextValue },
+  } as T;
+  return reconcileSelectedHierarchyRows(updated, rows, horasAProgramar, rowLabel);
 }
 
 interface RecognitionRowsState {
@@ -1235,6 +1645,9 @@ function componentKeyForExtensionSubsection(section: string): PTAComponentKey {
 }
 
 export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefaturaTerritorialId, allowedComponentKeys, componentEditScopeLabel, concertacionActorId, concertacionActorNombre }: PTAFormProps) {
+  // El mismo formulario se reutiliza en el backoffice. Solo el flujo docente
+  // solicitado cambia sus avisos; la experiencia administrativa se conserva.
+  const toast = isAdminEdit ? systemToast : docentePtaAlert;
   const [saving, setSaving] = useState(false);
   // Comentario obligatorio al "Concertar" (editar y enviar como admin/revisor): editar y
   // mandar un PTA de un docente es, en la práctica, devolver el/los componente(s)
@@ -1320,15 +1733,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [pendingDocenteAccion, setPendingDocenteAccion] = useState<'via_save' | 'avanzar_sin_cambios' | null>(null);
   const [docenteName, setDocenteName] = useState('');
   const [requestingFirmaCode, setRequestingFirmaCode] = useState(false);
+  const requestingFirmaCodeRef = useRef(false);
   const [firmaVerificationId, setFirmaVerificationId] = useState('');
   const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
-  // Modal de confirmación PTA incompleto (reemplaza window.confirm nativo)
-  const [showConfirmIncompleto, setShowConfirmIncompleto] = useState(false);
-  const [confirmIncompletoData, setConfirmIncompletoData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
+  // Resumen visual previo a la firma y al envío.
+  const [showConfirmResumen, setShowConfirmResumen] = useState(false);
+  const [confirmResumenData, setConfirmResumenData] = useState<{ totalHoras: number; horasRequeridas: number; porcentaje: number } | null>(null);
+  const [isClosingConfirmResumen, setIsClosingConfirmResumen] = useState(false);
+  const confirmResumenCloseTimerRef = useRef<number | null>(null);
+  const confirmResumenClosingRef = useRef(false);
   // Legacy — conservados por compatibilidad
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
   const [savedPtaIdForSignature, setSavedPtaIdForSignature] = useState('');
   const [targetEstado, setTargetEstado] = useState('Pendiente Jefatura');
+
+  useEffect(() => () => {
+    if (confirmResumenCloseTimerRef.current !== null) {
+      window.clearTimeout(confirmResumenCloseTimerRef.current);
+    }
+  }, []);
 
   // Recalcular horas cuando cambia tipo vinculación
   const tipoVincData = TIPOS_VINCULACION.find(t => t.codigo === tipoVinculacion);
@@ -1352,6 +1775,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Componentes
   const [asignaturas, setAsignaturas] = useState<AsignaturaItem[]>([]);
   const [invProyecto, setInvProyecto] = useState<InvestigacionProyecto>({
+    territorial_id: '',
     nombre: '', codigo: '', grupo: '', linea: '', rol: '',
     horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '',
     resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '',
@@ -1652,7 +2076,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // cuando el catálogo de actividades de extensión o la lista de actividades del docente terminen de cargar.
   useEffect(() => {
     if (!actExtension) return;
-    const configuredExtensionLimit = getConfiguredExtensionLimit(ptaRules, horasAProgramar);
     setExtActividades(prev => {
       let changed = false;
       const next = prev.map(e => {
@@ -1661,87 +2084,38 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (baseAct !== e) changed = true;
         const cat = (actExtension[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
         const section = extSecciones.find(s => s.key === sectionKey);
-        const requiresRowSelection = Boolean(cat && extensionRequiresRowSelection(
-          cat,
-          section,
-          horasAProgramar,
-          configuredExtensionLimit,
-        ));
-        const configuredRows = cat
-          ? getEffectiveExtensionRows(
-              cat,
-              section,
-              baseAct.fila_seleccionada,
-              horasAProgramar,
-              configuredExtensionLimit,
-            )
-          : [];
-        if (requiresRowSelection && configuredRows.length === 0) {
-          if (baseAct.horas !== 0 || baseAct.horas_ejecutadas !== 0 || baseAct.items_cantidades
-            || baseAct.fila_seleccionada_nombre || baseAct.fila_seleccionada_etiqueta
-            || baseAct.fila_seleccionada_detalles) {
+        if (cat && extensionActivityUsesItems(section, cat)) {
+          // Un registro legacy conserva exactamente sus horas y campos originales
+          // hasta que el docente cambie una opción del desglose. Esto evita que el
+          // autoguardado migre silenciosamente borradores simplemente al abrirlos.
+          if (!hasExplicitHierarchySelection(baseAct)) return baseAct;
+          const configuredRows = getExtensionConfiguredHourRows(cat, section)
+            .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
+          const rowLabel = getExtensionRowDisplayLabel(section);
+          const multiplier = Math.max(1, Number(section?.multiplicador) || 1);
+          const reconciled = reconcileSelectedHierarchyRows(
+            baseAct,
+            configuredRows,
+            horasAProgramar,
+            rowLabel,
+          );
+          const nextActivity = {
+            ...reconciled,
+            // Las filas se configuran en horas reconocidas del PTA. En secciones
+            // con factor, la ejecución es su equivalente antes de multiplicar.
+            horas_ejecutadas: reconciled.horas / multiplier,
+            // Los campos singulares se conservan solo como puente de lectura para
+            // PTAs históricos. Toda edición nueva usa la selección múltiple estable.
+            fila_seleccionada: undefined,
+            fila_seleccionada_nombre: undefined,
+            fila_seleccionada_etiqueta: undefined,
+            fila_seleccionada_detalles: undefined,
+          };
+          if (JSON.stringify(baseAct) !== JSON.stringify(nextActivity)) {
             changed = true;
-            return {
-              ...baseAct,
-              horas: 0,
-              horas_ejecutadas: 0,
-              items_cantidades: undefined,
-              ...getExtensionRowSnapshot(null, section),
-            };
+            return nextActivity;
           }
           return baseAct;
-        }
-        if (cat && extensionActivityUsesItems(section, cat) && configuredRows.length > 0) {
-          const selectionSnapshot = Number.isInteger(baseAct.fila_seleccionada)
-            ? getExtensionRowSnapshot(configuredRows[0], section)
-            : {};
-          const snapshotChanged = Object.keys(selectionSnapshot).some((key) =>
-            JSON.stringify((baseAct as any)[key]) !== JSON.stringify((selectionSnapshot as any)[key]),
-          );
-          const hasStoredQuantities = Boolean(
-            baseAct.items_cantidades && Object.keys(baseAct.items_cantidades).length > 0,
-          );
-          const newCantidades: Record<number, number> = hasStoredQuantities
-            ? { ...(baseAct.items_cantidades || {}) }
-            : getInitialExtensionRowsState(configuredRows, horasAProgramar).items_cantidades;
-          const totalHoras = configuredRows.reduce((sum: number, item: any, i: number) => {
-            const tipo = (item.tipo || 'fija').toLowerCase();
-            if (tipo === 'fija') {
-              newCantidades[i] = Math.max(0, Number(item.horas) || 0);
-              return sum + newCantidades[i];
-            }
-            if (tipo === 'porcentaje') {
-              newCantidades[i] = getPercentageHours(item, horasAProgramar);
-              return sum + newCantidades[i];
-            }
-            if (tipo === 'hasta') {
-              const minimum = extensionRowAllowsZero(item, configuredRows.length) ? 0 : 1;
-              const stored = Number(newCantidades[i]);
-              const value = Number.isFinite(stored) ? stored : 1;
-              newCantidades[i] = Math.min(item.horas || 0, Math.max(minimum, value));
-              return sum + newCantidades[i];
-            }
-            // 'intervalo': el valor ES las horas (acotado a [min, max]); NO se multiplica
-            // por item.horas (eso daba totales absurdos, p.ej. 40 × 120 = 4800h).
-            if (tipo === 'intervalo') {
-              newCantidades[i] = Math.min(item.horas || 0, Math.max(item.min ?? 1, Number(newCantidades[i]) || 1));
-              return sum + newCantidades[i];
-            }
-            const qty = Math.max(0, Number(newCantidades[i]) || 0);
-            newCantidades[i] = qty;
-            return sum + (qty * (item.horas || 0));
-          }, 0);
-          const quantitiesChanged = JSON.stringify(baseAct.items_cantidades || {}) !== JSON.stringify(newCantidades);
-          if (baseAct.horas !== totalHoras || baseAct.horas_ejecutadas !== totalHoras || snapshotChanged || quantitiesChanged) {
-            changed = true;
-            return {
-              ...baseAct,
-              ...selectionSnapshot,
-              items_cantidades: newCantidades,
-              horas: totalHoras,
-              horas_ejecutadas: totalHoras,
-            };
-          }
         }
         if (cat && !extensionActivityUsesItems(section, cat)) {
           const mult = Math.max(1, Number(section?.multiplicador) || 1);
@@ -1782,30 +2156,37 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const catalog = actComplementarias.find((activity: any) => activity.id === item.actividad_id);
           if (!catalog) return item;
           const constraint = getComplementariaConstraint(catalog, ptaRules, horasAProgramar);
-          const rowsState = reconcileRecognitionRows(
-            catalog,
-            horasAProgramar,
-            item.horas,
-            item.filas_cantidades,
-            item.items_cantidades,
-          );
-          const reconciledHours = rowsState?.total ?? clampConstraintValue(item.horas, constraint);
+          const recognitionRows = getConfiguredRecognitionRows(catalog, horasAProgramar);
+          const hierarchyItem = recognitionRows.length > 0 && hasExplicitHierarchySelection(item)
+            ? reconcileSelectedHierarchyRows(item, recognitionRows, horasAProgramar, 'Actividad / Ítem')
+            : null;
+          const isLegacyHierarchy = recognitionRows.length > 0 && !hasExplicitHierarchySelection(item);
+          const reconciledHours = hierarchyItem?.horas
+            ?? (isLegacyHierarchy ? Number(item.horas || 0) : clampConstraintValue(item.horas, constraint));
           if (
             Number(item.horas) !== reconciledHours
             || item.nombre !== catalog.nombre
-            || (rowsState && (
-              JSON.stringify(item.items_cantidades || {}) !== JSON.stringify(rowsState.items_cantidades)
-              || JSON.stringify(item.filas_cantidades || {}) !== JSON.stringify(rowsState.filas_cantidades)
+            || (hierarchyItem && JSON.stringify(item) !== JSON.stringify(hierarchyItem))
+            || (!hierarchyItem && !isLegacyHierarchy && (
+              item.items_cantidades || item.filas_cantidades || item.filas_seleccionadas
+              || item.ramificaciones_seleccionadas || item.seleccion_jerarquica
             ))
-            || (!rowsState && (item.items_cantidades || item.filas_cantidades))
           ) {
             changed = true;
             return {
-              ...item,
+              ...(hierarchyItem || item),
               nombre: catalog.nombre,
               horas: reconciledHours,
-              items_cantidades: rowsState?.items_cantidades,
-              filas_cantidades: rowsState?.filas_cantidades,
+              items_cantidades: hierarchyItem?.items_cantidades
+                ?? (isLegacyHierarchy ? item.items_cantidades : undefined),
+              filas_cantidades: hierarchyItem?.filas_cantidades
+                ?? (isLegacyHierarchy ? item.filas_cantidades : undefined),
+              filas_seleccionadas: hierarchyItem?.filas_seleccionadas
+                ?? (isLegacyHierarchy ? item.filas_seleccionadas : undefined),
+              ramificaciones_seleccionadas: hierarchyItem?.ramificaciones_seleccionadas
+                ?? (isLegacyHierarchy ? item.ramificaciones_seleccionadas : undefined),
+              seleccion_jerarquica: hierarchyItem?.seleccion_jerarquica
+                ?? (isLegacyHierarchy ? item.seleccion_jerarquica : undefined),
             };
           }
           return item;
@@ -1822,32 +2203,39 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           if (!catalog) return item;
           const constraint = getAcademicoAdminConstraint(catalog, ptaRules, horasAProgramar);
           const consumesFullPTA = isFullPTAActivity(catalog);
-          const rowsState = reconcileRecognitionRows(
-            catalog,
-            horasAProgramar,
-            item.horas,
-            item.filas_cantidades,
-            item.items_cantidades,
-          );
-          const reconciledHours = rowsState?.total ?? clampConstraintValue(item.horas, constraint);
+          const recognitionRows = getConfiguredRecognitionRows(catalog, horasAProgramar);
+          const hierarchyItem = recognitionRows.length > 0 && hasExplicitHierarchySelection(item)
+            ? reconcileSelectedHierarchyRows(item, recognitionRows, horasAProgramar, 'Actividad / Ítem')
+            : null;
+          const isLegacyHierarchy = recognitionRows.length > 0 && !hasExplicitHierarchySelection(item);
+          const reconciledHours = hierarchyItem?.horas
+            ?? (isLegacyHierarchy ? Number(item.horas || 0) : clampConstraintValue(item.horas, constraint));
           if (
             Number(item.horas) !== reconciledHours ||
             Boolean(item.consumeTotalidad) !== consumesFullPTA ||
             item.nombre !== catalog.nombre ||
-            (rowsState && (
-              JSON.stringify(item.items_cantidades || {}) !== JSON.stringify(rowsState.items_cantidades)
-              || JSON.stringify(item.filas_cantidades || {}) !== JSON.stringify(rowsState.filas_cantidades)
-            )) ||
-            (!rowsState && (item.items_cantidades || item.filas_cantidades))
+            (hierarchyItem && JSON.stringify(item) !== JSON.stringify(hierarchyItem)) ||
+            (!hierarchyItem && !isLegacyHierarchy && (
+              item.items_cantidades || item.filas_cantidades || item.filas_seleccionadas
+              || item.ramificaciones_seleccionadas || item.seleccion_jerarquica
+            ))
           ) {
             changed = true;
             return {
-              ...item,
+              ...(hierarchyItem || item),
               nombre: catalog.nombre,
               horas: reconciledHours,
               consumeTotalidad: consumesFullPTA,
-              items_cantidades: rowsState?.items_cantidades,
-              filas_cantidades: rowsState?.filas_cantidades,
+              items_cantidades: hierarchyItem?.items_cantidades
+                ?? (isLegacyHierarchy ? item.items_cantidades : undefined),
+              filas_cantidades: hierarchyItem?.filas_cantidades
+                ?? (isLegacyHierarchy ? item.filas_cantidades : undefined),
+              filas_seleccionadas: hierarchyItem?.filas_seleccionadas
+                ?? (isLegacyHierarchy ? item.filas_seleccionadas : undefined),
+              ramificaciones_seleccionadas: hierarchyItem?.ramificaciones_seleccionadas
+                ?? (isLegacyHierarchy ? item.ramificaciones_seleccionadas : undefined),
+              seleccion_jerarquica: hierarchyItem?.seleccion_jerarquica
+                ?? (isLegacyHierarchy ? item.seleccion_jerarquica : undefined),
             };
           }
           return item;
@@ -1933,6 +2321,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const proyectoInvestigacion = d.investigacion_proyecto;
         if (proyectoInvestigacion) {
           setInvProyecto({
+            territorial_id: '',
             nombre: '', codigo: '', grupo: '', linea: '', rol: '',
             horas_solicitadas: 0,
             fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
@@ -1941,19 +2330,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           });
         } else {
           setInvProyecto({
+            territorial_id: '',
             nombre: '', codigo: '', grupo: '', linea: '', rol: '',
             horas_solicitadas: 0,
             fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
             resolucion_archivo: null, resolucion_archivo_url: '',
           });
         }
-        setInvActividades(d.investigacion_actividades || []);
+        setInvActividades((d.investigacion_actividades || []).map((activity: any) => ({
+          ...activity,
+          territorial_id: String(activity?.territorial_id || ''),
+        })));
         // Normalizar actividades de extensión al cargar: aplicar multiplicador x2 si no se hizo
         // (puede pasar con PTAs guardados antes del fix o en race condition)
         const rawExtActs: ExtensionActividad[] = d.extension_actividades || [];
         const normalizedExtActs = rawExtActs.map(e => {
           const normalizedSection = normalizeExtensionSectionKey(e.seccion);
-          const baseAct = normalizedSection === e.seccion ? e : { ...e, seccion: normalizedSection };
+          const baseAct = {
+            ...e,
+            territorial_id: String(e?.territorial_id || ''),
+            seccion: normalizedSection,
+          };
           const secConfig = extSecciones.find(s => s.key === normalizedSection);
           const mult = secConfig?.multiplicador || 1;
           if (mult <= 1) return baseAct;
@@ -1978,10 +2375,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             || (c?.seccion == null && c?.consumeTotalidad !== undefined);
           const compAadm = rawComp.filter((c: any) => isAadm(c));
           const legacyAadm = Array.isArray(d.academico_admin) ? d.academico_admin : [];
-          setComplementarias(rawComp.filter((c: any) => !isAadm(c)));
+          setComplementarias(rawComp
+            .filter((c: any) => !isAadm(c))
+            .map((activity: any) => ({
+              ...activity,
+              territorial_id: String(activity?.territorial_id || ''),
+            })));
           // Si complementarias ya trae la sección AADM se usa esa (PTA migrado/guardado nuevo);
           // el array legacy solo aplica a PTAs viejos sin la sección dentro de complementarias.
-          setAcademicoAdmin(compAadm.length > 0 ? compAadm : legacyAadm);
+          setAcademicoAdmin((compAadm.length > 0 ? compAadm : legacyAadm).map((activity: any) => ({
+            ...activity,
+            territorial_id: String(activity?.territorial_id || ''),
+          })));
         }
         setObservacionesDocente(d.observaciones_docente || '');
         if (d.camposModificadosPorRevisor) setCamposModificados(d.camposModificadosPorRevisor);
@@ -2353,11 +2758,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     if (!actividadTotalidadGuardada) return;
 
     setInvProyecto(previous => {
-      const alreadyEmpty = !previous.nombre && !previous.codigo && !previous.grupo && !previous.linea &&
+      const alreadyEmpty = !previous.territorial_id && !previous.nombre && !previous.codigo && !previous.grupo && !previous.linea &&
         !previous.rol && !previous.horas_solicitadas &&
         !previous.resolucion_nombre &&
         !previous.resolucion_archivo && !previous.resolucion_archivo_url;
       return alreadyEmpty ? previous : {
+        territorial_id: '',
         nombre: '', codigo: '', grupo: '', linea: '', rol: '',
         horas_solicitadas: 0,
         fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null,
@@ -2566,6 +2972,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     complementarias.forEach(comp => {
       if (!comp.actividad_id) return;
       const cat = actComplementarias.find((a: any) => a.id === comp.actividad_id) || comp;
+      const rows = getConfiguredRecognitionRows(cat, horasAProgramar);
+      if (rows.length > 0) {
+        const selected = getSelectedHierarchyRowKeys(comp, getStableCatalogRowDescriptors(rows));
+        if (selected.length === 0) warns.push(`Selecciona al menos una opción dentro de "${comp.nombre || cat.nombre}".`);
+        else if (Number(comp.horas || 0) <= 0) warns.push(`Asigna horas válidas a las opciones elegidas de "${comp.nombre || cat.nombre}".`);
+        return;
+      }
       const error = getConstraintErrorMessage(comp.nombre || cat.nombre || comp.actividad_id, Number(comp.horas || 0), getComplementariaConstraint(cat, ptaRules, horasAProgramar));
       if (error) warns.push(error);
     });
@@ -2577,6 +2990,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     const warns: string[] = [];
     academicoAdmin.forEach(a => {
       const cat = actAcadAdmin.find((ac: any) => ac.id === a.actividad_id) || a;
+      const rows = getConfiguredRecognitionRows(cat, horasAProgramar);
+      if (rows.length > 0) {
+        const selected = getSelectedHierarchyRowKeys(a, getStableCatalogRowDescriptors(rows));
+        if (selected.length === 0) warns.push(`Selecciona al menos una opción dentro de "${cat.nombre || a.nombre}".`);
+        else if (Number(a.horas || 0) <= 0) warns.push(`Asigna horas válidas a las opciones elegidas de "${cat.nombre || a.nombre}".`);
+        return;
+      }
       const constraint = getAcademicoAdminConstraint(cat, ptaRules, horasAProgramar);
       const activityHours = isFullPTAActivity(cat) ? horasAProgramar : Number(a.horas || 0);
       const error = getConstraintErrorMessage(cat.nombre || a.nombre || a.actividad_id, activityHours, constraint);
@@ -2600,32 +3020,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       const catalogActivity = (actExtension?.[sectionKey] || [])
         .find((item: any) => item.id === activity.actividad_id);
       if (!catalogActivity) return;
-      const effectiveRows = getEffectiveExtensionRows(
-        catalogActivity,
-        section,
-        activity.fila_seleccionada,
-        horasAProgramar,
-        maxExtLimit,
-      );
-      if (
-        effectiveRows.length > 1
-        && effectiveRows.some(row => extensionRowAllowsZero(row, effectiveRows.length))
-        && Number(activity.horas || 0) <= 0
-      ) {
-        warns.push(`Asigna al menos 1h en una de las filas de "${catalogActivity.nombre}".`);
-      }
-      if (!extensionRequiresRowSelection(
-        catalogActivity,
-        section,
-        horasAProgramar,
-        maxExtLimit,
-      )) return;
-      const rows = getExtensionConfiguredHourRows(catalogActivity, section);
-      if (!Number.isInteger(activity.fila_seleccionada)
-        || activity.fila_seleccionada! < 0
-        || activity.fila_seleccionada! >= rows.length) {
+      const rows = getExtensionConfiguredHourRows(catalogActivity, section)
+        .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
+      if (extensionActivityUsesItems(section, catalogActivity)
+        && getSelectedHierarchyRowKeys(activity, getStableCatalogRowDescriptors(rows)).length === 0) {
         const columnLabel = getExtensionRowDisplayLabel(section);
-        warns.push(`Selecciona una ${columnLabel.toLowerCase()} dentro de "${catalogActivity.nombre}".`);
+        warns.push(`Selecciona al menos una ${columnLabel.toLowerCase()} o ramificación dentro de "${catalogActivity.nombre}".`);
       }
     });
     return warns;
@@ -2823,7 +3223,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }
 
     setInvActividades(prev => [...prev, {
-      id: Date.now(), actividad_id: '', nombre: '', descripcion: '',
+      id: Date.now(), territorial_id: '', actividad_id: '', nombre: '', descripcion: '',
       cantidad: 1, horas_unitarias: 0, horas_total: 0, fecha_inicio: '', fecha_fin: '',
       resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '',
     }]);
@@ -2892,7 +3292,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
     setExtActividades(prev => [...prev, {
-      id: Date.now(), seccion: normalizedSection, actividad_id: '', nombre: '', horas: 0, horas_ejecutadas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
+      id: Date.now(), territorial_id: '', seccion: normalizedSection, actividad_id: '', nombre: '', horas: 0, horas_ejecutadas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
   };
 
@@ -2927,21 +3327,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           updated.fila_seleccionada_detalles = undefined;
           // La estructura de columnas de la sección manda. `items: []` puede ser
           // solo un vestigio del modelo de edición y no implica que existan filas.
-          const configuredRows = getExtensionConfiguredHourRows(cat, secConfig);
+          const configuredRows = getExtensionConfiguredHourRows(cat, secConfig)
+            .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
           if (extensionActivityUsesItems(secConfig, cat) && configuredRows.length > 0) {
-            const requiresRowSelection = extensionRequiresRowSelection(
-              cat,
-              secConfig,
-              horasAProgramar,
-              maxExtLimit,
-            );
-            const initialState = getInitialExtensionRowsState(
-              requiresRowSelection ? [] : configuredRows,
-              horasAProgramar,
-            );
-            updated.items_cantidades = initialState.items_cantidades;
-            updated.horas_ejecutadas = initialState.total;
-            updated.horas = initialState.total;
+            // La actividad padre no marca automáticamente todo su contenido.
+            // El docente elige una o varias filas/ramificaciones en el desglose.
+            updated.items_cantidades = {};
+            updated.filas_cantidades = {};
+            updated.filas_seleccionadas = [];
+            updated.ramificaciones_seleccionadas = {};
+            updated.seleccion_jerarquica = [];
+            updated.horas_ejecutadas = 0;
+            updated.horas = 0;
           } else {
             // Tabla simple de columna raíz: las horas viven directamente en el bloque.
             const rootType = getRootActivityHourType(cat);
@@ -2967,6 +3364,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             updated.horas_ejecutadas = valEjec;
             updated.horas = valHoras;
             updated.items_cantidades = undefined;
+            updated.filas_cantidades = undefined;
+            updated.filas_seleccionadas = undefined;
+            updated.ramificaciones_seleccionadas = undefined;
+            updated.seleccion_jerarquica = undefined;
           }
         }
       }
@@ -2983,7 +3384,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         Object.assign(updated, getExtensionRowSnapshot(selectedRows[0], secConfig));
         const initialState = getInitialExtensionRowsState(selectedRows, horasAProgramar);
         updated.items_cantidades = selectedRows.length > 0 ? initialState.items_cantidades : undefined;
-        updated.horas_ejecutadas = initialState.total;
+        updated.horas_ejecutadas = initialState.total / mult;
         updated.horas = initialState.total;
       }
 
@@ -3050,47 +3451,62 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }));
   };
 
-  // Actualiza la cantidad / valor de un ítem dentro de una etapa de extensión
-  const handleExtItemQtyChange = (extId: number, itemIdx: number, val: number) => {
+  const handleExtHierarchyToggle = (
+    extId: number,
+    rowIndex: number,
+    branchKey?: string,
+    conflictingBranchKeys?: string[],
+    clearOnly?: boolean,
+  ) => {
     setExtActividades(prev => prev.map(e => {
       if (e.id !== extId) return e;
       const sectionKey = normalizeExtensionSectionKey(e.seccion);
       const baseAct = sectionKey === e.seccion ? e : { ...e, seccion: sectionKey };
       const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
       const section = extSecciones.find(item => item.key === sectionKey);
-      const configuredRows = cat
-        ? getEffectiveExtensionRows(
-            cat,
-            section,
-            baseAct.fila_seleccionada,
-            horasAProgramar,
-            maxExtLimit,
-          )
+      const rows = cat
+        ? getExtensionConfiguredHourRows(cat, section)
+            .filter(row => hasConfiguredCatalogHours(row, horasAProgramar))
         : [];
-      if (!cat || configuredRows.length === 0) return baseAct;
-      
-      const item = configuredRows[itemIdx];
-      const itemTipo = (item.tipo || 'fija').toLowerCase();
-      if (itemTipo === 'porcentaje') return baseAct;
-      const untilMinimum = extensionRowAllowsZero(item, configuredRows.length) ? 0 : 1;
-      let cleanedVal = Math.max(
-        itemTipo === 'intervalo' ? (item.min ?? 1) : (itemTipo === 'hasta' ? untilMinimum : 0),
-        val,
+      if (!cat || rows.length === 0) return baseAct;
+      const updated = toggleHierarchyChoice(
+        baseAct,
+        rows,
+        rowIndex,
+        branchKey,
+        conflictingBranchKeys,
+        clearOnly,
+        horasAProgramar,
+        getExtensionRowDisplayLabel(section),
       );
-      if (itemTipo === 'hasta' || itemTipo === 'intervalo') {
-        cleanedVal = Math.min(item.horas || 0, cleanedVal);
-      }
-      
-      const newCantidades = { ...(baseAct.items_cantidades || {}), [itemIdx]: cleanedVal };
-      const totalHoras = configuredRows.reduce((sum: number, it: any, i: number) => {
-        const tipo = (it.tipo || 'fija').toLowerCase();
-        if (tipo === 'fija') return sum + (it.horas || 0);
-        if (tipo === 'porcentaje') return sum + getPercentageHours(it, horasAProgramar);
-        if (tipo === 'hasta' || tipo === 'intervalo') return sum + (newCantidades[i] || 0);
-        const qty = newCantidades[i] || 0;
-        return sum + (qty * (it.horas || 0));
-      }, 0);
-      return { ...baseAct, items_cantidades: newCantidades, horas: totalHoras, horas_ejecutadas: totalHoras };
+      const multiplier = Math.max(1, Number(section?.multiplicador) || 1);
+      return { ...updated, horas_ejecutadas: updated.horas / multiplier };
+    }));
+  };
+
+  // Actualiza las horas de la fila seleccionada sin alterar sus ramificaciones.
+  const handleExtItemQtyChange = (extId: number, rowIndex: number, val: number) => {
+    setExtActividades(prev => prev.map(e => {
+      if (e.id !== extId) return e;
+      const sectionKey = normalizeExtensionSectionKey(e.seccion);
+      const baseAct = sectionKey === e.seccion ? e : { ...e, seccion: sectionKey };
+      const cat = (actExtension?.[sectionKey] || []).find((c: any) => c.id === baseAct.actividad_id);
+      const section = extSecciones.find(item => item.key === sectionKey);
+      const rows = cat
+        ? getExtensionConfiguredHourRows(cat, section)
+            .filter(row => hasConfiguredCatalogHours(row, horasAProgramar))
+        : [];
+      if (!cat || rows.length === 0) return baseAct;
+      const updated = updateHierarchyRowHours(
+        baseAct,
+        rows,
+        rowIndex,
+        val,
+        horasAProgramar,
+        getExtensionRowDisplayLabel(section),
+      );
+      const multiplier = Math.max(1, Number(section?.multiplicador) || 1);
+      return { ...updated, horas_ejecutadas: updated.horas / multiplier };
     }));
   };
 
@@ -3107,7 +3523,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
     setComplementarias(prev => [...prev, {
-      id: Date.now(), actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
+      id: Date.now(), territorial_id: '', actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
   };
 
@@ -3128,12 +3544,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const trueRemainingLimit = remainingLimit;
           const constraint = getComplementariaConstraint(cat, ptaRules, horasAProgramar);
           const suggestedHours = getInitialConstraintValue(constraint);
-          const rowsState = reconcileRecognitionRows(cat, horasAProgramar);
+          const recognitionRows = getConfiguredRecognitionRows(cat, horasAProgramar);
 
           updated.nombre = cat.nombre;
-          updated.items_cantidades = rowsState?.items_cantidades;
-          updated.filas_cantidades = rowsState?.filas_cantidades;
-          updated.horas = rowsState?.total ?? (
+          updated.items_cantidades = recognitionRows.length > 0 ? {} : undefined;
+          updated.filas_cantidades = recognitionRows.length > 0 ? {} : undefined;
+          updated.filas_seleccionadas = recognitionRows.length > 0 ? [] : undefined;
+          updated.ramificaciones_seleccionadas = recognitionRows.length > 0 ? {} : undefined;
+          updated.seleccion_jerarquica = recognitionRows.length > 0 ? [] : undefined;
+          updated.horas = recognitionRows.length > 0 ? 0 : (
             constraint.editable && canSelectWithRemaining(constraint, trueRemainingLimit)
               ? Math.min(suggestedHours, trueRemainingLimit)
               : suggestedHours
@@ -3143,6 +3562,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           updated.horas = 0;
           updated.items_cantidades = undefined;
           updated.filas_cantidades = undefined;
+          updated.filas_seleccionadas = undefined;
+          updated.ramificaciones_seleccionadas = undefined;
+          updated.seleccion_jerarquica = undefined;
         }
       }
       if (field === 'horas') {
@@ -3168,34 +3590,45 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }));
   };
 
+  const handleCompHierarchyToggle = (
+    id: number,
+    rowIndex: number,
+    branchKey?: string,
+    conflictingBranchKeys?: string[],
+    clearOnly?: boolean,
+  ) => {
+    setComplementarias(previous => previous.map(item => {
+      if (item.id !== id) return item;
+      const catalog = actComplementarias.find((activity: any) => activity.id === item.actividad_id);
+      const rows = getConfiguredRecognitionRows(catalog, horasAProgramar);
+      if (rows.length === 0) return item;
+      return toggleHierarchyChoice(
+        item,
+        rows,
+        rowIndex,
+        branchKey,
+        conflictingBranchKeys,
+        clearOnly,
+        horasAProgramar,
+        'Actividad / Ítem',
+      );
+    }));
+  };
+
   const handleCompRowHoursChange = (id: number, rowIndex: number, value: any) => {
     setComplementarias(previous => previous.map(item => {
       if (item.id !== id) return item;
       const catalog = actComplementarias.find((activity: any) => activity.id === item.actividad_id);
       const rows = getConfiguredRecognitionRows(catalog, horasAProgramar);
-      const row = rows[rowIndex];
-      const constraint = getRecognitionRowConstraint(row, rows.length, horasAProgramar);
-      if (!row || !constraint) return item;
-
-      const reconciled = reconcileRecognitionRows(
-        catalog,
+      if (rows.length === 0) return item;
+      return updateHierarchyRowHours(
+        item,
+        rows,
+        rowIndex,
+        Number(value),
         horasAProgramar,
-        item.horas,
-        item.filas_cantidades,
-        item.items_cantidades,
+        'Actividad / Ítem',
       );
-      if (!reconciled) return item;
-      const nextValue = clampConstraintValue(value, constraint);
-      reconciled.items_cantidades[rowIndex] = nextValue;
-      reconciled.filas_cantidades[getRecognitionRowKey(row, rowIndex)] = nextValue;
-      reconciled.total = Object.values(reconciled.items_cantidades)
-        .reduce((sum, hours) => sum + (Number(hours) || 0), 0);
-      return {
-        ...item,
-        horas: reconciled.total,
-        items_cantidades: reconciled.items_cantidades,
-        filas_cantidades: reconciled.filas_cantidades,
-      };
     }));
   };
 
@@ -3211,7 +3644,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
     setAcademicoAdmin(prev => [...prev, {
-      id: Date.now(), actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
+      id: Date.now(), territorial_id: '', actividad_id: '', nombre: '', horas: 0, descripcion: '', fecha_inicio: '', fecha_fin: '',
     }]);
   };
 
@@ -3232,13 +3665,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const constraint = getAcademicoAdminConstraint(cat, ptaRules, horasAProgramar);
           const suggestedHours = getInitialConstraintValue(constraint);
           const consumesFullPTA = isFullPTAActivity(cat);
-          const rowsState = reconcileRecognitionRows(cat, horasAProgramar);
+          const recognitionRows = getConfiguredRecognitionRows(cat, horasAProgramar);
 
           updated.nombre = cat.nombre;
           updated.consumeTotalidad = consumesFullPTA;
-          updated.items_cantidades = rowsState?.items_cantidades;
-          updated.filas_cantidades = rowsState?.filas_cantidades;
-          updated.horas = rowsState?.total ?? (
+          updated.items_cantidades = recognitionRows.length > 0 ? {} : undefined;
+          updated.filas_cantidades = recognitionRows.length > 0 ? {} : undefined;
+          updated.filas_seleccionadas = recognitionRows.length > 0 ? [] : undefined;
+          updated.ramificaciones_seleccionadas = recognitionRows.length > 0 ? {} : undefined;
+          updated.seleccion_jerarquica = recognitionRows.length > 0 ? [] : undefined;
+          updated.horas = recognitionRows.length > 0 ? 0 : (
             constraint.editable && canSelectWithRemaining(constraint, acadRemainingLimit)
               ? Math.min(suggestedHours, acadRemainingLimit)
               : suggestedHours
@@ -3251,6 +3687,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           updated.consumeTotalidad = false;
           updated.items_cantidades = undefined;
           updated.filas_cantidades = undefined;
+          updated.filas_seleccionadas = undefined;
+          updated.ramificaciones_seleccionadas = undefined;
+          updated.seleccion_jerarquica = undefined;
         }
       }
       if (field === 'horas') {
@@ -3268,34 +3707,45 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     }));
   };
 
+  const handleAcadHierarchyToggle = (
+    id: number,
+    rowIndex: number,
+    branchKey?: string,
+    conflictingBranchKeys?: string[],
+    clearOnly?: boolean,
+  ) => {
+    setAcademicoAdmin(previous => previous.map(item => {
+      if (item.id !== id) return item;
+      const catalog = actAcadAdmin.find((activity: any) => activity.id === item.actividad_id);
+      const rows = getConfiguredRecognitionRows(catalog, horasAProgramar);
+      if (rows.length === 0) return item;
+      return toggleHierarchyChoice(
+        item,
+        rows,
+        rowIndex,
+        branchKey,
+        conflictingBranchKeys,
+        clearOnly,
+        horasAProgramar,
+        'Actividad / Ítem',
+      );
+    }));
+  };
+
   const handleAcadRowHoursChange = (id: number, rowIndex: number, value: any) => {
     setAcademicoAdmin(previous => previous.map(item => {
       if (item.id !== id) return item;
       const catalog = actAcadAdmin.find((activity: any) => activity.id === item.actividad_id);
       const rows = getConfiguredRecognitionRows(catalog, horasAProgramar);
-      const row = rows[rowIndex];
-      const constraint = getRecognitionRowConstraint(row, rows.length, horasAProgramar);
-      if (!row || !constraint) return item;
-
-      const reconciled = reconcileRecognitionRows(
-        catalog,
+      if (rows.length === 0) return item;
+      return updateHierarchyRowHours(
+        item,
+        rows,
+        rowIndex,
+        Number(value),
         horasAProgramar,
-        item.horas,
-        item.filas_cantidades,
-        item.items_cantidades,
+        'Actividad / Ítem',
       );
-      if (!reconciled) return item;
-      const nextValue = clampConstraintValue(value, constraint);
-      reconciled.items_cantidades[rowIndex] = nextValue;
-      reconciled.filas_cantidades[getRecognitionRowKey(row, rowIndex)] = nextValue;
-      reconciled.total = Object.values(reconciled.items_cantidades)
-        .reduce((sum, hours) => sum + (Number(hours) || 0), 0);
-      return {
-        ...item,
-        horas: reconciled.total,
-        items_cantidades: reconciled.items_cantidades,
-        filas_cantidades: reconciled.filas_cantidades,
-      };
     }));
   };
 
@@ -3389,6 +3839,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       // El bloque de proyecto es opcional. Al seleccionar un rol se activa y sus
       // cuatro datos de identificación pasan a ser obligatorios.
       if (invProyecto.rol) {
+        requireText(
+          invProyecto.territorial_id,
+          ptaFieldKey.investigacionProyecto('territorial_id'),
+          'investigacion',
+          'Territorial del proyecto de investigación',
+        );
         requireText(invProyecto.nombre, ptaFieldKey.investigacionProyecto('nombre'), 'investigacion', 'Nombre del proyecto');
         requireText(invProyecto.codigo, ptaFieldKey.investigacionProyecto('codigo'), 'investigacion', 'Código del proyecto');
         requireText(invProyecto.grupo, ptaFieldKey.investigacionProyecto('grupo'), 'investigacion', 'Grupo de investigación');
@@ -3425,6 +3881,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       invActividades.forEach((activity, index) => {
         const itemLabel = `la actividad de investigación ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.investigacionActividad(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'investigacion', `Territorial de ${itemLabel}`);
         if (tieneProyecto) {
           requireText(activity.nombre, keyFor('nombre'), 'investigacion', `Nombre de ${itemLabel}`);
         } else {
@@ -3445,22 +3902,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const displayIndex = extensionIndexBySubsection[subsection];
         const itemLabel = `la actividad de extensión ${displayIndex}`;
         const keyFor = (field: string) => ptaFieldKey.extension(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'extension', `Territorial de ${itemLabel}`, subsection);
         requireText(activity.actividad_id, keyFor('actividad_id'), 'extension', `Actividad de extensión ${displayIndex}`, subsection);
         const section = extSecciones.find(item => item.key === subsection);
         const catalogActivity = (actExtension?.[subsection] || [])
           .find((item: any) => item.id === activity.actividad_id);
-        if (catalogActivity && extensionRequiresRowSelection(
-          catalogActivity,
-          section,
-          horasAProgramar,
-          maxExtLimit,
-        )) {
-          const rows = getExtensionConfiguredHourRows(catalogActivity, section);
-          if (!Number.isInteger(activity.fila_seleccionada)
-            || activity.fila_seleccionada! < 0
-            || activity.fila_seleccionada! >= rows.length) {
+        if (catalogActivity && extensionActivityUsesItems(section, catalogActivity)) {
+          const rows = getExtensionConfiguredHourRows(catalogActivity, section)
+            .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
+          if (getSelectedHierarchyRowKeys(activity, getStableCatalogRowDescriptors(rows)).length === 0) {
             const label = getExtensionRowDisplayLabel(section);
-            addIssue(keyFor('fila_seleccionada'), 'extension', label, `${label} es obligatorio.`, subsection);
+            addIssue(keyFor('horas'), 'extension', label, `Selecciona al menos una ${label.toLowerCase()} o ramificación.`, subsection);
           }
         }
         if (activity.actividad_id) {
@@ -3475,6 +3927,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       complementarias.forEach((activity, index) => {
         const itemLabel = `la actividad complementaria ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.complementaria(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'complementarias', `Territorial de ${itemLabel}`, COMP_SECCION_DOCENCIA);
         requireText(activity.actividad_id, keyFor('actividad_id'), 'complementarias', `Actividad complementaria ${index + 1}`, COMP_SECCION_DOCENCIA);
         if (activity.actividad_id) {
           requirePositiveHours(activity.horas, keyFor('horas'), 'complementarias', `Horas de ${itemLabel}`, COMP_SECCION_DOCENCIA);
@@ -3488,6 +3941,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       academicoAdmin.forEach((activity, index) => {
         const itemLabel = `la actividad académico-administrativa ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.academico(activity.id, field);
+        requireText(activity.territorial_id, keyFor('territorial_id'), 'complementarias', `Territorial de ${itemLabel}`, COMP_SECCION_AADM);
         requireText(activity.actividad_id, keyFor('actividad_id'), 'complementarias', `Actividad académico-administrativa ${index + 1}`, COMP_SECCION_AADM);
         if (activity.actividad_id) {
           requirePositiveHours(
@@ -3804,7 +4258,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       asignaturas: asignaturasPayload,
       // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
       // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
-      investigacion_proyecto: (invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
+      investigacion_proyecto: (invProyecto.territorial_id || invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
         ? {
             ...invProyecto,
             horas_solicitadas: invProyecto.rol ? hInvestigacionProyecto : 0,
@@ -4045,13 +4499,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return false;
     }
 
-    if (totalHoras < horasAProgramar) {
-      setConfirmIncompletoData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
-      setShowConfirmIncompleto(true);
-      return false; // Detener el flujo — el modal se encargará de continuar si el usuario acepta
+    if (confirmResumenCloseTimerRef.current !== null) {
+      window.clearTimeout(confirmResumenCloseTimerRef.current);
+      confirmResumenCloseTimerRef.current = null;
     }
-
-    return true;
+    confirmResumenClosingRef.current = false;
+    setIsClosingConfirmResumen(false);
+    setConfirmResumenData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
+    setShowConfirmResumen(true);
+    return false; // El resumen se muestra siempre antes de solicitar la firma del docente.
   }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
 
   const getFirmaEtapaLabel = useCallback(() => {
@@ -4071,13 +4527,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     accion: 'via_save' | 'avanzar_sin_cambios',
     validationAlreadyConfirmed = false,
   ) => {
-    if (requestingFirmaCode) return;
-    if (accion === 'via_save' && !validationAlreadyConfirmed && !validateEnvioDocente()) return;
+    if (requestingFirmaCodeRef.current) return false;
+    if (accion === 'via_save' && !validationAlreadyConfirmed && !validateEnvioDocente()) return false;
     if (hasBlockingHourLimits) {
       toast.error(componentLimitViolations[0]?.message || 'El PTA excede el tope permitido de horas.');
-      return;
+      return false;
     }
 
+    requestingFirmaCodeRef.current = true;
     setRequestingFirmaCode(true);
     try {
       const etapaLabel = getFirmaEtapaLabel();
@@ -4096,20 +4553,35 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       setFirmaCorreoDestino(res.data.email || 'tu correo institucional');
       setPendingDocenteAccion(accion);
       setShowFirmaDocente(true);
-      if (res.data.devCode) {
-        console.log('🔑 [PRUEBAS] Código de validación OTP recibido:', res.data.devCode);
-        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { duration: Infinity });
-      }
       toast.success('Código de validación enviado al correo registrado.');
+      return true;
     } catch (error: any) {
       setPendingDocenteAccion(null);
       setFirmaVerificationId('');
       setFirmaCorreoDestino('');
       toast.error(error?.message || 'No se pudo enviar el código de validación.');
+      return false;
     } finally {
+      requestingFirmaCodeRef.current = false;
       setRequestingFirmaCode(false);
     }
-  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, requestingFirmaCode, userPersonId, validateEnvioDocente]);
+  }, [componentLimitViolations, currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, hasBlockingHourLimits, isAdminEdit, periodo, userPersonId, validateEnvioDocente]);
+
+  const closeConfirmResumen = useCallback((afterClose?: () => void) => {
+    if (confirmResumenClosingRef.current) return;
+
+    confirmResumenClosingRef.current = true;
+    setIsClosingConfirmResumen(true);
+    const closeDuration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 180;
+    confirmResumenCloseTimerRef.current = window.setTimeout(() => {
+      setShowConfirmResumen(false);
+      setConfirmResumenData(null);
+      setIsClosingConfirmResumen(false);
+      confirmResumenClosingRef.current = false;
+      confirmResumenCloseTimerRef.current = null;
+      afterClose?.();
+    }, closeDuration);
+  }, []);
 
   const verificarCodigoFirmaDocente = useCallback(async (codigo: string) => {
     if (!firmaVerificationId) throw new Error('No hay código activo. Solicita uno nuevo.');
@@ -4130,10 +4602,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (autoSaveCountdownRef.current <= 0) {
         if (!savingRef.current && handleSaveRef.current) {
           setAutoSaveStatus('saving');
-          await handleSaveRef.current(false, true);
-          setAutoSaveStatus('saved');
-          setLastAutoSaveTime(new Date());
-          setTimeout(() => setAutoSaveStatus('idle'), 3000);
+          const saved = await handleSaveRef.current(false, true);
+          if (saved) {
+            setAutoSaveStatus('saved');
+            setLastAutoSaveTime(new Date());
+            setTimeout(() => setAutoSaveStatus('idle'), 3000);
+          } else {
+            // Nunca informar "Guardado" ni actualizar la hora cuando el servidor
+            // rechazó la operación. El aviso de error ya explica el problema.
+            setAutoSaveStatus('idle');
+          }
         }
         autoSaveCountdownRef.current = 120;
         setAutoSaveCountdown(120);
@@ -4175,6 +4653,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const seccionModificada = (key: string) =>
     isEnRevisionDocente && Object.keys(camposModificados).length > 0 &&
     (CAMPOS_POR_SECCION[key] || []).some(f => camposModificados[f]);
+  const territorialOptions = territoriales.map((territorial: any) => ({
+    value: String(territorial.id),
+    label: territorial.nombre,
+  }));
 
   const allSections = [
     { key: 'docencia' as const, icon: BookOpen, label: 'Docencia', count: asignaturas.length, hours: docProrr, prorr: docProrr, color: PTA_COLORS.DOCENCIA, limit: `${maxDocenciaLimit}h`, excede: docExcede, bloqueada: false, modificada: seccionModificada('docencia') },
@@ -4327,135 +4809,206 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         />
       )}
 
-      {/* Modal de confirmación PTA incompleto — reemplaza window.confirm nativo */}
-      {showConfirmIncompleto && confirmIncompletoData && createPortal(
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 99999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
-          animation: 'fadeIn 0.2s ease'
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: '20px', maxWidth: '460px', width: '92%',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
-            overflow: 'hidden', animation: 'scaleIn 0.25s ease'
-          }}>
-            {/* Header con icono de advertencia */}
-            <div style={{
-              background: 'linear-gradient(135deg, #FFF7ED 0%, #FEF3C7 100%)',
-              padding: '28px 28px 20px', borderBottom: '1px solid #FDE68A',
-              display: 'flex', alignItems: 'flex-start', gap: '16px'
-            }}>
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '14px', flexShrink: 0,
-                background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(245,158,11,0.3)'
-              }}>
-                <AlertTriangle style={{ width: '24px', height: '24px', color: '#fff' }} />
+      {/* Resumen visual que el docente revisa siempre antes de firmar y enviar. */}
+      {showConfirmResumen && confirmResumenData && createPortal(
+        <div className={`${isClosingConfirmResumen ? 'docente-pta-alert-backdrop-exit' : 'docente-pta-alert-backdrop-enter'} fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm`}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-busy={requestingFirmaCode}
+            aria-labelledby="pta-summary-title"
+            aria-describedby="pta-summary-description"
+            className={`${isClosingConfirmResumen ? 'docente-pta-alert-card-exit' : 'docente-pta-alert-card-enter'} max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl`}
+          >
+            <div className={`border-b px-6 py-5 sm:px-7 ${
+              confirmResumenData.porcentaje >= 100
+                ? 'border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-teal-50'
+                : 'border-blue-100 bg-gradient-to-br from-blue-50 via-white to-blue-50'
+            }`}>
+              <div className="flex items-start gap-3.5">
+                <div className={`pta-submit-summary-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white ${
+                  confirmResumenData.porcentaje >= 100
+                    ? 'bg-emerald-600 shadow-lg'
+                    : 'bg-[#003DA5] shadow-lg'
+                }`}>
+                  {confirmResumenData.porcentaje >= 100
+                    ? <CheckCircle2 className="h-5 w-5" />
+                    : <FileCheck2 className="h-5 w-5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className={`mb-1 inline-flex rounded-full border bg-white/90 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest ${
+                    confirmResumenData.porcentaje >= 100
+                      ? 'border-emerald-100 text-emerald-700'
+                      : 'border-blue-100 text-blue-700'
+                  }`}>
+                    Antes de enviar
+                  </span>
+                  <h3 id="pta-summary-title" className="m-0 text-lg font-extrabold leading-tight text-slate-900">
+                    {confirmResumenData.porcentaje >= 100 ? 'Tu PTA está listo' : 'Resumen de tu PTA'}
+                  </h3>
+                  <p id="pta-summary-description" className="mb-0 mt-1 text-xs font-medium leading-relaxed text-slate-600">
+                    Revisa cómo están distribuidas tus horas antes de confirmar el envío.
+                  </p>
+                </div>
               </div>
+            </div>
+
+            <div className="space-y-4 px-6 py-5 sm:px-6">
+              <div className="pta-submit-summary-overview rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="m-0 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                      Horas programadas
+                    </p>
+                    <div className="mt-0.5 flex items-baseline gap-1.5">
+                      <span className="text-2xl font-black leading-none text-slate-900 tabular-nums">
+                        {confirmResumenData.totalHoras}h
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        de {confirmResumenData.horasRequeridas}h
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`pta-submit-summary-percentage rounded-xl border bg-white px-3 py-1.5 text-right shadow-sm ${
+                    confirmResumenData.porcentaje >= 100 ? 'border-emerald-100' : 'border-blue-100'
+                  }`}>
+                    <span className={`block text-base font-extrabold leading-none tabular-nums ${
+                      confirmResumenData.porcentaje >= 100 ? 'text-emerald-700' : 'text-[#003DA5]'
+                    }`}>
+                      {formatPtaPercentage(confirmResumenData.porcentaje)}%
+                    </span>
+                    <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                      programado
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200"
+                  role="progressbar"
+                  aria-label="Progreso de horas programadas"
+                  aria-valuemin={0}
+                  aria-valuemax={confirmResumenData.horasRequeridas}
+                  aria-valuenow={Math.min(confirmResumenData.totalHoras, confirmResumenData.horasRequeridas)}
+                >
+                  {allSections.map((component, index) => component.hours > 0 && (
+                    <span
+                      key={component.key}
+                      className="pta-submit-summary-main-segment h-full"
+                      style={{
+                        width: `${Math.min(100, (component.hours / Math.max(confirmResumenData.horasRequeridas, 1)) * 100)}%`,
+                        backgroundColor: component.color,
+                        animationDelay: `${180 + index * 85}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <div className="mt-2.5 flex items-center justify-between gap-3 text-[10px] font-semibold">
+                  <span className="text-slate-500">Meta del período: {confirmResumenData.horasRequeridas}h</span>
+                  <span className={confirmResumenData.porcentaje >= 100 ? 'text-emerald-700' : 'text-blue-700'}>
+                    {confirmResumenData.porcentaje >= 100
+                      ? 'Meta de horas alcanzada'
+                      : `${Math.max(0, confirmResumenData.horasRequeridas - confirmResumenData.totalHoras)}h disponibles por programar`}
+                  </span>
+                </div>
+              </div>
+
               <div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#92400E', lineHeight: 1.3 }}>
-                  PTA Incompleto
-                </h3>
-                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#B45309', fontWeight: 500 }}>
-                  El plan no alcanza las horas requeridas
+                <div className="mb-2.5 flex items-center justify-between">
+                  <h4 className="m-0 text-[12px] font-extrabold uppercase tracking-wide text-slate-700">
+                    Distribución de horas
+                  </h4>
+                  <span className="text-[10px] font-semibold text-slate-400">% de lo programado</span>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  {allSections.map((component, index) => {
+                    const ComponentIcon = component.icon;
+                    const componentPercentage = confirmResumenData.totalHoras > 0
+                      ? (component.hours / confirmResumenData.totalHoras) * 100
+                      : 0;
+                    return (
+                      <div
+                        key={component.key}
+                        className={`pta-submit-summary-row flex items-center gap-3 px-3.5 py-2.5 ${index > 0 ? 'border-t border-slate-100' : ''}`}
+                        style={{ animationDelay: `${140 + index * 65}ms` }}
+                        aria-label={`${component.label}: ${component.hours} horas, ${formatPtaPercentage(componentPercentage)} por ciento de lo programado`}
+                      >
+                        <div
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                          style={{ backgroundColor: `${component.color}14`, color: component.color }}
+                        >
+                          <ComponentIcon className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-bold text-slate-700">{component.label}</span>
+                          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="pta-submit-summary-row-progress h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, componentPercentage)}%`,
+                                backgroundColor: component.color,
+                                animationDelay: `${260 + index * 65}ms`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex min-w-[86px] shrink-0 items-baseline justify-end gap-2 text-right tabular-nums">
+                          <span className="text-xs font-extrabold text-slate-800">{component.hours}h</span>
+                          <span className="w-9 text-[10px] font-semibold text-slate-400">
+                            {formatPtaPercentage(componentPercentage)}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pta-submit-summary-info flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                <p className="m-0 text-[11px] font-medium leading-relaxed text-blue-900">
+                  Al confirmar, tu PTA pasará a revisión. Podrás consultar su estado desde tu bandeja.
                 </p>
               </div>
             </div>
 
-            {/* Body */}
-            <div style={{ padding: '24px 28px' }}>
-              {/* Indicador visual de progreso */}
-              <div style={{
-                background: '#F9FAFB', borderRadius: '14px', padding: '16px 20px',
-                border: '1px solid #E5E7EB', marginBottom: '20px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#374151' }}>
-                    {confirmIncompletoData.totalHoras}h programadas
-                  </span>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#9CA3AF' }}>
-                    de {confirmIncompletoData.horasRequeridas}h requeridas
-                  </span>
-                </div>
-                <div style={{
-                  width: '100%', height: '10px', borderRadius: '999px',
-                  background: '#E5E7EB', overflow: 'hidden'
-                }}>
-                  <div style={{
-                    width: `${Math.min(confirmIncompletoData.porcentaje, 100)}%`,
-                    height: '100%', borderRadius: '999px',
-                    background: confirmIncompletoData.porcentaje >= 80
-                      ? 'linear-gradient(90deg, #F59E0B, #EAB308)'
-                      : 'linear-gradient(90deg, #EF4444, #F97316)',
-                    transition: 'width 0.5s ease'
-                  }} />
-                </div>
-                <div style={{ textAlign: 'center', marginTop: '8px' }}>
-                  <span style={{
-                    fontSize: '22px', fontWeight: 800,
-                    color: confirmIncompletoData.porcentaje >= 80 ? '#D97706' : '#DC2626'
-                  }}>
-                    {formatPtaPercentage(confirmIncompletoData.porcentaje)}%
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '4px', fontWeight: 600 }}>
-                    completado
-                  </span>
-                </div>
-              </div>
-
-              <p style={{
-                margin: 0, fontSize: '13.5px', lineHeight: 1.65, color: '#4B5563', fontWeight: 500
-              }}>
-                Un PTA incompleto <strong style={{ color: '#DC2626' }}>incide negativamente</strong> en la evaluación de desempeño docente.
-              </p>
-              <p style={{
-                margin: '12px 0 0', fontSize: '13.5px', lineHeight: 1.65, color: '#6B7280', fontWeight: 500
-              }}>
-                ¿Desea enviarlo de todas formas?
-              </p>
-            </div>
-
-            {/* Footer con botones */}
-            <div style={{
-              padding: '0 28px 24px', display: 'flex', gap: '12px', justifyContent: 'flex-end'
-            }}>
+            <div className="flex flex-col-reverse gap-2.5 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
               <button
-                onClick={() => { setShowConfirmIncompleto(false); setConfirmIncompletoData(null); }}
-                style={{
-                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
-                  border: '2px solid #E5E7EB', background: '#fff', color: '#374151',
-                  cursor: 'pointer', transition: 'all 0.2s'
-                }}
-                onMouseOver={e => { (e.target as HTMLElement).style.background = '#F3F4F6'; }}
-                onMouseOut={e => { (e.target as HTMLElement).style.background = '#fff'; }}
+                onClick={() => closeConfirmResumen()}
+                disabled={isClosingConfirmResumen || requestingFirmaCode}
+                className="pta-submit-summary-button pta-submit-summary-button-secondary inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-wait disabled:opacity-60"
               >
-                Cancelar
+                {requestingFirmaCode ? 'Espera un momento' : 'Revisar antes'}
               </button>
               <button
                 onClick={() => {
-                  setShowConfirmIncompleto(false);
-                  setConfirmIncompletoData(null);
-                  solicitarFirmaDocente('via_save', true);
+                  void (async () => {
+                    const firmaSolicitada = await solicitarFirmaDocente('via_save', true);
+                    if (firmaSolicitada) {
+                      closeConfirmResumen();
+                    }
+                  })();
                 }}
-                style={{
-                  padding: '10px 22px', borderRadius: '12px', fontSize: '13px', fontWeight: 700,
-                  border: 'none', background: '#D97706', color: '#fff',
-                  cursor: 'pointer', transition: 'all 0.2s',
-                  boxShadow: '0 4px 12px rgba(217,119,6,0.3)'
-                }}
-                onMouseOver={e => { (e.target as HTMLElement).style.background = '#B45309'; }}
-                onMouseOut={e => { (e.target as HTMLElement).style.background = '#D97706'; }}
+                disabled={isClosingConfirmResumen || requestingFirmaCode}
+                className={`pta-submit-summary-button pta-submit-summary-button-primary inline-flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl border border-[#003DA5] bg-[#003DA5] px-5 py-2.5 text-xs font-bold text-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-90 ${
+                  requestingFirmaCode ? 'pta-submit-summary-button-loading' : ''
+                }`}
               >
-                Sí, enviar de todas formas
+                {requestingFirmaCode ? (
+                  <>
+                    <LoaderCircle className="pta-submit-summary-spinner h-4 w-4" aria-hidden="true" />
+                    <span role="status" aria-live="polite">Procesando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    Enviar PTA
+                  </>
+                )}
               </button>
             </div>
           </div>
-          <style>{`
-            @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-            @keyframes scaleIn { from { opacity: 0; transform: scale(0.95) } to { opacity: 1; transform: scale(1) } }
-          `}</style>
         </div>,
         document.body
       )}
@@ -5276,7 +5829,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </button>
                         <button
                           type="button"
-                          onClick={() => setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' })}
+                          onClick={() => setInvProyecto({ territorial_id: '', nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' })}
                           className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-colors"
                         >
                           Conservar actividades
@@ -5293,12 +5846,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                     <div className="flex items-center justify-between mb-4 relative z-10">
                       <h4 className="text-sm font-extrabold text-purple-900">Proyecto de Investigación</h4>
                       {isEditable && (
-                        invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol ||
+                        invProyecto.territorial_id || invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol ||
                         (!permiteCoexistenciaInvestigacion && invActividades.length > 0)
                       ) && (
                         <button
                           onClick={() => {
-                            setInvProyecto({ nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
+                            setInvProyecto({ territorial_id: '', nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
                             if (!permiteCoexistenciaInvestigacion && !conflictoCoexistenciaInvestigacion) setInvActividades([]);
                           }}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-red-200 bg-red-50 text-red-600 text-xs font-semibold cursor-pointer hover:bg-red-100 transition-colors">
@@ -5441,7 +5994,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           ) : (
                             <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed min-h-[36px] transition-colors ${
                               requiredFieldErrors[ptaFieldKey.investigacionProyecto('resolucion_archivo')]
-                                ? 'border-red-400 bg-red-50/40 ring-4 ring-red-500/10 cursor-pointer'
+                                ? 'border-red-400 bg-red-50/40 shadow-sm hover:border-red-500 cursor-pointer'
                                 :
                               isEditable
                                 ? 'border-purple-300 bg-white shadow-sm hover:border-purple-400 hover:bg-purple-50/40 hover:shadow-md cursor-pointer'
@@ -5477,6 +6030,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           )}
                         </div>
                       </div>
+                    </div>
+                    <div className="mt-3 border-t border-purple-200/60 pt-3">
+                      <FormSelect
+                        label="Territorial"
+                        value={invProyecto.territorial_id}
+                        disabled={!isEditable}
+                        required={projectFieldsRequired}
+                        fieldKey={ptaFieldKey.investigacionProyecto('territorial_id')}
+                        error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('territorial_id')]}
+                        onChange={v => setInvProyecto(project => ({ ...project, territorial_id: v }))}
+                        options={territorialOptions}
+                        placeholder="Seleccionar territorial..."
+                      />
                     </div>
                   </div>
 
@@ -5699,6 +6265,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 </div>
                               </div>
                             </div>
+                            <div className="mt-1 border-t border-purple-100/80 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -5815,6 +6394,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 </div>
                               </div>
                             </div>
+                            <div className="mt-1 border-t border-gray-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -5911,27 +6503,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const catExt = (actExtension?.[extSectionKey] || []).find((c: any) => c.id === ext.actividad_id);
                         const sectionConfig = extSecciones.find(s => s.key === extSectionKey);
                         const hasItemsExt = Boolean(catExt && extensionActivityUsesItems(sectionConfig, catExt));
-                        const allExtCatalogItems = catExt ? getExtensionConfiguredHourRows(catExt, sectionConfig) : [];
-                        const requiresRowSelection = Boolean(catExt && extensionRequiresRowSelection(
-                          catExt,
-                          sectionConfig,
-                          horasAProgramar,
-                          maxExtLimit,
-                        ));
                         const extCatalogItems = catExt
-                          ? getEffectiveExtensionRows(
-                              catExt,
-                              sectionConfig,
-                              ext.fila_seleccionada,
-                              horasAProgramar,
-                              maxExtLimit,
-                            )
+                          ? getExtensionConfiguredHourRows(catExt, sectionConfig)
+                              .filter(row => hasConfiguredCatalogHours(row, horasAProgramar))
                           : [];
                         const secMult = sectionConfig?.multiplicador || 1;
                         const rootHourType = getRootActivityHourType(catExt);
-                        const extensionRowsNeedPositiveValue = extCatalogItems.length > 1
-                          && extCatalogItems.some(row => extensionRowAllowsZero(row, extCatalogItems.length))
-                          && Number(ext.horas || 0) <= 0;
                         return (
                           <div
                             key={ext.id}
@@ -5974,13 +6551,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     const optionSection = extSecciones.find(s => s.key === normalizeExtensionSectionKey(currentExtSubseccion));
                                     const hasItems = extensionActivityUsesItems(optionSection, a);
                                     if (hasItems) {
-                                      const configuredRows = getExtensionConfiguredHourRows(a, optionSection);
-                                      const chooseSingleRow = extensionRequiresRowSelection(
-                                        a,
-                                        optionSection,
-                                        horasAProgramar,
-                                        maxExtLimit,
-                                      );
+                                      const configuredRows = getExtensionConfiguredHourRows(a, optionSection)
+                                        .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
                                       const totalPercentage = configuredRows.reduce((sum: number, it: any) =>
                                         it.tipo === 'porcentaje' ? sum + getPTAPercentage(it) : sum, 0);
                                       const totalHorasItems = configuredRows.reduce((s: number, it: any) => {
@@ -5988,11 +6560,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                         if (it.tipo === 'fija' || it.tipo === 'hasta') return s + (it.horas || 0);
                                         return s + (it.horas || 0); // por_unidad: 1 unidad base
                                       }, 0);
-                                      const itemSummary = chooseSingleRow
-                                        ? `selecciona una ${getExtensionRowDisplayLabel(optionSection).toLowerCase()}`
-                                        : totalPercentage > 0
-                                          ? `${totalPercentage}% PTA = ${totalHorasItems}h${configuredRows.some((it: any) => it.tipo !== 'porcentaje') ? ' con otras filas' : ''}`
-                                          : `máx ${a.max_horas || totalHorasItems}h`;
+                                      const itemSummary = `${configuredRows.length} ${configuredRows.length === 1
+                                        ? 'opción seleccionable'
+                                        : 'opciones combinables'}${totalPercentage > 0
+                                        ? ` · hasta ${totalHorasItems}h`
+                                        : ''}`;
                                       return { value: a.id, label: `${a.nombre} (${itemSummary})` };
                                     }
                                     const type = getRootActivityHourType(a);
@@ -6020,41 +6592,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   })}
                                   placeholder="Seleccionar..." />
                               </div>
-                              {requiresRowSelection && (
-                                <div className="flex-1 min-w-[260px]">
-                                  <FormSelect
-                                    label={getExtensionRowDisplayLabel(sectionConfig)}
-                                    value={ext.fila_seleccionada === undefined ? '' : String(ext.fila_seleccionada)}
-                                    disabled={!isEditable}
-                                    required
-                                    fieldKey={ptaFieldKey.extension(ext.id, 'fila_seleccionada')}
-                                    error={requiredFieldErrors[ptaFieldKey.extension(ext.id, 'fila_seleccionada')]}
-                                    onChange={v => handleExtActChange(ext.id, 'fila_seleccionada', v)}
-                                    options={allExtCatalogItems
-                                      .map((row: any, rowIndex: number) => ({ row, rowIndex }))
-                                      .filter(({ row }) => extensionRowCanFit(row, horasAProgramar, maxExtLimit))
-                                      .map(({ row, rowIndex }) => {
-                                        const type = String(row?.tipo || 'fija').toLowerCase();
-                                        const maxHours = type === 'porcentaje'
-                                          ? getPercentageHours(row, horasAProgramar)
-                                          : Math.max(0, Number(row?.horas) || 0);
-                                        const minHours = Math.max(1, Number(row?.min ?? row?.horas_min) || 1);
-                                        const hoursLabel = type === 'fija'
-                                          ? `${maxHours}h fijas`
-                                          : type === 'porcentaje'
-                                            ? `${getPTAPercentage(row)}% PTA = ${maxHours}h`
-                                            : type === 'intervalo'
-                                              ? `${minHours}–${maxHours}h`
-                                              : `hasta ${maxHours}h`;
-                                        return {
-                                          value: String(rowIndex),
-                                          label: `${row.nombre} (${hoursLabel})`,
-                                        };
-                                      })}
-                                    placeholder="Seleccionar una opción..."
-                                  />
-                                </div>
-                              )}
                               {/* Para actividades PLANAS (sin items): mostrar inputs de horas como antes */}
                               {!hasItemsExt && (() => {
                                 if (secMult > 1) {
@@ -6112,119 +6649,29 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                             {/* Para etapas CON ÍTEMS: mostrar desglose por ítem */}
                             {hasItemsExt && (
-                              <div
-                                id={getPTAFieldDomId(ptaFieldKey.extension(ext.id, 'horas'))}
-                                data-pta-field={ptaFieldKey.extension(ext.id, 'horas')}
-                                className={`mt-1 rounded-lg border bg-white overflow-hidden ${extensionRowsNeedPositiveValue
-                                 ? 'border-red-300 ring-2 ring-red-100'
-                                 : 'border-sky-100'}`}
-                              >
-                                <div className={`px-3 py-1.5 border-b ${extensionRowsNeedPositiveValue
-                                  ? 'bg-red-50 border-red-200'
-                                  : 'bg-sky-50 border-sky-100'}`}>
-                                  <span className={`text-[10px] font-bold uppercase tracking-wide ${extensionRowsNeedPositiveValue ? 'text-red-700' : 'text-sky-600'}`}>
-                                    Desglose de ítems<span className="text-red-500 ml-0.5">*</span>
-                                  </span>
+                              extCatalogItems.length > 0 ? (
+                                <RecognitionRowsBreakdown
+                                  activity={{ filas_reconocimiento: extCatalogItems }}
+                                  item={ext}
+                                  horasAProgramar={horasAProgramar}
+                                  disabled={!isEditable}
+                                  fieldKey={ptaFieldKey.extension(ext.id, 'horas')}
+                                  onChange={(rowIndex, value) => handleExtItemQtyChange(ext.id, rowIndex, value)}
+                                  onToggle={(rowIndex, branchKey, conflictingKeys, clearOnly) =>
+                                    handleExtHierarchyToggle(
+                                      ext.id,
+                                      rowIndex,
+                                      branchKey,
+                                      conflictingKeys,
+                                      clearOnly,
+                                    )}
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+                                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                                  Esta etapa no tiene filas horarias configuradas y no puede programarse todavía.
                                 </div>
-                                <div className="p-3 space-y-2">
-                                  {extCatalogItems.length === 0 && (
-                                    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
-                                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                                      {requiresRowSelection
-                                        ? `Selecciona una ${getExtensionRowDisplayLabel(sectionConfig).toLowerCase()} para asignar únicamente sus horas.`
-                                        : 'Esta etapa no tiene filas configuradas y no permite asignar horas hasta que se parametrice.'}
-                                    </div>
-                                  )}
-                                  {extCatalogItems.map((item: any, iIdx: number) => {
-                                    const itemTipo = (item.tipo || 'fija').toLowerCase();
-                                    return (
-                                    <div key={iIdx} className="flex items-start gap-3">
-                                      <div className="flex-1 min-w-0 text-[12px] text-slate-600">
-                                        <span className="font-semibold text-slate-700">{item.nombre}</span>
-                                        {Array.isArray(item._detailGroups) && item._detailGroups.length > 0 && (
-                                          <div className="mt-1.5 space-y-1 rounded-md border border-slate-100 bg-slate-50/70 px-2 py-1.5">
-                                            {item._detailGroups.map((group: any, groupIndex: number) => (
-                                              <div key={groupIndex} className="text-[10px] leading-relaxed text-slate-500">
-                                                <span className="font-semibold text-slate-600">{group.name}</span>
-                                                {Array.isArray(group.values) && group.values.map((detail: any, detailIndex: number) => (
-                                                  <span key={detailIndex} className="ml-1">
-                                                    · <span className="font-medium text-violet-600">{detail.column}:</span> {detail.value}
-                                                  </span>
-                                                ))}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {itemTipo === 'porcentaje' ? (
-                                        <span className="px-2.5 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-bold">
-                                          {getPTAPercentage(item)}% PTA = {getPercentageHours(item, horasAProgramar)}h
-                                        </span>
-                                      ) : itemTipo === 'fija' ? (
-                                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
-                                          {item.horas}h fija
-                                        </span>
-                                      ) : itemTipo === 'hasta' ? (
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                          <span className="text-[11px] text-slate-400">Hasta {item.horas}h</span>
-                                          <input type="number" min={extensionRowAllowsZero(item, extCatalogItems.length) ? 0 : 1} max={item.horas}
-                                            value={(ext.items_cantidades || {})[iIdx] ?? (extensionRowAllowsZero(item, extCatalogItems.length) ? 0 : 1)}
-                                            disabled={!isEditable}
-                                            onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
-                                            className="w-16 text-center border border-amber-300 rounded-md px-2 py-1 text-[12px] font-bold text-amber-700 shadow-sm hover:border-amber-400 focus:ring-4 focus:ring-amber-500/15 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all" />
-                                          <span className="text-[11px] font-semibold text-amber-700 min-w-[36px] text-right">
-                                            = {((ext.items_cantidades || {})[iIdx] ?? (extensionRowAllowsZero(item, extCatalogItems.length) ? 0 : 1))}h
-                                          </span>
-                                        </div>
-                                      ) : itemTipo === 'intervalo' ? (
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                          <span className="text-[11px] text-slate-400">{item.min ?? 1}–{item.horas}h</span>
-                                          <input type="number" min={item.min ?? 1} max={item.horas}
-                                            value={(ext.items_cantidades || {})[iIdx] ?? (item.min ?? 1)}
-                                            disabled={!isEditable}
-                                            onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
-                                            className="w-16 text-center border border-indigo-300 rounded-md px-2 py-1 text-[12px] font-bold text-indigo-700 shadow-sm hover:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all" />
-                                          <span className="text-[11px] font-semibold text-indigo-700 min-w-[36px] text-right">
-                                            = {((ext.items_cantidades || {})[iIdx] ?? (item.min ?? 1))}h
-                                          </span>
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                          <input type="number" min={0}
-                                            value={(ext.items_cantidades || {})[iIdx] || 0}
-                                            disabled={!isEditable}
-                                            onChange={e => handleExtItemQtyChange(ext.id, iIdx, Number(e.target.value))}
-                                            className="w-16 text-center border border-sky-300 rounded-md px-2 py-1 text-[12px] font-bold text-sky-700 shadow-sm hover:border-sky-400 focus:ring-4 focus:ring-sky-500/15 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all" />
-                                          <span className="text-[11px] text-slate-400">
-                                            uds. (×{item.horas}h)
-                                          </span>
-                                          <span className="text-[11px] font-semibold text-sky-700 min-w-[36px] text-right">
-                                            = {((ext.items_cantidades || {})[iIdx] || 0) * (item.horas || 0)}h
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    );
-                                  })}
-                                  {extensionRowsNeedPositiveValue && (
-                                    <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
-                                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                                      <span>
-                                        Esta actividad todavía suma 0h. Puedes dejar filas sin usar en 0, pero debes asignar al menos 1h en una de las opciones anteriores.
-                                      </span>
-                                    </div>
-                                  )}
-                                  {/* Fila de total */}
-                                  {extCatalogItems.length > 0 && (
-                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                                      <span className="text-[11px] font-bold text-slate-500">Total PTA:</span>
-                                      <span className="px-3 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[13px] font-bold border border-sky-200">
-                                        {ext.horas}h
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+                              )
                             )}
 
                             {/* Evidencias de la Etapa */}
@@ -6272,6 +6719,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleExtActChange(ext.id, 'fecha_fin', v)} />
                               </div>
+                            </div>
+                            <div className="mt-1 border-t border-emerald-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={ext.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.extension(ext.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.extension(ext.id, 'territorial_id')]}
+                                onChange={v => handleExtActChange(ext.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
                             </div>
                           </div>
                         );
@@ -6384,13 +6844,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                       const trueRemainingLimit = remainingLimit;
 
                                       if (comp.actividad_id === a.id) return true;
+                                      const recognitionRows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      if (recognitionRows.length > 0) {
+                                        return recognitionRows.some((row: any) => {
+                                          const rowConstraint = getConfiguredActivityConstraint(row, horasAProgramar);
+                                          return rowConstraint && canSelectWithRemaining(rowConstraint, trueRemainingLimit);
+                                        });
+                                      }
                                       return canSelectWithRemaining(optionConstraint, trueRemainingLimit);
                                     })
-                                    .map(a => ({ value: a.id, label: `${a.nombre} (${getConstraintLabel(getComplementariaConstraint(a, ptaRules, horasAProgramar))})` }))}
+                                    .map(a => {
+                                      const rows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      return {
+                                        value: a.id,
+                                        label: rows.length > 0
+                                          ? `${a.nombre} (${rows.length} ${rows.length === 1 ? 'opción seleccionable' : 'opciones combinables'})`
+                                          : `${a.nombre} (${getConstraintLabel(getComplementariaConstraint(a, ptaRules, horasAProgramar))})`,
+                                      };
+                                    })}
                                   placeholder="Seleccionar actividad..." />
                               </div>
                               <div className="w-28">
-                                {comp.actividad_id && compRecognitionRows.length <= 1 && compConstraint.editable ? (
+                                {comp.actividad_id && compRecognitionRows.length === 0 && compConstraint.editable ? (
                                   <FormInput
                                     label={`Horas (${getConstraintLabel(compConstraint)})`}
                                     type="number"
@@ -6412,7 +6887,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 )}
                               </div>
                             </div>
-                            {comp.actividad_id && compRecognitionRows.length > 1 && (
+                            {comp.actividad_id && compRecognitionRows.length > 0 && (
                               <RecognitionRowsBreakdown
                                 activity={compCat}
                                 item={comp}
@@ -6420,6 +6895,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 disabled={!isEditable}
                                 fieldKey={ptaFieldKey.complementaria(comp.id, 'horas')}
                                 onChange={(rowIndex, value) => handleCompRowHoursChange(comp.id, rowIndex, value)}
+                                onToggle={(rowIndex, branchKey, conflictingKeys, clearOnly) =>
+                                  handleCompHierarchyToggle(
+                                    comp.id,
+                                    rowIndex,
+                                    branchKey,
+                                    conflictingKeys,
+                                    clearOnly,
+                                  )}
                               />
                             )}
                             <div className="flex flex-col sm:flex-row gap-2">
@@ -6449,6 +6932,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleCompChange(comp.id, 'fecha_fin', v)} />
                               </div>
+                            </div>
+                            <div className="mt-1 border-t border-amber-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.complementaria(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'territorial_id')]}
+                                onChange={v => handleCompChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
                             </div>
                           </div>
                         );
@@ -6555,16 +7051,33 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                         maxAadmLimit - otherAcadSum,
                                         maxCompLimit - hComplementarias - otherAcadSum,
                                       ));
+                                      const recognitionRows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      if (recognitionRows.length > 0) {
+                                        return recognitionRows.some((row: any) => {
+                                          const rowConstraint = getConfiguredActivityConstraint(row, horasAProgramar);
+                                          return rowConstraint && canSelectWithRemaining(rowConstraint, remaining);
+                                        });
+                                      }
                                       return canSelectWithRemaining(
                                         getAcademicoAdminConstraint(a, ptaRules, horasAProgramar),
                                         remaining,
                                       );
                                     })
-                                    .map((a: any) => ({ value: a.id, label: isFullPTAActivity(a) ? `⚠ ${a.nombre} (100% PTA)` : `${a.nombre} (${getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar))})` }))}
+                                    .map((a: any) => {
+                                      const rows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      return {
+                                        value: a.id,
+                                        label: isFullPTAActivity(a)
+                                          ? `⚠ ${a.nombre} (100% PTA)`
+                                          : rows.length > 0
+                                            ? `${a.nombre} (${rows.length} ${rows.length === 1 ? 'opción seleccionable' : 'opciones combinables'})`
+                                            : `${a.nombre} (${getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar))})`,
+                                      };
+                                    })}
                                   placeholder="Seleccionar actividad..." />
                               </div>
                               <div className="w-32">
-                                {comp.actividad_id && acadRecognitionRows.length <= 1 && acadConstraint.editable ? (
+                                {comp.actividad_id && acadRecognitionRows.length === 0 && acadConstraint.editable ? (
                                   <FormInput
                                     label={`Horas (${getConstraintLabel(acadConstraint)})`}
                                     type="number"
@@ -6582,7 +7095,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 )}
                               </div>
                             </div>
-                            {comp.actividad_id && acadRecognitionRows.length > 1 && (
+                            {comp.actividad_id && acadRecognitionRows.length > 0 && (
                               <RecognitionRowsBreakdown
                                 activity={acadCat}
                                 item={comp}
@@ -6590,6 +7103,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 disabled={!isEditable}
                                 fieldKey={ptaFieldKey.academico(comp.id, 'horas')}
                                 onChange={(rowIndex, value) => handleAcadRowHoursChange(comp.id, rowIndex, value)}
+                                onToggle={(rowIndex, branchKey, conflictingKeys, clearOnly) =>
+                                  handleAcadHierarchyToggle(
+                                    comp.id,
+                                    rowIndex,
+                                    branchKey,
+                                    conflictingKeys,
+                                    clearOnly,
+                                  )}
                               />
                             )}
                             <div className="flex flex-col sm:flex-row gap-2">
@@ -6631,6 +7152,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleAcadChange(comp.id, 'fecha_fin', v)} />
                               </div>
+                            </div>
+                            <div className="mt-1 border-t border-blue-100 pt-3">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.academico(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'territorial_id')]}
+                                onChange={v => handleAcadChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
                             </div>
                           </div>
                         );
@@ -6809,75 +7343,165 @@ function RecognitionRowsBreakdown({
   disabled,
   fieldKey,
   onChange,
+  onToggle,
 }: {
   activity: any;
-  item: ComplementariaItem;
+  item: ExtensionActividad | ComplementariaItem;
   horasAProgramar: number;
   disabled: boolean;
   fieldKey?: string;
   onChange: (rowIndex: number, value: number) => void;
+  onToggle: (
+    rowIndex: number,
+    branchKey?: string,
+    conflictingBranchKeys?: string[],
+    clearOnly?: boolean,
+  ) => void;
 }) {
   const rows = getConfiguredRecognitionRows(activity, horasAProgramar);
-  if (rows.length <= 1) return null;
-  const rowsNeedPositiveValue = rows.some(row => {
-    const constraint = getRecognitionRowConstraint(row, rows.length, horasAProgramar);
-    return constraint?.mode === 'upto' && constraint.min === 0;
-  }) && Number(item.horas || 0) <= 0;
+  if (rows.length === 0) return null;
+  const descriptors = getStableCatalogRowDescriptors(rows);
+  const selectedKeys = getSelectedHierarchyRowKeys(item, descriptors);
+  const selectedSet = new Set(selectedKeys);
+  const isLegacySelection = !hasExplicitHierarchySelection(item);
+  // Proyección exclusivamente visual: reparte el total histórico entre las
+  // filas vigentes sin modificar el estado ni el payload del PTA.
+  const legacyProjection = isLegacySelection
+    ? reconcileRecognitionRows(
+        activity,
+        horasAProgramar,
+        item.horas,
+        item.filas_cantidades,
+        item.items_cantidades,
+      )
+    : null;
+  const rowsNeedPositiveValue = selectedKeys.length === 0 || Number(item.horas || 0) <= 0;
 
   return (
     <div
       id={fieldKey ? getPTAFieldDomId(fieldKey) : undefined}
       data-pta-field={fieldKey}
       className={`mt-1 rounded-lg border bg-white overflow-hidden ${rowsNeedPositiveValue
-      ? 'border-red-300 ring-2 ring-red-100'
-      : 'border-sky-100'}`}
+      ? 'border-red-300'
+      : 'border-blue-100'}`}
+      style={rowsNeedPositiveValue ? { boxShadow: '0 0 0 2px #FEE2E2' } : undefined}
     >
       <div className={`px-3 py-1.5 border-b ${rowsNeedPositiveValue
         ? 'bg-red-50 border-red-200'
-        : 'bg-sky-50 border-sky-100'}`}>
-        <span className={`text-[10px] font-bold uppercase tracking-wide ${rowsNeedPositiveValue ? 'text-red-700' : 'text-sky-600'}`}>
-          Desglose de ítems<span className="text-red-500 ml-0.5">*</span>
-        </span>
+        : 'bg-blue-50 border-blue-100'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className={`text-[11px] font-bold uppercase tracking-wide ${rowsNeedPositiveValue ? 'text-red-700' : 'text-blue-600'}`}>
+            Selección personalizada del desglose<span className="text-red-500 ml-0.5">*</span>
+          </span>
+          <span className="text-[11px] font-semibold normal-case text-slate-500">
+            {isLegacySelection
+              ? 'Registro anterior conservado'
+              : `${selectedKeys.length} de ${rows.length} opciones horarias seleccionadas`}
+          </span>
+        </div>
       </div>
-      <div className="p-3 space-y-2">
-        {rows.map((row: any, rowIndex: number) => {
-          const constraint = getRecognitionRowConstraint(row, rows.length, horasAProgramar)!;
-          const rowKey = getRecognitionRowKey(row, rowIndex);
+      <div className="p-3 space-y-3">
+        {isLegacySelection ? (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              {disabled
+                ? 'Esta actividad fue creada con el formato anterior y se conserva sin modificaciones.'
+                : 'Esta actividad fue creada con el formato anterior. Sus horas permanecen intactas; el formato nuevo se aplicará solamente si modificas alguna opción.'}
+            </span>
+          </div>
+        ) : (
+          <p className="m-0 text-[12px] leading-relaxed text-slate-500">
+            Elige una o varias opciones. En cada jerarquía activa primero el nivel padre; puedes dejarlo completo o desplegarlo para precisar sus subopciones. Las horas se cuentan una sola vez.
+          </p>
+        )}
+        {descriptors.map(({ row, index: rowIndex, key: rowKey }) => {
+          const rowSelected = selectedSet.has(rowKey);
+          const constraint = getRecognitionRowConstraint(
+            row,
+            Math.max(1, selectedKeys.length),
+            horasAProgramar,
+          ) || getConfiguredActivityConstraint(row, horasAProgramar)
+            || buildHourConstraint(
+              Math.max(1, Number(row?.horas) || 1),
+              Math.max(1, Number(row?.horas) || 1) * Math.max(1, Number(row?.max_unidades) || 1),
+              Number(row?.max_unidades) > 1,
+              Number(row?.max_unidades) > 1 ? 'range' : 'fixed',
+            );
+          const branches = getHierarchyBranches(row);
+          const selectedBranchKeys = new Set(getSelectedHierarchyBranchKeys(item, rowKey, branches, rowSelected));
           const storedValue = item.filas_cantidades?.[rowKey]
             ?? item.items_cantidades?.[rowIndex]
+            ?? legacyProjection?.filas_cantidades?.[rowKey]
+            ?? (isLegacySelection && rows.length === 1 ? item.horas : undefined)
             ?? (constraint.editable ? constraint.min : constraint.max);
           return (
-            <div key={rowKey} className="flex items-center gap-3">
-              <div className="flex-1 min-w-0 text-[12px] text-slate-600">
-                <span className="font-semibold text-slate-700">{row.nombre || `Fila ${rowIndex + 1}`}</span>
-              </div>
-              {constraint.mode === 'percentage' ? (
-                <span className="px-2.5 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-bold">
-                  {constraint.percentage}% PTA = {storedValue}h
-                </span>
-              ) : constraint.mode === 'fixed' ? (
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
-                  {storedValue}h fija
-                </span>
-              ) : (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[11px] text-slate-400">
-                    {constraint.mode === 'range' ? `${constraint.min}–${constraint.max}h` : `Hasta ${constraint.max}h`}
-                  </span>
+            <div
+              key={rowKey}
+              className={`rounded-xl border p-3 transition-all ${rowSelected
+                ? 'border-blue-300 bg-blue-50 shadow-sm'
+                : 'border-slate-200 bg-white'}`}
+            >
+              <div className="flex items-start gap-3">
+                {branches.length === 0 && (
                   <input
-                    type="number"
-                    min={constraint.min}
-                    max={constraint.max}
-                    value={storedValue}
+                    type="checkbox"
+                    checked={rowSelected}
                     disabled={disabled}
-                    onChange={event => onChange(rowIndex, Number(event.target.value))}
-                    className={`w-16 text-center border rounded-md px-2 py-1 text-[12px] font-bold shadow-sm focus:ring-4 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all ${constraint.mode === 'range'
-                      ? 'border-indigo-300 text-indigo-700 hover:border-indigo-400 focus:ring-indigo-500/15'
-                      : 'border-amber-300 text-amber-700 hover:border-amber-400 focus:ring-amber-500/15'}`}
+                    onChange={() => onToggle(rowIndex)}
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed"
+                    style={{ accentColor: '#2563EB' }}
+                    aria-label={`Seleccionar ${row.nombre || `opción ${rowIndex + 1}`}`}
                   />
-                  <span className={`text-[11px] font-semibold min-w-[36px] text-right ${constraint.mode === 'range' ? 'text-indigo-700' : 'text-amber-700'}`}>
-                    = {storedValue}h
-                  </span>
+                )}
+                <div className="flex-1 min-w-0 text-[13px] text-slate-600">
+                  <span className="font-semibold text-slate-800">{row.nombre || `Fila ${rowIndex + 1}`}</span>
+                  {branches.length > 0 && (
+                    <p className="m-0 mt-0.5 text-[11px] text-slate-500">
+                      Despliega y activa cada nivel en orden ({selectedBranchKeys.size} selecciones activas).
+                    </p>
+                  )}
+                </div>
+                <div className={`shrink-0 ${rowSelected ? '' : 'opacity-55'}`}>
+                  {constraint.mode === 'percentage' ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-[12px] font-bold">
+                      {constraint.percentage}% PTA = {rowSelected ? storedValue : 0}h
+                    </span>
+                  ) : constraint.mode === 'fixed' ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[12px] font-bold">
+                      {rowSelected ? storedValue : constraint.max}h fija
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[12px] text-slate-400">
+                        {constraint.mode === 'range' ? `${constraint.min}–${constraint.max}h` : `Hasta ${constraint.max}h`}
+                      </span>
+                      <input
+                        type="number"
+                        min={constraint.min}
+                        max={constraint.max}
+                        value={rowSelected ? storedValue : 0}
+                        disabled={disabled || !rowSelected}
+                        onChange={event => onChange(rowIndex, Number(event.target.value))}
+                        className={`w-16 text-center border rounded-md px-2 py-1 text-[13px] font-bold shadow-sm focus:ring-4 outline-none bg-white disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none transition-all ${constraint.mode === 'range'
+                          ? 'border-indigo-300 text-indigo-700 hover:border-indigo-400 focus:ring-indigo-500/15'
+                          : 'border-amber-300 text-amber-700 hover:border-amber-400 focus:ring-amber-500/15'}`}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              {branches.length > 0 && (
+                <div className="mt-2.5 ml-0 md:ml-7">
+                  <HierarchyBranchTree
+                    branches={branches}
+                    accent="#7C3AED"
+                    compact
+                    selectedKeys={selectedBranchKeys}
+                    disabled={disabled}
+                    onToggle={(branchKey, conflictingKeys, clearOnly) =>
+                      onToggle(rowIndex, branchKey, conflictingKeys, clearOnly)}
+                  />
                 </div>
               )}
             </div>
@@ -6887,13 +7511,13 @@ function RecognitionRowsBreakdown({
           <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
-              Esta actividad todavía suma 0h. Puedes dejar filas sin usar en 0, pero debes asignar al menos 1h en una de las opciones anteriores.
+              Selecciona al menos una opción o ramificación para asignar sus horas al PTA.
             </span>
           </div>
         )}
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
           <span className="text-[11px] font-bold text-slate-500">Total PTA:</span>
-          <span className="px-3 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[13px] font-bold border border-sky-200">
+          <span className="px-3 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[13px] font-bold border border-blue-200">
             {item.horas}h
           </span>
         </div>
@@ -6919,7 +7543,7 @@ function FormSelect({ label, value, onChange, options, disabled, placeholder, re
         <select id={controlId} value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
           required={required} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined}
           className={`w-full px-3 py-2 rounded-xl border bg-white text-[12px] font-semibold text-slate-800 outline-none disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200 shadow-sm cursor-pointer appearance-none min-h-[36px] ${error
-            ? 'border-red-400 bg-red-50/40 ring-4 ring-red-500/10 hover:border-red-500 focus:border-red-500 focus:ring-red-500/15'
+            ? 'border-red-400 bg-red-50/40 hover:border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-100'
             : 'border-slate-300 hover:border-blue-300 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'}`}>
           {placeholder && <option value="" disabled className="text-gray-400">{placeholder}</option>}
           {options.map(o => <option key={o.value} value={o.value} className="text-gray-900 font-medium">{o.label}</option>)}
@@ -6947,7 +7571,7 @@ function FormInput({ label, value, onChange, disabled, type = 'text', placeholde
       <input id={controlId} type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} placeholder={placeholder} min={min} max={max} step={step}
         required={required} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined}
         className={`w-full px-3 py-2 rounded-xl border bg-white text-[12px] font-semibold text-slate-800 outline-none disabled:bg-slate-100 disabled:border-slate-200 disabled:text-slate-600 disabled:shadow-none disabled:cursor-not-allowed transition-all duration-200 shadow-sm placeholder:text-slate-400 min-h-[36px] ${error
-          ? 'border-red-400 bg-red-50/40 ring-4 ring-red-500/10 hover:border-red-500 focus:border-red-500 focus:ring-red-500/15'
+          ? 'border-red-400 bg-red-50/40 hover:border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-100'
           : 'border-slate-300 hover:border-blue-300 hover:shadow-md focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15'}`} />
       {error && <FieldErrorMessage id={errorId} message={error} />}
     </div>
