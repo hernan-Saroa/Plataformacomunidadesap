@@ -14,8 +14,9 @@ import React from 'react';
 import { Printer, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
-import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
+import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PTAResumenPrintProps {
   pta: any;
@@ -139,9 +140,24 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
   const extActs: any[] = Array.isArray(pta?.extension_actividades)
     ? pta.extension_actividades
     : (pta?.extension ? (Object.values(pta.extension).flat() as any[]) : []);
-  const compActs: any[] = Array.isArray(pta?.complementarias)
+  const compActsPrimary: any[] = Array.isArray(pta?.complementarias)
     ? pta.complementarias
     : (pta?.complementarias?.actividades || []);
+  const compActsLegacyAadm: any[] = Array.isArray(pta?.academico_admin) ? pta.academico_admin : [];
+  const compActs: any[] = [
+    ...compActsPrimary.map((activity: any) =>
+      activity?.seccion == null && activity?.consumeTotalidad !== undefined
+        ? { ...activity, seccion: 'academico_administrativas' }
+        : activity),
+    ...compActsLegacyAadm
+      .filter((legacy: any) => !compActsPrimary.some((current: any) =>
+        String(current?.actividad_id ?? current?.id) === String(legacy?.actividad_id ?? legacy?.id)
+        && (
+          current?.seccion === 'academico_administrativas'
+          || (current?.seccion == null && current?.consumeTotalidad !== undefined)
+        )))
+      .map((activity: any) => ({ ...activity, seccion: 'academico_administrativas' })),
+  ];
 
   // ── Horas (priorizan agregados del backend: incluyen multiplicadores de sección) ──
   const horasDoc = pta?.horas_docencia ?? asigs.reduce((s, a) => s + Number(a.total_horas || a.horas || 0), 0);
@@ -252,7 +268,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                 <Dato label="Programa Académico" value={pta?.programa} />
                 <Dato label="Semanas de Vinculación" value={pta?.semanas_vinculacion} />
                 <Dato label="Horas Programadas" value={`${horasProg} de ${horasDisp} h disponibles`} />
-                <Dato label="% de Carga" value={`${horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0}%`} />
+                <Dato label="% de Carga" value={`${formatPtaCompletionPercentage(horasProg, horasDisp)}%`} />
               </div>
             </div>
 
@@ -280,6 +296,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                           <td style={TD}>
                             <div style={{ fontWeight: 700 }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
                             {a.nucleo_tematico && <div style={SUB}>{a.nucleo_tematico}{a.semestre ? ` · ${a.semestre}` : ''}{a.modalidad ? ` · ${String(a.modalidad).charAt(0) + String(a.modalidad).slice(1).toLowerCase()}` : ''}</div>}
+                            <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1" />
                           </td>
                           <td style={TD}>
                             {a.programa_nombre_completo || a.programa_nombre || a.programa || '—'}
@@ -328,6 +345,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                             <div style={SUB}>
                               {[p.codigo && `Código ${p.codigo}`, p.grupo && `Grupo ${p.grupo}`, p.linea && `Línea ${p.linea}`, p.resolucion_nombre && `Resolución: ${p.resolucion_nombre}`].filter(Boolean).join(' · ') || 'Proyecto registrado en el PTA'}
                             </div>
+                            <HierarchySelectionSummary activity={p} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                           </td>
                           <td style={TD}>{p.rol || 'Investigador'}</td>
                           <td style={TDC}>{rangoF(p.fecha_inicio, p.fecha_fin)}</td>
@@ -343,6 +361,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                                 {[a.descripcion, Number(a.cantidad) > 0 && `Cantidad: ${a.cantidad}${Number(a.horas_unitarias) > 0 ? ` × ${a.horas_unitarias}h` : ''}`].filter(Boolean).join(' · ')}
                               </div>
                             )}
+                            <HierarchySelectionSummary activity={a} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                           </td>
                           <td style={TD}>{a.tipo || 'Actividad investigativa'}</td>
                           <td style={TDC}>{rangoF(a.fecha_inicio, a.fecha_fin)}</td>
@@ -374,30 +393,18 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                       </tr>
                     </thead>
                     <tbody>
-                      {extActs.map((a: any, i: number) => {
-                        const selection = getExtensionSelectionInfo(a);
-                        return (
+                      {extActs.map((a: any, i: number) => (
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
                             <div style={{ fontWeight: 700 }}>{a.nombre_actividad || a.actividad_nombre || a.actividad || a.nombre || 'Actividad'}</div>
-                            {selection && (
-                              <div style={{ marginTop: 4, padding: '4px 7px', borderLeft: `3px solid ${PTA_COLORS.EXTENSION}`, background: `${PTA_COLORS.EXTENSION}0A` }}>
-                                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#475569' }}>{selection.etiqueta}: {selection.nombre}</div>
-                                {selection.detalles.map((detail, detailIndex) => (
-                                  <div key={`${detail.nombre}-${detailIndex}`} style={{ marginTop: 2, fontSize: '0.61rem', color: '#64748B', lineHeight: 1.35 }}>
-                                    {detail.nombre}{detail.valores.map(value => ` · ${value.columna ? `${value.columna}: ` : ''}${value.valor}`).join('')}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                            <HierarchySelectionSummary activity={a} accent={PTA_COLORS.EXTENSION} compact className="mt-1" />
                             {a.descripcion && <div style={SUB}>{a.descripcion}</div>}
                           </td>
                           <td style={TD}>{seccionPrintLabel(a.seccion) || 'Extensión'}</td>
                           <td style={TDC}>{rangoF(a.fecha_inicio, a.fecha_fin)}</td>
                           <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.EXTENSION }}>{Number(a.horas || 0)}</td>
                         </tr>
-                        );
-                      })}
+                      ))}
                       <tr>
                         <td colSpan={3} style={{ ...TD, fontWeight: 800, textAlign: 'right', background: '#F9FAFB' }}>TOTAL EXTENSIÓN</td>
                         <td style={{ ...TDC, fontWeight: 900, background: '#F9FAFB', color: PTA_COLORS.EXTENSION }}>{horasExt}</td>
@@ -427,6 +434,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
                             <div style={{ fontWeight: 700 }}>{a.nombre || a.actividad || 'Actividad'}</div>
+                            <HierarchySelectionSummary activity={a} accent="#A16207" compact className="mt-1" />
                             {a.descripcion && <div style={SUB}>{a.descripcion}</div>}
                           </td>
                           <td style={TD}>{seccionPrintLabel(a.seccion) || a.categoria || a.tipo || 'Complementaria'}</td>
@@ -470,7 +478,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                       <td style={{ ...TD, fontWeight: 900, background: '#F3F4F6' }}>TOTAL PROGRAMADO</td>
                       <td style={{ ...TDC, background: '#F3F4F6', fontSize: '0.66rem', color: '#6B7280', fontWeight: 700 }}>{horasDisp} h disponibles</td>
                       <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasProg}</td>
-                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0}% de carga</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{formatPtaCompletionPercentage(horasProg, horasDisp)}% de carga</td>
                     </tr>
                   </tbody>
                 </table>

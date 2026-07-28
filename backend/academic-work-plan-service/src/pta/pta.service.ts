@@ -24,6 +24,33 @@ import { PtaNotificationsService } from './notifications/pta-notifications.servi
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
 
+const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION = 'Resolución proyecto de investigación';
+const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION =
+  `${CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION} · Creación`;
+const COMENTARIO_RESOLUCION_PROYECTO_APROBADA =
+  'Aprobado automáticamente junto con el componente Investigación del PTA.';
+
+function isCategoriaResolucionProyecto(value: unknown): boolean {
+  return normalizeEstadoFilter(value).startsWith(
+    normalizeEstadoFilter(CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION),
+  );
+}
+
+function isPtaHabilitadoParaSeguimientoPorEstado(value: unknown): boolean {
+  return new Set([
+    'APROBADO',
+    'EN_FIRME',
+    'RADICADO',
+    'EN_EJECUCION',
+    'FINALIZADO',
+    'TERMINADO',
+  ]).has(normalizeEstadoFilter(value));
+}
+
+function resolveHorasResolucionProyecto(proyecto: any): number {
+  return Math.max(0, Math.round(Number(proyecto?.horas_solicitadas) || 0));
+}
+
 function coalesceString(...values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -150,6 +177,58 @@ const FIXED_COMP_SECCIONES = [
 
 const COMPONENT_APPROVAL_KEY_SET = new Set(COMPONENT_APPROVAL_KEYS);
 
+const SOLICITUD_EDICION_TIPO = 'edicion_componentes';
+const SOLICITUD_CREACION_TIPO = 'creacion';
+const MAX_CARACTERES_JUSTIFICACION_SOLICITUD = 3000;
+const SOLICITUD_COMPONENT_KEYS = ['docencia', 'investigacion', 'extension', 'complementarias'] as const;
+const SOLICITUD_COMPONENT_KEY_SET = new Set<string>(SOLICITUD_COMPONENT_KEYS);
+const SOLICITUD_COMPONENT_APPROVAL_KEYS: Record<string, string[]> = {
+  docencia: ['academica'],
+  investigacion: ['investigacion'],
+  extension: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'],
+  complementarias: ['complementarias'],
+};
+const ESTADOS_PTA_RESTAURABLES_EDICION = new Set([
+  'APROBADO',
+  'APROBADO_DEF',
+  'EN_FIRME',
+  'RADICADO',
+  'EN_EJECUCION',
+  'FINALIZADO',
+  'TERMINADO',
+]);
+const ESTADOS_SOLICITUD_EDICION_ACTIVA = ['pendiente', 'aprobado', 'en_aprobacion'];
+
+function ptaAdmiteSolicitudEdicion(value: unknown): boolean {
+  const estado = normalizeEstadoFilter(value);
+  // Una vez enviado, el PTA puede requerir una corrección en cualquier punto
+  // de su ciclo. El Borrador no necesita autorización porque todavía es
+  // editable directamente por su propietario.
+  return Boolean(estado) && estado !== 'BORRADOR';
+}
+
+function normalizeSolicitudComponentes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(
+    value
+      .map(item => String(item || '').trim().toLowerCase())
+      .filter(item => SOLICITUD_COMPONENT_KEY_SET.has(item)),
+  ));
+}
+
+function expandSolicitudComponentes(componentes: string[]): string[] {
+  return Array.from(new Set(
+    componentes.flatMap(componente => SOLICITUD_COMPONENT_APPROVAL_KEYS[componente] || []),
+  ));
+}
+
+function restoreEstadoDespuesEdicion(value: unknown): string {
+  const estado = coalesceString(value) || 'Aprobado';
+  const normalized = normalizeEstadoFilter(estado);
+  if (ESTADOS_PTA_RESTAURABLES_EDICION.has(normalized)) return estado;
+  return 'Aprobado';
+}
+
 const EXTENSION_COMPONENT_BY_SECTION: Record<string, string> = {
   capacitacion: 'ext_capacitacion',
   seleccion: 'ext_procesos',
@@ -172,18 +251,6 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
 // Estados que indican devolución PARCIAL (uno o más componentes devueltos, el resto
 // puede seguir aprobado) — a diferencia del estado legacy 'Devuelto' (todo el PTA).
 const REVISION_DOCENTE_STATES = new Set(Object.values(COMPONENT_REVISION_STATE));
-
-// HU-12: estados "cerrados" desde los que se puede solicitar una modificación
-// (reapertura R01→R02). Un PTA en borrador/en revisión no requiere modificación formal.
-// Debe cubrir los mismos estados que habilitan el botón "Solicitar modificación" en
-// PortalDocentePTA.tsx (Aprobado/En Firme/Finalizado/Terminado); si un estado se agrega
-// ahí, agregarlo también aquí para no romper la solicitud con un 400.
-const MODIFIABLE_PTA_STATES = new Set([
-  'Aprobado', 'APROBADO',
-  'En Firme', 'EN_FIRME',
-  'Finalizado', 'FINALIZADO',
-  'Terminado', 'TERMINADO',
-]);
 
 type ExtensionCatalogActivity = {
   id: string;
@@ -244,6 +311,162 @@ function getExtensionItemDetailGroups(item: any, detailColumns: string[]): any[]
   return groups.filter((group): group is NonNullable<typeof group> => Boolean(group));
 }
 
+type HierarchyBranch = {
+  clave: string;
+  nombre: string;
+  ruta: Array<{ columna: string; valor: string }>;
+};
+
+function normalizeHierarchyKeyPart(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('es')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'opcion';
+}
+
+function getHierarchyGroupSelectionKey(
+  levels: Array<{ columna: string; valor: string }>,
+): string {
+  const path = levels
+    .map(level =>
+      `${normalizeHierarchyKeyPart(level?.columna)}:${normalizeHierarchyKeyPart(level?.valor)}`,
+    )
+    .join('/');
+  return `grupo:${path}`;
+}
+
+function getHierarchySelectionCandidates(branches: HierarchyBranch[]): Map<
+  string,
+  HierarchyBranch & { isGroup: boolean }
+> {
+  const candidates = new Map<string, HierarchyBranch & { isGroup: boolean }>();
+  branches.forEach(branch => {
+    const route = Array.isArray(branch?.ruta) ? branch.ruta : [];
+    candidates.set(String(branch?.clave || ''), {
+      ...branch,
+      ruta: route,
+      isGroup: false,
+    });
+    for (let length = 1; length < route.length; length += 1) {
+      const groupRoute = route.slice(0, length);
+      const groupKey = getHierarchyGroupSelectionKey(groupRoute);
+      if (!candidates.has(groupKey)) {
+        candidates.set(groupKey, {
+          clave: groupKey,
+          nombre: String(groupRoute[groupRoute.length - 1]?.valor || ''),
+          ruta: groupRoute,
+          isGroup: true,
+        });
+      }
+    }
+  });
+  candidates.delete('');
+  return candidates;
+}
+
+function isHierarchyRoutePrefix(
+  possibleParent: Array<{ columna: string; valor: string }>,
+  possibleChild: Array<{ columna: string; valor: string }>,
+): boolean {
+  return possibleParent.length < possibleChild.length
+    && possibleParent.every((level, index) =>
+      level.columna === possibleChild[index]?.columna
+      && level.valor === possibleChild[index]?.valor,
+    );
+}
+
+function buildHierarchyBranches(
+  item: any,
+  detailColumns: string[],
+  itemColumnLabel = 'Actividad / Ítem',
+  includeItem = true,
+): HierarchyBranch[] {
+  const prefix = includeItem && String(item?.nombre || '').trim()
+    ? [{ columna: itemColumnLabel, valor: String(item.nombre).trim() }]
+    : [];
+  const valuesByColumn = detailColumns.map(column =>
+    (Array.isArray(item?.col_valores?.[column]) ? item.col_valores[column] : [])
+      .map((value: any) => String(value || '').trim()),
+  );
+  const parentsByColumn = detailColumns.map((column, level) => {
+    if (level === 0) return [];
+    const previousCount = valuesByColumn[level - 1].length;
+    return valuesByColumn[level].map((_: string, index: number) => {
+      const stored = item?.col_parents?.[column]?.[index];
+      const fallback = previousCount > 0 ? Math.min(index, previousCount - 1) : -1;
+      const candidate = Number.isFinite(Number(stored)) ? Number(stored) : fallback;
+      return previousCount > 0 ? Math.max(0, Math.min(candidate, previousCount - 1)) : -1;
+    });
+  });
+  const branches: Array<{ nombre: string; ruta: Array<{ columna: string; valor: string }> }> = [];
+
+  const visit = (
+    level: number,
+    parentIndex: number | null,
+    path: Array<{ columna: string; valor: string }>,
+  ) => {
+    if (level >= detailColumns.length) {
+      if (path.length > prefix.length) {
+        branches.push({ nombre: path[path.length - 1].valor, ruta: path });
+      }
+      return;
+    }
+    const column = detailColumns[level];
+    const indexes = valuesByColumn[level]
+      .map((_: string, index: number) => index)
+      .filter(index => {
+        if (!valuesByColumn[level][index]) return false;
+        if (level === 0 || parentIndex === null) return true;
+        return parentsByColumn[level][index] === parentIndex;
+      });
+    if (indexes.length === 0) {
+      if (path.length > prefix.length) {
+        branches.push({ nombre: path[path.length - 1].valor, ruta: path });
+      }
+      return;
+    }
+    indexes.forEach(index => visit(
+      level + 1,
+      index,
+      [...path, { columna: column, valor: valuesByColumn[level][index] }],
+    ));
+  };
+
+  if (detailColumns.length > 0) visit(0, null, prefix);
+  if (branches.length === 0 && prefix.length > 0) {
+    branches.push({ nombre: prefix[0].valor, ruta: prefix });
+  }
+
+  const occurrences = new Map<string, number>();
+  return branches.map(branch => {
+    const base = branch.ruta
+      .map(value => `${normalizeHierarchyKeyPart(value.columna)}:${normalizeHierarchyKeyPart(value.valor)}`)
+      .join('/');
+    const occurrence = (occurrences.get(base) || 0) + 1;
+    occurrences.set(base, occurrence);
+    return { ...branch, clave: `${base}#${occurrence}` };
+  });
+}
+
+function getStableCatalogRowDescriptors(rows: any[]): Array<{ row: any; index: number; key: string }> {
+  const occurrences = new Map<string, number>();
+  return rows.map((row, index) => {
+    const explicitKey = String(row?.clave ?? row?.id ?? row?.key ?? '').trim();
+    if (explicitKey && String(row?.clave || '').trim()) {
+      return { row, index, key: explicitKey };
+    }
+    const base = explicitKey
+      ? `id:${explicitKey}`
+      : `nombre:${normalizeHierarchyKeyPart(row?.nombre || `fila-${index + 1}`)}`;
+    const occurrence = (occurrences.get(base) || 0) + 1;
+    occurrences.set(base, occurrence);
+    return { row, index, key: `${base}#${occurrence}` };
+  });
+}
+
 function getExtensionCatalogHourRows(activity: any, section: any): any[] {
   const columns = Array.isArray(section?.columnas) ? section.columnas : undefined;
   if (columns && columns.length > 0 && columns[0] !== EXTENSION_ITEMS_COLUMN_KEY) {
@@ -259,6 +482,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
     const items = Array.isArray(activity?.items) ? activity.items : [];
     const rows: any[] = [];
     const rowCount = Math.max(values.length, metadata.length);
+    const itemColumnLabel = String(section?.columna_items_nombre || 'Actividad / Ítem').trim();
     const decorateItem = (item: any) => ({
       ...item,
       _detailValues: detailColumns.flatMap((column: string) => {
@@ -267,6 +491,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
           .filter((value: any) => String(value || '').trim())
           .map((value: any) => ({ column, value: String(value) }));
       }),
+      _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, true),
     });
     for (let index = 0; index < rowCount; index += 1) {
       const meta = metadata[index] || {};
@@ -279,6 +504,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
           ...item,
           nombre: `${rowName} — ${String(item?.nombre || 'Actividad')}`,
           _detailGroups: [{ name: String(item?.nombre || 'Actividad'), values: item._detailValues || [] }],
+          _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, false),
         }));
       } else {
         rows.push({
@@ -288,6 +514,7 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
             name: String(item?.nombre || 'Actividad'),
             values: item._detailValues || [],
           })),
+          _ramificaciones: childItems.flatMap((item: any) => item._ramificaciones || []),
         });
       }
     }
@@ -298,9 +525,11 @@ function getExtensionCatalogHourRows(activity: any, section: any): any[] {
     const detailColumns = columns && columns[0] === EXTENSION_ITEMS_COLUMN_KEY
       ? columns.slice(1)
       : [];
+    const itemColumnLabel = String(section?.columna_items_nombre || 'Actividad / Ítem').trim();
     return activity.items.map((item: any) => ({
       ...item,
       _detailGroups: getExtensionItemDetailGroups(item, detailColumns),
+      _ramificaciones: buildHierarchyBranches(item, detailColumns, itemColumnLabel, false),
     }));
   }
   return [];
@@ -408,6 +637,18 @@ function flattenConfiguredComplementaryActivity(
       porcentaje_pta: rowType === 'porcentaje'
         ? Math.min(100, Math.max(1, Number(row?.porcentaje_pta) || 1))
         : undefined,
+      ramificaciones: Array.isArray(row?._ramificaciones)
+        ? row._ramificaciones.map((branch: any) => ({
+            clave: String(branch?.clave || ''),
+            nombre: String(branch?.nombre || ''),
+            ruta: Array.isArray(branch?.ruta)
+              ? branch.ruta.map((value: any) => ({
+                  columna: String(value?.columna || ''),
+                  valor: String(value?.valor || ''),
+                }))
+              : [],
+          }))
+        : [],
     };
   });
 
@@ -425,6 +666,7 @@ function flattenConfiguredComplementaryActivity(
     // Permite calcular correctamente bloques que mezclan, por ejemplo, una fila
     // fija con otra porcentual. El resumen plano se conserva por compatibilidad.
     filas_reconocimiento: recognitionRows,
+    requiere_seleccion_jerarquica: recognitionRows.length > 0,
     consumeTotalidad: consumesFullPTA,
   };
 }
@@ -697,7 +939,19 @@ export class PtaService {
   }
 
   private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean; periodo?: string }): Promise<{ personId: string, email: string | null, fullName: string }> {
-    const { personId, email, fullName } = await this.fetchAuthDocenteInfo(docenteKey, { adminEdit: options?.adminEdit });
+    // Los llamadores históricos no siempre usan el mismo identificador: el portal
+    // envía id_person/id_user, mientras que un PTA ya persistido guarda el id de la
+    // fila academic_work_plan."Docente". Antes, al editar un PTA existente, ese id
+    // interno se buscaba directamente en auth.personas y producía el falso mensaje
+    // "no tiene el rol DOCENTE". Normalizar primero a personaId permite aceptar de
+    // forma segura cualquiera de los identificadores sin relajar la validación del rol.
+    const docenteByInternalId = await this.docenteRepo
+      .createQueryBuilder('d')
+      .where('d.id::text = :docenteKey', { docenteKey })
+      .getOne();
+    const authDocenteKey = coalesceString(docenteByInternalId?.personaId) || docenteKey;
+
+    const { personId, email, fullName } = await this.fetchAuthDocenteInfo(authDocenteKey, { adminEdit: options?.adminEdit });
 
     // Mapear a academic_work_plan."Docente" (para mantener compatibilidad con FK de PTA).
     // Se prioriza la vinculacion oficial del periodo sobre un registro dummy antiguo
@@ -825,6 +1079,22 @@ export class PtaService {
   private async resolveDocenteId(docenteKey: string, options?: { fallbackTerritorial?: string; periodo?: string }): Promise<string> {
     const res = await this.resolveDocenteIdCached(docenteKey, options);
     return res.personId;
+  }
+
+  /** Vinculaciones históricas que pertenecen a la misma persona. Un docente puede
+   * tener una fila distinta por periodo; la identidad funcional sigue siendo una. */
+  private async resolveDocenteIdentityIds(
+    docenteKey: string,
+    options?: { fallbackTerritorial?: string; periodo?: string },
+  ): Promise<string[]> {
+    const resolved = await this.resolveDocenteId(docenteKey, options);
+    const base = await this.docenteRepo.findOne({ where: { id: resolved } as any });
+    if (!base?.personaId) return [resolved];
+    const vinculaciones = await this.docenteRepo.find({
+      where: { personaId: base.personaId } as any,
+      select: { id: true } as any,
+    });
+    return Array.from(new Set([resolved, ...vinculaciones.map(row => row.id).filter(Boolean)]));
   }
 
   /**
@@ -1063,22 +1333,25 @@ export class PtaService {
 
   // Lee complementarias separando por sección y fusionando cualquier array legacy
   // `academico_admin` (PTAs no migrados o saves en tránsito). Mantiene separadas las
-  // dos sumas para que el prorrateo/topes por sección no se mezclen.
+  // dos sumas para que el prorrateo/topes por sección no se mezclen. Se conservan
+  // las referencias originales: la validación autoritativa puede sanear la
+  // instantánea jerárquica que finalmente se persiste en datosEstructurados.
   private readComplementariasSecciones(ds: any): { all: any[]; docencia: any[]; aadm: any[] } {
     const comp = Array.isArray(ds?.complementarias) ? ds.complementarias : [];
     const legacyAadm = Array.isArray(ds?.academico_admin) ? ds.academico_admin : [];
-    const tagged = [
-      ...comp.map((a: any) => ({ ...a, seccion: this.normalizeCompSeccion(a?.seccion, a) })),
-      // Fusiona el array legacy academico_admin evitando duplicar lo ya migrado a complementarias.
-      ...legacyAadm
-        .filter((a: any) => !comp.some((c: any) =>
-          (c?.actividad_id ?? c?.id) === (a?.actividad_id ?? a?.id) &&
-          this.normalizeCompSeccion(c?.seccion, c) === 'academico_administrativas'))
-        .map((a: any) => ({ ...a, seccion: 'academico_administrativas' as const })),
+    // Fusiona el array legacy academico_admin evitando duplicar lo ya migrado a complementarias.
+    const legacyAadmUnique = legacyAadm
+      .filter((a: any) => !comp.some((c: any) =>
+        (c?.actividad_id ?? c?.id) === (a?.actividad_id ?? a?.id) &&
+        this.normalizeCompSeccion(c?.seccion, c) === 'academico_administrativas'));
+    const docencia = comp.filter(
+      a => this.normalizeCompSeccion(a?.seccion, a) !== 'academico_administrativas',
+    );
+    const aadm = [
+      ...comp.filter(a => this.normalizeCompSeccion(a?.seccion, a) === 'academico_administrativas'),
+      ...legacyAadmUnique,
     ];
-    const docencia = tagged.filter(a => a.seccion !== 'academico_administrativas');
-    const aadm = tagged.filter(a => a.seccion === 'academico_administrativas');
-    return { all: tagged, docencia, aadm };
+    return { all: [...comp, ...legacyAadmUnique], docencia, aadm };
   }
 
   private computeHorasTotales(body: any, extMult: Record<string, number> = { capacitacion: 2 }) {
@@ -1091,7 +1364,10 @@ export class PtaService {
       (sum: number, a: any) => sum + (Number(a?.horas) || Number(a?.horas_total) || 0),
       0,
     );
-    const sumInv = invProyectoHoras > 0 ? invProyectoHoras : horasActividadesInv;
+    // Un proyecto y sus actividades son dos fuentes distintas de horas. Cuando
+    // coexisten deben contabilizarse ambas; la regla configurable decide si esa
+    // combinación puede enviarse, pero nunca se deben ocultar horas persistidas.
+    const sumInv = invProyectoHoras + horasActividadesInv;
 
     const extActsRaw = Array.isArray(body?.extension_actividades) ? body.extension_actividades : [];
     const extActs = extActsRaw.map((a: any) => {
@@ -1188,6 +1464,9 @@ export class PtaService {
       ext_max_horas_enlace: Number.isFinite(maxExtensionGlobal) ? maxExtensionGlobal : 200,
       comp_anexo1_validado: Boolean(rules.comp_anexo1_validado ?? false),
       comp_anexo1_fuente: String(rules.comp_anexo1_fuente || 'Pendiente de cotejo contra Anexo 1'),
+      inv_permitir_proyecto_actividades_simultaneos: Boolean(
+        rules.inv_permitir_proyecto_actividades_simultaneos ?? false,
+      ),
       ext_secciones: normalizeExtensionSections(rules.ext_secciones),
     };
 
@@ -1277,6 +1556,68 @@ export class PtaService {
     const rolLimit = Math.round(horasAProgramar * rolPct / 100);
 
     return Math.min(globalLimit, rolLimit);
+  }
+
+  private validateInvestigacionComponent(
+    body: any,
+    horas: ReturnType<PtaService['computeHorasTotales']>,
+    horasAProgramar: number,
+    rules: any,
+  ): void {
+    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
+    const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas || 0);
+    const actividades = Array.isArray(body?.investigacion_actividades)
+      ? body.investigacion_actividades
+      : [];
+    const horasActividades = actividades.reduce(
+      (sum: number, activity: any) => sum + (Number(activity?.horas_total ?? activity?.horas) || 0),
+      0,
+    );
+    const permiteCoexistencia = rules?.inv_permitir_proyecto_actividades_simultaneos === true;
+    const resolucionArchivoUrl = coalesceString(
+      body?.investigacion_proyecto?.resolucion_archivo_url,
+    );
+
+    if (!permiteCoexistencia && horasProyecto > 0 && horasActividades > 0) {
+      throw new BadRequestException(
+        'La configuracion actual de Investigacion permite registrar un proyecto o actividades, pero no ambos simultaneamente.',
+      );
+    }
+
+    const limiteProyecto = this.getInvestigacionLimit(body, rules, horasAProgramar);
+    if (rolInvestigacion) {
+      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > limiteProyecto) {
+        throw new BadRequestException(
+          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${limiteProyecto}h (hasta el tope dinamico de la bolsa RUND).`,
+        );
+      }
+
+      if (rules?.inv_adjunto_obligatorio === true && !resolucionArchivoUrl) {
+        throw new BadRequestException(
+          'El archivo adjunto de la resolución es obligatorio para enviar el proyecto de investigación.',
+        );
+      }
+    }
+
+    const limiteGlobal = this.getScaledRuleLimit(
+      rules,
+      horasAProgramar,
+      'max_pct_investigacion',
+      50,
+      'max_horas_investigacion_global',
+      400,
+    );
+    const esCombinacionPermitida = permiteCoexistencia
+      && Boolean(rolInvestigacion)
+      && horasProyecto > 0
+      && horasActividades > 0;
+    const limiteComponente = esCombinacionPermitida ? limiteGlobal : limiteProyecto;
+
+    if (horas.sumInv > limiteComponente) {
+      throw new BadRequestException(
+        `El componente Investigacion excede el limite permitido: ${horas.sumInv}h / ${limiteComponente}h.`,
+      );
+    }
   }
 
   private validateDocenciaDateOverlaps(asignaturas: any[]): void {
@@ -1397,6 +1738,118 @@ export class PtaService {
         throw new BadRequestException(`La actividad ${label} debe registrar entre ${min}h y ${max}h.`);
       }
     };
+    const resolveSubmittedHierarchyRows = (
+      label: string,
+      submittedActivity: any,
+      descriptors: Array<{ row: any; index: number; key: string }>,
+      rowLabel = 'Actividad / Ítem',
+    ): Array<{ row: any; index: number; key: string }> | null => {
+      if (!Array.isArray(submittedActivity?.filas_seleccionadas)) return null;
+      const selectedKeys = submittedActivity.filas_seleccionadas
+        .map((key: any) => String(key || '').trim())
+        .filter(Boolean);
+      if (selectedKeys.length === 0) {
+        throw new BadRequestException(
+          `La actividad ${label} requiere seleccionar al menos una opción de su desglose.`,
+        );
+      }
+      if (new Set(selectedKeys).size !== selectedKeys.length) {
+        throw new BadRequestException(`La actividad ${label} contiene opciones jerárquicas duplicadas.`);
+      }
+      const descriptorByKey = new Map(descriptors.map(descriptor => [descriptor.key, descriptor]));
+      const selected = selectedKeys.map((key: string) => descriptorByKey.get(key));
+      if (selected.some(entry => !entry)) {
+        throw new BadRequestException(
+          `La actividad ${label} contiene una opción que ya no existe en la configuración vigente.`,
+        );
+      }
+
+      const submittedBranches = submittedActivity?.ramificaciones_seleccionadas;
+      const hasExplicitBranchMap = Boolean(
+        submittedBranches
+        && typeof submittedBranches === 'object'
+        && !Array.isArray(submittedBranches),
+      );
+      const sanitizedBranchMap: Record<string, string[]> = {};
+      const sanitizedHoursByKey: Record<string, number> = {};
+      const sanitizedHoursByIndex: Record<number, number> = {};
+      const sanitizedSelections: any[] = [];
+      for (const descriptor of selected as Array<{ row: any; index: number; key: string }>) {
+        const configuredBranches = Array.isArray(descriptor.row?.ramificaciones)
+          ? descriptor.row.ramificaciones
+          : (Array.isArray(descriptor.row?._ramificaciones) ? descriptor.row._ramificaciones : []);
+        // Compatibilidad con la primera transición del formato jerárquico: si
+        // ya había filas seleccionadas pero todavía no existía el mapa de
+        // ramificaciones, el comportamiento histórico equivalía a incluirlas
+        // todas. Un mapa explícito sí exige una selección explícita.
+        const branchKeys = Array.isArray(submittedBranches?.[descriptor.key])
+          ? submittedBranches[descriptor.key].map((key: any) => String(key || '').trim()).filter(Boolean)
+          : (!hasExplicitBranchMap
+              ? configuredBranches.map((branch: any) => String(branch?.clave || '')).filter(Boolean)
+              : []);
+        if (configuredBranches.length > 0 && branchKeys.length === 0) {
+          throw new BadRequestException(
+            `La opción ${descriptor.row?.nombre || descriptor.index + 1} de ${label} requiere seleccionar al menos una ramificación.`,
+          );
+        }
+        const normalizedConfiguredBranches: HierarchyBranch[] = configuredBranches.map((branch: any) => ({
+          clave: String(branch?.clave || ''),
+          nombre: String(branch?.nombre || ''),
+          ruta: (Array.isArray(branch?.ruta) ? branch.ruta : []).map((value: any) => ({
+            columna: String(value?.columna || value?.column || ''),
+            valor: String(value?.valor || value?.value || ''),
+          })),
+        }));
+        const selectionCandidates = getHierarchySelectionCandidates(normalizedConfiguredBranches);
+        if (branchKeys.some((key: string) => !selectionCandidates.has(key))) {
+          throw new BadRequestException(
+            `La opción ${descriptor.row?.nombre || descriptor.index + 1} de ${label} contiene una ramificación inválida.`,
+          );
+        }
+        const uniqueBranchKeys = [...new Set(branchKeys)] as string[];
+        const selectedCandidates = uniqueBranchKeys
+          .map(key => selectionCandidates.get(key))
+          .filter((candidate): candidate is HierarchyBranch & { isGroup: boolean } => Boolean(candidate));
+        const hasOverlappingSelection = selectedCandidates.some((candidate, index) =>
+          candidate.isGroup
+          && selectedCandidates.some((other, otherIndex) =>
+            index !== otherIndex && isHierarchyRoutePrefix(candidate.ruta, other.ruta),
+          ),
+        );
+        if (hasOverlappingSelection) {
+          throw new BadRequestException(
+            `La opción ${descriptor.row?.nombre || descriptor.index + 1} de ${label} contiene niveles jerárquicos solapados.`,
+          );
+        }
+        if (uniqueBranchKeys.length > 0) sanitizedBranchMap[descriptor.key] = uniqueBranchKeys;
+        const selectedBranches = selectedCandidates
+          .map(({ isGroup: _isGroup, ...branch }) => branch);
+        const rawRowHours = submittedActivity?.filas_cantidades?.[descriptor.key]
+          ?? submittedActivity?.items_cantidades?.[descriptor.index];
+        const rowHours = Number(rawRowHours) || 0;
+        if (rawRowHours !== undefined && rawRowHours !== null) {
+          sanitizedHoursByKey[descriptor.key] = rowHours;
+          sanitizedHoursByIndex[descriptor.index] = rowHours;
+        }
+        sanitizedSelections.push({
+          clave: descriptor.key,
+          nombre: String(descriptor.row?.nombre || `Opción ${descriptor.index + 1}`),
+          etiqueta: rowLabel,
+          horas: rowHours,
+          ramificaciones: selectedBranches,
+        });
+      }
+      submittedActivity.filas_seleccionadas = selectedKeys;
+      submittedActivity.filas_cantidades = Object.keys(sanitizedHoursByKey).length > 0
+        ? sanitizedHoursByKey
+        : undefined;
+      submittedActivity.items_cantidades = Object.keys(sanitizedHoursByIndex).length > 0
+        ? sanitizedHoursByIndex
+        : undefined;
+      submittedActivity.ramificaciones_seleccionadas = sanitizedBranchMap;
+      submittedActivity.seleccion_jerarquica = sanitizedSelections;
+      return selected as Array<{ row: any; index: number; key: string }>;
+    };
     const validateSubmittedRecognitionRows = (
       label: string,
       submittedActivity: any,
@@ -1405,17 +1858,33 @@ export class PtaService {
       const recognitionRows = Array.isArray(configuredActivity?.filas_reconocimiento)
         ? configuredActivity.filas_reconocimiento
         : [];
-      if (recognitionRows.length <= 1) return false;
+      if (recognitionRows.length === 0) return false;
+
+      const descriptors = getStableCatalogRowDescriptors(recognitionRows);
+      const selectedDescriptors = resolveSubmittedHierarchyRows(
+        label,
+        submittedActivity,
+        descriptors,
+      );
+      // Sin el nuevo marcador se conserva exactamente la validación legacy.
+      if (!selectedDescriptors && recognitionRows.length <= 1) return false;
 
       const keyedValues = submittedActivity?.filas_cantidades;
       const indexedValues = submittedActivity?.items_cantidades;
       const hasKeyedValues = keyedValues && typeof keyedValues === 'object';
       const hasIndexedValues = indexedValues && typeof indexedValues === 'object';
-      if (!hasKeyedValues && !hasIndexedValues) return false;
+      if (!hasKeyedValues && !hasIndexedValues) {
+        if (selectedDescriptors) {
+          throw new BadRequestException(
+            `La actividad ${label} no tiene horas registradas para sus opciones seleccionadas.`,
+          );
+        }
+        return false;
+      }
 
       let submittedTotal = 0;
-      recognitionRows.forEach((row: any, index: number) => {
-        const rowKey = String(row?.clave || '');
+      const rowsToValidate = selectedDescriptors || descriptors;
+      rowsToValidate.forEach(({ row, index, key: rowKey }) => {
         const submitted = (hasKeyedValues && rowKey ? keyedValues[rowKey] : undefined)
           ?? (hasIndexedValues ? indexedValues[index] : undefined);
         if (submitted === undefined || submitted === null) {
@@ -1428,7 +1897,7 @@ export class PtaService {
           submitted,
           row,
           'fija',
-          recognitionRows.length > 1,
+          rowsToValidate.length > 1,
         );
         submittedTotal += Number(submitted) || 0;
       });
@@ -1477,6 +1946,22 @@ export class PtaService {
             if (type === 'porcentaje') return (expectedPercentageHours(row) || 0) > 0;
             return Number(row?.horas) > 0;
           });
+        // El portal construye la selección sobre las filas que realmente tienen
+        // horas. Generar aquí las claves sobre ese mismo arreglo evita desfases si
+        // la configuración conserva filas informativas sin reconocimiento.
+        const hierarchyDescriptors = getStableCatalogRowDescriptors(
+          configuredRows.map((entry: any) => entry.row),
+        );
+        const firstColumn = String(section?.columnas?.[0] || '').trim();
+        const hierarchyRowLabel = firstColumn === EXTENSION_ITEMS_COLUMN_KEY
+          ? String(section?.columna_items_nombre || 'Actividad / Ítem').trim()
+          : (!firstColumn || /^_.*_$/.test(firstColumn) ? 'Opción del bloque' : firstColumn);
+        const selectedHierarchyRows = resolveSubmittedHierarchyRows(
+          configured?.nombre || activity?.nombre || 'de extensión',
+          activity,
+          hierarchyDescriptors,
+          hierarchyRowLabel,
+        );
         const mandatoryHours = configuredRows.reduce(
           (sum: number, entry: any) => sum + configuredRowHours(
             entry.row,
@@ -1486,7 +1971,38 @@ export class PtaService {
         );
         const requiresRowSelection = configuredRows.length > 1
           && mandatoryHours > extensionComponentLimit;
-        if (requiresRowSelection) {
+        if (selectedHierarchyRows) {
+          const keyedValues = activity?.filas_cantidades;
+          const indexedValues = activity?.items_cantidades;
+          let submittedTotal = 0;
+          selectedHierarchyRows.forEach(({ row, index, key }) => {
+            const submitted = (keyedValues && typeof keyedValues === 'object' ? keyedValues[key] : undefined)
+              ?? (indexedValues && typeof indexedValues === 'object' ? indexedValues[index] : undefined);
+            if (submitted === undefined || submitted === null) {
+              throw new BadRequestException(
+                `La fila ${row?.nombre || index + 1} de ${configured?.nombre || activity?.nombre || 'la actividad de extensión'} no tiene horas registradas.`,
+              );
+            }
+            assertConfiguredHours(
+              String(row?.nombre || index + 1),
+              submitted,
+              row,
+              'fija',
+              selectedHierarchyRows.length > 1,
+            );
+            submittedTotal += Number(submitted) || 0;
+          });
+          if (submittedTotal <= 0) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe registrar al menos 1h en una de sus opciones seleccionadas.`,
+            );
+          }
+          if ((Number(activity?.horas) || 0) !== submittedTotal) {
+            throw new BadRequestException(
+              `La actividad ${configured?.nombre || activity?.nombre || 'de extensión'} debe totalizar ${submittedTotal}h según sus opciones seleccionadas.`,
+            );
+          }
+        } else if (requiresRowSelection) {
           const selectedRowIndex = Number(activity?.fila_seleccionada);
           if (!Number.isInteger(selectedRowIndex)
             || selectedRowIndex < 0
@@ -1597,7 +2113,6 @@ export class PtaService {
       : [];
     this.validateDocenciaDateOverlaps(asignaturas);
 
-    const maxInvestigacion = this.getInvestigacionLimit(body, rules, horasAProgramar);
     const maxExtension = this.getScaledRuleLimit(
       rules,
       horasAProgramar,
@@ -1621,19 +2136,10 @@ export class PtaService {
       }
     };
 
-    const rolInvestigacion = coalesceString(body?.investigacion_proyecto?.rol);
-    if (rolInvestigacion) {
-      const horasProyecto = Number(body?.investigacion_proyecto?.horas_solicitadas);
-      if (!Number.isFinite(horasProyecto) || horasProyecto <= 0 || horasProyecto > maxInvestigacion) {
-        throw new BadRequestException(
-          `Las horas de Investigacion para el rol ${rolInvestigacion} deben estar entre 1h y ${maxInvestigacion}h (hasta el tope dinamico de la bolsa RUND).`,
-        );
-      }
-    }
+    this.validateInvestigacionComponent(body, horas, horasAProgramar, rules);
 
     // Docencia no tiene tope porcentual propio; el límite global anterior le
     // permite ocupar desde una fracción hasta el 100% de la bolsa disponible.
-    assertComponentLimit('Investigacion', horas.sumInv, maxInvestigacion);
     assertComponentLimit('Extension', horas.sumExt, maxExtension);
     assertComponentLimit('Complementarias', horas.sumComp + horas.sumAcad, maxComplementarias);
 
@@ -1677,10 +2183,6 @@ export class PtaService {
       throw new BadRequestException('El PTA debe incluir actividades complementarias a la docencia antes de enviarse.');
     }
 
-    if (horas.sumInv <= 0 && horas.sumExt <= 0) {
-      throw new BadRequestException('El PTA debe incluir al menos una funcion misional adicional: Investigacion o Extension.');
-    }
-
     const maxAadm = this.getScaledRuleLimit(
       rules,
       horasAProgramar,
@@ -1716,7 +2218,7 @@ export class PtaService {
     const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
-    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Aplicar multiplicador de sección (config-driven) para mantener consistencia con computeHorasTotales
     const extActsNorm = extActs.map((a: any) => {
@@ -2144,9 +2646,14 @@ export class PtaService {
 
         const hayActividades = Object.values(horasPorComp).some(h => h > 0);
         const recs = estadoByPta.get(dto.id) || new Map<string, string>();
+        const esBorrador = isDraftPtaState(dto?.estado);
         // Un componente cuenta como aprobado si su registro está aprobado o si está vacío
-        // (auto-aprobación cuando el PTA tiene actividades) — consistente con getComponentesAprobacion.
-        const estaAprobado = (k: string) => recs.get(k) === 'aprobado' || (hayActividades && (horasPorComp[k] || 0) === 0);
+        // (auto-aprobación cuando el PTA tiene actividades), pero únicamente después
+        // de que el PTA haya salido de Borrador y comience realmente su revisión.
+        const estaAprobado = (k: string) => !esBorrador && (
+          recs.get(k) === 'aprobado'
+          || (hayActividades && (horasPorComp[k] || 0) === 0)
+        );
 
         // Componentes de ALTO NIVEL que ve el administrador (5): Docencia, Investigación,
         // Extensión (UNA sola, NO desglosada en sus 4 subsecciones), Complementarias, Acad-Admin.
@@ -2161,7 +2668,7 @@ export class PtaService {
           componentesEstado.push({
             key: c,
             label: c === 'academica' ? 'Docencia' : c === 'investigacion' ? 'Investigacion' : 'Complementarias',
-            estado: aprobado ? 'aprobado' : (recs.get(c) || 'pendiente'),
+            estado: esBorrador ? 'no_iniciado' : (aprobado ? 'aprobado' : (recs.get(c) || 'pendiente')),
           });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
@@ -2174,7 +2681,9 @@ export class PtaService {
           componentesEstado.push({
             key: 'extension',
             label: 'Extension',
-            estado: extAprobada ? 'aprobado' : (extEstados.includes('devuelto') ? 'devuelto' : 'pendiente'),
+            estado: esBorrador
+              ? 'no_iniciado'
+              : (extAprobada ? 'aprobado' : (extEstados.includes('devuelto') ? 'devuelto' : 'pendiente')),
           });
         }
 
@@ -2225,6 +2734,97 @@ export class PtaService {
     };
   }
 
+  /**
+   * Incorpora al Seguimiento la resolución registrada durante la creación del
+   * PTA una vez que este alcanza un estado aprobado. La categoría estable
+   * permite actualizar el mismo soporte sin generar duplicados.
+   */
+  private async syncResolucionProyectoInvestigacion(
+    ptaId: string,
+    input: SavePtaInput,
+  ): Promise<void> {
+    const proyecto = input?.investigacion_proyecto;
+    const storageUrl = coalesceString(proyecto?.resolucion_archivo_url);
+    const horasJustificar = resolveHorasResolucionProyecto(proyecto);
+    const existing = await this.evidenciaRepo.findOne({
+      where: {
+        ptaId,
+        categoria: CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION,
+      },
+      order: { updatedAt: 'DESC' },
+    });
+
+    if (!storageUrl || horasJustificar <= 0) {
+      // Un soporte ya aprobado forma parte de la trazabilidad y nunca se borra.
+      // Solo se elimina una fila anticipada de versiones anteriores que todavía
+      // no alcanzó la aprobación del componente.
+      if (existing && normalizeEstadoFilter(existing.estadoRevision) !== 'APROBADO') {
+        await this.evidenciaRepo.delete({ id: existing.id, ptaId });
+      }
+      return;
+    }
+
+    const nombre = coalesceString(
+      proyecto?.resolucion_archivo_nombre,
+      proyecto?.resolucion_nombre,
+    ) || storageUrl.split('/').pop() || 'Resolución de investigación';
+    const tipoArchivo = coalesceString(proyecto?.resolucion_archivo_tipo)
+      || nombre.split('.').pop()
+      || 'pdf';
+    const tamanioBytes = Math.max(0, Number(proyecto?.resolucion_archivo_tamanio) || 0);
+    const descripcion = [
+      'Resolución del proyecto',
+      coalesceString(proyecto?.nombre),
+      coalesceString(proyecto?.resolucion_nombre),
+    ].filter(Boolean).join(' · ');
+
+    if (!existing) {
+      await this.evidenciaRepo.save(this.evidenciaRepo.create({
+        ptaId,
+        nombre,
+        tipoArchivo,
+        tamanioBytes,
+        categoria: CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION,
+        componentePta: 'investigacion',
+        seccionExtension: null,
+        horasAvance: horasJustificar,
+        storageUrl,
+        subidoPor: coalesceString(input?.docente_nombre, input?.docenteNombre) as any,
+        descripcion,
+        estado: 'activo',
+        estadoRevision: 'aprobado',
+        revisadoPor: 'Sistema',
+        comentarioRevision: COMENTARIO_RESOLUCION_PROYECTO_APROBADA,
+      }));
+      return;
+    }
+
+    const yaEstabaAprobado =
+      normalizeEstadoFilter(existing.estadoRevision) === 'APROBADO';
+    await this.evidenciaRepo.save({
+      ...existing,
+      nombre,
+      tipoArchivo,
+      tamanioBytes,
+      componentePta: 'investigacion',
+      horasAvance: horasJustificar,
+      storageUrl,
+      subidoPor: coalesceString(input?.docente_nombre, input?.docenteNombre)
+        ?? existing.subidoPor,
+      descripcion,
+      estado: 'activo',
+      // Esta evidencia ya fue evaluada como parte del componente Investigación:
+      // no debe abrir una segunda aprobación en Seguimiento.
+      estadoRevision: 'aprobado',
+      revisadoPor: yaEstabaAprobado
+        ? (existing.revisadoPor || 'Sistema')
+        : 'Sistema',
+      comentarioRevision: yaEstabaAprobado
+        ? (existing.comentarioRevision || COMENTARIO_RESOLUCION_PROYECTO_APROBADA)
+        : COMENTARIO_RESOLUCION_PROYECTO_APROBADA,
+    });
+  }
+
   async getAllPTAs(filters: any) {
     // Sweep perezoso: elimina PTAs vencidos (sin aprobar dentro del plazo) al
     // consultar el listado del backoffice, como máximo una vez por hora.
@@ -2256,9 +2856,9 @@ export class PtaService {
   }
 
   async getPTAsByDocente(docenteId: string, periodo?: string | undefined) {
-    const resolved = await this.resolveDocenteId(docenteId, { periodo });
+    const docenteIds = await this.resolveDocenteIdentityIds(docenteId, { periodo });
     const qb = this.ptaRepo.createQueryBuilder('pta');
-    qb.andWhere('pta.docenteId = :docenteId', { docenteId: resolved });
+    qb.andWhere('pta.docenteId IN (:...docenteIds)', { docenteIds });
     if (periodo) qb.andWhere('pta.periodo = :periodo', { periodo });
     qb.orderBy('pta.updatedAt', 'DESC');
     const rows = await qb.getMany();
@@ -2378,10 +2978,22 @@ export class PtaService {
     return merged;
   }
 
-  async savePTA(input: SavePtaInput) {
+  async savePTA(input: SavePtaInput, auth?: PtaAuthenticatedUser) {
     let id = coalesceString(input?.id);
-    const periodo = coalesceString(input?.periodo) || '2026-1';
+    let periodo = coalesceString(input?.periodo) || '2026-1';
     const isAdminEdit = Boolean(input?._adminEdit);
+    if (auth && isAdminEdit) {
+      const puedeEditarComoAdmin = auth.isSuperUser
+        || auth.approvesAll
+        || auth.allowedComponents.length > 0
+        || auth.permissions.has('pta.backoffice.editar')
+        || auth.permissions.has('pta.backoffice.concertar')
+        || auth.permissions.has('pta.backoffice.crear');
+      if (!puedeEditarComoAdmin) {
+        throw new ForbiddenException('No tienes permiso para editar PTA desde el backoffice.');
+      }
+    }
+    let existingForDocenteEdit: PlanTrabajoAcademicoEntity | null = null;
     const allowedComponentKeys = Array.isArray(input?._allowed_component_keys)
       ? input._allowed_component_keys
         .map((key: unknown) => String(key))
@@ -2394,6 +3006,51 @@ export class PtaService {
       }
       input = this.mergeRestrictedAdminEditInput(input, existingForRestrictedEdit, allowedComponentKeys);
       id = existingForRestrictedEdit.id;
+    }
+    if (!isAdminEdit && id) {
+      existingForDocenteEdit = await this.ptaRepo.findOne({ where: { id } });
+      if (!existingForDocenteEdit) {
+        throw new NotFoundException('PTA no encontrado');
+      }
+
+      const estadoEditable = normalizeEstadoFilter(existingForDocenteEdit.estado);
+      const esEstadoEditable = estadoEditable === 'BORRADOR'
+        || estadoEditable === 'DEVUELTO'
+        || REVISION_DOCENTE_STATES.has(existingForDocenteEdit.estado);
+      if (!esEstadoEditable) {
+        throw new BadRequestException(
+          'Este PTA no está habilitado para edición. Debes solicitar la edición de uno o más componentes.',
+        );
+      }
+
+      // La restricción se vuelve a aplicar en servidor: aunque el navegador envíe
+      // campos de otros componentes, únicamente se persisten los autorizados por
+      // la solicitud/devolución vigente.
+      if (REVISION_DOCENTE_STATES.has(existingForDocenteEdit.estado)) {
+        const devueltos = await this.ptaComponentApprovalRepo.find({
+          where: {
+            ptaId: existingForDocenteEdit.id,
+            componente: In([...COMPONENT_APPROVAL_KEYS]),
+            estado: 'devuelto',
+          },
+        });
+        const componentesEditables = devueltos.map(row => row.componente);
+        if (componentesEditables.length > 0) {
+          input = this.mergeRestrictedAdminEditInput(
+            input,
+            existingForDocenteEdit,
+            componentesEditables,
+          );
+        }
+      }
+      input.docente_id = existingForDocenteEdit.docenteId;
+      input.periodo = existingForDocenteEdit.periodo;
+      // Guardar el formulario nunca debe realizar una transición de estado. El
+      // estado vigente solo puede cambiar por updatePTAStatus (envío/reenvío) o
+      // por una decisión del flujo de aprobación. Esto protege también a
+      // pestañas antiguas que hayan quedado abiertas antes de una reapertura.
+      input.estado = existingForDocenteEdit.estado;
+      periodo = existingForDocenteEdit.periodo;
     }
 
     const docenteKey = coalesceString(
@@ -2408,6 +3065,16 @@ export class PtaService {
       adminEdit: isAdminEdit,
       periodo,
     });
+    if (existingForDocenteEdit && existingForDocenteEdit.docenteId !== docenteId) {
+      throw new ForbiddenException('No puedes editar un PTA perteneciente a otro docente.');
+    }
+    if (auth && !isAdminEdit) {
+      if (!auth.userId) throw new ForbiddenException('No fue posible identificar al docente autenticado.');
+      const docenteAutenticado = await this.resolveDocenteId(auth.userId, { periodo });
+      if (docenteAutenticado !== docenteId) {
+        throw new ForbiddenException('No puedes guardar un PTA perteneciente a otro docente.');
+      }
+    }
 
     // Enrich identity if missing
     if (!input.docente_nombre) {
@@ -2471,7 +3138,11 @@ export class PtaService {
           id = ptaActivo.id;
         } else {
           const solicitud = await this.solicitudRepo.findOne({
-            where: { docenteId, estado: 'aprobado' } as any,
+            where: {
+              docenteId,
+              estado: 'aprobado',
+              tipoSolicitud: SOLICITUD_CREACION_TIPO,
+            } as any,
             order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any } as any,
           });
           if (!solicitud) {
@@ -2517,6 +3188,17 @@ export class PtaService {
       ...input,
       horas_a_programar: horasAProgramar,
       horas_asignables: horasAProgramar,
+      investigacion_proyecto: input?.investigacion_proyecto
+        ? {
+            ...input.investigacion_proyecto,
+            // Compatibilidad para consumidores anteriores: el valor recibido se
+            // ignora y siempre replica la totalidad de horas del proyecto.
+            resolucion_horas_justificar: Math.max(
+              0,
+              Math.round(Number(input.investigacion_proyecto.horas_solicitadas) || 0),
+            ),
+          }
+        : input?.investigacion_proyecto,
       complementarias: Array.isArray(input?.complementarias)
         ? input.complementarias.map((activity: any) => activity?.consumeTotalidad === true
           ? { ...activity, horas: horasAProgramar }
@@ -2525,9 +3207,20 @@ export class PtaService {
     };
     const extMult = await this.getExtMultiplicadores();
     const horas = this.computeHorasTotales(input, extMult);
+    const ptaRules = (await this.getConfiguracionPTAGlobal()) || {};
+
+    // La edición de Concertación puede conservar el mismo estado y por eso no
+    // siempre pasa por la validación completa de envío. Si el revisor tiene el
+    // componente de Investigación en su alcance, se aplican igualmente la regla
+    // de coexistencia y sus topes antes de persistir los cambios.
+    const adminPuedeEditarInvestigacion = isAdminEdit
+      && (allowedComponentKeys.length === 0 || allowedComponentKeys.includes('investigacion'));
+    if (adminPuedeEditarInvestigacion) {
+      this.validateInvestigacionComponent(input, horas, horasAProgramar, ptaRules);
+    }
 
     if (isPendingRoleApprovalState(estado)) {
-      this.validatePtaForSubmission(input, horas, horasAProgramar, (await this.getConfiguracionPTAGlobal()) || {});
+      this.validatePtaForSubmission(input, horas, horasAProgramar, ptaRules);
     }
 
     const patch: Partial<PlanTrabajoAcademicoEntity> = {
@@ -2557,6 +3250,11 @@ export class PtaService {
       }
     } else {
       saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, version: 1 }));
+    }
+
+    if (isPtaHabilitadoParaSeguimientoPorEstado(saved.estado)) {
+      await this.syncResolucionProyectoInvestigacion(saved.id, input);
+      await this.syncPtaSeguimientoEstado(saved.id);
     }
 
     // Registrar en historial cuando hay creación, cambio de estado, o edición admin.
@@ -2681,6 +3379,30 @@ export class PtaService {
     // acción "aprobar"/"devolver".
     const accionLower = (accion || '').toLowerCase();
     const esAccionAprobacion = accionLower === 'aprobar' || accionLower === 'devolver';
+    const solicitudEdicionParcial = await this.solicitudRepo.findOne({
+      where: {
+        ptaId,
+        tipoSolicitud: SOLICITUD_EDICION_TIPO,
+        estado: In(['aprobado', 'en_aprobacion']),
+      } as any,
+      order: { updatedAt: 'DESC' as any },
+    });
+    if (solicitudEdicionParcial && accionLower !== 'reenviar_corregido') {
+      throw new BadRequestException(
+        esAccionAprobacion
+          ? 'Este PTA está en una edición parcial. Debes aprobar o devolver únicamente los componentes habilitados.'
+          : 'Este PTA está en una edición parcial. Solo admite el reenvío del docente y decisiones por componente.',
+      );
+    }
+    if (solicitudEdicionParcial && accionLower === 'reenviar_corregido' && auth) {
+      if (!auth.userId) throw new ForbiddenException('No fue posible identificar al docente autenticado.');
+      const docenteAutenticado = await this.resolveDocenteId(auth.userId, {
+        periodo: existing.periodo,
+      });
+      if (docenteAutenticado !== existing.docenteId) {
+        throw new ForbiddenException('Solo el docente propietario puede reenviar esta edición.');
+      }
+    }
     if (esAccionAprobacion) {
       if (!auth) {
         throw new ForbiddenException('No autenticado para aprobar/devolver el PTA.');
@@ -2935,6 +3657,19 @@ export class PtaService {
     }
 
     const estadoFinal = nuevoEstado || existing.estado || 'Borrador';
+    const solicitudEdicionActiva = a === 'reenviar_corregido'
+      ? await this.solicitudRepo.findOne({
+          where: {
+            ptaId,
+            tipoSolicitud: SOLICITUD_EDICION_TIPO,
+            // "aprobado": primer envío después de habilitar la edición.
+            // "en_aprobacion": nuevo envío si un revisor devolvió nuevamente
+            // uno de los componentes durante la reaprobación parcial.
+            estado: In(['aprobado', 'en_aprobacion']),
+          } as any,
+          order: { resolucionFecha: 'DESC' as any, updatedAt: 'DESC' as any },
+        })
+      : null;
 
     const debeInicializarAprobacionesJefatura =
       isPendingRoleApprovalState(estadoFinal) &&
@@ -2949,7 +3684,11 @@ export class PtaService {
       const veniaDeDevolucionParcial = REVISION_DOCENTE_STATES.has(existing.estado);
       const respuestaDocenteReenvio = coalesceString(body?.comentario_docente, body?.respuesta_docente);
       const respuestasDocentePorComponente = this.readRespuestasDocentePorComponente(body);
-      await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
+      // En una edición autorizada se conservan los avales históricos de niveles y
+      // componentes no seleccionados. Solo las filas reabiertas vuelven a pendiente.
+      if (!solicitudEdicionActiva) {
+        await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
+      }
       await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio, respuestasDocentePorComponente);
     }
 
@@ -2979,6 +3718,28 @@ export class PtaService {
       }),
     );
 
+    if (solicitudEdicionActiva) {
+      solicitudEdicionActiva.estado = 'en_aprobacion';
+      solicitudEdicionActiva.notificacionLeida = false;
+      await this.solicitudRepo.save(solicitudEdicionActiva);
+      await this.historialRepo.save(this.historialRepo.create({
+        ptaId,
+        estadoAnterior: estadoFinal,
+        estadoNuevo: estadoFinal,
+        actorId: existing.docenteId,
+        actorRol: 'Docente',
+        tipoAccion: 'EDICION_COMPONENTES_ENVIADA',
+        comentarios: coalesceString(body?.comentario_docente)
+          || 'Componentes editados y enviados nuevamente a aprobación.',
+        detallesTransicion: JSON.stringify({
+          solicitudId: solicitudEdicionActiva.id,
+          componentes: solicitudEdicionActiva.componentes || [],
+        }),
+        snapshotPta: updated.datosEstructurados ?? null,
+        version: updated.version,
+      }));
+    }
+
     const ds = existing.datosEstructurados as any;
     await this.logEvento({
       ptaId,
@@ -2994,9 +3755,67 @@ export class PtaService {
       metadata: { accion, observaciones: coalesceString(body?.observaciones, body?.comentarios) },
     });
 
+    // Si la edición deja un componente sin contenido, la matriz histórica puede
+    // autoaprobarlo (comportamiento existente para componentes con 0 horas). En
+    // ese caso no debe quedar una solicitud eternamente "en reaprobación": se
+    // consolida y restaura de inmediato el estado exacto que tenía el PTA.
+    let estadoResultado = estadoFinal;
+    let edicionAutoFinalizada = false;
+    if (solicitudEdicionActiva) {
+      const componentesTrasEnvio = await this.getComponentesAprobacion(ptaId);
+      if (componentesTrasEnvio.length > 0 && componentesTrasEnvio.every(c => c.estado === 'aprobado')) {
+        const estadoAntesDeRestaurar = updated.estado;
+        const estadoRestaurado = restoreEstadoDespuesEdicion(
+          solicitudEdicionActiva.estadoPtaAnterior,
+        );
+        updated.estado = estadoRestaurado;
+        updated.version = (updated.version || 1) + 1;
+        await this.ptaRepo.save(updated);
+
+        solicitudEdicionActiva.estado = 'gestionada';
+        solicitudEdicionActiva.notificacionLeida = false;
+        solicitudEdicionActiva.resolucionAccion = 'edicion_componentes_aprobada_automaticamente';
+        await this.solicitudRepo.save(solicitudEdicionActiva);
+        await this.historialRepo.save(this.historialRepo.create({
+          ptaId,
+          estadoAnterior: estadoAntesDeRestaurar,
+          estadoNuevo: estadoRestaurado,
+          actorId: 'sistema',
+          actorRol: 'Sistema',
+          tipoAccion: 'EDICION_COMPONENTES_APROBADA',
+          comentarios: 'Edición consolidada automáticamente: no quedaron componentes con horas pendientes de revisión.',
+          detallesTransicion: JSON.stringify({
+            solicitudId: solicitudEdicionActiva.id,
+            componentes: solicitudEdicionActiva.componentes || [],
+            aprobacionAutomatica: true,
+          }),
+          snapshotPta: updated.datosEstructurados ?? null,
+          version: updated.version,
+        }));
+        await this.logEvento({
+          ptaId,
+          tipo: 'cambio_estado',
+          docenteId: existing.docenteId,
+          docenteNombre: coalesceString(ds?.docente_nombre),
+          estadoAnterior: estadoAntesDeRestaurar,
+          estadoNuevo: estadoRestaurado,
+          actor: 'sistema',
+          actorRol: 'Sistema',
+          sistemaOrigen: 'backoffice',
+          mensaje: 'Edición parcial consolidada automáticamente sin componentes pendientes.',
+          metadata: {
+            solicitudId: solicitudEdicionActiva.id,
+            componentes: solicitudEdicionActiva.componentes || [],
+          },
+        });
+        estadoResultado = estadoRestaurado;
+        edicionAutoFinalizada = true;
+      }
+    }
+
     // ── Notificación: PTA entró a revisión → avisar a los aprobadores de cada
     // componente pendiente (según su permiso pta.approve.<componente>). Best-effort.
-    if (debeInicializarAprobacionesJefatura) {
+    if (debeInicializarAprobacionesJefatura && !edicionAutoFinalizada) {
       try {
         const componentes = await this.getComponentesAprobacion(ptaId);
         const pendientes = componentes
@@ -3027,7 +3846,7 @@ export class PtaService {
     return {
       ...(parallelApprovalResult || {}),
       version: updated.version,
-      nuevoEstado: estadoFinal,
+      nuevoEstado: estadoResultado,
       pta: updatedDto,
     };
   }
@@ -3495,6 +4314,16 @@ export class PtaService {
   }
 
   async getEvidenciasPTA(ptaId: string) {
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (
+      pta?.datosEstructurados
+      && isPtaHabilitadoParaSeguimientoPorEstado(pta.estado)
+    ) {
+      await this.syncResolucionProyectoInvestigacion(
+        ptaId,
+        pta.datosEstructurados as SavePtaInput,
+      );
+    }
     const rows = await this.evidenciaRepo.find({ where: { ptaId }, order: { createdAt: 'DESC' } });
     return rows.map((row) => this.toEvidenciaDto(row));
   }
@@ -3504,21 +4333,59 @@ export class PtaService {
     const tipoArchivo = coalesceString(body?.tipoArchivo, body?.tipo_archivo, body?.tipo) || 'pdf';
     const tamanioBytes = Number(body?.tamanioBytes ?? body?.tamanio_bytes ?? body?.size ?? 0) || 0;
     const storageUrl = coalesceString(body?.storageUrl, body?.storage_url, body?.url);
+    const categoria = coalesceString(body?.categoria);
+    const componentePta = coalesceString(body?.componentePta, body?.componente_pta);
+    const horasAvance = Math.max(
+      0,
+      Math.round(Number(body?.horasAvance ?? body?.horas_avance ?? 0) || 0),
+    );
+    const esResolucionProyecto = isCategoriaResolucionProyecto(categoria);
+
+    if (esResolucionProyecto && horasAvance > 0) {
+      const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+      if (!pta) throw new NotFoundException('PTA no encontrado');
+      const proyecto = (pta.datosEstructurados as any)?.investigacion_proyecto;
+      const horasObjetivo = resolveHorasResolucionProyecto(proyecto);
+      if (componentePta !== 'investigacion' || horasObjetivo <= 0) {
+        throw new BadRequestException(
+          'El PTA no tiene horas configuradas para justificar con la resolución del proyecto.',
+        );
+      }
+
+      const soportesResolucion = (await this.evidenciaRepo.find({ where: { ptaId } }))
+        .filter(evidencia => isCategoriaResolucionProyecto(evidencia.categoria));
+      const horasReservadas = soportesResolucion.reduce((total, evidencia) => {
+        if (normalizeEstadoFilter(evidencia.estado) === 'ELIMINADO') return total;
+        if (normalizeEstadoFilter(evidencia.estadoRevision) === 'RECHAZADO') return total;
+        return total + Math.max(0, Number(evidencia.horasAvance) || 0);
+      }, 0);
+      const disponibles = Math.max(horasObjetivo - horasReservadas, 0);
+      if (horasAvance > disponibles) {
+        throw new BadRequestException(
+          `La resolución solo tiene ${disponibles}h pendientes por justificar (${horasObjetivo}h definidas).`,
+        );
+      }
+    }
 
     const entity = this.evidenciaRepo.create({
       ptaId,
       nombre,
       tipoArchivo,
       tamanioBytes,
-      categoria: coalesceString(body?.categoria) as any,
-      componentePta: coalesceString(body?.componentePta, body?.componente_pta) as any,
+      categoria: categoria as any,
+      componentePta: componentePta as any,
       seccionExtension: coalesceString(body?.seccionExtension, body?.seccion_extension) as any,
-      horasAvance: Number(body?.horasAvance ?? body?.horas_avance ?? 0) || 0,
+      horasAvance,
       storageUrl: storageUrl,
       subidoPor: coalesceString(body?.subidoPor, body?.subido_por) as any,
       descripcion: coalesceString(body?.descripcion) as any,
       estado: coalesceString(body?.estado) || 'activo',
-      estadoRevision: coalesceString(body?.estadoRevision, body?.estado_revision) || 'pendiente',
+      // Toda evidencia agregada durante Seguimiento requiere una decisión
+      // posterior. El único soporte autoaprobado es la resolución sincronizada
+      // desde la creación y aprobación del componente Investigación.
+      estadoRevision: 'pendiente',
+      revisadoPor: null,
+      comentarioRevision: null,
     });
 
     const saved = await this.evidenciaRepo.save(entity);
@@ -3603,204 +4470,600 @@ export class PtaService {
     }
   }
 
-  async crearSolicitudPTA(body: any) {
-    const resolvedDocenteId = await this.resolveDocenteId(coalesceString(body?.docenteId, body?.docente_id) || '');
-    const tipoSolicitud = coalesceString(body?.tipoSolicitud, body?.tipo_solicitud) === 'modificacion'
-      ? 'modificacion'
-      : 'creacion';
-    const ptaId = coalesceString(body?.ptaId, body?.pta_id);
-    const justificacion = coalesceString(body?.justificacion) || '';
-    const archivos = Array.isArray(body?.archivos) ? body.archivos : (body?.archivos ? [body.archivos] : []);
+  private puedeAdministrarSolicitudes(auth?: PtaAuthenticatedUser): boolean {
+    return Boolean(
+      auth?.isSuperUser
+      || auth?.approvesAll
+      || auth?.permissions.has('pta.backoffice.aprobar')
+      || auth?.permissions.has('pta.backoffice.ver_gestion')
+      || auth?.permissions.has('pta.backoffice.ver_detalle'),
+    );
+  }
 
-    // HU-12: la solicitud de MODIFICACIÓN (R01→R02) exige un PTA objetivo válido,
-    // justificación y un PDF de resolución obligatorio.
-    if (tipoSolicitud === 'modificacion') {
+  async crearSolicitudPTA(body: any, auth?: PtaAuthenticatedUser) {
+    const docenteSolicitado = coalesceString(body?.docenteId, body?.docente_id) || '';
+    const tipoSolicitud = coalesceString(body?.tipoSolicitud, body?.tipo_solicitud) === SOLICITUD_EDICION_TIPO
+      || coalesceString(body?.caso) === 'edicion_pta'
+      ? SOLICITUD_EDICION_TIPO
+      : SOLICITUD_CREACION_TIPO;
+    const esEdicion = tipoSolicitud === SOLICITUD_EDICION_TIPO;
+    const ptaId = coalesceString(body?.ptaId, body?.pta_id);
+    const componentes = normalizeSolicitudComponentes(body?.componentes);
+    const justificacion = coalesceString(body?.justificacion) || '';
+    if (justificacion.length > MAX_CARACTERES_JUSTIFICACION_SOLICITUD) {
+      throw new BadRequestException('La descripción de la solicitud no puede superar los 3.000 caracteres.');
+    }
+    const archivosEntrada = body?.archivos == null ? [] : body.archivos;
+    if (!Array.isArray(archivosEntrada) || archivosEntrada.length > 5) {
+      throw new BadRequestException('Los documentos de soporte deben ser un arreglo de máximo 5 archivos.');
+    }
+    const archivos = archivosEntrada.map((archivo: any) => {
+      const url = coalesceString(archivo?.url);
+      const nombre = coalesceString(archivo?.nombre);
+      const tamanio = Number(archivo?.tamanio) || 0;
+      if (!/^\/uploads\/pta-solicitudes\/[A-Za-z0-9._-]+$/i.test(url || '')) {
+        throw new BadRequestException('Uno de los documentos no pertenece al almacenamiento de solicitudes PTA.');
+      }
+      if (!/\.pdf$/i.test(nombre || '') || tamanio <= 0 || tamanio > 10 * 1024 * 1024) {
+        throw new BadRequestException('Cada soporte debe ser un PDF válido de máximo 10 MB.');
+      }
+      return {
+        url,
+        nombre,
+        tipo: 'pdf',
+        tamanio,
+      };
+    });
+    let pta: PlanTrabajoAcademicoEntity | null = null;
+
+    if (esEdicion) {
       if (!ptaId) {
-        throw new BadRequestException('Debe indicar el PTA que desea modificar.');
+        throw new BadRequestException('Debes seleccionar el PTA que deseas editar.');
       }
-      const ptaObjetivo = await this.ptaRepo.findOne({ where: { id: ptaId } });
-      if (!ptaObjetivo) {
-        throw new NotFoundException('El PTA a modificar no existe.');
+      if (componentes.length === 0) {
+        throw new BadRequestException('Selecciona al menos un componente para editar.');
       }
-      if (!MODIFIABLE_PTA_STATES.has(ptaObjetivo.estado)) {
+      if (!justificacion) {
+        throw new BadRequestException('La descripción de la solicitud de edición es obligatoria.');
+      }
+
+      pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+      if (!pta) throw new NotFoundException('PTA no encontrado');
+    }
+
+    // Para PTAs terminados de periodos anteriores puede existir una vinculación
+    // Docente diferente por periodo. Resolver con el periodo del plan evita
+    // rechazar al mismo profesor por comparar dos filas de vinculación distintas.
+    const periodoSolicitud = pta?.periodo || undefined;
+    const resolvedDocenteId = await this.resolveDocenteId(docenteSolicitado, {
+      periodo: periodoSolicitud,
+    });
+    if (auth && !this.puedeAdministrarSolicitudes(auth)) {
+      if (!auth.userId) throw new ForbiddenException('No fue posible identificar al docente autenticado.');
+      const docenteAutenticado = await this.resolveDocenteId(auth.userId, {
+        periodo: periodoSolicitud,
+      });
+      if (docenteAutenticado !== resolvedDocenteId) {
+        throw new ForbiddenException('Solo puedes crear solicitudes para tus propios PTA.');
+      }
+    }
+
+    if (esEdicion && pta) {
+      if (pta.docenteId !== resolvedDocenteId) {
+        throw new ForbiddenException('El PTA seleccionado no pertenece al docente solicitante.');
+      }
+      if (!ptaAdmiteSolicitudEdicion(pta.estado)) {
         throw new BadRequestException(
-          `Solo se puede solicitar modificación de un PTA cerrado (Aprobado/Terminado). Estado actual: ${ptaObjetivo.estado}.`,
+          `El PTA se encuentra en estado "${pta.estado}" y todavía no admite una solicitud de edición.`,
         );
       }
-      if (!justificacion.trim()) {
-        throw new BadRequestException('La justificación de la modificación es obligatoria.');
-      }
-      const tieneResolucion = archivos.some((a: any) => {
-        const nombre = String(a?.nombre || a?.name || '').toLowerCase();
-        const tipo = String(a?.tipo || a?.type || '').toLowerCase();
-        return nombre.endsWith('.pdf') || tipo.includes('pdf');
+
+      const solicitudActiva = await this.solicitudRepo.findOne({
+        where: {
+          docenteId: resolvedDocenteId,
+          ptaId,
+          tipoSolicitud: SOLICITUD_EDICION_TIPO,
+          estado: In(ESTADOS_SOLICITUD_EDICION_ACTIVA),
+        } as any,
+        order: { createdAt: 'DESC' as any },
       });
-      if (!tieneResolucion) {
-        throw new BadRequestException('Debe adjuntar el PDF de la resolución que soporta la modificación.');
+      if (solicitudActiva) {
+        throw new BadRequestException('Ya existe una solicitud de edición activa para este PTA.');
       }
     }
 
-    // Email del docente: usar el que envía el cliente o, si no vino, resolverlo del
-    // registro Docente (correo institucional/alternativo) para que no salga "N/A".
-    let docenteEmail = coalesceString(body?.docenteEmail, body?.docente_email);
-    if (!docenteEmail && resolvedDocenteId) {
-      try {
-        const d = await this.docenteRepo.findOne({ where: { id: resolvedDocenteId } as any });
-        docenteEmail = coalesceString((d as any)?.correoInstitucional, (d as any)?.correoAlternativo);
-      } catch { /* best-effort */ }
-    }
+    // No depender exclusivamente del formulario para los datos de contacto. El
+    // id del docente permite resolver el usuario real en auth y también completa
+    // solicitudes creadas desde clientes antiguos que no enviaban el correo.
+    const contactoDocente = await this.ptaNotifications?.resolveUser?.(resolvedDocenteId);
+    const docenteNombre = coalesceString(
+      body?.docenteNombre,
+      body?.docente_nombre,
+      (pta?.datosEstructurados as any)?.docente_nombre,
+      contactoDocente?.nombre,
+    ) || '';
+    const docenteEmail = coalesceString(
+      contactoDocente?.email,
+      body?.docenteEmail,
+      body?.docente_email,
+    );
 
     const entity = this.solicitudRepo.create({
       docenteId: resolvedDocenteId,
-      docenteNombre: coalesceString(body?.docenteNombre, body?.docente_nombre) || '',
+      docenteNombre,
       docenteEmail: docenteEmail as any,
-      caso: coalesceString(body?.caso) || (tipoSolicitud === 'modificacion' ? 'modificacion_pta' : ''),
-      razon: coalesceString(body?.razon) || '',
+      tipoSolicitud,
+      ptaId: esEdicion ? ptaId : null,
+      componentes: esEdicion ? componentes : null,
+      estadoPtaAnterior: esEdicion ? pta?.estado || null : null,
+      caso: coalesceString(body?.caso) || (esEdicion ? 'edicion_pta' : ''),
+      razon: coalesceString(body?.razon) || (esEdicion ? 'Edición de componentes del PTA' : ''),
       justificacion,
       casoLibre: coalesceString(body?.casoLibre, body?.caso_libre) as any,
-      tipoSolicitud,
-      ptaId: (ptaId || null) as any,
       archivos: archivos.length > 0 ? archivos : null,
       estado: 'pendiente',
     });
 
-    return await this.solicitudRepo.save(entity);
+    let saved: SolicitudPtaEntity;
+    try {
+      saved = await this.solicitudRepo.save(entity);
+    } catch (error: any) {
+      const code = error?.code || error?.driverError?.code;
+      if (esEdicion && code === '23505') {
+        throw new BadRequestException('Ya existe una solicitud de edición activa para este PTA.');
+      }
+      throw error;
+    }
+    if (esEdicion && pta) {
+      await this.historialRepo.save(this.historialRepo.create({
+        ptaId: pta.id,
+        estadoAnterior: pta.estado,
+        estadoNuevo: pta.estado,
+        actorId: resolvedDocenteId,
+        actorRol: 'Docente',
+        tipoAccion: 'SOLICITUD_EDICION_CREADA',
+        comentarios: justificacion,
+        detallesTransicion: JSON.stringify({
+          solicitudId: saved.id,
+          componentes,
+          cantidadArchivos: archivos.length,
+          archivos: archivos.map(archivo => ({
+            url: archivo.url,
+            nombre: archivo.nombre,
+          })),
+        }),
+        snapshotPta: pta.datosEstructurados ?? null,
+        version: pta.version,
+      }));
+      await this.logEvento({
+        ptaId: pta.id,
+        tipo: 'actualizacion_componente',
+        docenteId: pta.docenteId,
+        docenteNombre: coalesceString((pta.datosEstructurados as any)?.docente_nombre, saved.docenteNombre),
+        estadoAnterior: pta.estado,
+        estadoNuevo: pta.estado,
+        actor: resolvedDocenteId,
+        actorRol: 'Docente',
+        sistemaOrigen: 'portal',
+        mensaje: `Solicitud de edición creada para: ${componentes.join(', ')}`,
+        metadata: { solicitudId: saved.id, componentes },
+      });
+    }
+    return saved;
   }
 
-  async getMisSolicitudesPTA(docenteId: string) {
-    const resolved = await this.resolveDocenteId(docenteId);
-    return await this.solicitudRepo.find({ where: { docenteId: resolved }, order: { createdAt: 'DESC' } });
+  async getMisSolicitudesPTA(docenteId: string, auth?: PtaAuthenticatedUser) {
+    const docenteIds = await this.resolveDocenteIdentityIds(docenteId);
+    if (auth && !this.puedeAdministrarSolicitudes(auth)) {
+      if (!auth.userId) throw new ForbiddenException('No fue posible identificar al docente autenticado.');
+      const docenteIdsAutenticados = await this.resolveDocenteIdentityIds(auth.userId);
+      if (!docenteIds.some(id => docenteIdsAutenticados.includes(id))) {
+        throw new ForbiddenException('No puedes consultar solicitudes de otro docente.');
+      }
+    }
+    return await this.solicitudRepo.find({
+      where: { docenteId: In(docenteIds) },
+      order: { createdAt: 'DESC' },
+    });
   }
 
-  async marcarSolicitudLeida(solicitudId: string) {
+  async marcarSolicitudLeida(solicitudId: string, auth?: PtaAuthenticatedUser) {
     const existing = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
     if (!existing) throw new NotFoundException('Solicitud no encontrada');
+    if (auth && !this.puedeAdministrarSolicitudes(auth)) {
+      if (!auth.userId) throw new ForbiddenException('No fue posible identificar al docente autenticado.');
+      const docenteIdsAutenticados = await this.resolveDocenteIdentityIds(auth.userId);
+      if (!docenteIdsAutenticados.includes(existing.docenteId)) {
+        throw new ForbiddenException('No puedes modificar notificaciones de otro docente.');
+      }
+    }
     existing.notificacionLeida = true;
     await this.solicitudRepo.save(existing);
     return { ok: true };
   }
 
-  async resolverSolicitudPTA(solicitudId: string, body: any) {
+  async resolverSolicitudPTA(solicitudId: string, body: any, auth?: PtaAuthenticatedUser) {
+    if (auth && !auth.isSuperUser && !auth.approvesAll && !auth.permissions.has('pta.backoffice.aprobar')) {
+      throw new ForbiddenException('No tienes permiso para resolver solicitudes del PTA.');
+    }
+
     const existing = await this.solicitudRepo.findOne({ where: { id: solicitudId } });
     if (!existing) throw new NotFoundException('Solicitud no encontrada');
+    if (existing.estado !== 'pendiente') {
+      throw new BadRequestException('Esta solicitud ya fue resuelta.');
+    }
 
     const decision = coalesceString(body?.decision);
-    const nuevoEstado = decision === 'aprobado' ? 'aprobado' : decision === 'denegado' ? 'denegado' : existing.estado;
-    existing.estado = nuevoEstado;
+    if (decision !== 'aprobado' && decision !== 'denegado') {
+      throw new BadRequestException('La decisión debe ser "aprobado" o "denegado".');
+    }
+    if (decision === 'denegado' && !coalesceString(body?.motivo)) {
+      throw new BadRequestException('Debes indicar el motivo de la denegación.');
+    }
+
+    const actorId = auth?.userId || coalesceString(body?.resueltoPorId, body?.resuelto_por_id) || 'Administrador';
+    const actorNombre = auth?.name || coalesceString(body?.resueltoPor) || 'Administrador';
+    const actorRol = (auth?.roles || []).join(', ') || 'Administrador PTA';
+
+    if (existing.tipoSolicitud === SOLICITUD_EDICION_TIPO) {
+      if (!existing.ptaId) throw new BadRequestException('La solicitud de edición no tiene un PTA asociado.');
+      const pta = await this.ptaRepo.findOne({ where: { id: existing.ptaId } });
+      if (!pta) throw new NotFoundException('El PTA asociado a la solicitud ya no existe.');
+
+      if (decision === 'denegado') {
+        // Misma estrategia de bloqueo que la aprobación: dos administradores no
+        // pueden aprobar y denegar simultáneamente dejando el PTA reabierto con
+        // una solicitud marcada como rechazada.
+        const deniedResult = await this.ptaRepo.manager.transaction(async manager => {
+          const txSolicitudRepo = manager.getRepository(SolicitudPtaEntity);
+          const txPtaRepo = manager.getRepository(PlanTrabajoAcademicoEntity);
+          const txHistorialRepo = manager.getRepository(HistorialEstadoPtaEntity);
+          const txSolicitud = await txSolicitudRepo.findOne({
+            where: { id: existing.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+          const txPta = await txPtaRepo.findOne({
+            where: { id: pta.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!txSolicitud || !txPta) {
+            throw new NotFoundException('No fue posible resolver la solicitud.');
+          }
+          if (txSolicitud.estado !== 'pendiente') {
+            throw new BadRequestException('Esta solicitud ya fue resuelta.');
+          }
+
+          txSolicitud.estado = 'denegado';
+          txSolicitud.resolucionMotivo = coalesceString(body?.motivo) as any;
+          txSolicitud.resolucionAccion = 'denegar_edicion_componentes';
+          txSolicitud.resueltoPor = actorNombre;
+          txSolicitud.resolucionFecha = new Date();
+          txSolicitud.notificacionLeida = false;
+          const denied = await txSolicitudRepo.save(txSolicitud);
+          await txHistorialRepo.save(txHistorialRepo.create({
+            ptaId: txPta.id,
+            estadoAnterior: txPta.estado,
+            estadoNuevo: txPta.estado,
+            actorId,
+            actorRol,
+            tipoAccion: 'SOLICITUD_EDICION_DENEGADA',
+            comentarios: denied.resolucionMotivo,
+            detallesTransicion: JSON.stringify({
+              solicitudId: denied.id,
+              decision: 'denegado',
+              componentes: denied.componentes || [],
+              resueltoPorId: actorId,
+              resueltoPor: actorNombre,
+              resueltoPorRol: actorRol,
+              motivoResolucion: denied.resolucionMotivo,
+            }),
+            snapshotPta: txPta.datosEstructurados ?? null,
+            version: txPta.version,
+          }));
+          return { solicitud: denied, pta: txPta };
+        });
+        await this.logEvento({
+          ptaId: deniedResult.pta.id,
+          tipo: 'actualizacion_componente',
+          docenteId: deniedResult.pta.docenteId,
+          docenteNombre: coalesceString(
+            (deniedResult.pta.datosEstructurados as any)?.docente_nombre,
+            deniedResult.solicitud.docenteNombre,
+          ),
+          estadoAnterior: deniedResult.pta.estado,
+          estadoNuevo: deniedResult.pta.estado,
+          actor: actorId,
+          actorRol,
+          sistemaOrigen: 'backoffice',
+          mensaje: 'Solicitud de edición de PTA denegada',
+          metadata: {
+            solicitudId: deniedResult.solicitud.id,
+            componentes: deniedResult.solicitud.componentes || [],
+            decision: 'denegado',
+            resueltoPor: actorNombre,
+            resueltoPorRol: actorRol,
+            motivoResolucion: deniedResult.solicitud.resolucionMotivo,
+          },
+        });
+        await this.ptaNotifications?.notifyProfesorSolicitudEdicionResuelta?.({
+          solicitudId: deniedResult.solicitud.id,
+          ptaId: deniedResult.pta.id,
+          docenteId: deniedResult.pta.docenteId,
+          decision: 'denegado',
+          componentes: deniedResult.solicitud.componentes || [],
+          resueltoPor: actorNombre,
+          resueltoPorRol: actorRol,
+          motivo: deniedResult.solicitud.resolucionMotivo,
+          periodo: deniedResult.pta.periodo,
+        });
+        return deniedResult.solicitud;
+      }
+
+      if (!ptaAdmiteSolicitudEdicion(pta.estado)) {
+        throw new BadRequestException(
+          `El PTA cambió al estado "${pta.estado}" y ya no puede reabrirse con esta solicitud.`,
+        );
+      }
+
+      const componentes = normalizeSolicitudComponentes(existing.componentes);
+      const approvalKeys = expandSolicitudComponentes(componentes);
+      if (approvalKeys.length === 0) {
+        throw new BadRequestException('La solicitud no contiene componentes válidos para editar.');
+      }
+      const comentario = coalesceString(body?.motivo)
+        || `Edición autorizada: ${existing.justificacion}`;
+
+      // Materializar la matriz completa antes de reabrirla. Para PTAs históricos
+      // aprobados antes de existir la aprobación granular, las filas no elegidas
+      // se consolidan como aprobadas y no se envían otra vez a revisión.
+      await this.getComponentesAprobacion(pta.id);
+
+      const result = await this.ptaRepo.manager.transaction(async manager => {
+        const txSolicitudRepo = manager.getRepository(SolicitudPtaEntity);
+        const txPtaRepo = manager.getRepository(PlanTrabajoAcademicoEntity);
+        const txApprovalRepo = manager.getRepository(PtaComponentApprovalEntity);
+        const txHistorialRepo = manager.getRepository(HistorialEstadoPtaEntity);
+
+        const txSolicitud = await txSolicitudRepo.findOne({
+          where: { id: existing.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        const txPta = await txPtaRepo.findOne({
+          where: { id: pta.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!txSolicitud || !txPta) throw new NotFoundException('No fue posible resolver la solicitud.');
+        if (txSolicitud.estado !== 'pendiente') {
+          throw new BadRequestException('Esta solicitud ya fue resuelta.');
+        }
+        if (!ptaAdmiteSolicitudEdicion(txPta.estado)) {
+          throw new BadRequestException(
+            `El PTA cambió al estado "${txPta.estado}" y ya no puede reabrirse con esta solicitud.`,
+          );
+        }
+        const estadoAnterior = txPta.estado;
+        const nuevoEstado = approvalKeys.some(
+          key => COMPONENT_REVISION_STATE[key] === 'REVISION_DOCENTE_N1',
+        )
+          ? 'REVISION_DOCENTE_N1'
+          : 'REVISION_DOCENTE_N2';
+
+        const currentApprovals = await txApprovalRepo.find({
+          where: { ptaId: txPta.id, componente: In([...COMPONENT_APPROVAL_KEYS]) },
+        });
+        // Los PTA históricos aprobados antes de existir la matriz granular
+        // pueden traer filas residuales pendientes; solo en esos estados se
+        // consolidan los componentes no elegidos. Si el PTA sigue en su
+        // aprobación inicial, cada pendiente debe conservarse exactamente para
+        // no conceder avales implícitos al autorizar una corrección.
+        if (ESTADOS_PTA_RESTAURABLES_EDICION.has(normalizeEstadoFilter(estadoAnterior))) {
+          for (const current of currentApprovals) {
+            if (approvalKeys.includes(current.componente) || current.estado === 'aprobado') continue;
+            current.estado = 'aprobado';
+            current.aprobadorId = current.aprobadorId || 'sistema';
+            current.aprobadorNombre = current.aprobadorNombre || 'Sistema';
+            current.aprobadorRol = current.aprobadorRol || 'Consolidación histórica';
+            current.comentarios = current.comentarios
+              || 'Aprobación conservada al iniciar una edición parcial.';
+            current.fechaAprobacion = current.fechaAprobacion || new Date();
+            await txApprovalRepo.save(current);
+          }
+        }
+
+        for (const componente of approvalKeys) {
+          let approval = await txApprovalRepo.findOne({ where: { ptaId: txPta.id, componente } });
+          if (!approval) {
+            approval = txApprovalRepo.create({ ptaId: txPta.id, componente, estado: 'pendiente' });
+          }
+          approval.estado = 'devuelto';
+          approval.aprobadorId = actorId;
+          approval.aprobadorNombre = actorNombre;
+          approval.aprobadorRol = actorRol;
+          approval.comentarios = comentario;
+          approval.respuestaDocente = null;
+          approval.fechaAprobacion = new Date();
+          approval.scope = 'solicitud_edicion';
+          approval.scopeId = txSolicitud.id;
+          await txApprovalRepo.save(approval);
+        }
+
+        txPta.estado = nuevoEstado;
+        txPta.version = (txPta.version || 1) + 1;
+        txPta.motivoDevolucion =
+          `Edición autorizada para ${componentes.join(', ')}. Solicitud ${txSolicitud.id}: ${txSolicitud.justificacion}`;
+        const savedPta = await txPtaRepo.save(txPta);
+
+        txSolicitud.estado = 'aprobado';
+        txSolicitud.estadoPtaAnterior = estadoAnterior;
+        txSolicitud.resolucionMotivo = comentario;
+        txSolicitud.resolucionAccion = 'habilitar_edicion_componentes';
+        txSolicitud.resueltoPor = actorNombre;
+        txSolicitud.resolucionFecha = new Date();
+        txSolicitud.notificacionLeida = false;
+        const savedSolicitud = await txSolicitudRepo.save(txSolicitud);
+
+        await txHistorialRepo.save(txHistorialRepo.create({
+          ptaId: savedPta.id,
+          estadoAnterior,
+          estadoNuevo: nuevoEstado,
+          actorId,
+          actorRol,
+          tipoAccion: 'SOLICITUD_EDICION_APROBADA',
+          comentarios: comentario,
+          detallesTransicion: JSON.stringify({
+            solicitudId: savedSolicitud.id,
+            componentes,
+            approvalKeys,
+            estadoPtaAnterior: estadoAnterior,
+            decision: 'aprobado',
+            resueltoPorId: actorId,
+            resueltoPor: actorNombre,
+            resueltoPorRol: actorRol,
+            motivoResolucion: comentario,
+          }),
+          snapshotPta: savedPta.datosEstructurados ?? null,
+          version: savedPta.version,
+        }));
+
+        return { solicitud: savedSolicitud, pta: savedPta, estadoAnterior, nuevoEstado };
+      });
+
+      await this.logEvento({
+        ptaId: result.pta.id,
+        tipo: 'cambio_estado',
+        docenteId: result.pta.docenteId,
+        docenteNombre: coalesceString((result.pta.datosEstructurados as any)?.docente_nombre, existing.docenteNombre),
+        estadoAnterior: result.estadoAnterior,
+        estadoNuevo: result.nuevoEstado,
+        actor: actorId,
+        actorRol,
+        sistemaOrigen: 'backoffice',
+        mensaje: `Edición autorizada para: ${componentes.join(', ')}`,
+        metadata: {
+          solicitudId: existing.id,
+          componentes,
+          approvalKeys,
+          decision: 'aprobado',
+          resueltoPor: actorNombre,
+          resueltoPorRol: actorRol,
+          motivoResolucion: result.solicitud.resolucionMotivo,
+        },
+      });
+      await this.ptaNotifications?.notifyProfesorSolicitudEdicionResuelta?.({
+        solicitudId: result.solicitud.id,
+        ptaId: result.pta.id,
+        docenteId: result.pta.docenteId,
+        decision: 'aprobado',
+        componentes,
+        resueltoPor: actorNombre,
+        resueltoPorRol: actorRol,
+        motivo: result.solicitud.resolucionMotivo,
+        periodo: result.pta.periodo,
+      });
+      return result.solicitud;
+    }
+
+    existing.estado = decision;
     existing.resolucionMotivo = coalesceString(body?.motivo) as any;
     existing.resolucionAccion = coalesceString(body?.accion) as any;
     existing.territorialNueva = coalesceString(body?.territorialNueva) as any;
     existing.horasPtaOriginal = body?.horasPtaOriginal ?? existing.horasPtaOriginal;
     existing.horasPtaNuevo = body?.horasPtaNuevo ?? existing.horasPtaNuevo;
-    existing.resueltoPor = coalesceString(body?.resueltoPor) as any;
-    // Se registra la fecha de resolución (antes quedaba null y rompía el orden por fecha).
+    existing.resueltoPor = actorNombre;
     existing.resolucionFecha = new Date();
     await this.solicitudRepo.save(existing);
+    return existing;
+  }
 
-    // HU-12: al APROBAR una solicitud de MODIFICACIÓN, se reabre el PTA (R01) para que
-    // el docente lo edite; al reenviarlo por el flujo normal quedará como R02, con R01
-    // preservado como snapshot inmutable. La solicitud se marca 'gestionada' para que no
-    // vuelva a disparar la reapertura ni habilite un PTA extra.
-    // `ptaReabierto` viaja en la respuesta para que el frontend confirme explícitamente
-    // qué pasó (antes el admin veía un toast genérico "Solicitud aprobada" sin ninguna
-    // indicación de que el PTA había sido reabierto para el docente).
-    let ptaReabierto: { id: string; estado: string; version: number } | undefined;
-    if (nuevoEstado === 'aprobado' && existing.tipoSolicitud === 'modificacion' && existing.ptaId) {
+  private async enrichSolicitudesPta(solicitudes: SolicitudPtaEntity[]): Promise<any[]> {
+    if (!solicitudes.length) return solicitudes;
+
+    const ptaIds = Array.from(new Set(
+      solicitudes.map(solicitud => solicitud.ptaId).filter((id): id is string => Boolean(id)),
+    ));
+    const ptaContextById = new Map<string, any>();
+
+    if (ptaIds.length > 0) {
       try {
-        const ptaActualizado = await this.reabrirPtaParaModificacion(existing);
-        existing.estado = 'gestionada';
-        await this.solicitudRepo.save(existing);
-        ptaReabierto = { id: ptaActualizado.id, estado: ptaActualizado.estado, version: ptaActualizado.version };
-
-        // Notificar al docente (in-app + correo): sin esto, la reapertura ocurre en
-        // silencio y nadie se entera de que ya puede editar y reenviar su PTA.
-        try {
-          await this.ptaNotifications.notifyProfesorPtaReabiertoParaModificacion({
-            ptaId: ptaActualizado.id,
-            docenteId: ptaActualizado.docenteId,
-            nuevaVersion: ptaActualizado.version,
-            resueltoPor: existing.resueltoPor,
-          });
-        } catch (notifErr: any) {
-          this.logger.warn(`No se pudo notificar al docente la reapertura del PTA ${ptaActualizado.id}: ${notifErr?.message || notifErr}`);
-        }
-      } catch (e: any) {
-        this.logger.error(`No se pudo reabrir el PTA ${existing.ptaId} para modificación: ${e?.message || e}`);
-        throw e;
+        const ptaEntities = await this.ptaRepo.find({ where: { id: In(ptaIds) } as any });
+        const ptaDtos = ptaEntities.map(entity => this.toPtaDto(entity));
+        await this.enrichPtaSummaries(ptaDtos);
+        for (const dto of ptaDtos) ptaContextById.set(dto.id, dto);
+      } catch (error: any) {
+        // La bandeja debe seguir disponible aun si un catálogo auxiliar falla.
+        this.logger.warn(`No fue posible enriquecer los PTA de las solicitudes: ${error?.message || error}`);
       }
     }
 
-    return { ...existing, ptaReabierto };
-  }
+    const docenteIds = Array.from(new Set(
+      solicitudes.map(solicitud => solicitud.docenteId).filter(Boolean),
+    ));
+    const contactos = await Promise.all(docenteIds.map(async docenteId => [
+      docenteId,
+      await this.ptaNotifications?.resolveUser?.(docenteId),
+    ] as const));
+    const contactoByDocenteId = new Map(contactos);
 
-  /**
-   * HU-12 — Reabre un PTA cerrado (R01) para modificación. Congela la versión vigente
-   * como snapshot inmutable en el historial y deja el PTA editable (Borrador) para que
-   * el docente lo corrija y lo reenvíe por el flujo de aprobación normal (→ R02).
-   * NO crea una fila nueva: versiona el mismo PTA.
-   */
-  private async reabrirPtaParaModificacion(solicitud: SolicitudPtaEntity) {
-    const pta = await this.ptaRepo.findOne({ where: { id: solicitud.ptaId as string } });
-    if (!pta) throw new NotFoundException('El PTA a modificar no existe.');
+    return solicitudes.map((solicitud) => {
+      const pta = solicitud.ptaId ? ptaContextById.get(solicitud.ptaId) : null;
+      const contacto = contactoByDocenteId.get(solicitud.docenteId);
+      const territorialesAsignaturas = [
+        ...(Array.isArray(pta?.territorialesAsignaturas) ? pta.territorialesAsignaturas : []),
+        ...(Array.isArray(pta?.asignaturas)
+          ? pta.asignaturas.map((asignatura: any) =>
+              coalesceString(
+                asignatura?.territorial_nombre,
+                asignatura?.territorialNombre,
+                asignatura?.territorial?.nombre,
+              ))
+          : []),
+      ]
+        .map(value => coalesceString(value))
+        .filter((value): value is string => Boolean(value));
+      const territoriales = Array.from(new Set(
+        territorialesAsignaturas.length > 0
+          ? territorialesAsignaturas
+          : [coalesceString(pta?.territorial, pta?.territorial_nombre)]
+              .filter((value): value is string => Boolean(value)),
+      ));
+      const territorial = territoriales.join(', ') || null;
+      const docenteNombre = coalesceString(
+        pta?.docente_nombre,
+        pta?.docenteNombre,
+        contacto?.nombre,
+        solicitud.docenteNombre,
+      ) || solicitud.docenteNombre;
+      const docenteEmail = coalesceString(contacto?.email, solicitud.docenteEmail);
+      const ptaResumen = pta
+        ? {
+            periodo: coalesceString(pta.periodo),
+            estado: coalesceString(pta.estado),
+            dedicacion: coalesceString(pta.dedicacion),
+            horasProgramadas: Math.max(0, Number(pta.total_horas_programadas) || 0),
+            horasRequeridas: Math.max(0, Number(pta.horas_a_programar) || 0),
+          }
+        : null;
 
-    const estadoAnterior = pta.estado;
-    const versionCongelada = pta.version || 1;
-
-    // 1) Congelar R01 como snapshot inmutable (queda visible en Trazabilidad y permite
-    //    ver/reimprimir la versión anterior aunque el PTA se siga editando).
-    await this.historialRepo.save(this.historialRepo.create({
-      ptaId: pta.id,
-      estadoAnterior,
-      estadoNuevo: estadoAnterior,
-      actorId: solicitud.resueltoPor || 'sistema',
-      actorRol: 'Administrador',
-      tipoAccion: 'VERSION_CONGELADA',
-      comentarios: `Versión R${String(versionCongelada).padStart(2, '0')} congelada para modificación aprobada. Motivo: ${solicitud.resolucionMotivo || solicitud.justificacion || 'N/D'}`,
-      snapshotPta: pta.datosEstructurados ?? null,
-      version: versionCongelada,
-    }));
-
-    // 2) Reabrir el PTA para edición del docente (conservando su contenido).
-    pta.estado = 'Borrador';
-    pta.version = versionCongelada + 1;
-    pta.observaciones = `PTA reabierto para modificación (nueva versión R${String(versionCongelada + 1).padStart(2, '0')}). ${solicitud.resolucionMotivo || solicitud.justificacion || ''}`.trim();
-    pta.motivoDevolucion = null;
-    // Si venía cerrado por cambio de periodo, se limpian los marcadores de cierre.
-    pta.estadoAntesCierrePeriodo = null;
-    pta.cerradoPorPeriodo = null;
-    const saved = await this.ptaRepo.save(pta);
-
-    // 3) Historial + evento del acto de reapertura.
-    await this.historialRepo.save(this.historialRepo.create({
-      ptaId: pta.id,
-      estadoAnterior,
-      estadoNuevo: 'Borrador',
-      actorId: solicitud.resueltoPor || 'sistema',
-      actorRol: 'Administrador',
-      tipoAccion: 'MODIFICACION_APROBADA',
-      comentarios: `Modificación aprobada; el docente puede editar y reenviar como R${String(versionCongelada + 1).padStart(2, '0')}.`,
-      snapshotPta: pta.datosEstructurados ?? null,
-      version: saved.version,
-    }));
-
-    await this.logEvento({
-      ptaId: pta.id,
-      tipo: 'cambio_estado',
-      docenteId: pta.docenteId,
-      docenteNombre: coalesceString((pta.datosEstructurados as any)?.docente_nombre),
-      estadoAnterior,
-      estadoNuevo: 'Borrador',
-      actor: solicitud.resueltoPor || 'sistema',
-      actorRol: 'Administrador',
-      sistemaOrigen: 'backoffice',
-      mensaje: `PTA reabierto para modificación (R${String(versionCongelada + 1).padStart(2, '0')}).`,
-      metadata: { solicitudId: solicitud.id, versionAnterior: versionCongelada },
+      return {
+        ...solicitud,
+        docenteNombre,
+        docenteEmail,
+        territorial,
+        territoriales,
+        ptaResumen,
+        docente: {
+          nombreCompleto: docenteNombre,
+          correoInstitucional: docenteEmail,
+          territorial: territorial ? { nombre: territorial } : null,
+        },
+      };
     });
-
-    return saved;
   }
 
-  async getSolicitudesPTA(filters?: { estado?: string }) {
+  async getSolicitudesPTA(filters?: { estado?: string }, auth?: PtaAuthenticatedUser) {
+    if (auth && !this.puedeAdministrarSolicitudes(auth)) {
+      throw new ForbiddenException('No tienes permiso para consultar la bandeja global de solicitudes PTA.');
+    }
     const qb = this.solicitudRepo.createQueryBuilder('s');
     const estado = coalesceString(filters?.estado)?.toLowerCase();
     if (estado) {
@@ -3809,39 +5072,22 @@ export class PtaService {
     qb.orderBy('s.createdAt', 'DESC');
     qb.take(500);
     const solicitudes = await qb.getMany();
-
-    // Enriquecer con territorial y correo del docente (para no mostrar "N/A" en el
-    // panel admin). Se resuelve en una sola consulta batch por docenteId.
-    const docenteIds = Array.from(new Set(solicitudes.map((s) => s.docenteId).filter(Boolean)));
-    if (docenteIds.length > 0) {
-      try {
-        const rows: Array<{ id: string; email: string | null; territorial: string | null }> =
-          await this.ptaRepo.manager.query(
-            `SELECT d.id::text AS id,
-                    COALESCE(d."correoInstitucional", d."correoAlternativo") AS email,
-                    t.nombre AS territorial
-               FROM academic_work_plan."Docente" d
-               LEFT JOIN academic_work_plan."Territorial" t ON t.id = d."territorialId"
-              WHERE d.id = ANY($1::uuid[])`,
-            [docenteIds],
-          );
-        const byId = new Map(rows.map((r) => [String(r.id), r]));
-        return solicitudes.map((s) => {
-          const info = byId.get(String(s.docenteId));
-          return {
-            ...s,
-            docenteEmail: s.docenteEmail || info?.email || null,
-            territorialNombre: info?.territorial || null,
-          };
-        });
-      } catch (e: any) {
-        this.logger.warn(`No se pudo enriquecer solicitudes con datos del docente: ${e?.message || e}`);
-      }
-    }
-    return solicitudes;
+    return this.enrichSolicitudesPta(solicitudes);
   }
 
   async deletePTA(ptaId: string) {
+    const solicitudEdicionActiva = await this.solicitudRepo.findOne({
+      where: {
+        ptaId,
+        tipoSolicitud: SOLICITUD_EDICION_TIPO,
+        estado: In(ESTADOS_SOLICITUD_EDICION_ACTIVA),
+      } as any,
+    });
+    if (solicitudEdicionActiva) {
+      throw new BadRequestException(
+        'No se puede eliminar un PTA mientras tenga una solicitud de edición activa.',
+      );
+    }
     await Promise.all([
       this.evidenciaRepo.delete({ ptaId }),
       this.historialRepo.delete({ ptaId }),
@@ -3860,13 +5106,23 @@ export class PtaService {
 
     const rows = await this.ptaRepo.manager.query(
       `
-      UPDATE academic_work_plan."PlanTrabajoAcademico"
+      UPDATE academic_work_plan."PlanTrabajoAcademico" AS p
       SET estado = 'Terminado',
           "estadoAntesCierrePeriodo" = estado,
           "cerradoPorPeriodo" = NULLIF($1, '')
-      WHERE estado <> ALL($2::text[])
-        AND ($1 = '' OR periodo IS DISTINCT FROM $1)
-      RETURNING id
+      WHERE p.estado <> ALL($2::text[])
+        AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
+        -- Un PTA terminado que fue reabierto mediante solicitud debe poder
+        -- completar su edición aunque pertenezca a un periodo anterior. Al
+        -- finalizar la reaprobación recuperará por sí mismo "Terminado".
+        AND NOT EXISTS (
+          SELECT 1
+          FROM academic_work_plan."SolicitudPTA" s
+          WHERE s."ptaId" = p.id
+            AND s."tipoSolicitud" = 'edicion_componentes'
+            AND s.estado IN ('aprobado', 'en_aprobacion')
+        )
+      RETURNING p.id
       `,
       [codigo, terminales],
     );
@@ -3992,6 +5248,18 @@ export class PtaService {
     qb.take(500);
     const ptas = await qb.getMany();
     if (ptas.length === 0) return [];
+
+    await Promise.all(
+      ptas
+        .filter(pta => isPtaHabilitadoParaSeguimientoPorEstado(pta.estado))
+        .filter(pta => Boolean(
+          coalesceString((pta.datosEstructurados as any)?.investigacion_proyecto?.resolucion_archivo_url),
+        ))
+        .map(pta => this.syncResolucionProyectoInvestigacion(
+          pta.id,
+          (pta.datosEstructurados || {}) as SavePtaInput,
+        )),
+    );
 
     const ids = ptas.map((p) => p.id);
     const evidencias = await this.evidenciaRepo
@@ -5466,7 +6734,7 @@ export class PtaService {
     const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
     const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
-    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Complementarias unificado = sección docencia + sección académico-administrativa.
     const hComp = compDocencia.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0)
@@ -5511,8 +6779,15 @@ export class PtaService {
 
     for (const c of todosComponentes) {
       const tieneHoras = horasPorComponente[c] > 0;
-      const autoAprobar = hayActividades && !tieneHoras;
       const existing = byComponent.get(c);
+      // La ausencia de horas permite la aprobación automática en el flujo
+      // ordinario, pero nunca cuando el componente fue reabierto expresamente
+      // por una solicitud de edición. En ese caso debe existir una nueva
+      // decisión humana aunque el docente lo reenvíe sin modificar datos.
+      const requiereReaprobacionManual =
+        existing?.scope === 'solicitud_edicion'
+        && ['pendiente', 'devuelto'].includes(String(existing.estado || '').toLowerCase());
+      const autoAprobar = hayActividades && !tieneHoras && !requiereReaprobacionManual;
 
       if (!existing) {
         const item = this.ptaComponentApprovalRepo.create({
@@ -5557,6 +6832,9 @@ export class PtaService {
     if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
     }
+    if (!['aprobado', 'devuelto'].includes(estado)) {
+      throw new BadRequestException('El estado del componente debe ser "aprobado" o "devuelto".');
+    }
 
     // ── Autorización server-side ──────────────────────────────────────────────
     // La autorización se resuelve desde los permisos reales del usuario (auth.ptaAuth,
@@ -5592,6 +6870,59 @@ export class PtaService {
       });
     }
 
+    // El alcance especial se asigna únicamente al aprobar una solicitud de
+    // edición. Un cliente no puede reemplazarlo por "territorial" ni inventarlo.
+    // Además, los componentes no se pueden revisar antes de que el docente haya
+    // enviado formalmente sus cambios (solicitud en estado en_aprobacion).
+    const scopeVigente = coalesceString(approval.scope);
+    const scopeIdVigente = coalesceString(approval.scopeId);
+    if (scopeVigente === 'solicitud_edicion') {
+      if (!scopeIdVigente) {
+        throw new BadRequestException('La reaprobación no tiene una solicitud de edición asociada.');
+      }
+      const solicitudScope = await this.solicitudRepo.findOne({
+        where: {
+          id: scopeIdVigente,
+          ptaId,
+          tipoSolicitud: SOLICITUD_EDICION_TIPO,
+        } as any,
+      });
+      if (!solicitudScope) {
+        throw new BadRequestException('No se encontró la solicitud que habilitó esta edición.');
+      }
+      if (solicitudScope.estado !== 'en_aprobacion') {
+        if (solicitudScope.estado === 'aprobado') {
+          throw new BadRequestException(
+            'El docente todavía no ha enviado los cambios de este componente a reaprobación.',
+          );
+        }
+        // El scope ya cumplió su ciclo. Una devolución posterior pertenece al
+        // flujo ordinario y puede adoptar el alcance enviado por el backoffice.
+        approval.scope = coalesceString(body?.scope);
+        approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);
+      } else {
+        const componentesScope = expandSolicitudComponentes(
+          normalizeSolicitudComponentes(solicitudScope.componentes),
+        );
+        if (!componentesScope.includes(componente)) {
+          throw new ForbiddenException(
+            'Este componente no forma parte de la solicitud de edición autorizada.',
+          );
+        }
+        approval.scope = 'solicitud_edicion';
+        approval.scopeId = solicitudScope.id;
+      }
+    } else {
+      const requestedScope = coalesceString(body?.scope);
+      if (requestedScope === 'solicitud_edicion') {
+        throw new ForbiddenException(
+          'El alcance de edición parcial solo puede ser asignado por una solicitud aprobada.',
+        );
+      }
+      approval.scope = requestedScope;
+      approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);
+    }
+
     approval.estado = estado;
     // La identidad del aprobador proviene del token (integridad de auditoría), con
     // fallback al body para compatibilidad.
@@ -5599,8 +6930,6 @@ export class PtaService {
     approval.aprobadorNombre = auth.name || coalesceString(body?.aprobadorNombre, body?.aprobador_nombre);
     approval.aprobadorRol = coalesceString(body?.aprobadorRol, body?.aprobador_rol) || (auth.roles || []).join(', ') || null;
     approval.comentarios = coalesceString(body?.comentarios, body?.observaciones);
-    approval.scope = coalesceString(body?.scope);
-    approval.scopeId = coalesceString(body?.scopeId, body?.scope_id);
     approval.fechaAprobacion = new Date();
     // Nueva decisión del revisor: la respuesta del docente al ciclo anterior queda
     // obsoleta.
@@ -5615,11 +6944,23 @@ export class PtaService {
     let nuevoEstadoPta = estadoActualPta;
     const hayDevueltos = todosComponentes.some(c => c.estado === 'devuelto');
     const todosAprobados = todosComponentes.every(c => c.estado === 'aprobado');
+    const solicitudEdicionEnAprobacion = todosAprobados
+      ? await this.solicitudRepo.findOne({
+          where: {
+            ptaId,
+            tipoSolicitud: SOLICITUD_EDICION_TIPO,
+            estado: 'en_aprobacion',
+          } as any,
+          order: { updatedAt: 'DESC' as any },
+        })
+      : null;
 
     if (hayDevueltos) {
       nuevoEstadoPta = COMPONENT_REVISION_STATE[componente] || 'Devuelto';
     } else if (todosAprobados) {
-      nuevoEstadoPta = isPendingRoleApprovalState(estadoActualPta) ? 'Aprobado' : estadoActualPta;
+      nuevoEstadoPta = solicitudEdicionEnAprobacion
+        ? restoreEstadoDespuesEdicion(solicitudEdicionEnAprobacion.estadoPtaAnterior)
+        : isPendingRoleApprovalState(estadoActualPta) ? 'Aprobado' : estadoActualPta;
     }
 
     if (existingPta.estado !== nuevoEstadoPta) {
@@ -5645,8 +6986,16 @@ export class PtaService {
           estadoNuevo: nuevoEstadoPta,
           actorId: approval.aprobadorId || 'sistema',
           actorRol: approval.aprobadorRol || 'Aprobador',
-          tipoAccion: estado === 'aprobado' ? 'APROBACION_COMPONENTE' : 'DEVOLUCION_COMPONENTE',
+          tipoAccion: solicitudEdicionEnAprobacion && todosAprobados
+            ? 'EDICION_COMPONENTES_APROBADA'
+            : estado === 'aprobado' ? 'APROBACION_COMPONENTE' : 'DEVOLUCION_COMPONENTE',
           comentarios: approval.comentarios,
+          detallesTransicion: JSON.stringify({
+            componente,
+            estado,
+            solicitudId: solicitudEdicionEnAprobacion?.id || null,
+            componentesSolicitud: solicitudEdicionEnAprobacion?.componentes || [],
+          }),
           snapshotPta: existingPta.datosEstructurados ?? null,
           version: existingPta.version,
         }),
@@ -5665,9 +7014,36 @@ export class PtaService {
         actorRol: approval.aprobadorRol,
         sistemaOrigen: 'backoffice',
         mensaje: `Componente ${componente} ${estado}. Estado general: ${nuevoEstadoPta}`,
-        metadata: { componente, estado, comentarios: approval.comentarios },
+        metadata: {
+          componente,
+          estado,
+          comentarios: approval.comentarios,
+          solicitudId: solicitudEdicionEnAprobacion?.id,
+        },
       });
     } else {
+      // También se registra en HistorialEstadoPTA aunque el estado global no cambie:
+      // la aprobación es parcial por componente y debe aparecer en Trazabilidad.
+      await this.historialRepo.save(this.historialRepo.create({
+        ptaId,
+        estadoAnterior: existingPta.estado,
+        estadoNuevo: existingPta.estado,
+        actorId: approval.aprobadorId || 'sistema',
+        actorRol: approval.aprobadorRol || 'Aprobador',
+        tipoAccion: solicitudEdicionEnAprobacion && todosAprobados
+          ? 'EDICION_COMPONENTES_APROBADA'
+          : estado === 'aprobado' ? 'APROBACION_COMPONENTE' : 'DEVOLUCION_COMPONENTE',
+        comentarios: approval.comentarios,
+        detallesTransicion: JSON.stringify({
+          componente,
+          estado,
+          solicitudId: solicitudEdicionEnAprobacion?.id || null,
+          componentesSolicitud: solicitudEdicionEnAprobacion?.componentes || [],
+        }),
+        snapshotPta: existingPta.datosEstructurados ?? null,
+        version: existingPta.version,
+      }));
+
       // Registrar evento de actualización de componente sin cambiar estado global
       const ds = existingPta.datosEstructurados as any;
       await this.logEvento({
@@ -5683,6 +7059,13 @@ export class PtaService {
         mensaje: `Componente ${componente} actualizado a ${estado}`,
         metadata: { componente, estado, comentarios: approval.comentarios },
       });
+    }
+
+    if (solicitudEdicionEnAprobacion && todosAprobados) {
+      solicitudEdicionEnAprobacion.estado = 'gestionada';
+      solicitudEdicionEnAprobacion.notificacionLeida = false;
+      solicitudEdicionEnAprobacion.resolucionAccion = 'edicion_componentes_aprobada';
+      await this.solicitudRepo.save(solicitudEdicionEnAprobacion);
     }
 
     // ── Notificación de vuelta al profesor cuando el componente fue APROBADO.

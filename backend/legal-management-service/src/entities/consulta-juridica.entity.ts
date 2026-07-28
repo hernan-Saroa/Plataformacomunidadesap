@@ -92,6 +92,11 @@ export class ConsultaJuridica {
     @Column({ type: 'text', nullable: true })
     observaciones: string;
 
+    // Trazabilidad inversa: comunicación (correo jurídico) que dio origen a esta
+    // consulta cuando se crea desde el Centro de Comunicaciones → Clasificación IA.
+    @Column({ name: 'origen_comunicacion_id', type: 'uuid', nullable: true })
+    origenComunicacionId: string;
+
     // Campos para sistema de archivo
     @Column({ name: 'estado_archivo', type: 'varchar', default: 'ACTIVO' })
     estadoArchivo: string; // ACTIVO, ARCHIVADO, ELIMINADO

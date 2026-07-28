@@ -14,6 +14,23 @@ export class SolicitudPtaEntity {
   @Column({ name: 'docenteEmail', type: 'text', nullable: true })
   docenteEmail: string | null;
 
+  /** "creacion" conserva el flujo histórico; "edicion_componentes" actúa sobre
+   * el mismo PTA y nunca habilita la creación de un plan adicional. */
+  @Column({ name: 'tipoSolicitud', type: 'text', default: 'creacion' })
+  tipoSolicitud: string;
+
+  @Column({ name: 'ptaId', type: 'uuid', nullable: true })
+  ptaId: string | null;
+
+  /** Componentes funcionales seleccionados por el docente:
+   * docencia, investigacion, extension y/o complementarias. */
+  @Column({ name: 'componentes', type: 'jsonb', nullable: true })
+  componentes: string[] | null;
+
+  /** Estado consolidado que tenía el PTA antes de autorizar su reapertura. */
+  @Column({ name: 'estadoPtaAnterior', type: 'text', nullable: true })
+  estadoPtaAnterior: string | null;
+
   @Column({ name: 'caso', type: 'text' })
   caso: string;
 
@@ -25,14 +42,6 @@ export class SolicitudPtaEntity {
 
   @Column({ name: 'casoLibre', type: 'text', nullable: true })
   casoLibre: string | null;
-
-  // HU-12: solicitud de modificación (R01→R02). `tipoSolicitud='modificacion'`
-  // referencia el PTA a reabrir en `ptaId`; 'creacion' es el flujo legacy (fila nueva).
-  @Column({ name: 'tipoSolicitud', type: 'text', default: 'creacion' })
-  tipoSolicitud: string;
-
-  @Column({ name: 'ptaId', type: 'text', nullable: true })
-  ptaId: string | null;
 
   @Column({ name: 'archivos', type: 'jsonb', nullable: true })
   archivos: any | null;

@@ -280,8 +280,15 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [detalleModalOpen, setDetalleModalOpen] = useState(false);
   const [correoParaDetalle, setCorreoParaDetalle] = useState<ComunicacionUnificada | null>(null);
 
-  // Estado para reply pre-populate
-  const [replyData, setReplyData] = useState<{ to: string; subject: string; body: string } | null>(null);
+  // Estado para reply/forward pre-populate
+  const [replyData, setReplyData] = useState<{
+    to: string;
+    subject: string;
+    body: string;
+    isForward?: boolean;
+    isReply?: boolean;
+    originalCorreoId?: string;
+  } | null>(null);
 
   // Filtro adicional: Medios de Control (filtra correos cuyo origen es un órgano de control)
   const [filtroMedioControl, setFiltroMedioControl] = useState<string>('todos');
@@ -946,13 +953,17 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     ${com.descripcion}
 </blockquote>`;
 
+    // El reenvío siempre debe ganar sobre un borrador que hubiera quedado en edición,
+    // de lo contrario el modal ignora estos datos y abre el formulario vacío en modo
+    // "nuevo correo" (ver initialData más abajo).
+    setBorradorEnEdicion(null);
     setReplyData({
       to: '',
       subject: forwardSubject,
       body: originalBody,
       isForward: true,
       originalCorreoId: com.id
-    } as any);
+    });
     setModalNuevaComunicacionOpen(true);
   };
 
@@ -1346,12 +1357,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             ? mapBorradorToInitialData(borradorEnEdicion)
             : replyData
               ? {
-                  para: (replyData as any).to || '',
-                  asunto: (replyData as any).subject || '',
-                  cuerpo: (replyData as any).body || '',
-                  isForward: (replyData as any).isForward,
-                  isReply: (replyData as any).isReply,
-                  originalCorreoId: (replyData as any).originalCorreoId,
+                  para: replyData.to || '',
+                  asunto: replyData.subject || '',
+                  cuerpo: replyData.body || '',
+                  isForward: replyData.isForward,
+                  isReply: replyData.isReply,
+                  originalCorreoId: replyData.originalCorreoId,
                 }
               : undefined
         }
@@ -1415,6 +1426,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
           onLink={linkProcess}
+          onDerivado={() => { setModalExpedienteOpen(false); loadCorreosFromAPI(); }}
         />
       )}
 
@@ -1443,13 +1455,15 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             // Reutilizamos el modal de nueva comunicación para que el usuario escriba a quién se lo reenvía
             setDetalleModalOpen(false);
             setCorreoParaDetalle(null);
+            // El reenvío siempre debe ganar sobre un borrador que hubiera quedado en edición.
+            setBorradorEnEdicion(null);
             setReplyData({
               to: '',
               subject: asunto,
               body: cuerpoOriginal,
-              isForward: true, // we might need this param to know if we should call forward or send, or we just let ModalNuevaComunicacion call forward if we pass the original correoId. But wait, ModalNuevaComunicacion only handles 'sendEmail'.
+              isForward: true,
               originalCorreoId: correoId
-            } as any);
+            });
             setModalNuevaComunicacionOpen(true);
           }}
           onVincular={async (correoId, expedienteId, targetModule) => {
@@ -1649,9 +1663,9 @@ function VistaInbox({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Panel Izquierdo: Lista de Comunicaciones */}
       <div className="lg:col-span-2">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden flex flex-col h-[calc(100vh-200px)]">
           {/* Header de lista con selección masiva */}
-          <div className="p-3 border-b bg-gray-50 flex items-center gap-3">
+          <div className="p-3 border-b bg-gray-50 flex items-center gap-3 flex-shrink-0">
             <Checkbox
               checked={seleccionadas.size === comunicaciones.length && comunicaciones.length > 0}
               onCheckedChange={onSeleccionarTodas}
@@ -1662,8 +1676,8 @@ function VistaInbox({
             </div>
           </div>
 
-          {/* Lista de comunicaciones */}
-          <div className="divide-y">
+          {/* Lista de comunicaciones — scroll independiente del panel de detalle */}
+          <div className="divide-y overflow-y-auto overscroll-contain flex-1 min-h-0">
             {comunicaciones.map((com) => (
               <ItemComunicacion
                 key={com.id}
@@ -1690,7 +1704,7 @@ function VistaInbox({
       {/* Panel Derecho: Vista Previa */}
       <div className="lg:col-span-1">
         <Card className="sticky top-4 h-[calc(100vh-200px)]">
-          <div className="overflow-y-auto h-full">
+          <div className="overflow-y-auto overscroll-contain h-full">
             {comunicacionSeleccionada ? (
               <VistaPreviaComunicacion
                 comunicacion={comunicacionSeleccionada}

@@ -52,6 +52,8 @@ import { CorreoJuridico } from './entities/correo-juridico.entity';
 import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
 import { CorreoJuridicoHistorial } from './entities/correo-juridico-historial.entity';
 import { CorreoTrackingToken } from './entities/correo-tracking-token.entity';
+import { ComentarioCorreo } from './entities/comentario-correo.entity';
+import { BorradorCorreo } from './entities/borrador-correo.entity';
 
 // Excepciones Procesales
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
@@ -104,7 +106,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Documentos de Consultas Jurídicas
         DocumentoConsulta, ComentarioConsulta, ConsultaJuridicaHistorial,
         // Correos Jurídicos
-        CorreoJuridico, AdjuntoCorreo, CorreoJuridicoHistorial, CorreoTrackingToken,
+        CorreoJuridico, AdjuntoCorreo, CorreoJuridicoHistorial, CorreoTrackingToken, ComentarioCorreo, BorradorCorreo,
         // Excepciones Procesales
         ExcepcionProcesal,
         // Procesos Coactivos

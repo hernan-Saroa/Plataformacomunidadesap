@@ -249,7 +249,7 @@ export class ProcessService {
       let timePercentage = 0;
       if (p.fechaVencimientoEtapa && p.createdAt) {
         const now = new Date();
-        const created = new Date(p.createdAt);
+        const created = new Date(p.fechaInicioEtapa || p.createdAt);
         const deadline = new Date(p.fechaVencimientoEtapa);
         const totalTime = deadline.getTime() - created.getTime();
         const elapsedTime = now.getTime() - created.getTime();
@@ -695,7 +695,7 @@ export class ProcessService {
         let timePercentage = 0;
         if (p.fechaVencimientoEtapa && p.createdAt) {
           const now = new Date();
-          const created = new Date(p.createdAt);
+          const created = new Date(p.fechaInicioEtapa || p.createdAt);
           const deadline = new Date(p.fechaVencimientoEtapa);
           const totalTime = deadline.getTime() - created.getTime();
           const elapsedTime = now.getTime() - created.getTime();
@@ -822,7 +822,7 @@ export class ProcessService {
     let timePercentage = 0;
     if (proceso.fechaVencimientoEtapa && proceso.createdAt) {
       const now = new Date();
-      const created = new Date(proceso.createdAt);
+      const created = new Date(proceso.fechaInicioEtapa || proceso.createdAt);
       const deadline = new Date(proceso.fechaVencimientoEtapa);
       const totalTime = deadline.getTime() - created.getTime();
       const elapsedTime = now.getTime() - created.getTime();
@@ -916,7 +916,7 @@ export class ProcessService {
       let timePercentage = 0;
       if (p.fechaVencimientoEtapa && p.createdAt) {
         const now = new Date();
-        const created = new Date(p.createdAt);
+        const created = new Date(p.fechaInicioEtapa || p.createdAt);
         const deadline = new Date(p.fechaVencimientoEtapa);
         const totalTime = deadline.getTime() - created.getTime();
         const elapsedTime = now.getTime() - created.getTime();
@@ -1031,6 +1031,7 @@ export class ProcessService {
         proceso.etapaActual = newStageConfig.etapa; // Set the stage name
         proceso.kanbanStage = newStageConfig.id; // Set the stage ID
         proceso.fechaVencimientoEtapa = fechaVencimiento;
+        proceso.fechaInicioEtapa = new Date();
       }
 
       return await this.processRepository.save(proceso);
@@ -1048,6 +1049,7 @@ export class ProcessService {
     nuevaEtapa: ProcessStage,
     fechaAprobacion: Date,
     aprobadoPorId: string,
+    aprobadoPorNombre?: string,
   ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
     const proceso = await this.findById(id, false);
     const etapaAnterior = proceso.etapaActual;
@@ -1080,7 +1082,7 @@ export class ProcessService {
     const procesoGuardado = await this.processRepository.save(proceso);
 
     const profesionalAprobador = await this.professionalRepository.findOne({ where: { idUser: aprobadoPorId } });
-    const nombreAprobador = profesionalAprobador?.nombreCompleto || aprobadoPorId;
+    const nombreAprobador = profesionalAprobador?.nombreCompleto || aprobadoPorNombre || aprobadoPorId;
 
     await this.actuacionesRepository.save({
       processId: id,
@@ -1585,7 +1587,7 @@ export class ProcessService {
     let timePercentage = 0;
     if (proceso.fechaVencimientoEtapa && proceso.createdAt) {
       const now = new Date();
-      const created = new Date(proceso.createdAt);
+      const created = new Date(proceso.fechaInicioEtapa || proceso.createdAt);
       const deadline = new Date(proceso.fechaVencimientoEtapa);
       const totalTime = deadline.getTime() - created.getTime();
       const elapsedTime = now.getTime() - created.getTime();

@@ -8,7 +8,7 @@ import '../styles/pta-world-class.css';
 import { NotificationsProvider } from './esap/NotificationsContext';
 import { AuthProvider } from '../contexts/AuthContext';
 import { PortalDocentePTA } from './portal/pta/PortalDocentePTA';
-import { Toaster } from '@esap-mfe/shared-ui/sonner';
+import { DocentePtaAlertViewport } from './portal/pta/DocentePtaAlert';
 
 export type PTAPortalModuleProps = {
   onBack: () => void;
@@ -53,16 +53,7 @@ export function PTAPortalModule({
     >
       <NotificationsProvider>
         <>
-          <Toaster 
-            position="bottom-right" 
-            richColors 
-            closeButton 
-            toastOptions={{
-              classNames: {
-                closeButton: 'left-2 right-auto hover:bg-gray-200 bg-white border-gray-200'
-              }
-            }}
-          />
+          <DocentePtaAlertViewport />
           <div className="min-h-screen">
             {!embedded && (
               <div className="sticky top-0 z-10 bg-white border-b">
@@ -74,7 +65,12 @@ export function PTAPortalModule({
             )}
 
             <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
-              <PortalDocentePTA onBack={onBack} userPersonId={userPersonId} userName={userName} />
+              <PortalDocentePTA
+                onBack={onBack}
+                userPersonId={userPersonId}
+                userName={userName}
+                userEmail={userEmail}
+              />
             </div>
           </div>
         </>

@@ -623,6 +623,35 @@ export class CertificatesService {
     return result;
   }
 
+  /**
+   * Sincroniza una persona desde la vista Oracle FNC (la misma fuente dinamica
+   * y en linea que consume la solicitud de certificado laboral) hacia la base
+   * local de solicitudes, para que la gestion de prima tecnica encuentre
+   * usuarios que aun no existen localmente pero si en la vista online.
+   *
+   * Es best-effort a proposito: si la integracion Oracle esta deshabilitada o
+   * la consulta falla, se registra la advertencia y se conserva intacto el
+   * comportamiento con datos locales, evitando bloquear la gestion de prima.
+   */
+  private async syncTechnicalBonusPersonFromOracle(
+    document: string,
+  ): Promise<void> {
+    const documento = String(document || '').trim();
+    if (!documento) {
+      return;
+    }
+
+    try {
+      await this.syncRequestsFromOracle(documento);
+    } catch (error: any) {
+      this.logger.warn(
+        `No se pudo sincronizar la persona ${documento} desde Oracle FNC para prima tecnica: ${
+          error?.message || error
+        }`,
+      );
+    }
+  }
+
   private normalizeTechnicalBonusCategoryCode(
     value?: string | null,
   ): TechnicalBonusCategory {
@@ -2217,6 +2246,15 @@ export class CertificatesService {
     const searchTerm = `%${normalizedQuery.toLowerCase()}%`;
     const idNeedle = normalizedQuery.replace(/\D+/g, '');
 
+    // Cuando el operador busca por numero de documento, primero sincroniza esa
+    // persona desde la vista Oracle FNC (fuente dinamica) para que aparezca en
+    // los resultados aunque todavia no exista en la base local de solicitudes.
+    // La coincidencia en Oracle es por documento completo, por eso se exige un
+    // minimo de digitos y asi se evitan consultas innecesarias con fragmentos.
+    if (idNeedle.length >= 5) {
+      await this.syncTechnicalBonusPersonFromOracle(idNeedle);
+    }
+
     const qb = this.requestRepo.createQueryBuilder('request');
     qb.orderBy(
       'COALESCE(request.request_date, request.updated_at, request.created_at)',
@@ -2302,6 +2340,11 @@ export class CertificatesService {
     }
 
     const percentage = Number(percentageRaw.toFixed(2));
+
+    // Consulta la fuente dinamica (Oracle FNC) igual que la solicitud de
+    // certificado laboral: si la persona solo existe en la vista en linea, la
+    // trae a la base local antes de resolver la asignacion de prima tecnica.
+    await this.syncTechnicalBonusPersonFromOracle(idNumber);
 
     let request: CertificateRequest | null = null;
     if (payload.requestId) {

@@ -12,20 +12,21 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Calendar, Clock, FileText, Upload, Download, Trash2,
+  Calendar, Clock, FileText, FileCheck2, Upload, Download, Trash2,
   BarChart3, TrendingUp, Target, Award, Shield, Settings,
   Bell, Eye, Palette, Globe, ChevronRight, CheckCircle,
   AlertTriangle, Paperclip, FileImage, File, BookOpen,
   Star, Users, Zap, Info, Lock, Check, X, FlaskConical,
   Briefcase, Send, RefreshCw, CheckCircle2, XCircle,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { agruparEvidenciasPorJustificacion, ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import {
   registrarEvidenciaPTA, getEvidenciasPTA, eliminarEvidenciaPTA, uploadEvidenciaFile,
 } from '../../../services/api/ptaApi';
+import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 // ═══ V11: Calendario Académico Personal ══════════════════════════════
 
@@ -285,6 +286,18 @@ const COMPONENTES_PTA = [
   { key: 'complementarias', label: 'Complementarias', color: PTA_COLORS.COMPLEMENTARIAS, icon: Briefcase },
 ] as const;
 
+const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION = 'Resolución proyecto de investigación';
+
+function esResolucionProyectoInvestigacion(evidencia: any): boolean {
+  return normalizeEvidenceStatus(evidencia?.categoria)
+    .startsWith(normalizeEvidenceStatus(CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION));
+}
+
+function esResolucionAnticipadaEnCreacion(evidencia: any): boolean {
+  return esResolucionProyectoInvestigacion(evidencia)
+    && normalizeEvidenceStatus(evidencia?.categoria).includes('creacion');
+}
+
 // Secciones de extensión (a nivel de permiso de aprobación pta.approve.extension.*).
 // Solo aplica cuando el componente de la evidencia es 'extension'. El valor se guarda
 // en la evidencia como `seccion_extension` y determina qué aprobador puede revisarla.
@@ -347,10 +360,13 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   // Si se pasa ptaIdProp usamos ese PTA, si no, usamos el primero de la lista
   const activePtaId = ptaIdProp || ptas[0]?.id || '';
   const activePta = ptaData || ptas[0];
+  const tienePtaActivo = Boolean(activePta && activePtaId);
+  const estadoPtaNormalizado = normalizeEvidenceStatus(activePta?.estado);
+  const esPtaBorrador = estadoPtaNormalizado === 'borrador';
 
   // El cargue de justificaciones solo se habilita con el PTA totalmente aprobado
   // (todos sus componentes). Mientras tanto la vista se muestra bloqueada.
-  const seguimientoBloqueado = !!activePta && !ptaHabilitadoParaSeguimiento(activePta);
+  const seguimientoBloqueado = !tienePtaActivo || !ptaHabilitadoParaSeguimiento(activePta);
 
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -401,6 +417,33 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const [formSeccionExtension, setFormSeccionExtension] = useState('');
   const [formHoras, setFormHoras] = useState<number>(0);
   const [formDescripcion, setFormDescripcion] = useState('');
+  const [formOrigen, setFormOrigen] = useState<'general' | 'resolucion_proyecto'>('general');
+
+  const proyectoInvestigacion = activePta?.investigacion_proyecto || null;
+  const horasProyectoInvestigacion = Math.max(
+    0,
+    Number(proyectoInvestigacion?.horas_solicitadas) || 0,
+  );
+  // La resolución respalda automáticamente la totalidad de las horas aprobadas
+  // para el proyecto; no existe una asignación documental independiente.
+  const horasResolucionObjetivo = horasProyectoInvestigacion;
+  const evidenciasResolucionProyecto = evidencias.filter(esResolucionProyectoInvestigacion);
+  const horasResolucionReservadas = evidenciasResolucionProyecto.reduce(
+    (total, evidencia) => total + (isReservedEvidence(evidencia)
+      ? Number(evidencia?.horas_avance) || 0
+      : 0),
+    0,
+  );
+  const horasResolucionAprobadas = evidenciasResolucionProyecto.reduce(
+    (total, evidencia) => total + (isApprovedEvidence(evidencia)
+      ? Number(evidencia?.horas_avance) || 0
+      : 0),
+    0,
+  );
+  const horasResolucionPendientes = Math.max(
+    horasResolucionObjetivo - horasResolucionReservadas,
+    0,
+  );
 
   // Clave efectiva de cupo de horas: la extensión se separa por sección
   // (extension:capacitacion, extension:seleccion, ...). El resto usa su componente.
@@ -480,7 +523,10 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   }, [horasDisponiblesPorComponente, formComponente, formSeccionExtension, formHoras]);
 
   const loadEvidencias = async () => {
-    if (!activePtaId) return;
+    if (!activePtaId) {
+      setEvidencias([]);
+      return;
+    }
     setLoading(true);
     const res = await getEvidenciasPTA(activePtaId);
     if (res.success) setEvidencias(res.data || []);
@@ -537,10 +583,18 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
-    if (e.dataTransfer.files.length > 0) handleFilesSelect(e.dataTransfer.files);
+    if (e.dataTransfer.files.length > 0) {
+      setFormOrigen('general');
+      setFormDescripcion('');
+      handleFilesSelect(e.dataTransfer.files);
+    }
   };
 
   const handleSubmit = async () => {
+    if (seguimientoBloqueado) {
+      toast.info('El seguimiento estará disponible cuando tu PTA haya sido aprobado.');
+      return;
+    }
     if (formFiles.length === 0 || !activePtaId) return;
     if (formFiles.length > MAX_ARCHIVOS_JUSTIFICACION) {
       toast.error(`Máximo ${MAX_ARCHIVOS_JUSTIFICACION} archivos por justificación`);
@@ -580,20 +634,25 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         nombre: f.name,
         tipo_archivo: ext,
         tamanio_bytes: f.size,
-        categoria: COMPONENTES_PTA.find(c => c.key === formComponente)?.label || formComponente,
+        categoria: formOrigen === 'resolucion_proyecto'
+          ? CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION
+          : COMPONENTES_PTA.find(c => c.key === formComponente)?.label || formComponente,
         componente_pta: formComponente,
         seccion_extension: formComponente === 'extension' ? formSeccionExtension : null,
         horas_avance: i === 0 ? formHoras : 0,
         storage_path: storagePath,
         storage_url: fileUrl,
         subido_por: userName,
-        descripcion: i === 0 ? formDescripcion : `Adjunto ${i + 1} de ${formFiles.length}`,
+        descripcion: i === 0
+          ? formDescripcion
+          : `Adjunto ${i + 1} de ${formFiles.length}`,
       } as any);
       if (res.success) ok++;
     }
     if (ok > 0) {
       toast.success(`${ok} documento${ok > 1 ? 's' : ''} registrado${ok > 1 ? 's' : ''}`);
-      setShowForm(false); setFormFiles([]); setFormHoras(0); setFormDescripcion(''); setFormSeccionExtension('');
+      setShowForm(false); setFormFiles([]); setFormHoras(0); setFormDescripcion('');
+      setFormSeccionExtension(''); setFormOrigen('general');
       loadEvidencias();
     } else {
       toast.error('Error al registrar los documentos');
@@ -646,6 +705,54 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     ? 0
     : (horasDisponiblesPorComponente[formCupoKey] || 0);
   const sinHorasDisponibles = horasDisponiblesForm <= 0;
+  const horasDisponiblesResolucion = Math.min(
+    horasResolucionPendientes,
+    horasDisponiblesPorComponente.investigacion || 0,
+  );
+
+  const iniciarCargaResolucionProyecto = () => {
+    if (seguimientoBloqueado) return;
+    if (horasDisponiblesResolucion <= 0) {
+      toast.info('La resolución no tiene horas pendientes disponibles.');
+      return;
+    }
+    setFormOrigen('resolucion_proyecto');
+    setFormComponente('investigacion');
+    setFormSeccionExtension('');
+    setFormHoras(horasDisponiblesResolucion);
+    setFormDescripcion([
+      'Resolución del proyecto',
+      proyectoInvestigacion?.nombre,
+      proyectoInvestigacion?.resolucion_nombre,
+    ].filter(Boolean).join(' · '));
+    fileInputRef.current?.click();
+  };
+
+  const componentesEstadoBloqueo = !tienePtaActivo
+    ? []
+    : esPtaBorrador
+      ? COMPONENTES_PTA.map(componente => ({
+          key: componente.key,
+          label: componente.label,
+          estado: 'no_iniciado',
+        }))
+      : (Array.isArray(activePta?.componentes_estado)
+          ? [...activePta.componentes_estado]
+          : []);
+  const componentesAprobadosBloqueo = esPtaBorrador
+    ? 0
+    : componentesEstadoBloqueo.filter((componente: any) => componente?.estado === 'aprobado').length;
+  const bloqueoSinProceso = !tienePtaActivo || esPtaBorrador;
+  const bloqueoTitulo = !tienePtaActivo
+    ? 'Aún no tienes un PTA para este período'
+    : esPtaBorrador
+      ? 'El seguimiento comenzará cuando envíes tu PTA'
+      : 'Seguimiento disponible tras la aprobación de tu PTA';
+  const bloqueoDescripcion = !tienePtaActivo
+    ? 'Primero crea tu Plan de Trabajo Académico. Los documentos de soporte se habilitarán cuando el PTA complete su aprobación.'
+    : esPtaBorrador
+      ? 'Tu PTA todavía está en borrador. Ningún componente está en revisión ni aprobado hasta que lo envíes formalmente.'
+      : 'Podrás registrar los documentos que justifican tus horas cuando la totalidad de los componentes de tu Plan de Trabajo Académico hayan sido aprobados.';
 
   return (
     <div>
@@ -662,8 +769,9 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         </div>
         <button
           onClick={() => loadEvidencias()}
-          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Recargar"
+          disabled={seguimientoBloqueado}
+          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E5E7EB', background: seguimientoBloqueado ? '#F8FAFC' : 'white', cursor: seguimientoBloqueado ? 'not-allowed' : 'pointer', opacity: seguimientoBloqueado ? 0.55 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title={seguimientoBloqueado ? 'Disponible cuando el PTA esté aprobado' : 'Recargar'}
         >
           <RefreshCw style={{ width: 13, height: 13, color: '#6B7280' }} />
         </button>
@@ -671,39 +779,45 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
 
       {/* Aviso de seguimiento bloqueado: el PTA aún no tiene todos sus componentes aprobados */}
       {seguimientoBloqueado && (
-        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '24px 20px', marginBottom: 16, textAlign: 'center' }}>
-          <div style={{ width: 42, height: 42, borderRadius: 999, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-            <Lock style={{ width: 18, height: 18, color: '#B45309' }} />
+        <div style={{ background: bloqueoSinProceso ? '#F8FAFC' : '#FFFBEB', border: `1px solid ${bloqueoSinProceso ? '#CBD5E1' : '#FDE68A'}`, borderRadius: 12, padding: '24px 20px', marginBottom: 16, textAlign: 'center' }}>
+          <div style={{ width: 42, height: 42, borderRadius: 999, background: bloqueoSinProceso ? '#E2E8F0' : '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+            <Lock style={{ width: 18, height: 18, color: bloqueoSinProceso ? '#64748B' : '#B45309' }} />
           </div>
-          <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#92400E' }}>
-            Seguimiento disponible tras la aprobación de tu PTA
+          <div style={{ fontSize: '0.9rem', fontWeight: 800, color: bloqueoSinProceso ? '#334155' : '#92400E' }}>
+            {bloqueoTitulo}
           </div>
-          <div style={{ fontSize: '0.74rem', color: '#A16207', marginTop: 6, maxWidth: 520, margin: '6px auto 0', lineHeight: 1.6 }}>
-            Podrás registrar los documentos que justifican tus horas cuando la totalidad de los
-            componentes de tu Plan de Trabajo Académico hayan sido aprobados.
+          <div style={{ fontSize: '0.74rem', color: bloqueoSinProceso ? '#64748B' : '#A16207', marginTop: 6, maxWidth: 560, margin: '6px auto 0', lineHeight: 1.6 }}>
+            {bloqueoDescripcion}
           </div>
-          {Array.isArray(activePta?.componentes_estado) && activePta.componentes_estado.length > 0 && (
+          {componentesEstadoBloqueo.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
-              {[...activePta.componentes_estado].sort((a: any, b: any) => {
+              {[...componentesEstadoBloqueo].sort((a: any, b: any) => {
                 const ORDEN = ['academica', 'investigacion', 'extension', 'complementarias'];
-                const ia = ORDEN.indexOf(a?.key); const ib = ORDEN.indexOf(b?.key);
+                const normalizeKey = (key: string) => key === 'docencia' ? 'academica' : key;
+                const ia = ORDEN.indexOf(normalizeKey(a?.key)); const ib = ORDEN.indexOf(normalizeKey(b?.key));
                 return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
               }).map((c: any) => {
                 const aprobado = c.estado === 'aprobado';
                 const devuelto = c.estado === 'devuelto';
+                const noIniciado = c.estado === 'no_iniciado';
                 const label = c.label === 'Investigacion' ? 'Investigación' : c.label === 'Extension' ? 'Extensión' : c.label;
+                const background = aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : noIniciado ? '#F1F5F9' : '#FEF3C7';
+                const color = aprobado ? '#047857' : devuelto ? '#B91C1C' : noIniciado ? '#475569' : '#92400E';
+                const border = aprobado ? '#6EE7B7' : devuelto ? '#FCA5A5' : noIniciado ? '#CBD5E1' : '#FDE68A';
                 return (
-                  <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background: aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : '#FEF3C7', color: aprobado ? '#047857' : devuelto ? '#B91C1C' : '#92400E', fontSize: '0.64rem', fontWeight: 700, border: `1px solid ${aprobado ? '#6EE7B7' : devuelto ? '#FCA5A5' : '#FDE68A'}` }}>
+                  <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background, color, fontSize: '0.64rem', fontWeight: 700, border: `1px solid ${border}` }}>
                     {aprobado ? <CheckCircle2 style={{ width: 10, height: 10 }} /> : devuelto ? <XCircle style={{ width: 10, height: 10 }} /> : <Clock style={{ width: 10, height: 10 }} />}
-                    {label}
+                    {label}{noIniciado ? ' · No iniciado' : ''}
                   </span>
                 );
               })}
             </div>
           )}
-          {Number(activePta?.componentes_total) > 0 && (
-            <div style={{ fontSize: '0.68rem', color: '#92400E', fontWeight: 700, marginTop: 10 }}>
-              {Number(activePta?.componentes_aprobados) || 0} de {Number(activePta?.componentes_total)} componentes aprobados
+          {tienePtaActivo && (esPtaBorrador || Number(activePta?.componentes_total) > 0 || componentesEstadoBloqueo.length > 0) && (
+            <div style={{ fontSize: '0.68rem', color: bloqueoSinProceso ? '#475569' : '#92400E', fontWeight: 700, marginTop: 10 }}>
+              {esPtaBorrador
+                ? 'Aprobación de componentes no iniciada'
+                : `${componentesAprobadosBloqueo} de ${Number(activePta?.componentes_total) || componentesEstadoBloqueo.length} componentes aprobados`}
             </div>
           )}
         </div>
@@ -737,6 +851,75 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       </div>
       )}
 
+      {/* Compromiso documental definido en el proyecto de investigación. */}
+      {!seguimientoBloqueado && horasResolucionObjetivo > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 14, flexWrap: 'wrap', marginBottom: 16, padding: '14px 16px',
+          borderRadius: 12, border: `1px solid ${horasResolucionAprobadas >= horasResolucionObjetivo ? '#86EFAC' : '#FED7AA'}`,
+          background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#F0FDF4' : '#FFF7ED',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0, flex: 1 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#DCFCE7' : '#FFEDD5',
+            }}>
+              <FileCheck2 style={{
+                width: 16, height: 16,
+                color: horasResolucionAprobadas >= horasResolucionObjetivo ? '#15803D' : PTA_COLORS.INVESTIGACION,
+              }} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#111827' }}>
+                Resolución del proyecto de investigación
+              </div>
+              <div style={{
+                marginTop: 2, fontSize: '0.68rem', color: '#64748B',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {[proyectoInvestigacion?.nombre, proyectoInvestigacion?.resolucion_nombre]
+                  .filter(Boolean).join(' · ') || 'Documento de respaldo del proyecto'}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FFEDD5', color: '#C2410C', fontSize: '0.62rem', fontWeight: 800 }}>
+                  {horasResolucionObjetivo}h del proyecto
+                </span>
+                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#DBEAFE', color: '#1D4ED8', fontSize: '0.62rem', fontWeight: 800 }}>
+                  {horasResolucionAprobadas}h aprobadas
+                </span>
+                {horasResolucionReservadas > horasResolucionAprobadas && (
+                  <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E', fontSize: '0.62rem', fontWeight: 800 }}>
+                    {horasResolucionReservadas - horasResolucionAprobadas}h en revisión
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          {horasResolucionPendientes > 0 ? (
+            <button
+              type="button"
+              onClick={iniciarCargaResolucionProyecto}
+              disabled={horasDisponiblesResolucion <= 0}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px',
+                borderRadius: 8, border: 'none', color: 'white', fontSize: '0.7rem',
+                fontWeight: 800, background: horasDisponiblesResolucion > 0 ? PTA_COLORS.INVESTIGACION : '#9CA3AF',
+                cursor: horasDisponiblesResolucion > 0 ? 'pointer' : 'not-allowed', flexShrink: 0,
+              }}
+            >
+              <Upload style={{ width: 13, height: 13 }} />
+              Adjuntar resolución ({horasDisponiblesResolucion}h)
+            </button>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#15803D', fontSize: '0.7rem', fontWeight: 800 }}>
+              <CheckCircle2 style={{ width: 14, height: 14 }} />
+              Evidencia registrada
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Upload form (modal inline) */}
       <AnimatePresence>
         {showForm && (
@@ -746,7 +929,9 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0369A1' }}>
-                Registrar justificación — {formFiles.length} archivo{formFiles.length > 1 ? 's' : ''}
+                {formOrigen === 'resolucion_proyecto'
+                  ? 'Adjuntar resolución del proyecto'
+                  : 'Registrar justificación'} — {formFiles.length} archivo{formFiles.length > 1 ? 's' : ''}
               </div>
               <span style={{ fontSize: '0.64rem', fontWeight: 700, color: formFiles.length >= MAX_ARCHIVOS_JUSTIFICACION ? '#B45309' : '#64748B', background: formFiles.length >= MAX_ARCHIVOS_JUSTIFICACION ? '#FEF3C7' : '#F1F5F9', padding: '2px 8px', borderRadius: 999 }}>
                 {formFiles.length}/{MAX_ARCHIVOS_JUSTIFICACION} archivos
@@ -779,6 +964,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <select
                   value={formComponente}
                   onChange={e => { setFormComponente(e.target.value); if (e.target.value !== 'extension') setFormSeccionExtension(''); }}
+                  disabled={formOrigen === 'resolucion_proyecto'}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', background: 'white' }}
                 >
                   {COMPONENTES_PTA.map(c => (
@@ -811,7 +997,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                     value={formHoras || ''}
                     onChange={e => setFormHoras(Number(e.target.value))}
                     placeholder={horasDisponiblesForm > 0 ? `Máx. ${horasDisponiblesForm}` : 'Sin horas disponibles'}
-                    disabled={sinHorasDisponibles}
+                    disabled={sinHorasDisponibles || formOrigen === 'resolucion_proyecto'}
                     style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -836,6 +1022,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 value={formDescripcion}
                 onChange={e => setFormDescripcion(e.target.value)}
                 placeholder="Breve descripción del documento..."
+                readOnly={formOrigen === 'resolucion_proyecto'}
                 style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
@@ -848,7 +1035,10 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 {submitting ? 'Enviando...' : sinHorasDisponibles ? 'Sin horas disponibles' : 'Registrar documento'}
               </button>
               <button
-                onClick={() => { setShowForm(false); setFormFiles([]); }}
+                onClick={() => {
+                  setShowForm(false); setFormFiles([]); setFormHoras(0);
+                  setFormDescripcion(''); setFormOrigen('general');
+                }}
                 style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', fontSize: '0.82rem', color: '#6B7280', cursor: 'pointer' }}
               >
                 Cancelar
@@ -869,7 +1059,12 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => {
+            setFormOrigen('general');
+            setFormDescripcion('');
+            setFormHoras(0);
+            fileInputRef.current?.click();
+          }}
           style={{
             padding: '22px 20px', borderRadius: 12, textAlign: 'center',
             border: `2px dashed ${dragOver ? '#003DA5' : '#D1D5DB'}`,
@@ -939,6 +1134,11 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                         {comp.label}
                       </span>
                     )}
+                    {esResolucionProyectoInvestigacion(ev) && (
+                      <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.62rem', fontWeight: 700, background: '#F3E8FF', color: '#7E22CE' }}>
+                        Resolución del proyecto
+                      </span>
+                    )}
                     {ev.horas_avance > 0 && (
                       <span style={{ padding: '1px 7px', borderRadius: 4, fontSize: '0.62rem', fontWeight: 700, background: '#EFF6FF', color: '#1E40AF' }}>
                         {ev.horas_avance}h
@@ -968,7 +1168,7 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                     {renderBotonesArchivo(ev)}
                   </div>
                 </div>
-                {estadoRevision !== 'aprobado' && (
+                {estadoRevision !== 'aprobado' && !esResolucionAnticipadaEnCreacion(ev) && (
                   <button
                     onClick={() => handleDelete(ev.id, grupo.adjuntos.map((a: any) => a.id))}
                     title={grupo.adjuntos.length > 0 ? 'Eliminar la justificación y sus soportes' : 'Eliminar documento'}
@@ -1069,7 +1269,7 @@ export function V13IndicadoresPersonales({ ptas, userName }: IndicadoresPersonal
     const horasTotal = ptas.reduce((s, p) => s + (p.total_horas_programadas || 0), 0);
     const horasDisp = ptas.reduce((s, p) => s + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
     const asigTotal = ptas.reduce((s, p) => s + (p.asignaturas?.length || p.num_asignaturas || 0), 0);
-    const pctCarga = horasDisp > 0 ? Math.round((horasTotal / horasDisp) * 100) : 0;
+    const pctCarga = getPtaCompletionPercentage(horasTotal, horasDisp);
     const tasaAprobacion = total > 0 ? Math.round((aprobados / total) * 100) : 0;
     const tiempoPromedio = 12; // simulated days
     const promedioInstitucional = 74; // simulated
@@ -1088,7 +1288,7 @@ export function V13IndicadoresPersonales({ ptas, userName }: IndicadoresPersonal
       benchmark: 'Prom. institucional: 87%',
     },
     {
-      label: 'Carga Horaria', value: `${indicadores.pctCarga}%`,
+      label: 'Carga Horaria', value: `${formatPtaPercentage(indicadores.pctCarga)}%`,
       subtitle: `${indicadores.horasTotal}/${indicadores.horasDisp}h`,
       icon: Clock, color: '#003DA5', bg: '#EFF6FF',
       benchmark: `Prom. inst: ${indicadores.promedioInstitucional}%`,

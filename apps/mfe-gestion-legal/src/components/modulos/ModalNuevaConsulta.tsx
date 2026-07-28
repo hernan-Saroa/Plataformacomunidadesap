@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
 import { FormField, FormSection, FormProgress } from '../design-system/FormField';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { SPLIT_TOP_CONTENT_CLASS, SPLIT_TOP_OVERLAY_CLASS } from './utils/splitScreen';
 import type { TemaJuridico, PrioridadConsulta, ConsultaJuridica } from '../core/types';
 import { legalService } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
@@ -38,9 +39,12 @@ import { useKeyboardVisible } from '@esap-mfe/shared-hooks/useKeyboardVisible';
 interface ModalNuevaConsultaProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  /** Se invoca al guardar. En creación recibe la consulta recién creada (con su id). */
+  onSuccess?: (creada?: any) => void;
   modoEdicion?: boolean;
   consultaInicial?: ConsultaJuridica;
+  /** Renderiza el modal anclado a la mitad superior (pantalla dividida al derivar desde Comunicaciones). */
+  splitTop?: boolean;
 }
 
 export interface NuevaConsultaData {
@@ -125,7 +129,7 @@ const initialData: NuevaConsultaData = {
   documentosAdjuntos: []
 };
 
-export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = false, consultaInicial }: ModalNuevaConsultaProps) {
+export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = false, consultaInicial, splitTop = false }: ModalNuevaConsultaProps) {
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -279,6 +283,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
 
     setEnviando(true);
 
+    let creada: any = null;
     try {
       if (modoEdicion && consultaInicial) {
         // MODO EDICIÓN: PATCH con JSON
@@ -324,7 +329,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
         (formData.documentosAdjuntos || []).forEach(file => {
           formDataToSend.append('files', file);
         });
-        await legalService.createConsultaJuridica(formDataToSend);
+        creada = await legalService.createConsultaJuridica(formDataToSend);
       }
 
       // const consecutivo = `CJ-2025-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
@@ -340,7 +345,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
       });
       resetForm();
       if (onSuccess) {
-        onSuccess();
+        onSuccess(creada);
       }
       onClose();
     } catch (error) {
@@ -373,14 +378,16 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && handleCancel()}>
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && handleCancel()} modal={splitTop ? false : undefined}>
       <DialogContent
         hideCloseButton
+        overlayClassName={splitTop ? SPLIT_TOP_OVERLAY_CLASS : undefined}
         className={`
           w-[100vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:max-w-[800px]
           ${keyboardVisible ? 'h-[60vh]' : 'h-auto max-h-[95vh] sm:max-h-[90vh]'}
           flex flex-col p-0 gap-0
           transition-all duration-200
+          ${splitTop ? SPLIT_TOP_CONTENT_CLASS : ''}
         `}
       >
         <DialogTitle className="sr-only">
@@ -418,7 +425,6 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
                 <div className="text-sm text-blue-900">
                   <p className="font-bold mb-2">📋 Antes de continuar, considere:</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>El término de respuesta por defecto es de <strong>30 días hábiles</strong> (Ley 1755 de 2015).</li>
                     <li>Identificar claramente el tema jurídico de la consulta.</li>
                     <li>Redactar la consulta de forma clara y concreta.</li>
                     <li>Definir la prioridad según la urgencia real del trámite.</li>

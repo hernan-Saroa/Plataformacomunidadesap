@@ -118,6 +118,7 @@ export class AutoService {
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
         tipo: createAutoDto.tipoAuto,
+        autoConfigurationId: createAutoDto.autoConfigurationId ?? null,
         numero: createAutoDto.numero,
         contenido: createAutoDto.contenidoHtml ?? '',
         process: { id: createAutoDto.processId },
@@ -210,6 +211,7 @@ export class AutoService {
     id: string,
     reviewAutoDto: ReviewAutoDto,
     aprobadoPorId: string,
+    aprobadoPorNombre?: string,
   ): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
     const previousSnapshot = {
@@ -265,6 +267,7 @@ export class AutoService {
           auto.etapaDestino as ProcessStage,
           new Date(),
           aprobadoPorId,
+          aprobadoPorNombre,
         );
       }
 

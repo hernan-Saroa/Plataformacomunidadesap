@@ -14,7 +14,7 @@
  * V10: Panel de devoluciones y correcciones
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -30,12 +30,13 @@ import {
   agregarComentarioConcertacion, updatePTAStatus,
   getMisSolicitudesPTA, marcarSolicitudLeida,
   getComponentesAprobacion,
+  getActivePeriodoAcademico,
 } from '../../../services/api/ptaApi';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
 import { SolicitudPTAModal } from './SolicitudPTAModal';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { usePTARealtimeSync } from '../../../hooks/usePTARealtimeSync';
 import { PTASyncIndicator } from '../../pta/PTASyncIndicator';
 import { useNotifications } from '../../esap/NotificationsContext';
@@ -45,13 +46,26 @@ import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
-import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
+import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import { formatPtaCompletionPercentage, formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PortalDocentePTAProps {
   onBack: () => void;
   userPersonId: string;
   userName?: string;
+  userEmail?: string;
+}
+
+function getPeriodoCode(periodo: any): string {
+  if (typeof periodo === 'string') return periodo.trim();
+  return String(
+    periodo?.codigo
+      || periodo?.periodo
+      || (periodo?.anio && periodo?.semestre
+        ? `${periodo.anio}-${periodo.semestre}`
+        : ''),
+  ).trim();
 }
 
 type VistaPortal = 'v01_dashboard' | 'v02_revision' | 'v03_formulario' | 'v04_historial' | 'v05_concertacion' | 'v06_detalle' | 'v07_notificaciones' | 'v08_tracking' | 'v09_imprimir' | 'v10_devoluciones' | 'v11_calendario' | 'v12_adjuntos' | 'v13_indicadores' | 'v14_certificado' | 'verificar_qr';
@@ -385,7 +399,7 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
   );
 }
 
-export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocentePTAProps) {
+export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: PortalDocentePTAProps) {
   const [vista, setVista] = useState<VistaPortal>('v01_dashboard');
 
   const [slotNode, setSlotNode] = useState<HTMLElement | null>(null);
@@ -399,7 +413,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     window.dispatchEvent(new CustomEvent('pta-view-change', { detail: { vista } }));
   }, [vista]);
 
-  const [ptas, setPtas] = useState<any[]>([]);
+  const [allPtas, setAllPtas] = useState<any[]>([]);
+  const [activePeriodo, setActivePeriodo] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedPtaId, setSelectedPtaId] = useState<string | null>(null);
   const [selectedPta, setSelectedPta] = useState<any>(null);
@@ -412,21 +427,44 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   const [modificacionPta, setModificacionPta] = useState<any | null>(null);
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
   const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
+  const loadPtasRequestRef = useRef(0);
+
+  // El portal docente siempre trabaja en el periodo marcado como vigente. Los
+  // registros históricos se conservan en memoria para no modificar reglas
+  // preexistentes, pero nunca se mezclan con las vistas del periodo actual.
+  const ptas = useMemo(
+    () => activePeriodo
+      ? allPtas.filter(pta => getPeriodoCode(pta?.periodo) === activePeriodo)
+      : [],
+    [allPtas, activePeriodo],
+  );
 
   // Platform bell notifications
   const { addNotification } = useNotifications();
 
   // ═══ Data loaders (defined before sync hook) ═══
   const loadPtas = useCallback(async () => {
+    const requestId = ++loadPtasRequestRef.current;
     setLoading(true);
     try {
-      const res = await getPTAsByDocente(userPersonId);
+      const [periodoActivo, res] = await Promise.all([
+        getActivePeriodoAcademico(),
+        getPTAsByDocente(userPersonId),
+      ]);
+      if (requestId !== loadPtasRequestRef.current) return;
+
+      const periodoCodigo = getPeriodoCode(periodoActivo);
+      setActivePeriodo(periodoCodigo);
+
       if (res.success && Array.isArray(res.data)) {
         const loadedPtas = res.data;
-        setPtas(loadedPtas);
+        const loadedPtasPeriodo = periodoCodigo
+          ? loadedPtas.filter((pta: any) => getPeriodoCode(pta?.periodo) === periodoCodigo)
+          : [];
+        setAllPtas(loadedPtas);
 
         const approvalEntries = await Promise.all(
-          loadedPtas
+          loadedPtasPeriodo
             .filter((pta: any) => pta?.id && pta.estado !== 'Borrador')
             .map(async (pta: any) => {
               try {
@@ -437,18 +475,21 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
               }
             })
         );
+        if (requestId !== loadPtasRequestRef.current) return;
         setComponentApprovalsByPta(Object.fromEntries(approvalEntries));
       } else {
         console.warn('[Portal PTA] Response data is not an array:', res);
-        setPtas([]);
+        setAllPtas([]);
         setComponentApprovalsByPta({});
       }
     } catch (error) {
+      if (requestId !== loadPtasRequestRef.current) return;
       console.error('[Portal PTA] Error loading PTAs:', error);
-      setPtas([]);
+      setAllPtas([]);
       setComponentApprovalsByPta({});
+    } finally {
+      if (requestId === loadPtasRequestRef.current) setLoading(false);
     }
-    setLoading(false);
   }, [userPersonId]);
 
   const loadPtaDetalle = useCallback(async (id: string) => {
@@ -469,7 +510,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   }, [userPersonId]);
 
   const solicitudesResueltas = useMemo(() =>
-    todasLasSolicitudes.filter(s => s.estado !== 'pendiente' && !s.notificacionLeida),
+    todasLasSolicitudes.filter(s =>
+      ['aprobado', 'denegado', 'gestionada'].includes(s.estado)
+      && !s.notificacionLeida
+    ),
   [todasLasSolicitudes]);
 
   // HU-12 — Versiones del PTA del mismo periodo (R01, R02, …). El docente puede tener
@@ -497,6 +541,19 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     if (selectedPtaId) loadPtaDetalle(selectedPtaId);
   }, [selectedPtaId, loadPtaDetalle]);
 
+  useEffect(() => {
+    if (
+      !loading
+      && selectedPtaId
+      && !ptas.some(pta => String(pta?.id || '') === selectedPtaId)
+    ) {
+      setSelectedPtaId(null);
+      setSelectedPta(null);
+      setEditPtaId(null);
+      setVista('v01_dashboard');
+    }
+  }, [loading, ptas, selectedPtaId]);
+
   // ═══ Email notification ═══
   // El endpoint legacy `http://localhost:5000/api/pta/notifications/email` (era Supabase)
   // ya no existe en la arquitectura de microservicios y rompía en QA/prod por el host
@@ -516,6 +573,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
     onDataChanged: (events) => {
       console.log(`[Portal Sync] ${events.length} nuevos eventos del Backoffice`);
       loadPtas();
+      loadSolicitudes();
       // Also reload selected PTA detail if viewing one
       if (selectedPtaId) {
         loadPtaDetalle(selectedPtaId);
@@ -594,15 +652,18 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   );
   const anioActual = new Date().getFullYear();
   const limiteAnualAlcanzado = useMemo(
-    () => ptas.filter(p => {
+    () => allPtas.filter(p => {
       const created = p.createdAt || p.created_at;
       return created && new Date(created).getFullYear() === anioActual;
     }).length >= 2,
-    [ptas]
+    [allPtas]
   );
 
-  const tienePermisoEspecial = useMemo(() => 
-    todasLasSolicitudes.some(s => s.estado === 'aprobado'), 
+  const tienePermisoEspecial = useMemo(() =>
+    todasLasSolicitudes.some(s =>
+      s.estado === 'aprobado'
+      && (s.tipoSolicitud || 'creacion') === 'creacion'
+    ),
   [todasLasSolicitudes]);
 
   const tieneSolicitudPendiente = useMemo(() => 
@@ -673,7 +734,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
   // El seguimiento (Documentos y Soportes) se habilita cuando el PTA vigente
   // tiene la totalidad de sus componentes aprobados. La pestaña sigue siendo
   // navegable: dentro se muestra el aviso con el estado de cada componente.
-  const seguimientoBloqueado = ptas.length > 0 && !ptaHabilitadoParaSeguimiento(ptas[0]);
+  const seguimientoBloqueado = ptas.length === 0 || !ptaHabilitadoParaSeguimiento(ptas[0]);
 
   return (
     <div>
@@ -713,38 +774,39 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
               <span className="truncate max-w-[140px] sm:max-w-none">{userName || 'Docente'}</span>
               <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0" />
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50/80 text-[#003DA5] text-[10px] font-extrabold tracking-wide border border-blue-100/50">
-                <Calendar className="w-3 h-3" /> 2026-1
+                <Calendar className="w-3 h-3" />
+                {activePeriodo || (loading ? 'Cargando...' : 'Sin periodo activo')}
               </span>
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <PTASyncIndicator syncState={syncState} sistema="portal" compact />
-          {puedeCrearPTA ? (
+          {puedeCrearPTA && (
             <button
               onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
               className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.3)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-[#003DA5] hover:bg-[#002B75]"
             >
               <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
             </button>
-          ) : tieneSolicitudPendiente ? (
-            /* Ya hay una solicitud de segundo PTA en revisión */
-            <span
-              className="flex items-center justify-center gap-2 h-10 px-4 sm:px-5 rounded-xl border border-amber-200 text-amber-700 text-[12px] sm:text-[13px] font-bold bg-amber-50"
-              title="Tu solicitud de segundo PTA está en revisión por Gestión Profesoral."
-            >
-              <Clock className="w-4 h-4" /> Solicitud en revisión
-            </span>
-          ) : (
-            /* Bloqueado por PTA activo/aprobado o límite anual → permitir SOLICITAR un segundo PTA */
-            <button
-              onClick={() => setShowSolicitudModal(true)}
-              className="flex items-center justify-center gap-2 h-10 px-4 sm:px-5 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(217,119,6,0.3)] hover:shadow-[0_6px_20px_rgba(217,119,6,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-gradient-to-r from-[#D97706] to-[#F59E0B] hover:from-[#B45309] hover:to-[#D97706]"
-              title={mensajeBloqueo ? `${mensajeBloqueo} Puedes solicitar un segundo PTA.` : 'Solicitar un segundo PTA'}
-            >
-              <Plus className="w-4 h-4" /> Solicitar <span className="hidden sm:inline">segundo</span> PTA
-            </button>
           )}
+          {tieneSolicitudPendiente && (
+            <span
+              className="hidden md:flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl border border-amber-200 text-amber-700 text-[11px] font-bold bg-amber-50"
+              title="Tienes una solicitud PTA en revisión."
+            >
+              <Clock className="w-3.5 h-3.5" /> En revisión
+            </span>
+          )}
+          <button
+            onClick={() => setShowSolicitudModal(true)}
+            className="flex w-full sm:w-auto items-center justify-center gap-2 h-9 px-4 sm:px-5 rounded-xl border border-blue-200 bg-white text-[#003DA5] whitespace-nowrap text-[12px] sm:text-[13px] font-bold shadow-sm hover:bg-blue-50 hover:border-blue-300 hover:shadow-md active:scale-[0.98] transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:ring-offset-2"
+            title={mensajeBloqueo ? `${mensajeBloqueo} Puedes gestionar una solicitud PTA.` : 'Crear una solicitud PTA'}
+            aria-label="Abrir solicitudes de Plan de Trabajo Académico"
+          >
+            <Send className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>Solicitudes PTA</span>
+          </button>
         </div>
       </div>
 
@@ -846,7 +908,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                     const needsAction = ['NOTIFICADO_DOCENTE', 'Devuelto', 'EN_CONCERTACION'].includes(pta.estado) || isEnRevisionDocente;
                     const horasTotal = pta.horas_totales ?? pta.total_horas_programadas ?? 0;
                     const horasMax = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
-                    const horasPct = horasMax > 0 ? Math.min(Math.round((horasTotal / horasMax) * 100), 100) : 0;
+                    const horasPct = Math.min(getPtaCompletionPercentage(horasTotal, horasMax), 100);
 
                     return (
                       <motion.div
@@ -915,7 +977,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                           <div className="mb-5">
                             <div className="flex items-center justify-between mb-1.5">
                               <span className="text-[0.62rem] font-semibold text-gray-400 uppercase tracking-wider">Progreso de horas</span>
-                              <span className="text-[0.65rem] font-bold text-gray-500">{horasPct}%</span>
+                              <span className="text-[0.65rem] font-bold text-gray-500">{formatPtaPercentage(horasPct)}%</span>
                             </div>
                             <div className="w-full h-[5px] rounded-full bg-gray-100 overflow-hidden">
                               <div
@@ -1057,7 +1119,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   {[
                     { label: 'Horas programadas', value: selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0 },
                     { label: 'Horas disponibles', value: selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0 },
-                    { label: '% Carga', value: `${(selectedPta.horas_asignables ?? selectedPta.horas_a_programar) ? Math.round(((selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0) / (selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0)) * 100) : 0}%` },
+                    { label: '% Carga', value: `${formatPtaCompletionPercentage(
+                      selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0,
+                      selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 0,
+                    )}%` },
                     { label: 'Asignaturas', value: selectedPta.asignaturas?.length || selectedPta.num_asignaturas || 0 },
                   ].map(m => (
                     <div key={m.label} className="p-2.5 sm:p-3 rounded-xl bg-gray-50/80 border border-gray-100/60">
@@ -1261,6 +1326,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                           <DetalleChip label="% del PTA" value={Number(a.porcentaje_pta) > 0 ? `${a.porcentaje_pta}%` : null} />
                           <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(a.fecha_inicio, a.fecha_fin)} color={PTA_COLORS.DOCENCIA} />
                         </div>
+                        <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-2" />
                         <ObservacionesNota texto={a.observaciones} />
                       </ItemDetalle>
                     ))}
@@ -1310,6 +1376,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                           <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(proy.fecha_inicio, proy.fecha_fin)} color={colorInv} />
                           <ResolucionChip nombre={proy.resolucion_nombre} url={proy.resolucion_archivo_url} />
                         </div>
+                        <HierarchySelectionSummary activity={proy} accent={colorInv} compact className="mt-2" />
                       </ItemDetalle>
                     )}
                     {invActs.length > 0 && tieneProy && (
@@ -1330,6 +1397,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                           <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(a.fecha_inicio, a.fecha_fin)} color={colorInv} />
                           <ResolucionChip nombre={a.resolucion_nombre} url={a.resolucion_archivo_url} />
                         </div>
+                        <HierarchySelectionSummary activity={a} accent={colorInv} compact className="mt-2" />
                       </ItemDetalle>
                     ))}
                   </DetalleSeccion>
@@ -1350,9 +1418,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                   const g = grupos.find(x => x.seccion === sec);
                   if (g) g.items.push(e); else grupos.push({ seccion: sec, items: [e] });
                 }
-                const renderAct = (e: any, idx: number) => {
-                  const selection = getExtensionSelectionInfo(e);
-                  return (
+                const renderAct = (e: any, idx: number) => (
                   <ItemDetalle key={e.id || e.actividad_id || idx} color={colorExt}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
@@ -1361,36 +1427,12 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                       </div>
                       <HorasBadge horas={Number(e.horas ?? e.horas_ejecutadas ?? 0)} color={colorExt} />
                     </div>
-                    {selection && (
-                      <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 9, background: `${colorExt}0A`, border: `1px solid ${colorExt}24` }}>
-                        <div style={{ fontSize: '0.59rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          {selection.etiqueta} seleccionada
-                        </div>
-                        <div style={{ marginTop: 2, fontSize: '0.72rem', fontWeight: 750, color: '#334155', lineHeight: 1.4 }}>
-                          {selection.nombre}
-                        </div>
-                        {selection.detalles.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 7 }}>
-                            {selection.detalles.map((detail, detailIndex) => (
-                              <div key={`${detail.nombre}-${detailIndex}`} style={{ paddingLeft: 9, borderLeft: `2px solid ${colorExt}40` }}>
-                                {detail.nombre && <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', lineHeight: 1.35 }}>{detail.nombre}</div>}
-                                {detail.valores.map((value, valueIndex) => (
-                                  <div key={`${value.columna}-${valueIndex}`} style={{ fontSize: '0.62rem', color: '#64748B', lineHeight: 1.4, marginTop: 2 }}>
-                                    {value.columna && <strong>{value.columna}: </strong>}{value.valor}
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <HierarchySelectionSummary activity={e} accent={colorExt} compact className="mt-2" />
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(e.fecha_inicio, e.fecha_fin)} color={colorExt} />
                     </div>
                   </ItemDetalle>
-                  );
-                };
+                );
                 return (
                   <DetalleSeccion
                     icon={Globe}
@@ -1416,7 +1458,22 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
               {/* Complementarias — agrupadas por sub-sección (docencia / académico-administrativas) */}
               {(() => {
-                const comps = Array.isArray(selectedPta.complementarias) ? selectedPta.complementarias : [];
+                const compsPrimary = Array.isArray(selectedPta.complementarias) ? selectedPta.complementarias : [];
+                const compsLegacyAadm = Array.isArray(selectedPta.academico_admin) ? selectedPta.academico_admin : [];
+                const comps = [
+                  ...compsPrimary.map((activity: any) =>
+                    activity?.seccion == null && activity?.consumeTotalidad !== undefined
+                      ? { ...activity, seccion: 'academico_administrativas' }
+                      : activity),
+                  ...compsLegacyAadm
+                    .filter((legacy: any) => !compsPrimary.some((current: any) =>
+                      String(current?.actividad_id ?? current?.id) === String(legacy?.actividad_id ?? legacy?.id)
+                      && (
+                        current?.seccion === 'academico_administrativas'
+                        || (current?.seccion == null && current?.consumeTotalidad !== undefined)
+                      )))
+                    .map((activity: any) => ({ ...activity, seccion: 'academico_administrativas' })),
+                ];
                 if (comps.length === 0) return null;
                 const colorComp = PTA_COLORS.COMPLEMENTARIAS;
                 // El amarillo puro es ilegible sobre fondo claro: texto en tono ámbar oscuro.
@@ -1438,6 +1495,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                       </div>
                       <HorasBadge horas={Number(c.horas ?? 0)} color={textComp} />
                     </div>
+                    <HierarchySelectionSummary activity={c} accent={textComp} compact className="mt-2" />
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(c.fecha_inicio, c.fecha_fin)} color={textComp} />
                     </div>
@@ -1716,18 +1774,18 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
             style={{
               position: 'fixed', bottom: 20 + idx * 160, right: 20, zIndex: 9999,
               maxWidth: 400, padding: '16px 20px', borderRadius: 14,
-              background: sol.estado === 'aprobado' ? '#F0FDF4' : '#FEF2F2',
-              border: `1px solid ${sol.estado === 'aprobado' ? '#6EE7B7' : '#FECACA'}`,
+              background: ['aprobado', 'gestionada'].includes(sol.estado) ? '#F0FDF4' : '#FEF2F2',
+              border: `1px solid ${['aprobado', 'gestionada'].includes(sol.estado) ? '#6EE7B7' : '#FECACA'}`,
               boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {sol.estado === 'aprobado'
+                {['aprobado', 'gestionada'].includes(sol.estado)
                   ? <CheckCircle2 style={{ width: 18, height: 18, color: '#059669' }} />
                   : <XCircle style={{ width: 18, height: 18, color: '#DC2626' }} />}
-                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: sol.estado === 'aprobado' ? '#065F46' : '#991B1B' }}>
-                  Solicitud {sol.estado === 'aprobado' ? 'aprobada' : 'denegada'}
+                <span style={{ fontSize: '0.88rem', fontWeight: 700, color: ['aprobado', 'gestionada'].includes(sol.estado) ? '#065F46' : '#991B1B' }}>
+                  Solicitud {sol.estado === 'gestionada' ? 'completada' : sol.estado === 'aprobado' ? 'aprobada' : 'denegada'}
                 </span>
               </div>
               <button onClick={() => handleDismissSolicitud(sol.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
@@ -1739,14 +1797,25 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 {sol.resolucionMotivo}
               </p>
             )}
-            {sol.estado === 'aprobado' && (
+            {sol.resueltoPor && (
+              <p style={{ fontSize: '0.7rem', color: '#64748B', margin: '0 0 8px', fontWeight: 600 }}>
+                Resuelta por: {sol.resueltoPor}
+              </p>
+            )}
+            {['aprobado', 'gestionada'].includes(sol.estado) && (
               <p style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, margin: 0 }}>
-                {sol.resolucionAccion === 'caso_1' ? 'Puede crear un PTA en la nueva territorial' : 'Su PTA anterior fue eliminado — puede crear uno nuevo'}
+                {(sol.tipoSolicitud || 'creacion') === 'edicion_componentes'
+                  ? sol.estado === 'gestionada'
+                    ? 'Los componentes modificados fueron aprobados y el PTA conservó su estado correspondiente.'
+                    : 'Los componentes seleccionados ya están habilitados para edición en el mismo PTA.'
+                  : sol.resolucionAccion === 'caso_1'
+                    ? 'Puede crear un PTA en la nueva territorial'
+                    : 'Puede crear el PTA autorizado'}
               </p>
             )}
             <button
               onClick={() => handleDismissSolicitud(sol.id)}
-              style={{ marginTop: 10, width: '100%', padding: '7px 14px', borderRadius: 8, border: 'none', background: sol.estado === 'aprobado' ? '#059669' : '#6B7280', color: 'white', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}
+              style={{ marginTop: 10, width: '100%', padding: '7px 14px', borderRadius: 8, border: 'none', background: ['aprobado', 'gestionada'].includes(sol.estado) ? '#059669' : '#6B7280', color: 'white', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}
             >
               Entendido
             </button>
@@ -1754,11 +1823,13 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
         ))}
       </AnimatePresence>
 
-      {/* Modal de solicitud de nuevo PTA */}
+      {/* Modal general de solicitudes PTA */}
       {showSolicitudModal && (
         <SolicitudPTAModal
           docenteId={userPersonId}
           docenteNombre={userName || ''}
+          docenteEmail={userEmail}
+          ptas={ptas}
           onClose={() => setShowSolicitudModal(false)}
           onSuccess={() => { loadPtas(); loadSolicitudes(); }}
         />

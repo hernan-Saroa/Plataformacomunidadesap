@@ -127,7 +127,13 @@ export async function savePTA(data: any) {
       files.forEach(f => formData.append(f.key, f.file, f.file.name));
       raw = await (apiClient as any).upload<any>(`${PTA_BASE}/save`, formData);
     } else {
-      raw = await apiClient.post<any>(`${PTA_BASE}/save`, data);
+      // Guardar es una mutación: un 4xx no se corrige repitiendo el mismo POST y
+      // antes generaba cuatro solicitudes idénticas por cada auto-guardado fallido.
+      // El siguiente ciclo de auto-guardado o la acción manual ya permiten reintentar.
+      raw = await apiClient.post<any>(`${PTA_BASE}/save`, data, {
+        retries: 0,
+        skipErrorToast: true,
+      });
     }
 
     const normalized = normalizeResult<any>(raw, null);
@@ -504,7 +510,11 @@ export async function aprobarComponente(ptaId: string, data: {
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][aprobarComponente] Error:', error);
-    return { success: false, data: null };
+    return {
+      success: false,
+      data: null,
+      message: (error as any)?.message || 'Error al actualizar el estado del componente',
+    };
   }
 }
 
@@ -754,9 +764,12 @@ export async function resolverSolicitudPTA(
     const raw = await apiClient.patch<any>(`${PTA_BASE}/solicitudes/${solicitudId}/resolver`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
-  } catch (error) {
+  } catch (error: any) {
     console.error('[mfe-pta][resolverSolicitudPTA] Error:', error);
-    return { success: false };
+    return {
+      success: false,
+      message: error?.response?.data?.message || error?.message || 'No se pudo resolver la solicitud',
+    };
   }
 }
 
@@ -1414,9 +1427,12 @@ export async function crearSolicitudPTA(payload: any) {
     const raw = await apiClient.post<any>(`${PTA_BASE}/solicitudes`, payload);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data, message: (raw as any)?.message };
-  } catch (error) {
+  } catch (error: any) {
     console.error('[mfe-pta][crearSolicitudPTA] Error:', error);
-    return { success: false, message: 'No se pudo crear la solicitud' };
+    return {
+      success: false,
+      message: error?.response?.data?.message || error?.message || 'No se pudo crear la solicitud',
+    };
   }
 }
 

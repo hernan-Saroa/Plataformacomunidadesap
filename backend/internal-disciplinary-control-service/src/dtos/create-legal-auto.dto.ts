@@ -18,6 +18,10 @@ export class CreateLegalAutoDto {
 
   @IsOptional()
   @IsString()
+  autoConfigurationId?: string;
+
+  @IsOptional()
+  @IsString()
   contenidoHtml?: string;
 
   @IsOptional()
