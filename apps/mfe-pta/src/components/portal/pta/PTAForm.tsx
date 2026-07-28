@@ -44,6 +44,13 @@ import {
   getHierarchySelectableKeys,
   resolveHierarchySelectionBranches,
 } from '../../pta/shared/extensionSelection';
+import {
+  getConfiguredHourMode,
+  getConfiguredMaximumHours,
+  getConfiguredMinimumHours,
+  getConfiguredPercentageValue,
+  normalizeConfiguredHourRow,
+} from '../../pta/shared/configuredHours';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
@@ -346,7 +353,7 @@ function getConfiguredExtensionLimit(rules: any, horasAProgramar: number): numbe
 }
 
 function getPTAPercentage(activity: any): number {
-  const parsed = Number(activity?.porcentaje_pta);
+  const parsed = getConfiguredPercentageValue(activity);
   return Number.isFinite(parsed) ? Math.min(100, Math.max(1, parsed)) : 1;
 }
 
@@ -399,7 +406,11 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
         : buildHourConstraint(min, max, true, 'range');
     }
   }
-  const configuredType = String(activity?.tipo || '').trim().toLowerCase();
+  const rawConfiguredType = String(activity?.tipo ?? activity?.tipo_horas ?? '').trim().toLowerCase();
+  // `por_unidad` usa cantidad × horas unitarias y conserva su cálculo
+  // especializado; no debe reinterpretarse como una fila Hasta.
+  if (rawConfiguredType === 'por_unidad') return null;
+  const configuredType = getConfiguredHourMode(activity);
   if (configuredType === 'porcentaje') {
     const percentage = getPTAPercentage(activity);
     const hours = getPercentageHours(activity, Number(horasAProgramar) || 0);
@@ -409,11 +420,7 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
   // `max_horas`, mientras que las filas configurables de Extensión conservan
   // `horas`/`horas_min`. Aceptar ambos contratos evita descartar visualmente
   // líneas válidas sin alterar el formato persistido de ningún PTA.
-  const configuredMax = Number(
-    activity?.max_horas
-      ?? activity?.horas_max
-      ?? activity?.horas,
-  );
+  const configuredMax = getConfiguredMaximumHours(activity);
   if (!Number.isFinite(configuredMax) || configuredMax <= 0) return null;
 
   if (configuredType === 'fija') {
@@ -421,12 +428,7 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
   }
   if (configuredType === 'intervalo') {
     return buildHourConstraint(
-      getPositiveRuleNumber(
-        activity?.min_horas
-          ?? activity?.horas_min
-          ?? activity?.min,
-        1,
-      ),
+      getPositiveRuleNumber(getConfiguredMinimumHours(activity), 1),
       configuredMax,
       true,
       'range',
@@ -836,18 +838,35 @@ function extensionActivityUsesItems(section: ExtensionSectionConfig | undefined,
 }
 
 function getRootActivityHourType(activity: any): 'fija' | 'hasta' | 'intervalo' | 'porcentaje' {
-  const type = String(activity?.tipo || 'hasta').toLowerCase();
-  return type === 'fija' || type === 'intervalo' || type === 'porcentaje' ? type : 'hasta';
+  return getConfiguredHourMode(activity);
 }
 
 function hasConfiguredCatalogHours(activity: any, horasAProgramar: number): boolean {
   if (!activity || typeof activity !== 'object') return false;
   if (isFullPTAActivity(activity)) return horasAProgramar > 0;
-  if (String(activity.tipo || '').toLowerCase() === 'porcentaje') {
+  if (getConfiguredHourMode(activity) === 'porcentaje') {
     return getPercentageHours(activity, horasAProgramar) > 0;
   }
-  return [activity.max_horas, activity.horas_max, activity.horas]
-    .some(value => Number.isFinite(Number(value)) && Number(value) > 0);
+  return getConfiguredMaximumHours(activity) > 0;
+}
+
+function normalizeExtensionCatalogActivity(activity: any): any {
+  if (!activity || typeof activity !== 'object') return activity;
+  const normalizedMetadata = activity.columnas_meta && typeof activity.columnas_meta === 'object'
+    ? Object.fromEntries(
+        Object.entries(activity.columnas_meta).map(([column, rows]) => [
+          column,
+          Array.isArray(rows) ? rows.map(row => normalizeConfiguredHourRow(row || {})) : rows,
+        ]),
+      )
+    : activity.columnas_meta;
+  return {
+    ...normalizeConfiguredHourRow(activity),
+    ...(Array.isArray(activity.items)
+      ? { items: activity.items.map((row: any) => normalizeConfiguredHourRow(row || {})) }
+      : {}),
+    ...(normalizedMetadata ? { columnas_meta: normalizedMetadata } : {}),
+  };
 }
 
 function normalizeHierarchyKeyPart(value: unknown): string {
@@ -987,9 +1006,9 @@ function getExtensionConfiguredHourRows(
   section: ExtensionSectionConfig | undefined,
 ): any[] {
   const normalizeRow = (row: any, name?: string) => ({
-    ...row,
+    ...normalizeConfiguredHourRow(row || {}),
     nombre: name || row?.nombre || 'Actividad',
-    min: row?.min ?? row?.horas_min,
+    min: getConfiguredMinimumHours(row),
   });
   const columns = section?.columnas;
 
@@ -1071,16 +1090,16 @@ function hasExtensionConfiguredHours(
 }
 
 function getExtensionRowInitialHours(row: any, horasAProgramar: number): number {
-  const type = String(row?.tipo || 'fija').toLowerCase();
+  const type = getConfiguredHourMode(row, 'fija');
   if (type === 'porcentaje') return getPercentageHours(row, horasAProgramar);
-  if (type === 'fija') return Math.max(0, Number(row?.horas) || 0);
-  if (type === 'intervalo') return Math.max(1, Number(row?.min ?? row?.horas_min) || 1);
-  if (type === 'hasta') return Number(row?.horas) > 0 ? 1 : 0;
+  if (type === 'fija') return getConfiguredMaximumHours(row);
+  if (type === 'intervalo') return Math.max(1, getConfiguredMinimumHours(row) || 1);
+  if (type === 'hasta') return getConfiguredMaximumHours(row) > 0 ? 1 : 0;
   return 0;
 }
 
 function extensionRowAllowsZero(row: any, rowCount: number): boolean {
-  return rowCount > 1 && String(row?.tipo || '').toLowerCase() === 'hasta';
+  return rowCount > 1 && getConfiguredHourMode(row) === 'hasta';
 }
 
 function getConfiguredRecognitionRows(activity: any, horasAProgramar: number): any[] {
@@ -1444,7 +1463,7 @@ function reconcileRecognitionRows(
 
 function extensionRowCanFit(row: any, horasAProgramar: number, maxExtensionHours: number): boolean {
   if (!hasConfiguredCatalogHours(row, horasAProgramar)) return false;
-  const type = String(row?.tipo || 'fija').toLowerCase();
+  const type = getConfiguredHourMode(row, 'fija');
   if (type === 'fija' || type === 'porcentaje') {
     return getExtensionRowInitialHours(row, horasAProgramar) <= maxExtensionHours;
   }
@@ -1502,18 +1521,18 @@ function getInitialExtensionRowsState(rows: any[], horasAProgramar: number): {
   let total = 0;
   const multipleRows = rows.length > 1;
   rows.forEach((row, index) => {
-    const type = String(row?.tipo || 'fija').toLowerCase();
+    const type = getConfiguredHourMode(row, 'fija');
     if (type === 'fija') {
-      items_cantidades[index] = Math.max(0, Number(row?.horas) || 0);
+      items_cantidades[index] = getConfiguredMaximumHours(row);
       total += items_cantidades[index];
     } else if (type === 'porcentaje') {
       items_cantidades[index] = getPercentageHours(row, horasAProgramar);
       total += items_cantidades[index];
     } else if (type === 'intervalo') {
-      items_cantidades[index] = Math.max(1, Number(row?.min ?? row?.horas_min) || 1);
+      items_cantidades[index] = Math.max(1, getConfiguredMinimumHours(row) || 1);
       total += items_cantidades[index];
     } else if (type === 'hasta') {
-      items_cantidades[index] = Number(row?.horas) > 0 && !multipleRows ? 1 : 0;
+      items_cantidades[index] = getConfiguredMaximumHours(row) > 0 && !multipleRows ? 1 : 0;
       total += items_cantidades[index];
     } else {
       items_cantidades[index] = 0;
@@ -1935,7 +1954,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const sectionKey = normalizeExtensionSectionKey(key);
           // No inferir el modelo por la sección ni fabricar `items: []`.
           // La presencia de `items` es el discriminador compatible con datos legacy.
-          const acts = Array.isArray(val) ? val : [];
+          const acts = Array.isArray(val)
+            ? val.map(activity => normalizeExtensionCatalogActivity(activity))
+            : [];
           normalized[sectionKey] = [...(normalized[sectionKey] || []), ...acts];
         });
         // De-duplicar actividades por id dentro de cada sección. Distintas claves de
