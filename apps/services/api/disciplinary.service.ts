@@ -428,6 +428,7 @@ export interface AssignProcessDto {
 export interface CreateAutoDto {
     processId: string;
     tipoAuto: string;
+    autoConfigurationId?: string;
     contenidoHtml: string;
     comentarios?: string;
     numero?: string;

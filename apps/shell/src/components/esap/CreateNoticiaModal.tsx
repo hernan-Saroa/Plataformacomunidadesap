@@ -1175,7 +1175,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                               ? '⚠️ ACCIÓN DISCIPLINARIA CADUCADA'
                               : verificarProximoVencimiento(formData.fechaHechos)
                               ? '⏰ PRÓXIMO A VENCER'
-                              : '✓ Término de Caducidad Vigente'
+                              : '✓ Prescripción Vigente'
                             }
                           </h4>
                           <p className={`text-xs font-medium mb-2 ${
