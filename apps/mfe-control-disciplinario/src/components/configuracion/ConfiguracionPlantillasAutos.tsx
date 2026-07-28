@@ -335,6 +335,7 @@ export function ConfiguracionPlantillasAutos() {
                     etapa: nuevoTipo.etapa,
                     activo: nuevoTipo.activo,
                     orden: nuevoTipo.orden,
+                    tipo: mapTipoAccionToBackend(nuevoTipo.tipoAccion, nuevoTipo.etapa),
                     plantilla:
                       buildLocalPlantilla(nuevoTipo.plantillaFile) || t.plantilla,
                     fechaModificacion: new Date().toISOString(),
@@ -344,6 +345,7 @@ export function ConfiguracionPlantillasAutos() {
           );
         } else {
           const response = await disciplinaryService.updateAutosConfiguration(tipoAutoEdicion.id, {
+            tipo: mapTipoAccionToBackend(nuevoTipo.tipoAccion, nuevoTipo.etapa),
             nombre: nuevoTipo.nombre,
             stage: nuevoTipo.etapa,
             estado: nuevoTipo.activo ? 'activo' : 'inactivo',
