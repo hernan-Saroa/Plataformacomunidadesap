@@ -17,8 +17,9 @@ import {
 import {
   getPTAById, responderPropuestaPTA, getCatalogoActividadesComplementarias,
 } from '../../../services/api/ptaApi';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
+import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 
 interface RevisionPropuestaProps {
   ptaId: string;
@@ -200,7 +201,10 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
               <tbody>{(pta.asignaturas || []).map((a: any, i: number) => (
                 <tr key={a.id || i} className="border-b border-gray-50">
                   <td className="px-3 py-1.5 text-gray-400">{i + 1}</td>
-                  <td className="px-3 py-1.5 font-medium text-gray-900">{a.asignatura_nombre || a.nombre}</td>
+                  <td className="px-3 py-1.5 font-medium text-gray-900">
+                    {a.asignatura_nombre || a.nombre}
+                    <HierarchySelectionSummary activity={a} accent="#003DA5" compact className="mt-1.5" />
+                  </td>
                   <td className="px-3 py-1.5 text-gray-500">{a.programa_nombre || ''}</td>
                   <td className="px-3 py-1.5 text-center">{a.creditos}</td>
                   <td className="px-3 py-1.5 text-center font-bold text-[#003DA5]">{a.total_horas}h</td>
@@ -226,6 +230,17 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
             <div><span className="text-gray-500">Proyecto:</span> <span className="font-medium text-gray-900">{pta.investigacion_proyecto.nombre || 'Proyecto de Investigación (Pendiente Registro)'}</span></div>
             <div><span className="text-gray-500">Rol:</span> <span className="font-medium text-gray-900">{pta.investigacion_proyecto.rol}</span></div>
             <div><span className="text-gray-500">Horas:</span> <span className="font-bold text-purple-700">{pta.investigacion_proyecto.horas_solicitadas}h</span></div>
+            <HierarchySelectionSummary activity={pta.investigacion_proyecto} accent="#7C3AED" compact className="mt-2" />
+            {(pta.investigacion_actividades || []).map((actividad: any, index: number) => (
+              <div key={actividad.id || actividad.actividad_id || index} className="mt-2 rounded-lg border border-purple-100 bg-purple-50/40 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-medium text-gray-900">{actividad.nombre || actividad.actividad_nombre || 'Actividad de investigación'}</span>
+                  <span className="shrink-0 font-bold text-purple-700">{actividad.horas_total ?? actividad.horas ?? 0}h</span>
+                </div>
+                {actividad.descripcion && <div className="mt-1 text-[0.68rem] text-gray-500">{actividad.descripcion}</div>}
+                <HierarchySelectionSummary activity={actividad} accent="#7C3AED" compact className="mt-2" />
+              </div>
+            ))}
           </div>
           {canRespond && (
             <div className="px-3 py-3 bg-gray-50 border-t border-gray-100">
@@ -234,6 +249,26 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
                 className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs outline-none resize-none" />
             </div>
           )}
+        </DetailSection>
+      )}
+
+      {/* Extensión detail (read-only) */}
+      {(pta.extension_actividades || []).length > 0 && (
+        <DetailSection title="Detalle Extensión" subtitle="Actividades asignadas" icon={Globe} color="#059669" locked>
+          <div className="space-y-2 p-3">
+            {(pta.extension_actividades || []).map((actividad: any, index: number) => (
+              <div key={actividad.id || actividad.actividad_id || index} className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-2.5">
+                <div className="flex items-start justify-between gap-2 text-xs">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900">{actividad.nombre || actividad.actividad_nombre || 'Actividad de extensión'}</div>
+                    {actividad.seccion && <div className="mt-0.5 text-[0.65rem] text-gray-500">{actividad.seccion}</div>}
+                  </div>
+                  <span className="shrink-0 font-bold text-emerald-700">{actividad.horas ?? actividad.horas_ejecutadas ?? 0}h</span>
+                </div>
+                <HierarchySelectionSummary activity={actividad} accent="#059669" compact className="mt-2" />
+              </div>
+            ))}
+          </div>
         </DetailSection>
       )}
 
@@ -264,6 +299,7 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
                     <option value="">Seleccionar...</option>
                     {actCompCatalogo.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.horas}h)</option>)}
                   </select>
+                  <HierarchySelectionSummary activity={comp} accent="#D97706" compact className="mt-2" />
                 </div>
                 <div className="w-20">
                   <label className="block text-[0.65rem] font-semibold text-gray-500 mb-0.5">Horas</label>

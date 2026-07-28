@@ -40,6 +40,25 @@ function normalizeLookupText(value: any): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 }
 
+/**
+ * Busca en `raw` el primer valor cuya CLAVE, normalizada (sin acentos ni separadores,
+ * en may\u00fasculas), satisfaga el `matcher`. El bulk import conserva el header CRUDO del
+ * Excel como clave del registro, por lo que un header con una variaci\u00f3n m\u00ednima (espacios,
+ * guiones bajos, par\u00e9ntesis, tildes) no coincide con las claves exactas que busca el
+ * parser. Este helper recupera el valor pese a esas variaciones. Ignora vac\u00edos.
+ */
+function findRawByNormalizedKey(raw: any, matcher: (normalizedKey: string) => boolean): any {
+  if (!raw || typeof raw !== 'object') return undefined;
+  for (const key of Object.keys(raw)) {
+    const norm = String(key).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (matcher(norm)) {
+      const v = raw[key];
+      if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+    }
+  }
+  return undefined;
+}
+
 function parseMaybeInt(value: any): number | null {
   if (value === undefined || value === null || value === '') return null;
   const n = typeof value === 'number' ? value : Number(String(value).replace(/[^\d.-]/g, ''));
@@ -335,7 +354,20 @@ export function normalizeBancoDocentePayload(raw: any) {
   const estadoDocenteRaw = firstNonEmpty(raw?.ESTADO_DOCENTE, raw?.estadoDocente, raw?.estado_docente, raw?.estado, raw?.['Estado Docente'], raw?.['Estado docente']);
   const regimenNormativoRaw = firstNonEmpty(raw?.REGIMEN_NORMATIVO, raw?.regimenNormativo, raw?.regimen_normativo, raw?.['Regimen Normativo'], raw?.['Regimen normativo']);
   const sexoBiologicoRaw = firstNonEmpty(raw?.SEXO_BIOLOGICO, raw?.sexoBiologico, raw?.sexo_biologico, raw?.['Sexo Biologico'], raw?.['Sexo biologico']);
-  const horasPtaRaw = parseMaybeInt(raw?.HORAS_PTA ?? raw?.horasPta ?? raw?.horas_pta ?? raw?.horasAsignables ?? raw?.['Horas PTA'] ?? raw?.['Horas Programables (PTA)']);
+  const horasPtaRaw = parseMaybeInt(
+    raw?.HORAS_PTA ?? raw?.horasPta ?? raw?.horas_pta ?? raw?.horasAsignables ?? raw?.['Horas PTA'] ?? raw?.['Horas Programables (PTA)']
+    // Fallback tolerante al header: cualquier columna cuyo nombre normalizado sea la bolsa
+    // de horas del PTA (HORAS_PTA / Horas Programables / Horas Asignables y variantes),
+    // EXCLUYENDO explícitamente "DEDICACION_HORAS_SEMANA" (otra columna con "HORAS").
+    // Sin esto, un header del Excel con una variación mínima hacía que el valor real
+    // (p.ej. 720) no se leyera y el docente cayera al default por fórmula (800).
+    ?? findRawByNormalizedKey(raw, (k) =>
+      !k.includes('SEMANA') && (
+        k === 'HORASPTA'
+        || (k.includes('HORAS') && (k.includes('PTA') || k.includes('PROGRAMABLE') || k.includes('ASIGNABLE')))
+      ),
+    ),
+  );
   const dedicacionHorasSemanaRaw = parseMaybeInt(raw?.DEDICACION_HORAS_SEMANA ?? raw?.dedicacionHorasSemana ?? raw?.dedicacion_horas_semana ?? raw?.['Dedicacion Horas Semana']);
   const isIndefinido = !finVinculacionStr || finVinculacionStr.toLowerCase().trim() === 'indefinido';
   const fechaFinVinculacion = isIndefinido ? null : parseMaybeDate(finVinculacionStr);
@@ -1532,45 +1564,12 @@ export class BancoDocentesService implements OnModuleInit {
       }
     }
 
-    const documentNumbers = Array.from(new Set(Array.from(rowsByDocumentPeriod.values()).flat().map((item) => item.documentNumber)));
-    const periodos = Array.from(new Set(Array.from(rowsByDocumentPeriod.values()).flat().map((item) => item.periodoCarga || '')));
-    if (documentNumbers.length > 0 && periodos.length > 0) {
-      const existingRows = await queryRunner.query(
-        `
-        SELECT
-          p.num_identificacion::text AS document_number,
-          p.nom_largo AS nombre,
-          p.id_person AS persona_id,
-          d.id AS docente_id,
-          COALESCE(d."periodoCarga", '') AS periodo_carga
-        FROM auth.personas p
-        INNER JOIN academic_work_plan."Docente" d
-          ON d."personaId"::text = p.id_person::text
-         AND COALESCE(d."periodoCarga", '') = ANY($2::text[])
-        WHERE p.num_identificacion::text = ANY($1::text[])
-        `,
-        [documentNumbers, periodos],
-      );
-      const existingByDocument = new Map<string, any>();
-      for (const existing of existingRows || []) {
-        if (existing?.document_number) {
-          const key = makeDocumentPeriodKey(String(existing.document_number), existing.periodo_carga || null);
-          if (!existingByDocument.has(key)) existingByDocument.set(key, existing);
-        }
-      }
-
-      for (const group of rowsByDocumentPeriod.values()) {
-        const first = group[0];
-        const existing = existingByDocument.get(makeDocumentPeriodKey(first.documentNumber, first.periodoCarga));
-        if (!existing) continue;
-        for (const item of group) {
-          const issue = ensureIssue(item.index, item.documentNumber, item.periodoCarga, item.rowNumber, item.name);
-          issue.existing = existing;
-          issue.reasons.push(`El documento ${item.documentNumber} ya existe en el Banco de Docentes para el periodo ${item.periodoCarga || 'sin periodo'}${existing.nombre ? ` como ${existing.nombre}` : ''}.`);
-        }
-      }
-    }
-
+    // NOTA: los documentos que YA EXISTEN en la BD NO se marcan como error ni se bloquean.
+    // El Excel del RUND es la fuente de verdad y re-subirlo debe ACTUALIZAR esos docentes
+    // (upsertDocente los actualiza cuando rejectExisting=false). Antes se agregaban aquí
+    // como error bloqueante y se saltaban en processRows, por lo que sus datos (p.ej.
+    // HORAS_PTA) nunca se actualizaban. Solo se bloquean los duplicados DENTRO del archivo
+    // (detectados arriba), que sí son un error real de la carga.
     const blockedRowIndexes = new Set<number>(issuesByRow.keys());
     const errors = Array.from(issuesByRow.entries()).map(([index, issue]) => ({
       row: issue.rowNumber,

@@ -127,7 +127,13 @@ export async function savePTA(data: any) {
       files.forEach(f => formData.append(f.key, f.file, f.file.name));
       raw = await (apiClient as any).upload<any>(`${PTA_BASE}/save`, formData);
     } else {
-      raw = await apiClient.post<any>(`${PTA_BASE}/save`, data);
+      // Guardar es una mutación: un 4xx no se corrige repitiendo el mismo POST y
+      // antes generaba cuatro solicitudes idénticas por cada auto-guardado fallido.
+      // El siguiente ciclo de auto-guardado o la acción manual ya permiten reintentar.
+      raw = await apiClient.post<any>(`${PTA_BASE}/save`, data, {
+        retries: 0,
+        skipErrorToast: true,
+      });
     }
 
     const normalized = normalizeResult<any>(raw, null);

@@ -85,9 +85,23 @@ export function ModalPliegoCargos({ proceso, onClose, onSuccess }: Props) {
         documentSize = archivo.size;
       }
 
+      // Resolver la plantilla activa de Pliego de Cargos para poder identificarla
+      // en la advertencia de eliminación de plantillas (no hay selector en este modal)
+      let autoConfigurationId: string | undefined;
+      try {
+        const autosConfig = await disciplinaryService.getAutosConfigurationActive();
+        autoConfigurationId = autosConfig.find(
+          (c) => c.tipo === 'AUTO_FORMULACION_PLIEGO' && c.estado === 'activo',
+        )?.id;
+      } catch {
+        // Si falla la consulta de configuración, se crea el auto sin autoConfigurationId
+        // (mismo comportamiento que antes de este cambio)
+      }
+
       await disciplinaryService.crearAuto({
         processId: proceso.id,
         tipoAuto: 'PLIEGO_CARGOS',
+        autoConfigurationId,
         contenidoHtml: contenidoHtml || undefined,
         comentarios: comentarios || undefined,
         documentUrl,

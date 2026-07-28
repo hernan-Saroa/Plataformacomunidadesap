@@ -225,8 +225,13 @@ export class BancoDocentesController {
 
     // Los duplicados se manejarán dentro del servicio bulkUpsert para no bloquear el archivo completo.
 
+    // rejectExisting: false — El Excel del RUND es la fuente de verdad: re-subirlo debe
+    // ACTUALIZAR los docentes ya existentes (p.ej. corregir sus horas), no rechazarlos.
+    // Antes iba en true, por lo que un docente ya cargado se rechazaba y su bolsa de horas
+    // (HORAS_PTA) nunca se actualizaba, quedando el PTA con el valor viejo (800 en vez de
+    // 720). Los duplicados DENTRO del mismo archivo sí se siguen bloqueando en bulkUpsert.
     const result = await this.service.bulkUpsert(rows, {
-      rejectExisting: true,
+      rejectExisting: false,
       dryRun,
       omitErrors,
       periodoCarga: periodoCargaQuery || periodoCargaFromFile || undefined,

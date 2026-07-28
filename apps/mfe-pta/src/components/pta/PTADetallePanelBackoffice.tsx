@@ -39,7 +39,7 @@ import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
 import { PTA_COLORS } from './shared/ptaColors';
-import { getExtensionSelectionInfo } from './shared/extensionSelection';
+import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import { resolvePtaFileUrl } from './shared/ptaFiles';
 import {
@@ -2673,6 +2673,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                                   <span style={{fontWeight: 600}}>Obs:</span> {a.observaciones}
                                 </div>
                               )}
+                              <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
                             </div>
                             <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.creditos || 0}</span>
                             <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.semestre || '-'}</span>
@@ -2749,6 +2750,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             {p.fecha_fin && <span>Fin: <strong>{fmtFecha(p.fecha_fin)}</strong></span>}
                           </div>
                         )}
+                        <HierarchySelectionSummary activity={p} accent="#7C3AED" compact className="mt-1.5" />
                       </div>
                     ))}
                   </div>
@@ -2776,6 +2778,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             {a.fecha_fin && <span>Fin: <strong>{fmtFecha(a.fecha_fin)}</strong></span>}
                           </div>
                         )}
+                        <HierarchySelectionSummary activity={a} accent="#7C3AED" compact className="mt-1.5" />
                       </div>
                     ))}
                   </div>
@@ -2833,9 +2836,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669', marginBottom: 4, textTransform: 'uppercase' }}>
                         {LABELS[sec]}
                       </div>
-                      {acts.map((a: any, i: number) => {
-                        const selection = getExtensionSelectionInfo(a);
-                        return (
+                      {acts.map((a: any, i: number) => (
                         <div key={i} style={{
                           padding: '7px 10px', borderRadius: 6, background: '#FAFAFA',
                           border: '1px solid #F3F4F6', marginBottom: 3,
@@ -2844,19 +2845,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre}</span>
                             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669', whiteSpace: 'nowrap' }}>{a.horas}h</span>
                           </div>
-                          {selection && (
-                            <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                              <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#166534' }}>{selection.etiqueta}: {selection.nombre}</div>
-                              {selection.detalles.map((detail, detailIndex) => (
-                                <div key={`${detail.nombre}-${detailIndex}`} style={{ marginTop: 3, paddingLeft: 7, borderLeft: '2px solid #86EFAC', fontSize: '0.64rem', color: '#475569', lineHeight: 1.4 }}>
-                                  {detail.nombre && <strong>{detail.nombre}</strong>}
-                                  {detail.valores.map((value, valueIndex) => (
-                                    <div key={`${value.columna}-${valueIndex}`}>{value.columna && <strong>{value.columna}: </strong>}{value.valor}</div>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <HierarchySelectionSummary activity={a} accent="#059669" compact className="mt-1.5" />
                           {a.descripcion && (
                             <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
                           )}
@@ -2867,8 +2856,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                             </div>
                           )}
                         </div>
-                        );
-                      })}
+                      ))}
                     </div>
                   );
                 })}
@@ -2986,6 +2974,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         {a.descripcion && (
                           <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
                         )}
+                        <HierarchySelectionSummary activity={a} accent="#D97706" compact className="mt-1.5" />
                         {(a.fecha_inicio || a.fecha_fin) && (
                           <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: '0.65rem', color: '#6B7280' }}>
                             {a.fecha_inicio && <span>Inicio: <strong>{fmtFecha(a.fecha_inicio)}</strong></span>}
