@@ -1050,6 +1050,7 @@ export class ProcessService {
     fechaAprobacion: Date,
     aprobadoPorId: string,
     aprobadoPorNombre?: string,
+    motivo?: string,
   ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
     const proceso = await this.findById(id, false);
     const etapaAnterior = proceso.etapaActual;
@@ -1088,7 +1089,7 @@ export class ProcessService {
       processId: id,
       tipo: 'cambio_etapa',
       etapa: nuevaEtapa,
-      descripcion: `Cambio de etapa aprobado mediante auto de apertura. Etapa anterior: ${etapaAnterior}.`,
+      descripcion: `Cambio de etapa aprobado ${motivo || 'mediante auto de apertura'}. Etapa anterior: ${etapaAnterior}.`,
       responsableNombre: nombreAprobador,
       fechaActuacion: fechaAprobacion,
       observaciones: `Etapa anterior: ${etapaAnterior} | Nueva etapa: ${nuevaEtapa}`,
