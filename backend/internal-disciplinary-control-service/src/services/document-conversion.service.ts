@@ -342,12 +342,18 @@ export class DocumentConversionService {
 
       // Mammoth no lee word/header*.xml ni word/footer*.xml (solo word/document.xml),
       // así que el membrete institucional insertado como encabezado de Word se pierde
-      // en la conversión. Se extrae aparte y se antepone al contenido.
-      const headerImages = await this.extractHeaderImages(inputPath);
-      const headerImagesHtml = headerImages
+      // en la conversión. Se extrae aparte (imágenes y texto) y se antepone al contenido.
+      const headerContent = await this.extractHeaderContent(inputPath);
+      const headerImagesHtml = headerContent.images
         .map(
           (src) =>
             `<img src="${src}" style="max-width:100%; display:block; margin: 0 0 12pt 0;" />`,
+        )
+        .join('');
+      const headerTextHtml = headerContent.textBlocks
+        .map(
+          (texto) =>
+            `<p style="text-align:center; font-size:10pt; margin: 0 0 4pt 0;">${this.escapeHtmlText(texto)}</p>`,
         )
         .join('');
 
@@ -376,6 +382,7 @@ export class DocumentConversionService {
         <body>
           <div class="mammoth-style-wrapper">
             ${headerImagesHtml}
+            ${headerTextHtml}
             ${htmlContent}
           </div>
         </body>
@@ -434,7 +441,9 @@ export class DocumentConversionService {
     return value.replace(/'/g, "''");
   }
 
-  private async extractHeaderImages(inputPath: string): Promise<string[]> {
+  private async extractHeaderContent(
+    inputPath: string,
+  ): Promise<{ images: string[]; textBlocks: string[] }> {
     try {
       const docxBuffer = await fs.readFile(inputPath);
       const zip = await JSZip.loadAsync(docxBuffer);
@@ -444,7 +453,9 @@ export class DocumentConversionService {
       );
 
       const images: string[] = [];
+      const textBlocks: string[] = [];
       const seenMediaPaths = new Set<string>();
+      const seenText = new Set<string>();
 
       for (const headerFile of headerFiles) {
         const headerXml = await zip.file(headerFile)?.async('string');
@@ -454,60 +465,91 @@ export class DocumentConversionService {
 
         const relsPath = `word/_rels/${path.basename(headerFile)}.rels`;
         const relsXml = await zip.file(relsPath)?.async('string');
-        if (!relsXml) {
-          continue;
-        }
 
         const relsMap = new Map<string, string>();
-        const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
-        let relMatch: RegExpExecArray | null;
+        if (relsXml) {
+          const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
+          let relMatch: RegExpExecArray | null;
 
-        while ((relMatch = relRegex.exec(relsXml)) !== null) {
-          relsMap.set(relMatch[1], relMatch[2]);
+          while ((relMatch = relRegex.exec(relsXml)) !== null) {
+            relsMap.set(relMatch[1], relMatch[2]);
+          }
+
+          const embedRegex = /r:embed="([^"]+)"/g;
+          let embedMatch: RegExpExecArray | null;
+
+          while ((embedMatch = embedRegex.exec(headerXml)) !== null) {
+            const target = relsMap.get(embedMatch[1]);
+            if (!target) {
+              continue;
+            }
+
+            const mediaPath = path.posix.normalize(`word/${target}`);
+            if (seenMediaPaths.has(mediaPath)) {
+              continue;
+            }
+            seenMediaPaths.add(mediaPath);
+
+            const mediaFile = zip.file(mediaPath);
+            if (!mediaFile) {
+              continue;
+            }
+
+            const mimeType = this.getImageMimeType(mediaPath);
+            if (!mimeType) {
+              this.logger.warn(
+                `[Conversion] Imagen de encabezado con formato no soportado para vista web: ${mediaPath}`,
+              );
+              continue;
+            }
+
+            const mediaBuffer = await mediaFile.async('nodebuffer');
+            images.push(`data:${mimeType};base64,${mediaBuffer.toString('base64')}`);
+          }
         }
 
-        const embedRegex = /r:embed="([^"]+)"/g;
-        let embedMatch: RegExpExecArray | null;
+        // Mammoth tampoco lee el texto del encabezado (ej. dirección, NIT, datos de
+        // contacto de la institución debajo del logo). Se extrae párrafo por párrafo.
+        const paragraphRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
+        let paragraphMatch: RegExpExecArray | null;
 
-        while ((embedMatch = embedRegex.exec(headerXml)) !== null) {
-          const target = relsMap.get(embedMatch[1]);
-          if (!target) {
-            continue;
+        while ((paragraphMatch = paragraphRegex.exec(headerXml)) !== null) {
+          const paragraphXml = paragraphMatch[1];
+          const textRegex = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+          let textMatch: RegExpExecArray | null;
+          let paragraphText = '';
+
+          while ((textMatch = textRegex.exec(paragraphXml)) !== null) {
+            paragraphText += textMatch[1];
           }
 
-          const mediaPath = path.posix.normalize(`word/${target}`);
-          if (seenMediaPaths.has(mediaPath)) {
-            continue;
+          const decodedText = this.decodeXmlEntities(paragraphText).trim();
+          if (decodedText && !seenText.has(decodedText)) {
+            seenText.add(decodedText);
+            textBlocks.push(decodedText);
           }
-          seenMediaPaths.add(mediaPath);
-
-          const mediaFile = zip.file(mediaPath);
-          if (!mediaFile) {
-            continue;
-          }
-
-          const mimeType = this.getImageMimeType(mediaPath);
-          if (!mimeType) {
-            this.logger.warn(
-              `[Conversion] Imagen de encabezado con formato no soportado para vista web: ${mediaPath}`,
-            );
-            continue;
-          }
-
-          const mediaBuffer = await mediaFile.async('nodebuffer');
-          images.push(`data:${mimeType};base64,${mediaBuffer.toString('base64')}`);
         }
       }
 
-      return images;
+      return { images, textBlocks };
     } catch (error) {
       this.logger.warn(
-        `[Conversion] No se pudieron extraer imágenes del encabezado del documento: ${
+        `[Conversion] No se pudo extraer el contenido del encabezado del documento: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return [];
+      return { images: [], textBlocks: [] };
     }
+  }
+
+  private decodeXmlEntities(value: string): string {
+    return value
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&');
   }
 
   private getImageMimeType(fileName: string): string | null {

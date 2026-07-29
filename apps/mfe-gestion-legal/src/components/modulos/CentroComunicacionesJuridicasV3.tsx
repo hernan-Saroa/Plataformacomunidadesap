@@ -567,10 +567,6 @@ export function ModuloCentroComunicacionesJuridicasV3() {
 
 
 
-  // ¿Hay más de un buzón con datos? Si es así, los tabs Judiciales/Oficios se
-  // restringen al buzón JUDICIAL y Correos al buzón CORREOS (separación por cuenta).
-  // Con un solo buzón (estado actual) se mantiene el filtrado por tipo para no
-  // ocultar nada. Al configurar la segunda cuenta, la separación es automática.
   // Solo las comunicaciones de los buzones que el usuario tiene permitido ver.
   // Es la fuente de verdad para la lista visible y para los contadores/estadísticas,
   // evitando que se filtre información de un buzón ajeno a las funciones del usuario.
@@ -580,33 +576,28 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     [comunicaciones, puedeBuzonJudicial, puedeBuzonCorreos]
   );
 
-  const buzonesPresentes = useMemo(() => {
-    const set = new Set<string>();
-    comunicacionesVisibles.forEach(c => set.add((c.buzon || 'JUDICIAL').toUpperCase()));
-    return set;
-  }, [comunicacionesVisibles]);
-  const multiBuzon = buzonesPresentes.size > 1;
-
   const comunicacionesFiltradas = useMemo(() => {
     let resultado = [...comunicacionesVisibles];
     const esBuzon = (c: ComunicacionUnificada, b: string) => (c.buzon || 'JUDICIAL').toUpperCase() === b;
 
     // Filtrar por tab
+    // NOTA: los tabs Judiciales/Correos/Oficios filtran por BUZÓN de origen (cuenta de
+    // correo real), no por `tipo` (clasificación de contenido hecha por IA). `tipo` es
+    // una heurística de palabras clave que puede fallar (por defecto cae en 'CORREO'),
+    // así que si se usara como filtro, correos que sí llegaron al buzón Judicial pero no
+    // fueron reconocidos como tal por la IA quedarían invisibles para un usuario que solo
+    // tiene permiso sobre ese buzón (no tiene el tab "Correos" para verlos ahí tampoco).
     switch (tabActiva) {
       case 'judiciales':
-        resultado = resultado.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO'
-          && (!multiBuzon || esBuzon(c, 'JUDICIAL')));
+        // Todo el buzón JUDICIAL excepto lo que se muestra explícitamente en "Oficios".
+        resultado = resultado.filter(c => esBuzon(c, 'JUDICIAL') && c.tipo !== 'OFICIO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'correos':
-        // Si hay dos buzones, el tab Correos muestra TODO el buzón CORREOS (cualquier tipo).
-        // Con un solo buzón, se mantiene el filtro por tipo CORREO (comportamiento actual).
-        resultado = multiBuzon
-          ? resultado.filter(c => esBuzon(c, 'CORREOS') && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO')
-          : resultado.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
+        // Todo el buzón CORREOS (institucional), cualquier tipo detectado.
+        resultado = resultado.filter(c => esBuzon(c, 'CORREOS') && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'oficios':
-        resultado = resultado.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO'
-          && (!multiBuzon || esBuzon(c, 'JUDICIAL')));
+        resultado = resultado.filter(c => esBuzon(c, 'JUDICIAL') && c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
         break;
       case 'enviados':
         resultado = resultado.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA' && c.categoria !== 'RESPUESTA' && c.categoria !== 'REENVIO');
@@ -665,7 +656,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return resultado.sort((a, b) => {
       return b.fechaRadicacion.getTime() - a.fechaRadicacion.getTime();
     });
-  }, [comunicacionesVisibles, tabActiva, busqueda, filtroMedioControl, filtroBuzon, multiBuzon]);
+  }, [comunicacionesVisibles, tabActiva, busqueda, filtroMedioControl, filtroBuzon]);
 
   // ✨ Aplicar paginación
   const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
@@ -701,9 +692,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   ).length;
 
   const contadoresTabs = {
-    judiciales: comunicacionesVisibles.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
-    correos: comunicacionesVisibles.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
-    oficios: comunicacionesVisibles.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
+    judiciales: comunicacionesVisibles.filter(c => (c.buzon || 'JUDICIAL').toUpperCase() === 'JUDICIAL' && c.tipo !== 'OFICIO' && c.estado !== 'ARCHIVADA').length,
+    correos: comunicacionesVisibles.filter(c => (c.buzon || 'JUDICIAL').toUpperCase() === 'CORREOS' && c.estado !== 'ARCHIVADA').length,
+    oficios: comunicacionesVisibles.filter(c => (c.buzon || 'JUDICIAL').toUpperCase() === 'JUDICIAL' && c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
     enviados: comunicacionesVisibles.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
     respuestas: comunicacionesVisibles.filter(c => c.categoria === 'RESPUESTA' && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,

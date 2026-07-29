@@ -17,6 +17,7 @@ import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
 import { StorageService } from './storage.service';
 import { NotificationClientService } from './notification-client.service';
+import { TerminosCalculatorService } from './terminos-calculator.service';
 
 interface FileData {
   buffer: Buffer;
@@ -40,7 +41,29 @@ export class NewsService {
     private storageService: StorageService,
     private notificationClient: NotificationClientService,
     private readonly httpService: HttpService,
+    private terminosService: TerminosCalculatorService,
   ) { }
+
+  /**
+   * Días hábiles reales restantes hasta el vencimiento de la etapa Recepción,
+   * contados desde fechaRecepcion (una noticia aún no tiene fechaVencimientoEtapa
+   * propia — eso solo se calcula cuando se convierte en proceso). Usa el mismo
+   * mecanismo ya corregido para procesos (días hábiles reales, salta fines de
+   * semana/festivos), en vez del cálculo de "antigüedad desde recepción" que
+   * mostraba "1 día pendiente" para cualquier noticia recién creada.
+   */
+  private async calcularDiasHabilesRestantesRecepcion(
+    fechaRecepcion: Date | string | null | undefined,
+  ): Promise<number | null> {
+    if (!fechaRecepcion) {
+      return null;
+    }
+    const { fechaVencimiento } = await this.terminosService.calculateVencimientoEtapa(
+      'RECEPCION',
+      new Date(fechaRecepcion),
+    );
+    return await this.terminosService.diasHabilesRestantes(fechaVencimiento);
+  }
 
   /**
    * Radica una nueva noticia disciplinaria
@@ -209,19 +232,21 @@ export class NewsService {
 
     // Add user information to news
     console.log('[NewsService] UserMap keys:', Array.from(userMap.keys()));
-    return news.map(n => {
+    return Promise.all(news.map(async n => {
       const userInfo = n.radicadorId ? userMap.get(n.radicadorId) || userMap.get(String(n.radicadorId)) : null;
+      const diasHabilesRestantes = await this.calcularDiasHabilesRestantesRecepcion(n.fechaRecepcion);
       const result = {
         ...n,
         radicador: userInfo?.nombre || null,
         radicadorEmail: userInfo?.email || null,
+        diasHabilesRestantes,
       };
 
       console.log(`[NewsService] Noticia ${n.id}: radicadorId=${n.radicadorId} (tipo: ${typeof n.radicadorId}), buscando en mapa...`);
       console.log(`[NewsService] Noticia ${n.id}: userInfo encontrado=${!!userInfo}, nombre=${result.radicador}, email=${result.radicadorEmail}`);
 
       return result;
-    });
+    }));
   }
 
   /**
@@ -962,6 +987,21 @@ export class NewsService {
       return info;
     };
 
+    const buildPersonSection = (titulo: string, personaOArray: any): string => {
+      const personas = Array.isArray(personaOArray) ? personaOArray : [personaOArray];
+      return personas.map((persona, idx) => `
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              ${titulo}${personas.length > 1 ? ` ${idx + 1}` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              ${formatPersonInfo(persona)}
+            </td>
+          </tr>`).join('');
+    };
+
     // Usar datos de descripcionRemision o construir desde la noticia
     const datos = descripcionRemision || {
       numeroRadicado: noticia.radicado,
@@ -969,8 +1009,8 @@ export class NewsService {
       fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
       territorial: noticia.territorial,
       dependenciaDenunciado: noticia.dependenciaDenunciado,
-      denunciante: (() => { const d = typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante; return Array.isArray(d) ? d[0] : d; })(),
-      disciplinable: (() => { const d = typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable; return Array.isArray(d) ? d[0] : d; })(),
+      denunciante: typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante,
+      disciplinable: typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable,
       hechos: noticia.hechos,
       conductas: noticia.conductas,
       fundamentosLegales: [],
@@ -1019,26 +1059,8 @@ export class NewsService {
               ${justificacion}
             </td>
           </tr>
-          <tr>
-            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Datos del Denunciante
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              ${formatPersonInfo(datos.denunciante)}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Datos del Disciplinable
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              ${formatPersonInfo(datos.disciplinable)}
-            </td>
-          </tr>
+          ${buildPersonSection('Datos del Denunciante', datos.denunciante)}
+          ${buildPersonSection('Datos del Disciplinable', datos.disciplinable)}
           <tr>
             <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
               Hechos de la Noticia
