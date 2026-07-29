@@ -238,10 +238,11 @@ export class ProcessService {
       processes.map((process) => process.id),
     );
 
-    return processes.map((p) => {
+    return Promise.all(processes.map(async (p) => {
       const actuaciones = actuacionesResumen.get(p.id);
       const tasks = tasksResumen.get(p.id);
       const notes = notesResumen.get(p.id);
+      const diasHabilesRestantes = await this.calcularDiasHabilesRestantes(p.fechaVencimientoEtapa);
       const draftsCount =
         p.autos?.filter((auto) => auto.estado === 'BORRADOR').length || 0;
       const documentsCount = p.evidence?.length || 0;
@@ -294,8 +295,9 @@ export class ProcessService {
         pendingTasksCount: tasks?.pendingTasksCount || 0,
         notesCount: notes?.notesCount || 0,
         timePercentage: Math.round(timePercentage * 100) / 100,
+        diasHabilesRestantes,
       };
-    });
+    }));
   }
 
   private async buildActuacionesResumen(processIds: string[]): Promise<Map<string, {
@@ -656,6 +658,26 @@ export class ProcessService {
   }
 
   /**
+   * Días hábiles reales restantes hasta el vencimiento de la etapa actual (salta
+   * fines de semana y festivos vía TerminosCalculatorService). El campo
+   * fechaVencimientoEtapa ya se calcula sumando días hábiles configurados en
+   * stage_configuration, pero el frontend mostraba "días restantes" como una
+   * simple resta de fechas en días calendario, dando un número mayor al
+   * configurado (ej. 20 días calendario quedando cuando la etapa vence en 13
+   * días hábiles).
+   */
+  private async calcularDiasHabilesRestantes(
+    fechaVencimientoEtapa: Date | string | null | undefined,
+  ): Promise<number | null> {
+    if (!fechaVencimientoEtapa) {
+      return null;
+    }
+    return await this.terminosService.diasHabilesRestantes(
+      new Date(fechaVencimientoEtapa),
+    );
+  }
+
+  /**
    * Obtiene todos los procesos (excluyendo los de noticias devueltas)
    */
   async findAll(): Promise<any[]> {
@@ -683,10 +705,11 @@ export class ProcessService {
         processes.map((process) => process.id),
       );
 
-      return processes.map(p => {
+      return Promise.all(processes.map(async p => {
         const actuaciones = actuacionesResumen.get(p.id);
         const tasks = tasksResumen.get(p.id);
         const notes = notesResumen.get(p.id);
+        const diasHabilesRestantes = await this.calcularDiasHabilesRestantes(p.fechaVencimientoEtapa);
         // Calcular estadísticas dinámicas
         const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
         const documentsCount = p.evidence?.length || 0;
@@ -745,9 +768,10 @@ export class ProcessService {
           completedTasksCount: tasks?.completedTasksCount || 0,
           pendingTasksCount: tasks?.pendingTasksCount || 0,
           notesCount: notes?.notesCount || 0,
-          timePercentage: Math.round(timePercentage * 100) / 100
+          timePercentage: Math.round(timePercentage * 100) / 100,
+          diasHabilesRestantes
         };
-      });
+      }));
     } catch (error) {
       console.error('Error en findAll:', error);
       throw new HttpException(
@@ -906,10 +930,11 @@ export class ProcessService {
       processes.map((process) => process.id),
     );
 
-    return processes.map(p => {
+    return Promise.all(processes.map(async p => {
       const actuaciones = actuacionesResumen.get(p.id);
       const tasks = tasksResumen.get(p.id);
       const notes = notesResumen.get(p.id);
+      const diasHabilesRestantes = await this.calcularDiasHabilesRestantes(p.fechaVencimientoEtapa);
       const draftsCount = p.autos?.filter(auto => auto.estado === 'BORRADOR').length || 0;
       const documentsCount = p.evidence?.length || 0;
 
@@ -956,9 +981,10 @@ export class ProcessService {
         completedTasksCount: tasks?.completedTasksCount || 0,
         pendingTasksCount: tasks?.pendingTasksCount || 0,
         notesCount: notes?.notesCount || 0,
-        timePercentage: Math.round(timePercentage * 100) / 100
+        timePercentage: Math.round(timePercentage * 100) / 100,
+        diasHabilesRestantes
       };
-    });
+    }));
   }
 
   /**

@@ -17,6 +17,7 @@ import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
 import { StorageService } from './storage.service';
 import { NotificationClientService } from './notification-client.service';
+import { TerminosCalculatorService } from './terminos-calculator.service';
 
 interface FileData {
   buffer: Buffer;
@@ -40,7 +41,29 @@ export class NewsService {
     private storageService: StorageService,
     private notificationClient: NotificationClientService,
     private readonly httpService: HttpService,
+    private terminosService: TerminosCalculatorService,
   ) { }
+
+  /**
+   * Días hábiles reales restantes hasta el vencimiento de la etapa Recepción,
+   * contados desde fechaRecepcion (una noticia aún no tiene fechaVencimientoEtapa
+   * propia — eso solo se calcula cuando se convierte en proceso). Usa el mismo
+   * mecanismo ya corregido para procesos (días hábiles reales, salta fines de
+   * semana/festivos), en vez del cálculo de "antigüedad desde recepción" que
+   * mostraba "1 día pendiente" para cualquier noticia recién creada.
+   */
+  private async calcularDiasHabilesRestantesRecepcion(
+    fechaRecepcion: Date | string | null | undefined,
+  ): Promise<number | null> {
+    if (!fechaRecepcion) {
+      return null;
+    }
+    const { fechaVencimiento } = await this.terminosService.calculateVencimientoEtapa(
+      'RECEPCION',
+      new Date(fechaRecepcion),
+    );
+    return await this.terminosService.diasHabilesRestantes(fechaVencimiento);
+  }
 
   /**
    * Radica una nueva noticia disciplinaria
@@ -209,19 +232,21 @@ export class NewsService {
 
     // Add user information to news
     console.log('[NewsService] UserMap keys:', Array.from(userMap.keys()));
-    return news.map(n => {
+    return Promise.all(news.map(async n => {
       const userInfo = n.radicadorId ? userMap.get(n.radicadorId) || userMap.get(String(n.radicadorId)) : null;
+      const diasHabilesRestantes = await this.calcularDiasHabilesRestantesRecepcion(n.fechaRecepcion);
       const result = {
         ...n,
         radicador: userInfo?.nombre || null,
         radicadorEmail: userInfo?.email || null,
+        diasHabilesRestantes,
       };
 
       console.log(`[NewsService] Noticia ${n.id}: radicadorId=${n.radicadorId} (tipo: ${typeof n.radicadorId}), buscando en mapa...`);
       console.log(`[NewsService] Noticia ${n.id}: userInfo encontrado=${!!userInfo}, nombre=${result.radicador}, email=${result.radicadorEmail}`);
 
       return result;
-    });
+    }));
   }
 
   /**
