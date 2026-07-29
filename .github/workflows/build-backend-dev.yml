@@ -31,6 +31,7 @@ jobs:
           - notifications-service
           - travel-expenses-service
           - audit-service
+          - hiring-service
 
     steps:
       - name: Checkout repository
