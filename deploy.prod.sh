@@ -838,8 +838,8 @@ cmd_db_migrate() {
         return 0
     fi
 
-    # Verificar si hay archivos SQL en la carpeta
-    if [ -z "$(ls -A ./db/migrations/*.sql 2>/dev/null)" ]; then
+    # Verificar si hay archivos SQL en la carpeta (incluyendo subcarpetas, excluyendo 'old' y 'archive')
+    if [ -z "$(find ./db/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null)" ]; then
         echo -e "${YELLOW}No hay archivos de migración en db/migrations${NC}"
         return 0
     fi
@@ -848,8 +848,8 @@ cmd_db_migrate() {
     echo -e "${YELLOW}Copiando migraciones al contenedor...${NC}"
     docker cp ./db/migrations superapp-db-prod:/tmp/migrations
 
-    # Obtener lista de archivos SQL ordenados (usar shell en el contenedor para expandir el wildcard)
-    MIGRATION_FILES=$(docker exec superapp-db-prod sh -c "ls -1 /tmp/migrations/*.sql 2>/dev/null | sort")
+    # Obtener lista de archivos SQL ordenados recursivamente (excluyendo la carpeta 'old' y 'archive')
+    MIGRATION_FILES=$(docker exec superapp-db-prod sh -c "find /tmp/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null | sort")
 
     if [ -z "$MIGRATION_FILES" ]; then
         echo -e "${YELLOW}No se encontraron archivos de migración${NC}"
@@ -867,23 +867,24 @@ cmd_db_migrate() {
     # Ejecutar cada migración
     for file in $MIGRATION_FILES; do
         filename=$(basename "$file")
+        relpath=$(echo "$file" | sed 's|^/tmp/migrations/||')
 
-        # Saltar migraciones ya aplicadas
-        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
-            echo -e "${YELLOW}Saltando (ya aplicada): $filename${NC}"
+        # Saltar migraciones ya aplicadas (buscando por ruta relativa o por nombre de archivo)
+        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$relpath" || echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
+            echo -e "${YELLOW}Saltando (ya aplicada): $relpath${NC}"
             continue
         fi
 
         MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
-        echo -e "${MAGENTA}Ejecutando migración: $filename${NC}"
+        echo -e "${MAGENTA}Ejecutando migración: $relpath${NC}"
 
         if docker exec superapp-db-prod psql -U postgres -d esap_db -f "$file" 2>&1; then
-            echo -e "${GREEN}✓ $filename ejecutado exitosamente${NC}"
+            echo -e "${GREEN}✓ $relpath ejecutado exitosamente${NC}"
             MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
-            escaped_filename=$(printf "%s" "$filename" | sed "s/'/''/g")
-            docker exec superapp-db-prod psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+            escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
+            docker exec superapp-db-prod psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
         else
-            echo -e "${RED}✗ Error ejecutando $filename${NC}"
+            echo -e "${RED}✗ Error ejecutando $relpath${NC}"
             MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
         fi
     done

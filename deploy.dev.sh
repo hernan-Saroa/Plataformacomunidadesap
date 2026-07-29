@@ -913,8 +913,8 @@ cmd_db_migrate() {
     echo -e "${YELLOW}Copiando migraciones al contenedor...${NC}"
     docker cp ./db/migrations superapp-db:/tmp/migrations
 
-    # Obtener lista de archivos SQL ordenados (usar shell en el contenedor para expandir el wildcard)
-    MIGRATION_FILES=$(docker exec superapp-db sh -c "ls -1 /tmp/migrations/*.sql 2>/dev/null | sort")
+    # Obtener lista de archivos SQL ordenados recursivamente (excluyendo la carpeta 'old' y 'archive')
+    MIGRATION_FILES=$(docker exec superapp-db sh -c "find /tmp/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null | sort")
 
     if [ -z "$MIGRATION_FILES" ]; then
         echo -e "${YELLOW}No hay archivos de migración para ejecutar${NC}"
@@ -932,23 +932,24 @@ cmd_db_migrate() {
 
     for file in $MIGRATION_FILES; do
         filename=$(basename "$file")
+        relpath=$(echo "$file" | sed 's|^/tmp/migrations/||')
 
-        # Saltar migraciones ya aplicadas
-        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
-            echo -e "${YELLOW}Saltando (ya aplicada): $filename${NC}"
+        # Saltar migraciones ya aplicadas (buscando por ruta relativa o por nombre de archivo)
+        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$relpath" || echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
+            echo -e "${YELLOW}Saltando (ya aplicada): $relpath${NC}"
             continue
         fi
 
         MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
 
-        echo -e "${YELLOW}[$MIGRATION_COUNT] Ejecutando: $filename${NC}"
+        echo -e "${YELLOW}[$MIGRATION_COUNT] Ejecutando: $relpath${NC}"
 
         # Ejecutar migración
         if docker exec superapp-db psql -U postgres -d esap_db -f "$file" 2>&1; then
             echo -e "${GREEN}    ✓ OK${NC}"
             MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
-            escaped_filename=$(printf "%s" "$filename" | sed "s/'/''/g")
-            docker exec superapp-db psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+            escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
+            docker exec superapp-db psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
         else
             echo -e "${RED}    ✗ ERROR${NC}"
             MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
