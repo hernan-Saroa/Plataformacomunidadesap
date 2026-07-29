@@ -1036,6 +1036,11 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   onChange={(e) => {
                     const nuevaFecha = e.target.value;
                     if (!isEditMode && nuevaFecha && Number(nuevaFecha.split('-')[0]) !== new Date().getFullYear()) {
+                      // El año escrito/seleccionado no es el actual: revertir el DOM de inmediato.
+                      // Sin esto, como formData.fechaQueja no cambia, React no vuelve a
+                      // renderizar y el input queda mostrando visualmente el año incorrecto
+                      // que el usuario tecleó, aunque el estado interno nunca lo guarde.
+                      e.target.value = formData.fechaQueja || '';
                       return;
                     }
                     handleChange('fechaQueja', nuevaFecha);
