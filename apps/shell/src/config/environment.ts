@@ -178,6 +178,7 @@ export const MICROSERVICE_URLS = {
   notificaciones: withLocalhost(3009),
   viaticos: withLocalhost(3010),
   audit: withLocalhost(3011),
+  hiring: withLocalhost(3012),
 };
 
 // Helper para otras variables de entorno (solo para variables no críticas)

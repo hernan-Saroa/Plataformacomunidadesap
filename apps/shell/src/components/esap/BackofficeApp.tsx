@@ -101,6 +101,7 @@ const EstructuraOrganizacionalModule = lazyRemote(() => import('estructura_org/M
 const ProgramasAcademicosModule = lazyRemote(() => import('programas_academicos/Module'), ['ProgramasAcademicosModule']);
 const GestionUsuariosPasswordTracking = lazyRemote(() => import('gestion_personas/Passwords'), ['GestionUsuariosPasswordTracking']);
 const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'), ['GestionProfesoralApp']);
+const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 
 // ✅ Loading Spinner Component
 function ModuleLoader() {
@@ -148,7 +149,8 @@ type ModuleView =
   | 'demo-pta-motor'
   | 'pta'
   | 'banco-docentes-pta'
-  | 'gestion-profesoral';
+  | 'gestion-profesoral'
+  | 'contratacion';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -218,6 +220,7 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'control-disciplinario': 'control-disciplinario',
   'gestion-legal': 'gestion-legal',
   'pta': 'pta',
+  'contratacion': 'contratacion',
   'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
   'gestion-profesoral': 'gestion-profesoral',
@@ -761,6 +764,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               }}
               onLogout={handleLogout}
             />
+          </Suspense>
+        );
+
+      case 'contratacion':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <ContratacionModulePremium />
           </Suspense>
         );
 

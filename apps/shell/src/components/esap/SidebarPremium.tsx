@@ -45,7 +45,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -1264,6 +1264,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     <Scale className="w-5 h-5" strokeWidth={2} />,
                     'Gestión Legal (SIGL)',
                     'Sistema Integrado Legal'
+                  )}
+
+                  {/* ✅ NUEVO: Contratación */}
+                  {renderMenuItem(
+                    'contratacion',
+                    <FileText className="w-5 h-5" strokeWidth={2} />,
+                    'Contratación',
+                    'Licitaciones y Contratos'
                   )}
                 </motion.div>
               )}

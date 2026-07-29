@@ -30,3 +30,6 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-travel-expenses-service:dev-latest
   audit-service:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-audit-service:dev-latest
+  hiring-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-hiring-service:dev-latest
+
