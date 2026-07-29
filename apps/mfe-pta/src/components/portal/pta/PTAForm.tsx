@@ -5932,6 +5932,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </button>
                       )}
                     </div>
+                    <div className="mb-3">
+                      <FormSelect
+                        label="Territorial"
+                        value={invProyecto.territorial_id}
+                        disabled={!isEditable}
+                        required={projectFieldsRequired}
+                        fieldKey={ptaFieldKey.investigacionProyecto('territorial_id')}
+                        error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('territorial_id')]}
+                        onChange={v => setInvProyecto(project => ({ ...project, territorial_id: v }))}
+                        options={territorialOptions}
+                        placeholder="Seleccionar territorial..."
+                      />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                       <FormInput label="Nombre del Proyecto" value={invProyecto.nombre} disabled={!isEditable}
                         required={projectFieldsRequired}
@@ -6104,19 +6117,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </div>
                       </div>
                     </div>
-                    <div className="mt-3 border-t border-purple-200/60 pt-3">
-                      <FormSelect
-                        label="Territorial"
-                        value={invProyecto.territorial_id}
-                        disabled={!isEditable}
-                        required={projectFieldsRequired}
-                        fieldKey={ptaFieldKey.investigacionProyecto('territorial_id')}
-                        error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('territorial_id')]}
-                        onChange={v => setInvProyecto(project => ({ ...project, territorial_id: v }))}
-                        options={territorialOptions}
-                        placeholder="Seleccionar territorial..."
-                      />
-                    </div>
                   </div>
 
                   {/* El proyecto conserva su propio tope por rol. Si la regla de
@@ -6204,6 +6204,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pr-8">
                               <div className="md:col-span-2">
                                 <FormInput
@@ -6338,19 +6351,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 </div>
                               </div>
                             </div>
-                            <div className="mt-1 border-t border-purple-100/80 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={act.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
-                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
-                            </div>
                           </div>
                         ))}
                       </div>
@@ -6368,6 +6368,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pr-8">
                               <div className="md:col-span-2">
                                 <FormSelect label="Actividad" value={act.actividad_id} disabled={!isEditable}
@@ -6469,19 +6482,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   )}
                                 </div>
                               </div>
-                            </div>
-                            <div className="mt-1 border-t border-gray-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={act.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
-                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
                             </div>
                           </div>
                         ))}
@@ -6604,6 +6604,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={ext.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.extension(ext.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.extension(ext.id, 'territorial_id')]}
+                                onChange={v => handleExtActChange(ext.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             {/* Selector de Actividad / Etapa */}
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
@@ -6779,19 +6792,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleExtActChange(ext.id, 'fecha_fin', v)} />
                               </div>
                             </div>
-                            <div className="mt-1 border-t border-emerald-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={ext.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.extension(ext.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.extension(ext.id, 'territorial_id')]}
-                                onChange={v => handleExtActChange(ext.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
-                            </div>
                           </div>
                         );
                       })}
@@ -6882,6 +6882,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.complementaria(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'territorial_id')]}
+                                onChange={v => handleCompChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
                                 <FormSelect label="Actividad" value={comp.actividad_id} disabled={!isEditable}
@@ -6993,19 +7006,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleCompChange(comp.id, 'fecha_fin', v)} />
                               </div>
                             </div>
-                            <div className="mt-1 border-t border-amber-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={comp.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.complementaria(comp.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'territorial_id')]}
-                                onChange={v => handleCompChange(comp.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
-                            </div>
                           </div>
                         );
                       })}
@@ -7090,6 +7090,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.academico(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'territorial_id')]}
+                                onChange={v => handleAcadChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
                                 <FormSelect label="Actividad" value={comp.actividad_id} disabled={!isEditable}
@@ -7215,19 +7228,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleAcadChange(comp.id, 'fecha_fin', v)} />
                               </div>
-                            </div>
-                            <div className="mt-1 border-t border-blue-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={comp.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.academico(comp.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'territorial_id')]}
-                                onChange={v => handleAcadChange(comp.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
                             </div>
                           </div>
                         );
