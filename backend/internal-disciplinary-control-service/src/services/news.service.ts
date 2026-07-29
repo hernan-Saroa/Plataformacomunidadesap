@@ -962,6 +962,21 @@ export class NewsService {
       return info;
     };
 
+    const buildPersonSection = (titulo: string, personaOArray: any): string => {
+      const personas = Array.isArray(personaOArray) ? personaOArray : [personaOArray];
+      return personas.map((persona, idx) => `
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              ${titulo}${personas.length > 1 ? ` ${idx + 1}` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              ${formatPersonInfo(persona)}
+            </td>
+          </tr>`).join('');
+    };
+
     // Usar datos de descripcionRemision o construir desde la noticia
     const datos = descripcionRemision || {
       numeroRadicado: noticia.radicado,
@@ -969,8 +984,8 @@ export class NewsService {
       fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
       territorial: noticia.territorial,
       dependenciaDenunciado: noticia.dependenciaDenunciado,
-      denunciante: (() => { const d = typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante; return Array.isArray(d) ? d[0] : d; })(),
-      disciplinable: (() => { const d = typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable; return Array.isArray(d) ? d[0] : d; })(),
+      denunciante: typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante,
+      disciplinable: typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable,
       hechos: noticia.hechos,
       conductas: noticia.conductas,
       fundamentosLegales: [],
@@ -1019,26 +1034,8 @@ export class NewsService {
               ${justificacion}
             </td>
           </tr>
-          <tr>
-            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Datos del Denunciante
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              ${formatPersonInfo(datos.denunciante)}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Datos del Disciplinable
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              ${formatPersonInfo(datos.disciplinable)}
-            </td>
-          </tr>
+          ${buildPersonSection('Datos del Denunciante', datos.denunciante)}
+          ${buildPersonSection('Datos del Disciplinable', datos.disciplinable)}
           <tr>
             <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
               Hechos de la Noticia
