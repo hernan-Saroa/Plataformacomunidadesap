@@ -538,6 +538,58 @@ function getConstraintLabel(constraint: HourConstraint): string {
   return `${constraint.max}h`;
 }
 
+function formatConfiguredHours(value: number): string {
+  const normalized = Math.round((Number(value) || 0) * 100) / 100;
+  return Number.isInteger(normalized)
+    ? String(normalized)
+    : String(normalized).replace('.', ',');
+}
+
+/**
+ * Resume únicamente la regla horaria de un bloque configurable. El desplegable
+ * no necesita exponer cuántas filas internas tiene: ese detalle se presenta
+ * después de elegir la actividad y no forma parte de su valor normativo.
+ */
+function getConfiguredRowsDropdownSummary(
+  rows: any[],
+  horasAProgramar: number,
+  multiplier = 1,
+): string {
+  const constraints = rows
+    .map(row => getConfiguredActivityConstraint(row, horasAProgramar))
+    .filter((constraint): constraint is HourConstraint => Boolean(constraint && constraint.max > 0));
+  if (constraints.length === 0) return '';
+
+  const safeMultiplier = Number(multiplier) > 0 ? Number(multiplier) : 1;
+  if (constraints.length === 1) {
+    const constraint = constraints[0];
+    if (constraint.mode === 'exclusive') return '100% PTA';
+    if (constraint.mode === 'percentage') {
+      return `${constraint.percentage}% PTA = ${formatConfiguredHours(constraint.max)}h`;
+    }
+
+    const minExecution = constraint.min / safeMultiplier;
+    const maxExecution = constraint.max / safeMultiplier;
+    const executionLabel = constraint.mode === 'fixed'
+      ? `fija ${formatConfiguredHours(maxExecution)}h`
+      : constraint.mode === 'range'
+        ? `${formatConfiguredHours(minExecution)}–${formatConfiguredHours(maxExecution)}h`
+        : `hasta ${formatConfiguredHours(maxExecution)}h`;
+    return safeMultiplier > 1
+      ? `${executionLabel} ejec. = ${formatConfiguredHours(constraint.max)}h PTA`
+      : executionLabel;
+  }
+
+  const maximumPtaHours = constraints.reduce((sum, constraint) => sum + constraint.max, 0);
+  const maximumExecutionHours = maximumPtaHours / safeMultiplier;
+  const includesPercentage = constraints.some(
+    constraint => constraint.mode === 'percentage' || constraint.mode === 'exclusive',
+  );
+  return safeMultiplier > 1 && !includesPercentage
+    ? `hasta ${formatConfiguredHours(maximumExecutionHours)}h ejec. = ${formatConfiguredHours(maximumPtaHours)}h PTA`
+    : `hasta ${formatConfiguredHours(maximumPtaHours)}h${includesPercentage ? ' PTA' : ''}`;
+}
+
 function getInitialConstraintValue(constraint: HourConstraint): number {
   if (!constraint.editable) return constraint.max;
   return constraint.mode === 'range' ? constraint.min : constraint.max;
@@ -6323,7 +6375,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   fieldKey={ptaFieldKey.investigacionActividad(act.id, 'actividad_id')}
                                   error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'actividad_id')]}
                                   onChange={v => handleInvActChange(act.id, 'actividad_id', v)}
-                                  options={actividadesParaDropdown.map((a: any) => ({ value: a.id, label: `${a.nombre} (${a.max_horas || a.horas_max || 0}h)` }))}
+                                  options={actividadesParaDropdown.map((a: any) => ({
+                                    value: a.id,
+                                    label: `${a.nombre} (hasta ${a.max_horas || a.horas_max || 0}h)`,
+                                  }))}
                                   placeholder="Seleccionar..." />
                               </div>
                               <FormInput label="Horas" type="number" value={act.horas_total} disabled={!isEditable}
@@ -6574,41 +6629,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     if (hasItems) {
                                       const configuredRows = getExtensionConfiguredHourRows(a, optionSection)
                                         .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
-                                      const totalPercentage = configuredRows.reduce((sum: number, it: any) =>
-                                        it.tipo === 'porcentaje' ? sum + getPTAPercentage(it) : sum, 0);
-                                      const totalHorasItems = configuredRows.reduce((s: number, it: any) => {
-                                        if (it.tipo === 'porcentaje') return s + getPercentageHours(it, horasAProgramar);
-                                        if (it.tipo === 'fija' || it.tipo === 'hasta') return s + (it.horas || 0);
-                                        return s + (it.horas || 0); // por_unidad: 1 unidad base
-                                      }, 0);
-                                      const itemSummary = `${configuredRows.length} ${configuredRows.length === 1
-                                        ? 'opción seleccionable'
-                                        : 'opciones combinables'}${totalPercentage > 0
-                                        ? ` · hasta ${totalHorasItems}h`
-                                        : ''}`;
-                                      return { value: a.id, label: `${a.nombre} (${itemSummary})` };
+                                      const hoursSummary = getConfiguredRowsDropdownSummary(
+                                        configuredRows,
+                                        horasAProgramar,
+                                        secMult,
+                                      );
+                                      return {
+                                        value: a.id,
+                                        label: hoursSummary ? `${a.nombre} (${hoursSummary})` : a.nombre,
+                                      };
                                     }
-                                    const type = getRootActivityHourType(a);
-                                    const maxPta = type === 'porcentaje'
-                                      ? getPercentageHours(a, horasAProgramar)
-                                      : Math.max(1, Number(a.max_horas) || 1);
-                                    const minPta = Math.min(maxPta, Math.max(1, Number(a.min_horas) || 1));
-                                    const maxExec = secMult > 1 ? maxPta / secMult : maxPta;
-                                    const minExec = secMult > 1 ? minPta / secMult : minPta;
-                                    const typeLabel = type === 'fija'
-                                      ? `fija ${maxExec}h`
-                                      : type === 'porcentaje'
-                                        ? `${getPTAPercentage(a)}% PTA = ${maxPta}h`
-                                      : type === 'intervalo'
-                                        ? `${minExec}–${maxExec}h`
-                                        : `hasta ${maxExec}h`;
+                                    const hoursSummary = getConfiguredRowsDropdownSummary(
+                                      [a],
+                                      horasAProgramar,
+                                      secMult,
+                                    );
                                     return {
                                       value: a.id,
-                                      label: type === 'porcentaje'
-                                        ? `${a.nombre} (${typeLabel})`
-                                        : secMult > 1
-                                        ? `${a.nombre} (${typeLabel} ejec. = ${maxPta}h PTA)`
-                                        : `${a.nombre} (${typeLabel})`,
+                                      label: hoursSummary ? `${a.nombre} (${hoursSummary})` : a.nombre,
                                     };
                                   })}
                                   placeholder="Seleccionar..." />
@@ -6876,11 +6914,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     })
                                     .map(a => {
                                       const rows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      const hoursSummary = rows.length > 0
+                                        ? getConfiguredRowsDropdownSummary(rows, horasAProgramar)
+                                        : getConstraintLabel(getComplementariaConstraint(a, ptaRules, horasAProgramar));
                                       return {
                                         value: a.id,
-                                        label: rows.length > 0
-                                          ? `${a.nombre} (${rows.length} ${rows.length === 1 ? 'opción seleccionable' : 'opciones combinables'})`
-                                          : `${a.nombre} (${getConstraintLabel(getComplementariaConstraint(a, ptaRules, horasAProgramar))})`,
+                                        label: hoursSummary ? `${a.nombre} (${hoursSummary})` : a.nombre,
                                       };
                                     })}
                                   placeholder="Seleccionar actividad..." />
@@ -7086,13 +7125,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     })
                                     .map((a: any) => {
                                       const rows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      const hoursSummary = rows.length > 0
+                                        ? getConfiguredRowsDropdownSummary(rows, horasAProgramar)
+                                        : getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar));
                                       return {
                                         value: a.id,
                                         label: isFullPTAActivity(a)
                                           ? `⚠ ${a.nombre} (100% PTA)`
-                                          : rows.length > 0
-                                            ? `${a.nombre} (${rows.length} ${rows.length === 1 ? 'opción seleccionable' : 'opciones combinables'})`
-                                            : `${a.nombre} (${getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar))})`,
+                                          : hoursSummary
+                                            ? `${a.nombre} (${hoursSummary})`
+                                            : a.nombre,
                                       };
                                     })}
                                   placeholder="Seleccionar actividad..." />
