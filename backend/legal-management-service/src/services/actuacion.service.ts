@@ -309,15 +309,49 @@ export class ActuacionService {
         // Guardar la firma foto url
         const fileUrl = `/uploads/signatures/${file.filename}`;
 
+        delete metadata.otp;
+        delete metadata.otpExpiry;
+
+        return this.finalizarAutorizacion(actuacion, metadata, userEmail, userName, fileUrl);
+    }
+
+    /**
+     * Autoriza automáticamente la actuación cuando todos sus documentos asociados que
+     * requieren firma ya fueron firmados individualmente (uno por uno, cada uno con su
+     * propia verificación de identidad). Ya no se exige un segundo paso manual de "Autorizar
+     * Actuación" con OTP: la firma de los documentos es la autorización.
+     */
+    async autorizarPorDocumentosFirmados(
+        actuacionId: string,
+        userEmail: string,
+        userName: string
+    ): Promise<Actuacion> {
+        const actuacion = await this.actuacionRepository.findOne({ where: { id: actuacionId } });
+        if (!actuacion) throw new NotFoundException('Actuación no encontrada');
+
+        const metadata = actuacion.metadata || {};
+        if (metadata.estadoAutorizacion === 'AUTORIZADO') {
+            return actuacion;
+        }
+
+        return this.finalizarAutorizacion(actuacion, metadata, userEmail, userName);
+    }
+
+    private async finalizarAutorizacion(
+        actuacion: Actuacion,
+        metadata: Record<string, any>,
+        userEmail: string,
+        userName: string,
+        firmaFotoUrl?: string
+    ): Promise<Actuacion> {
         metadata.estadoAutorizacion = 'AUTORIZADO';
         metadata.estado = 'Completado'; // Mark state as completed for standard UI rendering
-        metadata.firmaFotoUrl = fileUrl;
+        if (firmaFotoUrl) {
+            metadata.firmaFotoUrl = firmaFotoUrl;
+        }
         metadata.firmadoPor = userName;
         metadata.firmadoPorEmail = userEmail;
         metadata.fechaFirma = new Date().toISOString();
-
-        delete metadata.otp;
-        delete metadata.otpExpiry;
 
         actuacion.metadata = metadata;
         actuacion.usuarioResponsable = userName;

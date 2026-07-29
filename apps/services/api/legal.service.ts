@@ -379,6 +379,10 @@ export class LegalService {
         return apiClient.upload<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/autorizar`, formData);
     }
 
+    async autorizarActuacionPorDocumentos(expedienteId: string, actuacionId: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/autorizar-por-documentos`, {});
+    }
+
     async devolverActuacion(expedienteId: string, actuacionId: string, observaciones: string, skipStageUpdate?: boolean): Promise<any> {
         return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/devolver`, { observaciones, skipStageUpdate });
     }
