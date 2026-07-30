@@ -356,12 +356,10 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
 {fileBlobUrl && (
             <>
               {tipo.includes('pdf') || (nombre || '').toLowerCase().endsWith('.pdf') ? (
-                <embed
+                <iframe
                   src={fileBlobUrl}
-                  type="application/pdf"
-                  width="100%"
-                  height="100%"
-                  style={{ border: 'none' }}
+                  className="w-full h-full border-0"
+                  title={`Vista previa de ${nombre}`}
                 />
               ) : tipo.includes('image') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(nombre || '') ? (
                 <img

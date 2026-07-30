@@ -16,6 +16,7 @@ import { PdfModifierService } from './pdf-modifier.service';
 import { ProcessService } from './process.service';
 import { SequenceService } from './sequence.service';
 import { JuridicaEmailService } from './juridica-email.service';
+import { NotificationClientService } from './notification-client.service';
 import {
   DisciplinaryProcess,
   ProcessStage,
@@ -45,6 +46,7 @@ export class AutoService {
     private sequenceService: SequenceService,
     private documentConversionService: DocumentConversionService,
     private juridicaEmailService: JuridicaEmailService,
+    private notificationClient: NotificationClientService,
   ) {}
 
   /**
@@ -253,8 +255,9 @@ export class AutoService {
         }
       }
 
-      // Nota: Para auto pliego de cargos, se aprueba pero no se cierra el proceso inmediatamente.
-      // El envío a jurídica se hace posteriormente mediante el botón "Envío a jurídica".
+      // Nota: Para auto pliego de cargos, se aprueba y pasa a Juzgamiento, pero no se
+      // cierra el proceso inmediatamente. El envío a jurídica se hace posteriormente
+      // mediante el botón "Envío a jurídica" (acción manual del Radicador).
 
       if (auto.tipo === AutoType.AUTO_ARCHIVO) {
         await this.archiveProcess(auto.processId, aprobadoPorId);
@@ -269,6 +272,39 @@ export class AutoService {
           aprobadoPorId,
           aprobadoPorNombre,
         );
+      }
+
+      // Si es Pliego de Cargos, transicionar el proceso a Juzgamiento y notificar
+      // al Radicador para que pueda enviarlo a la Oficina Jurídica
+      if (auto.tipo === AutoType.PLIEGO_CARGOS || auto.tipo === AutoType.AUTO_FORMULACION_PLIEGO) {
+        await this.processService.changeStageByAutoApertura(
+          auto.processId,
+          ProcessStage.JUZGAMIENTO,
+          new Date(),
+          aprobadoPorId,
+          aprobadoPorNombre,
+          'mediante aprobación del auto de Pliego de Cargos',
+        );
+
+        const radicadorId = auto.process?.news?.radicadorId;
+        if (radicadorId) {
+          this.notificationClient
+            .send({
+              id_usuario_destinatario: radicadorId,
+              tipo_notificacion: 'PLIEGO_CARGOS_APROBADO',
+              titulo: 'Pliego de cargos aprobado',
+              mensaje: `El pliego de cargos del proceso ${auto.process.radicadoProceso} fue aprobado y el proceso pasó a Juzgamiento. Debe enviarlo a la Oficina Jurídica.`,
+              descripcion_corta: `Pliego de cargos aprobado - ${auto.process.radicadoProceso}`,
+              icono: 'Gavel',
+              color: '#2563EB',
+              prioridad: 'Alta',
+              categoria: 'DISCIPLINARIO',
+              tiene_accion: true,
+              texto_boton_accion: 'Ver proceso',
+              datos_adicionales: { processId: auto.processId, radicadoProceso: auto.process.radicadoProceso, autoId: auto.id },
+            })
+            .catch(() => {});
+        }
       }
 
       // Si es AUTO_PRORROGA, extender la fecha de vencimiento de la etapa activa

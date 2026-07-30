@@ -48,6 +48,7 @@ import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { isViewableInBrowser, requiresSignature } from '../../../../utils/fileUtils';
+import { isPreviewableInPlatform } from '../../../utils/fileUtils';
 import { BarraProgresoExpediente } from '../core/BarraProgresoExpediente';
 import { calcularProgreso } from '../core/expedienteShared';
 import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
@@ -444,22 +445,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     // Limpiar el sufijo (firmado) si existe para detectar correctamente la extensión
     const cleanNombre = nombre.replace(/\s*\(firmado\)\s*/g, '').trim();
 
-    // Excel NO previsuable (aún)
-    if (cleanNombre.endsWith('.xls') || cleanNombre.endsWith('.xlsx')) {
-      return false;
-    }
-    // PDF, imágenes y Word (.doc/.docx) SÍ previsuables — Word se renderiza con mammoth.js en el visor
-    if (
-      cleanNombre.endsWith('.pdf') ||
-      cleanNombre.endsWith('.jpg') ||
-      cleanNombre.endsWith('.png') ||
-      cleanNombre.endsWith('.jpeg') ||
-      cleanNombre.endsWith('.doc') ||
-      cleanNombre.endsWith('.docx')
-    ) {
-      return true;
-    }
-    return false;
+    return isPreviewableInPlatform(cleanNombre) || cleanNombre.endsWith('.doc');
   };
 
   // ==================== HANDLERS DE ACCIONES ====================

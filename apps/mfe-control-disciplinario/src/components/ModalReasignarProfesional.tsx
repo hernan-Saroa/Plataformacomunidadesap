@@ -351,7 +351,7 @@ export function ModalReasignarProfesional({
                         </div>
 
                         {/* Estadísticas */}
-                        <div className="w-full space-y-3">
+                        <div className="flex-1 space-y-3">
                           {/* Carga de trabajo */}
                           <div>
                             <div className="text-xs font-medium text-gray-500 mb-2">Nivel de ocupación</div>
