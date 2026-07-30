@@ -937,10 +937,10 @@ export class BancoDocentesService implements OnModuleInit {
           d."dedicacionDisplay" AS dedicacion,
           d."dedicacionHorasSemana" AS dedicacion_horas_semana,
           COALESCE(d."territorialId", p.id_seccional::text) AS territorial_id,
-          sec.nom_seccional AS territorial,
-          sec.cod_seccional AS territorial_codigo,
+          COALESCE(doc_sec.nom_seccional, sec.nom_seccional) AS territorial,
+          COALESCE(doc_sec.cod_seccional, sec.cod_seccional) AS territorial_codigo,
           COALESCE(d."sedeId", p.id_sede::text) AS sede_id,
-          sede.nom_sede AS sede,
+          COALESCE(doc_sede.nom_sede, sede.nom_sede) AS sede,
           d.escalafon AS categoria,
           d."nucleoTematico" AS nucleo_tematico,
           d."nivelFormacion" AS nivel_formacion,
@@ -985,6 +985,8 @@ export class BancoDocentesService implements OnModuleInit {
         LEFT JOIN auth.seccionales sec ON sec.id_seccional = p.id_seccional
         LEFT JOIN auth.sedes sede ON sede.id_sede = p.id_sede
         LEFT JOIN academic_work_plan."Docente" d ON d."personaId"::text = p.id_person::text
+        LEFT JOIN auth.seccionales doc_sec ON doc_sec.id_seccional::text = d."territorialId"
+        LEFT JOIN auth.sedes doc_sede ON doc_sede.id_sede::text = d."sedeId"
         WHERE EXISTS (
           SELECT 1
           FROM auth.user_roles ur
