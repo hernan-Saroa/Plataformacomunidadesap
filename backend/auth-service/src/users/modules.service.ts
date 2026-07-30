@@ -14,7 +14,7 @@ export interface ModuleWithPermissions {
   display_order: number;
   category: string;
   is_active: boolean;
-  permissions: PermissionDto[];
+  permissions?: PermissionDto[];
 }
 
 export interface PermissionDto {
@@ -29,6 +29,7 @@ export interface ModulesFilters {
   category?: 'backoffice' | 'portal';
   is_active?: boolean;
   search?: string;
+  include_permissions?: boolean;
   include_inactive_permissions?: boolean;
 }
 
@@ -67,6 +68,20 @@ export class ModulesService {
     }
 
     const modules = await query.getMany();
+
+    if (!filters.include_permissions) {
+      return modules.map(module => ({
+        id: module.id_module,
+        code: module.code,
+        name: module.name,
+        description: module.description || '',
+        icon: module.icon,
+        color: module.color,
+        display_order: module.display_order,
+        category: module.category,
+        is_active: module.is_active,
+      }));
+    }
 
     return modules.map(module => ({
       id: module.id_module,

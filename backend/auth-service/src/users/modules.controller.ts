@@ -16,6 +16,7 @@ export class ModulesController {
     @Query('is_active') isActive?: string,
     @Query('search') search?: string,
     @Query('include_inactive_permissions') includeInactivePermissions?: string,
+    @Query('include_permissions') includePermissions?: string,
   ) {
     const filters: ModulesFilters = {};
 
@@ -33,6 +34,10 @@ export class ModulesController {
 
     if (includeInactivePermissions !== undefined) {
       filters.include_inactive_permissions = includeInactivePermissions === 'true';
+    }
+
+    if (includePermissions !== undefined) {
+      filters.include_permissions = includePermissions === 'true';
     }
 
     // Devolver el array directamente - el ResponseInterceptor lo envuelve en { data: [...] }

@@ -12,6 +12,7 @@ import { PortalDashboard } from '../portal/PortalDashboard';
 import { ProfileModal } from './ProfileModal';
 import { NotificationsProvider } from './NotificationsContext';
 import { TourProvider } from './gestion-legal/design-system/TourContext';
+import { modulesService, type ActiveModuleInfo } from '../../services/api/modules.service';
 
 function isReactComponentCandidate(value: unknown): boolean {
   if (typeof value === 'function') {
@@ -124,9 +125,11 @@ function ModuleLoader() {
 
 type ModuleView =
   | 'dashboard'
+  | 'executive'
+  | 'users-management'
   | 'users-persons'
   | 'carpeta-digital'
-  | 'roles-permissions'
+  | 'roles-administration'
   | 'reports'
   | 'audit'
   | 'graduates'
@@ -137,7 +140,8 @@ type ModuleView =
   | 'community-announcements'
   | 'job-board'
   | 'certificate-requests'
-  | 'verification-certificates'
+  | 'graduates-verification'
+  | 'graduates-certificates'
   | 'firma-electronica'
   | 'control-interno'
   | 'control-disciplinario'
@@ -150,7 +154,8 @@ type ModuleView =
   | 'pta'
   | 'banco-docentes-pta'
   | 'gestion-profesoral'
-  | 'contratacion';
+  | 'contratacion'
+  | 'modules';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -195,16 +200,17 @@ function shouldUseAcademicLayout(userData: any, userRoles?: string[]) {
 }
 
 const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
-  'executive': 'dashboard',
-  'users-management': 'users-persons',
+  'executive': 'executive',
+  'dashboard': 'dashboard',
+  'users-management': 'users-management',
   'carpeta-digital': 'carpeta-digital',
-  'roles-administration': 'roles-permissions',
+  'roles-administration': 'roles-administration',
   'audit': 'audit',
   'reports': 'reports',
   'graduates': 'graduates',
   'graduates-management': 'graduates',
-  'graduates-verification': 'graduates',
-  'graduates-certificates': 'verification-certificates',
+  'graduates-verification': 'graduates-verification',
+  'graduates-certificates': 'graduates-certificates',
   'graduates-review-requests': 'certificate-requests',
   'community': 'community-posts',
   'community-posts': 'community-posts',
@@ -225,19 +231,19 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'gestion-passwords': 'gestion-passwords',
   'gestion-profesoral': 'gestion-profesoral',
   'registro-academico': 'graduates',
-  'users-persons': 'users-persons',
+  'modules': 'modules'
 };
 
 const SIDEBAR_VIEW_ORDER: ModuleView[] = [
-  'users-persons',
+  'users-management',
   'carpeta-digital',
   'estructura-organizacional',
   'programas-academicos',
-  'roles-permissions',
+  'roles-administration',
   'audit',
   'reports',
   'graduates',
-  'verification-certificates',
+  'graduates-certificates',
   'gestion-profesoral',
   'pta',
   'certificados-laborales',
@@ -250,14 +256,14 @@ const SIDEBAR_VIEW_ORDER: ModuleView[] = [
 
 const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   dashboard: 'executive',
-  'users-persons': 'users-management',
+  'users-management': 'users-management',
   'carpeta-digital': 'carpeta-digital',
-  'roles-permissions': 'roles-administration',
+  'roles-administration': 'roles-administration',
   reports: 'reports',
   audit: 'audit',
   graduates: 'graduates-verification',
   'certificate-requests': 'graduates-review-requests',
-  'verification-certificates': 'graduates-certificates',
+  'graduates-certificates': 'graduates-certificates',
   'firma-electronica': 'firma-electronica',
   'control-interno': 'control-interno',
   'control-disciplinario': 'control-disciplinario',
@@ -353,20 +359,20 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   const moduleFromArray: ModuleView | undefined = SIDEBAR_VIEW_ORDER.find((view) => accessibleViews.has(view));
 
-  const initialModule = userData?.module === 'control-interno' ? 'control-interno'
+  const initialModule: ModuleView = userData?.module === 'control-interno' ? 'control-interno'
     : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
       : userData?.module === 'registro-academico' ? 'graduates'
         : userData?.module === 'certificados-laborales' ? 'certificados-laborales'
           : userData?.module === 'gestion-legal' ? 'gestion-legal'
             : userData?.module === 'pta' ? 'pta'
               : userData?.module === 'pta-portal' ? 'pta'
-            : userData?.module === 'procesos' ? 'control-interno'
-              : userData?.module === 'graduates' ? 'graduates'
-                : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
-                  : userData?.module === 'estructura-organizacional' ? 'estructura-organizacional'
-                    : userData?.module === 'firma-electronica' ? 'firma-electronica'
-                      : moduleFromArray ?? 'dashboard'; // Fallback: primer modulo asignado, luego dashboard
-  // Asegurarnos de que el Jefe OCI o Auditores NUNCA aterricen en users-persons
+                : userData?.module === 'procesos' ? 'control-interno'
+                  : userData?.module === 'graduates' ? 'graduates'
+                    : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
+                      : userData?.module === 'estructura-organizacional' ? 'estructura-organizacional'
+                        : userData?.module === 'firma-electronica' ? 'firma-electronica'
+                          : moduleFromArray ?? 'dashboard'; // Fallback: primer modulo asignado, luego dashboard
+  // Asegurarnos de que el Jefe OCI o Auditores NUNCA aterricen en users-management
   const esRolAuditOTipoJefe = ((userData?.roles || []) as string[])
     .map(normalizeRoleCode)
     .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
@@ -473,6 +479,19 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
+  const [activeModules, setActiveModules] = useState<ActiveModuleInfo[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    modulesService.getActiveModules().then((modules) => {
+      if (isMounted && Array.isArray(modules)) {
+        setActiveModules(modules);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const mapSidebarToModule = (sidebarModule: string): ModuleView => {
     return (SIDEBAR_TO_MODULE[sidebarModule] as ModuleView) || 'dashboard';
@@ -534,6 +553,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const renderModule = () => {
     switch (currentModule) {
       case 'dashboard':
+      case 'executive':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <DashboardExecutivo onNavigateToModule={(sid) => setCurrentModule(sid as ModuleView)} />
@@ -541,6 +561,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         );
 
       case 'users-persons':
+      case 'users-management':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <UsersPersonsModulePremium />
@@ -554,7 +575,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           </Suspense>
         );
 
-      case 'roles-permissions':
+      case 'roles-administration':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <RolesAdministrationModulePremium />
@@ -585,6 +606,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         );
 
       case 'graduates':
+      case 'graduates-verification':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <GraduatesManagementModule />
@@ -640,7 +662,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           </Suspense>
         );
 
-      case 'verification-certificates':
+      case 'graduates-certificates':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <GraduateCertificatesWrapper onPendingCountChange={setCertificatesPendingCount} />
@@ -774,6 +796,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           </Suspense>
         );
 
+      case 'modules':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <div><h4>Funcionalidad en desarrollo</h4></div>
+          </Suspense>
+        );
+
       default:
         return (
           <Suspense fallback={<ModuleLoader />}>
@@ -792,6 +821,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           {userData?.module !== 'procesos' && (
             <SidebarPremium
               isOpen={sidebarOpen}
+              userRole={userData?.roles}
               onClose={() => setSidebarOpen(false)}
               isCollapsed={sidebarCollapsed}
               onToggleCollapse={() => setSidebarCollapsed(!userSidebarCollapsed)}
@@ -807,6 +837,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               userEmail={currentUser.email}
               certificatesPendingCount={certificatesPendingCount}
               assignedModules={computedAssignedModules}
+              activeModules={activeModules}
               userPermissions={userPermissionsList}
               restrictedMode={
                 userData?.module === 'control-interno'
