@@ -645,6 +645,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   // ── Etapa de Revisión (preaprobación) ─────────────────────────────────────
   const [componentesRevision, setComponentesRevision] = useState<any[]>([]);
+  // ¿Se pudo cargar el estado de la etapa de Revisión? Si el GET falla, NO se puede
+  // asumir que no hay revisiones pendientes (fail-closed): un array vacío por error
+  // es indistinguible de "este componente no requiere revisión", y dar por buena esa
+  // ambigüedad habilitaba "Aprobar" saltándose la etapa (el backend igual lo rechaza,
+  // dejando la UI inconsistente).
+  const [revisionCargada, setRevisionCargada] = useState(false);
   const [comentariosRevision, setComentariosRevision] = useState<Record<string, string>>({});
   const [procesandoRevision, setProcesandoRevision] = useState<Record<string, boolean>>({});
 
@@ -727,10 +733,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     (key: string) => componentesRevision.filter(r => r.componente === key),
     [componentesRevision],
   );
-  /** true si no hay revisiones pendientes para el componente (o no requiere ninguna). */
+  /** true si no hay revisiones pendientes para el componente (o no requiere ninguna).
+   *  Mientras no se haya podido cargar el estado de revisión se responde `false`
+   *  (fail-closed), para no habilitar la aprobación por un array vacío accidental. */
   const todasRevisionesCompletas = useCallback(
-    (key: string) => subseccionesRevision(key).every(r => (r.estado || 'pendiente') === 'revisado'),
-    [subseccionesRevision],
+    (key: string) => revisionCargada
+      && subseccionesRevision(key).every(r => (r.estado || 'pendiente') === 'revisado'),
+    [subseccionesRevision, revisionCargada],
   );
 
   useEffect(() => {
@@ -763,11 +772,22 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   // Cargar el estado de la etapa de Revisión (preaprobación) por componente/subsección.
   useEffect(() => {
-    if (pta?.id) {
-      getComponentesRevision(pta.id).then(res => {
-        if (res.success) setComponentesRevision(res.data || []);
-      }).catch(() => {});
-    }
+    if (!pta?.id) return;
+    setRevisionCargada(false);
+    getComponentesRevision(pta.id).then(res => {
+      if (res.success) {
+        setComponentesRevision(res.data || []);
+        setRevisionCargada(true);
+      } else {
+        // Sin dato fiable: se mantiene revisionCargada=false para bloquear la
+        // aprobación en vez de asumir "sin revisiones pendientes".
+        setComponentesRevision([]);
+        console.warn('[PTA] No se pudo cargar el estado de revisión por componente.');
+      }
+    }).catch((err) => {
+      setComponentesRevision([]);
+      console.warn('[PTA] Error cargando el estado de revisión por componente:', err?.message || err);
+    });
   }, [pta?.id]);
 
   // Etiquetas legibles de componente para el correo/modal de firma OTP.
@@ -1747,8 +1767,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
         {/* Etapa de Revisión (preaprobación): una fila por cada subsección que este
             PTA realmente requiere para este componente. Independiente del panel de
-            Aprobación de abajo — un revisor sin permiso de aprobación solo ve esto. */}
-        {puedeActuarSobreComponentes && estado !== 'aprobado' && revisionesComponente.length > 0 && (
+            Aprobación de abajo — un revisor sin permiso de aprobación solo ve esto.
+            Se sigue mostrando cuando el componente YA está aprobado: en ese caso
+            queda como traza de solo lectura (quién revisó, cuándo y con qué
+            observaciones). Antes se ocultaba al aprobar y esa trazabilidad
+            desaparecía del tab de Componentes. Las acciones de revisar/devolver no
+            reaparecen porque ya están condicionadas a `!estaResuelta`. */}
+        {puedeActuarSobreComponentes && revisionesComponente.length > 0 && (
           <div style={{
             marginLeft: 6,
             padding: '12px 14px',
@@ -1783,7 +1808,21 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </div>
                   {estaResuelta && r.revisorNombre && (
                     <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                      Revisado por {r.revisorNombre}{r.fechaRevision ? ` · ${new Date(r.fechaRevision).toLocaleString('es-CO')}` : ''}
+                      Revisado por {r.revisorNombre}
+                      {r.revisorRol ? ` (${r.revisorRol})` : ''}
+                      {r.fechaRevision ? ` · ${new Date(r.fechaRevision).toLocaleString('es-CO')}` : ''}
+                    </div>
+                  )}
+                  {/* Observaciones de la revisión: el ticket exige registrar (y poder
+                      consultar) las observaciones de cada etapa, no solo autor y fecha. */}
+                  {estaResuelta && r.comentarios && (
+                    <div style={{
+                      fontSize: '0.68rem', color: '#475569', background: 'white',
+                      border: '1px solid #E2E8F0', borderRadius: 8, padding: '6px 9px',
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    }}>
+                      <span style={{ fontWeight: 700, color: '#64748B' }}>Observaciones: </span>
+                      {r.comentarios}
                     </div>
                   )}
                   {!estaResuelta && puedeRevisarEsta && (
@@ -1953,6 +1992,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             <span>
               {!componentAuthorized
                 ? 'No tienes los permisos para aprobar este componente.'
+                : !revisionCargada
+                ? 'No se pudo cargar el estado de la revisión previa; recarga la página para poder aprobar.'
                 : !revisionCompleta
                 ? 'Este componente aún tiene revisión(es) pendiente(s) y no puede aprobarse todavía.'
                 : `Este componente es gestionado y concertado por ${getResponsableRoleLabel(key)}.`}

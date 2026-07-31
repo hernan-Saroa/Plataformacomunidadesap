@@ -1,8 +1,15 @@
 -- Etapa de Revisión (preaprobación) por componente/subsección del PTA, previa a la
 -- aprobación definitiva ya existente en academic_work_plan."PtaComponentApproval".
+-- OJO con el tipo de pta_id: academic_work_plan."PlanTrabajoAcademico".id es TEXT
+-- (gen_random_uuid()::text), NO uuid. Declararlo como UUID hace que el FK sea
+-- inválido ("incompatible types: uuid and text"), el CREATE TABLE aborte y la tabla
+-- nunca se cree — mientras que el bloque DO $$ de permisos de más abajo SÍ se
+-- ejecuta, dejando la migración aplicada a medias (permisos sí, tabla no).
+-- Es el mismo error que cometió la migración 327 con PtaComponentApproval y que
+-- corrigió la 340; ver 340_fix_pta_component_approval_table.sql.
 CREATE TABLE IF NOT EXISTS academic_work_plan."PtaComponentReview" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pta_id UUID NOT NULL REFERENCES academic_work_plan."PlanTrabajoAcademico"(id) ON DELETE CASCADE,
+    pta_id TEXT NOT NULL REFERENCES academic_work_plan."PlanTrabajoAcademico"(id) ON DELETE CASCADE,
     componente VARCHAR(100) NOT NULL, -- mismas claves que PtaComponentApproval.componente
     subseccion VARCHAR(50) NOT NULL DEFAULT 'general', -- 'general' | 'pregrado' | 'posgrado' | 'docencia' | 'academico_administrativas'
     estado VARCHAR(50) NOT NULL DEFAULT 'pendiente', -- 'pendiente', 'revisado', 'devuelto'
