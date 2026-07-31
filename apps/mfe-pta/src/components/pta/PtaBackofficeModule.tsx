@@ -1285,7 +1285,7 @@ function getPtaSortValue(pta: any, field: string): any {
   return pta?.[field] || '';
 }
 
-function getComponentApprovalGroups(pta: any): { pendientes: any[]; aprobados: any[] } {
+function getComponentApprovalGroups(pta: any): { enRevision: any[]; pendientes: any[]; aprobados: any[] } {
   const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
   const normalized = items
     .map((item: any) => ({
@@ -1295,8 +1295,13 @@ function getComponentApprovalGroups(pta: any): { pendientes: any[]; aprobados: a
     }))
     .filter((item: any) => item.key || item.label);
 
+  // 'en_revision': el componente todavía tiene revisión(es) pendiente(s) — el
+  // backend solo emite este estado cuando NO está aprobado, así que se separa
+  // de 'pendientes' (ya revisado, esperando al aprobador) para reflejar la
+  // nueva etapa de Revisión en el listado.
   return {
-    pendientes: normalized.filter((item: any) => item.estado !== 'aprobado'),
+    enRevision: normalized.filter((item: any) => item.estado === 'en_revision'),
+    pendientes: normalized.filter((item: any) => item.estado !== 'aprobado' && item.estado !== 'en_revision'),
     aprobados: normalized.filter((item: any) => item.estado === 'aprobado'),
   };
 }
@@ -4510,15 +4515,34 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                       {compAprobados}/{compTotal}
                                     </span>
                                   </div>
-                                  {componentGroups.pendientes.length === 0 && componentGroups.aprobados.length === 0 ? (
+                                  {componentGroups.enRevision.length === 0 && componentGroups.pendientes.length === 0 && componentGroups.aprobados.length === 0 ? (
                                     <div style={{ paddingTop: 8, fontSize: '0.72rem', color: '#6B7280', lineHeight: 1.3 }}>
                                       Sin detalle de componentes disponible.
                                     </div>
                                   ) : (
                                     <div style={{ display: 'grid', gap: 9, paddingTop: 9, maxHeight: 220, overflowY: 'auto' }}>
+                                      {componentGroups.enRevision.length > 0 && (
+                                        <div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, fontSize: '0.66rem', fontWeight: 800, color: '#7E22CE', textTransform: 'uppercase' }}>
+                                            <Eye style={{ width: 10, height: 10 }} /> En Revisión ({componentGroups.enRevision.length})
+                                          </div>
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                            {componentGroups.enRevision.map((item: any) => (
+                                              <span key={`rev-${item.key}`} style={{
+                                                padding: '3px 7px', borderRadius: 999, background: '#FAF5FF',
+                                                color: '#7E22CE', border: '1px solid #D8B4FE',
+                                                fontSize: '0.68rem', fontWeight: 700, lineHeight: 1.15,
+                                              }}>
+                                                {item.label}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
                                       <div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5, fontSize: '0.66rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
-                                          <Clock style={{ width: 10, height: 10 }} /> Pendientes ({componentGroups.pendientes.length})
+                                          <Clock style={{ width: 10, height: 10 }} /> Pendiente de aprobación ({componentGroups.pendientes.length})
                                         </div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                                           {componentGroups.pendientes.length > 0 ? componentGroups.pendientes.map((item: any) => (
@@ -4626,7 +4650,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             </span>
                             <div style={{ display: 'flex', gap: 3 }}>
                               {[
-                                { key: 'doc', keys: ['academica'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
+                                { key: 'doc', keys: ['academica_pregrado', 'academica_posgrado'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
                                 { key: 'inv', keys: ['investigacion'], color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
                                 { key: 'ext', keys: PTA_EXTENSION_COMPONENT_KEYS, color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
                                 { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) || pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
@@ -4675,11 +4699,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 {[
                                   { label: 'Programa', value: pta.programa || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#003DA5', icon: GraduationCap },
                                   { label: 'Territorial', value: pta.territorial || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#059669', icon: MapPin },
-                                  { label: 'Horas Docencia', value: pta.horas_docencia || 0, color: '#003DA5', icon: BookOpen, keys: ['academica'] },
+                                  { label: 'Horas Docencia', value: pta.horas_docencia || 0, color: '#003DA5', icon: BookOpen, keys: ['academica_pregrado', 'academica_posgrado'] },
                                   { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical, keys: ['investigacion'] },
                                   { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe, keys: PTA_EXTENSION_COMPONENT_KEYS },
                                   { label: 'Horas Complementarias', value: pta.horas_complementarias || 0, color: '#D97706', icon: Briefcase, keys: ['complementarias'] },
-                                  { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica'] },
+                                  { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica_pregrado', 'academica_posgrado'] },
                                 ].filter(item => !item.keys || !shouldRestrictByComponentPermission || item.keys.some(key => visibleComponentKeySet.has(key))).map(item => {
                                   const ItemIcon = item.icon;
                                   return (

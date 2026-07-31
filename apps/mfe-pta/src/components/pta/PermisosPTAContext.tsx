@@ -28,6 +28,8 @@ import {
   PTA_COMPONENT_LEVELS,
   PTA_APPROVE_ALL_PERMISSION,
   componentKeysForApprovalLevel,
+  PTA_COMPONENT_REVIEW_PERMISSION,
+  PTA_REVIEW_ALL_PERMISSION,
 } from './shared/ptaComponentPermissions';
 
 export type RolPTA = 'admin' | 'gestion_profesoral' | 'decanatura' | 'jefatura' | 'director' | 'docente' | 'coord_grupo_dt';
@@ -53,6 +55,15 @@ export interface PermisosPTA {
   filtroTerritorial: string[] | null; // null = todas
   filtroPrograma: string[] | null;    // null = todos
   componentesAprobables: string[];
+  /**
+   * Etapa de Revisión (preaprobación): claves "componente:subseccion" que el
+   * usuario está autorizado a revisar. Ningún rol hardcodeado las tiene hoy —
+   * solo se pueblan vía permisos granulares (pta.review.*), que el equipo de
+   * QA asignará a los roles que cree.
+   */
+  componentesRevisables: string[];
+  /** true si tiene al menos una subsección de revisión autorizada. */
+  puedeRevisar: boolean;
   /** Origen de los permisos: 'granular' (KV) o 'hardcoded' (fallback) */
   source: 'granular' | 'hardcoded';
   /** Cantidad de permisos granulares PTA encontrados */
@@ -109,7 +120,9 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.pre_aprobacion_sni_snpi': 'pre_aprobacion_sni_snpi',
   'pta.backoffice.banco_docentes': 'banco_docentes', // ✅ Nuevo permiso
   'pta.backoffice.config_reglas': 'config_reglas',
-  'pta.approve.academica': 'gestion',
+  'pta.approve.academica': 'gestion', // legacy, deprecado por la migración 388 — se conserva por compatibilidad de sesiones cacheadas.
+  'pta.approve.academica.pregrado': 'gestion',
+  'pta.approve.academica.posgrado': 'gestion',
   'pta.approve.investigacion': 'gestion',
   'pta.approve.extension.capacitacion': 'gestion',
   'pta.approve.extension.procesos_seleccion': 'gestion',
@@ -177,6 +190,17 @@ function deriveFromGranular(
     0,
   );
 
+  // ── Etapa de Revisión (preaprobación) ────────────────────────────────────
+  // Capa paralela a la de aprobación: pta.review.all (o wildcard) revisa todo;
+  // si no, cada subsección exige su propio permiso pta.review.<componente>[.<sub>].
+  const revisaTodo = hasWildcard || has(PTA_REVIEW_ALL_PERMISSION);
+  const componentesRevisables = revisaTodo
+    ? Object.keys(PTA_COMPONENT_REVIEW_PERMISSION)
+    : Object.entries(PTA_COMPONENT_REVIEW_PERMISSION)
+        .filter(([, permiso]) => has(permiso))
+        .map(([key]) => key);
+  const puedeRevisar = componentesRevisables.length > 0;
+
   return {
     vistasPerm,
     puedeAprobar,
@@ -190,6 +214,8 @@ function deriveFromGranular(
     filtroTerritorial: perfil.territorial_ids.length > 0 ? perfil.territorial_ids : null,
     filtroPrograma: perfil.programa_ids.length > 0 ? perfil.programa_ids : null,
     componentesAprobables,
+    componentesRevisables,
+    puedeRevisar,
     source: 'granular',
     granularCount: ptaPerms.length,
   };
@@ -213,6 +239,8 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     filtroTerritorial: null,
     filtroPrograma: null,
     componentesAprobables: [...PTA_COMPONENT_KEYS],
+    componentesRevisables: Object.keys(PTA_COMPONENT_REVIEW_PERMISSION),
+    puedeRevisar: true,
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -229,6 +257,8 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     filtroTerritorial: null,
     filtroPrograma: null,
     componentesAprobables: [],
+    componentesRevisables: [],
+    puedeRevisar: false,
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -245,6 +275,8 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     filtroTerritorial: null,
     filtroPrograma: null,
     componentesAprobables: componentKeysForApprovalLevel(3),
+    componentesRevisables: [],
+    puedeRevisar: false,
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -261,6 +293,8 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     filtroTerritorial: null,
     filtroPrograma: null,
     componentesAprobables: componentKeysForApprovalLevel(2),
+    componentesRevisables: [],
+    puedeRevisar: false,
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -277,6 +311,8 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     filtroTerritorial: perfil.territorial_ids.length > 0 ? perfil.territorial_ids : null,
     filtroPrograma: null,
     componentesAprobables: componentKeysForApprovalLevel(1),
+    componentesRevisables: [],
+    puedeRevisar: false,
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -293,6 +329,8 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     filtroTerritorial: null,
     filtroPrograma: null,
     componentesAprobables: [],
+    componentesRevisables: [],
+    puedeRevisar: false,
     source: 'hardcoded',
     granularCount: 0,
   }),
@@ -309,6 +347,8 @@ const PERMISOS_POR_ROL: Record<RolPTA, (perfil: PerfilRolPTA) => PermisosPTA> = 
     filtroTerritorial: null,
     filtroPrograma: null,
     componentesAprobables: [],
+    componentesRevisables: [],
+    puedeRevisar: false,
     source: 'hardcoded',
     granularCount: 0,
   }),
