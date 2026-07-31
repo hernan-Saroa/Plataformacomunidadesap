@@ -160,6 +160,19 @@ function deriveFromGranular(
     : PTA_COMPONENT_KEYS.filter(key => has(PTA_COMPONENT_PERMISSION[key]));
   const puedeAprobar = componentesAprobables.length > 0;
 
+  // ── Etapa de Revisión (preaprobación) ────────────────────────────────────
+  // Capa paralela a la de aprobación: pta.review.all (o wildcard) revisa todo;
+  // si no, cada subsección exige su propio permiso pta.review.<componente>[.<sub>].
+  // Se calcula ANTES de derivar las vistas porque un revisor puro (sin ningún
+  // pta.approve.*) también necesita acceso al módulo — ver más abajo.
+  const revisaTodo = hasWildcard || has(PTA_REVIEW_ALL_PERMISSION);
+  const componentesRevisables = revisaTodo
+    ? Object.keys(PTA_COMPONENT_REVIEW_PERMISSION)
+    : Object.entries(PTA_COMPONENT_REVIEW_PERMISSION)
+        .filter(([, permiso]) => has(permiso))
+        .map(([key]) => key);
+  const puedeRevisar = componentesRevisables.length > 0;
+
   // Derivar vistas
   const vistasSet = new Set<string>();
   for (const perm of ptaPerms) {
@@ -179,6 +192,13 @@ function deriveFromGranular(
     vistasSet.add('seguimiento_docs');
     vistasSet.add('gestion');
   }
+  // Un REVISOR puro (solo pta.review.*, sin ningún pta.approve.*) también debe poder
+  // entrar a Gestión: es justamente donde abre el PTA y ejecuta la preaprobación.
+  // Ningún permiso pta.review.* está en PERMISO_TO_VISTA, así que sin esto su
+  // vistasPerm quedaba vacío y el módulo no le mostraba ninguna pestaña.
+  if (puedeRevisar) {
+    vistasSet.add('gestion');
+  }
   const vistasPerm = Array.from(vistasSet);
 
   // nivelAprobacion: shim de compatibilidad para la máquina de estados legacy
@@ -189,17 +209,6 @@ function deriveFromGranular(
     (max, key) => Math.max(max, PTA_COMPONENT_LEVELS[key] || 0),
     0,
   );
-
-  // ── Etapa de Revisión (preaprobación) ────────────────────────────────────
-  // Capa paralela a la de aprobación: pta.review.all (o wildcard) revisa todo;
-  // si no, cada subsección exige su propio permiso pta.review.<componente>[.<sub>].
-  const revisaTodo = hasWildcard || has(PTA_REVIEW_ALL_PERMISSION);
-  const componentesRevisables = revisaTodo
-    ? Object.keys(PTA_COMPONENT_REVIEW_PERMISSION)
-    : Object.entries(PTA_COMPONENT_REVIEW_PERMISSION)
-        .filter(([, permiso]) => has(permiso))
-        .map(([key]) => key);
-  const puedeRevisar = componentesRevisables.length > 0;
 
   return {
     vistasPerm,
