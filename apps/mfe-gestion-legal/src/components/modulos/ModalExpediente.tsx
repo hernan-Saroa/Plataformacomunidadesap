@@ -445,7 +445,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     // Limpiar el sufijo (firmado) si existe para detectar correctamente la extensión
     const cleanNombre = nombre.replace(/\s*\(firmado\)\s*/g, '').trim();
 
-    return isPreviewableInPlatform(cleanNombre) || cleanNombre.endsWith('.doc');
+    return isPreviewableInPlatform(cleanNombre);
   };
 
   // ==================== HANDLERS DE ACCIONES ====================
