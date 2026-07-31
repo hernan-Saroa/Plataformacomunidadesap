@@ -75,13 +75,14 @@ export class EvaluacionProcesoService implements OnModuleInit {
             newConstraintColumns.every(col => uq.columnNames.includes(col))
           );
 
-          if (!hasNewConstraint) {
-            // Utilizamos query directa para evitar importar la clase TableUnique y simplificar
-            await queryRunner.query(
-              `ALTER TABLE control_interno.evaluacion_proceso ADD CONSTRAINT "UQ_evaluacion_proceso_4cols" UNIQUE (proceso_id, vigencia, fecha_corte, dependencia_responsable)`
-            );
-            this.logger.log('Nueva restricción única de 4 columnas creada con éxito (migración completada).');
-          }
+          // El siguiente bloque de codigo se encuentra comentado para permitir tener el historial de evaluaciones eliminadas.
+          // if (!hasNewConstraint) {
+          //   // Utilizamos query directa para evitar importar la clase TableUnique y simplificar
+          //   await queryRunner.query(
+          //     `ALTER TABLE control_interno.evaluacion_proceso ADD CONSTRAINT "UQ_evaluacion_proceso_4cols" UNIQUE (proceso_id, vigencia, fecha_corte, dependencia_responsable)`
+          //   );
+          //   this.logger.log('Nueva restricción única de 4 columnas creada con éxito (migración completada).');
+          // }
         }
       } finally {
         await queryRunner.release();
@@ -174,6 +175,7 @@ export class EvaluacionProcesoService implements OnModuleInit {
         vigencia: dto.vigencia,
         fechaCorte: new Date(dto.fechaCorte),
         dependenciaResponsable: dto.dependenciaResponsable,
+        activo: true
       },
     });
 
