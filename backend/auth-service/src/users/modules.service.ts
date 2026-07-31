@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Module } from './module.entity';
 import { Permission } from './permission.entity';
+import { UpdateModuleDto } from './dto/update-module.dto';
 
 export interface ModuleWithPermissions {
   id: string;
@@ -110,7 +111,7 @@ export class ModulesService {
    */
   async findOne(id: string): Promise<ModuleWithPermissions> {
     const module = await this.moduleRepo.findOne({
-      where: { id_module: id },
+      where: [{ id_module: id }, { code: id }],
       relations: ['permissions'],
     });
 
@@ -136,6 +137,32 @@ export class ModulesService {
         is_active: p.is_active,
       })),
     };
+  }
+
+  /**
+   * Actualiza la información de un módulo por ID o por código
+   */
+  async update(id: string, updateModuleDto: UpdateModuleDto): Promise<ModuleWithPermissions> {
+    const module = await this.moduleRepo.findOne({
+      where: [{ id_module: id }, { code: id }],
+      relations: ['permissions'],
+    });
+
+    if (!module) {
+      throw new NotFoundException(`Módulo '${id}' no encontrado`);
+    }
+
+    if (updateModuleDto.name !== undefined) module.name = updateModuleDto.name;
+    if (updateModuleDto.description !== undefined) module.description = updateModuleDto.description;
+    if (updateModuleDto.icon !== undefined) module.icon = updateModuleDto.icon;
+    if (updateModuleDto.color !== undefined) module.color = updateModuleDto.color;
+    if (updateModuleDto.display_order !== undefined) module.display_order = updateModuleDto.display_order;
+    if (updateModuleDto.category !== undefined) module.category = updateModuleDto.category;
+    if (updateModuleDto.is_active !== undefined) module.is_active = updateModuleDto.is_active;
+
+    await this.moduleRepo.save(module);
+
+    return this.findOne(module.id_module);
   }
 
   /**

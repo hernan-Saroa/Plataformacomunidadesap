@@ -103,6 +103,7 @@ const ProgramasAcademicosModule = lazyRemote(() => import('programas_academicos/
 const GestionUsuariosPasswordTracking = lazyRemote(() => import('gestion_personas/Passwords'), ['GestionUsuariosPasswordTracking']);
 const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'), ['GestionProfesoralApp']);
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
+const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
 
 // ✅ Loading Spinner Component
 function ModuleLoader() {
@@ -481,17 +482,17 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const [showProfile, setShowProfile] = useState(false);
   const [activeModules, setActiveModules] = useState<ActiveModuleInfo[]>([]);
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadActiveModules = useCallback(() => {
     modulesService.getActiveModules().then((modules) => {
-      if (isMounted && Array.isArray(modules)) {
+      if (Array.isArray(modules)) {
         setActiveModules(modules);
       }
     });
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  useEffect(() => {
+    loadActiveModules();
+  }, [loadActiveModules]);
 
   const mapSidebarToModule = (sidebarModule: string): ModuleView => {
     return (SIDEBAR_TO_MODULE[sidebarModule] as ModuleView) || 'dashboard';
@@ -799,7 +800,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'modules':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <div><h4>Funcionalidad en desarrollo</h4></div>
+            <ModulesManagementModulePremium
+              onModuleUpdated={loadActiveModules}
+              userRoles={(userData?.roles || (usuario?.rol ? [usuario.rol] : [])) as string[]}
+            />
           </Suspense>
         );
 

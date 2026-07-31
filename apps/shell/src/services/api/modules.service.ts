@@ -56,6 +56,16 @@ export interface ActiveModuleInfo {
   is_active?: boolean
 }
 
+export interface UpdateModuleDto {
+  name?: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  display_order?: number;
+  category?: 'backoffice' | 'portal';
+  is_active?: boolean;
+}
+
 export interface ModulesStats {
   total_modules: number;
   total_permissions: number;
@@ -123,6 +133,13 @@ export const modulesService = {
    */
   async getStats(): Promise<ModulesStats> {
     return apiClient.get<ModulesStats>(`${SERVICE_PREFIX}/modules/stats`);
+  },
+
+  /**
+   * Actualizar un módulo (Exclusivo para usuarios con rol SUPER_ADMIN)
+   */
+  async updateModule(idOrCode: string, data: UpdateModuleDto): Promise<ModuleWithPermissions> {
+    return apiClient.put<ModuleWithPermissions>(`${SERVICE_PREFIX}/modules/${idOrCode}`, data);
   },
 
   /**

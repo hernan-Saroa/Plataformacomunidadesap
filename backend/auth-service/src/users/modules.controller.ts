@@ -1,5 +1,8 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
 import { ModulesService, ModulesFilters } from './modules.service';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UpdateModuleDto } from './dto/update-module.dto';
 
 @Controller('modules')
 export class ModulesController {
@@ -69,5 +72,19 @@ export class ModulesController {
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.modulesService.findOne(id);
+  }
+
+  /**
+   * PUT /api/v1/modules/:id
+   * Actualiza la información de un módulo (Exclusivo para usuarios con rol SUPER_ADMIN)
+   */
+  @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles('SUPER_ADMIN')
+  async update(
+    @Param('id') id: string,
+    @Body() updateModuleDto: UpdateModuleDto,
+  ) {
+    return this.modulesService.update(id, updateModuleDto);
   }
 }
