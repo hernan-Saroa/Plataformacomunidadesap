@@ -109,7 +109,13 @@ const PERMISO_TO_VISTA: Record<string, string> = {
   'pta.backoffice.pre_aprobacion_sni_snpi': 'pre_aprobacion_sni_snpi',
   'pta.backoffice.banco_docentes': 'banco_docentes', // ✅ Nuevo permiso
   'pta.backoffice.solicitudes': 'solicitudes_pta', // HU-12: gestión de solicitudes (creación/modificación PTA)
-  'pta.backoffice.config_reglas': 'config_reglas',
+  // HU-10: el permiso granular de configuración debe habilitar la vista 'configuracion',
+  // que es la que realmente usa el tab de Configuraciones (PtaBackofficeModule:
+  // tieneVista('configuracion') / moduleView === 'configuracion'). Antes mapeaba a
+  // 'config_reglas', una vista que NO se consulta en ningún lado (solo figura en el
+  // fallback hardcodeado de admin), por lo que un rol granular con este permiso nunca
+  // veía el tab. Se mapea a 'configuracion' (y se conserva 'config_reglas' por compat).
+  'pta.backoffice.config_reglas': 'configuracion',
   'pta.approve.academica': 'gestion',
   'pta.approve.investigacion': 'gestion',
   'pta.approve.extension.capacitacion': 'gestion',

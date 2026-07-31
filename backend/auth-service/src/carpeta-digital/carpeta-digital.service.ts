@@ -43,7 +43,8 @@ export class CarpetaDigitalService {
     const carpeta = await this.ensureCarpetaForPersona(personaId);
     const loaded = await this.carpetaRepo.findOne({
       where: { id: carpeta.id },
-      relations: ['persona', 'persona.user', 'persona.seccional', 'persona.sede'],
+      // persona.user.roles se carga para resolver el checklist POR ROL (HU-03).
+      relations: ['persona', 'persona.user', 'persona.user.roles', 'persona.seccional', 'persona.sede'],
     });
     const carpetaCompleta = loaded || carpeta;
 
@@ -426,6 +427,15 @@ export class CarpetaDigitalService {
         persona.identification_number,
         persona.email,
       );
+    }
+
+    // HU-03: checklist POR ROL. Un tipo de documento asignado a un rol (ej. "DOCENTE")
+    // aplica si el usuario dueño de la carpeta tiene ese rol (match por code o name).
+    // Antes esta rama no existía y el tipo caía en `return false`, excluyéndose de TODA
+    // carpeta. Requiere que persona.user.roles esté cargado (ver getChecklistForPersona).
+    if (asignacionTipo === 'rol') {
+      const roles = (persona as any)?.user?.roles || [];
+      return roles.some((r: any) => matches(r?.code, r?.name));
     }
 
     return false;
