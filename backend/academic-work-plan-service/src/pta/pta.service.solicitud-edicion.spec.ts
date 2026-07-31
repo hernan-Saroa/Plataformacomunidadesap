@@ -148,11 +148,15 @@ describe('PtaService - solicitudes de edición parcial', () => {
       create: jest.fn((value: any) => value),
       save: historialSave,
     };
+    const txReviewRepo = {
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
     const manager = {
       getRepository: jest.fn((entity: any) => {
         if (entity.name === 'SolicitudPtaEntity') return txSolicitudRepo;
         if (entity.name === 'PlanTrabajoAcademicoEntity') return txPtaRepo;
         if (entity.name === 'PtaComponentApprovalEntity') return txApprovalRepo;
+        if (entity.name === 'PtaComponentReviewEntity') return txReviewRepo;
         if (entity.name === 'HistorialEstadoPtaEntity') return txHistorialRepo;
         throw new Error(`Repositorio inesperado: ${entity.name}`);
       }),

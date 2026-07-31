@@ -1,5 +1,11 @@
+// Docencia (antes un único 'academica') se dividió en dos componentes reales —
+// 'academica_pregrado' y 'academica_posgrado' — con el mismo patrón que ya usa
+// Extensión (varios componentes independientes agrupados bajo un solo rótulo
+// visible "Docencia"/"Extensión"). Espejo exacto del backend:
+// backend/academic-work-plan-service/src/pta/auth/pta-permissions.constants.ts
 export type PTAComponentKey =
-  | 'academica'
+  | 'academica_pregrado'
+  | 'academica_posgrado'
   | 'investigacion'
   | 'ext_capacitacion'
   | 'ext_procesos'
@@ -8,7 +14,8 @@ export type PTAComponentKey =
   | 'complementarias';
 
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
-  academica: 'pta.approve.academica',
+  academica_pregrado: 'pta.approve.academica.pregrado',
+  academica_posgrado: 'pta.approve.academica.posgrado',
   investigacion: 'pta.approve.investigacion',
   ext_capacitacion: 'pta.approve.extension.capacitacion',
   ext_procesos: 'pta.approve.extension.procesos_seleccion',
@@ -20,6 +27,12 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
 };
 
 export const PTA_COMPONENT_KEYS = Object.keys(PTA_COMPONENT_PERMISSION) as PTAComponentKey[];
+
+/** Componentes que en conjunto forman el rótulo visible "Docencia". */
+export const PTA_DOCENCIA_COMPONENT_KEYS: PTAComponentKey[] = [
+  'academica_pregrado',
+  'academica_posgrado',
+];
 
 /**
  * Permiso de aprobador integral ("aprueba todo"): habilita la aprobación de todos
@@ -35,7 +48,8 @@ export const PTA_EXTENSION_COMPONENT_KEYS: PTAComponentKey[] = [
 ];
 
 export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
-  academica: 1,
+  academica_pregrado: 1,
+  academica_posgrado: 1,
   complementarias: 1,
   investigacion: 2,
   ext_capacitacion: 2,
@@ -48,6 +62,61 @@ export function componentKeysForApprovalLevel(level: number): PTAComponentKey[] 
   return PTA_COMPONENT_KEYS.filter(key => PTA_COMPONENT_LEVELS[key] === level);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Etapa de Revisión (preaprobación) — espejo EXACTO de
+// backend/academic-work-plan-service/src/pta/auth/pta-permissions.constants.ts
+// (REVIEW_SUBSECCIONES_BY_COMPONENT / COMPONENT_REVIEW_PERMISSION / PTA_REVIEW_ALL).
+// No modifica los permisos/niveles de aprobación de arriba: es una capa paralela.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type PTAReviewSubseccionKey =
+  | 'general'
+  | 'docencia'
+  | 'academico_administrativas';
+
+export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReviewSubseccionKey[]> = {
+  academica_pregrado: ['general'],
+  academica_posgrado: ['general'],
+  complementarias: ['docencia', 'academico_administrativas'],
+  investigacion: ['general'],
+  ext_capacitacion: ['general'],
+  ext_procesos: ['general'],
+  ext_fortalecimiento: ['general'],
+  ext_gobierno: ['general'],
+};
+
+/**
+ * Los códigos de permiso pta.review.academica.pregrado/posgrado se conservan
+ * igual que antes del split de Docencia — solo cambia la clave de componente
+ * ("academica_pregrado:general" en vez de "academica:pregrado").
+ */
+export const PTA_COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
+  'academica_pregrado:general': 'pta.review.academica.pregrado',
+  'academica_posgrado:general': 'pta.review.academica.posgrado',
+  'complementarias:docencia': 'pta.review.complementarias.docencia',
+  'complementarias:academico_administrativas': 'pta.review.complementarias.academico_administrativas',
+  'investigacion:general': 'pta.review.investigacion',
+  'ext_capacitacion:general': 'pta.review.extension.capacitacion',
+  'ext_procesos:general': 'pta.review.extension.procesos_seleccion',
+  'ext_fortalecimiento:general': 'pta.review.extension.fortalecimiento',
+  'ext_gobierno:general': 'pta.review.extension.alto_gobierno',
+};
+
+/** Permiso de revisor integral ("revisa todo"). Espejo de PTA_REVIEW_ALL (backend). */
+export const PTA_REVIEW_ALL_PERMISSION = 'pta.review.all';
+
+/** Permiso granular requerido para revisar una subsección de un componente dado. */
+export function reviewPermissionFor(componente: string, subseccion: string): string | undefined {
+  return PTA_COMPONENT_REVIEW_PERMISSION[`${componente}:${subseccion}`];
+}
+
+/** Etiquetas legibles para las subsecciones de revisión, usadas en la UI. */
+export const REVIEW_SUBSECCION_LABEL: Record<PTAReviewSubseccionKey, string> = {
+  general: 'General',
+  docencia: 'Complementarias a la Docencia',
+  academico_administrativas: 'Académico-Administrativas',
+};
+
 export function componentKeysFromPermissionChecker(
   can: (permission: string) => boolean,
 ): PTAComponentKey[] {
@@ -55,11 +124,13 @@ export function componentKeysFromPermissionChecker(
 }
 
 export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolean {
+  const asignaturas: any[] = Array.isArray(pta?.asignaturas) ? pta.asignaturas : [];
   switch (key) {
-    case 'academica':
-      return Number(pta?.horas_docencia || 0) > 0
-        || Number(pta?.num_asignaturas || 0) > 0
-        || (Array.isArray(pta?.asignaturas) && pta.asignaturas.length > 0);
+    case 'academica_pregrado':
+      return asignaturas.some((a: any) => (a?.nivel_programa || 'pregrado') !== 'posgrado')
+        || (asignaturas.length === 0 && Number(pta?.horas_docencia || 0) > 0);
+    case 'academica_posgrado':
+      return asignaturas.some((a: any) => a?.nivel_programa === 'posgrado');
     case 'investigacion':
       return Number(pta?.horas_investigacion || 0) > 0
         || (Array.isArray(pta?.investigacion_actividades) && pta.investigacion_actividades.length > 0)
@@ -157,16 +228,20 @@ const EXTENSION_SECCION_TO_KEY: Record<string, PTAComponentKey> = {
 };
 
 const COMPONENTE_PTA_TO_KEY: Record<string, PTAComponentKey> = {
-  docencia: 'academica',
-  academica: 'academica',
   investigacion: 'investigacion',
   complementarias: 'complementarias',
 };
 
+/** Valores de componentePta que identifican evidencia de Docencia (sin distinguir
+ * nivel: la evidencia no se etiqueta por pregrado/posgrado). */
+const DOCENCIA_EVIDENCIA_VALUES = new Set(['docencia', 'academica']);
+
 /**
  * Devuelve la PTAComponentKey que autoriza revisar una evidencia, o null si es de
- * extensión sin sección asignada (legacy) — ese caso se resuelve con
- * `isEvidenciaAuthorized`, que lo trata como cualquier sección de extensión.
+ * extensión sin sección asignada (legacy) o de Docencia (ambigua entre pregrado/
+ * posgrado) — esos casos se resuelven en `isEvidenciaAuthorized`, tratándolos como
+ * "cualquier sub-componente" (cualquier sección de extensión / cualquier nivel de
+ * Docencia).
  */
 export function componentKeyForEvidencia(
   componentePta: string | null | undefined,
@@ -177,6 +252,7 @@ export function componentKeyForEvidencia(
     const sec = String(seccionExtension || '').toLowerCase().trim();
     return EXTENSION_SECCION_TO_KEY[sec] || null; // null = extensión legacy sin sección
   }
+  if (DOCENCIA_EVIDENCIA_VALUES.has(comp)) return null; // null = docencia sin nivel asignado
   return COMPONENTE_PTA_TO_KEY[comp] || null;
 }
 
@@ -196,6 +272,8 @@ export function isEvidenciaAuthorized(
   if (key) return isAuthorized(key);
   // Extensión legacy sin sección: autorizada si el usuario aprueba CUALQUIER sección de extensión.
   if (comp === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(k => isAuthorized(k));
+  // Docencia sin nivel asignado: autorizada si el usuario aprueba pregrado O posgrado.
+  if (DOCENCIA_EVIDENCIA_VALUES.has(comp)) return PTA_DOCENCIA_COMPONENT_KEYS.some(k => isAuthorized(k));
   return false;
 }
 

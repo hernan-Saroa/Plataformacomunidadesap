@@ -56,7 +56,9 @@ describe('PtaService - avance de aprobación por componente', () => {
     expect(dtos[0].componentes_total).toBe(3);
     expect(dtos[0].componentes_aprobados).toBe(2);
     expect(dtos[0].componentes_estado).toEqual([
-      expect.objectContaining({ key: 'academica', estado: 'pendiente' }),
+      // 'en_revision': Docencia tiene horas y ninguna fila de PtaComponentReview
+      // todavía (etapa de Revisión pendiente antes de poder aprobarse).
+      expect.objectContaining({ key: 'academica', estado: 'en_revision' }),
       expect.objectContaining({ key: 'investigacion', estado: 'aprobado' }),
       expect.objectContaining({ key: 'complementarias', estado: 'aprobado' }),
     ]);
