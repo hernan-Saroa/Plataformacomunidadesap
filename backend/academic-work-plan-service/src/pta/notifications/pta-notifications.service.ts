@@ -14,6 +14,8 @@ export interface NotifUser {
 const COMPONENT_LABELS: Record<string, string> = {
   docencia: 'Docencia',
   academica: 'Docencia',
+  academica_pregrado: 'Docencia — Pregrado',
+  academica_posgrado: 'Docencia — Posgrado',
   complementarias: 'Actividades Complementarias (incl. Académico-Administrativas)',
   investigacion: 'Investigación',
   extension: 'Extensión',

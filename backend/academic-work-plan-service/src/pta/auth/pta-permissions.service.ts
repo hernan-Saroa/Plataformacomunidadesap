@@ -9,6 +9,10 @@ import {
   PTA_APPROVE_ALL,
   SUPER_ADMIN_ROLE_CODES,
   componentsFromPermissions,
+  REVIEW_SUBSECCIONES_BY_COMPONENT,
+  COMPONENT_REVIEW_PERMISSION,
+  PTA_REVIEW_ALL,
+  reviewPermissionFor,
 } from './pta-permissions.constants';
 
 export interface PtaAuthContext {
@@ -30,6 +34,13 @@ export interface PtaAuthContext {
    * de nivel (eliminados). Sirve para acotar la aprobación vía /estado.
    */
   approvalLevels: number[];
+  /**
+   * Revisor integral: puede revisar (preaprobar) cualquier subsección de
+   * cualquier componente (superusuario del sistema, o rol con pta.review.all).
+   */
+  reviewsAll: boolean;
+  /** Claves "componente:subseccion" que el usuario está autorizado a revisar. */
+  allowedReviewSubsecciones: string[];
 }
 
 /**
@@ -63,7 +74,22 @@ export class PtaPermissionsService {
       new Set(allowedComponents.map((key) => COMPONENT_LEVEL[key]).filter(Boolean)),
     ).sort();
 
-    return { isSuperUser, approvesAll, permissions, allowedComponents, approvalLevels };
+    const reviewsAll = isSuperUser || permissions.has(PTA_REVIEW_ALL);
+    const allowedReviewSubsecciones = reviewsAll
+      ? Object.keys(COMPONENT_REVIEW_PERMISSION)
+      : Object.entries(COMPONENT_REVIEW_PERMISSION)
+          .filter(([, permission]) => permissions.has(permission))
+          .map(([key]) => key);
+
+    return {
+      isSuperUser,
+      approvesAll,
+      permissions,
+      allowedComponents,
+      approvalLevels,
+      reviewsAll,
+      allowedReviewSubsecciones,
+    };
   }
 
   /**
@@ -133,5 +159,21 @@ export class PtaPermissionsService {
   /** Nivel (informativo/compatibilidad) de un componente. */
   levelForComponent(componente: string): number | undefined {
     return COMPONENT_LEVEL[componente as PTAComponentKey];
+  }
+
+  /** ¿El usuario puede revisar (preaprobar) la subsección indicada del componente? */
+  canReviewSubseccion(ctx: PtaAuthContext, componente: string, subseccion: string): boolean {
+    if (ctx.reviewsAll) return true;
+    return ctx.allowedReviewSubsecciones.includes(`${componente}:${subseccion}`);
+  }
+
+  /** Subsecciones de revisión válidas para un componente dado. */
+  reviewSubseccionesForComponent(componente: string): string[] {
+    return REVIEW_SUBSECCIONES_BY_COMPONENT[componente as PTAComponentKey] || [];
+  }
+
+  /** Permiso granular asociado a una subsección de revisión (para mensajes de error). */
+  reviewPermissionForSubseccion(componente: string, subseccion: string): string | undefined {
+    return reviewPermissionFor(componente, subseccion);
   }
 }

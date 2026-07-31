@@ -1675,7 +1675,11 @@ function RepeatedEntryHeader({ index, label, color }: { index: number; label: st
 }
 
 const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
-  academica: 'docencia',
+  // Docencia se aprueba como dos componentes independientes (Pregrado/Posgrado,
+  // igual que Extensión con sus 4 direcciones), pero el docente sigue viendo una
+  // sola pestaña "Docencia" en el formulario.
+  academica_pregrado: 'docencia',
+  academica_posgrado: 'docencia',
   investigacion: 'investigacion',
   ext_capacitacion: 'extension',
   ext_procesos: 'extension',
@@ -1687,7 +1691,9 @@ const ALL_COMPONENT_KEYS = Object.keys(COMPONENT_TO_FORM_SECTION) as PTAComponen
 
 // Etiquetas legibles por componente (para banners de devolución, etc.).
 const COMPONENT_LABEL: Record<string, string> = {
-  academica: 'Docencia',
+  academica: 'Docencia', // legacy (pre-split)
+  academica_pregrado: 'Docencia (Pregrado)',
+  academica_posgrado: 'Docencia (Posgrado)',
   investigacion: 'Investigación',
   ext_capacitacion: 'Extensión — Capacitación',
   ext_procesos: 'Extensión — Procesos de Selección',

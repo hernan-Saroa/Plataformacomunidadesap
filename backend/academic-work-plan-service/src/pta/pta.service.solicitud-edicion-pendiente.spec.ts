@@ -115,6 +115,11 @@ describe('PtaService - solicitud de edicion durante aprobacion', () => {
             save: jest.fn((value: any) => Promise.resolve(value)),
           };
         }
+        if (entity.name === 'PtaComponentReviewEntity') {
+          return {
+            delete: jest.fn().mockResolvedValue(undefined),
+          };
+        }
         throw new Error(`Repositorio inesperado: ${entity.name}`);
       }),
     };

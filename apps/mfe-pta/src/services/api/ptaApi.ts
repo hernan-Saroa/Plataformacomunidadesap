@@ -518,6 +518,40 @@ export async function aprobarComponente(ptaId: string, data: {
   }
 }
 
+export async function getComponentesRevision(ptaId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-revision`);
+    const normalized = normalizeResult<any[]>(raw, []);
+    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+  } catch (error) {
+    console.warn('[mfe-pta][getComponentesRevision] No disponible:', error instanceof Error ? error.message : error);
+    return { success: false, data: [] };
+  }
+}
+
+export async function revisarComponente(ptaId: string, data: {
+  componente: string;
+  subseccion: string;
+  estado: 'revisado' | 'devuelto';
+  revisorId: string;
+  revisorNombre: string;
+  revisorRol: string;
+  comentarios?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/revisar-componente`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('[mfe-pta][revisarComponente] Error:', error);
+    return {
+      success: false,
+      data: null,
+      message: (error as any)?.message || 'Error al actualizar la revisión del componente',
+    };
+  }
+}
+
 export async function deletePTA(ptaId: string) {
   try {
     const raw = await apiClient.delete<any>(`${PTA_BASE}/${ptaId}`);
