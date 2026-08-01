@@ -722,6 +722,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     () => isSuperUser || puedePerm(PTA_REVIEW_ALL_PERMISSION),
     [isSuperUser, puedePerm],
   );
+  // ¿Tiene el usuario algún permiso granular pta.review.*? Se usa solo para decidir
+  // la etiqueta de la pestaña "Concertación" (ver TABS más abajo), independiente de
+  // isSubseccionAuthorizedToReview que evalúa componente/subsección puntuales.
+  const tieneAlgunPermisoRevision = useMemo(
+    () => revisaTodo || Object.values(PTA_COMPONENT_REVIEW_PERMISSION).some(p => puedePerm(p)),
+    [revisaTodo, puedePerm],
+  );
   const isSubseccionAuthorizedToReview = useCallback((key: string, subseccion: string): boolean => {
     if (revisaTodo) return true;
     const perm = PTA_COMPONENT_REVIEW_PERMISSION[`${key}:${subseccion}`];
@@ -1297,12 +1304,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // (aprobar/devolver/concertar), nunca a qué se muestra en esta vista de detalle.
   const componentesAprobacionVisibles = componentesAprobacion;
   const componentesPendientes = componentesAprobacionVisibles.filter(c => c.estado === 'pendiente' || !c.estado).length;
+  // Rótulo de la pestaña "Concertación" según lo que el rol puede hacer en ella:
+  // solo revisar → "Revisión"; puede aprobar (con o sin permiso de revisión también)
+  // → "Aprobación"; ninguno de los dos (p.ej. coordinador en etapa de concertación
+  // de elaboración) → se conserva "Concertación".
+  const tabComponentesLabel = puedeAprobar ? 'Aprobación' : (tieneAlgunPermisoRevision ? 'Revisión' : 'Concertación');
   const TABS = [
     { key: 'resumen', label: 'Resumen', icon: BarChart3 },
     // "Concertación" fusiona las antiguas pestañas "Componentes" (detalle) y "Aprobación"
     // (aprobar/devolver): en un mismo lugar se ve el detalle de cada componente y se
-    // aprueba o devuelve, con comentario del revisor.
-    { key: 'componentes', label: 'Concertación', icon: ShieldCheck, badge: componentesPendientes || undefined },
+    // aprueba o devuelve, con comentario del revisor. La etiqueta visible varía según
+    // el rol (ver tabComponentesLabel).
+    { key: 'componentes', label: tabComponentesLabel, icon: ShieldCheck, badge: componentesPendientes || undefined },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
     { key: 'trazabilidad', label: 'Trazabilidad', icon: Activity, badge: historialEstados.length || undefined },
     // La etapa de concertación (coordinadores, durante la elaboración del PTA) ya fue
@@ -1335,9 +1348,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // mismo patrón que las 4 tarjetas de Extensión: cada una se muestra si tiene
   // asignaturas de ese nivel, o si quedó en 0 tras una edición parcial que aún
   // exige reaprobación.
+  // Posgrado se muestra primero: así el detalle y las acciones de aprobar/revisar
+  // quedan agrupados por nivel en el orden pedido (Posgrado, luego Pregrado).
   const docenciaCards = useMemo(() => ([
-    { key: 'academica_pregrado' as const, label: 'Docencia - Pregrado', asignaturas: asignaturasPregrado, horas: horasDocenciaPregrado },
     { key: 'academica_posgrado' as const, label: 'Docencia - Posgrado', asignaturas: asignaturasPosgrado, horas: horasDocenciaPosgrado },
+    { key: 'academica_pregrado' as const, label: 'Docencia - Pregrado', asignaturas: asignaturasPregrado, horas: horasDocenciaPregrado },
   ]).filter(item => {
     const approval = componentesAprobacion.find(component => component.componente === item.key);
     const requiereReaprobacionManual =
@@ -1940,9 +1955,33 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   Cancelar
                 </button>
               )}
-              {/* "Devolver a secas" ya no aplica: para devolver un componente (con comentario
-                  obligatorio) se usa "Concertar" — abre el PTA en modo edición y, al guardar
-                  (con o sin cambios de contenido), el componente queda devuelto al docente. */}
+              {/* Devolver: retorna este componente al docente para ajustes. Requiere
+                  comentario (validado en handleAprobarComponente) y, a diferencia de
+                  "Aprobar", no exige firma OTP — misma regla que la etapa de Revisión.
+                  Visible bajo la misma condición de permisos que "Aprobar" (canEvaluateComponent). */}
+              <button
+                onClick={() => handleAprobarComponente(key, 'devuelto')}
+                disabled={isProcessing}
+                style={{
+                  padding: '6px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #FCA5A5',
+                  background: 'white',
+                  color: '#B91C1C',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: isProcessing ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => { if (!isProcessing) e.currentTarget.style.background = '#FEF2F2'; }}
+                onMouseLeave={e => { if (!isProcessing) e.currentTarget.style.background = 'white'; }}
+              >
+                {isProcessing ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RotateCcw style={{ width: 13, height: 13 }} />}
+                Devolver
+              </button>
               <button
                 onClick={() => handleAprobarComponente(key, 'aprobado')}
                 disabled={isProcessing}
@@ -2991,93 +3030,100 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 </div>
               )}
 
-              {/* Docencia */}
-              {shouldShowComponentKey('academica_pregrado') && (
-              <SectionCollapsible
-                title="Componente Docencia"
-                icon={BookOpen}
-                color="#4472C4"
-                count={asignaturas.length}
-                defaultOpen={true}
-              >
-                {asignaturas.length > 0 ? (
-                  <div>
-                    {/* Scroll horizontal en mobile para la tabla de asignaturas */}
-                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                      <div style={{ minWidth: 280 }}>
-                        <div style={{
-                          display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
-                          gap: 4, padding: '6px 0', borderBottom: '1px solid #E5E7EB',
-                          fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase',
-                        }}>
-                          <span>Asignatura</span>
-                          <span style={{ textAlign: 'center' }}>Créd.</span>
-                          <span style={{ textAlign: 'center' }}>Sem.</span>
-                          <span style={{ textAlign: 'right' }}>Horas</span>
-                        </div>
-                        {asignaturas.map((a: any, i: number) => (
-                          <div key={i} style={{
-                            display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
-                            gap: 4, padding: '7px 0',
-                            borderBottom: i < asignaturas.length - 1 ? '1px solid #F9FAFB' : 'none',
-                          }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {a.nombre || a.asignatura_nombre}
-                              </div>
-                              {a.nucleo_tematico && (
-                                <div style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>{a.nucleo_tematico}</div>
-                              )}
-                              {a.observaciones && (
-                                <div style={{ fontSize: '0.65rem', color: '#4B5563', fontStyle: 'italic', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  <span style={{fontWeight: 600}}>Obs:</span> {a.observaciones}
+              {/* Docencia — detalle y aprobar/devolver agrupados por nivel (Posgrado,
+                  luego Pregrado son componentes independientes, igual que las 4
+                  direcciones de Extensión) */}
+              {docenciaCards.map(item => {
+                const nivelLabel = item.label.split(' - ')[1];
+                return (
+                  <React.Fragment key={item.key}>
+                    {shouldShowComponentKey(item.key) && (
+                      <SectionCollapsible
+                        title={`Detalle Docencia - ${nivelLabel}`}
+                        icon={BookOpen}
+                        color="#4472C4"
+                        count={item.asignaturas.length}
+                        defaultOpen={true}
+                      >
+                        {item.asignaturas.length > 0 ? (
+                          <div>
+                            {/* Scroll horizontal en mobile para la tabla de asignaturas */}
+                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                              <div style={{ minWidth: 280 }}>
+                                <div style={{
+                                  display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
+                                  gap: 4, padding: '6px 0', borderBottom: '1px solid #E5E7EB',
+                                  fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase',
+                                }}>
+                                  <span>Asignatura</span>
+                                  <span style={{ textAlign: 'center' }}>Créd.</span>
+                                  <span style={{ textAlign: 'center' }}>Sem.</span>
+                                  <span style={{ textAlign: 'right' }}>Horas</span>
                                 </div>
-                              )}
-                              <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
+                                {item.asignaturas.map((a: any, i: number) => (
+                                  <div key={i} style={{
+                                    display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
+                                    gap: 4, padding: '7px 0',
+                                    borderBottom: i < item.asignaturas.length - 1 ? '1px solid #F9FAFB' : 'none',
+                                  }}>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {a.nombre || a.asignatura_nombre}
+                                      </div>
+                                      {a.nucleo_tematico && (
+                                        <div style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>{a.nucleo_tematico}</div>
+                                      )}
+                                      {a.observaciones && (
+                                        <div style={{ fontSize: '0.65rem', color: '#4B5563', fontStyle: 'italic', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          <span style={{fontWeight: 600}}>Obs:</span> {a.observaciones}
+                                        </div>
+                                      )}
+                                      <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
+                                    </div>
+                                    <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.creditos || 0}</span>
+                                    <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.semestre || '-'}</span>
+                                    <span style={{ textAlign: 'right', fontSize: '0.76rem', fontWeight: 700, color: '#003DA5' }}>
+                                      {a.total_horas || a.horas || 0}h
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.creditos || 0}</span>
-                            <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.semestre || '-'}</span>
-                            <span style={{ textAlign: 'right', fontSize: '0.76rem', fontWeight: 700, color: '#003DA5' }}>
-                              {a.total_horas || a.horas || 0}h
-                            </span>
+                            <div style={{
+                              display: 'flex', justifyContent: 'flex-end', gap: 12,
+                              padding: '8px 0 0', borderTop: '1px solid #E5E7EB', marginTop: 4,
+                            }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#003DA5' }}>
+                                Total Docencia {nivelLabel}: {item.horas}h
+                              </span>
+                            </div>
+                            {/* Formula note */}
+                            <div style={{
+                              marginTop: 8, padding: '6px 10px', borderRadius: 6,
+                              background: '#F0F9FF', border: '1px solid #BAE6FD',
+                              fontSize: '0.62rem', color: '#0369A1',
+                            }}>
+                              <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{
-                      display: 'flex', justifyContent: 'flex-end', gap: 12,
-                      padding: '8px 0 0', borderTop: '1px solid #E5E7EB', marginTop: 4,
-                    }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#003DA5' }}>
-                        Total Docencia: {horasDocencia}h
-                      </span>
-                    </div>
-                    {/* Formula note */}
-                    <div style={{
-                      marginTop: 8, padding: '6px 10px', borderRadius: 6,
-                      background: '#F0F9FF', border: '1px solid #BAE6FD',
-                      fontSize: '0.62rem', color: '#0369A1',
-                    }}>
-                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
-                    </div>
-                  </div>
-                ) : (
-                  <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '16px 0' }}>
-                    Sin asignaturas registradas
-                  </p>
-                )}
-              </SectionCollapsible>
-              )}
+                        ) : (
+                          <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '16px 0' }}>
+                            Sin asignaturas de {nivelLabel.toLowerCase()} registradas
+                          </p>
+                        )}
+                      </SectionCollapsible>
+                    )}
 
-              {/* Docencia — aprobar/devolver (Pregrado y Posgrado son componentes
-                  independientes, igual que las 4 direcciones de Extensión) */}
-              {docenciaCards.map(item => renderComponentCard(
-                item.key,
-                `Componente Docencia (${item.label.split(' - ')[1]})`,
-                BookOpen,
-                PTA_COLORS.DOCENCIA,
-                `Contenido: ${item.asignaturas.length} asignatura(s) (${item.horas}h)`,
-              ))}
+                    {renderComponentCard(
+                      item.key,
+                      `Componente Docencia (${nivelLabel})`,
+                      BookOpen,
+                      PTA_COLORS.DOCENCIA,
+                      `Contenido: ${item.asignaturas.length} asignatura(s) (${item.horas}h)`,
+                    )}
+                  </React.Fragment>
+                );
+              })}
 
               {/* Investigación */}
               {shouldShowComponentKey('investigacion') && (
