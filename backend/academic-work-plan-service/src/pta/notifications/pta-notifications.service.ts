@@ -16,6 +16,7 @@ const COMPONENT_LABELS: Record<string, string> = {
   academica: 'Docencia',
   academica_pregrado: 'Docencia — Pregrado',
   academica_posgrado: 'Docencia — Posgrado',
+  academica_territorial: 'Docencia — Territorial',
   complementarias: 'Actividades Complementarias (incl. Académico-Administrativas)',
   investigacion: 'Investigación',
   extension: 'Extensión',

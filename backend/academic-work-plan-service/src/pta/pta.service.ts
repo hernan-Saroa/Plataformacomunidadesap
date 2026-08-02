@@ -21,6 +21,7 @@ import { PtaComponentReviewEntity } from './entities/pta-component-review.entity
 import type { PtaAuthenticatedUser } from './auth/pta-auth.guard';
 import {
   COMPONENT_PERMISSION,
+  DOCENCIA_COMPONENT_KEYS,
   REVIEW_SUBSECCIONES_BY_COMPONENT,
   reviewPermissionFor,
   type PTAComponentKey,
@@ -163,6 +164,7 @@ const PENDING_ROLE_APPROVAL_STATES = new Set([
 const COMPONENT_APPROVAL_KEYS = [
   'academica_pregrado',
   'academica_posgrado',
+  'academica_territorial',
   'investigacion',
   'ext_capacitacion',
   'ext_procesos',
@@ -197,7 +199,7 @@ const MAX_CARACTERES_JUSTIFICACION_SOLICITUD = 3000;
 const SOLICITUD_COMPONENT_KEYS = ['docencia', 'investigacion', 'extension', 'complementarias'] as const;
 const SOLICITUD_COMPONENT_KEY_SET = new Set<string>(SOLICITUD_COMPONENT_KEYS);
 const SOLICITUD_COMPONENT_APPROVAL_KEYS: Record<string, string[]> = {
-  docencia: ['academica_pregrado', 'academica_posgrado'],
+  docencia: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'],
   investigacion: ['investigacion'],
   extension: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'],
   complementarias: ['complementarias'],
@@ -255,6 +257,7 @@ const EXTENSION_COMPONENT_BY_SECTION: Record<string, string> = {
 const COMPONENT_REVISION_STATE: Record<string, string> = {
   academica_pregrado: 'REVISION_DOCENTE_N1',
   academica_posgrado: 'REVISION_DOCENTE_N1',
+  academica_territorial: 'REVISION_DOCENTE_N1',
   complementarias: 'REVISION_DOCENTE_N1',
   investigacion: 'REVISION_DOCENTE_N2',
   ext_capacitacion: 'REVISION_DOCENTE_N2',
@@ -2671,7 +2674,10 @@ export class PtaService {
     // más abajo) exactamente con el mismo patrón que Extensión — varios
     // componentes reales agrupados bajo un solo rótulo visible.
     const BASE_KEYS = ['investigacion', 'complementarias'];
-    const DOCENCIA_KEYS = ['academica_pregrado', 'academica_posgrado'];
+    // Incluye también academica_territorial: las asignaturas dictadas en Direcciones
+    // Territoriales son un componente de aprobación aparte, pero se siguen mostrando
+    // bajo el mismo rótulo colapsado "Docencia" en el listado.
+    const DOCENCIA_KEYS = [...DOCENCIA_COMPONENT_KEYS];
     const EXT_SUB_SECTIONS: Record<string, string[]> = {
       ext_capacitacion: ['capacitacion'],
       ext_procesos: ['seleccion'],
@@ -3040,28 +3046,29 @@ export class PtaService {
         coalesceString(dto.periodo, pta.periodo),
       );
 
-      // Anota nivel_programa (pregrado/posgrado) por asignatura, para que el
-      // frontend pueda separar Docencia en sus dos componentes de aprobación
-      // (academica_pregrado/academica_posgrado) sin repetir el join a
-      // academic_work_plan.programa.tipo.
+      // Anota por asignatura a QUÉ componente de Docencia pertenece
+      // (academica_pregrado / academica_posgrado / academica_territorial), para que el
+      // frontend arme sus tarjetas sin repetir los joins a programa.tipo ni a
+      // auth.seccionales. `nivel_programa` se conserva por compatibilidad con
+      // consumidores previos al enrutamiento territorial.
       try {
-        const programaIds = Array.from(new Set(
-          dto.asignaturas.map((a: any) => coalesceLookupKey(a?.programa_id)).filter((v): v is string => !!v),
-        ));
-        if (programaIds.length > 0) {
-          const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
-          const tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
-          dto.asignaturas = dto.asignaturas.map((a: any) => {
-            const programaId = coalesceLookupKey(a?.programa_id);
-            const tipo = programaId ? tipoPorId.get(programaId) : undefined;
-            return {
-              ...a,
-              nivel_programa: tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo) ? 'posgrado' : 'pregrado',
-            };
-          });
+        const part = await this.clasificarAsignaturasDocencia(dto.asignaturas);
+        // Se indexa por identidad de objeto: clasificarAsignaturasDocencia reparte las
+        // MISMAS referencias que recibe, sin clonarlas.
+        const componentePorAsignatura = new Map<any, string>();
+        for (const key of DOCENCIA_COMPONENT_KEYS) {
+          for (const a of part[key as keyof typeof part]) componentePorAsignatura.set(a, key);
         }
+        dto.asignaturas = dto.asignaturas.map((a: any) => {
+          const componente = componentePorAsignatura.get(a) || 'academica_pregrado';
+          return {
+            ...a,
+            componente_docencia: componente,
+            nivel_programa: componente === 'academica_posgrado' ? 'posgrado' : 'pregrado',
+          };
+        });
       } catch (err) {
-        console.error('[getPTAById] Error resolving nivel_programa:', err);
+        console.error('[getPTAById] Error resolving componente_docencia:', err);
       }
     }
 
@@ -3070,39 +3077,6 @@ export class PtaService {
       evidencias: evidencias.map((e) => this.toEvidenciaDto(e)),
       historialEstados: historial,
     };
-  }
-
-  /**
-   * Clasifica un array de asignaturas por nivel (pregrado/posgrado) usando
-   * academic_work_plan.programa.tipo, con el mismo criterio que
-   * splitHorasDocenciaPorNivel: las que no se pueden resolver cuentan como
-   * pregrado para no perderlas.
-   */
-  private async splitAsignaturasPorNivel(
-    asignaturas: any[],
-  ): Promise<{ pregrado: any[]; posgrado: any[] }> {
-    const pregrado: any[] = [];
-    const posgrado: any[] = [];
-    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return { pregrado, posgrado };
-
-    const programaIds = Array.from(new Set(
-      asignaturas
-        .map((a: any) => coalesceLookupKey(a?.programa_id))
-        .filter((v): v is string => !!v),
-    ));
-    let tipoPorId = new Map<string, string>();
-    if (programaIds.length > 0) {
-      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
-      tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
-    }
-
-    for (const a of asignaturas) {
-      const programaId = coalesceLookupKey(a?.programa_id);
-      const tipo = programaId ? tipoPorId.get(programaId) : undefined;
-      if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) posgrado.push(a);
-      else pregrado.push(a);
-    }
-    return { pregrado, posgrado };
   }
 
   private async mergeRestrictedAdminEditInput(
@@ -3128,25 +3102,25 @@ export class PtaService {
     merged.estado = existing.estado;
     ['docente_nombre', 'dedicacion', 'tipo_vinculacion', 'semanas_vinculacion', 'semanas_prorrateo', 'horas_a_programar'].forEach(preserveField);
 
-    const allowPregrado = allowed.has('academica_pregrado');
-    const allowPosgrado = allowed.has('academica_posgrado');
-    if (!allowPregrado && !allowPosgrado) {
+    // Docencia se enruta a TRES componentes (pregrado / posgrado / territorial) pero
+    // comparte un único array `asignaturas`. Si el alcance autorizado no los cubre a
+    // todos hay que partir el array: se aceptan del payload solo las asignaturas de
+    // los componentes autorizados y se conservan intactas las del resto. Sin esto,
+    // devolver Docencia (Pregrado) dejaba que el reenvío del docente sobreescribiera
+    // también Posgrado y las asignaturas territoriales.
+    const docenciaAutorizada = DOCENCIA_COMPONENT_KEYS.filter(key => allowed.has(key));
+    if (docenciaAutorizada.length === 0) {
       preserveField('asignaturas');
-    } else if (!allowPregrado || !allowPosgrado) {
-      // Solo UNO de los dos niveles de Docencia está autorizado. Como `asignaturas`
-      // es un único array compartido por ambos componentes, hay que partirlo: se
-      // aceptan del payload solo las asignaturas del nivel autorizado y se conservan
-      // intactas las del otro nivel. Sin esto, devolver Docencia (Pregrado) permitía
-      // que el reenvío del docente sobreescribiera también las de Posgrado.
+    } else if (docenciaAutorizada.length < DOCENCIA_COMPONENT_KEYS.length) {
       const entrantes = Array.isArray(input.asignaturas) ? input.asignaturas : [];
       const previas = Array.isArray(existingData.asignaturas) ? existingData.asignaturas : [];
       const [partEntrantes, partPrevias] = await Promise.all([
-        this.splitAsignaturasPorNivel(entrantes),
-        this.splitAsignaturasPorNivel(previas),
+        this.clasificarAsignaturasDocencia(entrantes),
+        this.clasificarAsignaturasDocencia(previas),
       ]);
-      merged.asignaturas = allowPregrado
-        ? [...partEntrantes.pregrado, ...partPrevias.posgrado]
-        : [...partPrevias.pregrado, ...partEntrantes.posgrado];
+      merged.asignaturas = DOCENCIA_COMPONENT_KEYS.flatMap(key =>
+        allowed.has(key) ? partEntrantes[key] : partPrevias[key],
+      );
     }
     if (!allowed.has('investigacion')) {
       preserveField('investigacion_proyecto');
@@ -6966,8 +6940,11 @@ export class PtaService {
     // Docencia se enruta por nivel de programa (academica_pregrado/academica_posgrado),
     // igual que Extensión se enruta por sección — requiere el join a
     // academic_work_plan.programa.tipo.
-    const { pregrado: hDocenciaPregrado, posgrado: hDocenciaPosgrado } =
-      await this.splitHorasDocenciaPorNivel(asignaturas);
+    const {
+      pregrado: hDocenciaPregrado,
+      posgrado: hDocenciaPosgrado,
+      territorial: hDocenciaTerritorial,
+    } = await this.splitHorasDocenciaPorNivel(asignaturas);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Complementarias unificado = sección docencia + sección académico-administrativa.
@@ -6993,6 +6970,7 @@ export class PtaService {
     const horasPorComponente: Record<string, number> = {
       academica_pregrado: hDocenciaPregrado,
       academica_posgrado: hDocenciaPosgrado,
+      academica_territorial: hDocenciaTerritorial,
       investigacion: hInv,
       ext_capacitacion: extBySeccion(['capacitacion']),
       ext_procesos: extBySeccion(['seleccion']),
@@ -7010,16 +6988,70 @@ export class PtaService {
     return { horasPorComponente, hayActividades };
   }
 
+  /** Normaliza un nombre de seccional para comparar sin acentos ni separadores. */
+  private normalizeSeccionalNombre(value: any): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase();
+  }
+
   /**
-   * Separa las horas de Docencia entre Pregrado y Posgrado según
-   * academic_work_plan.programa.tipo de cada asignatura. Asignaturas cuyo
-   * programa no se puede resolver (dato legacy/inconsistente) se cuentan como
-   * pregrado por defecto, para no perder horas del cálculo total.
+   * De un conjunto de `territorial_id` (auth.seccionales.id_seccional), devuelve los
+   * que corresponden a una Dirección Territorial, es decir los que NO son Sede
+   * Central. En auth.seccionales conviven dos filas de sede central ('Sede Central'
+   * y 'SEDE_CENTRAL'), por eso se compara por nombre normalizado y no por id/código.
+   *
+   * Si la consulta falla se devuelve un set vacío: todo se trata como Sede Central,
+   * que es exactamente el comportamiento previo a la separación territorial (no se
+   * pierde ni se bloquea nada).
    */
-  private async splitHorasDocenciaPorNivel(
-    asignaturas: any[],
-  ): Promise<{ pregrado: number; posgrado: number }> {
-    if (!asignaturas.length) return { pregrado: 0, posgrado: 0 };
+  private async resolveTerritorialIdsNoCentrales(ids: string[]): Promise<Set<string>> {
+    const result = new Set<string>();
+    if (ids.length === 0) return result;
+    try {
+      const rows = await this.ptaRepo.manager.query(
+        `SELECT id_seccional::text AS id, nom_seccional AS nombre
+           FROM auth.seccionales
+          WHERE id_seccional::text = ANY($1::text[])`,
+        [ids],
+      );
+      for (const row of rows || []) {
+        if (this.normalizeSeccionalNombre(row?.nombre) !== 'sedecentral') {
+          result.add(String(row.id));
+        }
+      }
+    } catch (err: any) {
+      this.logger?.warn?.(
+        `No se pudieron resolver las seccionales para enrutar Docencia: ${err?.message || err}`,
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Enruta las asignaturas de Docencia a sus tres componentes de aprobación.
+   *
+   * La territorialidad MANDA sobre el nivel: una asignatura dictada en una Dirección
+   * Territorial va a `academica_territorial` (la revisa el Coordinador Territorial y
+   * la aprueba la Jefatura de la Territorial) aunque sea de pregrado o posgrado. Solo
+   * lo dictado en Sede Central se separa por `programa.tipo` en pregrado/posgrado.
+   *
+   * Las asignaturas cuyo programa no se puede resolver caen en pregrado, igual que
+   * antes, para no perderlas del cálculo.
+   */
+  private async clasificarAsignaturasDocencia(asignaturas: any[]): Promise<{
+    academica_pregrado: any[];
+    academica_posgrado: any[];
+    academica_territorial: any[];
+  }> {
+    const out = {
+      academica_pregrado: [] as any[],
+      academica_posgrado: [] as any[],
+      academica_territorial: [] as any[],
+    };
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return out;
 
     const programaIds = Array.from(new Set(
       asignaturas
@@ -7032,16 +7064,40 @@ export class PtaService {
       tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
     }
 
-    let pregrado = 0;
-    let posgrado = 0;
+    const territorialIds = Array.from(new Set(
+      asignaturas
+        .map((a: any) => coalesceLookupKey(a?.territorial_id))
+        .filter((v): v is string => !!v),
+    ));
+    const noCentrales = await this.resolveTerritorialIdsNoCentrales(territorialIds);
+
     for (const a of asignaturas) {
-      const horas = Number(a?.total_horas ?? a?.horas) || 0;
+      const territorialId = coalesceLookupKey(a?.territorial_id);
+      if (territorialId && noCentrales.has(territorialId)) {
+        out.academica_territorial.push(a);
+        continue;
+      }
       const programaId = coalesceLookupKey(a?.programa_id);
       const tipo = programaId ? tipoPorId.get(programaId) : undefined;
-      if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) posgrado += horas;
-      else pregrado += horas;
+      if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) out.academica_posgrado.push(a);
+      else out.academica_pregrado.push(a);
     }
-    return { pregrado, posgrado };
+    return out;
+  }
+
+  /** Horas de Docencia por componente (pregrado / posgrado / territorial). */
+  private async splitHorasDocenciaPorNivel(
+    asignaturas: any[],
+  ): Promise<{ pregrado: number; posgrado: number; territorial: number }> {
+    if (!asignaturas.length) return { pregrado: 0, posgrado: 0, territorial: 0 };
+    const part = await this.clasificarAsignaturasDocencia(asignaturas);
+    const sumar = (arr: any[]) =>
+      arr.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
+    return {
+      pregrado: sumar(part.academica_pregrado),
+      posgrado: sumar(part.academica_posgrado),
+      territorial: sumar(part.academica_territorial),
+    };
   }
 
   /**

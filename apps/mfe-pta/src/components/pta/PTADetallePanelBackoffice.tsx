@@ -369,7 +369,7 @@ function ApprovalTracker({
     {
       label: 'Docencia',
       icon: BookOpen,
-      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado']),
+      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado', 'academica_territorial']),
       baseColor: '#4472C4'
     },
     {
@@ -709,6 +709,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const labels: Record<string, string> = {
       academica_pregrado: 'Docencia - Pregrado',
       academica_posgrado: 'Docencia - Posgrado',
+      academica_territorial: 'Docencia - Territorial',
       investigacion: 'Investigacion',
       ext_capacitacion: 'Extension - Capacitacion',
       ext_procesos: 'Extension - Seleccion',
@@ -816,7 +817,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   // Etiquetas legibles de componente para el correo/modal de firma OTP.
   const COMPONENTE_LABELS_FIRMA: Record<string, string> = {
-    academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)',
+    academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)', academica_territorial: 'Docencia (Territorial)',
     investigacion: 'Investigación',
     ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
     ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
@@ -1079,25 +1080,45 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return asignaturas.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0);
   }, [pta, asignaturas]);
 
-  // Docencia se divide en dos componentes de aprobación (Pregrado/Posgrado, igual
-  // que Extensión se divide en 4 direcciones). `nivel_programa` viene anotado por
-  // el backend (getPTAById) desde academic_work_plan.programa.tipo; si falta
-  // (dato legacy no recargado), la asignatura se cuenta como pregrado por defecto.
+  // Docencia se divide en TRES componentes de aprobación (Pregrado / Posgrado /
+  // Territorial, igual que Extensión se divide en 4 direcciones).
+  // `componente_docencia` viene anotado por el backend (getPTAById), que ya resolvió
+  // la territorialidad (auth.seccionales) y el nivel (programa.tipo). La
+  // territorialidad manda: una asignatura dictada en una Dirección Territorial va a
+  // 'academica_territorial' aunque sea de pregrado o posgrado.
+  // Fallback para datos legacy sin anotar: se usa nivel_programa y, si tampoco está,
+  // se cuenta como pregrado (mismo criterio que el backend).
+  const componenteDeAsignatura = useCallback((a: any): string => {
+    if (a?.componente_docencia) return String(a.componente_docencia);
+    return a?.nivel_programa === 'posgrado' ? 'academica_posgrado' : 'academica_pregrado';
+  }, []);
   const asignaturasPregrado = useMemo(
-    () => asignaturas.filter((a: any) => (a?.nivel_programa || 'pregrado') !== 'posgrado'),
-    [asignaturas],
+    () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_pregrado'),
+    [asignaturas, componenteDeAsignatura],
   );
   const asignaturasPosgrado = useMemo(
-    () => asignaturas.filter((a: any) => a?.nivel_programa === 'posgrado'),
-    [asignaturas],
+    () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_posgrado'),
+    [asignaturas, componenteDeAsignatura],
+  );
+  const asignaturasTerritorial = useMemo(
+    () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_territorial'),
+    [asignaturas, componenteDeAsignatura],
+  );
+  const sumarHorasAsignaturas = useCallback(
+    (arr: any[]) => arr.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0),
+    [],
   );
   const horasDocenciaPregrado = useMemo(
-    () => asignaturasPregrado.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0),
-    [asignaturasPregrado],
+    () => sumarHorasAsignaturas(asignaturasPregrado),
+    [asignaturasPregrado, sumarHorasAsignaturas],
   );
   const horasDocenciaPosgrado = useMemo(
-    () => asignaturasPosgrado.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0),
-    [asignaturasPosgrado],
+    () => sumarHorasAsignaturas(asignaturasPosgrado),
+    [asignaturasPosgrado, sumarHorasAsignaturas],
+  );
+  const horasDocenciaTerritorial = useMemo(
+    () => sumarHorasAsignaturas(asignaturasTerritorial),
+    [asignaturasTerritorial, sumarHorasAsignaturas],
   );
 
   const horasInvestigacion = useMemo(() => {
@@ -1435,6 +1456,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const docenciaCards = useMemo(() => ([
     { key: 'academica_posgrado' as const, label: 'Docencia - Posgrado', asignaturas: asignaturasPosgrado, horas: horasDocenciaPosgrado },
     { key: 'academica_pregrado' as const, label: 'Docencia - Pregrado', asignaturas: asignaturasPregrado, horas: horasDocenciaPregrado },
+    // Asignaturas dictadas en Direcciones Territoriales: las revisa el Coordinador
+    // Territorial y las aprueba la Jefatura de la Territorial, sin importar el nivel.
+    { key: 'academica_territorial' as const, label: 'Docencia - Territorial', asignaturas: asignaturasTerritorial, horas: horasDocenciaTerritorial },
   ]).filter(item => {
     const approval = componentesAprobacion.find(component => component.componente === item.key);
     const requiereReaprobacionManual =
@@ -1442,7 +1466,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       && ['pendiente', 'devuelto'].includes(String(approval.estado || '').toLowerCase());
     return item.asignaturas.length > 0 || item.horas > 0 || requiereReaprobacionManual;
   }), [
-    asignaturasPregrado, asignaturasPosgrado, horasDocenciaPregrado, horasDocenciaPosgrado,
+    asignaturasPregrado, asignaturasPosgrado, asignaturasTerritorial,
+    horasDocenciaPregrado, horasDocenciaPosgrado, horasDocenciaTerritorial,
     componentesAprobacion,
   ]);
 
@@ -2134,7 +2159,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const COMP_LABELS: Record<string, string> = {
       docencia: 'Docencia',
       academica: 'Docencia', // legacy (pre-split)
-      academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)',
+      academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)', academica_territorial: 'Docencia (Territorial)',
       investigacion: 'Investigación',
       extension: 'Extensión',
       ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
