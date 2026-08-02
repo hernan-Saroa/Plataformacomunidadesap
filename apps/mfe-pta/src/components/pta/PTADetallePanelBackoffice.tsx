@@ -55,6 +55,7 @@ import {
   PTA_COMPONENT_REVIEW_PERMISSION,
   PTA_REVIEW_ALL_PERMISSION,
   REVIEW_SUBSECCION_LABEL,
+  REVIEW_SUBSECCIONES_BY_COMPONENT,
   type PTAReviewSubseccionKey,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
@@ -1393,7 +1394,37 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // La vista de detalle conserva siempre el contexto completo del PTA. Los permisos
   // granulares restringen las acciones y el formulario de concertación, no la
   // visibilidad de los demás componentes.
-  const shouldShowComponentKey = useCallback((_key: string) => true, []);
+  /**
+   * ¿Se le muestra este componente al usuario actual?
+   *
+   * QA pidió que un revisor/aprobador vea ÚNICAMENTE lo que le corresponde revisar o
+   * aprobar (p. ej. el revisor de Docencia-Pregrado no debe ver las asignaturas de
+   * Posgrado). Antes esta función devolvía siempre `true` porque se mostraba el PTA
+   * completo "para dar contexto".
+   *
+   * Se muestra todo (sin restringir) a: superusuario, aprobador integral, el propio
+   * docente dueño del PTA, y a los roles sin ningún permiso granular (compatibilidad
+   * con el esquema legacy por nivel). Para el resto, se ve el componente si puede
+   * APROBARLO o REVISARLO — son capas independientes: hay revisores sin permiso de
+   * aprobación y viceversa.
+   */
+  const puedeRevisarAlgunaSubseccion = useCallback((key: string): boolean => {
+    const subsecciones = REVIEW_SUBSECCIONES_BY_COMPONENT[key as PTAComponentKey] || [];
+    return subsecciones.some(sub => isSubseccionAuthorizedToReview(key, sub));
+  }, [isSubseccionAuthorizedToReview]);
+
+  const shouldShowComponentKey = useCallback((key: string): boolean => {
+    if (isSuperUser || apruebaTodo || revisaTodo) return true;
+    if (rolLabel === 'Docente') return true;
+    // Sin permisos granulares de aprobación NI de revisión no hay alcance que
+    // restringir (rol legacy por nivel): se conserva la vista completa.
+    if (!tieneAlgunPermisoComponente && !tieneAlgunPermisoRevision) return true;
+    return isComponentAuthorized(key) || puedeRevisarAlgunaSubseccion(key);
+  }, [
+    isSuperUser, apruebaTodo, revisaTodo, rolLabel,
+    tieneAlgunPermisoComponente, tieneAlgunPermisoRevision,
+    isComponentAuthorized, puedeRevisarAlgunaSubseccion,
+  ]);
 
   // Docencia se divide en dos tarjetas de aprobación (Pregrado/Posgrado), con el
   // mismo patrón que las 4 tarjetas de Extensión: cada una se muestra si tiene
