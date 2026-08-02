@@ -1599,13 +1599,16 @@ function TabPlanMejoramientoAuditado({
   auditoriaId,
   readOnly,
   hallazgos,
+  userName,
 }: {
   auditoria: AuditoriaItem;
   auditoriaId: string;
   readOnly: boolean;
   /** Lista de hallazgos de la auditoría, para vincular cada acción a un hallazgo. */
   hallazgos: HallazgoItem[];
+  userName?: string;
 }) {
+  const usuarioLogueado = userName || (auditoria as any)?.responsableArea?.nombre || (auditoria as any)?.auditorLider?.nombre || 'Usuario Logueado';
   const [planes, setPlanes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1962,10 +1965,10 @@ function TabPlanMejoramientoAuditado({
       toast.error('La descripción de la acción es obligatoria');
       return;
     }
-    if (!d.responsable?.trim()) {
-      toast.error('El responsable de la acción es obligatorio');
-      return;
-    }
+    // if (!d.responsable?.trim()) {
+    //   toast.error('El responsable de la acción es obligatorio');
+    //   return;
+    // }
     if (!d.hallazgoId) {
       toast.error('Debe vincular la acción a un hallazgo obligatoriamente');
       return;
@@ -1982,10 +1985,10 @@ function TabPlanMejoramientoAuditado({
     try {
       await controlInternoService.crearAccionPlanAuditado(auditoriaId, planId, {
         descripcion: d.descripcion.trim(),
-        responsable: d.responsable.trim(),
+        responsable: usuarioLogueado,
         fechaInicio: d.fechaInicio,
         fechaFin: d.fechaFin,
-        indicador: d.indicador.trim() || undefined,
+        indicador: d.indicador?.trim() || undefined,
         metaIndicador: d.metaIndicador?.trim() || undefined,
         hallazgoId: d.hallazgoId || undefined,
         tipo: d.tipo || 'correctiva',
@@ -2737,9 +2740,9 @@ function TabPlanMejoramientoAuditado({
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                               <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 3 }}>
                                 Responsable *
-                                <input type="text" value={ed.responsable}
+                                <input type="text" value={ed.responsable} readOnly
                                   onChange={(e) => setEditAccion((prev) => ({ ...prev, [accion.id]: { ...prev[accion.id]!, responsable: e.target.value } }))}
-                                  style={{ height: 32, borderRadius: 7, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                                  style={{ height: 32, borderRadius: 7, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, cursor: 'not-allowed' }} />
                               </label>
                               <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 3 }}>
                                 Indicador
@@ -3224,11 +3227,10 @@ function TabPlanMejoramientoAuditado({
                     </label>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
-                      {/* Responsable — combobox con filtro en tiempo real */}
+                      {/* ═══ COPIA ORIGINAL DEL RESPONSABLE (DESACTIVADA) ═══
                       <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span>Responsable <span style={{ color: '#DC2626' }}>*</span></span>
                         {newAccionDraft[plan.id]?.responsable ? (
-                          /* Persona seleccionada — mostrar chip con nombre + botón Cambiar */
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 8, background: '#F9FAFB', minHeight: 34 }}>
                             <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
                               {(newAccionDraft[plan.id]?.responsable || '').split(' ').slice(0,2).map(s=>s[0]).join('').toUpperCase() || 'R'}
@@ -3246,7 +3248,6 @@ function TabPlanMejoramientoAuditado({
                             </button>
                           </div>
                         ) : (
-                          /* Sin persona — input con dropdown filtrable */
                           <div style={{ position: 'relative' }}>
                             <div style={{ position: 'relative' }}>
                               <input
@@ -3261,23 +3262,20 @@ function TabPlanMejoramientoAuditado({
                                   return rest;
                                 }), 200)}
                                 style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 30px 0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
-                              {/* Chevron para indicar que es dropdown */}
                               <ChevronDown style={{
                                 position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
                                 width: 14, height: 14, color: '#9CA3AF', pointerEvents: 'none',
                               }} />
                             </div>
-                            {/* Dropdown — aparece inmediatamente al focus */}
                             {busquedaResponsable[plan.id] !== undefined && (() => {
                               const q = (busquedaResponsable[plan.id] || '').trim().toLowerCase();
                               const lista = q.length > 0
                                 ? usuarios.filter(u =>
                                     u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.rol.toLowerCase().includes(q)
                                   )
-                                : usuarios; // Sin filtro → mostrar todos
+                                : usuarios;
                               return (
                                 <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.12)', zIndex: 60, maxHeight: 220, overflowY: 'auto' }}>
-                                  {/* Header */}
                                   <div style={{ padding: '6px 10px', background: '#F9FAFB', borderBottom: '1px solid #F3F4F6', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', justifyContent: 'space-between' }}>
                                     <span>{lista.length} resultado{lista.length !== 1 ? 's' : ''}</span>
                                     {q.length === 0 && <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>Escribe para filtrar…</span>}
@@ -3322,6 +3320,23 @@ function TabPlanMejoramientoAuditado({
                             })()}
                           </div>
                         )}
+                      </label>
+                      ═══ FIN COPIA ORIGINAL ═══ */}
+
+                      {/* NUEVO RESPONSABLE — AUTOMÁTICO PARA EL USUARIO LOGUEADO (BLOQUEADO/NO EDITABLE) */}
+                      <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>Responsable <span style={{ color: '#DC2626' }}>*</span></span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 8, background: '#F3F4F6', minHeight: 34, cursor: 'not-allowed' }}>
+                          <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                            {(newAccionDraft[plan.id]?.responsable || usuarioLogueado || 'U').split(' ').slice(0, 2).map((s: string) => s[0]).join('').toUpperCase() || 'U'}
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {newAccionDraft[plan.id]?.responsable || usuarioLogueado}
+                          </span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: '#6B7280', background: '#E5E7EB', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>
+                            Usuario actual
+                          </span>
+                        </div>
                       </label>
 
                       {/* Indicador */}
@@ -3980,7 +3995,7 @@ function DetalleAuditoria({
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18 }}
           >
-            <TabPlanMejoramientoAuditado auditoria={auditoria} auditoriaId={auditoria.id} readOnly={isReadOnly} hallazgos={hallazgos} />
+            <TabPlanMejoramientoAuditado auditoria={auditoria} auditoriaId={auditoria.id} readOnly={isReadOnly} hallazgos={hallazgos} userName={userName} />
           </motion.div>
         )}
       </AnimatePresence>
