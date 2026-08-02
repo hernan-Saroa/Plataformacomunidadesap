@@ -354,7 +354,13 @@ function ApprovalTracker({
     const approvals = componentesAprobacion.filter(c => scopedKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
-    if (approvals.every(a => a.estado === 'aprobado')) return 'aprobado';
+    if (approvals.every(a => a.estado === 'aprobado')) {
+      // Un componente SIN actividades lo auto-aprueba el backend con
+      // aprobadorNombre='Sistema'. Mostrarlo como "Aprobado" en verde da a
+      // entender que alguien lo avaló; debe verse en gris como "No aplica".
+      const todoAutoAprobado = approvals.every(a => a.aprobadorNombre === 'Sistema');
+      return todoAutoAprobado ? 'no_aplica' : 'aprobado';
+    }
     return 'pendiente';
   };
 
@@ -422,6 +428,16 @@ function ApprovalTracker({
           statusLabel = 'Devuelto';
           iconBg = '#FEE2E2';
           iconColor = '#DC2626';
+        } else if (step.status === 'no_aplica') {
+          // Componente sin actividades: el backend lo auto-aprueba para no
+          // bloquear el flujo, pero para el usuario NO es un aval — se muestra
+          // en gris como "No aplica".
+          bg = '#F9FAFB';
+          borderColor = '#E5E7EB';
+          statusColor = '#9CA3AF';
+          statusLabel = 'No aplica';
+          iconBg = '#F3F4F6';
+          iconColor = '#9CA3AF';
         } else {
           bg = '#FFFBEB';
           borderColor = '#FEF3C7';
@@ -728,6 +744,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return !!perm && puedePerm(perm);
   }, [revisaTodo, puedePerm]);
 
+  /** ¿El usuario tiene ALGÚN permiso de revisión (pta.review.*)? Se usa para rotular
+   *  la pestaña según el rol con el que entra (Revisión vs Aprobación). */
+  const esRevisor = useMemo(
+    () => revisaTodo || Object.values(PTA_COMPONENT_REVIEW_PERMISSION).some(perm => puedePerm(perm)),
+    [revisaTodo, puedePerm],
+  );
+
   /** Filas de revisión requeridas para un componente (ya vienen filtradas por el backend). */
   const subseccionesRevision = useCallback(
     (key: string) => componentesRevision.filter(r => r.componente === key),
@@ -868,8 +891,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
   };
 
-  // Etapa de Revisión: marca una subsección como 'revisado' o 'devuelto'. A
-  // diferencia de la aprobación final, no exige firma OTP.
+  // Etapa de Revisión: marca una subsección como 'revisado' o 'devuelto'.
+  // Marcar como REVISADO exige firma con OTP igual que la aprobación final, para
+  // que quede trazabilidad verificada de quién revisó (el revisor queda registrado
+  // en PtaComponentReview.revisorId/Nombre/Rol + historial). La DEVOLUCIÓN no pide
+  // OTP: la firma respalda el aval, no el rechazo (mismo criterio que aprobar).
   const handleRevisarComponente = async (componente: string, subseccion: string, estado: 'revisado' | 'devuelto') => {
     const canReview = puedeActuarSobreComponentes && isSubseccionAuthorizedToReview(componente, subseccion);
     if (!canReview) {
@@ -882,6 +908,26 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       toast.error('Debe ingresar un comentario para devolver el componente en revisión');
       return;
     }
+
+    if (estado === 'revisado') {
+      const label = COMPONENTE_LABELS_FIRMA[componente] || componente;
+      const sufijoSub = subseccion && subseccion !== 'general'
+        ? ` (${REVIEW_SUBSECCION_LABEL[subseccion as PTAReviewSubseccionKey] || subseccion})`
+        : '';
+      const ok = await solicitarOtpFirmaAprobador(`Revisión de componente: ${label}${sufijoSub}`);
+      if (!ok) return;
+      setFirmaAccion({ tipo: 'revision', componente, subseccion });
+      setShowFirmaDigital(true);
+      return;
+    }
+
+    await ejecutarRevisionComponente(componente, subseccion, estado);
+  };
+
+  // Ejecuta la revisión/devolución real de la subsección contra el backend.
+  const ejecutarRevisionComponente = async (componente: string, subseccion: string, estado: 'revisado' | 'devuelto') => {
+    const claveComentario = `${componente}:${subseccion}`;
+    const comentarios = comentariosRevision[claveComentario] || '';
 
     const rowKey = claveComentario;
     setProcesandoRevision(prev => ({ ...prev, [rowKey]: true }));
@@ -1090,8 +1136,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
   const [solicitandoFirmaCode, setSolicitandoFirmaCode] = useState(false);
   // Qué acción ejecutará el modal de firma al validarse el OTP: aprobar un
-  // componente puntual (flujo real de concertación) o la aprobación global del PTA.
-  const [firmaAccion, setFirmaAccion] = useState<{ tipo: 'componente'; componente: string } | { tipo: 'pta' } | null>(null);
+  // componente puntual (flujo real de concertación), REVISAR (preaprobar) una
+  // subsección, o la aprobación global del PTA.
+  const [firmaAccion, setFirmaAccion] = useState<
+    | { tipo: 'componente'; componente: string }
+    | { tipo: 'revision'; componente: string; subseccion: string }
+    | { tipo: 'pta' }
+    | null
+  >(null);
 
   useEffect(() => {
     return () => {
@@ -1243,6 +1295,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       return;
     }
 
+    // Etapa de Revisión (preaprobación): la firma respalda quién revisó la subsección.
+    if (accion?.tipo === 'revision') {
+      await ejecutarRevisionComponente(accion.componente, accion.subseccion, 'revisado');
+      return;
+    }
+
     if (!puedeAprobarNivelActual) {
       toast.error('No tienes permiso para aprobar este nivel del PTA');
       return;
@@ -1302,7 +1360,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // "Concertación" fusiona las antiguas pestañas "Componentes" (detalle) y "Aprobación"
     // (aprobar/devolver): en un mismo lugar se ve el detalle de cada componente y se
     // aprueba o devuelve, con comentario del revisor.
-    { key: 'componentes', label: 'Concertación', icon: ShieldCheck, badge: componentesPendientes || undefined },
+    // El rótulo se adapta al rol con el que entra el usuario: "Concertación" no le
+    // decía nada al revisor/aprobador (QA pidió que dijera Revisión o Aprobar según
+    // corresponda). Si puede ambas cosas, manda la aprobación por ser la etapa final.
+    {
+      key: 'componentes',
+      label: puedeAprobar ? 'Aprobar' : esRevisor ? 'Revisión' : 'Concertación',
+      icon: ShieldCheck,
+      badge: componentesPendientes || undefined,
+    },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
     { key: 'trazabilidad', label: 'Trazabilidad', icon: Activity, badge: historialEstados.length || undefined },
     // La etapa de concertación (coordinadores, durante la elaboración del PTA) ya fue
@@ -1940,9 +2006,36 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   Cancelar
                 </button>
               )}
-              {/* "Devolver a secas" ya no aplica: para devolver un componente (con comentario
-                  obligatorio) se usa "Concertar" — abre el PTA en modo edición y, al guardar
-                  (con o sin cambios de contenido), el componente queda devuelto al docente. */}
+              {/* Devolución directa del componente al docente. Antes esto se hacía
+                  únicamente vía "Concertar" (abrir el PTA en modo edición y guardar),
+                  pero ese botón ya no se muestra en el flujo de revisión/aprobación,
+                  así que el aprobador necesita un "Devolver" explícito aquí.
+                  Exige comentario (validado en handleAprobarComponente) y NO pide OTP:
+                  la firma solo respalda la aprobación, no el rechazo. */}
+              <button
+                onClick={() => handleAprobarComponente(key, 'devuelto')}
+                disabled={isProcessing}
+                style={{
+                  padding: '6px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #FCA5A5',
+                  background: 'white',
+                  color: '#DC2626',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: isProcessing ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => { if (!isProcessing) e.currentTarget.style.background = '#FEF2F2'; }}
+                onMouseLeave={e => { if (!isProcessing) e.currentTarget.style.background = 'white'; }}
+                title="Devolver el componente al docente para ajustes (requiere comentario)"
+              >
+                <RotateCcw style={{ width: 13, height: 13 }} />
+                Devolver
+              </button>
               <button
                 onClick={() => handleAprobarComponente(key, 'aprobado')}
                 disabled={isProcessing}
@@ -2876,10 +2969,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* ═══ TAB: Concertación (detalle por componente + aprobar/devolver) ═══ */}
           {activeTab === 'componentes' && (
             <div>
-              {/* Edición completa (ahora "Concertar": edición y devolución de componente son la misma acción).
-                  Se basa en si QUEDA ALGÚN COMPONENTE PENDIENTE para este revisor, no en el estado agregado
-                  del PTA — así el botón no desaparece cuando otro componente ya se aprobó o devolvió. */}
-              {((puedeAprobar && hayComponentesPendientesParaMi) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
+              {/* Edición completa ("Concertar"). Ya NO se ofrece a revisores/aprobadores:
+                  en el flujo de Revisión → Aprobación la devolución tiene su propio botón
+                  "Devolver" en cada componente, así que "Concertar" solo confundía (QA pidió
+                  ocultarlo). Se mantiene únicamente para el DOCENTE, que sí edita su PTA. */}
+              {(rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado)) && (
                 <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
                     {rolLabel === 'Docente'
@@ -3956,7 +4050,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           etapaLabel={
             firmaAccion?.tipo === 'componente'
               ? `Aprobación de componente: ${COMPONENTE_LABELS_FIRMA[firmaAccion.componente] || firmaAccion.componente}`
-              : 'Aprobación del PTA'
+              : firmaAccion?.tipo === 'revision'
+                ? `Revisión de componente: ${COMPONENTE_LABELS_FIRMA[firmaAccion.componente] || firmaAccion.componente}`
+                  + (firmaAccion.subseccion && firmaAccion.subseccion !== 'general'
+                    ? ` (${REVIEW_SUBSECCION_LABEL[firmaAccion.subseccion as PTAReviewSubseccionKey] || firmaAccion.subseccion})`
+                    : '')
+                : 'Aprobación del PTA'
           }
           correoDestino={firmaCorreoDestino}
           onVerifyCodigo={verificarCodigoFirmaAprobador}

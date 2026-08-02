@@ -456,4 +456,77 @@ export class PtaNotificationsService {
     this.logger.log(`PTA ${opts.ptaId}: profesor ${prof.idUser} notificado de aprobación de "${opts.componente}"`);
     return true;
   }
+
+  /**
+   * Notifica al profesor que uno de sus componentes fue DEVUELTO para ajustes.
+   * Espejo de notifyProfesorComponenteAprobado: el docente debe enterarse igual
+   * (o más) cuando le devuelven algo que cuando se lo aprueban, porque la
+   * devolución exige acción de su parte.
+   *
+   * `etapa` distingue si la devolución ocurrió en la etapa de Revisión
+   * (preaprobación) o en la de Aprobación final, para que el mensaje sea claro.
+   */
+  async notifyProfesorComponenteDevuelto(opts: {
+    ptaId: string;
+    docenteId: string | null | undefined;
+    componente: string;
+    revisorNombre?: string | null;
+    comentarios?: string | null;
+    etapa?: 'revision' | 'aprobacion';
+  }): Promise<boolean> {
+    if (!opts.docenteId) return false;
+    const prof = await this.resolveUser(opts.docenteId);
+    if (!prof) {
+      this.logger.warn(`PTA ${opts.ptaId}: no se resolvió el profesor (${opts.docenteId}) para notificar devolución`);
+      return false;
+    }
+
+    const compLabel = this.componentLabel(opts.componente);
+    const quien = opts.revisorNombre || 'un revisor';
+    const etapaLabel = opts.etapa === 'revision' ? 'revisión' : 'aprobación';
+    const titulo = `Componente devuelto: ${compLabel}`;
+    const motivo = (opts.comentarios || '').trim();
+    const mensaje = `Esta componente fue devuelta por ${quien} en la etapa de ${etapaLabel}.`
+      + (motivo ? ` Motivo: ${motivo}` : '');
+    const url = 'pta';
+
+    await this.createInApp({
+      id_usuario_destinatario: prof.idUser,
+      tipo_notificacion: 'pta_componente_devuelto',
+      titulo,
+      mensaje,
+      descripcion_corta: compLabel,
+      categoria: 'PTA',
+      // Alta: a diferencia de la aprobación, la devolución requiere que el
+      // docente corrija y reenvíe para que el flujo continúe.
+      prioridad: 'Alta',
+      icono: 'rotate-ccw',
+      color: '#DC2626',
+      tiene_accion: true,
+      texto_boton_accion: 'Corregir mi PTA',
+      url_accion: url,
+      datos_adicionales: {
+        ptaId: opts.ptaId,
+        componente: opts.componente,
+        revisor: quien,
+        etapa: opts.etapa || 'aprobacion',
+        comentarios: motivo || null,
+      },
+    });
+
+    if (prof.email) {
+      const linkAbsoluto = `${this.resolvePublicAppUrl()}/?view=portal`;
+      const html = `
+        <p>Hola ${this.escapeHtml(prof.nombre || '')},</p>
+        <p>El componente <strong>${this.escapeHtml(compLabel)}</strong> de tu PTA fue <strong>devuelto</strong> en la etapa de ${this.escapeHtml(etapaLabel)} por ${this.escapeHtml(quien)}.</p>
+        ${motivo ? `<p><strong>Motivo:</strong> ${this.escapeHtml(motivo)}</p>` : ''}
+        <p>Debes realizar los ajustes indicados y reenviar tu PTA.</p>
+        <p><a href="${linkAbsoluto}">Corregir mi PTA</a></p>
+      `;
+      void this.sendEmail(prof.email, titulo, `${compLabel}: ${mensaje}`, html);
+    }
+
+    this.logger.log(`PTA ${opts.ptaId}: profesor ${prof.idUser} notificado de devolución de "${opts.componente}"`);
+    return true;
+  }
 }

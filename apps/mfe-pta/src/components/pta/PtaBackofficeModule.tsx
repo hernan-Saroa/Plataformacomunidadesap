@@ -1391,6 +1391,45 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }, [isSuperUserEffective, permisos.componentesAprobables]);
   const shouldRestrictByComponentPermission = !isSuperUserEffective && visibleComponentKeys.length > 0;
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
+
+  /**
+   * ¿Este PTA tiene algún componente pendiente que le toque a MÍ?
+   *
+   * `componentes_estado` trae las claves COLAPSADAS del listado ('academica',
+   * 'investigacion', 'complementarias', 'extension'), mientras que los permisos del
+   * usuario son granulares (academica_pregrado, ext_capacitacion, ...), así que hay
+   * que mapear unas contra otras.
+   *
+   * Sin esto los contadores de "Pendientes" miraban solo el estado GLOBAL del PTA:
+   * un aprobador que ya avaló SU componente seguía viéndolo como pendiente y el
+   * acumulado nunca bajaba.
+   */
+  const tienePendientesParaMi = useCallback((pta: any): boolean => {
+    if (!shouldRestrictByComponentPermission) return true;
+    const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+    // Fallback seguro: si el DTO no trae el detalle por componente se cuenta como
+    // pendiente (mejor mostrar de más que ocultarle trabajo a un aprobador).
+    if (items.length === 0) return true;
+
+    const claveAutorizada = (key: string): boolean => {
+      switch (key) {
+        case 'academica':
+          return visibleComponentKeySet.has('academica_pregrado')
+            || visibleComponentKeySet.has('academica_posgrado');
+        case 'extension':
+          return PTA_EXTENSION_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
+        default:
+          return visibleComponentKeySet.has(key);
+      }
+    };
+
+    return items.some((item: any) => {
+      const estado = String(item?.estado || 'pendiente').toLowerCase();
+      if (estado === 'aprobado' || estado === 'no_iniciado') return false;
+      return claveAutorizada(String(item?.key || item?.componente || ''));
+    });
+  }, [shouldRestrictByComponentPermission, visibleComponentKeySet]);
+
   const { addNotification } = useNotifications();
   const [ptas, setPtas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2422,7 +2461,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const statCards = estadisticas ? [
     { label: 'Total PTAs', value: ptas.length, icon: FileText, color: '#003DA5', bg: '#EFF6FF' },
-    { label: 'Pendientes', value: ptas.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
+    // "Pendientes" cuenta solo lo que le queda por resolver a ESTE usuario: si ya
+    // aprobó su componente, el PTA deja de sumar aunque siga pendiente para otros.
+    { label: 'Pendientes', value: ptas.filter((p: any) => isEstadoPendienteAprobacion(p.estado) && tienePendientesParaMi(p)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
     { label: 'Aprobados', value: ptas.filter((p: any) => p.estado === 'Aprobado').length, icon: CheckCircle, color: '#059669', bg: '#D1FAE5' },
     { label: 'En Concertación', value: estadisticas.enConcertacion || 0, icon: MessageSquare, color: '#7C3AED', bg: '#F3E8FF' },
     { label: 'Rechazados', value: estadisticas.rechazados || 0, icon: XCircle, color: '#DC2626', bg: '#FEE2E2' },
@@ -2462,7 +2503,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // Pending PTAs count for mobile badge
   const listaPendientesAprobar = filteredPtas.filter((p: any) =>
     isEstadoPendienteAprobacion(p.estado) &&
-    puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective)
+    puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective) &&
+    tienePendientesParaMi(p)
   );
   const pendingForApprovalCount = listaPendientesAprobar.length;
 

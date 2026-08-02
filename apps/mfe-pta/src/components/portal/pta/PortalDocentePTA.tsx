@@ -977,11 +977,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                               <strong className="text-gray-900">{horasTotal}</strong>
                               <span className="text-gray-400">/ {horasMax}h</span>
                             </span>
-                            {needsAction && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-600 text-[0.65rem] font-bold border border-red-100">
-                                <AlertTriangle className="w-3 h-3" /> Requiere acción
-                              </span>
-                            )}
+                            {/* Badge "Requiere acción" retirado: era puramente informativo
+                                (sin acción propia) y duplicaba lo que ya comunican el estado
+                                del PTA y el botón de acción de la tarjeta, así que confundía.
+                                `needsAction` se sigue usando para la barra de acento superior. */}
                           </div>
 
                           {/* Hours progress bar — slim and elegant */}

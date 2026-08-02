@@ -3072,11 +3072,44 @@ export class PtaService {
     };
   }
 
-  private mergeRestrictedAdminEditInput(
+  /**
+   * Clasifica un array de asignaturas por nivel (pregrado/posgrado) usando
+   * academic_work_plan.programa.tipo, con el mismo criterio que
+   * splitHorasDocenciaPorNivel: las que no se pueden resolver cuentan como
+   * pregrado para no perderlas.
+   */
+  private async splitAsignaturasPorNivel(
+    asignaturas: any[],
+  ): Promise<{ pregrado: any[]; posgrado: any[] }> {
+    const pregrado: any[] = [];
+    const posgrado: any[] = [];
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return { pregrado, posgrado };
+
+    const programaIds = Array.from(new Set(
+      asignaturas
+        .map((a: any) => coalesceLookupKey(a?.programa_id))
+        .filter((v): v is string => !!v),
+    ));
+    let tipoPorId = new Map<string, string>();
+    if (programaIds.length > 0) {
+      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+      tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
+    }
+
+    for (const a of asignaturas) {
+      const programaId = coalesceLookupKey(a?.programa_id);
+      const tipo = programaId ? tipoPorId.get(programaId) : undefined;
+      if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) posgrado.push(a);
+      else pregrado.push(a);
+    }
+    return { pregrado, posgrado };
+  }
+
+  private async mergeRestrictedAdminEditInput(
     input: SavePtaInput,
     existing: PlanTrabajoAcademicoEntity,
     allowedComponentKeys: string[],
-  ): SavePtaInput {
+  ): Promise<SavePtaInput> {
     const existingData = existing.datosEstructurados && typeof existing.datosEstructurados === 'object'
       ? existing.datosEstructurados as Record<string, any>
       : {};
@@ -3095,8 +3128,25 @@ export class PtaService {
     merged.estado = existing.estado;
     ['docente_nombre', 'dedicacion', 'tipo_vinculacion', 'semanas_vinculacion', 'semanas_prorrateo', 'horas_a_programar'].forEach(preserveField);
 
-    if (!allowed.has('academica_pregrado') && !allowed.has('academica_posgrado')) {
+    const allowPregrado = allowed.has('academica_pregrado');
+    const allowPosgrado = allowed.has('academica_posgrado');
+    if (!allowPregrado && !allowPosgrado) {
       preserveField('asignaturas');
+    } else if (!allowPregrado || !allowPosgrado) {
+      // Solo UNO de los dos niveles de Docencia está autorizado. Como `asignaturas`
+      // es un único array compartido por ambos componentes, hay que partirlo: se
+      // aceptan del payload solo las asignaturas del nivel autorizado y se conservan
+      // intactas las del otro nivel. Sin esto, devolver Docencia (Pregrado) permitía
+      // que el reenvío del docente sobreescribiera también las de Posgrado.
+      const entrantes = Array.isArray(input.asignaturas) ? input.asignaturas : [];
+      const previas = Array.isArray(existingData.asignaturas) ? existingData.asignaturas : [];
+      const [partEntrantes, partPrevias] = await Promise.all([
+        this.splitAsignaturasPorNivel(entrantes),
+        this.splitAsignaturasPorNivel(previas),
+      ]);
+      merged.asignaturas = allowPregrado
+        ? [...partEntrantes.pregrado, ...partPrevias.posgrado]
+        : [...partPrevias.pregrado, ...partEntrantes.posgrado];
     }
     if (!allowed.has('investigacion')) {
       preserveField('investigacion_proyecto');
@@ -3151,7 +3201,7 @@ export class PtaService {
       if (!existingForRestrictedEdit) {
         throw new NotFoundException('PTA no encontrado');
       }
-      input = this.mergeRestrictedAdminEditInput(input, existingForRestrictedEdit, allowedComponentKeys);
+      input = await this.mergeRestrictedAdminEditInput(input, existingForRestrictedEdit, allowedComponentKeys);
       id = existingForRestrictedEdit.id;
     }
     if (!isAdminEdit && id) {
@@ -3183,7 +3233,7 @@ export class PtaService {
         });
         const componentesEditables = devueltos.map(row => row.componente);
         if (componentesEditables.length > 0) {
-          input = this.mergeRestrictedAdminEditInput(
+          input = await this.mergeRestrictedAdminEditInput(
             input,
             existingForDocenteEdit,
             componentesEditables,
@@ -3833,7 +3883,13 @@ export class PtaService {
       const respuestasDocentePorComponente = this.readRespuestasDocentePorComponente(body);
       // En una edición autorizada se conservan los avales históricos de niveles y
       // componentes no seleccionados. Solo las filas reabiertas vuelven a pendiente.
-      if (!solicitudEdicionActiva) {
+      //
+      // `veniaDeDevolucionParcial` también protege aquí: al reenviar tras una
+      // devolución PARCIAL no se deben borrar las firmas/avales de nivel
+      // (Jefatura/Decanatura/Gestión Profesoral) ya otorgados. Antes esta llamada
+      // no estaba guardada y devolver un solo componente obligaba a rehacer las
+      // cuatro etapas de revisión/aprobación completas, perdiendo las firmas.
+      if (!solicitudEdicionActiva && !veniaDeDevolucionParcial) {
         await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
       }
       await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio, respuestasDocentePorComponente);
@@ -7217,6 +7273,9 @@ export class PtaService {
           aprobadorId: review.revisorId,
           aprobadorNombre: review.revisorNombre,
           aprobadorRol: review.revisorRol,
+          // Marca la etapa para que la notificación al docente diga que la
+          // devolución ocurrió en Revisión (preaprobación) y no en Aprobación.
+          _etapaDevolucion: 'revision',
         },
         { ...auth, isSuperUser: true } as PtaAuthenticatedUser,
       );
@@ -7535,6 +7594,23 @@ export class PtaService {
         });
       } catch (error: any) {
         this.logger.warn(`No se pudo notificar al profesor del PTA ${ptaId}: ${error?.message}`);
+      }
+    } else if (estado === 'devuelto') {
+      // Espejo de la notificación de aprobación: si al docente se le avisa cuando
+      // le aprueban un componente, con más razón cuando se lo DEVUELVEN, porque
+      // ahí sí debe actuar. `_etapaDevolucion` lo setea revisarComponente cuando la
+      // devolución ocurre en la etapa de Revisión (preaprobación).
+      try {
+        await this.ptaNotifications.notifyProfesorComponenteDevuelto({
+          ptaId,
+          docenteId: existingPta.docenteId,
+          componente,
+          revisorNombre: approval.aprobadorNombre,
+          comentarios: approval.comentarios,
+          etapa: coalesceString(body?._etapaDevolucion) === 'revision' ? 'revision' : 'aprobacion',
+        });
+      } catch (error: any) {
+        this.logger.warn(`No se pudo notificar la devolución al profesor del PTA ${ptaId}: ${error?.message}`);
       }
     }
 
