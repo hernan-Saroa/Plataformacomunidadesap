@@ -1,0 +1,6 @@
+# CODEOWNERS para el repositorio Plataformacomunidadesap
+# Define los propietarios obligatorios para revisión de cualquier Pull Request.
+# https://docs.github.com/es/repositories/managing-repository-files-that-receive-alerts-or-file-updates/about-code-owners
+
+# Todos los archivos del repositorio requieren la revisión y aprobación del propietario:
+* @hernan-Saroa @henrry-droid
