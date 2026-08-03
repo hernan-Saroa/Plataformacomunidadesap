@@ -31,6 +31,7 @@ import {
   getMisSolicitudesPTA, marcarSolicitudLeida,
   getComponentesAprobacion,
   getActivePeriodoAcademico,
+  getBancoDocenteById,
 } from '../../../services/api/ptaApi';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
@@ -415,6 +416,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
   const [allPtas, setAllPtas] = useState<any[]>([]);
   const [activePeriodo, setActivePeriodo] = useState('');
+  const [activePeriodoData, setActivePeriodoData] = useState<any>(null);
+  const [docentePerfil, setDocentePerfil] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPtaId, setSelectedPtaId] = useState<string | null>(null);
   const [selectedPta, setSelectedPta] = useState<any>(null);
@@ -453,6 +456,14 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
       const periodoCodigo = getPeriodoCode(periodoActivo);
       setActivePeriodo(periodoCodigo);
+      setActivePeriodoData(periodoActivo || null);
+
+      // El encabezado oficial del reporte usa la ficha RUND/Banco de Docentes.
+      // Este lookup acepta persona_id, usuario_id o docente_id y devuelve la
+      // cédula y los demás datos institucionales sin confundirlos con UUIDs.
+      const perfilRes = await getBancoDocenteById(userPersonId, periodoCodigo || undefined);
+      if (requestId !== loadPtasRequestRef.current) return;
+      setDocentePerfil(perfilRes.success ? perfilRes.data : null);
 
       if (res.success && Array.isArray(res.data)) {
         const loadedPtas = res.data;
@@ -484,6 +495,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
       if (requestId !== loadPtasRequestRef.current) return;
       console.error('[Portal PTA] Error loading PTAs:', error);
       setAllPtas([]);
+      setActivePeriodoData(null);
+      setDocentePerfil(null);
       setComponentApprovalsByPta({});
     } finally {
       if (requestId === loadPtasRequestRef.current) setLoading(false);
@@ -964,11 +977,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                               <strong className="text-gray-900">{horasTotal}</strong>
                               <span className="text-gray-400">/ {horasMax}h</span>
                             </span>
-                            {needsAction && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-600 text-[0.65rem] font-bold border border-red-100">
-                                <AlertTriangle className="w-3 h-3" /> Requiere acción
-                              </span>
-                            )}
+                            {/* Badge "Requiere acción" retirado: era puramente informativo
+                                (sin acción propia) y duplicaba lo que ya comunican el estado
+                                del PTA y el botón de acción de la tarjeta, así que confundía.
+                                `needsAction` se sigue usando para la barra de acento superior. */}
                           </div>
 
                           {/* Hours progress bar — slim and elegant */}
@@ -1603,16 +1615,23 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                 </div>
               )}
 
-              {isReporteOpen && selectedPta && (
+              {isReporteOpen && selectedPta && createPortal(
                 <ReportePTAInstitucional
                   pta={selectedPta}
-                  userPerfil={{ nombre: userName, identificacion: userPersonId }}
+                  userPerfil={{
+                    ...docentePerfil,
+                    nombre: docentePerfil?.nombre_completo || userName,
+                    identificacion: docentePerfil?.documento_identidad || userPersonId,
+                    email: docentePerfil?.correo_institucional || docentePerfil?.email || userEmail,
+                  }}
                   onClose={() => setIsReporteOpen(false)}
                   isParcial={!['Aprobado', 'En Firme', 'Finalizado'].includes(selectedPta.estado)}
                   certificadoId={selectedPta.certificado_qr}
                   signedAt={selectedPta.signed_at || selectedPta.updated_at}
+                  periodoAcademico={activePeriodoData}
                   componentesAprobacion={componentApprovalsByPta[selectedPta.id] || []}
-                />
+                />,
+                document.body,
               )}
             </div>
           )}

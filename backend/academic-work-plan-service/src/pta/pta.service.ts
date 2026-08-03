@@ -17,8 +17,15 @@ import { UsuarioEntity } from './entities/usuario.entity';
 import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity';
 import { PtaEventoEntity } from './entities/pta-evento.entity';
 import { PtaComponentApprovalEntity } from './entities/pta-component-approval.entity';
+import { PtaComponentReviewEntity } from './entities/pta-component-review.entity';
 import type { PtaAuthenticatedUser } from './auth/pta-auth.guard';
-import { COMPONENT_PERMISSION } from './auth/pta-permissions.constants';
+import {
+  COMPONENT_PERMISSION,
+  DOCENCIA_COMPONENT_KEYS,
+  REVIEW_SUBSECCIONES_BY_COMPONENT,
+  reviewPermissionFor,
+  type PTAComponentKey,
+} from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 
 type SavePtaInput = Record<string, any>;
@@ -155,7 +162,9 @@ const PENDING_ROLE_APPROVAL_STATES = new Set([
 ]);
 
 const COMPONENT_APPROVAL_KEYS = [
-  'academica',
+  'academica_pregrado',
+  'academica_posgrado',
+  'academica_territorial',
   'investigacion',
   'ext_capacitacion',
   'ext_procesos',
@@ -163,6 +172,13 @@ const COMPONENT_APPROVAL_KEYS = [
   'ext_gobierno',
   'complementarias',
 ];
+
+// Tipos de academic_work_plan.programa.tipo que se consideran "posgrado" para
+// enrutar Docencia entre los componentes academica_pregrado/academica_posgrado
+// (migración 355: pregrado, tecnico_profesional, tecnologico, especializacion,
+// maestria, doctorado). El resto (pregrado/tecnico_profesional/tecnologico) cae
+// en el bucket "pregrado".
+const POSGRADO_PROGRAMA_TIPOS = new Set(['especializacion', 'maestria', 'doctorado']);
 
 // AADM se fusionó dentro de 'complementarias' (sección academico_administrativas).
 // Se conserva la clave legacy solo para poder limpiar filas viejas de aprobación.
@@ -183,7 +199,7 @@ const MAX_CARACTERES_JUSTIFICACION_SOLICITUD = 3000;
 const SOLICITUD_COMPONENT_KEYS = ['docencia', 'investigacion', 'extension', 'complementarias'] as const;
 const SOLICITUD_COMPONENT_KEY_SET = new Set<string>(SOLICITUD_COMPONENT_KEYS);
 const SOLICITUD_COMPONENT_APPROVAL_KEYS: Record<string, string[]> = {
-  docencia: ['academica'],
+  docencia: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'],
   investigacion: ['investigacion'],
   extension: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'],
   complementarias: ['complementarias'],
@@ -239,7 +255,9 @@ const EXTENSION_COMPONENT_BY_SECTION: Record<string, string> = {
 };
 
 const COMPONENT_REVISION_STATE: Record<string, string> = {
-  academica: 'REVISION_DOCENTE_N1',
+  academica_pregrado: 'REVISION_DOCENTE_N1',
+  academica_posgrado: 'REVISION_DOCENTE_N1',
+  academica_territorial: 'REVISION_DOCENTE_N1',
   complementarias: 'REVISION_DOCENTE_N1',
   investigacion: 'REVISION_DOCENTE_N2',
   ext_capacitacion: 'REVISION_DOCENTE_N2',
@@ -832,6 +850,8 @@ export class PtaService {
     private readonly eventoRepo: Repository<PtaEventoEntity>,
     @InjectRepository(PtaComponentApprovalEntity)
     private readonly ptaComponentApprovalRepo: Repository<PtaComponentApprovalEntity>,
+    @InjectRepository(PtaComponentReviewEntity)
+    private readonly ptaComponentReviewRepo: Repository<PtaComponentReviewEntity>,
     private readonly ptaNotifications: PtaNotificationsService,
   ) {}
 
@@ -2618,7 +2638,46 @@ export class PtaService {
       estadoByPta.get(a.ptaId)!.set(a.componente, String(a.estado || 'pendiente'));
     }
 
-    const BASE_KEYS = ['academica', 'investigacion', 'complementarias'];
+    // ── Etapa de Revisión: progreso por componente, calculado en lote para no
+    // hacer N consultas (una por PTA de la lista). Solo se usa para decidir si el
+    // rótulo de un componente debe mostrarse como "en_revision" en vez de
+    // "pendiente" — no persiste nada, igual que el resto de esta función.
+    let reviews: PtaComponentReviewEntity[] = [];
+    try {
+      reviews = await this.ptaComponentReviewRepo.find({ where: { ptaId: In(ids) } });
+    } catch (err: any) {
+      this.logger.warn(`No se pudo cargar el avance de revisión por componente: ${err?.message || err}`);
+    }
+    const reviewByPta = new Map<string, Map<string, string>>();
+    for (const r of reviews) {
+      if (!r?.ptaId || !r?.componente) continue;
+      if (!reviewByPta.has(r.ptaId)) reviewByPta.set(r.ptaId, new Map());
+      reviewByPta.get(r.ptaId)!.set(`${r.componente}:${r.subseccion}`, String(r.estado || 'pendiente'));
+    }
+
+    const programaIds = Array.from(new Set(
+      dtos.flatMap(dto => (Array.isArray(dto?.asignaturas) ? dto.asignaturas : []))
+        .map((a: any) => coalesceLookupKey(a?.programa_id))
+        .filter((v): v is string => !!v),
+    ));
+    let tipoPorPrograma = new Map<string, string>();
+    if (programaIds.length > 0) {
+      try {
+        const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+        tipoPorPrograma = new Map(programas.map(p => [String(p.id), p.tipo]));
+      } catch (err: any) {
+        this.logger.warn(`No se pudo resolver el tipo de programa para Docencia: ${err?.message || err}`);
+      }
+    }
+
+    // BASE_KEYS ya no incluye Docencia: se colapsa por separado (DOCENCIA_KEYS,
+    // más abajo) exactamente con el mismo patrón que Extensión — varios
+    // componentes reales agrupados bajo un solo rótulo visible.
+    const BASE_KEYS = ['investigacion', 'complementarias'];
+    // Incluye también academica_territorial: las asignaturas dictadas en Direcciones
+    // Territoriales son un componente de aprobación aparte, pero se siguen mostrando
+    // bajo el mismo rótulo colapsado "Docencia" en el listado.
+    const DOCENCIA_KEYS = [...DOCENCIA_COMPONENT_KEYS];
     const EXT_SUB_SECTIONS: Record<string, string[]> = {
       ext_capacitacion: ['capacitacion'],
       ext_procesos: ['seleccion'],
@@ -2633,8 +2692,27 @@ export class PtaService {
           .filter((a: any) => secs.includes(normalizeExtensionSectionKey(a?.seccion)))
           .reduce((s: number, a: any) => s + (Number(a?.horas_ejecutadas ?? a?.horas ?? 0) || 0), 0);
 
+        const asignaturas: any[] = Array.isArray(dto?.asignaturas) ? dto.asignaturas : [];
+        let horasDocPregrado = 0;
+        let horasDocPosgrado = 0;
+        for (const a of asignaturas) {
+          const horas = Number(a?.total_horas ?? a?.horas) || 0;
+          const programaId = coalesceLookupKey(a?.programa_id);
+          const tipo = programaId ? tipoPorPrograma.get(programaId) : undefined;
+          if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) horasDocPosgrado += horas;
+          else horasDocPregrado += horas;
+        }
+        // Respaldo cuando el DTO no trae el array `asignaturas` (algunos consumidores
+        // solo pasan el agregado `horas_docencia`, p.ej. dtos armados a mano): sin
+        // detalle por asignatura no hay forma de separar por nivel, así que se cuenta
+        // todo como pregrado — igual que el criterio de "sin dato, no bloquear".
+        if (asignaturas.length === 0 && Number(dto?.horas_docencia || 0) > 0) {
+          horasDocPregrado = Number(dto.horas_docencia) || 0;
+        }
+
         const horasPorComp: Record<string, number> = {
-          academica: Number(dto?.horas_docencia || 0),
+          academica_pregrado: horasDocPregrado,
+          academica_posgrado: horasDocPosgrado,
           investigacion: Number(dto?.horas_investigacion || 0),
           // horas_complementarias ya incluye la sección académico-administrativa.
           complementarias: Number(dto?.horas_complementarias || 0),
@@ -2646,6 +2724,7 @@ export class PtaService {
 
         const hayActividades = Object.values(horasPorComp).some(h => h > 0);
         const recs = estadoByPta.get(dto.id) || new Map<string, string>();
+        const reviewRecs = reviewByPta.get(dto.id) || new Map<string, string>();
         const esBorrador = isDraftPtaState(dto?.estado);
         // Un componente cuenta como aprobado si su registro está aprobado o si está vacío
         // (auto-aprobación cuando el PTA tiene actividades), pero únicamente después
@@ -2655,20 +2734,65 @@ export class PtaService {
           || (hayActividades && (horasPorComp[k] || 0) === 0)
         );
 
-        // Componentes de ALTO NIVEL que ve el administrador (5): Docencia, Investigación,
-        // Extensión (UNA sola, NO desglosada en sus 4 subsecciones), Complementarias, Acad-Admin.
+        // Subsecciones de revisión que aplican a este PTA concreto (mismo criterio
+        // que getRequiredSubsecciones, calculado en lote para no hacer N consultas).
+        // Docencia ya no necesita caso especial: al ser dos componentes reales, cae
+        // en la regla genérica igual que investigación/extensión.
+        const requeridasPorComponente = (k: string): string[] => {
+          if (k === 'complementarias') {
+            const secciones = dto?.complementarias_secciones || {};
+            const req: string[] = [];
+            if (Number(secciones.complementarias_docencia || 0) > 0) req.push('docencia');
+            if (Number(secciones.academico_administrativas || 0) > 0) req.push('academico_administrativas');
+            return req;
+          }
+          return (horasPorComp[k] || 0) > 0 ? ['general'] : [];
+        };
+        const revisionCompleta = (k: string): boolean =>
+          requeridasPorComponente(k).every(sub => reviewRecs.get(`${k}:${sub}`) === 'revisado');
+
+        // Componentes de ALTO NIVEL que ve el administrador (4 rótulos): Docencia,
+        // Investigación, Extensión, Complementarias — cada uno puede agrupar varios
+        // componentes reales (Docencia: 2, Extensión: 4) bajo un solo rótulo/estado.
         const EXT_KEYS = ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'];
         let total = 0;
         let aprobados = 0;
         const componentesEstado: Array<{ key: string; label: string; estado: string }> = [];
+
+        // Docencia colapsada: cuenta como 1 si tiene horas en pregrado y/o posgrado;
+        // aprobada solo si TODOS sus sub-componentes con horas lo están. El rótulo de
+        // salida se mantiene 'academica' (no 'docencia') por compatibilidad con los
+        // consumidores existentes de componentes_estado (reportes, portal docente).
+        const docTieneHoras = DOCENCIA_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
+        if (docTieneHoras) {
+          total++;
+          const docAprobada = DOCENCIA_KEYS.every(k => estaAprobado(k));
+          if (docAprobada) aprobados++;
+          const docEstados = DOCENCIA_KEYS.map(k => recs.get(k)).filter(Boolean);
+          const docEnRevision = DOCENCIA_KEYS.some(k => (horasPorComp[k] || 0) > 0 && !revisionCompleta(k));
+          let docEstado: string;
+          if (esBorrador) docEstado = 'no_iniciado';
+          else if (docAprobada) docEstado = 'aprobado';
+          else if (docEstados.includes('devuelto')) docEstado = 'devuelto';
+          else if (docEnRevision) docEstado = 'en_revision';
+          else docEstado = 'pendiente';
+          componentesEstado.push({ key: 'academica', label: 'Docencia', estado: docEstado });
+        }
+
         for (const c of BASE_KEYS) {
           total++;
           const aprobado = estaAprobado(c);
           if (aprobado) aprobados++;
+          let estado: string;
+          if (esBorrador) estado = 'no_iniciado';
+          else if (aprobado) estado = 'aprobado';
+          else if (recs.get(c) === 'devuelto') estado = 'devuelto';
+          else if (!revisionCompleta(c)) estado = 'en_revision';
+          else estado = recs.get(c) || 'pendiente';
           componentesEstado.push({
             key: c,
-            label: c === 'academica' ? 'Docencia' : c === 'investigacion' ? 'Investigacion' : 'Complementarias',
-            estado: esBorrador ? 'no_iniciado' : (aprobado ? 'aprobado' : (recs.get(c) || 'pendiente')),
+            label: c === 'investigacion' ? 'Investigacion' : 'Complementarias',
+            estado,
           });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
@@ -2678,12 +2802,17 @@ export class PtaService {
           const extAprobada = EXT_KEYS.every(k => estaAprobado(k));
           if (extAprobada) aprobados++;
           const extEstados = EXT_KEYS.map(k => recs.get(k)).filter(Boolean);
+          const extEnRevision = EXT_KEYS.some(k => (horasPorComp[k] || 0) > 0 && !revisionCompleta(k));
+          let extEstado: string;
+          if (esBorrador) extEstado = 'no_iniciado';
+          else if (extAprobada) extEstado = 'aprobado';
+          else if (extEstados.includes('devuelto')) extEstado = 'devuelto';
+          else if (extEnRevision) extEstado = 'en_revision';
+          else extEstado = 'pendiente';
           componentesEstado.push({
             key: 'extension',
             label: 'Extension',
-            estado: esBorrador
-              ? 'no_iniciado'
-              : (extAprobada ? 'aprobado' : (extEstados.includes('devuelto') ? 'devuelto' : 'pendiente')),
+            estado: extEstado,
           });
         }
 
@@ -2916,6 +3045,31 @@ export class PtaService {
         dto.asignaturas,
         coalesceString(dto.periodo, pta.periodo),
       );
+
+      // Anota por asignatura a QUÉ componente de Docencia pertenece
+      // (academica_pregrado / academica_posgrado / academica_territorial), para que el
+      // frontend arme sus tarjetas sin repetir los joins a programa.tipo ni a
+      // auth.seccionales. `nivel_programa` se conserva por compatibilidad con
+      // consumidores previos al enrutamiento territorial.
+      try {
+        const part = await this.clasificarAsignaturasDocencia(dto.asignaturas);
+        // Se indexa por identidad de objeto: clasificarAsignaturasDocencia reparte las
+        // MISMAS referencias que recibe, sin clonarlas.
+        const componentePorAsignatura = new Map<any, string>();
+        for (const key of DOCENCIA_COMPONENT_KEYS) {
+          for (const a of part[key as keyof typeof part]) componentePorAsignatura.set(a, key);
+        }
+        dto.asignaturas = dto.asignaturas.map((a: any) => {
+          const componente = componentePorAsignatura.get(a) || 'academica_pregrado';
+          return {
+            ...a,
+            componente_docencia: componente,
+            nivel_programa: componente === 'academica_posgrado' ? 'posgrado' : 'pregrado',
+          };
+        });
+      } catch (err) {
+        console.error('[getPTAById] Error resolving componente_docencia:', err);
+      }
     }
 
     return {
@@ -2925,11 +3079,11 @@ export class PtaService {
     };
   }
 
-  private mergeRestrictedAdminEditInput(
+  private async mergeRestrictedAdminEditInput(
     input: SavePtaInput,
     existing: PlanTrabajoAcademicoEntity,
     allowedComponentKeys: string[],
-  ): SavePtaInput {
+  ): Promise<SavePtaInput> {
     const existingData = existing.datosEstructurados && typeof existing.datosEstructurados === 'object'
       ? existing.datosEstructurados as Record<string, any>
       : {};
@@ -2948,8 +3102,25 @@ export class PtaService {
     merged.estado = existing.estado;
     ['docente_nombre', 'dedicacion', 'tipo_vinculacion', 'semanas_vinculacion', 'semanas_prorrateo', 'horas_a_programar'].forEach(preserveField);
 
-    if (!allowed.has('academica')) {
+    // Docencia se enruta a TRES componentes (pregrado / posgrado / territorial) pero
+    // comparte un único array `asignaturas`. Si el alcance autorizado no los cubre a
+    // todos hay que partir el array: se aceptan del payload solo las asignaturas de
+    // los componentes autorizados y se conservan intactas las del resto. Sin esto,
+    // devolver Docencia (Pregrado) dejaba que el reenvío del docente sobreescribiera
+    // también Posgrado y las asignaturas territoriales.
+    const docenciaAutorizada = DOCENCIA_COMPONENT_KEYS.filter(key => allowed.has(key));
+    if (docenciaAutorizada.length === 0) {
       preserveField('asignaturas');
+    } else if (docenciaAutorizada.length < DOCENCIA_COMPONENT_KEYS.length) {
+      const entrantes = Array.isArray(input.asignaturas) ? input.asignaturas : [];
+      const previas = Array.isArray(existingData.asignaturas) ? existingData.asignaturas : [];
+      const [partEntrantes, partPrevias] = await Promise.all([
+        this.clasificarAsignaturasDocencia(entrantes),
+        this.clasificarAsignaturasDocencia(previas),
+      ]);
+      merged.asignaturas = DOCENCIA_COMPONENT_KEYS.flatMap(key =>
+        allowed.has(key) ? partEntrantes[key] : partPrevias[key],
+      );
     }
     if (!allowed.has('investigacion')) {
       preserveField('investigacion_proyecto');
@@ -3004,7 +3175,7 @@ export class PtaService {
       if (!existingForRestrictedEdit) {
         throw new NotFoundException('PTA no encontrado');
       }
-      input = this.mergeRestrictedAdminEditInput(input, existingForRestrictedEdit, allowedComponentKeys);
+      input = await this.mergeRestrictedAdminEditInput(input, existingForRestrictedEdit, allowedComponentKeys);
       id = existingForRestrictedEdit.id;
     }
     if (!isAdminEdit && id) {
@@ -3036,7 +3207,7 @@ export class PtaService {
         });
         const componentesEditables = devueltos.map(row => row.componente);
         if (componentesEditables.length > 0) {
-          input = this.mergeRestrictedAdminEditInput(
+          input = await this.mergeRestrictedAdminEditInput(
             input,
             existingForDocenteEdit,
             componentesEditables,
@@ -3686,7 +3857,13 @@ export class PtaService {
       const respuestasDocentePorComponente = this.readRespuestasDocentePorComponente(body);
       // En una edición autorizada se conservan los avales históricos de niveles y
       // componentes no seleccionados. Solo las filas reabiertas vuelven a pendiente.
-      if (!solicitudEdicionActiva) {
+      //
+      // `veniaDeDevolucionParcial` también protege aquí: al reenviar tras una
+      // devolución PARCIAL no se deben borrar las firmas/avales de nivel
+      // (Jefatura/Decanatura/Gestión Profesoral) ya otorgados. Antes esta llamada
+      // no estaba guardada y devolver un solo componente obligaba a rehacer las
+      // cuatro etapas de revisión/aprobación completas, perdiendo las firmas.
+      if (!solicitudEdicionActiva && !veniaDeDevolucionParcial) {
         await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
       }
       await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio, respuestasDocentePorComponente);
@@ -3942,10 +4119,26 @@ export class PtaService {
         row.respuestaDocente = respuestasDocentePorComponente[row.componente] || respuestaDocente || null;
         await this.ptaComponentApprovalRepo.save(row);
       }
+
+      // Espejo para la etapa de Revisión: si la devolución ocurrió durante la
+      // revisión (no la aprobación), sus filas de PtaComponentReview también
+      // deben volver a 'pendiente' para que el revisor vuelva a ver su acción.
+      const revisionesDevueltas = await this.ptaComponentReviewRepo.find({
+        where: { ptaId, componente: In(componentKeys), estado: 'devuelto' },
+      });
+      for (const row of revisionesDevueltas) {
+        row.estado = 'pendiente';
+        row.respuestaDocente = respuestasDocentePorComponente[row.componente] || respuestaDocente || null;
+        await this.ptaComponentReviewRepo.save(row);
+      }
     } else {
       await this.ptaComponentApprovalRepo.delete({
         ptaId,
         // Incluye claves legacy (academicas_admin) para limpiar filas de PTAs no migrados.
+        componente: In(componentKeys),
+      } as any);
+      await this.ptaComponentReviewRepo.delete({
+        ptaId,
         componente: In(componentKeys),
       } as any);
     }
@@ -4822,6 +5015,7 @@ export class PtaService {
         const txSolicitudRepo = manager.getRepository(SolicitudPtaEntity);
         const txPtaRepo = manager.getRepository(PlanTrabajoAcademicoEntity);
         const txApprovalRepo = manager.getRepository(PtaComponentApprovalEntity);
+        const txReviewRepo = manager.getRepository(PtaComponentReviewEntity);
         const txHistorialRepo = manager.getRepository(HistorialEstadoPtaEntity);
 
         const txSolicitud = await txSolicitudRepo.findOne({
@@ -4886,6 +5080,15 @@ export class PtaService {
           approval.scopeId = txSolicitud.id;
           await txApprovalRepo.save(approval);
         }
+
+        // La reapertura por solicitud de edición exige revisión humana NUEVA
+        // antes de poder re-aprobarse: se borran las filas de revisión de los
+        // componentes reabiertos para que getComponentesRevision() las
+        // regenere en 'pendiente' la próxima vez que se consulten.
+        await txReviewRepo.delete({
+          ptaId: txPta.id,
+          componente: In(approvalKeys),
+        } as any);
 
         txPta.estado = nuevoEstado;
         txPta.version = (txPta.version || 1) + 1;
@@ -6720,20 +6923,28 @@ export class PtaService {
     };
   }
 
-  async getComponentesAprobacion(ptaId: string) {
-    const list = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
-    const componentList = list.filter(item => !isRoleApprovalComponent(item.componente));
-
-    // Fetch PTA content to determine which components have hours
-    const ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
-    const ds = (ptaEntity?.datosEstructurados as any) || {};
-
+  /**
+   * Horas por componente + indicador de si el PTA tiene ALGUNA actividad cargada.
+   * Extraído de getComponentesAprobacion para poder reutilizarlo también desde
+   * getRequiredSubsecciones (etapa de Revisión), sin duplicar el cálculo.
+   */
+  private async computeHorasPorComponente(ds: any): Promise<{
+    horasPorComponente: Record<string, number>;
+    hayActividades: boolean;
+  }> {
     const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
     const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
     const extActs: any[] = Array.isArray(ds.extension_actividades) ? ds.extension_actividades : [];
     const { docencia: compDocencia, aadm: compAadm } = this.readComplementariasSecciones(ds);
 
-    const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
+    // Docencia se enruta por nivel de programa (academica_pregrado/academica_posgrado),
+    // igual que Extensión se enruta por sección — requiere el join a
+    // academic_work_plan.programa.tipo.
+    const {
+      pregrado: hDocenciaPregrado,
+      posgrado: hDocenciaPosgrado,
+      territorial: hDocenciaTerritorial,
+    } = await this.splitHorasDocenciaPorNivel(asignaturas);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Complementarias unificado = sección docencia + sección académico-administrativa.
@@ -6757,7 +6968,9 @@ export class PtaService {
     // 'fortalecimiento'), por lo que no existe componente comodín "otras".
 
     const horasPorComponente: Record<string, number> = {
-      academica: hDocencia,
+      academica_pregrado: hDocenciaPregrado,
+      academica_posgrado: hDocenciaPosgrado,
+      academica_territorial: hDocenciaTerritorial,
       investigacion: hInv,
       ext_capacitacion: extBySeccion(['capacitacion']),
       ext_procesos: extBySeccion(['seleccion']),
@@ -6766,13 +6979,209 @@ export class PtaService {
       complementarias: hComp,
     };
 
-    const todosComponentes = Object.keys(horasPorComponente);
-
     // Si todos los arrays están vacíos, probablemente hay un problema de datos
     // (e.g. actividades filtradas incorrectamente al guardar). No auto-aprobar nada.
     const totalActividades =
       asignaturas.length + invActs.length + extActs.length + compDocencia.length + compAadm.length;
     const hayActividades = totalActividades > 0;
+
+    return { horasPorComponente, hayActividades };
+  }
+
+  /** Normaliza un nombre de seccional para comparar sin acentos ni separadores. */
+  private normalizeSeccionalNombre(value: any): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase();
+  }
+
+  /**
+   * De un conjunto de `territorial_id` (auth.seccionales.id_seccional), devuelve los
+   * que corresponden a una Dirección Territorial, es decir los que NO son Sede
+   * Central. En auth.seccionales conviven dos filas de sede central ('Sede Central'
+   * y 'SEDE_CENTRAL'), por eso se compara por nombre normalizado y no por id/código.
+   *
+   * Si la consulta falla se devuelve un set vacío: todo se trata como Sede Central,
+   * que es exactamente el comportamiento previo a la separación territorial (no se
+   * pierde ni se bloquea nada).
+   */
+  private async resolveTerritorialIdsNoCentrales(ids: string[]): Promise<Set<string>> {
+    const result = new Set<string>();
+    if (ids.length === 0) return result;
+    try {
+      const rows = await this.ptaRepo.manager.query(
+        `SELECT id_seccional::text AS id, nom_seccional AS nombre
+           FROM auth.seccionales
+          WHERE id_seccional::text = ANY($1::text[])`,
+        [ids],
+      );
+      for (const row of rows || []) {
+        if (this.normalizeSeccionalNombre(row?.nombre) !== 'sedecentral') {
+          result.add(String(row.id));
+        }
+      }
+    } catch (err: any) {
+      this.logger?.warn?.(
+        `No se pudieron resolver las seccionales para enrutar Docencia: ${err?.message || err}`,
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Enruta las asignaturas de Docencia a sus tres componentes de aprobación.
+   *
+   * La territorialidad MANDA sobre el nivel: una asignatura dictada en una Dirección
+   * Territorial va a `academica_territorial` (la revisa el Coordinador Territorial y
+   * la aprueba la Jefatura de la Territorial) aunque sea de pregrado o posgrado. Solo
+   * lo dictado en Sede Central se separa por `programa.tipo` en pregrado/posgrado.
+   *
+   * Las asignaturas cuyo programa no se puede resolver caen en pregrado, igual que
+   * antes, para no perderlas del cálculo.
+   */
+  private async clasificarAsignaturasDocencia(asignaturas: any[]): Promise<{
+    academica_pregrado: any[];
+    academica_posgrado: any[];
+    academica_territorial: any[];
+  }> {
+    const out = {
+      academica_pregrado: [] as any[],
+      academica_posgrado: [] as any[],
+      academica_territorial: [] as any[],
+    };
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return out;
+
+    const programaIds = Array.from(new Set(
+      asignaturas
+        .map((a: any) => coalesceLookupKey(a?.programa_id))
+        .filter((v): v is string => !!v),
+    ));
+    let tipoPorId = new Map<string, string>();
+    if (programaIds.length > 0) {
+      const programas = await this.programaRepo.find({ where: { id: In(programaIds) } as any });
+      tipoPorId = new Map(programas.map((p) => [String(p.id), p.tipo]));
+    }
+
+    const territorialIds = Array.from(new Set(
+      asignaturas
+        .map((a: any) => coalesceLookupKey(a?.territorial_id))
+        .filter((v): v is string => !!v),
+    ));
+    const noCentrales = await this.resolveTerritorialIdsNoCentrales(territorialIds);
+
+    for (const a of asignaturas) {
+      const territorialId = coalesceLookupKey(a?.territorial_id);
+      if (territorialId && noCentrales.has(territorialId)) {
+        out.academica_territorial.push(a);
+        continue;
+      }
+      const programaId = coalesceLookupKey(a?.programa_id);
+      const tipo = programaId ? tipoPorId.get(programaId) : undefined;
+      if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) out.academica_posgrado.push(a);
+      else out.academica_pregrado.push(a);
+    }
+    return out;
+  }
+
+  /** Horas de Docencia por componente (pregrado / posgrado / territorial). */
+  private async splitHorasDocenciaPorNivel(
+    asignaturas: any[],
+  ): Promise<{ pregrado: number; posgrado: number; territorial: number }> {
+    if (!asignaturas.length) return { pregrado: 0, posgrado: 0, territorial: 0 };
+    const part = await this.clasificarAsignaturasDocencia(asignaturas);
+    const sumar = (arr: any[]) =>
+      arr.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
+    return {
+      pregrado: sumar(part.academica_pregrado),
+      posgrado: sumar(part.academica_posgrado),
+      territorial: sumar(part.academica_territorial),
+    };
+  }
+
+  /**
+   * Subsecciones de revisión que aplican a un PTA concreto para un componente dado
+   * (etapa de Revisión/preaprobación). Con Docencia ya dividida en dos componentes
+   * reales (academica_pregrado/academica_posgrado), el único componente que sigue
+   * necesitando subsecciones es Complementarias (aprobación unificada, pero dos
+   * subtipos de contenido). Todos los demás (incluida Docencia) son de revisión
+   * única ('general'), exigida solo si el componente tiene horas cargadas — mismo
+   * criterio que la auto-aprobación de componentes vacíos.
+   */
+  private async getRequiredSubsecciones(componente: string, ds: any): Promise<string[]> {
+    const posibles = REVIEW_SUBSECCIONES_BY_COMPONENT[componente as PTAComponentKey] || [];
+
+    if (componente === 'complementarias') {
+      const { docencia, aadm } = this.readComplementariasSecciones(ds);
+      const requeridas: string[] = [];
+      if (docencia.length > 0) requeridas.push('docencia');
+      if (aadm.length > 0) requeridas.push('academico_administrativas');
+      return requeridas;
+    }
+
+    // Resto de componentes de revisión única (academica_pregrado, academica_posgrado,
+    // investigacion, ext_*): solo si tienen horas cargadas.
+    const { horasPorComponente } = await this.computeHorasPorComponente(ds);
+    return (horasPorComponente[componente] || 0) > 0 ? posibles : [];
+  }
+
+  /**
+   * Filas de revisión (etapa previa a la aprobación) por componente/subsección,
+   * materializando las que falten. Una subsección solo aparece aquí si
+   * getRequiredSubsecciones determinó que el PTA realmente tiene contenido en
+   * ella — las subsecciones sin actividad simplemente no generan fila y quedan
+   * satisfechas "por vacío" (igual criterio que la auto-aprobación de
+   * componentes vacíos en getComponentesAprobacion).
+   */
+  async getComponentesRevision(ptaId: string) {
+    const ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!ptaEntity) throw new NotFoundException('PTA no encontrado');
+    const ds = (ptaEntity.datosEstructurados as any) || {};
+
+    const existingReviews = await this.ptaComponentReviewRepo.find({ where: { ptaId } });
+    const reviewByKey = new Map(existingReviews.map((r) => [`${r.componente}:${r.subseccion}`, r]));
+
+    const toSave: PtaComponentReviewEntity[] = [];
+    const result: PtaComponentReviewEntity[] = [];
+
+    for (const componente of COMPONENT_APPROVAL_KEYS) {
+      const requeridas = await this.getRequiredSubsecciones(componente, ds);
+
+      for (const subseccion of requeridas) {
+        const key = `${componente}:${subseccion}`;
+        let row = reviewByKey.get(key);
+        if (!row) {
+          row = this.ptaComponentReviewRepo.create({
+            ptaId,
+            componente,
+            subseccion,
+            estado: 'pendiente',
+          });
+          reviewByKey.set(key, row);
+          toSave.push(row);
+        }
+        result.push(row);
+      }
+    }
+
+    if (toSave.length > 0) {
+      await this.ptaComponentReviewRepo.save(toSave);
+    }
+
+    return result;
+  }
+
+  async getComponentesAprobacion(ptaId: string) {
+    const list = await this.ptaComponentApprovalRepo.find({ where: { ptaId } });
+    const componentList = list.filter(item => !isRoleApprovalComponent(item.componente));
+
+    // Fetch PTA content to determine which components have hours
+    const ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    const ds = (ptaEntity?.datosEstructurados as any) || {};
+
+    const { horasPorComponente, hayActividades } = await this.computeHorasPorComponente(ds);
+    const todosComponentes = Object.keys(horasPorComponente);
 
     const byComponent = new Map(componentList.map(item => [item.componente, item]));
     const toSave: PtaComponentApprovalEntity[] = [];
@@ -6823,6 +7232,144 @@ export class PtaService {
       .filter((item): item is PtaComponentApprovalEntity => !!item);
   }
 
+  /**
+   * Etapa de Revisión (preaprobación): un revisor marca una subsección de un
+   * componente como 'revisado' o 'devuelto', ANTES de que el aprobador final
+   * pueda aprobar el componente completo (ver el bloqueo estructural agregado
+   * en aprobarComponente()).
+   */
+  async revisarComponente(ptaId: string, body: any, auth?: PtaAuthenticatedUser) {
+    const componente = coalesceString(body?.componente);
+    const subseccion = coalesceString(body?.subseccion) || 'general';
+    const estado = coalesceString(body?.estado); // 'revisado' o 'devuelto'
+    if (!componente || !estado) {
+      throw new BadRequestException('Componente y estado son requeridos');
+    }
+    if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
+      throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
+    }
+    if (!['revisado', 'devuelto'].includes(estado)) {
+      throw new BadRequestException('El estado de la revisión debe ser "revisado" o "devuelto".');
+    }
+
+    const subseccionesValidas = REVIEW_SUBSECCIONES_BY_COMPONENT[componente as PTAComponentKey] || [];
+    if (!subseccionesValidas.includes(subseccion as any)) {
+      throw new BadRequestException(`Subsección de revisión no válida para "${componente}": ${subseccion}`);
+    }
+
+    // ── Autorización server-side (mismo principio que aprobarComponente) ──────
+    if (!auth) {
+      throw new ForbiddenException('No autenticado para revisar componentes del PTA.');
+    }
+    if (
+      !auth.isSuperUser &&
+      !auth.reviewsAll &&
+      !auth.allowedReviewSubsecciones.includes(`${componente}:${subseccion}`)
+    ) {
+      const permisoRequerido = reviewPermissionFor(componente, subseccion);
+      throw new ForbiddenException(
+        `No tiene permisos para revisar el componente "${componente}" (${subseccion}) del PTA.` +
+          (permisoRequerido ? ` Se requiere el permiso: ${permisoRequerido}.` : ''),
+      );
+    }
+
+    const existingPta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!existingPta) {
+      throw new NotFoundException('PTA no encontrado');
+    }
+    if (['Terminado', 'TERMINADO'].includes(String(existingPta.estado))) {
+      throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
+    }
+
+    const ds = (existingPta.datosEstructurados as any) || {};
+    const requeridas = await this.getRequiredSubsecciones(componente, ds);
+    if (!requeridas.includes(subseccion)) {
+      throw new BadRequestException(
+        `La subsección "${subseccion}" de "${componente}" no aplica a este PTA (sin actividad o ya satisfecha).`,
+      );
+    }
+
+    const comentarios = coalesceString(body?.comentarios, body?.observaciones);
+    if (estado === 'devuelto' && !comentarios) {
+      throw new BadRequestException('Debe indicar un comentario para devolver el componente en revisión.');
+    }
+
+    let review = await this.ptaComponentReviewRepo.findOne({ where: { ptaId, componente, subseccion } });
+    if (!review) {
+      review = this.ptaComponentReviewRepo.create({ ptaId, componente, subseccion, estado: 'pendiente' });
+    }
+
+    review.estado = estado;
+    // Identidad del revisor siempre desde el token (integridad de auditoría),
+    // igual que ya hace aprobarComponente con el aprobador.
+    review.revisorId = auth.userId || coalesceString(body?.revisorId, body?.revisor_id);
+    review.revisorNombre = auth.name || coalesceString(body?.revisorNombre, body?.revisor_nombre);
+    review.revisorRol = coalesceString(body?.revisorRol, body?.revisor_rol) || (auth.roles || []).join(', ') || null;
+    review.comentarios = comentarios;
+    review.fechaRevision = new Date();
+    review.respuestaDocente = null;
+
+    await this.ptaComponentReviewRepo.save(review);
+
+    let estadoGeneral = existingPta.estado;
+
+    if (estado === 'devuelto') {
+      // Devolver en la etapa de Revisión debe tener el mismo efecto visible que
+      // devolver en la etapa de Aprobación: el componente (completo) vuelve al
+      // docente para editar. Se reutiliza aprobarComponente() para no duplicar
+      // esa transición de estado/historial/notificación; el permiso ya se validó
+      // arriba contra pta.review.*, así que se sintetiza un auth "isSuperUser"
+      // para no volver a exigir pta.approve.* (el revisor puede no tenerlo).
+      const resultado = await this.aprobarComponente(
+        ptaId,
+        {
+          componente,
+          estado: 'devuelto',
+          comentarios: review.comentarios,
+          aprobadorId: review.revisorId,
+          aprobadorNombre: review.revisorNombre,
+          aprobadorRol: review.revisorRol,
+          // Marca la etapa para que la notificación al docente diga que la
+          // devolución ocurrió en Revisión (preaprobación) y no en Aprobación.
+          _etapaDevolucion: 'revision',
+        },
+        { ...auth, isSuperUser: true } as PtaAuthenticatedUser,
+      );
+      estadoGeneral = resultado.estadoGeneral;
+    } else {
+      // 'revisado' no cambia el estado global del PTA, pero igual se registra en
+      // la trazabilidad (mismo criterio que las aprobaciones parciales).
+      await this.historialRepo.save(this.historialRepo.create({
+        ptaId,
+        estadoAnterior: existingPta.estado,
+        estadoNuevo: existingPta.estado,
+        actorId: review.revisorId || 'sistema',
+        actorRol: review.revisorRol || 'Revisor',
+        tipoAccion: 'REVISION_COMPONENTE',
+        comentarios: review.comentarios,
+        detallesTransicion: JSON.stringify({ componente, subseccion, estado }),
+        snapshotPta: existingPta.datosEstructurados ?? null,
+        version: existingPta.version,
+      }));
+
+      await this.logEvento({
+        ptaId,
+        tipo: 'revision_componente',
+        docenteId: existingPta.docenteId,
+        docenteNombre: coalesceString(ds?.docente_nombre),
+        estadoAnterior: existingPta.estado,
+        estadoNuevo: existingPta.estado,
+        actor: review.revisorId,
+        actorRol: review.revisorRol,
+        sistemaOrigen: 'backoffice',
+        mensaje: `Revisión de ${componente} (${subseccion}) marcada como ${estado}`,
+        metadata: { componente, subseccion, estado, comentarios: review.comentarios },
+      });
+    }
+
+    return { review, estadoGeneral };
+  }
+
   async aprobarComponente(ptaId: string, body: any, auth?: PtaAuthenticatedUser) {
     const componente = coalesceString(body?.componente);
     const estado = coalesceString(body?.estado); // 'aprobado' o 'devuelto'
@@ -6859,6 +7406,29 @@ export class PtaService {
     }
     if (['Terminado', 'TERMINADO'].includes(String(existingPta.estado))) {
       throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
+    }
+
+    // ── Bloqueo estructural: no se puede aprobar sin revisión previa completa ──
+    // Esto aplica sin importar qué permiso tenga quien llama (no es solo un
+    // candado de UI): la etapa de Revisión es un requisito de datos, no un
+    // permiso adicional. Solo bloquea la transición a 'aprobado'; una
+    // devolución (por el aprobador, o reutilizada desde revisarComponente) sigue
+    // permitida aunque falte revisión.
+    if (estado === 'aprobado') {
+      const dsParaRevision = (existingPta.datosEstructurados as any) || {};
+      const requeridas = await this.getRequiredSubsecciones(componente, dsParaRevision);
+      if (requeridas.length > 0) {
+        const revisiones = await this.ptaComponentReviewRepo.find({ where: { ptaId, componente } });
+        const pendientes = requeridas.filter((sub) => {
+          const row = revisiones.find((r) => r.subseccion === sub);
+          return !row || row.estado !== 'revisado';
+        });
+        if (pendientes.length > 0) {
+          throw new BadRequestException(
+            `El componente "${componente}" tiene revisión(es) pendiente(s) (${pendientes.join(', ')}) y no puede aprobarse todavía.`,
+          );
+        }
+      }
     }
 
     let approval = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } });
@@ -7080,6 +7650,23 @@ export class PtaService {
         });
       } catch (error: any) {
         this.logger.warn(`No se pudo notificar al profesor del PTA ${ptaId}: ${error?.message}`);
+      }
+    } else if (estado === 'devuelto') {
+      // Espejo de la notificación de aprobación: si al docente se le avisa cuando
+      // le aprueban un componente, con más razón cuando se lo DEVUELVEN, porque
+      // ahí sí debe actuar. `_etapaDevolucion` lo setea revisarComponente cuando la
+      // devolución ocurre en la etapa de Revisión (preaprobación).
+      try {
+        await this.ptaNotifications.notifyProfesorComponenteDevuelto({
+          ptaId,
+          docenteId: existingPta.docenteId,
+          componente,
+          revisorNombre: approval.aprobadorNombre,
+          comentarios: approval.comentarios,
+          etapa: coalesceString(body?._etapaDevolucion) === 'revision' ? 'revision' : 'aprobacion',
+        });
+      } catch (error: any) {
+        this.logger.warn(`No se pudo notificar la devolución al profesor del PTA ${ptaId}: ${error?.message}`);
       }
     }
 

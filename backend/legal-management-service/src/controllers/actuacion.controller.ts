@@ -207,6 +207,17 @@ export class ActuacionController {
         return this.actuacionService.autorizarActuacion(actuacionId, otp, file, email, name);
     }
 
+    @Post(':actuacionId/autorizar-por-documentos')
+    async autorizarPorDocumentos(
+        @Param('actuacionId') actuacionId: string,
+        @Req() req?: any
+    ) {
+        const access = getLegalAccessFromRequest(req);
+        const email = access.userEmail || 'sistema@esap.edu.co';
+        const name = access.userName || 'Usuario';
+        return this.actuacionService.autorizarPorDocumentosFirmados(actuacionId, email, name);
+    }
+
     @Post(':actuacionId/devolver')
     async devolver(
         @Param('actuacionId') actuacionId: string,

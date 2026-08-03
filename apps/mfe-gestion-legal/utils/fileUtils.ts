@@ -47,13 +47,17 @@ export function isViewableInBrowser(filename: string | null | undefined): boolea
     return VIEWABLE_EXTENSIONS.includes(extension);
 }
 
-// Extensions actually rendered inline by VisorDocumentoModal (pdf.js canvas / <img> / mammoth for .docx).
-// Narrower than VIEWABLE_EXTENSIONS: video, audio and plain-text formats fall back to
+// Extensions actually rendered inline by VisorDocumentoModal (pdf.js canvas / <img> / <video> / mammoth for .docx).
+// Narrower than VIEWABLE_EXTENSIONS: audio and plain-text formats fall back to
 // VisorDocumentoModal's "Vista previa no disponible" screen, so they must not offer a preview button.
+// Video is limited to formats with native <video> support in browsers (mp4/webm/ogg have wide support;
+// .mov works in Safari/Chrome but not Firefox — still allowed since VisorDocumentoModal falls back to
+// download if the browser can't decode it). .avi/.mkv are NOT included: no reliable native browser playback.
 const PLATFORM_PREVIEW_EXTENSIONS = [
     '.pdf',
     '.jpg', '.jpeg', '.png', '.gif', '.webp',
-    '.docx'
+    '.docx',
+    '.mp4', '.webm', '.ogg', '.mov'
 ];
 
 /**

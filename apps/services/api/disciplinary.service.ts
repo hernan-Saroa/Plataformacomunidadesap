@@ -139,6 +139,7 @@ export interface DisciplinaryProcess {
       draftsCount?: number;
       documentsCount?: number;
       timePercentage?: number;
+      diasHabilesRestantes?: number | null;
       actuacionesCount?: number;
       ultimaActuacion?: string | null;
       ultimaActuacionFecha?: string | null;

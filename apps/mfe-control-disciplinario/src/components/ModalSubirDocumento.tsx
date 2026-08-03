@@ -168,9 +168,9 @@ export function ModalSubirDocumento({ isOpen = true, proceso, onClose, onConfirm
         return false;
       }
       
-      if (archivo.size > 10 * 1024 * 1024) {
+      if (archivo.size > 50 * 1024 * 1024) {
         toast.error(`Archivo muy grande: ${archivo.name}`, {
-          description: 'El tamaño máximo es 10 MB'
+          description: 'El tamaño máximo es 50 MB'
         });
         return false;
       }
@@ -345,7 +345,7 @@ export function ModalSubirDocumento({ isOpen = true, proceso, onClose, onConfirm
                 </div>
                 <div className="flex items-center gap-2 text-xs" style={{ color: '#9CA3AF' }}>
                   <Info className="w-4 h-4" />
-                  <span>Máx. 10 MB</span>
+                  <span>Máx. 50 MB</span>
                 </div>
               </div>
               <input

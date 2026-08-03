@@ -44,6 +44,13 @@ import {
   getHierarchySelectableKeys,
   resolveHierarchySelectionBranches,
 } from '../../pta/shared/extensionSelection';
+import {
+  getConfiguredHourMode,
+  getConfiguredMaximumHours,
+  getConfiguredMinimumHours,
+  getConfiguredPercentageValue,
+  normalizeConfiguredHourRow,
+} from '../../pta/shared/configuredHours';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
@@ -346,7 +353,7 @@ function getConfiguredExtensionLimit(rules: any, horasAProgramar: number): numbe
 }
 
 function getPTAPercentage(activity: any): number {
-  const parsed = Number(activity?.porcentaje_pta);
+  const parsed = getConfiguredPercentageValue(activity);
   return Number.isFinite(parsed) ? Math.min(100, Math.max(1, parsed)) : 1;
 }
 
@@ -399,7 +406,11 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
         : buildHourConstraint(min, max, true, 'range');
     }
   }
-  const configuredType = String(activity?.tipo || '').trim().toLowerCase();
+  const rawConfiguredType = String(activity?.tipo ?? activity?.tipo_horas ?? '').trim().toLowerCase();
+  // `por_unidad` usa cantidad × horas unitarias y conserva su cálculo
+  // especializado; no debe reinterpretarse como una fila Hasta.
+  if (rawConfiguredType === 'por_unidad') return null;
+  const configuredType = getConfiguredHourMode(activity);
   if (configuredType === 'porcentaje') {
     const percentage = getPTAPercentage(activity);
     const hours = getPercentageHours(activity, Number(horasAProgramar) || 0);
@@ -409,11 +420,7 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
   // `max_horas`, mientras que las filas configurables de Extensión conservan
   // `horas`/`horas_min`. Aceptar ambos contratos evita descartar visualmente
   // líneas válidas sin alterar el formato persistido de ningún PTA.
-  const configuredMax = Number(
-    activity?.max_horas
-      ?? activity?.horas_max
-      ?? activity?.horas,
-  );
+  const configuredMax = getConfiguredMaximumHours(activity);
   if (!Number.isFinite(configuredMax) || configuredMax <= 0) return null;
 
   if (configuredType === 'fija') {
@@ -421,12 +428,7 @@ function getConfiguredActivityConstraint(activity: any, horasAProgramar?: number
   }
   if (configuredType === 'intervalo') {
     return buildHourConstraint(
-      getPositiveRuleNumber(
-        activity?.min_horas
-          ?? activity?.horas_min
-          ?? activity?.min,
-        1,
-      ),
+      getPositiveRuleNumber(getConfiguredMinimumHours(activity), 1),
       configuredMax,
       true,
       'range',
@@ -534,6 +536,58 @@ function getConstraintLabel(constraint: HourConstraint): string {
   if (constraint.mode === 'range') return `${constraint.min}-${constraint.max}h`;
   if (constraint.editable) return `máx ${constraint.max}h`;
   return `${constraint.max}h`;
+}
+
+function formatConfiguredHours(value: number): string {
+  const normalized = Math.round((Number(value) || 0) * 100) / 100;
+  return Number.isInteger(normalized)
+    ? String(normalized)
+    : String(normalized).replace('.', ',');
+}
+
+/**
+ * Resume únicamente la regla horaria de un bloque configurable. El desplegable
+ * no necesita exponer cuántas filas internas tiene: ese detalle se presenta
+ * después de elegir la actividad y no forma parte de su valor normativo.
+ */
+function getConfiguredRowsDropdownSummary(
+  rows: any[],
+  horasAProgramar: number,
+  multiplier = 1,
+): string {
+  const constraints = rows
+    .map(row => getConfiguredActivityConstraint(row, horasAProgramar))
+    .filter((constraint): constraint is HourConstraint => Boolean(constraint && constraint.max > 0));
+  if (constraints.length === 0) return '';
+
+  const safeMultiplier = Number(multiplier) > 0 ? Number(multiplier) : 1;
+  if (constraints.length === 1) {
+    const constraint = constraints[0];
+    if (constraint.mode === 'exclusive') return '100% PTA';
+    if (constraint.mode === 'percentage') {
+      return `${constraint.percentage}% PTA = ${formatConfiguredHours(constraint.max)}h`;
+    }
+
+    const minExecution = constraint.min / safeMultiplier;
+    const maxExecution = constraint.max / safeMultiplier;
+    const executionLabel = constraint.mode === 'fixed'
+      ? `fija ${formatConfiguredHours(maxExecution)}h`
+      : constraint.mode === 'range'
+        ? `${formatConfiguredHours(minExecution)}–${formatConfiguredHours(maxExecution)}h`
+        : `hasta ${formatConfiguredHours(maxExecution)}h`;
+    return safeMultiplier > 1
+      ? `${executionLabel} ejec. = ${formatConfiguredHours(constraint.max)}h PTA`
+      : executionLabel;
+  }
+
+  const maximumPtaHours = constraints.reduce((sum, constraint) => sum + constraint.max, 0);
+  const maximumExecutionHours = maximumPtaHours / safeMultiplier;
+  const includesPercentage = constraints.some(
+    constraint => constraint.mode === 'percentage' || constraint.mode === 'exclusive',
+  );
+  return safeMultiplier > 1 && !includesPercentage
+    ? `hasta ${formatConfiguredHours(maximumExecutionHours)}h ejec. = ${formatConfiguredHours(maximumPtaHours)}h PTA`
+    : `hasta ${formatConfiguredHours(maximumPtaHours)}h${includesPercentage ? ' PTA' : ''}`;
 }
 
 function getInitialConstraintValue(constraint: HourConstraint): number {
@@ -836,18 +890,35 @@ function extensionActivityUsesItems(section: ExtensionSectionConfig | undefined,
 }
 
 function getRootActivityHourType(activity: any): 'fija' | 'hasta' | 'intervalo' | 'porcentaje' {
-  const type = String(activity?.tipo || 'hasta').toLowerCase();
-  return type === 'fija' || type === 'intervalo' || type === 'porcentaje' ? type : 'hasta';
+  return getConfiguredHourMode(activity);
 }
 
 function hasConfiguredCatalogHours(activity: any, horasAProgramar: number): boolean {
   if (!activity || typeof activity !== 'object') return false;
   if (isFullPTAActivity(activity)) return horasAProgramar > 0;
-  if (String(activity.tipo || '').toLowerCase() === 'porcentaje') {
+  if (getConfiguredHourMode(activity) === 'porcentaje') {
     return getPercentageHours(activity, horasAProgramar) > 0;
   }
-  return [activity.max_horas, activity.horas_max, activity.horas]
-    .some(value => Number.isFinite(Number(value)) && Number(value) > 0);
+  return getConfiguredMaximumHours(activity) > 0;
+}
+
+function normalizeExtensionCatalogActivity(activity: any): any {
+  if (!activity || typeof activity !== 'object') return activity;
+  const normalizedMetadata = activity.columnas_meta && typeof activity.columnas_meta === 'object'
+    ? Object.fromEntries(
+        Object.entries(activity.columnas_meta).map(([column, rows]) => [
+          column,
+          Array.isArray(rows) ? rows.map(row => normalizeConfiguredHourRow(row || {})) : rows,
+        ]),
+      )
+    : activity.columnas_meta;
+  return {
+    ...normalizeConfiguredHourRow(activity),
+    ...(Array.isArray(activity.items)
+      ? { items: activity.items.map((row: any) => normalizeConfiguredHourRow(row || {})) }
+      : {}),
+    ...(normalizedMetadata ? { columnas_meta: normalizedMetadata } : {}),
+  };
 }
 
 function normalizeHierarchyKeyPart(value: unknown): string {
@@ -987,9 +1058,9 @@ function getExtensionConfiguredHourRows(
   section: ExtensionSectionConfig | undefined,
 ): any[] {
   const normalizeRow = (row: any, name?: string) => ({
-    ...row,
+    ...normalizeConfiguredHourRow(row || {}),
     nombre: name || row?.nombre || 'Actividad',
-    min: row?.min ?? row?.horas_min,
+    min: getConfiguredMinimumHours(row),
   });
   const columns = section?.columnas;
 
@@ -1071,16 +1142,16 @@ function hasExtensionConfiguredHours(
 }
 
 function getExtensionRowInitialHours(row: any, horasAProgramar: number): number {
-  const type = String(row?.tipo || 'fija').toLowerCase();
+  const type = getConfiguredHourMode(row, 'fija');
   if (type === 'porcentaje') return getPercentageHours(row, horasAProgramar);
-  if (type === 'fija') return Math.max(0, Number(row?.horas) || 0);
-  if (type === 'intervalo') return Math.max(1, Number(row?.min ?? row?.horas_min) || 1);
-  if (type === 'hasta') return Number(row?.horas) > 0 ? 1 : 0;
+  if (type === 'fija') return getConfiguredMaximumHours(row);
+  if (type === 'intervalo') return Math.max(1, getConfiguredMinimumHours(row) || 1);
+  if (type === 'hasta') return getConfiguredMaximumHours(row) > 0 ? 1 : 0;
   return 0;
 }
 
 function extensionRowAllowsZero(row: any, rowCount: number): boolean {
-  return rowCount > 1 && String(row?.tipo || '').toLowerCase() === 'hasta';
+  return rowCount > 1 && getConfiguredHourMode(row) === 'hasta';
 }
 
 function getConfiguredRecognitionRows(activity: any, horasAProgramar: number): any[] {
@@ -1444,7 +1515,7 @@ function reconcileRecognitionRows(
 
 function extensionRowCanFit(row: any, horasAProgramar: number, maxExtensionHours: number): boolean {
   if (!hasConfiguredCatalogHours(row, horasAProgramar)) return false;
-  const type = String(row?.tipo || 'fija').toLowerCase();
+  const type = getConfiguredHourMode(row, 'fija');
   if (type === 'fija' || type === 'porcentaje') {
     return getExtensionRowInitialHours(row, horasAProgramar) <= maxExtensionHours;
   }
@@ -1502,18 +1573,18 @@ function getInitialExtensionRowsState(rows: any[], horasAProgramar: number): {
   let total = 0;
   const multipleRows = rows.length > 1;
   rows.forEach((row, index) => {
-    const type = String(row?.tipo || 'fija').toLowerCase();
+    const type = getConfiguredHourMode(row, 'fija');
     if (type === 'fija') {
-      items_cantidades[index] = Math.max(0, Number(row?.horas) || 0);
+      items_cantidades[index] = getConfiguredMaximumHours(row);
       total += items_cantidades[index];
     } else if (type === 'porcentaje') {
       items_cantidades[index] = getPercentageHours(row, horasAProgramar);
       total += items_cantidades[index];
     } else if (type === 'intervalo') {
-      items_cantidades[index] = Math.max(1, Number(row?.min ?? row?.horas_min) || 1);
+      items_cantidades[index] = Math.max(1, getConfiguredMinimumHours(row) || 1);
       total += items_cantidades[index];
     } else if (type === 'hasta') {
-      items_cantidades[index] = Number(row?.horas) > 0 && !multipleRows ? 1 : 0;
+      items_cantidades[index] = getConfiguredMaximumHours(row) > 0 && !multipleRows ? 1 : 0;
       total += items_cantidades[index];
     } else {
       items_cantidades[index] = 0;
@@ -1604,7 +1675,12 @@ function RepeatedEntryHeader({ index, label, color }: { index: number; label: st
 }
 
 const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
-  academica: 'docencia',
+  // Docencia se aprueba como dos componentes independientes (Pregrado/Posgrado,
+  // igual que Extensión con sus 4 direcciones), pero el docente sigue viendo una
+  // sola pestaña "Docencia" en el formulario.
+  academica_pregrado: 'docencia',
+  academica_posgrado: 'docencia',
+  academica_territorial: 'docencia',
   investigacion: 'investigacion',
   ext_capacitacion: 'extension',
   ext_procesos: 'extension',
@@ -1616,7 +1692,10 @@ const ALL_COMPONENT_KEYS = Object.keys(COMPONENT_TO_FORM_SECTION) as PTAComponen
 
 // Etiquetas legibles por componente (para banners de devolución, etc.).
 const COMPONENT_LABEL: Record<string, string> = {
-  academica: 'Docencia',
+  academica: 'Docencia', // legacy (pre-split)
+  academica_pregrado: 'Docencia (Pregrado)',
+  academica_posgrado: 'Docencia (Posgrado)',
+  academica_territorial: 'Docencia (Territorial)',
   investigacion: 'Investigación',
   ext_capacitacion: 'Extensión — Capacitación',
   ext_procesos: 'Extensión — Procesos de Selección',
@@ -1935,7 +2014,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           const sectionKey = normalizeExtensionSectionKey(key);
           // No inferir el modelo por la sección ni fabricar `items: []`.
           // La presencia de `items` es el discriminador compatible con datos legacy.
-          const acts = Array.isArray(val) ? val : [];
+          const acts = Array.isArray(val)
+            ? val.map(activity => normalizeExtensionCatalogActivity(activity))
+            : [];
           normalized[sectionKey] = [...(normalized[sectionKey] || []), ...acts];
         });
         // De-duplicar actividades por id dentro de cada sección. Distintas claves de
@@ -5859,6 +5940,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </button>
                       )}
                     </div>
+                    <div className="mb-3">
+                      <FormSelect
+                        label="Territorial"
+                        value={invProyecto.territorial_id}
+                        disabled={!isEditable}
+                        required={projectFieldsRequired}
+                        fieldKey={ptaFieldKey.investigacionProyecto('territorial_id')}
+                        error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('territorial_id')]}
+                        onChange={v => setInvProyecto(project => ({ ...project, territorial_id: v }))}
+                        options={territorialOptions}
+                        placeholder="Seleccionar territorial..."
+                      />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                       <FormInput label="Nombre del Proyecto" value={invProyecto.nombre} disabled={!isEditable}
                         required={projectFieldsRequired}
@@ -6031,19 +6125,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </div>
                       </div>
                     </div>
-                    <div className="mt-3 border-t border-purple-200/60 pt-3">
-                      <FormSelect
-                        label="Territorial"
-                        value={invProyecto.territorial_id}
-                        disabled={!isEditable}
-                        required={projectFieldsRequired}
-                        fieldKey={ptaFieldKey.investigacionProyecto('territorial_id')}
-                        error={requiredFieldErrors[ptaFieldKey.investigacionProyecto('territorial_id')]}
-                        onChange={v => setInvProyecto(project => ({ ...project, territorial_id: v }))}
-                        options={territorialOptions}
-                        placeholder="Seleccionar territorial..."
-                      />
-                    </div>
                   </div>
 
                   {/* El proyecto conserva su propio tope por rol. Si la regla de
@@ -6131,6 +6212,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pr-8">
                               <div className="md:col-span-2">
                                 <FormInput
@@ -6265,19 +6359,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 </div>
                               </div>
                             </div>
-                            <div className="mt-1 border-t border-purple-100/80 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={act.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
-                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
-                            </div>
                           </div>
                         ))}
                       </div>
@@ -6295,6 +6376,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={act.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
+                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pr-8">
                               <div className="md:col-span-2">
                                 <FormSelect label="Actividad" value={act.actividad_id} disabled={!isEditable}
@@ -6302,7 +6396,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   fieldKey={ptaFieldKey.investigacionActividad(act.id, 'actividad_id')}
                                   error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'actividad_id')]}
                                   onChange={v => handleInvActChange(act.id, 'actividad_id', v)}
-                                  options={actividadesParaDropdown.map((a: any) => ({ value: a.id, label: `${a.nombre} (${a.max_horas || a.horas_max || 0}h)` }))}
+                                  options={actividadesParaDropdown.map((a: any) => ({
+                                    value: a.id,
+                                    label: `${a.nombre} (hasta ${a.max_horas || a.horas_max || 0}h)`,
+                                  }))}
                                   placeholder="Seleccionar..." />
                               </div>
                               <FormInput label="Horas" type="number" value={act.horas_total} disabled={!isEditable}
@@ -6393,19 +6490,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   )}
                                 </div>
                               </div>
-                            </div>
-                            <div className="mt-1 border-t border-gray-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={act.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.investigacionActividad(act.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.investigacionActividad(act.id, 'territorial_id')]}
-                                onChange={v => handleInvActChange(act.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
                             </div>
                           </div>
                         ))}
@@ -6528,6 +6612,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={ext.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.extension(ext.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.extension(ext.id, 'territorial_id')]}
+                                onChange={v => handleExtActChange(ext.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             {/* Selector de Actividad / Etapa */}
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
@@ -6553,41 +6650,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     if (hasItems) {
                                       const configuredRows = getExtensionConfiguredHourRows(a, optionSection)
                                         .filter(row => hasConfiguredCatalogHours(row, horasAProgramar));
-                                      const totalPercentage = configuredRows.reduce((sum: number, it: any) =>
-                                        it.tipo === 'porcentaje' ? sum + getPTAPercentage(it) : sum, 0);
-                                      const totalHorasItems = configuredRows.reduce((s: number, it: any) => {
-                                        if (it.tipo === 'porcentaje') return s + getPercentageHours(it, horasAProgramar);
-                                        if (it.tipo === 'fija' || it.tipo === 'hasta') return s + (it.horas || 0);
-                                        return s + (it.horas || 0); // por_unidad: 1 unidad base
-                                      }, 0);
-                                      const itemSummary = `${configuredRows.length} ${configuredRows.length === 1
-                                        ? 'opción seleccionable'
-                                        : 'opciones combinables'}${totalPercentage > 0
-                                        ? ` · hasta ${totalHorasItems}h`
-                                        : ''}`;
-                                      return { value: a.id, label: `${a.nombre} (${itemSummary})` };
+                                      const hoursSummary = getConfiguredRowsDropdownSummary(
+                                        configuredRows,
+                                        horasAProgramar,
+                                        secMult,
+                                      );
+                                      return {
+                                        value: a.id,
+                                        label: hoursSummary ? `${a.nombre} (${hoursSummary})` : a.nombre,
+                                      };
                                     }
-                                    const type = getRootActivityHourType(a);
-                                    const maxPta = type === 'porcentaje'
-                                      ? getPercentageHours(a, horasAProgramar)
-                                      : Math.max(1, Number(a.max_horas) || 1);
-                                    const minPta = Math.min(maxPta, Math.max(1, Number(a.min_horas) || 1));
-                                    const maxExec = secMult > 1 ? maxPta / secMult : maxPta;
-                                    const minExec = secMult > 1 ? minPta / secMult : minPta;
-                                    const typeLabel = type === 'fija'
-                                      ? `fija ${maxExec}h`
-                                      : type === 'porcentaje'
-                                        ? `${getPTAPercentage(a)}% PTA = ${maxPta}h`
-                                      : type === 'intervalo'
-                                        ? `${minExec}–${maxExec}h`
-                                        : `hasta ${maxExec}h`;
+                                    const hoursSummary = getConfiguredRowsDropdownSummary(
+                                      [a],
+                                      horasAProgramar,
+                                      secMult,
+                                    );
                                     return {
                                       value: a.id,
-                                      label: type === 'porcentaje'
-                                        ? `${a.nombre} (${typeLabel})`
-                                        : secMult > 1
-                                        ? `${a.nombre} (${typeLabel} ejec. = ${maxPta}h PTA)`
-                                        : `${a.nombre} (${typeLabel})`,
+                                      label: hoursSummary ? `${a.nombre} (${hoursSummary})` : a.nombre,
                                     };
                                   })}
                                   placeholder="Seleccionar..." />
@@ -6720,19 +6800,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleExtActChange(ext.id, 'fecha_fin', v)} />
                               </div>
                             </div>
-                            <div className="mt-1 border-t border-emerald-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={ext.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.extension(ext.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.extension(ext.id, 'territorial_id')]}
-                                onChange={v => handleExtActChange(ext.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
-                            </div>
                           </div>
                         );
                       })}
@@ -6823,6 +6890,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.complementaria(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'territorial_id')]}
+                                onChange={v => handleCompChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
                                 <FormSelect label="Actividad" value={comp.actividad_id} disabled={!isEditable}
@@ -6855,11 +6935,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     })
                                     .map(a => {
                                       const rows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      const hoursSummary = rows.length > 0
+                                        ? getConfiguredRowsDropdownSummary(rows, horasAProgramar)
+                                        : getConstraintLabel(getComplementariaConstraint(a, ptaRules, horasAProgramar));
                                       return {
                                         value: a.id,
-                                        label: rows.length > 0
-                                          ? `${a.nombre} (${rows.length} ${rows.length === 1 ? 'opción seleccionable' : 'opciones combinables'})`
-                                          : `${a.nombre} (${getConstraintLabel(getComplementariaConstraint(a, ptaRules, horasAProgramar))})`,
+                                        label: hoursSummary ? `${a.nombre} (${hoursSummary})` : a.nombre,
                                       };
                                     })}
                                   placeholder="Seleccionar actividad..." />
@@ -6932,19 +7013,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleCompChange(comp.id, 'fecha_fin', v)} />
                               </div>
-                            </div>
-                            <div className="mt-1 border-t border-amber-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={comp.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.complementaria(comp.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'territorial_id')]}
-                                onChange={v => handleCompChange(comp.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
                             </div>
                           </div>
                         );
@@ -7030,6 +7098,19 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
+                            <div className="mb-2">
+                              <FormSelect
+                                label="Territorial"
+                                value={comp.territorial_id}
+                                disabled={!isEditable}
+                                required
+                                fieldKey={ptaFieldKey.academico(comp.id, 'territorial_id')}
+                                error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'territorial_id')]}
+                                onChange={v => handleAcadChange(comp.id, 'territorial_id', v)}
+                                options={territorialOptions}
+                                placeholder="Seleccionar territorial..."
+                              />
+                            </div>
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
                                 <FormSelect label="Actividad" value={comp.actividad_id} disabled={!isEditable}
@@ -7065,13 +7146,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     })
                                     .map((a: any) => {
                                       const rows = getConfiguredRecognitionRows(a, horasAProgramar);
+                                      const hoursSummary = rows.length > 0
+                                        ? getConfiguredRowsDropdownSummary(rows, horasAProgramar)
+                                        : getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar));
                                       return {
                                         value: a.id,
                                         label: isFullPTAActivity(a)
                                           ? `⚠ ${a.nombre} (100% PTA)`
-                                          : rows.length > 0
-                                            ? `${a.nombre} (${rows.length} ${rows.length === 1 ? 'opción seleccionable' : 'opciones combinables'})`
-                                            : `${a.nombre} (${getConstraintLabel(getAcademicoAdminConstraint(a, ptaRules, horasAProgramar))})`,
+                                          : hoursSummary
+                                            ? `${a.nombre} (${hoursSummary})`
+                                            : a.nombre,
                                       };
                                     })}
                                   placeholder="Seleccionar actividad..." />
@@ -7152,19 +7236,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   max={periodoFechaMax || undefined}
                                   onChange={v => handleAcadChange(comp.id, 'fecha_fin', v)} />
                               </div>
-                            </div>
-                            <div className="mt-1 border-t border-blue-100 pt-3">
-                              <FormSelect
-                                label="Territorial"
-                                value={comp.territorial_id}
-                                disabled={!isEditable}
-                                required
-                                fieldKey={ptaFieldKey.academico(comp.id, 'territorial_id')}
-                                error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'territorial_id')]}
-                                onChange={v => handleAcadChange(comp.id, 'territorial_id', v)}
-                                options={territorialOptions}
-                                placeholder="Seleccionar territorial..."
-                              />
                             </div>
                           </div>
                         );

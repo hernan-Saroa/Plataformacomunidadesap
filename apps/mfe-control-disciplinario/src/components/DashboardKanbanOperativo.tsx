@@ -3563,6 +3563,9 @@ export function DashboardKanbanOperativo({
     const fechaRecepcion = (noticia as any)?.fechaRecepcion;
     const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
     const hoy = new Date();
+    // dias (antiguedad desde recepcion) se mantiene como fallback; el valor correcto
+    // (dias habiles reales restantes hasta que venza la etapa Recepcion) viene del
+    // backend en noticia.diasHabilesRestantes (ver news.service.ts::findAll).
     const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
 
     const denuncianteFuente: any = (noticia as any).denunciantes || (noticia as any).denunciante;
@@ -3650,7 +3653,7 @@ export function DashboardKanbanOperativo({
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
-      diasPendientes: (noticia as any).diasPendientes ?? dias,
+      diasPendientes: typeof (noticia as any).diasHabilesRestantes === 'number' ? (noticia as any).diasHabilesRestantes : dias,
       tipo: 'noticia' as const,
       etapaActual: etapaNormalizada,
     radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
@@ -3755,7 +3758,13 @@ export function DashboardKanbanOperativo({
     const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
     const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
     const hoy = new Date();
-    const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    // fechaVencimientoEtapa se calcula en el backend sumando dias HABILES (salta fines de
+    // semana/festivos), asi que "dias restantes" debe contarse tambien en dias habiles -
+    // de lo contrario el numero mostrado queda inflado frente a lo configurado por etapa
+    // (ej. mostraba 20 dias calendario cuando la etapa vence en 13 dias habiles).
+    const diasRestantes = typeof proceso.diasHabilesRestantes === 'number'
+      ? proceso.diasHabilesRestantes
+      : (fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0);
 
     const porcentajeTiempo = proceso.timePercentage !== undefined
       ? Math.round(proceso.timePercentage)

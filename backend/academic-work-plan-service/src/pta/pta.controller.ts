@@ -889,4 +889,19 @@ export class PtaController {
     const data = await this.ptaService.aprobarComponente(ptaId, body, req.ptaAuth);
     return { success: true, data };
   }
+
+  @Get(':ptaId/componentes-revision')
+  async getComponentesRevision(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getComponentesRevision(ptaId);
+    return { success: true, data };
+  }
+
+  @Post(':ptaId/revisar-componente')
+  @UseGuards(PtaAuthGuard)
+  async revisarComponente(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
+    // Misma política que aprobar-componente: la autorización real proviene de
+    // req.ptaAuth (resuelta server-side), nunca del body.
+    const data = await this.ptaService.revisarComponente(ptaId, body, req.ptaAuth);
+    return { success: true, data };
+  }
 }

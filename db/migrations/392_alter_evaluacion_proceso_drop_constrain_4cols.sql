@@ -1,0 +1,1 @@
+ALTER TABLE control_interno.evaluacion_proceso DROP CONSTRAINT "UQ_evaluacion_proceso_4cols";

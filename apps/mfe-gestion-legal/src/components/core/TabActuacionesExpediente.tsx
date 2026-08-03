@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail, Eye } from 'lucide-react';
+import { Calendar, User, Activity, Plus, Clock, MapPin, Trash2, Download, Paperclip, ExternalLink, Video, Lock, PenTool, Upload, RefreshCw, CheckCircle, X, FileText, Settings, Info, CornerUpLeft, AlertTriangle, Mail, Eye, Loader2 } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Card } from '@esap-mfe/shared-ui/card';
@@ -20,7 +20,6 @@ import { buildServiceAssetUrl } from '../../../../config/environment';
 import { authService } from '../../../../services/api/authService';
 import { legalService } from '../../../../services/api/legal.service';
 import { requiresSignature, isPreviewableInViewer } from '../../../../utils/fileUtils';
-import { FirmaDigitalActuacion, FirmaData } from './FirmaDigitalActuacion';
 
 // ==================== TIPOS ====================
 
@@ -300,14 +299,8 @@ export function TabActuacionesExpediente({
     return !resolvedDocs.some(doc => isDocSigned(doc));
   };
   
-  // Modal de Firma
-  const [modalFirmaActuacion, setModalFirmaActuacion] = useState<ActuacionExpediente | null>(null);
-  const [otpPaso, setOtpPaso] = useState<1 | 2 | 3>(1);
-  const [otpArray, setOtpArray] = useState(['', '', '', '', '', '']);
-  const [firmaArchivo, setFirmaArchivo] = useState<File | null>(null);
-  const [firmaPreview, setFirmaPreview] = useState<string | null>(null);
-  const [enviandoFirma, setEnviandoFirma] = useState(false);
-  const [enviandoOtp, setEnviandoOtp] = useState(false);
+  // Actuaciones autorizadas automáticamente en curso (evita reintentos duplicados mientras responde el backend)
+  const autoAutorizandoRef = useRef<Set<string>>(new Set());
 
   // Modal de Devolución
   const [modalDevolucionActuacion, setModalDevolucionActuacion] = useState<ActuacionExpediente | null>(null);
@@ -399,7 +392,7 @@ export function TabActuacionesExpediente({
 
   // Lock body scroll when modals are open
   useEffect(() => {
-    if (modalFirmaActuacion || modalDevolucionActuacion || actuacionDetalle) {
+    if (modalDevolucionActuacion || actuacionDetalle) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -407,7 +400,7 @@ export function TabActuacionesExpediente({
     return () => {
       document.body.style.overflow = '';
     };
-  }, [modalFirmaActuacion, modalDevolucionActuacion, actuacionDetalle]);
+  }, [modalDevolucionActuacion, actuacionDetalle]);
 
   /**
    * El modal de devolución se renderiza con createPortal en document.body, es decir,
@@ -516,118 +509,39 @@ export function TabActuacionesExpediente({
     }
   };
 
-  const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1) return;
-    const newOtp = [...otpArray];
-    newOtp[index] = value;
-    setOtpArray(newOtp);
+  /**
+   * Autorización automática: en cuanto todos los documentos firmables asociados a una
+   * actuación quedan firmados (cada firma de documento ya exige su propia verificación
+   * de identidad), la actuación se autoriza sola y la etapa avanza. Ya no existe un botón
+   * separado de "Autorizar Actuación" con un segundo OTP.
+   */
+  useEffect(() => {
+    if (!requiereFirmaEtapa || !isUserAuthorizedToApprove()) return;
 
-    if (value !== '' && index < 5) {
-      const nextInput = document.getElementById(`otp-${index + 1}`);
-      nextInput?.focus();
-    }
-  };
+    actuaciones.forEach((act) => {
+      if (getEstadoFirma(act) !== 'PENDIENTE') return;
+      if (!checkAllAssociatedDocsSigned(act)) return;
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && otpArray[index] === '' && index > 0) {
-      const prevInput = document.getElementById(`otp-${index - 1}`);
-      prevInput?.focus();
-    }
-  };
+      const actId = String(act.id);
+      if (autoAutorizandoRef.current.has(actId)) return;
+      autoAutorizandoRef.current.add(actId);
 
-  const handleOpenFirmaModal = async (actuacion: ActuacionExpediente) => {
-    setModalFirmaActuacion(actuacion);
-    setOtpPaso(1);
-    setOtpArray(['', '', '', '', '', '']);
-    setFirmaArchivo(null);
-    setFirmaPreview(null);
-    setEnviandoOtp(true);
-    
-    try {
-      const expId = expedienteId || String(actuacion.expedienteId);
-      await legalService.enviarOtpActuacion(expId, String(actuacion.id));
-      toast.success('🔑 Código OTP de 6 dígitos enviado a tu correo institucional');
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Error al solicitar el código OTP. Intenta de nuevo.');
-      setModalFirmaActuacion(null);
-    } finally {
-      setEnviandoOtp(false);
-    }
-  };
-
-  const handleReenviarOtp = async () => {
-    if (!modalFirmaActuacion) return;
-    setEnviandoOtp(true);
-    try {
-      const expId = expedienteId || String(modalFirmaActuacion.expedienteId);
-      await legalService.enviarOtpActuacion(expId, String(modalFirmaActuacion.id));
-      toast.success('🔑 Nuevo código OTP enviado a tu correo institucional');
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Error al reenviar el código OTP');
-    } finally {
-      setEnviandoOtp(false);
-    }
-  };
-
-  const handleFirmaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        toast.error('El archivo debe ser una imagen (PNG, JPG, JPEG)');
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('La imagen de la firma no debe superar los 10MB');
-        return;
-      }
-      setFirmaArchivo(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFirmaPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleConfirmarFirmaHash = async (firmaData: FirmaData) => {
-    if (!modalFirmaActuacion) return;
-
-    setEnviandoFirma(true);
-    try {
-      const expId = expedienteId || String(modalFirmaActuacion.expedienteId);
-      
-      // Generar dummy file para satisfacer al backend sin pedir foto
-      const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-      const dataUrl = canvas.toDataURL('image/png');
-      const blob = await (await fetch(dataUrl)).blob();
-      const dummyFile = new File([blob], `firma-${firmaData.certificado_id}.png`, { type: 'image/png' });
-
-      await legalService.autorizarActuacion(
-        expId,
-        String(modalFirmaActuacion.id),
-        firmaData.pin_verificado ? otpArray.join('') : otpArray.join(''), // PIN
-        dummyFile
-      );
-      
-      toast.success('✍️ Actuación firmada y autorizada exitosamente');
-      if (onAutoAdvanceStage) {
-        onAutoAdvanceStage();
-      } else if (onReloadExpediente) {
-        onReloadExpediente();
-      }
-    } catch (err: any) {
-      console.error(err);
-      const errorMsg = err?.response?.data?.message || 'Error al procesar la firma electrónica. Verifica el OTP.';
-      toast.error(errorMsg);
-    } finally {
-      setEnviandoFirma(false);
-      setModalFirmaActuacion(null);
-    }
-  };
+      const expId = expedienteId || String(act.expedienteId);
+      legalService.autorizarActuacionPorDocumentos(expId, actId)
+        .then(() => {
+          toast.success('✅ Actuación autorizada: todos los documentos fueron firmados');
+          if (onAutoAdvanceStage) {
+            onAutoAdvanceStage();
+          } else if (onReloadExpediente) {
+            onReloadExpediente();
+          }
+        })
+        .catch((err) => {
+          console.error('Error al autorizar automáticamente la actuación:', err);
+          autoAutorizandoRef.current.delete(actId);
+        });
+    });
+  }, [actuaciones, documentosExpediente]);
 
   const handleOpenDevolucionModal = (actuacion: ActuacionExpediente) => {
     setModalDevolucionActuacion(actuacion);
@@ -1089,54 +1003,6 @@ export function TabActuacionesExpediente({
         </div>
       )}
 
-      {/* Modal de Firma Electrónica */}
-      {modalFirmaActuacion && (
-        <FirmaDigitalActuacion
-          expedienteId={expedienteId || String(modalFirmaActuacion.expedienteId)}
-          radicado={expedienteId || String(modalFirmaActuacion.expedienteId)}
-          actuacionDescripcion={modalFirmaActuacion.descripcion}
-          firmanteNombre={(() => {
-            const u = authService.getCurrentUser() as any;
-            if (!u) return 'Usuario Funcionario';
-            return u.fullName || u.full_name || u.name || u.nombre || (u.person?.first_name ? `${u.person.first_name} ${u.person.last_name ?? ''}`.trim() : null) || u.email || 'Usuario Funcionario';
-          })()}
-          firmanteCargo={(() => {
-            const u = authService.getCurrentUser() as any;
-            if (!u) return 'Funcionario';
-            const roles = u.roles || [];
-            const hasRole = (roleCode: string) => roles.some((r: any) => {
-              if (typeof r === 'string') return r === roleCode;
-              return r?.code === roleCode || r?.name === roleCode;
-            });
-            if (hasRole('JEFE_GESTION_LEGAL')) return 'Jefe de Gestión Legal';
-            if (hasRole('RESUELVE_GESTION_LEGAL')) return 'Abogado Sustanciador (Resuelve)';
-            if (roles.length > 0) {
-              const firstRole = roles[0];
-              if (typeof firstRole === 'string') return firstRole;
-              return firstRole.displayName || firstRole.name || firstRole.code || 'Funcionario';
-            }
-            return 'Funcionario';
-          })()}
-          etapaLabel="Autorización de Actuación"
-          correoDestino={(authService.getCurrentUser() as any)?.email}
-          onVerifyCodigo={async (codigo) => {
-            // Validamos el código contra el OTP real enviado al correo del usuario
-            // activo ANTES de avanzar. Si es incorrecto o expiró, el backend responde
-            // con error y el modal lo muestra (ya no acepta cualquier combinación).
-            const expId = expedienteId || String(modalFirmaActuacion.expedienteId);
-            try {
-              await legalService.verificarOtpActuacion(expId, String(modalFirmaActuacion.id), codigo);
-            } catch (err: any) {
-              throw new Error(err?.response?.data?.message || 'Código incorrecto. Verifica e intenta nuevamente.');
-            }
-            // Guardamos el OTP ya verificado para reutilizarlo al autorizar/firmar al final.
-            setOtpArray(codigo.split(''));
-          }}
-          onFirmaCompleta={handleConfirmarFirmaHash}
-          onCancelar={() => setModalFirmaActuacion(null)}
-        />
-      )}
-
       {/* Modal de Devolución */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
@@ -1545,7 +1411,7 @@ export function TabActuacionesExpediente({
                               {isUserAuthorizedToApprove() ? (
                                 <div className="bg-amber-100/50 p-3 rounded-lg border border-amber-200/40 text-xs text-amber-950 font-semibold mt-2 flex flex-col gap-1">
                                   <span>👉 Usted es el usuario/rol autorizado.</span>
-                                  <span className="text-[11px] font-medium text-amber-800">Puede autorizar y firmar digitalmente esta actuación usando los botones del footer de este modal.</span>
+                                  <span className="text-[11px] font-medium text-amber-800">Firme digitalmente los documentos asociados abajo. Al firmarlos todos, la actuación se autoriza automáticamente y la etapa avanza.</span>
                                 </div>
                               ) : (
                                 <p className="text-[11px] text-amber-600 bg-amber-50/50 p-2 rounded border border-amber-100">
@@ -1716,18 +1582,10 @@ export function TabActuacionesExpediente({
                             <CornerUpLeft className="w-4 h-4" /> Devolver
                           </Button>
                           {checkAllAssociatedDocsSigned(actuacionDetalle) ? (
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const act = actuacionDetalle;
-                                setActuacionDetalle(null);
-                                handleOpenFirmaModal(act);
-                              }}
-                            >
-                              <PenTool className="w-4 h-4" /> Autorizar Actuación
-                            </Button>
+                            <Badge className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold py-1 px-3 inline-flex items-center gap-1.5 rounded-lg hover:bg-emerald-50 shadow-none">
+                              <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+                              Autorizando...
+                            </Badge>
                           ) : (
                             <Badge className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold py-1 px-3 inline-flex items-center gap-1.5 rounded-lg hover:bg-amber-50 shadow-none">
                               <Lock className="w-4 h-4 text-amber-600 animate-pulse" />
