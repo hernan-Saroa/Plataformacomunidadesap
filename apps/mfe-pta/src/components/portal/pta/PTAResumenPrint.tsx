@@ -17,7 +17,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
-import { formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface PTAResumenPrintProps {
   pta: any;
@@ -296,7 +296,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                       return (
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
-                            <div style={{ fontWeight: 700 }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                            <div style={{ fontWeight: 700 }}>{formatPtaAssignmentName(a) || 'Asignatura'}</div>
                             {a.nucleo_tematico && <div style={SUB}>{a.nucleo_tematico}{a.semestre ? ` · ${a.semestre}` : ''}{a.modalidad ? ` · ${String(a.modalidad).charAt(0) + String(a.modalidad).slice(1).toLowerCase()}` : ''}</div>}
                             <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1" />
                           </td>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   filterAssignmentsByPensum,
   findLegacyCatalogAssignment,
+  formatPtaAssignmentName,
   formatPtaPensum,
   inferLegacyPensum,
   listPensumsForProgram,
@@ -78,5 +79,29 @@ describe('compatibilidad Pensum para borradores PTA', () => {
     expect(formatPtaPensum('APT_52')).toBe('APT_52');
     expect(formatPtaPensum(SIN_PENSUM_KEY)).toBe('Sin pensum registrado');
     expect(formatPtaPensum(null)).toBe('—');
+  });
+
+  it.each([
+    ['Análisis Financiero Público (AP_día)', 'Análisis Financiero Público'],
+    ['Contabilidad Gubernamental (AP_noche)', 'Contabilidad Gubernamental'],
+    ['Derecho Administrativo (AP-DIA)', 'Derecho Administrativo'],
+  ])('oculta la jornada técnica en el nombre %s', (original, esperado) => {
+    expect(formatPtaAssignmentName(original)).toBe(esperado);
+  });
+
+  it('usa nombre_base antes del nombre técnico y conserva otros paréntesis', () => {
+    expect(formatPtaAssignmentName({
+      nombre: 'Matemáticas I (AP_día)',
+      nombreBase: 'Matemáticas I',
+    })).toBe('Matemáticas I');
+    expect(formatPtaAssignmentName({
+      nombre: 'Matemáticas I (AP_día)',
+      nombreBase: '   ',
+    })).toBe('Matemáticas I');
+    expect(formatPtaAssignmentName({
+      nombreBase: 'Contabilidad\r\nGubernamental',
+    })).toBe('Contabilidad Gubernamental');
+    expect(formatPtaAssignmentName('Gestión Pública (Electiva)'))
+      .toBe('Gestión Pública (Electiva)');
   });
 });

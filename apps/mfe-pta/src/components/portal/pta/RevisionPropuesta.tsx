@@ -20,7 +20,7 @@ import {
 import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
-import { formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface RevisionPropuestaProps {
   ptaId: string;
@@ -203,7 +203,7 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
                 <tr key={a.id || i} className="border-b border-gray-50">
                   <td className="px-3 py-1.5 text-gray-400">{i + 1}</td>
                   <td className="px-3 py-1.5 font-medium text-gray-900">
-                    {a.asignatura_nombre || a.nombre}
+                    {formatPtaAssignmentName(a)}
                     <HierarchySelectionSummary activity={a} accent="#003DA5" compact className="mt-1.5" />
                   </td>
                   <td className="px-3 py-1.5 text-gray-500">{a.programa_nombre || ''}</td>

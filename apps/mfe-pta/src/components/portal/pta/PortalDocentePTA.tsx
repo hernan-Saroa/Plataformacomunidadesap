@@ -33,7 +33,7 @@ import {
   getActivePeriodoAcademico,
   getBancoDocenteById,
 } from '../../../services/api/ptaApi';
-import { formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
@@ -1314,7 +1314,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       <ItemDetalle key={i} color={PTA_COLORS.DOCENCIA}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{formatPtaAssignmentName(a) || 'Asignatura'}</div>
                             {a.nucleo_tematico && <div style={{ fontSize: '0.64rem', color: '#6B7280', fontWeight: 600, marginTop: 2 }}>{a.nucleo_tematico}</div>}
                           </div>
                           <HorasBadge horas={Number(a.total_horas || a.horas || 0)} color={PTA_COLORS.DOCENCIA} />

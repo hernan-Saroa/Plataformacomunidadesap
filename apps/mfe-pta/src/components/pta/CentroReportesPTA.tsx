@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatPtaPensum } from '../../utils/ptaPensumCompatibility';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
 import { toast } from 'sonner';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import {
@@ -284,7 +284,7 @@ function generarR07(ptas: any[]): ReporteGenerado {
       asigs.forEach((a: any) => {
         filas.push({
           docente: p.docente_nombre || 'N/A', documento: p.cedula || p.numero_documento || '-',
-          territorial: p.territorial || '-', asignatura: a.nombre || a.asignatura_nombre || '-',
+          territorial: p.territorial || '-', asignatura: formatPtaAssignmentName(a) || '-',
           programa: a.programa_nombre_completo || a.programa_nombre || a.programa || '-',
           pensum: formatPtaPensum(a.pensum), creditos: a.creditos || 0, grupos: a.num_grupos || 1,
           horas: a.total_horas_calculadas || a.horas || 0,
@@ -882,7 +882,7 @@ function generarEXP02_XML(ptas: any[]) {
       xmlLines.push(`      <Asignaturas count="${asigs.length}">`);
       asigs.forEach((a: any) => {
         xmlLines.push(`        <Asignatura>`);
-        xmlLines.push(`          <Nombre>${escapeXml(a.nombre || a.asignatura_nombre || '')}</Nombre>`);
+        xmlLines.push(`          <Nombre>${escapeXml(formatPtaAssignmentName(a))}</Nombre>`);
         xmlLines.push(`          <Programa>${escapeXml(a.programa_nombre_completo || a.programa_nombre || a.programa || '')}</Programa>`);
         xmlLines.push(`          <Pensum>${escapeXml(formatPtaPensum(a.pensum))}</Pensum>`);
         xmlLines.push(`          <Creditos>${a.creditos || 0}</Creditos>`);

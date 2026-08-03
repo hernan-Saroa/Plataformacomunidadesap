@@ -23,7 +23,7 @@ import { PTA_COLORS } from './shared/ptaColors';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
-import { formatPtaPensum } from '../../utils/ptaPensumCompatibility';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
 
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
 // 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
@@ -419,7 +419,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     <tr key={idx} style={{ borderBottom: asig.observaciones ? 'none' : '1px solid #E5E7EB' }}>
                       <td style={{ padding: '6px 8px', color: '#9CA3AF' }}>{idx + 1}</td>
                       <td style={{ padding: '6px 8px', fontWeight: 600, color: '#111827' }}>
-                        {asig.asignatura_nombre || asig.nombre || asig.asignatura || 'N/A'}
+                        {formatPtaAssignmentName(asig) || 'N/A'}
                         <HierarchySelectionSummary activity={asig} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
                       </td>
                       <td

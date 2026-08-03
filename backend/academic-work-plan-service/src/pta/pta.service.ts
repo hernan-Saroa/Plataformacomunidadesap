@@ -27,6 +27,7 @@ import {
   type PTAComponentKey,
 } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
+import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
 
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
@@ -5849,6 +5850,7 @@ export class PtaService {
       programaId: a.programaId,
       programa_id: a.programa_real_id || a.programaId,
       nombre: a.nombre,
+      nombreVisible: obtenerNombreVisibleAsignatura(a),
       codigo: a.codigo,
       pensum: a.pensum,
       pensumKey: a.pensum || '__SIN_PENSUM__',
@@ -6402,7 +6404,7 @@ export class PtaService {
         ...item,
         programa_id: programId || String(subject.id_programa),
         asignatura_id: String(subject.id),
-        asignatura_nombre: subject.nombre || item.asignatura_nombre,
+        asignatura_nombre: obtenerNombreVisibleAsignatura(subject) || item.asignatura_nombre,
         asignatura_codigo: subject.codigo || item.asignatura_codigo,
         pensum: String(subject.pensum || '').trim() || '__SIN_PENSUM__',
       };
@@ -6500,11 +6502,15 @@ export class PtaService {
   }
 
   async getOfertaAcademica(_query?: any) {
-    return await this.asignaturaRepo.find({
+    const asignaturas = await this.asignaturaRepo.find({
       relations: { programaRel: true },
       order: { nombre: 'ASC' },
       take: 5000,
     });
+    return asignaturas.map(asignatura => ({
+      ...asignatura,
+      nombreVisible: obtenerNombreVisibleAsignatura(asignatura),
+    }));
   }
 
   async getCatalogoRolesInvestigacion() {

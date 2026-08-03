@@ -54,6 +54,7 @@ import {
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 import {
   filterAssignmentsByPensum,
+  formatPtaAssignmentName,
   inferLegacyPensum,
   listPensumsForProgram,
   mergeAssignmentCatalog,
@@ -3331,7 +3332,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         const asigCat = asignaturasCat.find(ac => String(ac.id) === String(value));
         if (asigCat) {
           updated.pensum = asigCat.pensumKey || asigCat.pensum || SIN_PENSUM_KEY;
-          updated.asignatura_nombre = asigCat.nombre;
+          updated.asignatura_nombre = formatPtaAssignmentName(asigCat);
           updated.nucleo_tematico = asigCat.nucleo || '';
           updated.creditos = asigCat.creditos || 3;
           updated.semestre = asigCat.semestre || 1;
@@ -5829,7 +5830,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 fieldKey={ptaFieldKey.docencia(asig.id, 'asignatura_id')}
                                 error={requiredFieldErrors[ptaFieldKey.docencia(asig.id, 'asignatura_id')]}
                                 onChange={v => handleAsigChange(asig.id, 'asignatura_id', v)}
-                                options={asignaturasDisponibles.map(a => ({ value: a.id, label: a.nombre }))}
+                                options={asignaturasDisponibles.map(a => ({
+                                  value: a.id,
+                                  label: formatPtaAssignmentName(a),
+                                }))}
                                 placeholder={cargandoAsignaturas ? 'Cargando asignaturas...' : asig.pensum ? 'Seleccionar...' : asig.asignatura_id ? 'Recuperar Pensum...' : 'Pendiente...'} />
                             </div>
 
