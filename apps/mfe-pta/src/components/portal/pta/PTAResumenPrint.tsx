@@ -17,6 +17,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import { formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface PTAResumenPrintProps {
   pta: any;
@@ -281,6 +282,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                     <tr>
                       <th style={TH}>Asignatura</th>
                       <th style={TH}>Programa / CETAP</th>
+                      <th style={TH}>Pensum</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Créd.</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Est.</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Hrs/Sem</th>
@@ -302,6 +304,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                             {a.programa_nombre_completo || a.programa_nombre || a.programa || '—'}
                             {a.cetap_nombre && <div style={SUB}>CETAP {a.cetap_nombre}{a.territorial_nombre ? ` · ${a.territorial_nombre}` : ''}</div>}
                           </td>
+                          <td style={TD}>{formatPtaPensum(a.pensum)}</td>
                           <td style={TDC}>{a.creditos || '-'}</td>
                           <td style={TDC}>{a.total_estudiantes || '-'}</td>
                           <td style={TDC}>{(totalHoras / semanas).toFixed(1)}</td>
@@ -310,11 +313,11 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                         </tr>
                       );
                     }) : (
-                      <tr><td colSpan={7} style={{ ...TDC, color: '#9CA3AF', padding: 16 }}>No se registraron asignaturas en este componente.</td></tr>
+                      <tr><td colSpan={8} style={{ ...TDC, color: '#9CA3AF', padding: 16 }}>No se registraron asignaturas en este componente.</td></tr>
                     )}
                     {asigs.length > 0 && (
                       <tr>
-                        <td colSpan={6} style={{ ...TD, fontWeight: 800, textAlign: 'right', background: '#F9FAFB' }}>TOTAL DOCENCIA</td>
+                        <td colSpan={7} style={{ ...TD, fontWeight: 800, textAlign: 'right', background: '#F9FAFB' }}>TOTAL DOCENCIA</td>
                         <td style={{ ...TDC, fontWeight: 900, background: '#F9FAFB', color: PTA_COLORS.DOCENCIA }}>{horasDoc}</td>
                       </tr>
                     )}

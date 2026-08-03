@@ -20,6 +20,7 @@ import {
 import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
+import { formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface RevisionPropuestaProps {
   ptaId: string;
@@ -196,7 +197,7 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-gray-100 text-gray-500">
-                <th className="text-left px-3 py-1.5">#</th><th className="text-left px-3 py-1.5">Asignatura</th><th className="text-left px-3 py-1.5">Programa</th><th className="text-center px-3 py-1.5">Créd</th><th className="text-center px-3 py-1.5">Horas</th>
+                <th className="text-left px-3 py-1.5">#</th><th className="text-left px-3 py-1.5">Asignatura</th><th className="text-left px-3 py-1.5">Programa</th><th className="text-left px-3 py-1.5">Pensum</th><th className="text-center px-3 py-1.5">Créd</th><th className="text-center px-3 py-1.5">Horas</th>
               </tr></thead>
               <tbody>{(pta.asignaturas || []).map((a: any, i: number) => (
                 <tr key={a.id || i} className="border-b border-gray-50">
@@ -206,6 +207,7 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
                     <HierarchySelectionSummary activity={a} accent="#003DA5" compact className="mt-1.5" />
                   </td>
                   <td className="px-3 py-1.5 text-gray-500">{a.programa_nombre || ''}</td>
+                  <td className="px-3 py-1.5 text-gray-500">{formatPtaPensum(a.pensum)}</td>
                   <td className="px-3 py-1.5 text-center">{a.creditos}</td>
                   <td className="px-3 py-1.5 text-center font-bold text-[#003DA5]">{a.total_horas}h</td>
                 </tr>

@@ -418,7 +418,7 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                     <div className="space-y-4">
                       {[
                         { n: '1', t: 'Descargue la plantilla Excel', s: 'Contiene el formato requerido con las hojas: Programas, Asignaturas y Matriz Oferta.' },
-                        { n: '2', t: 'Complete los datos', s: 'Llene las hojas con los códigos, nombres, créditos y modalidades. La categoría Circular 003 es opcional y se infiere desde el tipo y las horas del programa.' },
+                        { n: '2', t: 'Complete los datos', s: 'Use la plantilla nueva y llene sus tres hojas, incluido Pensum, horas de clase/PTA, modalidad, núcleo temático y la configuración Circular 003. La columna Pensum es obligatoria; el valor sólo puede quedar vacío cuando el programa no tenga un pensum oficial registrado.' },
                         { n: '3', t: 'Suba el archivo', s: 'Arrastre o seleccione — se valida automáticamente con las reglas de negocio.' },
                         { n: '4', t: 'Confirme la importación', s: 'Revise el preview y confirme. Puede corregir errores directamente.' },
                       ].map(({ n, t, s }) => (

@@ -232,6 +232,17 @@ export class ImportValidator {
           `PROGRAMAS fila ${row}: activo debe ser TRUE/FALSE, SI/NO o 1/0.`,
         );
       }
+
+      if ((programa.categoria_horas_circular003 || '').length > 50) {
+        errors.push(
+          `PROGRAMAS fila ${row}: categoria_horas_circular003 supera 50 caracteres.`,
+        );
+      }
+      if ((programa.horas_pta_referencia_circular003 || '').length > 150) {
+        errors.push(
+          `PROGRAMAS fila ${row}: horas_pta_referencia_circular003 supera 150 caracteres.`,
+        );
+      }
     });
 
     if (duplicateProgramCodes.size > 0) {
@@ -276,6 +287,12 @@ export class ImportValidator {
       } else if (asignatura.nombre_asignatura.length > 200) {
         errors.push(
           `ASIGNATURAS fila ${row}: nombre_asignatura supera 200 caracteres.`,
+        );
+      }
+
+      if ((asignatura.pensum || '').length > 50) {
+        errors.push(
+          `ASIGNATURAS fila ${row}: Pensum supera 50 caracteres.`,
         );
       }
 

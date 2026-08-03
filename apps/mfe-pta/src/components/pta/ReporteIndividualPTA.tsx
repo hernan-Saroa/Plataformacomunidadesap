@@ -23,6 +23,7 @@ import { PTA_COLORS } from './shared/ptaColors';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
+import { formatPtaPensum } from '../../utils/ptaPensumCompatibility';
 
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
 // 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
@@ -403,6 +404,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                   <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>#</th>
                   <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Asignatura</th>
                   <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Programa</th>
+                  <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Pensum</th>
                   <th style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Cred.</th>
                   <th style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Est.</th>
                   <th style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Mod.</th>
@@ -428,6 +430,9 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                         }}
                       >
                         {asig.programa_nombre_completo || asig.programa_nombre || asig.programa || asig.programa_id || 'N/A'}
+                      </td>
+                      <td style={{ padding: '6px 8px', color: '#6B7280' }}>
+                        {formatPtaPensum(asig.pensum)}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>{asig.creditos || 3}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>
@@ -457,7 +462,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     {asig.observaciones && (
                       <tr key={`obs-${idx}`} style={{ borderBottom: '1px solid #E5E7EB' }}>
                         <td />
-                        <td colSpan={8} style={{ padding: '2px 8px 6px', fontSize: '0.68rem', color: '#6B7280', fontStyle: 'italic' }}>
+                        <td colSpan={9} style={{ padding: '2px 8px 6px', fontSize: '0.68rem', color: '#6B7280', fontStyle: 'italic' }}>
                           💬 {asig.observaciones}
                         </td>
                       </tr>
@@ -467,7 +472,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
               </tbody>
               <tfoot>
                 <tr style={{ background: `${PTA_COLORS.DOCENCIA}10`, borderTop: `2px solid ${PTA_COLORS.DOCENCIA}40` }}>
-                  <td colSpan={7} style={{ padding: '8px 10px', fontWeight: 800, color: PTA_COLORS.DOCENCIA, textAlign: 'right' }}>
+                  <td colSpan={8} style={{ padding: '8px 10px', fontWeight: 800, color: PTA_COLORS.DOCENCIA, textAlign: 'right' }}>
                     TOTAL HORAS DOCENCIA:
                   </td>
                   <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: PTA_COLORS.DOCENCIA, fontSize: '0.95rem' }}>

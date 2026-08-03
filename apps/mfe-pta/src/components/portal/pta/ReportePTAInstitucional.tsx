@@ -16,6 +16,7 @@ import {
 import { IsotipoESAP } from '../../../../../shell/src/components/assets/ESAPLogoSVG';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
+import { formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface ReportePTAInstitucionalProps {
   pta: any;
@@ -1371,6 +1372,7 @@ export function ReportePTAInstitucional({
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div>{a.programa_nombre || a.programa || '—'}</div>
+                                  <InfoSecundaria>{`Pensum: ${formatPtaPensum(a.pensum)}`}</InfoSecundaria>
                                   <InfoSecundaria>{textoConSeparador([
                                     a.cetap_nombre && `CETAP ${a.cetap_nombre}`,
                                     a.territorial_nombre || null,
