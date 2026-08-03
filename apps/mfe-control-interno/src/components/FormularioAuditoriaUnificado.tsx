@@ -1816,6 +1816,8 @@ function Paso2ClasificacionAlcance({
   seccionalesDisponibles = [],
   cargandoSeccionales = false,
 }: Paso2Props) {
+  const [focoTextoInput, setFocoTextoInput] = useState('');
+
   // Buscar la evaluación del proceso seleccionado para obtener la dependencia
   const evaluacionProceso = evaluaciones.find(
     (ev: EvaluacionProceso) => ev.proceso?.nombre === formData.titulo || ev.proceso?.nombre === formData.procesoAuditado
@@ -1888,66 +1890,46 @@ function Paso2ClasificacionAlcance({
           {/* Foco de la Auditoría */}
           <FieldWrapper 
             label="Foco de la Auditoría"
-            helpText="Seleccione los focos de revisión que aplicarán a esta auditoría"
+            helpText="Ingrese los focos de revisión alfanuméricos que aplicarán a esta auditoría (presione Enter o haga clic en Agregar)"
           >
-            <div className="relative">
-              <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    const focosActuales = formData.focos || [];
-                    if (!focosActuales.includes(e.target.value)) {
-                      onChange('focos', [...focosActuales, e.target.value]);
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={focoTextoInput}
+                onChange={(e) => setFocoTextoInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const texto = focoTextoInput.trim();
+                    if (texto) {
+                      const focosActuales = formData.focos || [];
+                      if (!focosActuales.includes(texto)) {
+                        onChange('focos', [...focosActuales, texto]);
+                      }
+                      setFocoTextoInput('');
                     }
                   }
                 }}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm appearance-none bg-white cursor-pointer"
+                placeholder="Escriba el foco de la auditoría..."
+                className="flex-1 px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const texto = focoTextoInput.trim();
+                  if (texto) {
+                    const focosActuales = formData.focos || [];
+                    if (!focosActuales.includes(texto)) {
+                      onChange('focos', [...focosActuales, texto]);
+                    }
+                    setFocoTextoInput('');
+                  }
+                }}
+                className="px-4 py-2.5 bg-[#003DA5] hover:bg-[#1e5da8] text-white text-sm font-semibold rounded-xl transition-all flex items-center gap-1.5 shadow-sm active:scale-95 flex-shrink-0"
               >
-                <option value="">Agregar un foco de revisión...</option>
-                {[
-                  { value: 'autoevaluacion_calidad_academica', label: 'Autoevaluación de la Calidad Académica', icon: '🎓' },
-                  { value: 'formacion', label: 'Formación (Foco)', icon: '📚' },
-                  { value: 'capacitacion', label: 'Capacitación', icon: '🧑‍🏫' },
-                  { value: 'proceso_seleccion', label: 'Proceso de Selección', icon: '✅' },
-                  { value: 'alto_gobierno', label: 'Fortalecimiento del Alto Gobierno y la Alta Gerencia Pública', icon: '🏛️' },
-                  { value: 'gestion_estatal', label: 'Fortalecimiento Integral a la Gestión Estatal', icon: '🏢' },
-                  { value: 'investigacion', label: 'Investigación', icon: '🔬' },
-                  { value: 'atencion_personas', label: 'Atención a las Personas', icon: '🤝' },
-                  { value: 'direccionamiento_estrategico', label: 'Direccionamiento Estratégico', icon: '🎯' },
-                  { value: 'gestion_integrada', label: 'Gestión Integrada', icon: '🔗' },
-                  { value: 'gestion_documental', label: 'Gestión Documental', icon: '📁' },
-                  { value: 'gestion_comunicacion', label: 'Gestión de la Comunicación', icon: '📢' },
-                  { value: 'gestion_tecnologica', label: 'Gestión Tecnológica', icon: '💻' },
-                  { value: 'gestion_internacional', label: 'Gestión Internacional', icon: '🌐' },
-                  { value: 'bienestar_universitario', label: 'Bienestar Universitario', icon: '🏫' },
-                  { value: 'gestion_administrativa', label: 'Gestión Administrativa', icon: '⚙️' },
-                  { value: 'gestion_financiera', label: 'Gestión Financiera', icon: '💰' },
-                  { value: 'gestion_juridica', label: 'Gestión Jurídica', icon: '⚖️' },
-                  { value: 'gestion_contratacion', label: 'Gestión de Contratación', icon: '📝' },
-                  { value: 'gestion_talento_humano', label: 'Gestión del Talento Humano', icon: '👥' },
-                  { value: 'gestion_entornos_virtuales', label: 'Gestión de Entornos Virtuales', icon: '🖥️' },
-                  { value: 'control_interno_disciplinario', label: 'Control Interno Disciplinario', icon: '⚠️' },
-                  { value: 'territorial_antioquia', label: 'Territorial Antioquia', icon: '📍' },
-                  { value: 'territorial_atlantico', label: 'Territorial Atlántico - Cesar - Magdalena - La Guajira', icon: '📍' },
-                  { value: 'territorial_bolivar', label: 'Territorial Bolívar - Córdoba - Sucre - San Andrés', icon: '📍' },
-                  { value: 'territorial_boyaca', label: 'Territorial Boyacá - Casanare', icon: '📍' },
-                  { value: 'territorial_caldas', label: 'Territorial Caldas', icon: '📍' },
-                  { value: 'territorial_cauca', label: 'Territorial Cauca', icon: '📍' },
-                  { value: 'territorial_choco', label: 'Territorial Chocó', icon: '📍' },
-                  { value: 'territorial_cundinamarca', label: 'Territorial Cundinamarca', icon: '📍' },
-                  { value: 'territorial_huila', label: 'Territorial Huila - Caquetá - Putumayo', icon: '📍' },
-                  { value: 'territorial_meta', label: 'Territorial Meta - Guaviare - Guainía - Vaupés - Vichada - Amazonas', icon: '📍' },
-                  { value: 'territorial_narino', label: 'Territorial Nariño - Alto Putumayo', icon: '📍' },
-                  { value: 'territorial_norte_santander', label: 'Territorial Norte de Santander - Arauca', icon: '📍' },
-                  { value: 'territorial_quindio', label: 'Territorial Quindío - Risaralda', icon: '📍' },
-                  { value: 'territorial_santander', label: 'Territorial Santander', icon: '📍' },
-                  { value: 'territorial_tolima', label: 'Territorial Tolima', icon: '📍' },
-                  { value: 'territorial_valle', label: 'Territorial Valle', icon: '📍' },
-                ].filter(o => !(formData.focos || []).includes(o.value)).map(o => (
-                  <option key={o.value} value={o.value}>{o.icon}  {o.label}</option>
-                ))}
-              </select>
-              <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 rotate-90 pointer-events-none" />
+                <Plus className="w-4 h-4" />
+                <span>Agregar</span>
+              </button>
             </div>
 
             <AnimatePresence>

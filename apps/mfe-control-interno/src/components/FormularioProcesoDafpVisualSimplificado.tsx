@@ -714,7 +714,7 @@ export function FormularioProcesoDafpVisual({
 
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
             <div className="space-y-5 p-6">
-              <section className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-blue-50/40 p-5">
+              <section className={`rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-blue-50/40 p-5 transition-all ${procesoDropdownOpen || unidadDropdownOpen ? 'relative z-40' : 'relative z-10'}`}>
                 <h3 className="mb-4 flex items-center gap-2 text-sm font-black text-[#003DA5]">
                   <Info className="h-4 w-4" />
                   INFORMACIÓN BÁSICA
@@ -737,7 +737,7 @@ export function FormularioProcesoDafpVisual({
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
                       />
                     ) : (
-                      <div className="relative" ref={procesoDropdownRef}>
+                      <div className={`relative ${procesoDropdownOpen ? 'z-50' : 'z-10'}`} ref={procesoDropdownRef}>
                         <button
                           type="button"
                           onClick={() => setProcesoDropdownOpen(!procesoDropdownOpen)}
@@ -757,7 +757,7 @@ export function FormularioProcesoDafpVisual({
                         </button>
                         
                         {procesoDropdownOpen && (
-                          <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg flex flex-col">
+                          <div className="absolute top-full left-0 z-[100] mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-2xl flex flex-col overflow-hidden">
                             <div className="p-2 border-b border-gray-100 sticky top-0 bg-white rounded-t-lg">
                               <div className="flex items-center w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-[#2962FF] focus-within:ring-1 focus-within:ring-[#2962FF] transition-all">
                                 <Search className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
@@ -842,7 +842,7 @@ export function FormularioProcesoDafpVisual({
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
                       />
                     </div>
-                    <div className="relative" ref={unidadDropdownRef}>
+                    <div className={`relative ${unidadDropdownOpen ? 'z-50' : 'z-10'}`} ref={unidadDropdownRef}>
                       <label className="mb-1.5 block text-xs font-bold text-gray-700">Unidad auditable</label>
                       <button
                         type="button"
@@ -859,7 +859,7 @@ export function FormularioProcesoDafpVisual({
                         <svg className={`w-4 h-4 text-gray-500 transition-transform ${unidadDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                       </button>
                       {unidadDropdownOpen && unidadesDisponibles.length > 0 && (
-                        <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+                        <div className="absolute top-full left-0 z-[100] mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-2xl max-h-48 overflow-y-auto">
                           <div className="p-1">
                             <button
                               type="button"

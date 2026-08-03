@@ -19,6 +19,7 @@
 export type PTAComponentKey =
   | 'academica_pregrado'
   | 'academica_posgrado'
+  | 'academica_territorial'
   | 'complementarias'
   | 'investigacion'
   | 'ext_capacitacion'
@@ -30,6 +31,7 @@ export type PTAComponentKey =
 export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_pregrado',
   'academica_posgrado',
+  'academica_territorial',
   'complementarias',
   'investigacion',
   'ext_capacitacion',
@@ -38,10 +40,25 @@ export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'ext_gobierno',
 ];
 
+/**
+ * Los tres componentes en los que se enruta Docencia. La territorialidad MANDA sobre
+ * el nivel: una asignatura dictada en una Dirección Territorial va a
+ * `academica_territorial` aunque sea de pregrado o de posgrado (así lo define la
+ * matriz del negocio: "REVISOR/APROBADOR PROGRAMA TERRITORIAL" para Chocó, Antioquia,
+ * etc., frente a "... PREGRADO/POSGRADO SEDE CENTRAL"). Solo lo dictado en Sede
+ * Central se separa por nivel.
+ */
+export const DOCENCIA_COMPONENT_KEYS: PTAComponentKey[] = [
+  'academica_pregrado',
+  'academica_posgrado',
+  'academica_territorial',
+];
+
 /** Componente → permiso granular que habilita su aprobación. */
 export const COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
   academica_posgrado: 'pta.approve.academica.posgrado',
+  academica_territorial: 'pta.approve.academica.territorial',
   complementarias: 'pta.approve.complementarias',
   investigacion: 'pta.approve.investigacion',
   ext_capacitacion: 'pta.approve.extension.capacitacion',
@@ -54,6 +71,9 @@ export const COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
 export const COMPONENT_LEVEL: Record<PTAComponentKey, 1 | 2 | 3> = {
   academica_pregrado: 1,
   academica_posgrado: 1,
+  // Territorial la aprueba la Jefatura de la Territorial → mismo nivel 1 que el resto
+  // de Docencia.
+  academica_territorial: 1,
   complementarias: 1,
   investigacion: 2,
   ext_capacitacion: 2,
@@ -104,6 +124,7 @@ export type PTAReviewSubseccionKey =
 export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReviewSubseccionKey[]> = {
   academica_pregrado: ['general'],
   academica_posgrado: ['general'],
+  academica_territorial: ['general'],
   complementarias: ['docencia', 'academico_administrativas'],
   investigacion: ['general'],
   ext_capacitacion: ['general'],
@@ -125,6 +146,7 @@ function reviewKey(componente: PTAComponentKey, subseccion: PTAReviewSubseccionK
 export const COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   [reviewKey('academica_pregrado', 'general')]: 'pta.review.academica.pregrado',
   [reviewKey('academica_posgrado', 'general')]: 'pta.review.academica.posgrado',
+  [reviewKey('academica_territorial', 'general')]: 'pta.review.academica.territorial',
   [reviewKey('complementarias', 'docencia')]: 'pta.review.complementarias.docencia',
   [reviewKey('complementarias', 'academico_administrativas')]: 'pta.review.complementarias.academico_administrativas',
   [reviewKey('investigacion', 'general')]: 'pta.review.investigacion',
