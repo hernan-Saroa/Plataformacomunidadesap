@@ -1391,6 +1391,72 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }, [isSuperUserEffective, permisos.componentesAprobables]);
   const shouldRestrictByComponentPermission = !isSuperUserEffective && visibleComponentKeys.length > 0;
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
+
+  /**
+   * ¿Este PTA tiene algún componente pendiente que le toque a MÍ?
+   *
+   * `componentes_estado` trae las claves COLAPSADAS del listado ('academica',
+   * 'investigacion', 'complementarias', 'extension'), mientras que los permisos del
+   * usuario son granulares (academica_pregrado, ext_capacitacion, ...), así que hay
+   * que mapear unas contra otras.
+   *
+   * Sin esto los contadores de "Pendientes" miraban solo el estado GLOBAL del PTA:
+   * un aprobador que ya avaló SU componente seguía viéndolo como pendiente y el
+   * acumulado nunca bajaba.
+   */
+  /**
+   * ¿La clave COLAPSADA del listado ('academica'/'extension'/...) cae dentro del
+   * alcance granular del usuario? El listado colapsa Docencia y Extensión, así que
+   * hay que expandirlas contra los permisos reales.
+   */
+  const claveColapsadaAutorizada = useCallback((key: string): boolean => {
+    switch (key) {
+      case 'academica':
+        return visibleComponentKeySet.has('academica_pregrado')
+          || visibleComponentKeySet.has('academica_posgrado')
+          || visibleComponentKeySet.has('academica_territorial');
+      case 'extension':
+        return PTA_EXTENSION_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
+      default:
+        return visibleComponentKeySet.has(key);
+    }
+  }, [visibleComponentKeySet]);
+
+  const tienePendientesParaMi = useCallback((pta: any): boolean => {
+    if (!shouldRestrictByComponentPermission) return true;
+    const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+    // Fallback seguro: si el DTO no trae el detalle por componente se cuenta como
+    // pendiente (mejor mostrar de más que ocultarle trabajo a un aprobador).
+    if (items.length === 0) return true;
+
+    return items.some((item: any) => {
+      const estado = String(item?.estado || 'pendiente').toLowerCase();
+      if (estado === 'aprobado' || estado === 'no_iniciado') return false;
+      return claveColapsadaAutorizada(String(item?.key || item?.componente || ''));
+    });
+  }, [shouldRestrictByComponentPermission, claveColapsadaAutorizada]);
+
+  /**
+   * Clasifica un PTA según el estado de MIS componentes (los que puedo aprobar):
+   *  - 'sin_alcance': el PTA no tiene ningún componente que me corresponda.
+   *  - 'por_aprobar': al menos uno de mis componentes sigue pendiente/en revisión.
+   *  - 'aprobados'  : todos mis componentes ya están aprobados.
+   * Alimenta el filtro "Mis componentes", que QA pidió porque el filtro de estado
+   * existente solo mira si TODO el PTA está aprobado o pendiente en conjunto.
+   */
+  const estadoDeMisComponentes = useCallback((pta: any): 'sin_alcance' | 'por_aprobar' | 'aprobados' => {
+    const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+    const mios = items.filter((item: any) =>
+      claveColapsadaAutorizada(String(item?.key || item?.componente || '')),
+    );
+    if (mios.length === 0) return 'sin_alcance';
+    const hayPendiente = mios.some((item: any) => {
+      const estado = String(item?.estado || 'pendiente').toLowerCase();
+      return estado !== 'aprobado' && estado !== 'no_iniciado';
+    });
+    return hayPendiente ? 'por_aprobar' : 'aprobados';
+  }, [claveColapsadaAutorizada]);
+
   const { addNotification } = useNotifications();
   const [ptas, setPtas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1409,6 +1475,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPeriodo, setFiltroPeriodo] = useState('');
   const [filtroEstadoRegistro, setFiltroEstadoRegistro] = useState('');
+  // Filtro "Mis componentes" (solo para revisores/aprobadores con alcance restringido):
+  // '' = todos | 'por_aprobar' | 'aprobados'. Es independiente del filtro de estado
+  // global del PTA, que no distingue el avance del componente propio.
+  const [filtroMisComponentes, setFiltroMisComponentes] = useState<'' | 'por_aprobar' | 'aprobados'>('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // ─── Periodo Académico (Selector Global) ───
@@ -2186,9 +2256,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     if (filtroEstadoRegistro) {
       result = result.filter((p: any) => matchesEstadoRegistroFilter(p, filtroEstadoRegistro));
     }
-    
+
+    // ═══ Filtro por el avance de MIS componentes (revisor/aprobador) ═══
+    if (filtroMisComponentes) {
+      result = result.filter((p: any) => estadoDeMisComponentes(p) === filtroMisComponentes);
+    }
+
     return result;
-  }, [ptas, filtroPeriodo, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro]);
+  }, [ptas, filtroPeriodo, searchQuery, permisos.filtroTerritorial, permisos.filtroPrograma, shouldRestrictByComponentPermission, visibleComponentKeys, filtroTags, ptaTags, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, estadoDeMisComponentes]);
 
   // ═══ Feature 23/33: Comparador único de la tabla ═══
   // Anclados primero (el anclado más reciente queda de primero), luego prioridad
@@ -2422,7 +2497,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   const statCards = estadisticas ? [
     { label: 'Total PTAs', value: ptas.length, icon: FileText, color: '#003DA5', bg: '#EFF6FF' },
-    { label: 'Pendientes', value: ptas.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
+    // "Pendientes" cuenta solo lo que le queda por resolver a ESTE usuario: si ya
+    // aprobó su componente, el PTA deja de sumar aunque siga pendiente para otros.
+    { label: 'Pendientes', value: ptas.filter((p: any) => isEstadoPendienteAprobacion(p.estado) && tienePendientesParaMi(p)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
     { label: 'Aprobados', value: ptas.filter((p: any) => p.estado === 'Aprobado').length, icon: CheckCircle, color: '#059669', bg: '#D1FAE5' },
     { label: 'En Concertación', value: estadisticas.enConcertacion || 0, icon: MessageSquare, color: '#7C3AED', bg: '#F3E8FF' },
     { label: 'Rechazados', value: estadisticas.rechazados || 0, icon: XCircle, color: '#DC2626', bg: '#FEE2E2' },
@@ -2462,7 +2539,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // Pending PTAs count for mobile badge
   const listaPendientesAprobar = filteredPtas.filter((p: any) =>
     isEstadoPendienteAprobacion(p.estado) &&
-    puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective)
+    puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective) &&
+    tienePendientesParaMi(p)
   );
   const pendingForApprovalCount = listaPendientesAprobar.length;
 
@@ -3161,6 +3239,48 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             setVistaActual={setViewMode}
             additionalTools={
               <>
+                {/* ═══ Filtro "Mis componentes" (revisor/aprobador con alcance restringido) ═══
+                    El filtro de estado general solo dice si TODO el PTA está pendiente o
+                    aprobado; esto permite ver "lo que me falta por aprobar" vs "lo que ya
+                    aprobé" de MIS componentes (p. ej. Docencia). */}
+                {shouldRestrictByComponentPermission && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 4 }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6B7280', whiteSpace: 'nowrap' }}>
+                      Mis componentes:
+                    </span>
+                    {([
+                      { key: '' as const, label: 'Todos' },
+                      { key: 'por_aprobar' as const, label: 'Por aprobar' },
+                      { key: 'aprobados' as const, label: 'Aprobados' },
+                    ]).map(opt => {
+                      const activo = filtroMisComponentes === opt.key;
+                      return (
+                        <button
+                          key={opt.key || 'todos'}
+                          onClick={() => setFiltroMisComponentes(opt.key)}
+                          title={
+                            opt.key === 'por_aprobar'
+                              ? 'PTAs con componentes a mi cargo pendientes de revisión/aprobación'
+                              : opt.key === 'aprobados'
+                                ? 'PTAs donde ya aprobé todos los componentes a mi cargo'
+                                : 'Sin filtrar por mis componentes'
+                          }
+                          style={{
+                            padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
+                            fontSize: '0.68rem', fontWeight: 700, whiteSpace: 'nowrap',
+                            border: activo ? '1.5px solid #003DA5' : '1px solid #E5E7EB',
+                            background: activo ? '#EFF6FF' : 'white',
+                            color: activo ? '#003DA5' : '#6B7280',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Columns config */}
                 <div style={{ position: 'relative' }}>
                   <button
@@ -4650,7 +4770,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             </span>
                             <div style={{ display: 'flex', gap: 3 }}>
                               {[
-                                { key: 'doc', keys: ['academica_pregrado', 'academica_posgrado'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
+                                { key: 'doc', keys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
                                 { key: 'inv', keys: ['investigacion'], color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
                                 { key: 'ext', keys: PTA_EXTENSION_COMPONENT_KEYS, color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
                                 { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) || pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
@@ -4699,11 +4819,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 {[
                                   { label: 'Programa', value: pta.programa || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#003DA5', icon: GraduationCap },
                                   { label: 'Territorial', value: pta.territorial || (tieneTotalidadAcadAdmin ? 'No aplica' : '—'), color: '#059669', icon: MapPin },
-                                  { label: 'Horas Docencia', value: pta.horas_docencia || 0, color: '#003DA5', icon: BookOpen, keys: ['academica_pregrado', 'academica_posgrado'] },
+                                  { label: 'Horas Docencia', value: pta.horas_docencia || 0, color: '#003DA5', icon: BookOpen, keys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'] },
                                   { label: 'Horas Investigación', value: pta.horas_investigacion || 0, color: '#7C3AED', icon: FlaskConical, keys: ['investigacion'] },
                                   { label: 'Horas Extensión', value: pta.horas_extension || 0, color: '#059669', icon: Globe, keys: PTA_EXTENSION_COMPONENT_KEYS },
                                   { label: 'Horas Complementarias', value: pta.horas_complementarias || 0, color: '#D97706', icon: Briefcase, keys: ['complementarias'] },
-                                  { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica_pregrado', 'academica_posgrado'] },
+                                  { label: 'Num. Asignaturas', value: pta.num_asignaturas || 0, color: '#0891B2', icon: BookOpen, keys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'] },
                                 ].filter(item => !item.keys || !shouldRestrictByComponentPermission || item.keys.some(key => visibleComponentKeySet.has(key))).map(item => {
                                   const ItemIcon = item.icon;
                                   return (

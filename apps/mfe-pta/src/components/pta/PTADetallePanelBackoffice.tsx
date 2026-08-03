@@ -55,6 +55,7 @@ import {
   PTA_COMPONENT_REVIEW_PERMISSION,
   PTA_REVIEW_ALL_PERMISSION,
   REVIEW_SUBSECCION_LABEL,
+  REVIEW_SUBSECCIONES_BY_COMPONENT,
   type PTAReviewSubseccionKey,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
@@ -354,7 +355,13 @@ function ApprovalTracker({
     const approvals = componentesAprobacion.filter(c => scopedKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
-    if (approvals.every(a => a.estado === 'aprobado')) return 'aprobado';
+    if (approvals.every(a => a.estado === 'aprobado')) {
+      // Un componente SIN actividades lo auto-aprueba el backend con
+      // aprobadorNombre='Sistema'. Mostrarlo como "Aprobado" en verde da a
+      // entender que alguien lo avaló; debe verse en gris como "No aplica".
+      const todoAutoAprobado = approvals.every(a => a.aprobadorNombre === 'Sistema');
+      return todoAutoAprobado ? 'no_aplica' : 'aprobado';
+    }
     return 'pendiente';
   };
 
@@ -362,7 +369,7 @@ function ApprovalTracker({
     {
       label: 'Docencia',
       icon: BookOpen,
-      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado']),
+      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado', 'academica_territorial']),
       baseColor: '#4472C4'
     },
     {
@@ -422,6 +429,16 @@ function ApprovalTracker({
           statusLabel = 'Devuelto';
           iconBg = '#FEE2E2';
           iconColor = '#DC2626';
+        } else if (step.status === 'no_aplica') {
+          // Componente sin actividades: el backend lo auto-aprueba para no
+          // bloquear el flujo, pero para el usuario NO es un aval — se muestra
+          // en gris como "No aplica".
+          bg = '#F9FAFB';
+          borderColor = '#E5E7EB';
+          statusColor = '#9CA3AF';
+          statusLabel = 'No aplica';
+          iconBg = '#F3F4F6';
+          iconColor = '#9CA3AF';
         } else {
           bg = '#FFFBEB';
           borderColor = '#FEF3C7';
@@ -692,6 +709,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const labels: Record<string, string> = {
       academica_pregrado: 'Docencia - Pregrado',
       academica_posgrado: 'Docencia - Posgrado',
+      academica_territorial: 'Docencia - Territorial',
       investigacion: 'Investigacion',
       ext_capacitacion: 'Extension - Capacitacion',
       ext_procesos: 'Extension - Seleccion',
@@ -721,6 +739,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const revisaTodo = useMemo(
     () => isSuperUser || puedePerm(PTA_REVIEW_ALL_PERMISSION),
     [isSuperUser, puedePerm],
+  );
+  // ¿Tiene el usuario algún permiso granular pta.review.*? Se usa solo para decidir
+  // la etiqueta de la pestaña "Concertación" (ver TABS más abajo), independiente de
+  // isSubseccionAuthorizedToReview que evalúa componente/subsección puntuales.
+  const tieneAlgunPermisoRevision = useMemo(
+    () => revisaTodo || Object.values(PTA_COMPONENT_REVIEW_PERMISSION).some(p => puedePerm(p)),
+    [revisaTodo, puedePerm],
   );
   const isSubseccionAuthorizedToReview = useCallback((key: string, subseccion: string): boolean => {
     if (revisaTodo) return true;
@@ -792,7 +817,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   // Etiquetas legibles de componente para el correo/modal de firma OTP.
   const COMPONENTE_LABELS_FIRMA: Record<string, string> = {
-    academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)',
+    academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)', academica_territorial: 'Docencia (Territorial)',
     investigacion: 'Investigación',
     ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
     ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
@@ -868,8 +893,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     }
   };
 
-  // Etapa de Revisión: marca una subsección como 'revisado' o 'devuelto'. A
-  // diferencia de la aprobación final, no exige firma OTP.
+  // Etapa de Revisión: marca una subsección como 'revisado' o 'devuelto'.
+  // Marcar como REVISADO exige firma con OTP igual que la aprobación final, para
+  // que quede trazabilidad verificada de quién revisó (el revisor queda registrado
+  // en PtaComponentReview.revisorId/Nombre/Rol + historial). La DEVOLUCIÓN no pide
+  // OTP: la firma respalda el aval, no el rechazo (mismo criterio que aprobar).
   const handleRevisarComponente = async (componente: string, subseccion: string, estado: 'revisado' | 'devuelto') => {
     const canReview = puedeActuarSobreComponentes && isSubseccionAuthorizedToReview(componente, subseccion);
     if (!canReview) {
@@ -882,6 +910,26 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       toast.error('Debe ingresar un comentario para devolver el componente en revisión');
       return;
     }
+
+    if (estado === 'revisado') {
+      const label = COMPONENTE_LABELS_FIRMA[componente] || componente;
+      const sufijoSub = subseccion && subseccion !== 'general'
+        ? ` (${REVIEW_SUBSECCION_LABEL[subseccion as PTAReviewSubseccionKey] || subseccion})`
+        : '';
+      const ok = await solicitarOtpFirmaAprobador(`Revisión de componente: ${label}${sufijoSub}`);
+      if (!ok) return;
+      setFirmaAccion({ tipo: 'revision', componente, subseccion });
+      setShowFirmaDigital(true);
+      return;
+    }
+
+    await ejecutarRevisionComponente(componente, subseccion, estado);
+  };
+
+  // Ejecuta la revisión/devolución real de la subsección contra el backend.
+  const ejecutarRevisionComponente = async (componente: string, subseccion: string, estado: 'revisado' | 'devuelto') => {
+    const claveComentario = `${componente}:${subseccion}`;
+    const comentarios = comentariosRevision[claveComentario] || '';
 
     const rowKey = claveComentario;
     setProcesandoRevision(prev => ({ ...prev, [rowKey]: true }));
@@ -1032,25 +1080,45 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return asignaturas.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0);
   }, [pta, asignaturas]);
 
-  // Docencia se divide en dos componentes de aprobación (Pregrado/Posgrado, igual
-  // que Extensión se divide en 4 direcciones). `nivel_programa` viene anotado por
-  // el backend (getPTAById) desde academic_work_plan.programa.tipo; si falta
-  // (dato legacy no recargado), la asignatura se cuenta como pregrado por defecto.
+  // Docencia se divide en TRES componentes de aprobación (Pregrado / Posgrado /
+  // Territorial, igual que Extensión se divide en 4 direcciones).
+  // `componente_docencia` viene anotado por el backend (getPTAById), que ya resolvió
+  // la territorialidad (auth.seccionales) y el nivel (programa.tipo). La
+  // territorialidad manda: una asignatura dictada en una Dirección Territorial va a
+  // 'academica_territorial' aunque sea de pregrado o posgrado.
+  // Fallback para datos legacy sin anotar: se usa nivel_programa y, si tampoco está,
+  // se cuenta como pregrado (mismo criterio que el backend).
+  const componenteDeAsignatura = useCallback((a: any): string => {
+    if (a?.componente_docencia) return String(a.componente_docencia);
+    return a?.nivel_programa === 'posgrado' ? 'academica_posgrado' : 'academica_pregrado';
+  }, []);
   const asignaturasPregrado = useMemo(
-    () => asignaturas.filter((a: any) => (a?.nivel_programa || 'pregrado') !== 'posgrado'),
-    [asignaturas],
+    () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_pregrado'),
+    [asignaturas, componenteDeAsignatura],
   );
   const asignaturasPosgrado = useMemo(
-    () => asignaturas.filter((a: any) => a?.nivel_programa === 'posgrado'),
-    [asignaturas],
+    () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_posgrado'),
+    [asignaturas, componenteDeAsignatura],
+  );
+  const asignaturasTerritorial = useMemo(
+    () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_territorial'),
+    [asignaturas, componenteDeAsignatura],
+  );
+  const sumarHorasAsignaturas = useCallback(
+    (arr: any[]) => arr.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0),
+    [],
   );
   const horasDocenciaPregrado = useMemo(
-    () => asignaturasPregrado.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0),
-    [asignaturasPregrado],
+    () => sumarHorasAsignaturas(asignaturasPregrado),
+    [asignaturasPregrado, sumarHorasAsignaturas],
   );
   const horasDocenciaPosgrado = useMemo(
-    () => asignaturasPosgrado.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0),
-    [asignaturasPosgrado],
+    () => sumarHorasAsignaturas(asignaturasPosgrado),
+    [asignaturasPosgrado, sumarHorasAsignaturas],
+  );
+  const horasDocenciaTerritorial = useMemo(
+    () => sumarHorasAsignaturas(asignaturasTerritorial),
+    [asignaturasTerritorial, sumarHorasAsignaturas],
   );
 
   const horasInvestigacion = useMemo(() => {
@@ -1090,8 +1158,14 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
   const [solicitandoFirmaCode, setSolicitandoFirmaCode] = useState(false);
   // Qué acción ejecutará el modal de firma al validarse el OTP: aprobar un
-  // componente puntual (flujo real de concertación) o la aprobación global del PTA.
-  const [firmaAccion, setFirmaAccion] = useState<{ tipo: 'componente'; componente: string } | { tipo: 'pta' } | null>(null);
+  // componente puntual (flujo real de concertación), REVISAR (preaprobar) una
+  // subsección, o la aprobación global del PTA.
+  const [firmaAccion, setFirmaAccion] = useState<
+    | { tipo: 'componente'; componente: string }
+    | { tipo: 'revision'; componente: string; subseccion: string }
+    | { tipo: 'pta' }
+    | null
+  >(null);
 
   useEffect(() => {
     return () => {
@@ -1243,6 +1317,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       return;
     }
 
+    // Etapa de Revisión (preaprobación): la firma respalda quién revisó la subsección.
+    if (accion?.tipo === 'revision') {
+      await ejecutarRevisionComponente(accion.componente, accion.subseccion, 'revisado');
+      return;
+    }
+
     if (!puedeAprobarNivelActual) {
       toast.error('No tienes permiso para aprobar este nivel del PTA');
       return;
@@ -1297,12 +1377,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // (aprobar/devolver/concertar), nunca a qué se muestra en esta vista de detalle.
   const componentesAprobacionVisibles = componentesAprobacion;
   const componentesPendientes = componentesAprobacionVisibles.filter(c => c.estado === 'pendiente' || !c.estado).length;
+  // Rótulo de la pestaña "Concertación" según lo que el rol puede hacer en ella:
+  // solo revisar → "Revisión"; puede aprobar (con o sin permiso de revisión también)
+  // → "Aprobación"; ninguno de los dos (p.ej. coordinador en etapa de concertación
+  // de elaboración) → se conserva "Concertación".
+  const tabComponentesLabel = puedeAprobar ? 'Aprobación' : (tieneAlgunPermisoRevision ? 'Revisión' : 'Concertación');
   const TABS = [
     { key: 'resumen', label: 'Resumen', icon: BarChart3 },
     // "Concertación" fusiona las antiguas pestañas "Componentes" (detalle) y "Aprobación"
     // (aprobar/devolver): en un mismo lugar se ve el detalle de cada componente y se
-    // aprueba o devuelve, con comentario del revisor.
-    { key: 'componentes', label: 'Concertación', icon: ShieldCheck, badge: componentesPendientes || undefined },
+    // aprueba o devuelve, con comentario del revisor. La etiqueta visible varía según
+    // el rol (ver tabComponentesLabel).
+    { key: 'componentes', label: tabComponentesLabel, icon: ShieldCheck, badge: componentesPendientes || undefined },
     { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
     { key: 'trazabilidad', label: 'Trazabilidad', icon: Activity, badge: historialEstados.length || undefined },
     // La etapa de concertación (coordinadores, durante la elaboración del PTA) ya fue
@@ -1329,15 +1415,50 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // La vista de detalle conserva siempre el contexto completo del PTA. Los permisos
   // granulares restringen las acciones y el formulario de concertación, no la
   // visibilidad de los demás componentes.
-  const shouldShowComponentKey = useCallback((_key: string) => true, []);
+  /**
+   * ¿Se le muestra este componente al usuario actual?
+   *
+   * QA pidió que un revisor/aprobador vea ÚNICAMENTE lo que le corresponde revisar o
+   * aprobar (p. ej. el revisor de Docencia-Pregrado no debe ver las asignaturas de
+   * Posgrado). Antes esta función devolvía siempre `true` porque se mostraba el PTA
+   * completo "para dar contexto".
+   *
+   * Se muestra todo (sin restringir) a: superusuario, aprobador integral, el propio
+   * docente dueño del PTA, y a los roles sin ningún permiso granular (compatibilidad
+   * con el esquema legacy por nivel). Para el resto, se ve el componente si puede
+   * APROBARLO o REVISARLO — son capas independientes: hay revisores sin permiso de
+   * aprobación y viceversa.
+   */
+  const puedeRevisarAlgunaSubseccion = useCallback((key: string): boolean => {
+    const subsecciones = REVIEW_SUBSECCIONES_BY_COMPONENT[key as PTAComponentKey] || [];
+    return subsecciones.some(sub => isSubseccionAuthorizedToReview(key, sub));
+  }, [isSubseccionAuthorizedToReview]);
+
+  const shouldShowComponentKey = useCallback((key: string): boolean => {
+    if (isSuperUser || apruebaTodo || revisaTodo) return true;
+    if (rolLabel === 'Docente') return true;
+    // Sin permisos granulares de aprobación NI de revisión no hay alcance que
+    // restringir (rol legacy por nivel): se conserva la vista completa.
+    if (!tieneAlgunPermisoComponente && !tieneAlgunPermisoRevision) return true;
+    return isComponentAuthorized(key) || puedeRevisarAlgunaSubseccion(key);
+  }, [
+    isSuperUser, apruebaTodo, revisaTodo, rolLabel,
+    tieneAlgunPermisoComponente, tieneAlgunPermisoRevision,
+    isComponentAuthorized, puedeRevisarAlgunaSubseccion,
+  ]);
 
   // Docencia se divide en dos tarjetas de aprobación (Pregrado/Posgrado), con el
   // mismo patrón que las 4 tarjetas de Extensión: cada una se muestra si tiene
   // asignaturas de ese nivel, o si quedó en 0 tras una edición parcial que aún
   // exige reaprobación.
+  // Posgrado se muestra primero: así el detalle y las acciones de aprobar/revisar
+  // quedan agrupados por nivel en el orden pedido (Posgrado, luego Pregrado).
   const docenciaCards = useMemo(() => ([
-    { key: 'academica_pregrado' as const, label: 'Docencia - Pregrado', asignaturas: asignaturasPregrado, horas: horasDocenciaPregrado },
     { key: 'academica_posgrado' as const, label: 'Docencia - Posgrado', asignaturas: asignaturasPosgrado, horas: horasDocenciaPosgrado },
+    { key: 'academica_pregrado' as const, label: 'Docencia - Pregrado', asignaturas: asignaturasPregrado, horas: horasDocenciaPregrado },
+    // Asignaturas dictadas en Direcciones Territoriales: las revisa el Coordinador
+    // Territorial y las aprueba la Jefatura de la Territorial, sin importar el nivel.
+    { key: 'academica_territorial' as const, label: 'Docencia - Territorial', asignaturas: asignaturasTerritorial, horas: horasDocenciaTerritorial },
   ]).filter(item => {
     const approval = componentesAprobacion.find(component => component.componente === item.key);
     const requiereReaprobacionManual =
@@ -1345,7 +1466,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       && ['pendiente', 'devuelto'].includes(String(approval.estado || '').toLowerCase());
     return item.asignaturas.length > 0 || item.horas > 0 || requiereReaprobacionManual;
   }), [
-    asignaturasPregrado, asignaturasPosgrado, horasDocenciaPregrado, horasDocenciaPosgrado,
+    asignaturasPregrado, asignaturasPosgrado, asignaturasTerritorial,
+    horasDocenciaPregrado, horasDocenciaPosgrado, horasDocenciaTerritorial,
     componentesAprobacion,
   ]);
 
@@ -1940,9 +2062,36 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   Cancelar
                 </button>
               )}
-              {/* "Devolver a secas" ya no aplica: para devolver un componente (con comentario
-                  obligatorio) se usa "Concertar" — abre el PTA en modo edición y, al guardar
-                  (con o sin cambios de contenido), el componente queda devuelto al docente. */}
+              {/* Devolver: retorna este componente al docente para ajustes. Requiere
+                  comentario (validado en handleAprobarComponente) y, a diferencia de
+                  "Aprobar", no exige firma OTP — misma regla que la etapa de Revisión.
+                  Visible bajo la misma condición de permisos que "Aprobar" (canEvaluateComponent).
+                  Reemplaza a la devolución vía "Concertar", que ya no se ofrece al
+                  revisor/aprobador. */}
+              <button
+                onClick={() => handleAprobarComponente(key, 'devuelto')}
+                disabled={isProcessing}
+                style={{
+                  padding: '6px 16px',
+                  borderRadius: 8,
+                  border: '1px solid #FCA5A5',
+                  background: 'white',
+                  color: '#B91C1C',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: isProcessing ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => { if (!isProcessing) e.currentTarget.style.background = '#FEF2F2'; }}
+                onMouseLeave={e => { if (!isProcessing) e.currentTarget.style.background = 'white'; }}
+                title="Devolver el componente al docente para ajustes (requiere comentario)"
+              >
+                {isProcessing ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RotateCcw style={{ width: 13, height: 13 }} />}
+                Devolver
+              </button>
               <button
                 onClick={() => handleAprobarComponente(key, 'aprobado')}
                 disabled={isProcessing}
@@ -2010,7 +2159,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const COMP_LABELS: Record<string, string> = {
       docencia: 'Docencia',
       academica: 'Docencia', // legacy (pre-split)
-      academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)',
+      academica_pregrado: 'Docencia (Pregrado)', academica_posgrado: 'Docencia (Posgrado)', academica_territorial: 'Docencia (Territorial)',
       investigacion: 'Investigación',
       extension: 'Extensión',
       ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
@@ -2876,10 +3025,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* ═══ TAB: Concertación (detalle por componente + aprobar/devolver) ═══ */}
           {activeTab === 'componentes' && (
             <div>
-              {/* Edición completa (ahora "Concertar": edición y devolución de componente son la misma acción).
-                  Se basa en si QUEDA ALGÚN COMPONENTE PENDIENTE para este revisor, no en el estado agregado
-                  del PTA — así el botón no desaparece cuando otro componente ya se aprobó o devolvió. */}
-              {((puedeAprobar && hayComponentesPendientesParaMi) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
+              {/* Edición completa ("Concertar"). Ya NO se ofrece a revisores/aprobadores:
+                  en el flujo de Revisión → Aprobación la devolución tiene su propio botón
+                  "Devolver" en cada componente, así que "Concertar" solo confundía (QA pidió
+                  ocultarlo). Se mantiene únicamente para el DOCENTE, que sí edita su PTA. */}
+              {(rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado)) && (
                 <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
                     {rolLabel === 'Docente'
@@ -2991,93 +3141,100 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 </div>
               )}
 
-              {/* Docencia */}
-              {shouldShowComponentKey('academica_pregrado') && (
-              <SectionCollapsible
-                title="Componente Docencia"
-                icon={BookOpen}
-                color="#4472C4"
-                count={asignaturas.length}
-                defaultOpen={true}
-              >
-                {asignaturas.length > 0 ? (
-                  <div>
-                    {/* Scroll horizontal en mobile para la tabla de asignaturas */}
-                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                      <div style={{ minWidth: 280 }}>
-                        <div style={{
-                          display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
-                          gap: 4, padding: '6px 0', borderBottom: '1px solid #E5E7EB',
-                          fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase',
-                        }}>
-                          <span>Asignatura</span>
-                          <span style={{ textAlign: 'center' }}>Créd.</span>
-                          <span style={{ textAlign: 'center' }}>Sem.</span>
-                          <span style={{ textAlign: 'right' }}>Horas</span>
-                        </div>
-                        {asignaturas.map((a: any, i: number) => (
-                          <div key={i} style={{
-                            display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
-                            gap: 4, padding: '7px 0',
-                            borderBottom: i < asignaturas.length - 1 ? '1px solid #F9FAFB' : 'none',
-                          }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {a.nombre || a.asignatura_nombre}
-                              </div>
-                              {a.nucleo_tematico && (
-                                <div style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>{a.nucleo_tematico}</div>
-                              )}
-                              {a.observaciones && (
-                                <div style={{ fontSize: '0.65rem', color: '#4B5563', fontStyle: 'italic', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  <span style={{fontWeight: 600}}>Obs:</span> {a.observaciones}
+              {/* Docencia — detalle y aprobar/devolver agrupados por nivel (Posgrado,
+                  luego Pregrado son componentes independientes, igual que las 4
+                  direcciones de Extensión) */}
+              {docenciaCards.map(item => {
+                const nivelLabel = item.label.split(' - ')[1];
+                return (
+                  <React.Fragment key={item.key}>
+                    {shouldShowComponentKey(item.key) && (
+                      <SectionCollapsible
+                        title={`Detalle Docencia - ${nivelLabel}`}
+                        icon={BookOpen}
+                        color="#4472C4"
+                        count={item.asignaturas.length}
+                        defaultOpen={true}
+                      >
+                        {item.asignaturas.length > 0 ? (
+                          <div>
+                            {/* Scroll horizontal en mobile para la tabla de asignaturas */}
+                            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                              <div style={{ minWidth: 280 }}>
+                                <div style={{
+                                  display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
+                                  gap: 4, padding: '6px 0', borderBottom: '1px solid #E5E7EB',
+                                  fontSize: '0.62rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase',
+                                }}>
+                                  <span>Asignatura</span>
+                                  <span style={{ textAlign: 'center' }}>Créd.</span>
+                                  <span style={{ textAlign: 'center' }}>Sem.</span>
+                                  <span style={{ textAlign: 'right' }}>Horas</span>
                                 </div>
-                              )}
-                              <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
+                                {item.asignaturas.map((a: any, i: number) => (
+                                  <div key={i} style={{
+                                    display: 'grid', gridTemplateColumns: '1fr 56px 46px 58px',
+                                    gap: 4, padding: '7px 0',
+                                    borderBottom: i < item.asignaturas.length - 1 ? '1px solid #F9FAFB' : 'none',
+                                  }}>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: '0.76rem', fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {a.nombre || a.asignatura_nombre}
+                                      </div>
+                                      {a.nucleo_tematico && (
+                                        <div style={{ fontSize: '0.6rem', color: '#9CA3AF' }}>{a.nucleo_tematico}</div>
+                                      )}
+                                      {a.observaciones && (
+                                        <div style={{ fontSize: '0.65rem', color: '#4B5563', fontStyle: 'italic', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          <span style={{fontWeight: 600}}>Obs:</span> {a.observaciones}
+                                        </div>
+                                      )}
+                                      <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
+                                    </div>
+                                    <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.creditos || 0}</span>
+                                    <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.semestre || '-'}</span>
+                                    <span style={{ textAlign: 'right', fontSize: '0.76rem', fontWeight: 700, color: '#003DA5' }}>
+                                      {a.total_horas || a.horas || 0}h
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.creditos || 0}</span>
-                            <span style={{ textAlign: 'center', fontSize: '0.76rem', color: '#6B7280' }}>{a.semestre || '-'}</span>
-                            <span style={{ textAlign: 'right', fontSize: '0.76rem', fontWeight: 700, color: '#003DA5' }}>
-                              {a.total_horas || a.horas || 0}h
-                            </span>
+                            <div style={{
+                              display: 'flex', justifyContent: 'flex-end', gap: 12,
+                              padding: '8px 0 0', borderTop: '1px solid #E5E7EB', marginTop: 4,
+                            }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#003DA5' }}>
+                                Total Docencia {nivelLabel}: {item.horas}h
+                              </span>
+                            </div>
+                            {/* Formula note */}
+                            <div style={{
+                              marginTop: 8, padding: '6px 10px', borderRadius: 6,
+                              background: '#F0F9FF', border: '1px solid #BAE6FD',
+                              fontSize: '0.62rem', color: '#0369A1',
+                            }}>
+                              <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{
-                      display: 'flex', justifyContent: 'flex-end', gap: 12,
-                      padding: '8px 0 0', borderTop: '1px solid #E5E7EB', marginTop: 4,
-                    }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#003DA5' }}>
-                        Total Docencia: {horasDocencia}h
-                      </span>
-                    </div>
-                    {/* Formula note */}
-                    <div style={{
-                      marginTop: 8, padding: '6px 10px', borderRadius: 6,
-                      background: '#F0F9FF', border: '1px solid #BAE6FD',
-                      fontSize: '0.62rem', color: '#0369A1',
-                    }}>
-                      <strong>Fórmula GTH-F081:</strong> K15 = Horas base (AP=64, Maestría=créd×12, otros=créd×16) → L15 = K15 × 3
-                    </div>
-                  </div>
-                ) : (
-                  <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '16px 0' }}>
-                    Sin asignaturas registradas
-                  </p>
-                )}
-              </SectionCollapsible>
-              )}
+                        ) : (
+                          <p style={{ fontSize: '0.82rem', color: '#9CA3AF', textAlign: 'center', padding: '16px 0' }}>
+                            Sin asignaturas de {nivelLabel.toLowerCase()} registradas
+                          </p>
+                        )}
+                      </SectionCollapsible>
+                    )}
 
-              {/* Docencia — aprobar/devolver (Pregrado y Posgrado son componentes
-                  independientes, igual que las 4 direcciones de Extensión) */}
-              {docenciaCards.map(item => renderComponentCard(
-                item.key,
-                `Componente Docencia (${item.label.split(' - ')[1]})`,
-                BookOpen,
-                PTA_COLORS.DOCENCIA,
-                `Contenido: ${item.asignaturas.length} asignatura(s) (${item.horas}h)`,
-              ))}
+                    {renderComponentCard(
+                      item.key,
+                      `Componente Docencia (${nivelLabel})`,
+                      BookOpen,
+                      PTA_COLORS.DOCENCIA,
+                      `Contenido: ${item.asignaturas.length} asignatura(s) (${item.horas}h)`,
+                    )}
+                  </React.Fragment>
+                );
+              })}
 
               {/* Investigación */}
               {shouldShowComponentKey('investigacion') && (
@@ -3956,7 +4113,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           etapaLabel={
             firmaAccion?.tipo === 'componente'
               ? `Aprobación de componente: ${COMPONENTE_LABELS_FIRMA[firmaAccion.componente] || firmaAccion.componente}`
-              : 'Aprobación del PTA'
+              : firmaAccion?.tipo === 'revision'
+                ? `Revisión de componente: ${COMPONENTE_LABELS_FIRMA[firmaAccion.componente] || firmaAccion.componente}`
+                  + (firmaAccion.subseccion && firmaAccion.subseccion !== 'general'
+                    ? ` (${REVIEW_SUBSECCION_LABEL[firmaAccion.subseccion as PTAReviewSubseccionKey] || firmaAccion.subseccion})`
+                    : '')
+                : 'Aprobación del PTA'
           }
           correoDestino={firmaCorreoDestino}
           onVerifyCodigo={verificarCodigoFirmaAprobador}

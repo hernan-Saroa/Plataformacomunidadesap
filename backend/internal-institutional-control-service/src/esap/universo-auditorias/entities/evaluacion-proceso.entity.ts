@@ -65,7 +65,7 @@ export class EvaluacionProceso {
   @Column({ name: 'fecha_corte', type: 'date', nullable: false })
   fechaCorte: Date;
 
-  @Column({ name: 'dependencia_responsable', type: 'varchar', length: 255, nullable: false })
+  @Column({ name: 'dependencia_responsable', type: 'text', nullable: false })
   dependenciaResponsable: string;
 
   // ═══════════════════════════════════════════════════════════════════════

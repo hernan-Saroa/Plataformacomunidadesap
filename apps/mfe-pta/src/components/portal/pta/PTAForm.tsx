@@ -1680,6 +1680,7 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   // sola pestaña "Docencia" en el formulario.
   academica_pregrado: 'docencia',
   academica_posgrado: 'docencia',
+  academica_territorial: 'docencia',
   investigacion: 'investigacion',
   ext_capacitacion: 'extension',
   ext_procesos: 'extension',
@@ -1694,6 +1695,7 @@ const COMPONENT_LABEL: Record<string, string> = {
   academica: 'Docencia', // legacy (pre-split)
   academica_pregrado: 'Docencia (Pregrado)',
   academica_posgrado: 'Docencia (Posgrado)',
+  academica_territorial: 'Docencia (Territorial)',
   investigacion: 'Investigación',
   ext_capacitacion: 'Extensión — Capacitación',
   ext_procesos: 'Extensión — Procesos de Selección',

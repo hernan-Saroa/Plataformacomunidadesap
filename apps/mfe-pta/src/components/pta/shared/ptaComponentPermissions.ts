@@ -6,6 +6,7 @@
 export type PTAComponentKey =
   | 'academica_pregrado'
   | 'academica_posgrado'
+  | 'academica_territorial'
   | 'investigacion'
   | 'ext_capacitacion'
   | 'ext_procesos'
@@ -16,6 +17,9 @@ export type PTAComponentKey =
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
   academica_posgrado: 'pta.approve.academica.posgrado',
+  // Asignaturas dictadas en Direcciones Territoriales: la territorialidad manda
+  // sobre el nivel (van aquí aunque sean de pregrado o posgrado).
+  academica_territorial: 'pta.approve.academica.territorial',
   investigacion: 'pta.approve.investigacion',
   ext_capacitacion: 'pta.approve.extension.capacitacion',
   ext_procesos: 'pta.approve.extension.procesos_seleccion',
@@ -32,6 +36,7 @@ export const PTA_COMPONENT_KEYS = Object.keys(PTA_COMPONENT_PERMISSION) as PTACo
 export const PTA_DOCENCIA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_pregrado',
   'academica_posgrado',
+  'academica_territorial',
 ];
 
 /**
@@ -50,6 +55,7 @@ export const PTA_EXTENSION_COMPONENT_KEYS: PTAComponentKey[] = [
 export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
   academica_pregrado: 1,
   academica_posgrado: 1,
+  academica_territorial: 1,
   complementarias: 1,
   investigacion: 2,
   ext_capacitacion: 2,
@@ -77,6 +83,7 @@ export type PTAReviewSubseccionKey =
 export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReviewSubseccionKey[]> = {
   academica_pregrado: ['general'],
   academica_posgrado: ['general'],
+  academica_territorial: ['general'],
   complementarias: ['docencia', 'academico_administrativas'],
   investigacion: ['general'],
   ext_capacitacion: ['general'],
@@ -93,6 +100,7 @@ export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReview
 export const PTA_COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   'academica_pregrado:general': 'pta.review.academica.pregrado',
   'academica_posgrado:general': 'pta.review.academica.posgrado',
+  'academica_territorial:general': 'pta.review.academica.territorial',
   'complementarias:docencia': 'pta.review.complementarias.docencia',
   'complementarias:academico_administrativas': 'pta.review.complementarias.academico_administrativas',
   'investigacion:general': 'pta.review.investigacion',
