@@ -26,6 +26,7 @@ export class ProgramRelationDto {
     codigo: string;
     nombre: string;
     creditos: number;
+    pensum: string | null;
     valida: boolean;
   }> = [];
   cetaps: Array<{

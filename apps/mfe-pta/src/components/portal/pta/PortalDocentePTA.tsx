@@ -33,6 +33,7 @@ import {
   getActivePeriodoAcademico,
   getBancoDocenteById,
 } from '../../../services/api/ptaApi';
+import { formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
@@ -1320,6 +1321,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                           <DetalleChip label="Programa" value={a.programa_nombre} />
+                          <DetalleChip label="Pensum" value={formatPtaPensum(a.pensum)} />
                           <DetalleChip icon={MapPin} label="CETAP" value={a.cetap_nombre} color={PTA_COLORS.DOCENCIA} />
                           <DetalleChip label="Territorial" value={a.territorial_nombre} />
                           <DetalleChip label="Modalidad" value={MODALIDAD_LABELS[a.modalidad] || a.modalidad} />

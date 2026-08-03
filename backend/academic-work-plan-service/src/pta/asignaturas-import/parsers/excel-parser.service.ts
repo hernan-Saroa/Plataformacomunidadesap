@@ -8,6 +8,7 @@ import {
 
 export interface AsignaturaRow {
   codigo_asignatura: string;
+  pensum?: string | null;
   nombre_asignatura: string;
   nombre_base: string | null;
   creditos: number;
@@ -32,6 +33,8 @@ export interface ProgramaRow {
   tipo_programa: string;
   categoria_horas_circular003: string | null;
   descripcion_categoria_circular003: string | null;
+  horas_pta_referencia_circular003?: string | null;
+  formula_calculo_horas?: string | null;
   codigo_facultad: string;
   modalidad_principal: string;
   horas_base_por_credito: number;
@@ -43,6 +46,7 @@ export interface ProgramaRow {
 export class ExcelParserService {
   private readonly asignaturaHeaders = [
     'codigo_asignatura',
+    'pensum',
     'nombre_asignatura',
     'nombre_base',
     'creditos',
@@ -71,6 +75,10 @@ export class ExcelParserService {
     'horas_base_por_credito',
     'horas_pregrado_central',
     'activo',
+    'categoria_horas_circular003',
+    'descripcion_categoria_circular003',
+    'horas_pta_referencia_circular003',
+    'formula_calculo_horas',
   ];
 
   parseExcel(buffer: Buffer): {
@@ -163,6 +171,7 @@ export class ExcelParserService {
   private mapToAsignaturaRow(row: any): AsignaturaRow {
     return {
       codigo_asignatura: String(row.codigo_asignatura || '').trim(),
+      pensum: this.parseOptionalString(row.Pensum ?? row.pensum),
       nombre_asignatura: String(
         row.nombre_asignatura || row.nombre || '',
       ).trim(),
@@ -229,6 +238,12 @@ export class ExcelParserService {
         categoriaExpl || categoriaInferida,
       descripcion_categoria_circular003:
         descripcionExpl || descripcionInferida,
+      horas_pta_referencia_circular003: this.parseOptionalString(
+        row.horas_pta_referencia_circular003,
+      ),
+      formula_calculo_horas: this.parseOptionalString(
+        row.formula_calculo_horas,
+      ),
       codigo_facultad: String(row.codigo_facultad || '').trim(),
       modalidad_principal: String(
         row.modalidad_principal || row.modalidad || '',
