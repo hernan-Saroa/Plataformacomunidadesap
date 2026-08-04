@@ -21,8 +21,6 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
 # Copy package files
 COPY package*.json ./
 
@@ -32,8 +30,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --prefer-offline --no
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Expose the port the app runs on
 EXPOSE 3012
 
 # Start the application
 CMD ["node", "dist/main"]
-
