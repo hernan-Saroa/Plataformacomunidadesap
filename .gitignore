@@ -189,6 +189,6 @@ backend/academic-work-plan-service/uploads/
 .env.prod
 
 # Package locks local
-# package-lock.json
+package-lock.json
 
 .claude/
