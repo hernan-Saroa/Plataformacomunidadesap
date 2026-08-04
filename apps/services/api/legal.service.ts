@@ -379,6 +379,10 @@ export class LegalService {
         return apiClient.upload<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/autorizar`, formData);
     }
 
+    async autorizarActuacionPorDocumentos(expedienteId: string, actuacionId: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/autorizar-por-documentos`, {});
+    }
+
     async devolverActuacion(expedienteId: string, actuacionId: string, observaciones: string, skipStageUpdate?: boolean): Promise<any> {
         return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/devolver`, { observaciones, skipStageUpdate });
     }
@@ -1521,15 +1525,17 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Download an attachment - returns a blob URL for download
-     * Handles both gateway and direct modes:
+     * URL estable del adjunto (mismo patrón que Defensa Judicial/ModalExpediente.getFullUrl):
+     * el navegador envía la cookie httpOnly de sesión automáticamente, así que el
+     * iframe/fetch del visor y el link de descarga pueden apuntar directo aquí sin
+     * pasar por un blob: intermedio.
      * - Gateway mode: http://gateway:3000/legal/api/v1/correos/adjuntos/{id}/download
      * - Direct mode: http://localhost:3008/correos/adjuntos/{id}/download
      */
-    async downloadAdjunto(adjuntoId: string): Promise<string> {
-        // Use apiClient.getBlob so the Authorization header is included automatically
-        const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/adjuntos/${adjuntoId}/download`);
-        return window.URL.createObjectURL(blob);
+    getAdjuntoUrl(adjuntoId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : SERVICE_PREFIX;
+        return `${baseUrl}${prefix}/correos/adjuntos/${adjuntoId}/download`;
     }
 
     /**

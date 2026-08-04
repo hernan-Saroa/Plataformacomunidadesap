@@ -40,6 +40,7 @@ function getEventIcon(tipo: string) {
     case 'concertacion_cerrada': return { Icon: CheckCircle, color: '#059669', bg: '#D1FAE5' };
     case 'escalamiento': return { Icon: Scale, color: '#991B1B', bg: '#FEF2F2' };
     case 'envio_aprobacion': return { Icon: ArrowRight, color: '#003DA5', bg: '#EFF6FF' };
+    case 'revision_componente': return { Icon: Eye, color: '#7E22CE', bg: '#F3E8FF' };
     default: return { Icon: Activity, color: '#6B7280', bg: '#F3F4F6' };
   }
 }

@@ -196,7 +196,8 @@ export class AutosConfigurationService {
           ON process.id = auto."processId"
         LEFT JOIN ${professionalTable} professional
           ON professional.id = process.abogado_asignado_id
-        WHERE auto.tipo::text = $1
+        WHERE auto."autoConfigurationId" = $1
+           OR (auto."autoConfigurationId" IS NULL AND auto.tipo::text = $2)
         GROUP BY
           process.id,
           process."radicadoProceso",
@@ -206,7 +207,7 @@ export class AutosConfigurationService {
           auto.estado
         ORDER BY MAX(auto."createdAt") DESC
       `,
-      [autoConfig.tipo],
+      [autoConfig.id, autoConfig.tipo],
     );
 
     const usageProcessesMap = new Map<

@@ -250,6 +250,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   // Mapear configuración a formato compatible con el componente
   const tiposAuto = autosConfig?.map((auto: any) => ({
     id: auto.tipo,
+    autoConfigurationId: auto.id, // UUID real de autos_configuration (distinto de 'id', que aquí es el tipo genérico)
     nombre: auto.nombre,
     icon: Scale, // Icono por defecto, se puede expandir con más iconos
     color: getColorPorTipo(auto.tipo),
@@ -671,6 +672,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       const autoData = {
         processId: processId,
         tipoAuto: tipoAutoSeleccionado.id,
+        autoConfigurationId: tipoAutoSeleccionado.autoConfigurationId,
         contenidoHtml: descripcion || '',
         numero: titulo,
         comentarios: descripcion || '',

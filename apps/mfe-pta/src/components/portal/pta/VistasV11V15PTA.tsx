@@ -19,7 +19,7 @@ import {
   Star, Users, Zap, Info, Lock, Check, X, FlaskConical,
   Briefcase, Send, RefreshCw, CheckCircle2, XCircle,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { agruparEvidenciasPorJustificacion, ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
@@ -360,10 +360,13 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   // Si se pasa ptaIdProp usamos ese PTA, si no, usamos el primero de la lista
   const activePtaId = ptaIdProp || ptas[0]?.id || '';
   const activePta = ptaData || ptas[0];
+  const tienePtaActivo = Boolean(activePta && activePtaId);
+  const estadoPtaNormalizado = normalizeEvidenceStatus(activePta?.estado);
+  const esPtaBorrador = estadoPtaNormalizado === 'borrador';
 
   // El cargue de justificaciones solo se habilita con el PTA totalmente aprobado
   // (todos sus componentes). Mientras tanto la vista se muestra bloqueada.
-  const seguimientoBloqueado = !!activePta && !ptaHabilitadoParaSeguimiento(activePta);
+  const seguimientoBloqueado = !tienePtaActivo || !ptaHabilitadoParaSeguimiento(activePta);
 
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -520,7 +523,10 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   }, [horasDisponiblesPorComponente, formComponente, formSeccionExtension, formHoras]);
 
   const loadEvidencias = async () => {
-    if (!activePtaId) return;
+    if (!activePtaId) {
+      setEvidencias([]);
+      return;
+    }
     setLoading(true);
     const res = await getEvidenciasPTA(activePtaId);
     if (res.success) setEvidencias(res.data || []);
@@ -585,6 +591,10 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   };
 
   const handleSubmit = async () => {
+    if (seguimientoBloqueado) {
+      toast.info('El seguimiento estará disponible cuando tu PTA haya sido aprobado.');
+      return;
+    }
     if (formFiles.length === 0 || !activePtaId) return;
     if (formFiles.length > MAX_ARCHIVOS_JUSTIFICACION) {
       toast.error(`Máximo ${MAX_ARCHIVOS_JUSTIFICACION} archivos por justificación`);
@@ -718,6 +728,32 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
     fileInputRef.current?.click();
   };
 
+  const componentesEstadoBloqueo = !tienePtaActivo
+    ? []
+    : esPtaBorrador
+      ? COMPONENTES_PTA.map(componente => ({
+          key: componente.key,
+          label: componente.label,
+          estado: 'no_iniciado',
+        }))
+      : (Array.isArray(activePta?.componentes_estado)
+          ? [...activePta.componentes_estado]
+          : []);
+  const componentesAprobadosBloqueo = esPtaBorrador
+    ? 0
+    : componentesEstadoBloqueo.filter((componente: any) => componente?.estado === 'aprobado').length;
+  const bloqueoSinProceso = !tienePtaActivo || esPtaBorrador;
+  const bloqueoTitulo = !tienePtaActivo
+    ? 'Aún no tienes un PTA para este período'
+    : esPtaBorrador
+      ? 'El seguimiento comenzará cuando envíes tu PTA'
+      : 'Seguimiento disponible tras la aprobación de tu PTA';
+  const bloqueoDescripcion = !tienePtaActivo
+    ? 'Primero crea tu Plan de Trabajo Académico. Los documentos de soporte se habilitarán cuando el PTA complete su aprobación.'
+    : esPtaBorrador
+      ? 'Tu PTA todavía está en borrador. Ningún componente está en revisión ni aprobado hasta que lo envíes formalmente.'
+      : 'Podrás registrar los documentos que justifican tus horas cuando la totalidad de los componentes de tu Plan de Trabajo Académico hayan sido aprobados.';
+
   return (
     <div>
       {/* Header */}
@@ -733,8 +769,9 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
         </div>
         <button
           onClick={() => loadEvidencias()}
-          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E5E7EB', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Recargar"
+          disabled={seguimientoBloqueado}
+          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E5E7EB', background: seguimientoBloqueado ? '#F8FAFC' : 'white', cursor: seguimientoBloqueado ? 'not-allowed' : 'pointer', opacity: seguimientoBloqueado ? 0.55 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title={seguimientoBloqueado ? 'Disponible cuando el PTA esté aprobado' : 'Recargar'}
         >
           <RefreshCw style={{ width: 13, height: 13, color: '#6B7280' }} />
         </button>
@@ -742,39 +779,45 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
 
       {/* Aviso de seguimiento bloqueado: el PTA aún no tiene todos sus componentes aprobados */}
       {seguimientoBloqueado && (
-        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '24px 20px', marginBottom: 16, textAlign: 'center' }}>
-          <div style={{ width: 42, height: 42, borderRadius: 999, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-            <Lock style={{ width: 18, height: 18, color: '#B45309' }} />
+        <div style={{ background: bloqueoSinProceso ? '#F8FAFC' : '#FFFBEB', border: `1px solid ${bloqueoSinProceso ? '#CBD5E1' : '#FDE68A'}`, borderRadius: 12, padding: '24px 20px', marginBottom: 16, textAlign: 'center' }}>
+          <div style={{ width: 42, height: 42, borderRadius: 999, background: bloqueoSinProceso ? '#E2E8F0' : '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+            <Lock style={{ width: 18, height: 18, color: bloqueoSinProceso ? '#64748B' : '#B45309' }} />
           </div>
-          <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#92400E' }}>
-            Seguimiento disponible tras la aprobación de tu PTA
+          <div style={{ fontSize: '0.9rem', fontWeight: 800, color: bloqueoSinProceso ? '#334155' : '#92400E' }}>
+            {bloqueoTitulo}
           </div>
-          <div style={{ fontSize: '0.74rem', color: '#A16207', marginTop: 6, maxWidth: 520, margin: '6px auto 0', lineHeight: 1.6 }}>
-            Podrás registrar los documentos que justifican tus horas cuando la totalidad de los
-            componentes de tu Plan de Trabajo Académico hayan sido aprobados.
+          <div style={{ fontSize: '0.74rem', color: bloqueoSinProceso ? '#64748B' : '#A16207', marginTop: 6, maxWidth: 560, margin: '6px auto 0', lineHeight: 1.6 }}>
+            {bloqueoDescripcion}
           </div>
-          {Array.isArray(activePta?.componentes_estado) && activePta.componentes_estado.length > 0 && (
+          {componentesEstadoBloqueo.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
-              {[...activePta.componentes_estado].sort((a: any, b: any) => {
+              {[...componentesEstadoBloqueo].sort((a: any, b: any) => {
                 const ORDEN = ['academica', 'investigacion', 'extension', 'complementarias'];
-                const ia = ORDEN.indexOf(a?.key); const ib = ORDEN.indexOf(b?.key);
+                const normalizeKey = (key: string) => key === 'docencia' ? 'academica' : key;
+                const ia = ORDEN.indexOf(normalizeKey(a?.key)); const ib = ORDEN.indexOf(normalizeKey(b?.key));
                 return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
               }).map((c: any) => {
                 const aprobado = c.estado === 'aprobado';
                 const devuelto = c.estado === 'devuelto';
+                const noIniciado = c.estado === 'no_iniciado';
                 const label = c.label === 'Investigacion' ? 'Investigación' : c.label === 'Extension' ? 'Extensión' : c.label;
+                const background = aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : noIniciado ? '#F1F5F9' : '#FEF3C7';
+                const color = aprobado ? '#047857' : devuelto ? '#B91C1C' : noIniciado ? '#475569' : '#92400E';
+                const border = aprobado ? '#6EE7B7' : devuelto ? '#FCA5A5' : noIniciado ? '#CBD5E1' : '#FDE68A';
                 return (
-                  <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background: aprobado ? '#D1FAE5' : devuelto ? '#FEE2E2' : '#FEF3C7', color: aprobado ? '#047857' : devuelto ? '#B91C1C' : '#92400E', fontSize: '0.64rem', fontWeight: 700, border: `1px solid ${aprobado ? '#6EE7B7' : devuelto ? '#FCA5A5' : '#FDE68A'}` }}>
+                  <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 999, background, color, fontSize: '0.64rem', fontWeight: 700, border: `1px solid ${border}` }}>
                     {aprobado ? <CheckCircle2 style={{ width: 10, height: 10 }} /> : devuelto ? <XCircle style={{ width: 10, height: 10 }} /> : <Clock style={{ width: 10, height: 10 }} />}
-                    {label}
+                    {label}{noIniciado ? ' · No iniciado' : ''}
                   </span>
                 );
               })}
             </div>
           )}
-          {Number(activePta?.componentes_total) > 0 && (
-            <div style={{ fontSize: '0.68rem', color: '#92400E', fontWeight: 700, marginTop: 10 }}>
-              {Number(activePta?.componentes_aprobados) || 0} de {Number(activePta?.componentes_total)} componentes aprobados
+          {tienePtaActivo && (esPtaBorrador || Number(activePta?.componentes_total) > 0 || componentesEstadoBloqueo.length > 0) && (
+            <div style={{ fontSize: '0.68rem', color: bloqueoSinProceso ? '#475569' : '#92400E', fontWeight: 700, marginTop: 10 }}>
+              {esPtaBorrador
+                ? 'Aprobación de componentes no iniciada'
+                : `${componentesAprobadosBloqueo} de ${Number(activePta?.componentes_total) || componentesEstadoBloqueo.length} componentes aprobados`}
             </div>
           )}
         </div>

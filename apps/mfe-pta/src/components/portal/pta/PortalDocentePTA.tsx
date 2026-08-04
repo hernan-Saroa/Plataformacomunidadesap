@@ -31,12 +31,13 @@ import {
   getMisSolicitudesPTA, marcarSolicitudLeida,
   getComponentesAprobacion,
   getActivePeriodoAcademico,
+  getBancoDocenteById,
 } from '../../../services/api/ptaApi';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
 import { SolicitudPTAModal } from './SolicitudPTAModal';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { usePTARealtimeSync } from '../../../hooks/usePTARealtimeSync';
 import { PTASyncIndicator } from '../../pta/PTASyncIndicator';
 import { useNotifications } from '../../esap/NotificationsContext';
@@ -46,7 +47,7 @@ import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
-import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
+import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage, formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
@@ -415,6 +416,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
   const [allPtas, setAllPtas] = useState<any[]>([]);
   const [activePeriodo, setActivePeriodo] = useState('');
+  const [activePeriodoData, setActivePeriodoData] = useState<any>(null);
+  const [docentePerfil, setDocentePerfil] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPtaId, setSelectedPtaId] = useState<string | null>(null);
   const [selectedPta, setSelectedPta] = useState<any>(null);
@@ -453,6 +456,14 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
       const periodoCodigo = getPeriodoCode(periodoActivo);
       setActivePeriodo(periodoCodigo);
+      setActivePeriodoData(periodoActivo || null);
+
+      // El encabezado oficial del reporte usa la ficha RUND/Banco de Docentes.
+      // Este lookup acepta persona_id, usuario_id o docente_id y devuelve la
+      // cédula y los demás datos institucionales sin confundirlos con UUIDs.
+      const perfilRes = await getBancoDocenteById(userPersonId, periodoCodigo || undefined);
+      if (requestId !== loadPtasRequestRef.current) return;
+      setDocentePerfil(perfilRes.success ? perfilRes.data : null);
 
       if (res.success && Array.isArray(res.data)) {
         const loadedPtas = res.data;
@@ -484,6 +495,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
       if (requestId !== loadPtasRequestRef.current) return;
       console.error('[Portal PTA] Error loading PTAs:', error);
       setAllPtas([]);
+      setActivePeriodoData(null);
+      setDocentePerfil(null);
       setComponentApprovalsByPta({});
     } finally {
       if (requestId === loadPtasRequestRef.current) setLoading(false);
@@ -732,7 +745,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   // El seguimiento (Documentos y Soportes) se habilita cuando el PTA vigente
   // tiene la totalidad de sus componentes aprobados. La pestaña sigue siendo
   // navegable: dentro se muestra el aviso con el estado de cada componente.
-  const seguimientoBloqueado = ptas.length > 0 && !ptaHabilitadoParaSeguimiento(ptas[0]);
+  const seguimientoBloqueado = ptas.length === 0 || !ptaHabilitadoParaSeguimiento(ptas[0]);
 
   return (
     <div>
@@ -964,11 +977,10 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                               <strong className="text-gray-900">{horasTotal}</strong>
                               <span className="text-gray-400">/ {horasMax}h</span>
                             </span>
-                            {needsAction && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-600 text-[0.65rem] font-bold border border-red-100">
-                                <AlertTriangle className="w-3 h-3" /> Requiere acción
-                              </span>
-                            )}
+                            {/* Badge "Requiere acción" retirado: era puramente informativo
+                                (sin acción propia) y duplicaba lo que ya comunican el estado
+                                del PTA y el botón de acción de la tarjeta, así que confundía.
+                                `needsAction` se sigue usando para la barra de acento superior. */}
                           </div>
 
                           {/* Hours progress bar — slim and elegant */}
@@ -1318,6 +1330,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                           <DetalleChip label="% del PTA" value={Number(a.porcentaje_pta) > 0 ? `${a.porcentaje_pta}%` : null} />
                           <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(a.fecha_inicio, a.fecha_fin)} color={PTA_COLORS.DOCENCIA} />
                         </div>
+                        <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-2" />
                         <ObservacionesNota texto={a.observaciones} />
                       </ItemDetalle>
                     ))}
@@ -1367,6 +1380,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                           <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(proy.fecha_inicio, proy.fecha_fin)} color={colorInv} />
                           <ResolucionChip nombre={proy.resolucion_nombre} url={proy.resolucion_archivo_url} />
                         </div>
+                        <HierarchySelectionSummary activity={proy} accent={colorInv} compact className="mt-2" />
                       </ItemDetalle>
                     )}
                     {invActs.length > 0 && tieneProy && (
@@ -1387,6 +1401,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                           <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(a.fecha_inicio, a.fecha_fin)} color={colorInv} />
                           <ResolucionChip nombre={a.resolucion_nombre} url={a.resolucion_archivo_url} />
                         </div>
+                        <HierarchySelectionSummary activity={a} accent={colorInv} compact className="mt-2" />
                       </ItemDetalle>
                     ))}
                   </DetalleSeccion>
@@ -1407,9 +1422,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                   const g = grupos.find(x => x.seccion === sec);
                   if (g) g.items.push(e); else grupos.push({ seccion: sec, items: [e] });
                 }
-                const renderAct = (e: any, idx: number) => {
-                  const selection = getExtensionSelectionInfo(e);
-                  return (
+                const renderAct = (e: any, idx: number) => (
                   <ItemDetalle key={e.id || e.actividad_id || idx} color={colorExt}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
@@ -1418,36 +1431,12 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       </div>
                       <HorasBadge horas={Number(e.horas ?? e.horas_ejecutadas ?? 0)} color={colorExt} />
                     </div>
-                    {selection && (
-                      <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 9, background: `${colorExt}0A`, border: `1px solid ${colorExt}24` }}>
-                        <div style={{ fontSize: '0.59rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          {selection.etiqueta} seleccionada
-                        </div>
-                        <div style={{ marginTop: 2, fontSize: '0.72rem', fontWeight: 750, color: '#334155', lineHeight: 1.4 }}>
-                          {selection.nombre}
-                        </div>
-                        {selection.detalles.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 7 }}>
-                            {selection.detalles.map((detail, detailIndex) => (
-                              <div key={`${detail.nombre}-${detailIndex}`} style={{ paddingLeft: 9, borderLeft: `2px solid ${colorExt}40` }}>
-                                {detail.nombre && <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#475569', lineHeight: 1.35 }}>{detail.nombre}</div>}
-                                {detail.valores.map((value, valueIndex) => (
-                                  <div key={`${value.columna}-${valueIndex}`} style={{ fontSize: '0.62rem', color: '#64748B', lineHeight: 1.4, marginTop: 2 }}>
-                                    {value.columna && <strong>{value.columna}: </strong>}{value.valor}
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <HierarchySelectionSummary activity={e} accent={colorExt} compact className="mt-2" />
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(e.fecha_inicio, e.fecha_fin)} color={colorExt} />
                     </div>
                   </ItemDetalle>
-                  );
-                };
+                );
                 return (
                   <DetalleSeccion
                     icon={Globe}
@@ -1473,7 +1462,22 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
               {/* Complementarias — agrupadas por sub-sección (docencia / académico-administrativas) */}
               {(() => {
-                const comps = Array.isArray(selectedPta.complementarias) ? selectedPta.complementarias : [];
+                const compsPrimary = Array.isArray(selectedPta.complementarias) ? selectedPta.complementarias : [];
+                const compsLegacyAadm = Array.isArray(selectedPta.academico_admin) ? selectedPta.academico_admin : [];
+                const comps = [
+                  ...compsPrimary.map((activity: any) =>
+                    activity?.seccion == null && activity?.consumeTotalidad !== undefined
+                      ? { ...activity, seccion: 'academico_administrativas' }
+                      : activity),
+                  ...compsLegacyAadm
+                    .filter((legacy: any) => !compsPrimary.some((current: any) =>
+                      String(current?.actividad_id ?? current?.id) === String(legacy?.actividad_id ?? legacy?.id)
+                      && (
+                        current?.seccion === 'academico_administrativas'
+                        || (current?.seccion == null && current?.consumeTotalidad !== undefined)
+                      )))
+                    .map((activity: any) => ({ ...activity, seccion: 'academico_administrativas' })),
+                ];
                 if (comps.length === 0) return null;
                 const colorComp = PTA_COLORS.COMPLEMENTARIAS;
                 // El amarillo puro es ilegible sobre fondo claro: texto en tono ámbar oscuro.
@@ -1495,6 +1499,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       </div>
                       <HorasBadge horas={Number(c.horas ?? 0)} color={textComp} />
                     </div>
+                    <HierarchySelectionSummary activity={c} accent={textComp} compact className="mt-2" />
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                       <DetalleChip icon={Calendar} label="Periodo" value={rangoFechas(c.fecha_inicio, c.fecha_fin)} color={textComp} />
                     </div>
@@ -1610,16 +1615,23 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                 </div>
               )}
 
-              {isReporteOpen && selectedPta && (
+              {isReporteOpen && selectedPta && createPortal(
                 <ReportePTAInstitucional
                   pta={selectedPta}
-                  userPerfil={{ nombre: userName, identificacion: userPersonId }}
+                  userPerfil={{
+                    ...docentePerfil,
+                    nombre: docentePerfil?.nombre_completo || userName,
+                    identificacion: docentePerfil?.documento_identidad || userPersonId,
+                    email: docentePerfil?.correo_institucional || docentePerfil?.email || userEmail,
+                  }}
                   onClose={() => setIsReporteOpen(false)}
                   isParcial={!['Aprobado', 'En Firme', 'Finalizado'].includes(selectedPta.estado)}
                   certificadoId={selectedPta.certificado_qr}
                   signedAt={selectedPta.signed_at || selectedPta.updated_at}
+                  periodoAcademico={activePeriodoData}
                   componentesAprobacion={componentApprovalsByPta[selectedPta.id] || []}
-                />
+                />,
+                document.body,
               )}
             </div>
           )}

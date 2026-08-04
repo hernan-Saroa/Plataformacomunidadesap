@@ -570,7 +570,7 @@ export function VisorDocumentoModal({
       const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
 
       const nombreParaExtension = (numero || archivo || '').toLowerCase();
-      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i);
+      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc|mp4|webm|ogg|mov)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc|mp4|webm|ogg|mov)/i);
       const isPdfFile = nombreParaExtension.includes('.pdf') || archivo.toLowerCase().includes('pdf');
 
       // El visor pdf.js (PdfjsPagesViewer) gestiona su propio indicador de carga interno,
@@ -1057,6 +1057,7 @@ export function VisorDocumentoModal({
               const extension = nombreParaExtension.split('.').pop()?.toLowerCase();
               const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf') || nombreParaExtension.includes('.pdf');
               const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i) || nombreParaExtension.match(/\.(jpg|jpeg|png|gif|webp)/i);
+              const isVideo = ['mp4', 'webm', 'ogg', 'mov'].includes(extension || '') || archivo.match(/\.(mp4|webm|ogg|mov)/i) || nombreParaExtension.match(/\.(mp4|webm|ogg|mov)/i);
               const isDocx = !isPdf && (extension === 'docx' || archivo.toLowerCase().includes('.docx') || nombreParaExtension.includes('.docx'));
               const isMockFile = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
 
@@ -1245,6 +1246,25 @@ export function VisorDocumentoModal({
                     />
 
                     {parsedSignature && renderSignatureStamp(false)}
+                  </div>
+                );
+              } else if (isVideo) {
+                return (
+                  <div className="w-full h-full overflow-auto flex items-center justify-center p-4 bg-gray-900">
+                    <video
+                      src={archivo}
+                      controls
+                      autoPlay={false}
+                      className="max-w-full max-h-full shadow-lg"
+                      style={{
+                        transform: `scale(${zoomLevel / 100})`,
+                        transformOrigin: 'center center'
+                      }}
+                      onLoadedData={() => setIsLoading(false)}
+                      onError={() => { setIsLoading(false); setHasError(true); }}
+                    >
+                      Tu navegador no soporta la reproducción de este video.
+                    </video>
                   </div>
                 );
               } else if (isImage) {

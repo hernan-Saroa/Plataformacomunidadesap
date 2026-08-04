@@ -21,7 +21,11 @@ const ESTADOS_PTA_SEGUIMIENTO = ['Aprobado', 'En Firme', 'Finalizado'];
 
 export function ptaHabilitadoParaSeguimiento(pta: any): boolean {
   if (!pta) return false;
-  if (ESTADOS_PTA_SEGUIMIENTO.includes(String(pta.estado))) return true;
+  const estado = String(pta.estado || '').trim();
+  if (ESTADOS_PTA_SEGUIMIENTO.includes(estado)) return true;
+  // Los conteos enriquecidos pueden incluir componentes vacíos como aprobados,
+  // pero esa regla solo tiene sentido después de enviar el PTA a revisión.
+  if (!estado || estado.toLocaleUpperCase('es') === 'BORRADOR') return false;
   const total = Number(pta.componentes_total || 0);
   const aprobados = Number(pta.componentes_aprobados || 0);
   return total > 0 && aprobados >= total;

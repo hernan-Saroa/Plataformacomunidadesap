@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { PTA_COLORS } from './shared/ptaColors';
-import { getExtensionSelectionInfo } from './shared/extensionSelection';
+import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
 
@@ -418,6 +418,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                       <td style={{ padding: '6px 8px', color: '#9CA3AF' }}>{idx + 1}</td>
                       <td style={{ padding: '6px 8px', fontWeight: 600, color: '#111827' }}>
                         {asig.asignatura_nombre || asig.nombre || asig.asignatura || 'N/A'}
+                        <HierarchySelectionSummary activity={asig} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
                       </td>
                       <td
                         title={asig.programa_nombre_completo || asig.programa_nombre || asig.programa || undefined}
@@ -508,6 +509,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                   {investigacion.fecha_fin && <span>Fin: <strong>{fmtFecha(investigacion.fecha_fin)}</strong></span>}
                 </div>
               )}
+              <HierarchySelectionSummary activity={investigacion} accent={PTA_COLORS.INVESTIGACION} compact className="mt-2" />
             </div>
           ) : (
             <div style={{ padding: 12, color: '#9CA3AF', fontSize: '0.82rem', fontStyle: 'italic' }}>
@@ -543,6 +545,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           {act.fecha_fin && <span>Fin: {fmtFecha(act.fecha_fin)}</span>}
                         </div>
                       )}
+                      <HierarchySelectionSummary activity={act} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1.5" />
                     </td>
                     <td style={{ padding: '6px 10px', textAlign: 'center' }}>{act.cantidad || 1}</td>
                     <td style={{ padding: '6px 10px', textAlign: 'center' }}>{act.horas_unitarias || '-'}</td>
@@ -577,9 +580,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     <div style={{ fontWeight: 600, color: PTA_COLORS.EXTENSION, textTransform: 'capitalize', marginBottom: 4 }}>
                       {seccion.replace(/_/g, ' ')}
                     </div>
-                    {acts.map((act: any, i: number) => {
-                      const selection = getExtensionSelectionInfo(act);
-                      return (
+                    {acts.map((act: any, i: number) => (
                       <div key={i} style={{
                         padding: '5px 8px', borderBottom: `1px solid ${PTA_COLORS.EXTENSION}20`,
                       }}>
@@ -587,16 +588,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           <span>{act.nombre || act.actividad || `Actividad ${i + 1}`}</span>
                           <span style={{ fontWeight: 600, whiteSpace: 'nowrap', marginLeft: 8 }}>{act.horas || 0}h</span>
                         </div>
-                        {selection && (
-                          <div style={{ marginTop: 4, padding: '5px 7px', borderRadius: 4, background: `${PTA_COLORS.EXTENSION}0A`, borderLeft: `3px solid ${PTA_COLORS.EXTENSION}` }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>{selection.etiqueta}: {selection.nombre}</div>
-                            {selection.detalles.map((detail, detailIndex) => (
-                              <div key={`${detail.nombre}-${detailIndex}`} style={{ marginTop: 2, fontSize: '0.66rem', color: '#64748B' }}>
-                                {detail.nombre}{detail.valores.map(value => ` · ${value.columna ? `${value.columna}: ` : ''}${value.valor}`).join('')}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <HierarchySelectionSummary activity={act} accent={PTA_COLORS.EXTENSION} compact className="mt-1.5" />
                         {act.descripcion && (
                           <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2, fontStyle: 'italic' }}>{act.descripcion}</div>
                         )}
@@ -607,8 +599,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           </div>
                         )}
                       </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 );
               })}
@@ -648,6 +639,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                       {act.descripcion && (
                         <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2, fontStyle: 'italic' }}>{act.descripcion}</div>
                       )}
+                      <HierarchySelectionSummary activity={act} accent="#A16207" compact className="mt-1.5" />
                       {(act.fecha_inicio || act.fecha_fin) && (
                         <div style={{ display: 'flex', gap: 10, fontSize: '0.7rem', color: '#9CA3AF', marginTop: 2 }}>
                           {act.fecha_inicio && <span>Inicio: {fmtFecha(act.fecha_inicio)}</span>}

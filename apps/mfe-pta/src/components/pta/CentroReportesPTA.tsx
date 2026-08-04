@@ -47,6 +47,7 @@ import {
   AreaChart, Area,
 } from 'recharts';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
+import { formatHierarchySelectionText } from './shared/extensionSelection';
 
 // ═══ Tipos ═══
 interface ReporteConfig {
@@ -285,13 +286,14 @@ function generarR07(ptas: any[]): ReporteGenerado {
           territorial: p.territorial || '-', asignatura: a.nombre || a.asignatura_nombre || '-',
           programa: a.programa || '-', creditos: a.creditos || 0, grupos: a.num_grupos || 1,
           horas: a.total_horas_calculadas || a.horas || 0,
+          desglose: formatHierarchySelectionText(a) || '—',
         });
       });
     } else if (p.horas_docencia > 0) {
       filas.push({
         docente: p.docente_nombre || 'N/A', documento: p.cedula || p.numero_documento || '-',
         territorial: p.territorial || '-', asignatura: '(Asignaturas no detalladas)',
-        programa: '-', creditos: '-', grupos: '-', horas: p.horas_docencia || 0,
+        programa: '-', creditos: '-', grupos: '-', horas: p.horas_docencia || 0, desglose: '—',
       });
     }
   });
@@ -303,6 +305,7 @@ function generarR07(ptas: any[]): ReporteGenerado {
       { key: 'territorial', label: 'Territorial' }, { key: 'asignatura', label: 'Asignatura' },
       { key: 'programa', label: 'Programa' }, { key: 'creditos', label: 'Cred.', align: 'center' },
       { key: 'grupos', label: 'Grupos', align: 'center' }, { key: 'horas', label: 'Horas', align: 'center' },
+      { key: 'desglose', label: 'Desglose seleccionado' },
     ],
     filas,
     totales: { horas: filas.reduce((s, f) => s + (typeof f.horas === 'number' ? f.horas : 0), 0) },
@@ -387,27 +390,68 @@ function generarR09(ptas: any[]): ReporteGenerado {
 // ═══ R-10: Extension Nacional ═══
 
 function generarR10(ptas: any[]): ReporteGenerado {
-  const terMap = new Map<string, { docentes: number; horasExt: number; dir_formacion: number; dir_capacitacion: number; dir_investigacion: number; dir_consultoria: number }>();
+  const terMap = new Map<string, {
+    docentes: number;
+    horasExt: number;
+    capacitacion: number;
+    seleccion: number;
+    fortalecimiento: number;
+    altoGobierno: number;
+    desgloses: Set<string>;
+  }>();
   ptas.forEach(p => {
     const ter = p.territorial || 'SIN TERRITORIAL';
-    if (!terMap.has(ter)) terMap.set(ter, { docentes: 0, horasExt: 0, dir_formacion: 0, dir_capacitacion: 0, dir_investigacion: 0, dir_consultoria: 0 });
+    if (!terMap.has(ter)) terMap.set(ter, {
+      docentes: 0,
+      horasExt: 0,
+      capacitacion: 0,
+      seleccion: 0,
+      fortalecimiento: 0,
+      altoGobierno: 0,
+      desgloses: new Set(),
+    });
     const t = terMap.get(ter)!;
     const hExt = p.horas_extension || 0;
     if (hExt > 0) {
       t.docentes++;
       t.horasExt += hExt;
-      // Parse extension directions from PTA data
-      const ext = p.extension || {};
-      if (ext.formacion?.length) t.dir_formacion += ext.formacion.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-      if (ext.capacitacion?.length) t.dir_capacitacion += ext.capacitacion.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-      if (ext.investigacion?.length) t.dir_investigacion += ext.investigacion.reduce((s: number, a: any) => s + (a.horas || 0), 0);
-      if (ext.consultoria?.length) t.dir_consultoria += ext.consultoria.reduce((s: number, a: any) => s + (a.horas || 0), 0);
+      const currentActivities = Array.isArray(p.extension_actividades) ? p.extension_actividades : [];
+      currentActivities.forEach((activity: any) => {
+        const rawSection = String(activity?.seccion || '').trim();
+        const section = rawSection === 'laboratorio_innovacion' || rawSection === 'investigacion_aplicada'
+          ? 'fortalecimiento'
+          : rawSection === 'procesos_seleccion'
+            ? 'seleccion'
+            : rawSection;
+        const hours = Number(activity?.horas) || 0;
+        if (section === 'capacitacion') t.capacitacion += hours;
+        else if (section === 'seleccion') t.seleccion += hours;
+        else if (section === 'fortalecimiento') t.fortalecimiento += hours;
+        else if (section === 'alto_gobierno') t.altoGobierno += hours;
+        const hierarchy = formatHierarchySelectionText(activity);
+        if (hierarchy) t.desgloses.add(hierarchy);
+      });
+
+      // Compatibilidad de solo lectura para PTAs que aún exponen el contrato
+      // histórico `extension`, sin mezclarlo con la estructura actual.
+      if (currentActivities.length === 0) {
+        const legacy = p.extension || {};
+        t.capacitacion += (legacy.capacitacion || []).reduce((sum: number, a: any) => sum + (Number(a?.horas) || 0), 0);
+        t.seleccion += (legacy.seleccion || legacy.procesos_seleccion || []).reduce((sum: number, a: any) => sum + (Number(a?.horas) || 0), 0);
+        t.fortalecimiento += [
+          ...(legacy.fortalecimiento || []),
+          ...(legacy.laboratorio_innovacion || []),
+          ...(legacy.investigacion_aplicada || []),
+        ].reduce((sum: number, a: any) => sum + (Number(a?.horas) || 0), 0);
+        t.altoGobierno += (legacy.alto_gobierno || []).reduce((sum: number, a: any) => sum + (Number(a?.horas) || 0), 0);
+      }
     }
   });
   const filas = Array.from(terMap.entries()).map(([ter, d]) => ({
     territorial: ter, docentes_ext: d.docentes, horas_ext: d.horasExt,
-    formacion: d.dir_formacion, capacitacion: d.dir_capacitacion,
-    investigacion_ext: d.dir_investigacion, consultoria: d.dir_consultoria,
+    capacitacion: d.capacitacion, seleccion: d.seleccion,
+    fortalecimiento: d.fortalecimiento, alto_gobierno: d.altoGobierno,
+    desglose: [...d.desgloses].join(' | ') || '—',
   })).sort((a, b) => b.horas_ext - a.horas_ext);
   const totalHoras = filas.reduce((s, f) => s + f.horas_ext, 0);
   return {
@@ -415,21 +459,23 @@ function generarR10(ptas: any[]): ReporteGenerado {
     subtitulo: `${filas.filter(f => f.docentes_ext > 0).length} territoriales con extension — ${totalHoras.toLocaleString()} horas`,
     columnas: [
       { key: 'territorial', label: 'Territorial' }, { key: 'docentes_ext', label: 'Docentes', align: 'center' },
-      { key: 'horas_ext', label: 'H.Total', align: 'center' }, { key: 'formacion', label: 'Formacion', align: 'center' },
-      { key: 'capacitacion', label: 'Capacit.', align: 'center' }, { key: 'investigacion_ext', label: 'Investig.', align: 'center' },
-      { key: 'consultoria', label: 'Consult.', align: 'center' },
+      { key: 'horas_ext', label: 'H.Total', align: 'center' }, { key: 'capacitacion', label: 'Capacitación', align: 'center' },
+      { key: 'seleccion', label: 'Procesos selección', align: 'center' }, { key: 'fortalecimiento', label: 'Fortalecimiento', align: 'center' },
+      { key: 'alto_gobierno', label: 'Alto Gobierno', align: 'center' }, { key: 'desglose', label: 'Desglose seleccionado' },
     ],
     filas,
     totales: {
       docentes_ext: filas.reduce((s, f) => s + f.docentes_ext, 0), horas_ext: totalHoras,
-      formacion: filas.reduce((s, f) => s + f.formacion, 0), capacitacion: filas.reduce((s, f) => s + f.capacitacion, 0),
-      investigacion_ext: filas.reduce((s, f) => s + f.investigacion_ext, 0), consultoria: filas.reduce((s, f) => s + f.consultoria, 0),
+      capacitacion: filas.reduce((s, f) => s + f.capacitacion, 0),
+      seleccion: filas.reduce((s, f) => s + f.seleccion, 0),
+      fortalecimiento: filas.reduce((s, f) => s + f.fortalecimiento, 0),
+      alto_gobierno: filas.reduce((s, f) => s + f.alto_gobierno, 0),
     },
     chartData: [
-      { name: 'Formacion', value: filas.reduce((s, f) => s + f.formacion, 0) },
-      { name: 'Capacitacion', value: filas.reduce((s, f) => s + f.capacitacion, 0) },
-      { name: 'Investigacion Ext.', value: filas.reduce((s, f) => s + f.investigacion_ext, 0) },
-      { name: 'Consultoria', value: filas.reduce((s, f) => s + f.consultoria, 0) },
+      { name: 'Capacitación', value: filas.reduce((s, f) => s + f.capacitacion, 0) },
+      { name: 'Procesos de selección', value: filas.reduce((s, f) => s + f.seleccion, 0) },
+      { name: 'Fortalecimiento', value: filas.reduce((s, f) => s + f.fortalecimiento, 0) },
+      { name: 'Alto Gobierno', value: filas.reduce((s, f) => s + f.alto_gobierno, 0) },
     ],
     chartType: 'pie',
     chartTitle: 'Distribucion de Horas por Direccion Tecnica de Extension',
@@ -489,17 +535,34 @@ function generarR11(ptas: any[]): ReporteGenerado {
 // ═══ R-12: Actividades Complementarias ═══
 
 function generarR12(ptas: any[]): ReporteGenerado {
-  const tipoMap = new Map<string, { docentes: number; horas: number; territoriales: Set<string> }>();
+  const tipoMap = new Map<string, {
+    docentes: Set<string>;
+    horas: number;
+    territoriales: Set<string>;
+    desgloses: Set<string>;
+  }>();
   ptas.forEach(p => {
-    const comps = p.complementarias || [];
+    const current = Array.isArray(p.complementarias) ? p.complementarias : [];
+    const legacyAadm = (Array.isArray(p.academico_admin) ? p.academico_admin : [])
+      .filter((legacy: any) => !current.some((activity: any) =>
+        String(activity?.actividad_id ?? activity?.id) === String(legacy?.actividad_id ?? legacy?.id)
+        && String(activity?.seccion || '') === 'academico_administrativas'));
+    const comps = [...current, ...legacyAadm];
     const ter = p.territorial || 'SIN TERRITORIAL';
     comps.forEach((c: any) => {
-      const tipo = c.tipo || c.actividad || 'Sin clasificar';
-      if (!tipoMap.has(tipo)) tipoMap.set(tipo, { docentes: 0, horas: 0, territoriales: new Set() });
+      const tipo = c.nombre || c.actividad_nombre || c.actividad || c.tipo || 'Sin clasificar';
+      if (!tipoMap.has(tipo)) tipoMap.set(tipo, {
+        docentes: new Set(),
+        horas: 0,
+        territoriales: new Set(),
+        desgloses: new Set(),
+      });
       const t = tipoMap.get(tipo)!;
-      t.docentes++;
-      t.horas += (c.horas || 0);
+      t.docentes.add(String(p.docente_id || p.cedula || p.numero_documento || p.id || 'sin-identificador'));
+      t.horas += Number(c.horas) || 0;
       t.territoriales.add(ter);
+      const hierarchy = formatHierarchySelectionText(c);
+      if (hierarchy) t.desgloses.add(hierarchy);
     });
   });
   // If no complementarias found, use aggregate data
@@ -510,17 +573,24 @@ function generarR12(ptas: any[]): ReporteGenerado {
       const hComp = p.horas_complementarias || 0;
       if (hComp > 0) {
         const tipo = categorias[idx % categorias.length];
-        if (!tipoMap.has(tipo)) tipoMap.set(tipo, { docentes: 0, horas: 0, territoriales: new Set() });
+        if (!tipoMap.has(tipo)) tipoMap.set(tipo, {
+          docentes: new Set(),
+          horas: 0,
+          territoriales: new Set(),
+          desgloses: new Set(),
+        });
         const t = tipoMap.get(tipo)!;
-        t.docentes++;
+        t.docentes.add(String(p.docente_id || p.cedula || p.numero_documento || p.id || idx));
         t.horas += hComp;
         t.territoriales.add(p.territorial || 'SIN TERRITORIAL');
       }
     });
   }
   const filas = Array.from(tipoMap.entries()).map(([tipo, d]) => ({
-    tipo_actividad: tipo, docentes: d.docentes, horas_total: d.horas,
-    territoriales: d.territoriales.size, promedio: d.docentes > 0 ? Math.round(d.horas / d.docentes) : 0,
+    tipo_actividad: tipo, docentes: d.docentes.size, horas_total: d.horas,
+    territoriales: d.territoriales.size,
+    promedio: d.docentes.size > 0 ? Math.round(d.horas / d.docentes.size) : 0,
+    desglose: [...d.desgloses].join(' | ') || '—',
   })).sort((a, b) => b.horas_total - a.horas_total);
   const totalHoras = filas.reduce((s, f) => s + f.horas_total, 0);
   return {
@@ -529,7 +599,7 @@ function generarR12(ptas: any[]): ReporteGenerado {
     columnas: [
       { key: 'tipo_actividad', label: 'Tipo de Actividad' }, { key: 'docentes', label: 'Docentes', align: 'center' },
       { key: 'horas_total', label: 'Horas', align: 'center' }, { key: 'territoriales', label: 'Territoriales', align: 'center' },
-      { key: 'promedio', label: 'Prom.H/Doc', align: 'center' },
+      { key: 'promedio', label: 'Prom.H/Doc', align: 'center' }, { key: 'desglose', label: 'Desglose seleccionado' },
     ],
     filas,
     totales: { docentes: filas.reduce((s, f) => s + f.docentes, 0), horas_total: totalHoras, territoriales: '-' },

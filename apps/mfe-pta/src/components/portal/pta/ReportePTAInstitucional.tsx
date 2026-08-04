@@ -6,15 +6,16 @@
  * Todo el layout crítico va con estilos inline; la impresión se aísla con un
  * bloque @media print propio (ver <style> al inicio del render).
  */
-import React from 'react';
-import { X, Printer, ShieldCheck } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Download, Loader2, X, Printer, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
   Tooltip as RechartsTooltip, Cell, PieChart, Pie, Legend, LabelList,
 } from 'recharts';
+import { IsotipoESAP } from '../../../../../shell/src/components/assets/ESAPLogoSVG';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
-import { getExtensionSelectionInfo } from '../../pta/shared/extensionSelection';
+import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 
 interface ReportePTAInstitucionalProps {
   pta: any;
@@ -23,6 +24,8 @@ interface ReportePTAInstitucionalProps {
   isParcial?: boolean;
   certificadoId?: string;
   signedAt?: string;
+  /** Configuración institucional del periodo al que pertenece el PTA. */
+  periodoAcademico?: any;
   /** Registros reales de aprobación por componente (getComponentesAprobacion). Opcional. */
   componentesAprobacion?: any[];
 }
@@ -30,6 +33,9 @@ interface ReportePTAInstitucionalProps {
 const NAVY = '#203764';
 const BAND = '#5B9BD5';
 const HEAD_BG = '#D9E1F2';
+const FORM_HEADER_BLUE = '#2E75B5';
+const IDENT_LABEL_BG = '#AEABAB';
+const IDENT_VALUE_BG = '#E7E6E6';
 
 const SECCION_LABELS: Record<string, string> = {
   capacitacion: 'Dirección de Capacitación',
@@ -58,11 +64,6 @@ const numero = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const listaUnica = (values: any[]): string | null => {
-  const uniques = [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
-  return uniques.length ? uniques.join(', ') : null;
-};
-
 const textoConSeparador = (values: Array<any>): string | null => {
   const valid = values.filter(value => value !== null && value !== undefined && value !== '' && value !== false);
   return valid.length ? valid.join(' · ') : null;
@@ -74,6 +75,119 @@ const textoUbicacion = (...values: any[]): string | null => {
     if (text) return text;
   }
   return null;
+};
+
+const datoNoVacio = (...values: any[]): any => values.find((value) => (
+  value !== null
+  && value !== undefined
+  && String(value).trim() !== ''
+));
+
+const esUuid = (value: any): boolean => (
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(String(value || '').trim())
+);
+
+const documentoReal = (...values: any[]): string | null => {
+  const value = values.find((candidate) => (
+    candidate !== null
+    && candidate !== undefined
+    && String(candidate).trim() !== ''
+    && !esUuid(candidate)
+  ));
+  return value === undefined ? null : String(value).trim();
+};
+
+const fmtDocumento = (value: string | null): string | null => {
+  if (!value) return null;
+  const compact = value.replace(/\s+/g, '');
+  return /^\d+$/.test(compact)
+    ? compact.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    : value;
+};
+
+/**
+ * html2canvas 1.x no reconoce funciones de color CSS modernas como oklch().
+ * El navegador sí puede pintarlas, así que las convertimos a rgba() dentro del
+ * documento clonado que usa la captura, sin modificar la vista real.
+ */
+const normalizarColoresCaptura = (documentoClonado: Document) => {
+  const vista = documentoClonado.defaultView;
+  const reporteClonado = documentoClonado.querySelector<HTMLElement>('.reporte-pta-document');
+  if (!vista || !reporteClonado) return;
+
+  const patronColorModerno = /(?:oklch|oklab|lab|lch|color)\((?:[^()]|\([^()]*\))*\)/gi;
+  const propiedadesColor = [
+    'background-color',
+    'background-image',
+    'border-top-color',
+    'border-right-color',
+    'border-bottom-color',
+    'border-left-color',
+    'box-shadow',
+    'caret-color',
+    'color',
+    'fill',
+    'outline-color',
+    'stroke',
+    'text-decoration-color',
+    'text-shadow',
+    '-webkit-text-stroke-color',
+  ];
+  const cacheColores = new Map<string, string>();
+  const canvasColor = documentoClonado.createElement('canvas');
+  canvasColor.width = 1;
+  canvasColor.height = 1;
+  const contextoColor = canvasColor.getContext('2d', { willReadFrequently: true });
+
+  const convertirColor = (colorCss: string): string => {
+    const cacheado = cacheColores.get(colorCss);
+    if (cacheado) return cacheado;
+    if (!contextoColor) return 'rgba(0, 0, 0, 1)';
+
+    try {
+      contextoColor.clearRect(0, 0, 1, 1);
+      contextoColor.fillStyle = '#010203';
+      contextoColor.fillStyle = colorCss;
+      contextoColor.fillRect(0, 0, 1, 1);
+      const [r, g, b, alpha] = contextoColor.getImageData(0, 0, 1, 1).data;
+      const convertido = `rgba(${r}, ${g}, ${b}, ${(alpha / 255).toFixed(4)})`;
+      cacheColores.set(colorCss, convertido);
+      return convertido;
+    } catch {
+      // Solo se alcanza en navegadores que tampoco entienden la función. Un
+      // color sRGB válido evita que falle toda la descarga.
+      return 'rgba(0, 0, 0, 1)';
+    }
+  };
+
+  const elementos = [reporteClonado, ...Array.from(reporteClonado.querySelectorAll<HTMLElement>('*'))];
+  for (const elemento of elementos) {
+    const estiloCalculado = vista.getComputedStyle(elemento);
+    for (const propiedad of propiedadesColor) {
+      const valor = estiloCalculado.getPropertyValue(propiedad);
+      if (!valor || !/(?:oklch|oklab|lab|lch|color)\(/i.test(valor)) continue;
+      const valorCompatible = valor.replace(patronColorModerno, convertirColor);
+      elemento.style.setProperty(propiedad, valorCompatible, 'important');
+    }
+  }
+
+  // Evita que reglas globales creen pseudoelementos animados o con colores
+  // modernos después de haber normalizado el árbol.
+  const estilosCaptura = documentoClonado.createElement('style');
+  estilosCaptura.textContent = `
+    .reporte-pta-document,
+    .reporte-pta-document * {
+      animation: none !important;
+      transition: none !important;
+    }
+    .reporte-pta-document *::before,
+    .reporte-pta-document *::after {
+      box-shadow: none !important;
+      text-shadow: none !important;
+    }
+  `;
+  documentoClonado.head.appendChild(estilosCaptura);
 };
 
 const ESTADO_COMP_CFG: Record<string, { label: string; color: string; bg: string }> = {
@@ -99,12 +213,73 @@ function rangoFechas(inicio?: string, fin?: string): string | null {
   return desde || hasta;
 }
 
+function fmtFechaOTexto(value?: any): string | null {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const text = String(value).trim();
+  return fmtFechaReporte(text) || text;
+}
+
 /** Celda etiqueta+valor de la sección de identificación. */
-function CampoIdent({ label, value }: { label: string; value: any }) {
+function CampoIdent({
+  label,
+  value,
+  gridColumn,
+  gridRow,
+  valueFontSize = '0.67rem',
+  noWrap = false,
+}: {
+  label: string;
+  value: any;
+  gridColumn: string;
+  gridRow: string;
+  valueFontSize?: string;
+  noWrap?: boolean;
+}) {
   return (
-    <div style={{ padding: '6px 10px', borderRight: '1px solid #CBD5E1', borderBottom: '1px solid #CBD5E1', minWidth: 0 }}>
-      <div style={{ fontSize: '0.56rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#111827', marginTop: 2, overflowWrap: 'anywhere' }}>{value ?? '—'}</div>
+    <div style={{
+      gridColumn,
+      gridRow,
+      minWidth: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      borderRight: '1px solid #111827',
+      borderBottom: '1px solid #111827',
+      background: IDENT_VALUE_BG,
+    }}>
+      <div style={{
+        minHeight: 31,
+        padding: '5px 6px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: IDENT_LABEL_BG,
+        borderBottom: '1px solid #111827',
+        color: '#000',
+        fontSize: '0.53rem',
+        fontWeight: 800,
+        lineHeight: 1.15,
+        textAlign: 'center',
+      }}>
+        {label}
+      </div>
+      <div style={{
+        flex: 1,
+        minHeight: 58,
+        padding: '7px 7px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: IDENT_VALUE_BG,
+        color: '#000',
+        fontSize: valueFontSize,
+        fontWeight: 700,
+        lineHeight: 1.25,
+        textAlign: 'center',
+        whiteSpace: noWrap ? 'nowrap' : 'pre-wrap',
+        overflowWrap: 'anywhere',
+      }}>
+        {value ?? '—'}
+      </div>
     </div>
   );
 }
@@ -275,7 +450,15 @@ function GraficoDocenciaUbicacion({ titulo, subtitulo, data, series }: {
             />
             <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: '8px', fontWeight: 600, paddingTop: 4 }} />
             {seriesActivas.map(serie => (
-              <Bar key={serie.key} dataKey={serie.key} name={serie.name} stackId="docencia" fill={serie.color} maxBarSize={56}>
+              <Bar
+                key={serie.key}
+                dataKey={serie.key}
+                name={serie.name}
+                stackId="docencia"
+                fill={serie.color}
+                maxBarSize={56}
+                isAnimationActive={false}
+              >
                 <LabelList
                   dataKey={serie.key}
                   position="center"
@@ -296,8 +479,13 @@ function GraficoDocenciaUbicacion({ titulo, subtitulo, data, series }: {
 }
 
 export function ReportePTAInstitucional({
-  pta, userPerfil, onClose, isParcial = true, certificadoId, signedAt, componentesAprobacion = [],
+  pta, userPerfil, onClose, isParcial = true, certificadoId, signedAt, periodoAcademico,
+  componentesAprobacion = [],
 }: ReportePTAInstitucionalProps) {
+  const reporteDocumentoRef = useRef<HTMLDivElement | null>(null);
+  const [exportandoPdf, setExportandoPdf] = useState(false);
+  const [errorExportacion, setErrorExportacion] = useState<string | null>(null);
+
   // ── Datos que pertenecen al PTA consultado. Los registros vacíos no llegan al reporte. ──
   const asignaturas: any[] = (Array.isArray(pta?.asignaturas) ? pta.asignaturas : [])
     .filter((a: any) => a && (a.nombre || a.asignatura_nombre || a.asignatura_id || numero(a.total_horas ?? a.horas) > 0));
@@ -318,8 +506,26 @@ export function ReportePTAInstitucional({
   const compLegacy = pta?.complementarias && !Array.isArray(pta.complementarias)
     ? pta.complementarias.actividades
     : [];
-  const compActs: any[] = (Array.isArray(pta?.complementarias) ? pta.complementarias : (Array.isArray(compLegacy) ? compLegacy : []))
-    .filter((a: any) => a && (a.nombre || a.actividad_nombre || a.actividad_id || numero(a.horas) > 0));
+  const compActsPrimary: any[] = (
+    Array.isArray(pta?.complementarias)
+      ? pta.complementarias
+      : (Array.isArray(compLegacy) ? compLegacy : [])
+  ).filter((a: any) => a && (a.nombre || a.actividad_nombre || a.actividad_id || numero(a.horas) > 0));
+  const compActsLegacyAadm: any[] = Array.isArray(pta?.academico_admin) ? pta.academico_admin : [];
+  const compActs: any[] = [
+    ...compActsPrimary.map((activity: any) =>
+      activity?.seccion == null && activity?.consumeTotalidad !== undefined
+        ? { ...activity, seccion: 'academico_administrativas' }
+        : activity),
+    ...compActsLegacyAadm
+      .filter((legacy: any) => !compActsPrimary.some((current: any) =>
+        String(current?.actividad_id ?? current?.id) === String(legacy?.actividad_id ?? legacy?.id)
+        && (
+          current?.seccion === 'academico_administrativas'
+          || (current?.seccion == null && current?.consumeTotalidad !== undefined)
+        )))
+      .map((activity: any) => ({ ...activity, seccion: 'academico_administrativas' })),
+  ].filter((a: any) => a && (a.nombre || a.actividad_nombre || a.actividad_id || numero(a.horas) > 0));
 
   // Los agregados del backend tienen prioridad porque incluyen las reglas y multiplicadores institucionales.
   const horasDocencia = numero(pta?.horas_docencia ?? asignaturas.reduce((sum: number, a: any) => sum + numero(a.total_horas ?? a.horas), 0));
@@ -357,17 +563,6 @@ export function ReportePTAInstitucional({
   const totalAprobadas = componentes.reduce((s, c) => s + c.aprobadas, 0);
   const pctGlobal = horasProg > 0 ? Math.min(Math.round((totalAprobadas / horasProg) * 100), 100) : 0;
 
-  // ── Fechas del periodo (mín/máx reales de las actividades del PTA) ──
-  const todasFechas: string[] = [
-    ...asignaturas.map((a: any) => a.fecha_inicio), ...asignaturas.map((a: any) => a.fecha_fin),
-    ...extActs.map((a: any) => a.fecha_inicio), ...extActs.map((a: any) => a.fecha_fin),
-    ...compActs.map((a: any) => a.fecha_inicio), ...compActs.map((a: any) => a.fecha_fin),
-    ...actInv.map((a: any) => a.fecha_inicio), ...actInv.map((a: any) => a.fecha_fin),
-    ...proyectosInv.map((p: any) => p.fecha_inicio), ...proyectosInv.map((p: any) => p.fecha_fin),
-  ].filter((f: any) => typeof f === 'string' && /^\d{4}-\d{2}-\d{2}/.test(f));
-  const inicioPeriodo = todasFechas.length ? fmtFechaReporte(todasFechas.reduce((a, b) => (a < b ? a : b))) : null;
-  const finPeriodo = todasFechas.length ? fmtFechaReporte(todasFechas.reduce((a, b) => (a > b ? a : b))) : null;
-
   // ── Última revisión real (registros de aprobación por componente) ──
   const revisiones = (componentesAprobacion || [])
     .filter((r: any) => {
@@ -380,12 +575,87 @@ export function ReportePTAInstitucional({
   const fechaRevision = ultimaRevision ? fmtFechaReporte(String(ultimaRevision.fecha_aprobacion || ultimaRevision.fechaAprobacion)) : null;
   const responsableRevision = ultimaRevision ? (ultimaRevision.aprobador_nombre || ultimaRevision.aprobadorNombre) : null;
 
-  // Datos descriptivos reales de las asignaturas, útiles cuando el PTA abarca varias sedes o programas.
-  const nucleos = [...new Set(asignaturas.map((a: any) => a.nucleo_tematico).filter(Boolean))].join(', ');
-  const territoriales = listaUnica([pta?.territorial, ...asignaturas.map((a: any) => a.territorial_nombre)]);
-  const cetaps = listaUnica([pta?.cetap, ...asignaturas.map((a: any) => a.cetap_nombre)]);
-  const programas = listaUnica([pta?.programa, ...asignaturas.map((a: any) => a.programa_nombre || a.programa)]);
   const hayDetalle = asignaturas.length > 0 || proyectosInv.length > 0 || actInv.length > 0 || extActs.length > 0 || compActs.length > 0;
+
+  // ── Encabezado oficial GTH-F081 ─────────────────────────────────────
+  // La ficha del Banco de Docentes/RUND es la única fuente de los datos de
+  // vinculación. Una territorial, sede o núcleo de una asignatura no se usa
+  // para completar la vinculación del docente: si RUND no tiene el dato, se
+  // muestra "—". El PTA solo respalda identidad/contacto y datos del plan.
+  const periodoCodigo = String(datoNoVacio(
+    typeof pta?.periodo === 'string' ? pta.periodo : pta?.periodo?.codigo,
+    periodoAcademico?.codigo,
+  ) || '').trim();
+  const periodoAnio = String(datoNoVacio(
+    periodoAcademico?.anio,
+    periodoCodigo.match(/^\d{4}/)?.[0],
+  ) || '');
+  const identificacionDocente = fmtDocumento(documentoReal(
+    userPerfil?.documento_identidad,
+    userPerfil?.documento,
+    userPerfil?.identificacion,
+    pta?.docente_documento,
+  ));
+  const nombreDocente = datoNoVacio(
+    userPerfil?.nombre_completo,
+    userPerfil?.nombre,
+    pta?.docente_nombre,
+  );
+  const perfilAcademico = datoNoVacio(
+    userPerfil?.perfil_academico,
+    userPerfil?.perfil_academico_pro,
+  );
+  const categoriaDocente = datoNoVacio(userPerfil?.categoria);
+  const territorialVinculacion = datoNoVacio(userPerfil?.territorial);
+  const situacionAdministrativa = datoNoVacio(userPerfil?.situacion_administrativa);
+  const ultimaEvaluacion = datoNoVacio(userPerfil?.ultima_evaluacion);
+  const correoInstitucional = datoNoVacio(
+    userPerfil?.correo_institucional,
+    userPerfil?.email,
+    pta?.docente_email,
+    pta?.correo_institucional,
+  );
+  const correoPersonal = datoNoVacio(
+    userPerfil?.correo_personal,
+    userPerfil?.correo_alternativo,
+  );
+  const telefonoDocente = datoNoVacio(
+    userPerfil?.telefono,
+    userPerfil?.numero_celular,
+    pta?.telefono_docente,
+  );
+  const tipoVinculacion = datoNoVacio(
+    userPerfil?.vinculacion,
+    pta?.tipo_vinculacion,
+  );
+  const tipoDedicacion = datoNoVacio(
+    userPerfil?.dedicacion,
+    pta?.dedicacion,
+  );
+  const nucleoVinculacion = datoNoVacio(userPerfil?.nucleo_tematico);
+  const actoAdministrativo = datoNoVacio(userPerfil?.acto_administrativo_vinculacion);
+  const inicioVinculacion = fmtFechaOTexto(datoNoVacio(
+    userPerfil?.inicio_vinculacion,
+  ));
+  const finVinculacion = fmtFechaOTexto(datoNoVacio(
+    userPerfil?.fin_vinculacion,
+  ));
+  const inicioPeriodoAcademico = fmtFechaOTexto(datoNoVacio(
+    periodoAcademico?.fechaInicio,
+    periodoAcademico?.fecha_inicio,
+    pta?.periodo_fecha_inicio,
+  ));
+  const finPeriodoAcademico = fmtFechaOTexto(datoNoVacio(
+    periodoAcademico?.fechaFin,
+    periodoAcademico?.fecha_fin,
+    pta?.periodo_fecha_fin,
+  ));
+  const horasProgramables = [
+    userPerfil?.horas_programables,
+    pta?.horas_asignables,
+    pta?.horas_a_programar,
+    horasDisp,
+  ].map(numero).find(value => value > 0) || 0;
 
   // ── Gráficos del PTA individual ────────────────────────────────────────────
   // La investigación puede guardar un total en el proyecto y, simultáneamente,
@@ -517,7 +787,7 @@ export function ReportePTAInstitucional({
     asignaturas.length === 1 ? pta?.cetap : null,
   ));
 
-  const handlePrint = () => {
+  const handleNativePrint = () => {
     // Permite que el navegador complete el layout del modal antes de activar
     // los estilos y gráficos específicos de impresión.
     window.dispatchEvent(new Event('resize'));
@@ -526,24 +796,166 @@ export function ReportePTAInstitucional({
     });
   };
 
+  const esperarRender = (ms = 0) => new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (ms > 0) window.setTimeout(resolve, ms);
+        else resolve();
+      });
+    });
+  });
+
+  /**
+   * Genera una página PDF continua a partir del documento visible. Al rasterizar
+   * el reporte completo no hay reflujo, saltos automáticos ni diferencias entre
+   * el layout de pantalla y el archivo descargado.
+   */
+  const handleExportPdfFiel = async () => {
+    const reporte = reporteDocumentoRef.current;
+    if (!reporte || exportandoPdf) return;
+
+    setExportandoPdf(true);
+    setErrorExportacion(null);
+
+    const sheet = reporte.closest('.reporte-pta-sheet') as HTMLElement | null;
+    const originalSheetWidth = sheet?.style.width || '';
+    const originalSheetMaxWidth = sheet?.style.maxWidth || '';
+    const originalSheetOverflow = sheet?.style.overflow || '';
+    const originalReportWidth = reporte.style.width;
+    const originalReportMinWidth = reporte.style.minWidth;
+
+    try {
+      // La exportación usa el ancho institucional aun si se inicia desde un
+      // teléfono. La vista responsive se restaura al terminar la captura.
+      if (reporte.getBoundingClientRect().width < 1160) {
+        if (sheet) {
+          sheet.style.width = '1200px';
+          sheet.style.maxWidth = 'none';
+          sheet.style.overflow = 'visible';
+        }
+        reporte.style.width = '1188px';
+        reporte.style.minWidth = '1188px';
+        window.dispatchEvent(new Event('resize'));
+        await esperarRender(220);
+      }
+      if (document.fonts?.ready) await document.fonts.ready;
+      // Recharts calcula sus dimensiones después del layout y de las fuentes.
+      // Esta espera breve garantiza que la captura use el SVG definitivo.
+      await esperarRender(180);
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const ancho = Math.ceil(reporte.scrollWidth);
+      const alto = Math.ceil(reporte.scrollHeight);
+      const maxLadoCanvas = 30_000;
+      const maxPixelesCanvas = 70_000_000;
+      const escala = Math.max(0.75, Math.min(
+        2,
+        maxLadoCanvas / Math.max(ancho, alto),
+        Math.sqrt(maxPixelesCanvas / Math.max(ancho * alto, 1)),
+      ));
+
+      const canvas = await html2canvas(reporte, {
+        scale: escala,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#FFFFFF',
+        logging: false,
+        onclone: normalizarColoresCaptura,
+        width: ancho,
+        height: alto,
+        windowWidth: Math.max(1200, ancho),
+        windowHeight: Math.max(window.innerHeight, alto),
+        scrollX: 0,
+        scrollY: -window.scrollY,
+      });
+
+      if (!canvas.width || !canvas.height) {
+        throw new Error('La captura del reporte no produjo una imagen válida.');
+      }
+
+      const anchoPdfMm = 297;
+      const altoPdfMm = (canvas.height * anchoPdfMm) / canvas.width;
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [anchoPdfMm, altoPdfMm],
+        compress: true,
+      });
+
+      pdf.setProperties({
+        title: `Plan de Trabajo Académico ${periodoCodigo || ''}`.trim(),
+        subject: 'Reporte Institucional PTA - Formato GTH-F081',
+        author: 'Escuela Superior de Administración Pública - ESAP',
+      });
+      pdf.addImage(
+        canvas.toDataURL('image/png'),
+        'PNG',
+        0,
+        0,
+        anchoPdfMm,
+        altoPdfMm,
+        undefined,
+        'FAST',
+      );
+
+      const nombreArchivo = String(nombreDocente || 'Docente')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      pdf.save(`PTA_GTH-F081_${periodoCodigo || 'periodo'}_${nombreArchivo || 'Docente'}.pdf`);
+    } catch (error) {
+      console.error('[Reporte PTA] No fue posible generar el PDF fiel:', error);
+      setErrorExportacion('No fue posible generar el PDF. Puede intentar nuevamente o usar Imprimir.');
+    } finally {
+      if (sheet) {
+        sheet.style.width = originalSheetWidth;
+        sheet.style.maxWidth = originalSheetMaxWidth;
+        sheet.style.overflow = originalSheetOverflow;
+      }
+      reporte.style.width = originalReportWidth;
+      reporte.style.minWidth = originalReportMinWidth;
+      window.dispatchEvent(new Event('resize'));
+      await esperarRender();
+      setExportandoPdf(false);
+    }
+  };
+
   const celdaTh: React.CSSProperties = { padding: '6px 8px', border: `1px solid ${NAVY}`, fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', background: HEAD_BG, color: '#111827', whiteSpace: 'nowrap' };
   const celdaTd: React.CSSProperties = { padding: '6px 8px', border: `1px solid ${NAVY}`, fontSize: '0.72rem', fontWeight: 600, textAlign: 'center', color: '#111827', background: '#fff' };
 
   return (
     <AnimatePresence>
       {/* Aislamiento de impresión: solo la hoja del reporte es visible al imprimir. */}
-      <style>{`
+      <style key="reporte-pta-estilos">{`
+        .reporte-pta-document .recharts-wrapper > .recharts-surface {
+          width: 100% !important;
+          height: 100% !important;
+        }
         .reporte-pta-only-print, .reporte-pta-print-page-break { display: none; }
         @media print {
           @page { size: landscape; margin: 8mm; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
           body * { visibility: hidden !important; }
-          .reporte-pta-overlay { position: absolute !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: auto !important; overflow: visible !important; padding: 0 !important; background: #fff !important; display: block !important; }
-          .reporte-pta-sheet, .reporte-pta-sheet * { visibility: visible !important; }
+          body > *:not(.reporte-pta-overlay) { display: none !important; }
+          body *:has(.reporte-pta-overlay) { visibility: visible !important; }
+          .reporte-pta-overlay { position: relative !important; inset: auto !important; width: 100% !important; overflow: visible !important; padding: 0 !important; background: #fff !important; display: block !important; }
+          .reporte-pta-overlay, .reporte-pta-overlay * { visibility: visible !important; }
           .reporte-pta-sheet { position: relative !important; margin: 0 auto !important; box-shadow: none !important; max-width: 100% !important; border-radius: 0 !important; overflow: visible !important; print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important; }
+          .reporte-pta-document, .reporte-pta-document * { print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important; }
+          .reporte-pta-document { background: #fff !important; border-color: ${NAVY} !important; }
+          .reporte-pta-document table { border-collapse: collapse !important; border-spacing: 0 !important; }
+          .reporte-pta-document th, .reporte-pta-document td { border-color: ${NAVY} !important; }
           .reporte-pta-hide-print { display: none !important; }
           .reporte-pta-hide-chart-print { display: none !important; }
           .reporte-pta-only-print { display: block !important; }
-          .reporte-pta-print-page-break { display: block !important; height: 1px !important; margin: 0 !important; padding: 0 !important; break-before: page !important; page-break-before: always !important; }
+          .reporte-pta-ident-scroll { overflow: visible !important; }
+          .reporte-pta-ident-grid { min-width: 0 !important; }
+          .reporte-pta-print-page-break { display: none !important; }
           .reporte-pta-chart-page { display: block !important; break-inside: avoid !important; page-break-inside: avoid !important; }
           .reporte-pta-chart-section { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)) !important; align-items: start !important; break-inside: avoid !important; page-break-inside: avoid !important; }
           .reporte-pta-chart-card { min-width: 0 !important; break-inside: avoid !important; page-break-inside: avoid !important; overflow: visible !important; }
@@ -567,6 +979,7 @@ export function ReportePTAInstitucional({
         }
       `}</style>
       <div
+        key="reporte-pta-overlay"
         className="reporte-pta-overlay"
         style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px 8px 80px', background: 'rgba(17,24,39,0.8)', overflowY: 'auto' }}
       >
@@ -584,14 +997,28 @@ export function ReportePTAInstitucional({
           >
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#111827' }}>Reporte Institucional PTA</div>
-              <div style={{ fontSize: '0.68rem', color: '#6B7280' }}>Formato GTH-F081 · Periodo {pta?.periodo || '—'}</div>
+              <div style={{ fontSize: '0.68rem', color: '#6B7280' }}>
+                Formato GTH-F081 · Periodo {periodoCodigo || '—'}{isParcial ? ' · Informe parcial' : ''}
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
-                onClick={handlePrint}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: '#fff', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
+                onClick={handleExportPdfFiel}
+                disabled={exportandoPdf}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: '#fff', fontSize: '0.76rem', fontWeight: 700, cursor: exportandoPdf ? 'wait' : 'pointer', opacity: exportandoPdf ? 0.75 : 1 }}
               >
-                <Printer size={14} /> Exportar / Imprimir
+                {exportandoPdf
+                  ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                  : <Download size={14} />}
+                {exportandoPdf ? 'Generando PDF…' : 'Descargar PDF fiel'}
+              </button>
+              <button
+                onClick={handleNativePrint}
+                disabled={exportandoPdf}
+                title="Abrir la impresión estándar del navegador"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: '0.76rem', fontWeight: 700, cursor: exportandoPdf ? 'not-allowed' : 'pointer', opacity: exportandoPdf ? 0.55 : 1 }}
+              >
+                <Printer size={14} /> Imprimir
               </button>
               <button
                 onClick={onClose}
@@ -601,52 +1028,148 @@ export function ReportePTAInstitucional({
                 <X size={14} /> Cerrar
               </button>
             </div>
+            {errorExportacion && (
+              <div role="alert" style={{ width: '100%', color: '#B91C1C', fontSize: '0.68rem', fontWeight: 700 }}>
+                {errorExportacion}
+              </div>
+            )}
           </div>
 
-          <div style={{ border: `8px solid ${NAVY}`, margin: 6 }}>
+          <div
+            ref={reporteDocumentoRef}
+            className="reporte-pta-document"
+            style={{ border: `8px solid ${NAVY}`, margin: 6 }}
+          >
             {/* ── Header oficial ── */}
-            <div className="reporte-pta-keep-together" style={{ background: NAVY, color: '#fff', display: 'flex', alignItems: 'center', padding: 8, position: 'relative', minHeight: 80 }}>
-              <div style={{ width: 64, height: 64, background: '#fff', marginRight: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, padding: 4 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2 }}>
-                  {Array(10).fill(0).map((_, i) => <div key={i} style={{ width: 8, height: 8, background: '#003DA5', borderRadius: '50%' }} />)}
+            <div
+              className="reporte-pta-keep-together"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '112px minmax(0, 1fr) 132px',
+                minHeight: 86,
+                border: '2px solid #111827',
+                background: FORM_HEADER_BLUE,
+                position: 'relative',
+              }}
+            >
+              <div style={{
+                background: '#fff',
+                borderRight: '2px solid #111827',
+                padding: '4px 6px 3px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <IsotipoESAP variant="icon-color" width={42} height={48} />
+                <div style={{
+                  marginTop: -4,
+                  color: '#111827',
+                  fontFamily: "Georgia, 'Times New Roman', serif",
+                  fontSize: '0.43rem',
+                  fontWeight: 700,
+                  lineHeight: 1.05,
+                  textAlign: 'center',
+                }}>
+                  Escuela Superior de<br />Administración Pública
                 </div>
               </div>
-              <div style={{ flex: 1, textAlign: 'center', fontWeight: 700, minWidth: 0 }}>
-                <div style={{ fontSize: '1.05rem', letterSpacing: '0.03em', textTransform: 'uppercase' }}>PLAN DE TRABAJO ACADÉMICO DOCENTE - PTA</div>
-                <div style={{ fontSize: '0.78rem' }}>Escuela Superior de Administración Pública - ESAP</div>
-                <div style={{ fontSize: '0.78rem' }}>Grupo de Gestión Profesoral - {pta?.periodo?.split('-')[0] || ''}</div>
+              <div style={{
+                minWidth: 0,
+                padding: '7px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                textAlign: 'center',
+                fontStyle: 'italic',
+                fontWeight: 800,
+                lineHeight: 1.2,
+              }}>
+                <div style={{ fontSize: '0.96rem', textTransform: 'uppercase' }}>PLAN DE TRABAJO ACADÉMICO DOCENTE - PTA</div>
+                <div style={{ fontSize: '0.75rem', marginTop: 4 }}>Escuela Superior de Administración Pública - ESAP</div>
+                <div style={{ fontSize: '0.75rem', marginTop: 4 }}>Grupo de Gestión Profesoral - {periodoAnio || '—'}</div>
               </div>
-              <div style={{ position: 'absolute', right: 8, bottom: 4, fontSize: '0.58rem', color: '#CBD5E1' }}>Versión 08.2025</div>
-              {isParcial && (
-                <div style={{ position: 'absolute', right: 8, top: 8, padding: '2px 8px', background: '#EAB308', color: '#111827', fontSize: '0.62rem', fontWeight: 900, textTransform: 'uppercase', borderRadius: 4, border: '1px solid #A16207' }}>
-                  Informe Parcial
-                </div>
-              )}
+              <div style={{
+                borderLeft: '2px solid #111827',
+                padding: '6px 7px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                alignItems: 'flex-end',
+                color: '#FFFFFF',
+                fontSize: '0.5rem',
+                fontWeight: 700,
+                fontStyle: 'italic',
+                lineHeight: 1.15,
+                textAlign: 'right',
+                textShadow: '0 1px 1px rgba(0, 0, 0, 0.35)',
+              }}>
+                <span>PTA - {periodoAnio || '—'}</span>
+                <span>Copyright: Arley Carvajal Villalobos 2020</span>
+                <span>Versión 09.2025</span>
+                {isParcial && (
+                  <span style={{
+                    padding: '2px 5px',
+                    background: '#FACC15',
+                    border: '1px solid #A16207',
+                    borderRadius: 2,
+                    color: '#111827',
+                    fontSize: '0.44rem',
+                    fontStyle: 'normal',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    textShadow: 'none',
+                  }}>
+                    Informe parcial
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* ── Identificación docente (solo datos reales; '—' si no hay dato) ── */}
             <div className="reporte-pta-keep-together">
               <BandaTitulo>Identificación Docente</BandaTitulo>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', borderBottom: `3px solid ${NAVY}`, borderLeft: '1px solid #CBD5E1', borderTop: '1px solid #CBD5E1', background: '#fff' }}>
-                <CampoIdent label="Identificación (ID)" value={userPerfil?.documento || userPerfil?.identificacion || pta?.docente_documento || pta?.docente_id} />
-                <CampoIdent label="Nombre" value={userPerfil?.nombre || pta?.docente_nombre} />
-                <CampoIdent label="Correo Institucional" value={userPerfil?.email || pta?.docente_email || pta?.correo_institucional} />
-                <CampoIdent label="Sede Territorial" value={territoriales || userPerfil?.territorial} />
-                <CampoIdent label="CETAP" value={cetaps} />
-                <CampoIdent label="Programa" value={programas} />
-                <CampoIdent label="Tipo de Vinculación" value={pta?.tipo_vinculacion} />
-                <CampoIdent label="Dedicación" value={pta?.dedicacion} />
-                <CampoIdent label="Semanas de Vinculación" value={pta?.semanas_vinculacion} />
-                <CampoIdent label="Núcleo(s) Temático(s)" value={nucleos || null} />
-                <CampoIdent label="Inicio Periodo" value={inicioPeriodo} />
-                <CampoIdent label="Fin Periodo" value={finPeriodo} />
-                <CampoIdent label="Horas Disponibles" value={horasDisp > 0 ? `${horasDisp} h` : null} />
-                <CampoIdent label="Horas Programadas" value={horasProg > 0 ? `${horasProg} h` : null} />
+              <div className="reporte-pta-ident-scroll" style={{ overflowX: 'auto', borderBottom: `3px solid ${NAVY}` }}>
+                <div
+                  className="reporte-pta-ident-grid"
+                  style={{
+                    minWidth: 1080,
+                    display: 'grid',
+                    gridTemplateColumns: '24.71fr 24.71fr 31.86fr 34.86fr 35.14fr 28.29fr 23.43fr 26fr 47.29fr 25.86fr 30.43fr 30fr 22.29fr',
+                    gridTemplateRows: 'minmax(104px, auto) minmax(104px, auto)',
+                    borderLeft: '1px solid #111827',
+                    borderTop: '1px solid #111827',
+                    background: '#fff',
+                  }}
+                >
+                  <CampoIdent label="Número de Cédula" value={identificacionDocente} gridColumn="1 / 2" gridRow="1 / 3" valueFontSize="0.63rem" noWrap />
+                  <CampoIdent label="Nombre" value={nombreDocente} gridColumn="2 / 4" gridRow="1 / 2" valueFontSize="0.72rem" />
+                  <CampoIdent label="Perfil Académico" value={perfilAcademico} gridColumn="4 / 6" gridRow="1 / 2" valueFontSize="0.62rem" />
+                  <CampoIdent label="Categoría" value={categoriaDocente} gridColumn="6 / 7" gridRow="1 / 2" />
+                  <CampoIdent label="Sede Territorial de Vinculación" value={territorialVinculacion} gridColumn="7 / 8" gridRow="1 / 2" valueFontSize="0.59rem" />
+                  <CampoIdent label="Situación Administrativa" value={situacionAdministrativa} gridColumn="8 / 10" gridRow="1 / 2" valueFontSize="0.61rem" />
+                  <CampoIdent label="Última Evaluación Docente" value={ultimaEvaluacion} gridColumn="10 / 11" gridRow="1 / 2" valueFontSize="0.59rem" />
+                  <CampoIdent label="Correo Institucional" value={correoInstitucional} gridColumn="11 / 12" gridRow="1 / 2" valueFontSize="0.58rem" />
+                  <CampoIdent label="Correo Personal" value={correoPersonal} gridColumn="12 / 13" gridRow="1 / 2" valueFontSize="0.58rem" />
+                  <CampoIdent label="Número Celular" value={telefonoDocente} gridColumn="13 / 14" gridRow="1 / 2" valueFontSize="0.61rem" />
+
+                  <CampoIdent label="Tipo de Vinculación" value={tipoVinculacion} gridColumn="2 / 3" gridRow="2 / 3" />
+                  <CampoIdent label="Tipo de Dedicación" value={tipoDedicacion} gridColumn="3 / 4" gridRow="2 / 3" />
+                  <CampoIdent label="Núcleo Temático de Vinculación" value={nucleoVinculacion} gridColumn="4 / 6" gridRow="2 / 3" valueFontSize="0.61rem" />
+                  <CampoIdent label="Acto Administrativo de Vinculación" value={actoAdministrativo} gridColumn="6 / 8" gridRow="2 / 3" valueFontSize="0.58rem" />
+                  <CampoIdent label="Fecha Inicio de Vinculación" value={inicioVinculacion} gridColumn="8 / 10" gridRow="2 / 3" />
+                  <CampoIdent label="Fecha Fin de Vinculación" value={finVinculacion} gridColumn="10 / 11" gridRow="2 / 3" valueFontSize="0.61rem" />
+                  <CampoIdent label={`Inicio Periodo Académico ${periodoCodigo || ''}`} value={inicioPeriodoAcademico} gridColumn="11 / 12" gridRow="2 / 3" valueFontSize="0.61rem" />
+                  <CampoIdent label={`Fin Periodo Académico ${periodoCodigo || ''}`} value={finPeriodoAcademico} gridColumn="12 / 13" gridRow="2 / 3" valueFontSize="0.61rem" />
+                  <CampoIdent label="Total Horas Programables" value={horasProgramables > 0 ? horasProgramables : null} gridColumn="13 / 14" gridRow="2 / 3" valueFontSize="1rem" />
+                </div>
               </div>
             </div>
 
             {/* ── Título periodo ── */}
-            <BandaTitulo>Plan de Trabajo Académico - PTA · Periodo {pta?.periodo || '—'}</BandaTitulo>
+            <BandaTitulo>Plan de Trabajo Académico - PTA · Periodo {periodoCodigo || '—'}</BandaTitulo>
 
             {componentes.length > 0 && (
               <>
@@ -730,7 +1253,12 @@ export function ReportePTAInstitucional({
                               formatter={(value, _name, props) => [`${value} h`, props?.payload?.componente || 'Horas programadas']}
                               contentStyle={{ fontSize: '0.68rem', borderRadius: 6, border: '1px solid #CBD5E1' }}
                             />
-                            <Bar dataKey="horas" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                            <Bar
+                              dataKey="horas"
+                              radius={[0, 4, 4, 0]}
+                              maxBarSize={22}
+                              isAnimationActive={false}
+                            >
                               {actividadChartData.map(item => <Cell key={item.id} fill={item.color} />)}
                               <LabelList dataKey="horas" position="right" formatter={(value: any) => `${value} h`} style={{ fontSize: 9, fontWeight: 800, fill: '#334155' }} />
                             </Bar>
@@ -762,6 +1290,7 @@ export function ReportePTAInstitucional({
                               dataKey="value"
                               startAngle={90}
                               endAngle={-270}
+                              isAnimationActive={false}
                               label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
                               labelLine={{ stroke: '#94A3B8', strokeWidth: 1 }}
                             >
@@ -838,9 +1367,10 @@ export function ReportePTAInstitucional({
                                   <div style={{ fontWeight: 800 }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
                                   <InfoSecundaria>{a.nucleo_tematico || null}</InfoSecundaria>
                                   <InfoSecundaria>{a.observaciones ? `Observaciones: ${a.observaciones}` : null}</InfoSecundaria>
+                                  <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
-                                  <div>{a.programa_nombre || a.programa || programas || '—'}</div>
+                                  <div>{a.programa_nombre || a.programa || '—'}</div>
                                   <InfoSecundaria>{textoConSeparador([
                                     a.cetap_nombre && `CETAP ${a.cetap_nombre}`,
                                     a.territorial_nombre || null,
@@ -890,6 +1420,7 @@ export function ReportePTAInstitucional({
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div style={{ fontWeight: 800 }}>{proyecto.nombre || proyecto.nombre_proyecto || 'Proyecto de investigación'}</div>
                                   <InfoSecundaria>Proyecto de investigación</InfoSecundaria>
+                                  <HierarchySelectionSummary activity={proyecto} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   {textoConSeparador([
@@ -909,6 +1440,7 @@ export function ReportePTAInstitucional({
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div style={{ fontWeight: 800 }}>{actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad de investigación'}</div>
                                   <InfoSecundaria>{actividad.descripcion || null}</InfoSecundaria>
+                                  <HierarchySelectionSummary activity={actividad} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   {textoConSeparador([
@@ -941,31 +1473,20 @@ export function ReportePTAInstitucional({
                             </tr>
                           </thead>
                           <tbody>
-                            {extActs.map((actividad: any, index: number) => {
-                              const selection = getExtensionSelectionInfo(actividad);
-                              return (
+                            {extActs.map((actividad: any, index: number) => (
                                 <tr key={actividad.id || actividad.actividad_id || index}>
                                   <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                     <div style={{ fontWeight: 800 }}>{actividad.nombre || actividad.nombre_actividad || actividad.actividad_nombre || actividad.actividad_id || 'Actividad de extensión'}</div>
+                                    <HierarchySelectionSummary activity={actividad} accent={PTA_COLORS.EXTENSION} compact className="mt-1" />
                                     <InfoSecundaria>{actividad.descripcion || null}</InfoSecundaria>
                                   </td>
                                   <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                     <div>{textoSeccion(actividad.seccion) || 'Extensión académica'}</div>
-                                    {selection && (
-                                      <InfoSecundaria>
-                                        {selection.etiqueta}: {selection.nombre}
-                                        {selection.detalles.map((detail: any) => textoConSeparador([
-                                          detail.nombre,
-                                          ...detail.valores.map((value: any) => value.columna ? `${value.columna}: ${value.valor}` : value.valor),
-                                        ])).filter(Boolean).map((detail: string, detailIndex: number) => <React.Fragment key={detailIndex}><br />{detail}</React.Fragment>)}
-                                      </InfoSecundaria>
-                                    )}
                                   </td>
                                   <td style={{ ...celdaTd, verticalAlign: 'top' }}>{rangoFechas(actividad.fecha_inicio, actividad.fecha_fin) || '—'}</td>
                                   <td style={{ ...celdaTd, verticalAlign: 'top', fontWeight: 900, color: PTA_COLORS.EXTENSION }}>{numero(actividad.horas ?? actividad.horas_ejecutadas)}</td>
                                 </tr>
-                              );
-                            })}
+                            ))}
                           </tbody>
                         </table>
                       </div>
@@ -990,6 +1511,7 @@ export function ReportePTAInstitucional({
                               <tr key={actividad.id || actividad.actividad_id || index}>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div style={{ fontWeight: 800 }}>{actividad.nombre || actividad.actividad_nombre || actividad.actividad_id || 'Actividad complementaria'}</div>
+                                  <HierarchySelectionSummary activity={actividad} accent="#A16207" compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div>{textoSeccion(actividad.seccion) || 'Complementarias de docencia'}</div>
@@ -1081,7 +1603,7 @@ export function ReportePTAInstitucional({
                       <div style={{ fontFamily: 'monospace', background: '#E5E7EB', padding: 4, marginBottom: 8, overflowWrap: 'anywhere' }}>{certificadoId || 'CERT-N/A'}</div>
                       <div style={{ color: '#6B7280', lineHeight: 1.6 }}>
                         <strong>Fecha de Firma:</strong> {signedAt ? new Date(signedAt).toLocaleString('es-CO') : '—'}<br />
-                        <strong>Firmante Autenticado:</strong> {userPerfil?.nombre || pta?.docente_nombre || '—'}<br />
+                        <strong>Firmante Autenticado:</strong> {nombreDocente || '—'}<br />
                         El documento ha surtido efecto y ha sido anclado al expediente.
                       </div>
                     </div>

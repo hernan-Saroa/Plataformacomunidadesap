@@ -139,6 +139,7 @@ export interface DisciplinaryProcess {
       draftsCount?: number;
       documentsCount?: number;
       timePercentage?: number;
+      diasHabilesRestantes?: number | null;
       actuacionesCount?: number;
       ultimaActuacion?: string | null;
       ultimaActuacionFecha?: string | null;
@@ -428,6 +429,7 @@ export interface AssignProcessDto {
 export interface CreateAutoDto {
     processId: string;
     tipoAuto: string;
+    autoConfigurationId?: string;
     contenidoHtml: string;
     comentarios?: string;
     numero?: string;
