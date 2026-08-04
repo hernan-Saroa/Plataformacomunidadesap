@@ -26,13 +26,21 @@ interface Asignatura {
   id: string;
   nombre: string;
   codigo?: string;
+  pensum?: string | null;
+  nombreBase?: string | null;
   nucleoTematico?: string;
   semestre: number;
   creditos: number;
   horas: number;
   horasFijasPta?: number;
+  horasClase?: number | null;
+  horasPta?: number | null;
   modalidad: string;
+  modalidadSufijo?: string | null;
   tipo?: string;
+  tipoExcepcion?: string | null;
+  requiereRevisionModalidad?: boolean;
+  activa?: boolean;
   prerequisitos?: string;
   programa_id: string;
   created_at?: string;
@@ -46,7 +54,7 @@ interface Props {
   totalSemestres?: number;
 }
 
-const MODALIDADES = ['Presencial', 'Virtual', 'Mixta', 'Distancia'];
+const MODALIDADES = ['Presencial', 'Presencial Diurno', 'Presencial Nocturno', 'Virtual', 'Mixta', 'Distancia', 'Por definir'];
 const TIPOS = ['Teorica', 'Practica', 'Taller', 'Seminario', 'Laboratorio'];
 
 const SEMESTRES_LABELS: string[] = [
@@ -96,32 +104,39 @@ const getNucleoColor = (nucleo?: string) => {
 };
 
 const EMPTY_ASIGNATURA: Omit<Asignatura, 'id' | 'programa_id'> = {
-  nombre: '', codigo: '', nucleoTematico: 'General', semestre: 1,
-  creditos: 3, horas: 144, modalidad: 'Presencial', tipo: 'Teorica', prerequisitos: '',
+  nombre: '', codigo: '', pensum: null, nombreBase: '', nucleoTematico: 'General', semestre: 1,
+  creditos: 3, horas: 48, horasClase: 48, horasPta: 144,
+  modalidad: 'Presencial', tipo: 'Teorica', prerequisitos: '', activa: true,
 };
 
 // ═══ Export Helpers ═══
 
 function exportToCSV(asignaturas: Asignatura[], programaNombre: string) {
-  const headers = ['#', 'Código', 'Nombre', 'Semestre', 'Créditos', 'Horas', 'Núcleo', 'Modalidad', 'Tipo'];
+  const headers = ['#', 'Código', 'Pensum', 'Nombre', 'Nombre base', 'Semestre', 'Créditos', 'Horas clase', 'Horas PTA', 'Núcleo', 'Modalidad', 'Tipo', 'Excepción', 'Revisión modalidad', 'Activa'];
   const rows = asignaturas
     .sort((a, b) => (a.semestre || 1) - (b.semestre || 1) || a.nombre.localeCompare(b.nombre))
     .map((a, i) => [
       i + 1,
       a.codigo || '',
+      a.pensum || '',
       `"${a.nombre.replace(/"/g, '""')}"`,
+      `"${String(a.nombreBase || '').replace(/"/g, '""')}"`,
       a.semestre,
-      a.horas,
-      a.horasFijasPta || '',
+      a.creditos,
+      a.horasClase ?? a.horas,
+      a.horasPta ?? a.horasFijasPta ?? '',
       `"${a.nucleoTematico}"`,
       a.modalidad,
       a.tipo || 'Teorica',
+      a.tipoExcepcion || '',
+      a.requiereRevisionModalidad ? 'SI' : 'NO',
+      a.activa === false ? 'NO' : 'SI',
     ]);
 
   const totalCreditos = asignaturas.reduce((s, a) => s + (a.creditos || 0), 0);
   const totalHoras = asignaturas.reduce((s, a) => s + (a.horas || 0), 0);
   rows.push([]);
-  rows.push(['', '', 'TOTAL', '', totalCreditos, totalHoras, '', '', '']);
+  rows.push(['', '', '', 'TOTAL', '', '', totalCreditos, totalHoras, '', '', '', '', '', '', '']);
 
   const csv = [headers.join(','), ...rows.map(r => (r as any[]).join(','))].join('\n');
   const BOM = '\uFEFF';
@@ -331,18 +346,24 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas?_cb=${Date.now()}`);
       const asignaturasData = (response || []).map((a: any) => {
         const tipo = String(a.tipo || 'Teorica');
-        const modalidad = String(a.modalidad || 'Presencial');
+        const modalidad = String(a.modalidadSufijo || a.modalidad || 'Presencial');
+        const calculated = calculateHrsPta(a.creditos, tipo);
+        const horasClase = Number(a.horasClase ?? a.horas_clase ?? a.horas);
+        const horasPta = Number(a.horasPta ?? a.horas_pta ?? a.horasFijasPta ?? calculated);
         const asig = {
           ...a,
           tipo: tipo.charAt(0).toUpperCase() + tipo.slice(1),
           modalidad: modalidad.charAt(0).toUpperCase() + modalidad.slice(1),
           nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
+          pensum: a.pensum || null,
+          nombreBase: a.nombreBase || a.nombre_base || null,
+          horasClase: Number.isFinite(horasClase) ? horasClase : 0,
+          horasPta: Number.isFinite(horasPta) ? horasPta : null,
+          horas: Number.isFinite(horasClase) ? horasClase : 0,
+          horasFijasPta: Number.isFinite(horasPta) ? horasPta : undefined,
+          tipoExcepcion: a.tipoExcepcion || a.tipo_excepcion || null,
+          requiereRevisionModalidad: Boolean(a.requiereRevisionModalidad ?? a.requiere_revision_modalidad),
         };
-        // Override with dynamic calculated hrs if config exists
-        const calculated = calculateHrsPta(asig.creditos, asig.tipo);
-        if (calculated !== null) {
-          asig.horasFijasPta = calculated;
-        }
         return asig;
       });
 
@@ -424,17 +445,22 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       }, { retries: 0 });
       const savedAssignments = (response || asignaturas).map((a: any) => {
         const tipo = String(a.tipo || 'Teorica');
-        const modalidad = String(a.modalidad || 'Presencial');
+        const modalidad = String(a.modalidadSufijo || a.modalidad || 'Presencial');
+        const calculated = calculateHrsPta(a.creditos, tipo);
+        const horasClase = Number(a.horasClase ?? a.horas_clase ?? a.horas);
+        const horasPta = Number(a.horasPta ?? a.horas_pta ?? a.horasFijasPta ?? calculated);
         const normalized = {
           ...a,
           tipo: tipo.charAt(0).toUpperCase() + tipo.slice(1),
           modalidad: modalidad.charAt(0).toUpperCase() + modalidad.slice(1),
           nucleoTematico: a.nucleoTematico || a.nucleo || 'General',
+          pensum: a.pensum || null,
+          nombreBase: a.nombreBase || a.nombre_base || null,
+          horasClase: Number.isFinite(horasClase) ? horasClase : 0,
+          horasPta: Number.isFinite(horasPta) ? horasPta : null,
+          horas: Number.isFinite(horasClase) ? horasClase : 0,
+          horasFijasPta: Number.isFinite(horasPta) ? horasPta : undefined,
         };
-        const calculated = calculateHrsPta(normalized.creditos, normalized.tipo);
-        if (calculated !== null) {
-          normalized.horasFijasPta = calculated;
-        }
         return normalized;
       });
       setAsignaturas(savedAssignments);
@@ -512,12 +538,14 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       ...newAsig,
       id,
       programa_id: programaId,
-      horas: newAsig.horas || newAsig.creditos * 48,
+      horasClase: newAsig.horasClase ?? newAsig.horas ?? newAsig.creditos * 48,
+      horas: newAsig.horasClase ?? newAsig.horas ?? newAsig.creditos * 48,
     };
     
     const calculated = calculateHrsPta(asig.creditos, asig.tipo);
     if (calculated !== null) {
       asig.horasFijasPta = calculated;
+      asig.horasPta = calculated;
     }
 
     setAsignaturas(prev => [...prev, asig]);
@@ -552,11 +580,15 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       const updated = { ...a, [field]: value };
       if (field === 'creditos') {
         updated.horas = Number(value) * 48;
+        updated.horasClase = Number(value) * 48;
         const calculated = calculateHrsPta(Number(value), updated.tipo);
         if (calculated !== null) {
           updated.horasFijasPta = calculated;
+          updated.horasPta = calculated;
         }
       }
+      if (field === 'horasClase') updated.horas = Number(value);
+      if (field === 'horasPta') updated.horasFijasPta = Number(value);
       return updated;
     }));
     setHasChanges(true);
@@ -633,7 +665,11 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   const sorted = useMemo(() => [...asignaturas]
     .filter(a => filterSemestre === 'all' || a.semestre === filterSemestre)
     .filter(a => filterNucleo === 'all' || a.nucleoTematico === filterNucleo)
-    .filter(a => !searchTerm || a.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (a.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(a => !searchTerm
+      || a.nombre.toLowerCase().includes(searchTerm.toLowerCase())
+      || (a.nombreBase || '').toLowerCase().includes(searchTerm.toLowerCase())
+      || (a.codigo || '').toLowerCase().includes(searchTerm.toLowerCase())
+      || (a.pensum || '').toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
       if (sortBy === 'semestre') return (a.semestre || 1) - (b.semestre || 1) || a.nombre.localeCompare(b.nombre);
       if (sortBy === 'nombre') return a.nombre.localeCompare(b.nombre);
@@ -1116,10 +1152,11 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
               <thead>
                 <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500 font-bold">
                   <th className="px-3 py-2 text-left w-24">Código</th>
+                  <th className="px-3 py-2 text-left w-24">Pensum</th>
                   <th className="px-3 py-2 text-left">Asignatura</th>
                   <th className="px-3 py-2 text-center w-24">Semestre</th>
                   <th className="px-3 py-2 text-center w-14">Cred.</th>
-                  <th className="px-3 py-2 text-center w-14">Horas</th>
+                  <th className="px-3 py-2 text-center w-14">Horas clase</th>
                   <th className="px-3 py-2 text-center w-16">Hrs PTA</th>
                   <th className="px-3 py-2 text-left">Núcleo</th>
                   <th className="px-3 py-2 text-center w-20">Modalidad</th>
@@ -1154,15 +1191,43 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                         <td className="px-3 py-1.5">
                           {isEditing ? (
                             <input
+                              value={asig.pensum || ''}
+                              onChange={e => handleUpdate(asig.id, 'pensum', e.target.value || null)}
+                              placeholder="Sin registrar"
+                              className="w-full h-7 px-2 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50"
+                            />
+                          ) : (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${asig.pensum ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {asig.pensum || 'Sin registrar'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {isEditing ? (
+                            <input
                               value={asig.nombre}
                               onChange={e => handleUpdate(asig.id, 'nombre', e.target.value)}
                               className="w-full h-7 px-2 border border-[#003DA5] rounded text-xs outline-none bg-blue-50"
                               autoFocus
                             />
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color.dot}`} />
-                              <span className="font-medium text-gray-900 text-xs">{asig.nombre}</span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color.dot}`} />
+                                <span className="font-medium text-gray-900 text-xs">{asig.nombre}</span>
+                              </div>
+                              {asig.nombreBase && (
+                                <p className="text-[9px] text-gray-400 mt-0.5 ml-3">Base: {asig.nombreBase}</p>
+                              )}
+                              <div className="flex flex-wrap gap-1 mt-1 ml-3">
+                                {asig.tipoExcepcion && <span className="text-[8px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">Excepción: {asig.tipoExcepcion}</span>}
+                                <span className={`text-[8px] px-1.5 py-0.5 rounded ${asig.requiereRevisionModalidad ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                                  {asig.requiereRevisionModalidad ? 'Requiere revisión' : 'Modalidad validada'}
+                                </span>
+                                <span className={`text-[8px] px-1.5 py-0.5 rounded ${asig.activa === false ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                                  {asig.activa === false ? 'Inactiva' : 'Activa'}
+                                </span>
+                              </div>
                             </div>
                           )}
                         </td>
@@ -1194,19 +1259,27 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                         </td>
                         <td className="px-3 py-1.5 text-center">
                           {isEditing ? (
-                            <input type="number" value={asig.horas}
-                              onChange={e => handleUpdate(asig.id, 'horas', Number(e.target.value))}
+                            <input type="number" value={asig.horasClase ?? asig.horas}
+                              onChange={e => handleUpdate(asig.id, 'horasClase', Number(e.target.value))}
                               min={0}
                               className="w-12 h-7 px-1 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50 text-center"
                             />
                           ) : (
-                            <span className="text-[10px] font-semibold text-purple-700">{asig.horas}</span>
+                            <span className="text-[10px] font-semibold text-purple-700">{asig.horasClase ?? asig.horas}</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-center">
-                          <span className="text-[10px] font-bold text-orange-600">
-                            {asig.horasFijasPta ?? '-'}
-                          </span>
+                          {isEditing ? (
+                            <input type="number" value={asig.horasPta ?? asig.horasFijasPta ?? 0}
+                              onChange={e => handleUpdate(asig.id, 'horasPta', Number(e.target.value))}
+                              min={0}
+                              className="w-14 h-7 px-1 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50 text-center"
+                            />
+                          ) : (
+                            <span className="text-[10px] font-bold text-orange-600">
+                              {asig.horasPta ?? asig.horasFijasPta ?? '-'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-1.5">
                           {isEditing ? (
@@ -1309,6 +1382,9 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                         {asig.codigo && !isEditing && (
                           <p className="text-[10px] text-gray-400 mt-0.5">{asig.codigo}</p>
                         )}
+                        {!isEditing && asig.nombreBase && (
+                          <p className="text-[10px] text-gray-400 mt-0.5">Base: {asig.nombreBase}</p>
+                        )}
                       </div>
                       {/* Acciones */}
                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -1332,6 +1408,9 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
 
                     {/* Badges & Stats */}
                     <div className="mt-2.5 pl-4.5 flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-md font-semibold ${asig.pensum ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                        Pensum: {asig.pensum || 'Sin registrar'}
+                      </span>
                       {/* Semestre */}
                       <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[#003DA5]/10 text-[#003DA5] font-bold">
                         Sem. {isEditing ? (
@@ -1354,10 +1433,18 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                       <span className="inline-flex items-center gap-1 text-[11px] text-purple-700">
                         <Clock className="w-3 h-3" />
                         {isEditing ? (
-                          <input type="number" value={asig.horas} min={0}
-                            onChange={e => handleUpdate(asig.id, 'horas', Number(e.target.value))}
+                          <input type="number" value={asig.horasClase ?? asig.horas} min={0}
+                            onChange={e => handleUpdate(asig.id, 'horasClase', Number(e.target.value))}
                             className="w-12 h-5 border border-gray-300 rounded text-center text-[11px] outline-none" />
-                        ) : <strong>{asig.horas}</strong>} h.
+                        ) : <strong>{asig.horasClase ?? asig.horas}</strong>} h. clase
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] text-orange-600">
+                        <Clock className="w-3 h-3" />
+                        {isEditing ? (
+                          <input type="number" value={asig.horasPta ?? asig.horasFijasPta ?? 0} min={0}
+                            onChange={e => handleUpdate(asig.id, 'horasPta', Number(e.target.value))}
+                            className="w-12 h-5 border border-gray-300 rounded text-center text-[11px] outline-none" />
+                        ) : <strong>{asig.horasPta ?? asig.horasFijasPta ?? '-'}</strong>} h. PTA
                       </span>
                       {/* Núcleo */}
                       {isEditing ? (
@@ -1384,6 +1471,18 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                           'bg-purple-100 text-purple-700'
                         }`}>{asig.modalidad}</span>
                       )}
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {asig.tipo || 'Teórica'}
+                      </span>
+                      {asig.tipoExcepcion && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700">Excepción: {asig.tipoExcepcion}</span>
+                      )}
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${asig.requiereRevisionModalidad ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                        {asig.requiereRevisionModalidad ? 'Requiere revisión' : 'Modalidad validada'}
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${asig.activa === false ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {asig.activa === false ? 'Inactiva' : 'Activa'}
+                      </span>
                     </div>
                   </motion.div>
                 );

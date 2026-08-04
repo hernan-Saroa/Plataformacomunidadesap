@@ -114,16 +114,25 @@ set "MIGRATION_SUCCESS=0"
 set "MIGRATION_FAILED=0"
 
 REM Ejecutar cada migración individualmente
-for %%F in (%MIGRATIONS_DIR%\*.sql) do (
+for /r "%MIGRATIONS_DIR%" %%F in (*.sql) do (
     set "filename=%%~nxF"
     set "filepath=%%F"
+    set "relpath=%%F"
+    set "relpath=!relpath:*db\migrations\=!"
+    set "relpath=!relpath:\=/!"
     
-    REM Verificar si ya se aplicó
-    if defined APPLIED_!filename! (
-        echo Saltando (ya aplicada): !filename!
+    REM Omitir archivos dentro de carpetas old o archive
+    if "!relpath:~0,4!"=="old/" (
+        rem Omitir carpeta old
+    ) else if "!relpath:~0,8!"=="archive/" (
+        rem Omitir carpeta archive
+    ) else if defined APPLIED_!relpath! (
+        echo Saltando (ya aplicada): !relpath!
+    ) else if defined APPLIED_!filename! (
+        echo Saltando (ya aplicada): !relpath!
     ) else (
         set /a MIGRATION_COUNT+=1
-        echo [%MIGRATION_COUNT%] Ejecutando: !filename!
+        echo [%MIGRATION_COUNT%] Ejecutando: !relpath!
         
         REM Ejecutar la migración
         "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -f "!filepath!" >nul 2>&1
@@ -131,7 +140,7 @@ for %%F in (%MIGRATIONS_DIR%\*.sql) do (
             echo     ✓ OK
             set /a MIGRATION_SUCCESS+=1
             REM Registrar la migración como aplicada
-            "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -c "INSERT INTO %DB_SCHEMA%.migrations_db_log (filename) VALUES ('!filename!') ON CONFLICT (filename) DO NOTHING;" >nul 2>&1
+            "%PSQL_PATH%" -h %DB_HOST% -p %DB_PORT% -U %DB_USER% -d %DB_NAME% -c "INSERT INTO %DB_SCHEMA%.migrations_db_log (filename) VALUES ('!relpath!') ON CONFLICT (filename) DO NOTHING;" >nul 2>&1
         ) else (
             echo     ✗ ERROR
             set /a MIGRATION_FAILED+=1

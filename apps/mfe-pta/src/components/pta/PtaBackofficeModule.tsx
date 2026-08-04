@@ -2225,6 +2225,42 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     }
     if (shouldRestrictByComponentPermission) {
       result = result.filter((p: any) => hasAnyComponentApprovalData(p, visibleComponentKeys));
+
+      // Alcance TERRITORIAL: el permiso pta.*.academica.territorial habilita el
+      // componente, pero no dice cuál territorial. Si el único alcance de Docencia del
+      // usuario es el territorial, solo debe ver los PTAs con asignaturas de SU
+      // seccional (antes veía todas: Antioquia veía Chocó y Huila).
+      const soloDocenciaTerritorial =
+        visibleComponentKeySet.has('academica_territorial')
+        && !visibleComponentKeySet.has('academica_pregrado')
+        && !visibleComponentKeySet.has('academica_posgrado');
+
+      // OJO: `filtroTerritorial` no tiene un formato garantizado — puede traer
+      // id_seccional ("900014"), nombres, o ids legacy del mapa fijo ("ter-02"), que
+      // nunca coincidirían con los del PTA. Por eso se comparan tokens normalizados
+      // (ids + nombres) y, si NINGÚN PTA cruza, se asume incompatibilidad de formatos
+      // y no se filtra: la autorización real la impone el backend al revisar/aprobar,
+      // y vaciar la lista sería peor que mostrar de más.
+      const norm = (v: any) => String(v ?? '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      const misTokens = new Set((permisos.filtroTerritorial || []).map(norm).filter(Boolean));
+
+      if (soloDocenciaTerritorial && misTokens.size > 0) {
+        const tokensDelPta = (p: any): string[] => [
+          ...(Array.isArray(p?.territoriales_docencia_ids) ? p.territoriales_docencia_ids : []),
+          ...(Array.isArray(p?.territorialesAsignaturas) ? p.territorialesAsignaturas : []),
+        ].map(norm).filter(Boolean);
+
+        const coincideAlguno = result.some((p: any) => tokensDelPta(p).some(t => misTokens.has(t)));
+        if (coincideAlguno) {
+          result = result.filter((p: any) => {
+            const tokens = tokensDelPta(p);
+            if (tokens.length === 0) return true;
+            return tokens.some(t => misTokens.has(t));
+          });
+        }
+      }
     }
     // Apply search query (expanded multi-field)
     if (searchQuery.trim()) {

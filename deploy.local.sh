@@ -111,6 +111,7 @@ resolve_mfe_service() {
     control-disciplinario|mfe-control-disciplinario|frontend-mfe-control-disciplinario) echo "frontend-mfe-control-disciplinario" ;;
     gestion-legal|mfe-gestion-legal|frontend-mfe-gestion-legal) echo "frontend-mfe-gestion-legal" ;;
     pta|mfe-pta|frontend-mfe-pta) echo "frontend-mfe-pta" ;;
+    contratacion|mfe-contratacion|frontend-mfe-contratacion) echo "frontend-mfe-contratacion" ;;
     *) return 1 ;;
   esac
 }
@@ -156,12 +157,12 @@ cmd_restart() {
 
 cmd_up_backend() {
   echo -e "${GREEN}Levantando backend local sin PostgreSQL...${NC}"
-  compose_local up -d --build redis onlyoffice auth-service academic-registration-service academic-work-plan-service certification-service internal-disciplinary-control-service interoperability-service internal-institutional-control-service legal-management-service notifications-service travel-expenses-service audit-service api-gateway
+  compose_local up -d --build redis onlyoffice auth-service academic-registration-service academic-work-plan-service certification-service internal-disciplinary-control-service interoperability-service internal-institutional-control-service legal-management-service notifications-service travel-expenses-service audit-service hiring-service api-gateway
 }
 
 cmd_up_frontend() {
   echo -e "${GREEN}Levantando frontend MFE local...${NC}"
-  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
 }
 
 cmd_logs() {
@@ -198,6 +199,7 @@ cmd_health() {
   check_tcp_port "localhost" "3009" "Notifications Service" || failed=1
   check_tcp_port "localhost" "3010" "Travel Expenses Service" || failed=1
   check_tcp_port "localhost" "3011" "Audit Service" || failed=1
+  check_tcp_port "localhost" "3012" "Hiring Service" || failed=1
   echo ""
 
   echo -e "${YELLOW}Validando respuestas HTTP básicas:${NC}"
@@ -205,6 +207,7 @@ cmd_health() {
   check_http_url "http://localhost:3000/services/" "API Gateway" || failed=1
   check_http_url "http://localhost:3005/health" "Disciplinary Health" || failed=1
   check_http_url "http://localhost:3011/health" "Audit Health" || failed=1
+  check_http_url "http://localhost:3012/health" "Hiring Health" || failed=1
   check_http_url "http://localhost:9000/" "OnlyOffice" || failed=1
 
   if [ "$failed" -ne 0 ]; then

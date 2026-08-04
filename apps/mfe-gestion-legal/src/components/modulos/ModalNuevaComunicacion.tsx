@@ -560,12 +560,13 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
       let isSuccess = false;
 
       if (isForward && originalCorreoId) {
-        // Para reenvío: Graph sólo admite un destinatario principal en forwardEmail
         const result = await correosJuridicosService.forwardEmail(
           originalCorreoId,
-          paraEmails.join(','),
+          paraEmails,
           cuerpo.trim(),
-          attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
+          attachmentsBase64.length > 0 ? attachmentsBase64 : undefined,
+          ccEmails.length > 0 ? ccEmails : undefined,
+          bccEmails.length > 0 ? bccEmails : undefined
         );
         isSuccess = result?.success !== false;
       } else if (isReply && originalCorreoId) {

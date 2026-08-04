@@ -27,6 +27,7 @@ import {
   type PTAComponentKey,
 } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
+import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
 
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
@@ -1594,11 +1595,38 @@ export class PtaService {
       0,
     );
     const permiteCoexistencia = rules?.inv_permitir_proyecto_actividades_simultaneos === true;
+    const proyecto = body?.investigacion_proyecto;
+    const tieneDatosProyecto = Boolean(proyecto) && (
+      [
+        proyecto?.territorial_id,
+        proyecto?.nombre,
+        proyecto?.codigo,
+        proyecto?.grupo,
+        proyecto?.linea,
+        proyecto?.rol,
+        proyecto?.fecha_inicio,
+        proyecto?.fecha_fin,
+        proyecto?.resolucion_nombre,
+        proyecto?.resolucion_archivo_url,
+      ].some(value => Boolean(coalesceString(value)))
+      || horasProyecto > 0
+    );
+    const tieneDatosActividades = actividades.some((activity: any) => [
+      activity?.territorial_id,
+      activity?.actividad_id,
+      activity?.nombre,
+      activity?.descripcion,
+      activity?.fecha_inicio,
+      activity?.fecha_fin,
+      activity?.resolucion_nombre,
+      activity?.resolucion_archivo_url,
+    ].some(value => Boolean(coalesceString(value)))
+      || Number(activity?.horas_total ?? activity?.horas) > 0);
     const resolucionArchivoUrl = coalesceString(
       body?.investigacion_proyecto?.resolucion_archivo_url,
     );
 
-    if (!permiteCoexistencia && horasProyecto > 0 && horasActividades > 0) {
+    if (!permiteCoexistencia && tieneDatosProyecto && tieneDatosActividades) {
       throw new BadRequestException(
         'La configuracion actual de Investigacion permite registrar un proyecto o actividades, pero no ambos simultaneamente.',
       );
@@ -1649,8 +1677,9 @@ export class PtaService {
         const first = candidates[i];
         const second = candidates[j];
 
-        // "Por definir" mantiene el bloqueo especializado BR-010. No se asume
-        // presencial ni se relaja como modalidad remota en esta regla.
+        // Una modalidad pendiente proviene del catálogo institucional y no debe
+        // bloquear al docente. Tampoco se presume presencial o remota para
+        // aplicar una regla de cruce que aún no se puede determinar.
         if (isUndefinedDocenciaModality(first?.modalidad)
           || isUndefinedDocenciaModality(second?.modalidad)) continue;
 
@@ -2177,6 +2206,9 @@ export class PtaService {
       if (!asig.programa_id) {
         throw new BadRequestException(`Complete el programa de ${label} antes de enviar el PTA.`);
       }
+      if (!coalesceString(asig.pensum)) {
+        throw new BadRequestException(`Seleccione el Pensum de ${label} antes de enviar el PTA.`);
+      }
       if (!asig.fecha_inicio || !asig.fecha_fin) {
         throw new BadRequestException(`Complete las fechas de inicio y fin de ${label} antes de enviar el PTA.`);
       }
@@ -2385,6 +2417,31 @@ export class PtaService {
       await this.enrichExtensionSelections(dtos);
     } catch (err: any) {
       this.logger.warn(`Detalle de selección de Extensión omitido: ${err?.message || err}`);
+    }
+
+    // Los listados del centro de reportes también deben resolver el Pensum de
+    // PTAs creados antes de que el campo existiera. Se consolida todo el lote
+    // para consultar el catálogo una sola vez y evitar una consulta por PTA.
+    const assignmentLocations: Array<{ dto: any; index: number }> = [];
+    const assignmentsToSync: any[] = [];
+    for (const dto of dtos) {
+      const asignaturas = Array.isArray(dto.asignaturas) ? dto.asignaturas : [];
+      asignaturas.forEach((asignatura: any, index: number) => {
+        assignmentLocations.push({ dto, index });
+        assignmentsToSync.push(asignatura);
+      });
+    }
+    if (assignmentsToSync.length > 0) {
+      try {
+        const syncedAssignments = await this.syncAsignaturasPensum(assignmentsToSync, false);
+        assignmentLocations.forEach(({ dto, index }, position) => {
+          dto.asignaturas[index] = syncedAssignments[position];
+        });
+      } catch (err: any) {
+        // Compatibilidad durante despliegues escalonados: un catálogo antiguo no
+        // debe impedir consultar el resto del reporte.
+        this.logger.warn(`Pensum de asignaturas PTA omitido en reporte: ${err?.message || err}`);
+      }
     }
 
     const programaKeys = new Set<string>();
@@ -2670,6 +2727,20 @@ export class PtaService {
       }
     }
 
+    // Territoriales (no Sede Central) presentes en las asignaturas del lote, para
+    // enrutar Docencia también por territorialidad en el listado. Se resuelve una sola
+    // vez para todos los PTAs, igual que el tipo de programa.
+    const territorialIdsLote = Array.from(new Set(
+      dtos.flatMap(dto => (Array.isArray(dto?.asignaturas) ? dto.asignaturas : []))
+        .map((a: any) => coalesceLookupKey(a?.territorial_id))
+        .filter((v): v is string => !!v),
+    ));
+    const seccionalesNoCentrales = await this.resolveTerritorialIdsNoCentrales(territorialIdsLote);
+    const esAsignaturaTerritorial = (a: any): boolean => {
+      const t = coalesceLookupKey(a?.territorial_id);
+      return !!t && seccionalesNoCentrales.has(t);
+    };
+
     // BASE_KEYS ya no incluye Docencia: se colapsa por separado (DOCENCIA_KEYS,
     // más abajo) exactamente con el mismo patrón que Extensión — varios
     // componentes reales agrupados bajo un solo rótulo visible.
@@ -2695,8 +2766,21 @@ export class PtaService {
         const asignaturas: any[] = Array.isArray(dto?.asignaturas) ? dto.asignaturas : [];
         let horasDocPregrado = 0;
         let horasDocPosgrado = 0;
+        let horasDocTerritorial = 0;
+        // Territoriales concretas presentes en la Docencia de ESTE PTA: el frontend las
+        // usa para que un aprobador/revisor territorial solo vea los PTAs de su
+        // seccional (el permiso habilita el componente, la seccional acota cuál).
+        const territorialesDocencia = new Set<string>();
         for (const a of asignaturas) {
           const horas = Number(a?.total_horas ?? a?.horas) || 0;
+          // La territorialidad manda sobre el nivel, igual que en
+          // clasificarAsignaturasDocencia (fuente de verdad del enrutamiento).
+          if (esAsignaturaTerritorial(a)) {
+            horasDocTerritorial += horas;
+            const t = coalesceLookupKey(a?.territorial_id);
+            if (t) territorialesDocencia.add(t);
+            continue;
+          }
           const programaId = coalesceLookupKey(a?.programa_id);
           const tipo = programaId ? tipoPorPrograma.get(programaId) : undefined;
           if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) horasDocPosgrado += horas;
@@ -2710,9 +2794,20 @@ export class PtaService {
           horasDocPregrado = Number(dto.horas_docencia) || 0;
         }
 
+        // Se exponen en el DTO para que el listado pueda filtrar por alcance real del
+        // usuario (qué componente de Docencia y de qué territorial) sin re-resolver
+        // los joins en el cliente.
+        dto.docencia_por_componente = {
+          academica_pregrado: horasDocPregrado,
+          academica_posgrado: horasDocPosgrado,
+          academica_territorial: horasDocTerritorial,
+        };
+        dto.territoriales_docencia_ids = [...territorialesDocencia];
+
         const horasPorComp: Record<string, number> = {
           academica_pregrado: horasDocPregrado,
           academica_posgrado: horasDocPosgrado,
+          academica_territorial: horasDocTerritorial,
           investigacion: Number(dto?.horas_investigacion || 0),
           // horas_complementarias ya incluye la sección académico-administrativa.
           complementarias: Number(dto?.horas_complementarias || 0),
@@ -3012,26 +3107,34 @@ export class PtaService {
     await this.attachPtaReferenceDates([dto]);
 
     if (dto.asignaturas && Array.isArray(dto.asignaturas)) {
+      // Reconciliar primero referencias legacy. Una recarga completa del catálogo
+      // puede conservar código/nombre pero cambiar el id interno de la asignatura.
+      dto.asignaturas = await this.syncAsignaturasPensum(dto.asignaturas, false);
       const asigIds = dto.asignaturas.map((a: any) => a.asignatura_id).filter(Boolean);
       if (asigIds.length > 0) {
         try {
           const subjects = await this.asignaturaRepo.query(
-            `SELECT a.id, nt.nombre AS nucleo 
+            `SELECT a.id, a.pensum, a.id_programa, a.nombre, a.codigo, nt.nombre AS nucleo
              FROM academic_work_plan.asignatura a
              LEFT JOIN academic_work_plan.nucleo_tematico nt ON nt.id = a.id_nucleo_tematico
              WHERE a.id::text IN (${asigIds.map((_, idx) => `$${idx + 1}`).join(', ')})`,
             asigIds.map(id => String(id))
           );
-          const subjectMap = new Map(subjects.map((s: any) => [String(s.id), s.nucleo]));
+          const subjectMap = new Map<string, any>(
+            subjects.map((s: any) => [String(s.id), s]),
+          );
           dto.asignaturas = dto.asignaturas.map((a: any) => {
-            const nucleoNombre = subjectMap.get(String(a.asignatura_id));
-            if (nucleoNombre) {
-              return {
-                ...a,
-                nucleo_tematico: nucleoNombre,
-              };
-            }
-            return a;
+            const subject = subjectMap.get(String(a.asignatura_id));
+            if (!subject) return a;
+            const pensum = String(subject.pensum || '').trim() || '__SIN_PENSUM__';
+            return {
+              ...a,
+              programa_id: a.programa_id || subject.id_programa,
+              asignatura_nombre: a.asignatura_nombre || subject.nombre,
+              asignatura_codigo: a.asignatura_codigo || subject.codigo,
+              nucleo_tematico: subject.nucleo || a.nucleo_tematico,
+              pensum,
+            };
           });
         } catch (err) {
           console.error('[getPTAById] Error resolving nucleo tematico names:', err);
@@ -3258,9 +3361,10 @@ export class PtaService {
     // borrador abierto antes de una modificación de cupos. La oferta académica
     // es la fuente única y se vuelve a consultar antes de validar/persistir.
     if (Array.isArray(input?.asignaturas)) {
+      const asignaturasConPensum = await this.syncAsignaturasPensum(input.asignaturas, false);
       input = {
         ...input,
-        asignaturas: await this.syncAsignaturasCupos(input.asignaturas, periodo),
+        asignaturas: await this.syncAsignaturasCupos(asignaturasConPensum, periodo),
       };
     }
 
@@ -3322,32 +3426,6 @@ export class PtaService {
             );
           }
           solicitudUsada = solicitud;
-        }
-      }
-    }
-
-    // [BR-010] Bloqueo por Modalidad "Por Definir": no se puede concertar asignaturas
-    // que tengan requiere_revision_modalidad = TRUE en la base de datos.
-    const asignaturasInput: any[] = Array.isArray(input?.asignaturas) ? input.asignaturas : [];
-    if (asignaturasInput.length > 0) {
-      const codigosAsignaturas = asignaturasInput
-        .map((a: any) => coalesceString(a?.codigo, a?.codigo_asignatura, a?.asignatura_codigo))
-        .filter(Boolean);
-
-      if (codigosAsignaturas.length > 0) {
-        const placeholders = codigosAsignaturas.map((_: any, i: number) => `$${i + 1}`).join(', ');
-        const bloqueadas = await this.ptaRepo.manager.query(
-          `SELECT codigo, nombre FROM academic_work_plan.asignatura 
-           WHERE codigo IN (${placeholders}) AND requiere_revision_modalidad = TRUE`,
-          codigosAsignaturas,
-        );
-
-        if (bloqueadas.length > 0) {
-          const nombresBloqueadas = bloqueadas.map((b: any) => `${b.codigo} (${b.nombre})`).join(', ');
-          throw new BadRequestException(
-            `[BR-010] No se puede concertar el PTA: ${bloqueadas.length} asignatura(s) tienen modalidad "Por Definir" pendiente de revisión directiva: ${nombresBloqueadas}. ` +
-            `Contacte al nivel directivo para que defina la modalidad exacta (Presencial, Virtual, etc.) antes de incluirlas en el PTA.`
-          );
         }
       }
     }
@@ -3766,6 +3844,18 @@ export class PtaService {
           const algunaConCambios = pendientes.some(ap => ap.decision === 'aprobado_con_cambios');
           nuevoEstado = algunaConCambios ? 'REVISION_DOCENTE_N1' : 'Pendiente Decanatura';
         }
+      }
+    }
+
+    // Antes de cualquier envío/reenvío, actualizar Pensum desde el catálogo.
+    // Esto cubre también "avanzar sin cambios" en PTAs creados antes del campo.
+    if (isPendingRoleApprovalState(nuevoEstado)) {
+      const currentData = (existing.datosEstructurados as any) || {};
+      if (Array.isArray(currentData.asignaturas)) {
+        existing.datosEstructurados = {
+          ...currentData,
+          asignaturas: await this.syncAsignaturasPensum(currentData.asignaturas),
+        };
       }
     }
 
@@ -5785,8 +5875,12 @@ export class PtaService {
         a.id_programa AS "programaId",
         a.nombre,
         a.codigo,
+        a.pensum,
+        a.nombre_base AS "nombreBase",
         a.creditos,
         a.horas_fijas_pta AS horas,
+        a.horas_clase AS "horasClase",
+        a.horas_pta AS "horasPta",
         a.id_nucleo_tematico AS "nucleoTematico",
         nt.nombre AS "nucleoTematicoNombre",
         a.id_ubicacion_semestral AS semestre_id,
@@ -5821,9 +5915,17 @@ export class PtaService {
       programaId: a.programaId,
       programa_id: a.programa_real_id || a.programaId,
       nombre: a.nombre,
+      nombreVisible: obtenerNombreVisibleAsignatura(a),
       codigo: a.codigo,
+      pensum: a.pensum,
+      pensumKey: a.pensum || '__SIN_PENSUM__',
+      nombreBase: a.nombreBase,
       creditos: a.creditos,
       horas: a.horas,
+      horasClase: a.horasClase,
+      horasPta: a.horasPta,
+      horas_clase: a.horasClase,
+      horas_pta: a.horasPta,
       nucleoTematico: a.nucleoTematicoNombre || a.nucleoTematico,
       nucleo: a.nucleoTematicoNombre || 'General',
       semestre: a.semestre_etiqueta || a.semestre_id,
@@ -6192,6 +6294,188 @@ export class PtaService {
     }));
   }
 
+  /**
+   * Usa la asignatura del catálogo como fuente de verdad para Pensum. Así, una
+   * fila legacy queda actualizada al guardarse y un cliente no puede asociar una
+   * asignatura con un programa diferente al que realmente le corresponde.
+   */
+  private async syncAsignaturasPensum(
+    asignaturas: any[],
+    strict = true,
+  ): Promise<any[]> {
+    if (!Array.isArray(asignaturas) || asignaturas.length === 0) return asignaturas;
+
+    const assignmentIds = [...new Set(
+      asignaturas
+        .map((item: any) => coalesceLookupKey(item?.asignatura_id, item?.asignaturaId))
+        .filter((value): value is string => Boolean(value)),
+    )];
+    if (assignmentIds.length === 0) return asignaturas;
+
+    const programIds = [...new Set(
+      asignaturas
+        .map((item: any) => coalesceLookupKey(
+          item?.programa_id,
+          item?.programaId,
+          item?.programa?.id,
+        ))
+        .filter((value): value is string => Boolean(value)),
+    )];
+
+    const subjects = await this.asignaturaRepo.query(
+      `SELECT a.id, a.id_programa, a.pensum, a.nombre, a.nombre_base,
+              a.codigo, a.modalidad, a.creditos,
+              us.etiqueta AS semestre,
+              nt.nombre AS nucleo_tematico
+       FROM academic_work_plan.asignatura a
+       LEFT JOIN academic_work_plan.ubicacion_semestral us
+         ON us.id = a.id_ubicacion_semestral
+       LEFT JOIN academic_work_plan.nucleo_tematico nt
+         ON nt.id = a.id_nucleo_tematico
+       WHERE a.id::text = ANY($1::text[])
+          OR a.id_programa::text = ANY($2::text[])`,
+      [assignmentIds, programIds],
+    );
+    const byId = new Map<string, any>(
+      subjects.map((subject: any) => [String(subject.id), subject]),
+    );
+
+    const normalizeIdentity = (value: unknown) => String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const nameVariants = (value: unknown) => {
+      const raw = String(value ?? '').trim();
+      return new Set([
+        normalizeIdentity(raw),
+        normalizeIdentity(raw.replace(/\s*\([^)]*\)\s*$/, '')),
+      ].filter(Boolean));
+    };
+    const candidateMatchesName = (candidate: any, variants: Set<string>) => [
+      candidate?.nombre,
+      candidate?.nombre_base,
+    ].some(value => {
+      const candidateVariants = nameVariants(value);
+      return [...candidateVariants].some(key => variants.has(key));
+    });
+    const unique = (candidates: any[]) => {
+      const values = new Map<string, any>(
+        candidates.map(candidate => [String(candidate.id), candidate]),
+      );
+      return values.size === 1 ? [...values.values()][0] : null;
+    };
+
+    return asignaturas.map((item: any) => {
+      const assignmentId = coalesceLookupKey(item?.asignatura_id, item?.asignaturaId);
+      if (!assignmentId) return item;
+      const programId = coalesceLookupKey(
+        item?.programa_id,
+        item?.programaId,
+        item?.programa?.id,
+      );
+      const storedPensum = coalesceString(item?.pensum);
+      const programSubjects = subjects.filter(
+        (candidate: any) => !programId || String(candidate.id_programa) === programId,
+      );
+      const pensumSubjects = storedPensum && storedPensum !== '__SIN_PENSUM__'
+        ? programSubjects.filter(
+            (candidate: any) => String(candidate.pensum || '').trim() === storedPensum,
+          )
+        : programSubjects;
+
+      const storedCode = normalizeIdentity(
+        item?.asignatura_codigo ?? item?.codigo_asignatura ?? item?.codigo,
+      );
+      const storedNames = nameVariants(
+        item?.asignatura_nombre ?? item?.asignaturaNombre ?? item?.nombre,
+      );
+      const findByCode = (candidates: any[]) => storedCode
+        ? unique(candidates.filter(
+            (candidate: any) => normalizeIdentity(candidate.codigo) === storedCode,
+          ))
+        : null;
+      const findByName = (candidates: any[]) => {
+        if (storedNames.size === 0) return null;
+        let matches = candidates.filter(
+          (candidate: any) => candidateMatchesName(candidate, storedNames),
+        );
+        if (matches.length <= 1) return unique(matches);
+
+        // Tras una recarga masiva puede haber nombres repetidos entre Pensum o
+        // modalidades. Los metadatos ya guardados en el PTA permiten recuperar
+        // la fila correcta sin exigir que el docente vuelva a seleccionarla.
+        const storedNucleo = normalizeIdentity(
+          item?.nucleo_tematico ?? item?.nucleoTematico ?? item?.nucleo,
+        );
+        const storedSemester = normalizeIdentity(item?.semestre);
+        const rawModality = normalizeIdentity(item?.modalidad);
+        const storedModality = ['por definir', 'sin definir', 'sin_definir'].includes(rawModality)
+          ? ''
+          : rawModality;
+        const storedCredits = Number(item?.creditos);
+        const discriminators: Array<(candidate: any) => boolean> = [];
+        if (storedNucleo) {
+          discriminators.push(
+            candidate => normalizeIdentity(candidate?.nucleo_tematico) === storedNucleo,
+          );
+        }
+        if (storedSemester) {
+          discriminators.push(
+            candidate => normalizeIdentity(candidate?.semestre) === storedSemester,
+          );
+        }
+        if (storedModality) {
+          discriminators.push(
+            candidate => normalizeIdentity(candidate?.modalidad) === storedModality,
+          );
+        }
+        if (Number.isFinite(storedCredits) && storedCredits > 0) {
+          discriminators.push(candidate => Number(candidate?.creditos) === storedCredits);
+        }
+
+        for (const matchesDiscriminator of discriminators) {
+          const narrowed = matches.filter(matchesDiscriminator);
+          if (narrowed.length > 0) matches = narrowed;
+          if (matches.length === 1) break;
+        }
+        return unique(matches);
+      };
+
+      const exact = byId.get(assignmentId);
+      const exactMatchesProgram = exact
+        && (!programId || String(exact.id_programa) === programId);
+      const exactMatchesIdentity = exactMatchesProgram && (
+        (!storedCode && storedNames.size === 0)
+        || (storedCode && normalizeIdentity(exact.codigo) === storedCode)
+        || candidateMatchesName(exact, storedNames)
+      );
+      const subject = findByCode(pensumSubjects)
+        || findByCode(programSubjects)
+        || findByName(pensumSubjects)
+        || findByName(programSubjects)
+        || (exactMatchesIdentity ? exact : null);
+
+      if (!subject) {
+        if (!strict) return item;
+        throw new BadRequestException(
+          `La asignatura guardada ya no corresponde al catálogo vigente. Seleccione nuevamente Programa, Pensum y Asignatura.`,
+        );
+      }
+
+      return {
+        ...item,
+        programa_id: programId || String(subject.id_programa),
+        asignatura_id: String(subject.id),
+        asignatura_nombre: obtenerNombreVisibleAsignatura(subject) || item.asignatura_nombre,
+        asignatura_codigo: subject.codigo || item.asignatura_codigo,
+        pensum: String(subject.pensum || '').trim() || '__SIN_PENSUM__',
+      };
+    });
+  }
+
   async getDocentesDisponibles(query?: any) {
     const periodo = coalesceString(query?.periodo);
     const docentes = await this.ptaRepo.manager.query(`
@@ -6283,11 +6567,15 @@ export class PtaService {
   }
 
   async getOfertaAcademica(_query?: any) {
-    return await this.asignaturaRepo.find({
+    const asignaturas = await this.asignaturaRepo.find({
       relations: { programaRel: true },
       order: { nombre: 'ASC' },
       take: 5000,
     });
+    return asignaturas.map(asignatura => ({
+      ...asignatura,
+      nombreVisible: obtenerNombreVisibleAsignatura(asignatura),
+    }));
   }
 
   async getCatalogoRolesInvestigacion() {
@@ -7085,6 +7373,73 @@ export class PtaService {
     return out;
   }
 
+  /** Nombres legibles de un conjunto de seccionales, para mensajes de error. */
+  private async resolveNombresSeccionales(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    try {
+      const rows = await this.ptaRepo.manager.query(
+        `SELECT nom_seccional AS nombre
+           FROM auth.seccionales
+          WHERE id_seccional::text = ANY($1::text[])`,
+        [ids],
+      );
+      const nombres = (rows || []).map((r: any) => String(r?.nombre || '')).filter(Boolean);
+      return nombres.length > 0 ? nombres : ids;
+    } catch {
+      return ids;
+    }
+  }
+
+  /**
+   * Alcance territorial: un revisor/aprobador de "Docencia - Territorial" solo puede
+   * actuar sobre las asignaturas de SU territorial.
+   *
+   * El permiso `pta.*.academica.territorial` habilita el componente, pero NO dice
+   * cuál territorial; esa se toma de la seccional de la persona
+   * (auth.personas.id_seccional), siguiendo la convención ya documentada en
+   * `auth.role.alcance` para JEFATURA_TERRITORIAL. Sin esta verificación, un rol de
+   * Antioquia podía revisar/aprobar las asignaturas de Chocó o Huila.
+   *
+   * Fail-closed: si el usuario no tiene seccional resuelta, no puede actuar sobre el
+   * componente territorial.
+   */
+  private async assertAlcanceTerritorial(
+    componente: string,
+    existingPta: PlanTrabajoAcademicoEntity,
+    auth: PtaAuthenticatedUser,
+    accion: 'revisar' | 'aprobar',
+  ): Promise<void> {
+    if (componente !== 'academica_territorial') return;
+    if (auth.isSuperUser) return;
+
+    const ds = (existingPta.datosEstructurados as any) || {};
+    const asignaturas = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
+    const part = await this.clasificarAsignaturasDocencia(asignaturas);
+    const territorialesPta = Array.from(new Set(
+      part.academica_territorial
+        .map((a: any) => coalesceLookupKey(a?.territorial_id))
+        .filter((v): v is string => !!v),
+    ));
+    if (territorialesPta.length === 0) return;
+
+    const propias = new Set((auth.territorialIds || []).map((v) => String(v)));
+    if (propias.size === 0) {
+      throw new ForbiddenException(
+        `No tiene una territorial asignada, por lo que no puede ${accion} el componente de Docencia territorial. `
+        + 'La territorial se toma de la seccional registrada para la persona.',
+      );
+    }
+
+    const ajenas = territorialesPta.filter((id) => !propias.has(id));
+    if (ajenas.length > 0) {
+      const nombres = await this.resolveNombresSeccionales(ajenas);
+      throw new ForbiddenException(
+        `Solo puede ${accion} las asignaturas de Docencia de su propia territorial. `
+        + `Este PTA incluye asignaturas de: ${nombres.join(', ')}.`,
+      );
+    }
+  }
+
   /** Horas de Docencia por componente (pregrado / posgrado / territorial). */
   private async splitHorasDocenciaPorNivel(
     asignaturas: any[],
@@ -7281,6 +7636,10 @@ export class PtaService {
       throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
     }
 
+    // Alcance territorial: el permiso habilita el componente, pero la territorial
+    // concreta la define la seccional de la persona.
+    await this.assertAlcanceTerritorial(componente, existingPta, auth, 'revisar');
+
     const ds = (existingPta.datosEstructurados as any) || {};
     const requeridas = await this.getRequiredSubsecciones(componente, ds);
     if (!requeridas.includes(subseccion)) {
@@ -7407,6 +7766,10 @@ export class PtaService {
     if (['Terminado', 'TERMINADO'].includes(String(existingPta.estado))) {
       throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
     }
+
+    // Alcance territorial: un aprobador de Docencia territorial solo puede aprobar
+    // las asignaturas de su propia territorial (aplica también a la devolución).
+    await this.assertAlcanceTerritorial(componente, existingPta, auth, 'aprobar');
 
     // ── Bloqueo estructural: no se puede aprobar sin revisión previa completa ──
     // Esto aplica sin importar qué permiso tenga quien llama (no es solo un

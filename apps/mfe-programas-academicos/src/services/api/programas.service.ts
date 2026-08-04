@@ -17,6 +17,8 @@ export interface ProgramaAcademicoDTO {
   id: number;
   codigo: string;
   nombre: string;
+  nombreExcel?: string;
+  nombreCorto?: string;
   nivelFormacion: string;
   modalidad: string;
   jornada: string;
@@ -31,6 +33,12 @@ export interface ProgramaAcademicoDTO {
   costoMatricula?: number;
   horasBasePorCredito?: number;
   horasPregradoCentral?: number;
+  categoria_horas_circular003?: string;
+  descripcion_categoria_circular003?: string;
+  codigo_facultad?: string | null;
+  nombre_facultad?: string | null;
+  horas_pta_referencia_circular003?: string | null;
+  formula_calculo_horas?: string | null;
   estudiantesActivos?: number;
   graduados?: number;
   docentesAsignados?: number;

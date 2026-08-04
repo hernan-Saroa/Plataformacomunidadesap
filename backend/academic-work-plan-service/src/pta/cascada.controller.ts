@@ -9,10 +9,13 @@ import { AsignaturaEntity } from './entities/asignatura.entity';
 import { OfertaCetapProgramaEntity } from './entities/oferta-cetap-programa.entity';
 import { PeriodoAcademicoEntity } from './entities/periodo-academico.entity';
 import { HorasPtaCalculator } from './horas-pta.calculator';
+import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
 
 @Public()
 @Controller(['cascada', 'pta/cascada'])
 export class CascadaController {
+  private static readonly SIN_PENSUM = '__SIN_PENSUM__';
+
   constructor(
     @InjectRepository(DireccionTerritorialEntity)
     private readonly dtRepo: Repository<DireccionTerritorialEntity>,
@@ -139,13 +142,54 @@ export class CascadaController {
     return { success: true, data: mappedData };
   }
 
-  @Get('asignaturas')
-  async getAsignaturas(@Query('programa_id') programaId: string) {
-    const asignaturas = await this.asignaturaRepo.find({
-      where: { idPrograma: programaId, activa: true },
-      relations: ['programaRel', 'ubicacionSemestralRel', 'nucleoTematicoRel'],
-      order: { idUbicacionSemestral: 'ASC', nombre: 'ASC' },
+  @Get('pensums')
+  async getPensums(@Query('programa_id') programaId: string) {
+    const rows = await this.asignaturaRepo
+      .createQueryBuilder('asignatura')
+      .select('asignatura.pensum', 'pensum')
+      .addSelect('COUNT(asignatura.id)', 'total')
+      .where('asignatura.id_programa = :programaId', { programaId })
+      .andWhere('asignatura.activa = true')
+      .groupBy('asignatura.pensum')
+      .orderBy('asignatura.pensum', 'ASC', 'NULLS LAST')
+      .getRawMany();
+
+    const data = rows.map((row: any) => {
+      const pensum = String(row.pensum || '').trim();
+      return {
+        value: pensum || CascadaController.SIN_PENSUM,
+        label: pensum || 'Sin pensum registrado',
+        pensum: pensum || null,
+        totalAsignaturas: Number(row.total || 0),
+      };
     });
+
+    return { success: true, data };
+  }
+
+  @Get('asignaturas')
+  async getAsignaturas(
+    @Query('programa_id') programaId: string,
+    @Query('pensum') pensum?: string,
+  ) {
+    const query = this.asignaturaRepo
+      .createQueryBuilder('asignatura')
+      .leftJoinAndSelect('asignatura.programaRel', 'programaRel')
+      .leftJoinAndSelect('asignatura.ubicacionSemestralRel', 'ubicacionSemestralRel')
+      .leftJoinAndSelect('asignatura.nucleoTematicoRel', 'nucleoTematicoRel')
+      .where('asignatura.id_programa = :programaId', { programaId })
+      .andWhere('asignatura.activa = true');
+
+    if (pensum === CascadaController.SIN_PENSUM) {
+      query.andWhere("(asignatura.pensum IS NULL OR TRIM(asignatura.pensum) = '')");
+    } else if (pensum !== undefined && pensum !== '') {
+      query.andWhere('asignatura.pensum = :pensum', { pensum });
+    }
+
+    const asignaturas = await query
+      .orderBy('asignatura.idUbicacionSemestral', 'ASC')
+      .addOrderBy('asignatura.nombre', 'ASC')
+      .getMany();
 
     const data = asignaturas.map(asig => {
       const horasPta = HorasPtaCalculator.calcularHorasPTA(
@@ -160,19 +204,23 @@ export class CascadaController {
         }
       );
 
-      const horasClase = Math.round(horasPta / 3);
+      const horasPtaFinal = asig.horasPta ?? horasPta;
+      const horasClase = asig.horasClase ?? Math.round(horasPtaFinal / 3);
 
       return {
         id: asig.id,
         codigo: asig.codigo,
         nombre: asig.nombre,
+        nombreVisible: obtenerNombreVisibleAsignatura(asig),
         nombreBase: asig.nombreBase,
+        pensum: asig.pensum,
+        pensumKey: asig.pensum || CascadaController.SIN_PENSUM,
         creditos: asig.creditos,
         semestre: asig.ubicacionSemestralRel?.etiqueta || String(asig.idUbicacionSemestral),
         nucleoTematico: asig.nucleoTematicoRel?.nombre || '',
         modalidad: asig.modalidad,
         horas_clase: horasClase,
-        horas_pta: horasPta,
+        horas_pta: horasPtaFinal,
         tipoExcepcion: asig.tipoExcepcion,
       };
     });
@@ -203,20 +251,24 @@ export class CascadaController {
       }
     );
 
-    const horasClase = Math.round(horasPta / 3);
+    const horasPtaFinal = asig.horasPta ?? horasPta;
+    const horasClase = asig.horasClase ?? Math.round(horasPtaFinal / 3);
 
     const data = {
       id: asig.id,
       codigo: asig.codigo,
       nombre: asig.nombre,
+      nombreVisible: obtenerNombreVisibleAsignatura(asig),
       nombreBase: asig.nombreBase,
+      pensum: asig.pensum,
+      pensumKey: asig.pensum || CascadaController.SIN_PENSUM,
       creditos: asig.creditos,
       semestre: asig.ubicacionSemestralRel?.etiqueta || String(asig.idUbicacionSemestral),
       nucleoTematico: asig.nucleoTematicoRel?.nombre || '',
       facultad: asig.facultadRel?.nombre || '',
       modalidad: asig.modalidad,
       horas_clase: horasClase,
-      horas_pta: horasPta,
+      horas_pta: horasPtaFinal,
       tipo_excepcion: asig.tipoExcepcion,
       requiere_revision_modalidad: asig.requiereRevisionModalidad,
       activo: asig.activa,

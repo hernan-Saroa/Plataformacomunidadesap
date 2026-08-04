@@ -133,12 +133,41 @@ export function componentKeysFromPermissionChecker(
 
 export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolean {
   const asignaturas: any[] = Array.isArray(pta?.asignaturas) ? pta.asignaturas : [];
+  // El backend resuelve el enrutamiento de Docencia (territorialidad > nivel) y lo
+  // expone agregado en el listado. Es la fuente preferida: no depende de que el DTO
+  // traiga el detalle de asignaturas ni de reconstruir los joins en el cliente.
+  const porComponente = pta?.docencia_por_componente;
+  const docenciaDesdeBackend = (k: PTAComponentKey): boolean | null => {
+    if (!porComponente || typeof porComponente !== 'object') return null;
+    return Number(porComponente[k] || 0) > 0;
+  };
+
   switch (key) {
-    case 'academica_pregrado':
-      return asignaturas.some((a: any) => (a?.nivel_programa || 'pregrado') !== 'posgrado')
+    case 'academica_pregrado': {
+      const backend = docenciaDesdeBackend('academica_pregrado');
+      if (backend !== null) return backend;
+      // Respaldo por asignatura: se excluye lo territorial, que es un componente aparte.
+      return asignaturas.some((a: any) =>
+        a?.componente_docencia
+          ? a.componente_docencia === 'academica_pregrado'
+          : (a?.nivel_programa || 'pregrado') !== 'posgrado')
         || (asignaturas.length === 0 && Number(pta?.horas_docencia || 0) > 0);
-    case 'academica_posgrado':
-      return asignaturas.some((a: any) => a?.nivel_programa === 'posgrado');
+    }
+    case 'academica_posgrado': {
+      const backend = docenciaDesdeBackend('academica_posgrado');
+      if (backend !== null) return backend;
+      return asignaturas.some((a: any) =>
+        a?.componente_docencia
+          ? a.componente_docencia === 'academica_posgrado'
+          : a?.nivel_programa === 'posgrado');
+    }
+    case 'academica_territorial': {
+      // Sin este caso el switch caía en `default: false` y a un aprobador/revisor
+      // territorial se le filtraban TODOS los PTAs ("No se encontraron PTAs").
+      const backend = docenciaDesdeBackend('academica_territorial');
+      if (backend !== null) return backend;
+      return asignaturas.some((a: any) => a?.componente_docencia === 'academica_territorial');
+    }
     case 'investigacion':
       return Number(pta?.horas_investigacion || 0) > 0
         || (Array.isArray(pta?.investigacion_actividades) && pta.investigacion_actividades.length > 0)

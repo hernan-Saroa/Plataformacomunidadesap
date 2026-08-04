@@ -156,6 +156,9 @@ function Resolve-MfeService ($name) {
         "pta" { return "frontend-mfe-pta" }
         "mfe-pta" { return "frontend-mfe-pta" }
         "frontend-mfe-pta" { return "frontend-mfe-pta" }
+        "contratacion" { return "frontend-mfe-contratacion" }
+        "mfe-contratacion" { return "frontend-mfe-contratacion" }
+        "frontend-mfe-contratacion" { return "frontend-mfe-contratacion" }
         default { return $null }
     }
 }
@@ -277,7 +280,7 @@ switch ($Command) {
         $backendServices = @("redis", "onlyoffice", "auth-service", "academic-registration-service", 
                              "academic-work-plan-service", "certification-service", "internal-disciplinary-control-service", 
                              "interoperability-service", "internal-institutional-control-service", "legal-management-service", 
-                             "notifications-service", "travel-expenses-service", "audit-service", "api-gateway")
+                             "notifications-service", "travel-expenses-service", "audit-service", "hiring-service", "api-gateway")
         Invoke-ComposeLocal (@("up", "-d", "--build") + $backendServices)
     }
 
@@ -287,7 +290,7 @@ switch ($Command) {
                               "frontend-mfe-programas-academicos", "frontend-mfe-gestion-personas", "frontend-mfe-auditoria", 
                               "frontend-mfe-reportes", "frontend-mfe-registro-academico", "frontend-mfe-certificados-laborales", 
                               "frontend-mfe-firma-electronica", "frontend-mfe-control-interno", "frontend-mfe-control-disciplinario", 
-                              "frontend-mfe-gestion-legal", "frontend-mfe-pta")
+                              "frontend-mfe-gestion-legal", "frontend-mfe-pta", "frontend-mfe-contratacion")
         Invoke-ComposeLocal (@("up", "-d", "--build") + $frontendServices)
     }
 
@@ -316,12 +319,14 @@ switch ($Command) {
         if (-not (Test-TcpPort "localhost" 3001 "Auth Service")) { $hasErrors = $true }
         if (-not (Test-TcpPort "localhost" 3005 "Disciplinary Control Service")) { $hasErrors = $true }
         if (-not (Test-TcpPort "localhost" 3011 "Audit Service")) { $hasErrors = $true }
+        if (-not (Test-TcpPort "localhost" 3012 "Hiring Service")) { $hasErrors = $true }
 
         Write-Host "`nValidando respuestas HTTP básicas:" -ForegroundColor Yellow
         if (-not (Test-HttpUrl "http://localhost:3000/" "Frontend")) { $hasErrors = $true }
         if (-not (Test-HttpUrl "http://localhost:3000/services/" "API Gateway")) { $hasErrors = $true }
         if (-not (Test-HttpUrl "http://localhost:3005/health" "Disciplinary Health")) { $hasErrors = $true }
         if (-not (Test-HttpUrl "http://localhost:3011/health" "Audit Health")) { $hasErrors = $true }
+        if (-not (Test-HttpUrl "http://localhost:3012/health" "Hiring Health")) { $hasErrors = $true }
         if (-not (Test-HttpUrl "http://localhost:9000/" "OnlyOffice")) { $hasErrors = $true }
 
         if ($hasErrors) {
