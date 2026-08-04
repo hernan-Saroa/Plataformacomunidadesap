@@ -255,7 +255,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     icon: Scale, // Icono por defecto, se puede expandir con más iconos
     color: getColorPorTipo(auto.tipo),
     plantilla: auto.plantilla, // Campo adicional de la configuración
-    orden: auto.orden
+    orden: auto.orden,
+    etapa: auto.stage // Etapa destino del proceso cuando el tipo es AUTO_APERTURA_*
   })) || [];
 
   // Forzar recarga cuando se monta el componente
@@ -669,10 +670,12 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       }
 
       // Crear auto legal
+      const esApertura = tipoAutoSeleccionado.id?.startsWith('AUTO_APERTURA_');
       const autoData = {
         processId: processId,
         tipoAuto: tipoAutoSeleccionado.id,
         autoConfigurationId: tipoAutoSeleccionado.autoConfigurationId,
+        etapaDestino: esApertura ? (tipoAutoSeleccionado.etapa || undefined) : undefined,
         contenidoHtml: descripcion || '',
         numero: titulo,
         comentarios: descripcion || '',
