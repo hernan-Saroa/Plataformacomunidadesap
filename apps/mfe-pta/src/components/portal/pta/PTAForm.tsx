@@ -35,6 +35,7 @@ import { docentePtaAlert } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
+import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
@@ -1818,6 +1819,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [currentPtaId, setCurrentPtaId] = useState<string | undefined>(ptaId || undefined);
   // En modo admin, preserva el docente_id real del PTA (no el del admin logueado)
   const [docenteIdFromPta, setDocenteIdFromPta] = useState<string>('');
+  // Ficha completa usada por el panel dinámico de identificación. Se conserva
+  // separada de los defaults del formulario para no modificar su comportamiento.
+  const [docentePerfilIdentificacion, setDocentePerfilIdentificacion] = useState<any>(null);
+  const [ptaDataIdentificacion, setPtaDataIdentificacion] = useState<any>(null);
 
   // Firma digital del docente — requerida antes de cada envío
   const [showFirmaDocente, setShowFirmaDocente] = useState(false);
@@ -2449,11 +2454,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // Load existing PTA
   useEffect(() => {
-    if (!ptaId) return;
+    if (!ptaId) {
+      setPtaDataIdentificacion(null);
+      return;
+    }
+    setPtaDataIdentificacion(null);
     setLoadingPta(true);
     getPTAById(ptaId).then(res => {
       if (res.success && res.data) {
         const d = res.data;
+        setPtaDataIdentificacion(d);
         setPeriodo(d.periodo || '2025-2');
         setDedicacion(d.dedicacion || 'Tiempo Completo');
         setTipoVinculacion(d.tipo_vinculacion || 'CARRERA_003');
@@ -2630,6 +2640,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         : (userPersonId || docenteIdFromPta);
       if (!activeDocenteId) return;
       let cancelado = false;
+      setDocentePerfilIdentificacion(null);
       setHorasBancoConsultadas(false);
       setHorasBancoDocente(null);
       Promise.all([
@@ -2657,6 +2668,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           p.tipoVinculacion = mappedTipoVinc || p.tipoVinculacion;
           p.horasProgramables = Number(bd.horas_programables ?? bd.horasAsignables);
         }
+
+        const perfilPortal = resPerfil?.success && resPerfil?.data ? resPerfil.data : {};
+        const bancoDocente = resBanco?.success && resBanco?.data ? resBanco.data : {};
+        setDocentePerfilIdentificacion({
+          ...perfilPortal,
+          ...bancoDocente,
+          nombre: bancoDocente.nombre_completo
+            || bancoDocente.nombreCompleto
+            || perfilPortal.nombre
+            || perfilPortal.nombre_completo,
+          identificacion: bancoDocente.documento_identidad
+            || bancoDocente.documento
+            || perfilPortal.documento_identidad
+            || perfilPortal.identificacion,
+          email: bancoDocente.correo_institucional
+            || bancoDocente.email
+            || perfilPortal.correo_institucional
+            || perfilPortal.email,
+        });
 
         // Territorial y CETAP: siempre se cargan del perfil (son fijos del docente)
         const tId = p.territorial_id || p.territorialId;
@@ -2692,6 +2722,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         }
       }).catch((e) => {
         if (cancelado) return;
+        setDocentePerfilIdentificacion(null);
         setHorasBancoConsultadas(true);
         console.warn('[PTAForm] Error loading docente profile data (non-critical):', e?.message || e);
       });
@@ -2948,6 +2979,40 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const porcentaje = getPtaCompletionPercentage(totalHoras, horasAProgramar);
   // Horas por encima del límite programable (0 si no hay exceso).
   const horasExceso = Math.max(0, totalHoras - horasAProgramar);
+
+  // Datos vivos para el panel de identificación. Se derivan del formulario y
+  // del catálogo ya cargado, por lo que no introducen consultas adicionales.
+  const periodoAcademicoIdentificacion = useMemo(() => {
+    const configurado = periodosDisponibles.find((item: any) => {
+      const codigo = item?.codigo || (item?.anio && item?.semestre ? `${item.anio}-${item.semestre}` : '');
+      return String(codigo) === String(periodo);
+    }) || {};
+
+    return {
+      ...configurado,
+      codigo: periodo,
+      fechaInicio: configurado.fechaInicio || configurado.fecha_inicio || periodoFechaMin,
+      fechaFin: configurado.fechaFin || configurado.fecha_fin || periodoFechaMax,
+    };
+  }, [periodosDisponibles, periodo, periodoFechaMin, periodoFechaMax]);
+
+  const ptaIdentificacion = useMemo(() => ({
+    ...(ptaDataIdentificacion || {}),
+    periodo,
+    dedicacion,
+    tipo_vinculacion: TIPOS_VINCULACION.find(tipo => tipo.codigo === tipoVinculacion)?.nombre || tipoVinculacion,
+    horas_asignables: horasAProgramar,
+    horas_a_programar: horasAProgramar,
+    horas_totales: totalHoras,
+    total_horas_programadas: totalHoras,
+  }), [
+    ptaDataIdentificacion,
+    periodo,
+    dedicacion,
+    tipoVinculacion,
+    horasAProgramar,
+    totalHoras,
+  ]);
 
   const hasDocencia = asignaturas.length > 0;
 
@@ -5405,6 +5470,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           </div>
 
           {/* Layout de una sola columna: tabs horizontales + contenido */}
+          <IdentificacionDocentePanel
+            key={`identificacion-form-${ptaId || 'nuevo'}-${isAdminEdit ? docenteIdFromPta : userPersonId}`}
+            pta={ptaIdentificacion}
+            userPerfil={docentePerfilIdentificacion}
+            periodoAcademico={periodoAcademicoIdentificacion}
+          />
+
           <div className="flex flex-col gap-5 items-start w-full">
 
             {/* ─── CONTENIDO PRINCIPAL ─── */}

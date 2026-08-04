@@ -18,7 +18,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Plus, ChevronLeft, Calendar, Clock, CheckCircle2,
+  FileText, ChevronLeft, Calendar, Clock, CheckCircle2,
   AlertTriangle, Download, Eye, ArrowRight, RotateCcw, XCircle,
   Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
@@ -46,6 +46,7 @@ import { V11CalendarioAcademico, V12AdjuntosDocumentos, V13IndicadoresPersonales
 import { VerificacionQRPublicaPTA } from '../../pta/VerificacionQRPublicaPTA';
 import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
+import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
@@ -794,14 +795,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         </div>
         <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <PTASyncIndicator syncState={syncState} sistema="portal" compact />
-          {puedeCrearPTA && (
-            <button
-              onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
-              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.3)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-[#003DA5] hover:bg-[#002B75]"
-            >
-              <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
-            </button>
-          )}
           {tieneSolicitudPendiente && (
             <span
               className="hidden md:flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl border border-amber-200 text-amber-700 text-[11px] font-bold bg-amber-50"
@@ -1137,6 +1130,18 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                   ))}
                 </div>
               </div>
+
+              <IdentificacionDocentePanel
+                key={selectedPta.id}
+                pta={selectedPta}
+                userPerfil={{
+                  ...docentePerfil,
+                  nombre: docentePerfil?.nombre_completo || userName,
+                  identificacion: docentePerfil?.documento_identidad || userPersonId,
+                  email: docentePerfil?.correo_institucional || docentePerfil?.email || userEmail,
+                }}
+                periodoAcademico={activePeriodoData}
+              />
 
               {/* Distribución por Componente */}
               {selectedPta && (() => {
