@@ -16,6 +16,7 @@ import {
 import { IsotipoESAP } from '../../../../../shell/src/components/assets/ESAPLogoSVG';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface ReportePTAInstitucionalProps {
   pta: any;
@@ -1364,13 +1365,14 @@ export function ReportePTAInstitucional({
                             {asignaturas.map((a: any, index: number) => (
                               <tr key={a.id || a.asignatura_id || index}>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
-                                  <div style={{ fontWeight: 800 }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                                  <div style={{ fontWeight: 800 }}>{formatPtaAssignmentName(a) || 'Asignatura'}</div>
                                   <InfoSecundaria>{a.nucleo_tematico || null}</InfoSecundaria>
                                   <InfoSecundaria>{a.observaciones ? `Observaciones: ${a.observaciones}` : null}</InfoSecundaria>
                                   <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div>{a.programa_nombre || a.programa || '—'}</div>
+                                  <InfoSecundaria>{`Pensum: ${formatPtaPensum(a.pensum)}`}</InfoSecundaria>
                                   <InfoSecundaria>{textoConSeparador([
                                     a.cetap_nombre && `CETAP ${a.cetap_nombre}`,
                                     a.territorial_nombre || null,

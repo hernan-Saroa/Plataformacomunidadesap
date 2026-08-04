@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
 import { toast } from 'sonner';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import {
@@ -283,8 +284,9 @@ function generarR07(ptas: any[]): ReporteGenerado {
       asigs.forEach((a: any) => {
         filas.push({
           docente: p.docente_nombre || 'N/A', documento: p.cedula || p.numero_documento || '-',
-          territorial: p.territorial || '-', asignatura: a.nombre || a.asignatura_nombre || '-',
-          programa: a.programa || '-', creditos: a.creditos || 0, grupos: a.num_grupos || 1,
+          territorial: p.territorial || '-', asignatura: formatPtaAssignmentName(a) || '-',
+          programa: a.programa_nombre_completo || a.programa_nombre || a.programa || '-',
+          pensum: formatPtaPensum(a.pensum), creditos: a.creditos || 0, grupos: a.num_grupos || 1,
           horas: a.total_horas_calculadas || a.horas || 0,
           desglose: formatHierarchySelectionText(a) || '—',
         });
@@ -293,7 +295,7 @@ function generarR07(ptas: any[]): ReporteGenerado {
       filas.push({
         docente: p.docente_nombre || 'N/A', documento: p.cedula || p.numero_documento || '-',
         territorial: p.territorial || '-', asignatura: '(Asignaturas no detalladas)',
-        programa: '-', creditos: '-', grupos: '-', horas: p.horas_docencia || 0, desglose: '—',
+        programa: '-', pensum: '—', creditos: '-', grupos: '-', horas: p.horas_docencia || 0, desglose: '—',
       });
     }
   });
@@ -303,7 +305,8 @@ function generarR07(ptas: any[]): ReporteGenerado {
     columnas: [
       { key: 'docente', label: 'Docente' }, { key: 'documento', label: 'Documento' },
       { key: 'territorial', label: 'Territorial' }, { key: 'asignatura', label: 'Asignatura' },
-      { key: 'programa', label: 'Programa' }, { key: 'creditos', label: 'Cred.', align: 'center' },
+      { key: 'programa', label: 'Programa' }, { key: 'pensum', label: 'Pensum' },
+      { key: 'creditos', label: 'Cred.', align: 'center' },
       { key: 'grupos', label: 'Grupos', align: 'center' }, { key: 'horas', label: 'Horas', align: 'center' },
       { key: 'desglose', label: 'Desglose seleccionado' },
     ],
@@ -879,8 +882,9 @@ function generarEXP02_XML(ptas: any[]) {
       xmlLines.push(`      <Asignaturas count="${asigs.length}">`);
       asigs.forEach((a: any) => {
         xmlLines.push(`        <Asignatura>`);
-        xmlLines.push(`          <Nombre>${escapeXml(a.nombre || a.asignatura_nombre || '')}</Nombre>`);
-        xmlLines.push(`          <Programa>${escapeXml(a.programa || '')}</Programa>`);
+        xmlLines.push(`          <Nombre>${escapeXml(formatPtaAssignmentName(a))}</Nombre>`);
+        xmlLines.push(`          <Programa>${escapeXml(a.programa_nombre_completo || a.programa_nombre || a.programa || '')}</Programa>`);
+        xmlLines.push(`          <Pensum>${escapeXml(formatPtaPensum(a.pensum))}</Pensum>`);
         xmlLines.push(`          <Creditos>${a.creditos || 0}</Creditos>`);
         xmlLines.push(`          <Grupos>${a.num_grupos || 1}</Grupos>`);
         xmlLines.push(`          <Horas>${a.total_horas_calculadas || a.horas || 0}</Horas>`);

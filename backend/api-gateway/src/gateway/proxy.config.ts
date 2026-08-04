@@ -100,4 +100,11 @@ export const serviceMap = {
     'http://localhost:3011',
     'http://audit-service:3011',
   ),
+
+  // Hiring Service (Contratación) - Puerto 3012
+  hiring: serviceUrl(
+    'HIRING_SERVICE_URL',
+    'http://localhost:3012',
+    'http://hiring-service:3012',
+  ),
 };

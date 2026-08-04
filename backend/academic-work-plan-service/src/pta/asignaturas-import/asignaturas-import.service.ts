@@ -789,8 +789,11 @@ export class AsignaturasImportService {
       // (no se "mueve" un programa que ya pertenece a otro período).
       const SQL = `
         INSERT INTO academic_work_plan.programa AS p (
-          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad,
+          horas_base_por_credito, horas_pregrado_central, activo,
+          categoria_horas_circular003, descripcion_categoria_circular003,
+          horas_pta_referencia_circular003, formula_calculo_horas
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT (codigo) DO UPDATE SET
           nombre = EXCLUDED.nombre,
           nombre_excel = EXCLUDED.nombre_excel,
@@ -800,7 +803,11 @@ export class AsignaturasImportService {
           modalidad = EXCLUDED.modalidad,
           horas_base_por_credito = EXCLUDED.horas_base_por_credito,
           horas_pregrado_central = EXCLUDED.horas_pregrado_central,
-          activo = EXCLUDED.activo
+          activo = EXCLUDED.activo,
+          categoria_horas_circular003 = COALESCE(EXCLUDED.categoria_horas_circular003, p.categoria_horas_circular003),
+          descripcion_categoria_circular003 = COALESCE(EXCLUDED.descripcion_categoria_circular003, p.descripcion_categoria_circular003),
+          horas_pta_referencia_circular003 = COALESCE(EXCLUDED.horas_pta_referencia_circular003, p.horas_pta_referencia_circular003),
+          formula_calculo_horas = COALESCE(EXCLUDED.formula_calculo_horas, p.formula_calculo_horas)
         RETURNING id;
       `;
 
@@ -820,6 +827,10 @@ export class AsignaturasImportService {
         horasBase,
         p.horas_pregrado_central,
         p.activo === false || p.activo === 0 || String(p.activo).toLowerCase().trim() === 'false' || String(p.activo).toLowerCase().trim() === 'no' || String(p.activo).toLowerCase().trim() === 'inactivo' ? false : true,
+        p.categoria_horas_circular003,
+        p.descripcion_categoria_circular003,
+        p.horas_pta_referencia_circular003,
+        p.formula_calculo_horas,
       ]);
 
       const insertedId = rows[0].id;
@@ -1180,12 +1191,13 @@ export class AsignaturasImportService {
       else if (mappedExcep === 'seminario_opciones_apt') horasFijas = 144;
 
       const SQL = `
-        INSERT INTO academic_work_plan.asignatura (
-          codigo, nombre, nombre_base, modalidad_sufijo, modalidad, requiere_revision_modalidad,
+        INSERT INTO academic_work_plan.asignatura AS target (
+          codigo, pensum, nombre, nombre_base, modalidad_sufijo, modalidad, requiere_revision_modalidad,
           creditos, id_ubicacion_semestral, id_programa, id_nucleo_tematico, id_facultad,
-          horas_fijas_pta, tipo_excepcion, activa
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          horas_fijas_pta, horas_clase, horas_pta, tipo_excepcion, activa
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         ON CONFLICT (codigo) DO UPDATE SET
+          pensum = COALESCE(EXCLUDED.pensum, target.pensum),
           nombre = EXCLUDED.nombre,
           nombre_base = EXCLUDED.nombre_base,
           modalidad_sufijo = EXCLUDED.modalidad_sufijo,
@@ -1197,11 +1209,14 @@ export class AsignaturasImportService {
           id_nucleo_tematico = EXCLUDED.id_nucleo_tematico,
           id_facultad = EXCLUDED.id_facultad,
           horas_fijas_pta = EXCLUDED.horas_fijas_pta,
+          horas_clase = EXCLUDED.horas_clase,
+          horas_pta = EXCLUDED.horas_pta,
           tipo_excepcion = EXCLUDED.tipo_excepcion,
           activa = EXCLUDED.activa;
       `;
       await queryRunner.query(SQL, [
         a.codigo_asignatura,
+        a.pensum,
         a.nombre_asignatura,
         a.nombre_base,
         a.modalidad, // modalidad_sufijo
@@ -1213,6 +1228,8 @@ export class AsignaturasImportService {
         ntId,
         facId,
         horasFijas,
+        a.horas_clase,
+        a.horas_pta,
         mappedExcep,
         a.activa === 'true' || a.activa === true || a.activa === 1 || String(a.activa).trim().toLowerCase() === 'si',
       ]);
@@ -1322,6 +1339,7 @@ export class AsignaturasImportService {
           codigo: a.codigo_asignatura,
           nombre: a.nombre_asignatura,
           creditos: a.creditos,
+          pensum: a.pensum ?? null,
           valida: true
         });
       }
@@ -1397,6 +1415,10 @@ export class AsignaturasImportService {
     if (String(existing.horas_base_por_credito) !== String(parsedHorasBase)) diffs.push(`horas_base: ${existing.horas_base_por_credito} -> ${parsedHorasBase}`);
     if (String(existing.horas_pregrado_central) !== String(parsedHorasCentral)) diffs.push(`horas_central: ${existing.horas_pregrado_central} -> ${parsedHorasCentral}`);
     if (Boolean(existing.activo) !== Boolean(parsedActivo)) diffs.push(`activo: ${existing.activo} -> ${parsedActivo}`);
+    if (String(existing.categoria_horas_circular003 || '').trim() !== String(parsed.categoria_horas_circular003 || '').trim()) diffs.push(`categoria_horas_circular003: ${existing.categoria_horas_circular003} -> ${parsed.categoria_horas_circular003}`);
+    if (String(existing.descripcion_categoria_circular003 || '').trim() !== String(parsed.descripcion_categoria_circular003 || '').trim()) diffs.push('descripcion_categoria_circular003 modificada');
+    if (parsed.horas_pta_referencia_circular003 != null && String(existing.horas_pta_referencia_circular003 || '').trim() !== String(parsed.horas_pta_referencia_circular003).trim()) diffs.push(`horas_pta_referencia_circular003: ${existing.horas_pta_referencia_circular003} -> ${parsed.horas_pta_referencia_circular003}`);
+    if (parsed.formula_calculo_horas != null && String(existing.formula_calculo_horas || '').trim() !== String(parsed.formula_calculo_horas).trim()) diffs.push('formula_calculo_horas modificada');
 
     return diffs.length > 0 ? diffs : null;
   }
@@ -1427,6 +1449,7 @@ export class AsignaturasImportService {
     const parsedActiva = parsed.activa === 'true' || parsed.activa === true || parsed.activa === 1 || String(parsed.activa).trim().toLowerCase() === 'si';
 
     if (String(existing.nombre || '').trim() !== String(parsedNombre || '').trim()) diffs.push(`nombre: ${existing.nombre} -> ${parsedNombre}`);
+    if (parsed.pensum != null && String(existing.pensum || '').trim() !== String(parsed.pensum).trim()) diffs.push(`pensum: ${existing.pensum} -> ${parsed.pensum}`);
     if (String(existing.nombre_base || '').trim() !== String(parsedNombreBase || '').trim()) diffs.push(`nombre_base: ${existing.nombre_base} -> ${parsedNombreBase}`);
     if (String(existing.modalidad_sufijo || '').trim() !== String(parsedModSufijo || '').trim()) diffs.push(`modalidad_sufijo: ${existing.modalidad_sufijo} -> ${parsedModSufijo}`);
     if (String(existing.modalidad || '').trim() !== String(parsedMod || '').trim()) diffs.push(`modalidad: ${existing.modalidad} -> ${parsedMod}`);
@@ -1437,6 +1460,8 @@ export class AsignaturasImportService {
     if (String(existing.id_nucleo_tematico) !== String(resolvedNtId)) diffs.push(`id_nucleo_tematico: ${existing.id_nucleo_tematico} -> ${resolvedNtId}`);
     if (String(existing.id_facultad) !== String(resolvedFacId)) diffs.push(`id_facultad: ${existing.id_facultad} -> ${resolvedFacId}`);
     if (String(existing.horas_fijas_pta) !== String(parsedHorasFijas)) diffs.push(`horas_fijas_pta: ${existing.horas_fijas_pta} -> ${parsedHorasFijas}`);
+    if (String(existing.horas_clase) !== String(parsed.horas_clase)) diffs.push(`horas_clase: ${existing.horas_clase} -> ${parsed.horas_clase}`);
+    if (String(existing.horas_pta) !== String(parsed.horas_pta)) diffs.push(`horas_pta: ${existing.horas_pta} -> ${parsed.horas_pta}`);
     if (String(existing.tipo_excepcion || '').trim() !== String(parsedExcep || '').trim()) diffs.push(`tipo_excepcion: ${existing.tipo_excepcion} -> ${parsedExcep}`);
     if (Boolean(existing.activa) !== Boolean(parsedActiva)) diffs.push(`activa: ${existing.activa} -> ${parsedActiva}`);
 

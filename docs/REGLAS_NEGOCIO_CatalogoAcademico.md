@@ -118,7 +118,7 @@ Las horas PTA para cada asignatura se derivan automáticamente aplicando reglas 
 *   **Procedimiento:** A un Docente del Banco (Ej. Hernán Buitrago) se le asigna la enseñanza de una `Asignatura` particular, de un `Programa` específico, ubicado en una `Territorial/CETAP` autorizada por la Matriz de Oferta.
 *   **Impacto de Horas:** Las `HORAS_PTA` calculadas en las Reglas [BR-003 a BR-006] de esa asignatura específica, se sumarán al plan de trabajo del docente y no pueden superar el máximo de horas derivado de su régimen en el Banco de Docentes.
 
-**[BR-010] Bloqueo por Modalidad "Por Definir".** Si una asignatura ingresa con modalidad "Por definir" (`REQUIERE_REVISION` = TRUE), no puede ser concertada en el PTA de ningún docente hasta que el nivel directivo defina la modalidad exacta (Presencial, Virtual, etc.).
+**[BR-010] Modalidad "Por Definir" informativa.** Si una asignatura ingresa con modalidad "Por definir" (`REQUIERE_REVISION` = TRUE), el sistema conserva y muestra el indicador para revisión administrativa, pero no bloquea el guardado, la concertación ni el envío del PTA. Mientras no exista una modalidad exacta, tampoco se presume que la asignatura sea presencial o remota para validar cruces de fechas.
 
 ---
 
@@ -135,7 +135,7 @@ Las horas PTA para cada asignatura se derivan automáticamente aplicando reglas 
 | BR-007 | Existencia de Territorial y CETAP | Integridad | Rechazar matriz si CETAP no existe |
 | BR-008 | Jerarquía Territorial -> CETAP -> Programa | Modelo | - |
 | BR-009 | Asignación Docente-Programa-CETAP | Modelo | Actualiza total horas PTA del docente |
-| BR-010 | Bloqueo por Modalidad "Por Definir" | Flujo PTA | Bloqueo en concertación |
+| BR-010 | Modalidad "Por Definir" informativa | Flujo PTA | No bloquea el flujo |
 
 ---
 

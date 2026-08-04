@@ -2,7 +2,7 @@ import * as xlsx from 'xlsx';
 import { ExcelParserService } from '../parsers/excel-parser.service';
 import { ImportValidator } from '../validators/import.validator';
 
-function buildWorkbook(marker = 'X', includeCircularColumns = false): Buffer {
+function buildWorkbook(marker = 'X', includeCircularColumns = true): Buffer {
   const workbook = xlsx.utils.book_new();
 
   const programHeaders = [
@@ -15,6 +15,8 @@ function buildWorkbook(marker = 'X', includeCircularColumns = false): Buffer {
       ? [
           'categoria_horas_circular003',
           'descripcion_categoria_circular003',
+          'horas_pta_referencia_circular003',
+          'formula_calculo_horas',
         ]
       : []),
     'codigo_facultad',
@@ -34,6 +36,8 @@ function buildWorkbook(marker = 'X', includeCircularColumns = false): Buffer {
       ? [
           'pregrado_territorial',
           'APT / Territorial - 16h por credito',
+          '48 / 96 / 144 / 192',
+          'creditos x 16 x 3',
         ]
       : []),
     'PREGRADO',
@@ -58,6 +62,7 @@ function buildWorkbook(marker = 'X', includeCircularColumns = false): Buffer {
     xlsx.utils.aoa_to_sheet([
       [
         'codigo_asignatura',
+        ...(includeCircularColumns ? ['Pensum'] : []),
         'nombre_asignatura',
         'nombre_base',
         'creditos',
@@ -75,6 +80,7 @@ function buildWorkbook(marker = 'X', includeCircularColumns = false): Buffer {
       ],
       [
         'ASIG-EJEMPLO-001',
+        ...(includeCircularColumns ? ['APT_53'] : []),
         'Asignatura de ejemplo',
         'Asignatura de ejemplo',
         3,
@@ -143,6 +149,21 @@ describe('ExcelParserService', () => {
     );
     expect(parsed.programas[0].descripcion_categoria_circular003).toBe(
       'APT / Territorial - 16h por credito',
+    );
+    expect(parsed.programas[0].horas_pta_referencia_circular003).toBe(
+      '48 / 96 / 144 / 192',
+    );
+    expect(parsed.programas[0].formula_calculo_horas).toBe(
+      'creditos x 16 x 3',
+    );
+    expect(parsed.asignaturas[0].pensum).toBe('APT_53');
+    expect(parsed.asignaturas[0].horas_clase).toBe(48);
+    expect(parsed.asignaturas[0].horas_pta).toBe(144);
+  });
+
+  it('rechaza la plantilla masiva antigua que no incluye Pensum', () => {
+    expect(() => parser.parseExcel(buildWorkbook('X', false))).toThrow(
+      'Faltan: pensum',
     );
   });
 

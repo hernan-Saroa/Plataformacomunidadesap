@@ -35,6 +35,7 @@ import { docentePtaAlert } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
+import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
@@ -52,6 +53,15 @@ import {
   normalizeConfiguredHourRow,
 } from '../../pta/shared/configuredHours';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import {
+  filterAssignmentsByPensum,
+  formatPtaAssignmentName,
+  inferLegacyPensum,
+  listPensumsForProgram,
+  mergeAssignmentCatalog,
+  reconcileLegacyAssignment,
+  SIN_PENSUM_KEY,
+} from '../../../utils/ptaPensumCompatibility';
 
 // ═══ TYPES ═══════════════════════════════════════════════════════════
 
@@ -146,6 +156,7 @@ interface AsignaturaItem {
   programa_nombre?: string;
   programa_nombre_completo?: string;
   programa_codigo?: string;
+  pensum: string;
   asignatura_id: string;
   asignatura_nombre: string;
   nucleo_tematico: string;
@@ -660,7 +671,8 @@ function normalizeDocenciaModality(value: unknown): string {
 /**
  * Los cruces solo son bloqueantes cuando ambas asignaturas tienen un
  * componente presencial. Las modalidades enteramente remotas generan una
- * advertencia informativa y "Por definir" conserva su validación BR-010.
+ * advertencia informativa. "Por definir" se conserva como dato del catálogo
+ * sin bloquear al docente ni inferir una modalidad que la institución no definió.
  */
 function getDocenciaModalityKind(value: unknown): DocenciaModalityKind {
   const modality = normalizeDocenciaModality(value);
@@ -1761,6 +1773,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   // Programas filtrados por CETAP (clave: cetap_id, valor: array de programas)
   const [programasPorCetap, setProgramasPorCetap] = useState<Record<string, any[]>>({});
   const [asignaturasCat, setAsignaturasCat] = useState<any[]>([]);
+  const [programasCargandoAsignaturas, setProgramasCargandoAsignaturas] = useState<Set<string>>(() => new Set());
   const [territoriales, setTerritoriales] = useState<any[]>([]);
   const [cetapsMap, setCetapsMap] = useState<Record<string, any[]>>({});
   const [actInvestigacion, setActInvestigacion] = useState<any[]>([]);
@@ -1806,6 +1819,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [currentPtaId, setCurrentPtaId] = useState<string | undefined>(ptaId || undefined);
   // En modo admin, preserva el docente_id real del PTA (no el del admin logueado)
   const [docenteIdFromPta, setDocenteIdFromPta] = useState<string>('');
+  // Ficha completa usada por el panel dinámico de identificación. Se conserva
+  // separada de los defaults del formulario para no modificar su comportamiento.
+  const [docentePerfilIdentificacion, setDocentePerfilIdentificacion] = useState<any>(null);
+  const [ptaDataIdentificacion, setPtaDataIdentificacion] = useState<any>(null);
 
   // Firma digital del docente — requerida antes de cada envío
   const [showFirmaDocente, setShowFirmaDocente] = useState(false);
@@ -2006,7 +2023,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       getPeriodosAcademicos(),
     ]).then(([progs, asigs, actInv, actExt, actComp, actAcad, roles, config, secciones, periodos]) => {
       if (progs.success) setProgramas(progs.data);
-      if (asigs.success) setAsignaturasCat(asigs.data);
+      if (asigs.success) {
+        setAsignaturasCat(current => mergeAssignmentCatalog(current, asigs.data));
+      }
       if (actInv.success) setActInvestigacion(actInv.data);
       if (actExt.success && actExt.data) {
         const normalized: Record<string, any[]> = {};
@@ -2113,6 +2132,26 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       window.removeEventListener('focus', refreshRules);
     };
   }, []);
+
+  // Compatibilidad con borradores creados antes de incorporar Pensum. Se observan
+  // ambos estados para cubrir cualquier orden de respuesta de las APIs.
+  useEffect(() => {
+    if (asignaturasCat.length === 0) return;
+    setAsignaturas(previous => {
+      let changed = false;
+      const next = previous.map(item => {
+        const reconciled = reconcileLegacyAssignment(item, asignaturasCat);
+        const inferredPensum = inferLegacyPensum(reconciled, asignaturasCat);
+        const normalized = inferredPensum && inferredPensum !== reconciled.pensum
+          ? { ...reconciled, pensum: inferredPensum }
+          : reconciled;
+        if (normalized === item) return item;
+        changed = true;
+        return normalized;
+      });
+      return changed ? next : previous;
+    });
+  }, [asignaturasCat, asignaturas]);
 
   // Load territoriales based on period
   useEffect(() => {
@@ -2344,6 +2383,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   }, []);
 
   const loadingProgramasRef = useRef<Set<string>>(new Set());
+  const loadingAsignaturasProgramasRef = useRef<Set<string>>(new Set());
+  const loadedAsignaturasProgramasRef = useRef<Set<string>>(new Set());
 
   // Carga (una sola vez) los programas ofertados por un CETAP, para poblar el
   // dropdown "Programa". Necesario al recargar un borrador: la asignatura ya trae
@@ -2369,6 +2410,35 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     });
   }, [periodo]);
 
+  // La carga global es útil para formularios nuevos, pero un borrador existente
+  // debe hidratar de forma explícita cada programa guardado. Esto evita depender
+  // del orden/tiempo de las demás APIs y mantiene las opciones listas al abrirlo.
+  const loadAsignaturasPrograma = useCallback(async (programaId: string) => {
+    const programKey = String(programaId || '').trim();
+    if (
+      !programKey
+      || loadingAsignaturasProgramasRef.current.has(programKey)
+      || loadedAsignaturasProgramasRef.current.has(programKey)
+    ) return;
+
+    loadingAsignaturasProgramasRef.current.add(programKey);
+    setProgramasCargandoAsignaturas(current => new Set(current).add(programKey));
+    try {
+      const result = await getCatalogoAsignaturas(programKey);
+      if (result.success) {
+        setAsignaturasCat(current => mergeAssignmentCatalog(current, result.data, programKey));
+        loadedAsignaturasProgramasRef.current.add(programKey);
+      }
+    } finally {
+      loadingAsignaturasProgramasRef.current.delete(programKey);
+      setProgramasCargandoAsignaturas(current => {
+        const next = new Set(current);
+        next.delete(programKey);
+        return next;
+      });
+    }
+  }, []);
+
   // Sync CETAPs + Programas for existing asignaturas
   useEffect(() => {
     if (!asignaturas.length) return;
@@ -2378,16 +2448,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       // Poblar las opciones de "Programa" del CETAP de cada asignatura guardada
       // para que el programa persistido se muestre tras "Guardar Borrador" + recargar.
       if (a.cetap_id) loadProgramasCetap(String(a.cetap_id));
+      if (a.programa_id) loadAsignaturasPrograma(String(a.programa_id));
     });
-  }, [asignaturas, defaultTerritorial, loadCetaps, loadProgramasCetap]);
+  }, [asignaturas, defaultTerritorial, loadCetaps, loadProgramasCetap, loadAsignaturasPrograma]);
 
   // Load existing PTA
   useEffect(() => {
-    if (!ptaId) return;
+    if (!ptaId) {
+      setPtaDataIdentificacion(null);
+      return;
+    }
+    setPtaDataIdentificacion(null);
     setLoadingPta(true);
     getPTAById(ptaId).then(res => {
       if (res.success && res.data) {
         const d = res.data;
+        setPtaDataIdentificacion(d);
         setPeriodo(d.periodo || '2025-2');
         setDedicacion(d.dedicacion || 'Tiempo Completo');
         setTipoVinculacion(d.tipo_vinculacion || 'CARRERA_003');
@@ -2564,6 +2640,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         : (userPersonId || docenteIdFromPta);
       if (!activeDocenteId) return;
       let cancelado = false;
+      setDocentePerfilIdentificacion(null);
       setHorasBancoConsultadas(false);
       setHorasBancoDocente(null);
       Promise.all([
@@ -2591,6 +2668,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           p.tipoVinculacion = mappedTipoVinc || p.tipoVinculacion;
           p.horasProgramables = Number(bd.horas_programables ?? bd.horasAsignables);
         }
+
+        const perfilPortal = resPerfil?.success && resPerfil?.data ? resPerfil.data : {};
+        const bancoDocente = resBanco?.success && resBanco?.data ? resBanco.data : {};
+        setDocentePerfilIdentificacion({
+          ...perfilPortal,
+          ...bancoDocente,
+          nombre: bancoDocente.nombre_completo
+            || bancoDocente.nombreCompleto
+            || perfilPortal.nombre
+            || perfilPortal.nombre_completo,
+          identificacion: bancoDocente.documento_identidad
+            || bancoDocente.documento
+            || perfilPortal.documento_identidad
+            || perfilPortal.identificacion,
+          email: bancoDocente.correo_institucional
+            || bancoDocente.email
+            || perfilPortal.correo_institucional
+            || perfilPortal.email,
+        });
 
         // Territorial y CETAP: siempre se cargan del perfil (son fijos del docente)
         const tId = p.territorial_id || p.territorialId;
@@ -2626,6 +2722,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         }
       }).catch((e) => {
         if (cancelado) return;
+        setDocentePerfilIdentificacion(null);
         setHorasBancoConsultadas(true);
         console.warn('[PTAForm] Error loading docente profile data (non-critical):', e?.message || e);
       });
@@ -2656,8 +2753,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
         const aKind = getDocenciaModalityKind(a.modalidad);
         const bKind = getDocenciaModalityKind(b.modalidad);
-        // La modalidad pendiente se bloquea mediante BR-010 y no debe tratarse
-        // como si fuera una asignatura virtual o a distancia.
+        // La modalidad pendiente es informativa: no bloquea al docente y tampoco
+        // permite suponer que la asignatura sea presencial, virtual o a distancia.
         if (aKind === 'undefined' || bKind === 'undefined') continue;
 
         const detail =
@@ -2882,6 +2979,40 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const porcentaje = getPtaCompletionPercentage(totalHoras, horasAProgramar);
   // Horas por encima del límite programable (0 si no hay exceso).
   const horasExceso = Math.max(0, totalHoras - horasAProgramar);
+
+  // Datos vivos para el panel de identificación. Se derivan del formulario y
+  // del catálogo ya cargado, por lo que no introducen consultas adicionales.
+  const periodoAcademicoIdentificacion = useMemo(() => {
+    const configurado = periodosDisponibles.find((item: any) => {
+      const codigo = item?.codigo || (item?.anio && item?.semestre ? `${item.anio}-${item.semestre}` : '');
+      return String(codigo) === String(periodo);
+    }) || {};
+
+    return {
+      ...configurado,
+      codigo: periodo,
+      fechaInicio: configurado.fechaInicio || configurado.fecha_inicio || periodoFechaMin,
+      fechaFin: configurado.fechaFin || configurado.fecha_fin || periodoFechaMax,
+    };
+  }, [periodosDisponibles, periodo, periodoFechaMin, periodoFechaMax]);
+
+  const ptaIdentificacion = useMemo(() => ({
+    ...(ptaDataIdentificacion || {}),
+    periodo,
+    dedicacion,
+    tipo_vinculacion: TIPOS_VINCULACION.find(tipo => tipo.codigo === tipoVinculacion)?.nombre || tipoVinculacion,
+    horas_asignables: horasAProgramar,
+    horas_a_programar: horasAProgramar,
+    horas_totales: totalHoras,
+    total_horas_programadas: totalHoras,
+  }), [
+    ptaDataIdentificacion,
+    periodo,
+    dedicacion,
+    tipoVinculacion,
+    horasAProgramar,
+    totalHoras,
+  ]);
 
   const hasDocencia = asignaturas.length > 0;
 
@@ -3182,6 +3313,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       territorial_id: '',
       cetap_id: '',
       programa_id: '',
+      pensum: '',
       asignatura_id: '', asignatura_nombre: '', nucleo_tematico: '',
       creditos: 3, semestre: 1, total_estudiantes: 25,
       horas_base: 0, total_horas: 0, porcentaje_pta: 0, observaciones: '',
@@ -3199,12 +3331,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         loadCetaps(value);
         updated.cetap_id = '';
         updated.programa_id = '';
+        updated.pensum = '';
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
       }
       // Reset downstream on CETAP change + cargar programas filtrados por CETAP
       if (field === 'cetap_id') {
         updated.programa_id = '';
+        updated.pensum = '';
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
         if (value && !programasPorCetap[value]) {
@@ -3223,12 +3357,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       }
       // On programa change
       if (field === 'programa_id') {
+        updated.pensum = '';
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
         // La cantidad de estudiantes NO es editable en el PTA: se rellena
         // automáticamente con los cupos configurados en "Programas Académicos"
         // para la combinación (CETAP, Programa). Es la fuente única y dinámica.
         const cetapForOferta = updated.cetap_id;
+        if (value) void loadAsignaturasPrograma(String(value));
         if (value && cetapForOferta) {
           getOfertaCetap(String(cetapForOferta), String(value), periodo)
             .then(res => {
@@ -3246,11 +3382,22 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
             });
         }
       }
+      // El pensum es el criterio intermedio obligatorio del catálogo. Al
+      // cambiarlo se limpia cualquier asignatura perteneciente al pensum anterior.
+      if (field === 'pensum') {
+        updated.asignatura_id = '';
+        updated.asignatura_nombre = '';
+        updated.nucleo_tematico = '';
+        updated.horas_base = 0;
+        updated.total_horas = 0;
+        updated.porcentaje_pta = 0;
+      }
       // On asignatura selection - auto-fill fields + calculate hours
       if (field === 'asignatura_id' && value) {
-        const asigCat = asignaturasCat.find(ac => ac.id === value);
+        const asigCat = asignaturasCat.find(ac => String(ac.id) === String(value));
         if (asigCat) {
-          updated.asignatura_nombre = asigCat.nombre;
+          updated.pensum = asigCat.pensumKey || asigCat.pensum || SIN_PENSUM_KEY;
+          updated.asignatura_nombre = formatPtaAssignmentName(asigCat);
           updated.nucleo_tematico = asigCat.nucleo || '';
           updated.creditos = asigCat.creditos || 3;
           updated.semestre = asigCat.semestre || 1;
@@ -3893,6 +4040,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           requireText(asig.cetap_id, keyFor('cetap_id'), 'docencia', `CETAP de ${itemLabel}`);
         }
         requireText(asig.programa_id, keyFor('programa_id'), 'docencia', `Programa de ${itemLabel}`);
+        requireText(asig.pensum, keyFor('pensum'), 'docencia', `Pensum de ${itemLabel}`);
         requireText(asig.asignatura_id, keyFor('asignatura_id'), 'docencia', `Asignatura de ${itemLabel}`);
         requireDates(asig, keyFor, 'docencia', itemLabel);
         if (asig.asignatura_id) {
@@ -4126,6 +4274,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       }
       if (!asig.programa_id) {
         toast.error(`Completa el programa de ${label}.`);
+        setActiveSection('docencia');
+        return false;
+      }
+      if (!asig.pensum) {
+        toast.error(`Selecciona el Pensum de ${label}.`);
         setActiveSection('docencia');
         return false;
       }
@@ -4768,7 +4921,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const defaultCetapNombre = (cetapsMap[defaultTerritorial] || []).find((c: any) => c.id === defaultCetap)?.nombre || '—';
 
   // Helpers for cascading
-  const getAsignaturasFiltradas = (programaId: string) => asignaturasCat.filter(a => a.programaId === programaId);
+  const getPensumsFiltrados = (programaId: string) =>
+    listPensumsForProgram(asignaturasCat, programaId);
+  const getAsignaturasFiltradas = (programaId: string, pensum: string) =>
+    filterAssignmentsByPensum(asignaturasCat, programaId, pensum);
   const getExtCatalog = (sec: string): any[] => {
     if (!actExtension) return [];
     return (actExtension as Record<string, any[]>)[normalizeExtensionSectionKey(sec)] || [];
@@ -5314,6 +5470,13 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           </div>
 
           {/* Layout de una sola columna: tabs horizontales + contenido */}
+          <IdentificacionDocentePanel
+            key={`identificacion-form-${ptaId || 'nuevo'}-${isAdminEdit ? docenteIdFromPta : userPersonId}`}
+            pta={ptaIdentificacion}
+            userPerfil={docentePerfilIdentificacion}
+            periodoAcademico={periodoAcademicoIdentificacion}
+          />
+
           <div className="flex flex-col gap-5 items-start w-full">
 
             {/* ─── CONTENIDO PRINCIPAL ─── */}
@@ -5596,6 +5759,12 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const displaySemestre = catAsig?.semestre || asig.semestre || '—';
                         const displayCreditos = catAsig?.creditos != null ? catAsig.creditos : asig.creditos != null ? asig.creditos : 0;
                         const displayModalidad = asig.modalidad || 'PRESENCIAL';
+                        const asignaturasDisponibles = getAsignaturasFiltradas(asig.programa_id, asig.pensum);
+                        const asignaturasOptionsKey = asignaturasDisponibles
+                          .map(item => String(item.id))
+                          .join('|');
+                        const cargandoAsignaturas = programasCargandoAsignaturas.has(String(asig.programa_id))
+                          && asignaturasDisponibles.length === 0;
 
                         return (
                           <div key={asig.id}
@@ -5669,8 +5838,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               )}
                             </div>
 
-                            {/* Main Selects Grid: 4 columns on desktop to save vertical space */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                            {/* Cascada academica: Territorial -> CETAP -> Programa -> Pensum -> Asignatura */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                               <FormSelect
                                 label="Territorial"
                                 value={asig.territorial_id}
@@ -5720,13 +5889,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   return lista.map(p => ({ value: p.id, label: `${p.nivel} - ${p.nombre}` }));
                                 })()}
                                 placeholder={programaHabilitado ? 'Seleccionar...' : 'Pendiente...'} />
-                              <FormSelect label="Asignatura" value={asig.asignatura_id} disabled={!rowEditable || !asig.programa_id}
+                              <FormSelect label="Pensum" value={asig.pensum} disabled={!rowEditable || !asig.programa_id}
+                                required
+                                fieldKey={ptaFieldKey.docencia(asig.id, 'pensum')}
+                                error={requiredFieldErrors[ptaFieldKey.docencia(asig.id, 'pensum')]}
+                                onChange={v => handleAsigChange(asig.id, 'pensum', v)}
+                                options={getPensumsFiltrados(asig.programa_id)}
+                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
+                              <FormSelect key={`asignatura-${asig.id}-${asig.programa_id}-${asig.pensum}-${asignaturasOptionsKey}`}
+                                label="Asignatura" value={asig.asignatura_id} disabled={!rowEditable || cargandoAsignaturas || !asig.programa_id || (!asig.pensum && !asig.asignatura_id)}
                                 required
                                 fieldKey={ptaFieldKey.docencia(asig.id, 'asignatura_id')}
                                 error={requiredFieldErrors[ptaFieldKey.docencia(asig.id, 'asignatura_id')]}
                                 onChange={v => handleAsigChange(asig.id, 'asignatura_id', v)}
-                                options={getAsignaturasFiltradas(asig.programa_id).map(a => ({ value: a.id, label: a.nombre }))}
-                                placeholder={asig.programa_id ? 'Seleccionar...' : 'Pendiente...'} />
+                                options={asignaturasDisponibles.map(a => ({
+                                  value: a.id,
+                                  label: formatPtaAssignmentName(a),
+                                }))}
+                                placeholder={cargandoAsignaturas ? 'Cargando asignaturas...' : asig.pensum ? 'Seleccionar...' : asig.asignatura_id ? 'Recuperar Pensum...' : 'Pendiente...'} />
                             </div>
 
                             {/* Read-only Metrics Panel */}

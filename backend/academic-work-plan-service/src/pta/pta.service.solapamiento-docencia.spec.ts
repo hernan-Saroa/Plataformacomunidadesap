@@ -59,7 +59,7 @@ describe('PtaService - solapamiento de fechas en Docencia', () => {
     },
   );
 
-  it('deja Por definir a cargo de su validacion BR-010', () => {
+  it('permite Por definir como dato informativo del catálogo', () => {
     const assignments = [
       subject('Pendiente', 'POR DEFINIR'),
       subject('Presencial', 'PRESENCIAL'),
