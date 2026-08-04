@@ -1595,11 +1595,38 @@ export class PtaService {
       0,
     );
     const permiteCoexistencia = rules?.inv_permitir_proyecto_actividades_simultaneos === true;
+    const proyecto = body?.investigacion_proyecto;
+    const tieneDatosProyecto = Boolean(proyecto) && (
+      [
+        proyecto?.territorial_id,
+        proyecto?.nombre,
+        proyecto?.codigo,
+        proyecto?.grupo,
+        proyecto?.linea,
+        proyecto?.rol,
+        proyecto?.fecha_inicio,
+        proyecto?.fecha_fin,
+        proyecto?.resolucion_nombre,
+        proyecto?.resolucion_archivo_url,
+      ].some(value => Boolean(coalesceString(value)))
+      || horasProyecto > 0
+    );
+    const tieneDatosActividades = actividades.some((activity: any) => [
+      activity?.territorial_id,
+      activity?.actividad_id,
+      activity?.nombre,
+      activity?.descripcion,
+      activity?.fecha_inicio,
+      activity?.fecha_fin,
+      activity?.resolucion_nombre,
+      activity?.resolucion_archivo_url,
+    ].some(value => Boolean(coalesceString(value)))
+      || Number(activity?.horas_total ?? activity?.horas) > 0);
     const resolucionArchivoUrl = coalesceString(
       body?.investigacion_proyecto?.resolucion_archivo_url,
     );
 
-    if (!permiteCoexistencia && horasProyecto > 0 && horasActividades > 0) {
+    if (!permiteCoexistencia && tieneDatosProyecto && tieneDatosActividades) {
       throw new BadRequestException(
         'La configuracion actual de Investigacion permite registrar un proyecto o actividades, pero no ambos simultaneamente.',
       );

@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Save, Send, AlertCircle, Plus, Trash2, Calculator,
   BookOpen, FlaskConical, Globe, Briefcase, CheckCircle2, Info,
@@ -202,6 +203,25 @@ interface InvestigacionActividad {
   resolucion_nombre: string;
   resolucion_archivo?: File | null;
   resolucion_archivo_url?: string;
+}
+
+function hasInvestigacionProjectInput(project: InvestigacionProyecto): boolean {
+  const textFields = [
+    project.territorial_id,
+    project.nombre,
+    project.codigo,
+    project.grupo,
+    project.linea,
+    project.rol,
+    project.fecha_inicio,
+    project.fecha_fin,
+    project.resolucion_nombre,
+    project.resolucion_archivo_url,
+  ];
+
+  return textFields.some(value => String(value || '').trim().length > 0)
+    || Number(project.horas_solicitadas) > 0
+    || Boolean(project.resolucion_archivo);
 }
 
 interface ExtensionActividad {
@@ -2887,11 +2907,21 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       : requested;
   }, [invProyecto.rol, invProyecto.horas_solicitadas, rolesHorasMap]);
 
-  const tieneProyectoYActividadesInvestigacion = Boolean(invProyecto.rol)
-    && hInvestigacionProyecto > 0
-    && hInvestigacion_raw > 0;
+  // Con la modalidad excluyente, diligenciar cualquier dato ya significa que el
+  // docente eligió proyecto. Del mismo modo, crear una fila ya significa que
+  // eligió actividades, aunque todavía no haya terminado de completarla.
+  const tieneDatosProyectoInvestigacion = hasInvestigacionProjectInput(invProyecto);
+  const tieneFilasActividadesInvestigacion = invActividades.length > 0;
+  const tieneProyectoYActividadesInvestigacion = tieneDatosProyectoInvestigacion
+    && tieneFilasActividadesInvestigacion;
   const conflictoCoexistenciaInvestigacion =
     !permiteCoexistenciaInvestigacion && tieneProyectoYActividadesInvestigacion;
+  const mostrarProyectoInvestigacion = permiteCoexistenciaInvestigacion
+    || !tieneFilasActividadesInvestigacion
+    || conflictoCoexistenciaInvestigacion;
+  const mostrarActividadesInvestigacion = permiteCoexistenciaInvestigacion
+    || !tieneDatosProyectoInvestigacion
+    || conflictoCoexistenciaInvestigacion;
 
   const hInvestigacion = useMemo(() => {
     if (permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion) {
@@ -3429,6 +3459,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const handleAddInvActividad = () => {
     if (hasFullPTAActivity) return;
+    if (!permiteCoexistenciaInvestigacion && tieneDatosProyectoInvestigacion) {
+      toast.error('Ya empezaste un proyecto de investigación. Para registrar actividades, primero limpia los datos del proyecto.');
+      return;
+    }
     // Validar tope general (con o sin rol) antes de dejar agregar fila
     if (invProyecto.rol) {
       const limite = permiteCoexistenciaInvestigacion
@@ -4490,9 +4524,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       _concertacion_actor_nombre: isAdminEdit ? concertacionActorNombre : undefined,
       _concertacion_componentes: componentesConcertacionSeleccionados,
       asignaturas: asignaturasPayload,
-      // Guardar si hay cualquier campo significativo (rol, nombre, código, horas)
-      // Antes sólo se guardaba si había nombre → perdiendo datos cuando solo había rol.
-      investigacion_proyecto: (invProyecto.territorial_id || invProyecto.nombre || invProyecto.rol || invProyecto.codigo || invProyecto.horas_solicitadas)
+      // Guardar desde el primer dato diligenciado para conservar correctamente el
+      // borrador y aplicar la modalidad excluyente también a proyectos parciales.
+      investigacion_proyecto: tieneDatosProyectoInvestigacion
         ? {
             ...invProyecto,
             horas_solicitadas: invProyecto.rol ? hInvestigacionProyecto : 0,
@@ -6075,7 +6109,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       <div>
                         <p className="text-xs font-bold text-red-800">La configuración actual ya no permite proyecto y actividades simultáneamente</p>
                         <p className="text-[11px] text-red-700 mt-0.5">
-                          Este PTA conserva ambos registros para no perder información. Elige cuál mantener antes de guardar o concertar el componente de Investigación.
+                          Este PTA conserva ambos registros para no perder información. Elige cuál mantener antes de enviar o concertar el componente de Investigación.
                         </p>
                       </div>
                     </div>
@@ -6102,18 +6136,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                 <div className="p-4 md:p-6 space-y-6">
                   {/* Proyecto principal */}
-                  <div className="border border-purple-200 rounded-2xl p-4 md:p-5 bg-purple-50/40 shadow-sm relative overflow-hidden">
+                  <AnimatePresence initial={false}>
+                  {mostrarProyectoInvestigacion && (
+                  <motion.div
+                    key="proyecto-investigacion"
+                    initial={{ opacity: 0, height: 0, y: -10 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -10 }}
+                    transition={{ duration: 0.28, ease: 'easeOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="border border-purple-200 rounded-2xl p-4 md:p-5 bg-purple-50/40 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-purple-300/20 rounded-full blur-3xl -mr-10 -mt-10" />
                     <div className="flex items-center justify-between mb-4 relative z-10">
                       <h4 className="text-sm font-extrabold text-purple-900">Proyecto de Investigación</h4>
-                      {isEditable && (
-                        invProyecto.territorial_id || invProyecto.nombre || invProyecto.codigo || invProyecto.grupo || invProyecto.linea || invProyecto.rol ||
-                        (!permiteCoexistenciaInvestigacion && invActividades.length > 0)
-                      ) && (
+                      {isEditable && tieneDatosProyectoInvestigacion && (
                         <button
+                          type="button"
                           onClick={() => {
                             setInvProyecto({ territorial_id: '', nombre: '', codigo: '', grupo: '', linea: '', rol: '', horas_solicitadas: 0, fecha_inicio: '', fecha_fin: '', resolucion_nombre: '', resolucion_archivo: null, resolucion_archivo_url: '' });
-                            if (!permiteCoexistenciaInvestigacion && !conflictoCoexistenciaInvestigacion) setInvActividades([]);
                           }}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-red-200 bg-red-50 text-red-600 text-xs font-semibold cursor-pointer hover:bg-red-100 transition-colors">
                           <Trash2 className="w-3 h-3" /> Limpiar
@@ -6170,7 +6211,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               horas_solicitadas: horasProyecto,
                             };
                           });
-                          if (v && !permiteCoexistenciaInvestigacion) setInvActividades([]);
                         }}
                         options={rolesParaDropdown.map((r: any) => ({ value: r.nombre, label: `${r.nombre} (hasta ${rolesHorasMap[r.nombre] || 0}h)` }))}
                         placeholder="Seleccionar rol..." />
@@ -6305,7 +6345,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </div>
                       </div>
                     </div>
-                  </div>
+                    </div>
+                  </motion.div>
+                  )}
+                  </AnimatePresence>
 
                   {/* El proyecto conserva su propio tope por rol. Si la regla de
                       coexistencia está activa, las actividades se muestran debajo
@@ -6329,8 +6372,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         </div>
                       )
                     )}
-                    {(!invProyecto.rol || permiteCoexistenciaInvestigacion || conflictoCoexistenciaInvestigacion) && (
-                      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <AnimatePresence initial={false}>
+                    {mostrarActividadesInvestigacion && (
+                      <motion.div
+                        key="actividades-investigacion"
+                        initial={{ opacity: 0, height: 0, y: 10 }}
+                        animate={{ opacity: 1, height: 'auto', y: 0 }}
+                        exit={{ opacity: 0, height: 0, y: 10 }}
+                        transition={{ duration: 0.28, ease: 'easeOut' }}
+                        className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                      >
                     <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-start gap-3">
                         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
@@ -6345,7 +6396,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           </p>
                         </div>
                       </div>
-                      {isEditable && (!invProyecto.rol || permiteCoexistenciaInvestigacion) && (() => {
+                      {isEditable && (permiteCoexistenciaInvestigacion || !tieneDatosProyectoInvestigacion) && (() => {
                         const cupoInv = Math.max(0, maxInvLimit - hInvestigacion);
                         if (cupoInv <= 0 && !permiteCoexistenciaInvestigacion) return null;
                         return (
@@ -6676,8 +6727,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                       </div>
                     )}
                     </div>
-                      </div>
+                      </motion.div>
                     )}
+                    </AnimatePresence>
                   </div>
                 </div>
               </div>
