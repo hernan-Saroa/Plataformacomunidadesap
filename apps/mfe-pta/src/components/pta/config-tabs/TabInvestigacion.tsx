@@ -232,7 +232,7 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                       'inv_permitir_proyecto_actividades_simultaneos',
                       !permiteProyectoYActividades,
                     )}
-                    className={`relative inline-flex shrink-0 cursor-pointer items-center overflow-hidden rounded-full border-2 p-0 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                    className={`relative inline-flex shrink-0 cursor-pointer items-center overflow-hidden rounded-full border-2 p-0 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
                       permiteProyectoYActividades
                         ? 'border-emerald-500 bg-emerald-500'
                         : 'border-slate-200 bg-slate-200'
@@ -293,7 +293,7 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                 <button
                   type="button"
                   onClick={() => handleChange('inv_resolucion_obligatoria', !draft.inv_resolucion_obligatoria)}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
                     draft.inv_resolucion_obligatoria
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-slate-200 border-slate-200'
@@ -321,7 +321,7 @@ export function TabInvestigacion({ draft, handleChange }: { draft: PTARules; han
                 <button
                   type="button"
                   onClick={() => handleChange('inv_adjunto_obligatorio', !draft.inv_adjunto_obligatorio)}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 ease-in-out outline-none focus:outline-none focus:ring-0 ${
                     draft.inv_adjunto_obligatorio
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-slate-200 border-slate-200'
