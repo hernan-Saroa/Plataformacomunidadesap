@@ -1100,10 +1100,31 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_posgrado'),
     [asignaturas, componenteDeAsignatura],
   );
-  const asignaturasTerritorial = useMemo(
-    () => asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_territorial'),
-    [asignaturas, componenteDeAsignatura],
-  );
+  // Docencia territorial: si el usuario actúa SOLO con alcance territorial, únicamente
+  // debe ver las asignaturas de su propia seccional (un aprobador de Antioquia no debe
+  // ver ni actuar sobre las de Chocó o Huila). El backend lo valida igual al
+  // revisar/aprobar; esto alinea lo que se muestra con lo que se puede hacer.
+  // `jefaturaTerritorialId` no tiene formato garantizado, así que se compara
+  // normalizado contra el id y el nombre de la territorial de la asignatura, y si nada
+  // cruza no se filtra (mejor mostrar de más que ocultar trabajo).
+  const asignaturasTerritorial = useMemo(() => {
+    const todas = asignaturas.filter((a: any) => componenteDeAsignatura(a) === 'academica_territorial');
+    const soloTerritorial = visibleComponentKeySet.has('academica_territorial')
+      && !visibleComponentKeySet.has('academica_pregrado')
+      && !visibleComponentKeySet.has('academica_posgrado');
+    if (!soloTerritorial || isSuperUser || apruebaTodo || !jefaturaTerritorialId) return todas;
+
+    const norm = (v: any) => String(v ?? '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const propia = norm(jefaturaTerritorialId);
+    if (!propia) return todas;
+
+    const esPropia = (a: any) =>
+      norm(a?.territorial_id) === propia || norm(a?.territorial) === propia;
+    const propias = todas.filter(esPropia);
+    return propias.length > 0 ? propias : todas;
+  }, [asignaturas, componenteDeAsignatura, visibleComponentKeySet, isSuperUser, apruebaTodo, jefaturaTerritorialId]);
   const sumarHorasAsignaturas = useCallback(
     (arr: any[]) => arr.reduce((sum: number, a: any) => sum + (a.total_horas || a.horas || 0), 0),
     [],
