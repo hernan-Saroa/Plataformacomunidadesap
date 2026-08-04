@@ -15,6 +15,12 @@ export interface PtaAuthenticatedUser extends PtaAuthContext {
   name: string | null;
   email: string | null;
   roles: string[];
+  /**
+   * Territoriales (auth.seccionales.id_seccional) del usuario, tomadas de
+   * auth.personas.id_seccional. Acotan lo que un aprobador/revisor territorial
+   * puede revisar o aprobar del componente Docencia - Territorial.
+   */
+  territorialIds: string[];
 }
 
 declare module 'express' {
@@ -60,13 +66,18 @@ export class PtaAuthGuard implements CanActivate {
     }
 
     const roles = Array.isArray(payload?.roles) ? payload.roles : [];
-    const ctx = await this.ptaPermissions.resolveForRoles(roles);
+    const userId = payload?.sub ? String(payload.sub) : null;
+    const [ctx, territorialIds] = await Promise.all([
+      this.ptaPermissions.resolveForRoles(roles),
+      this.ptaPermissions.resolveTerritorialIdsForUser(userId),
+    ]);
 
     req.ptaAuth = {
-      userId: payload?.sub ? String(payload.sub) : null,
+      userId,
       name: payload?.name ? String(payload.name) : null,
       email: payload?.email ? String(payload.email) : null,
       roles: roles.map((r: unknown) => String(r || '')).filter(Boolean),
+      territorialIds,
       ...ctx,
     };
 

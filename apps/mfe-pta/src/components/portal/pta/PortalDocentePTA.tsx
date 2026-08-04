@@ -18,7 +18,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Plus, ChevronLeft, Calendar, Clock, CheckCircle2,
+  FileText, ChevronLeft, Calendar, Clock, CheckCircle2,
   AlertTriangle, Download, Eye, ArrowRight, RotateCcw, XCircle,
   Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
@@ -33,6 +33,7 @@ import {
   getActivePeriodoAcademico,
   getBancoDocenteById,
 } from '../../../services/api/ptaApi';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
@@ -45,6 +46,7 @@ import { V11CalendarioAcademico, V12AdjuntosDocumentos, V13IndicadoresPersonales
 import { VerificacionQRPublicaPTA } from '../../pta/VerificacionQRPublicaPTA';
 import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
+import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
@@ -793,14 +795,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         </div>
         <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <PTASyncIndicator syncState={syncState} sistema="portal" compact />
-          {puedeCrearPTA && (
-            <button
-              onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
-              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.3)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-[#003DA5] hover:bg-[#002B75]"
-            >
-              <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
-            </button>
-          )}
           {tieneSolicitudPendiente && (
             <span
               className="hidden md:flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl border border-amber-200 text-amber-700 text-[11px] font-bold bg-amber-50"
@@ -1137,6 +1131,18 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                 </div>
               </div>
 
+              <IdentificacionDocentePanel
+                key={selectedPta.id}
+                pta={selectedPta}
+                userPerfil={{
+                  ...docentePerfil,
+                  nombre: docentePerfil?.nombre_completo || userName,
+                  identificacion: docentePerfil?.documento_identidad || userPersonId,
+                  email: docentePerfil?.correo_institucional || docentePerfil?.email || userEmail,
+                }}
+                periodoAcademico={activePeriodoData}
+              />
+
               {/* Distribución por Componente */}
               {selectedPta && (() => {
                 const asigs = selectedPta.asignaturas || [];
@@ -1313,13 +1319,14 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       <ItemDetalle key={i} color={PTA_COLORS.DOCENCIA}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{formatPtaAssignmentName(a) || 'Asignatura'}</div>
                             {a.nucleo_tematico && <div style={{ fontSize: '0.64rem', color: '#6B7280', fontWeight: 600, marginTop: 2 }}>{a.nucleo_tematico}</div>}
                           </div>
                           <HorasBadge horas={Number(a.total_horas || a.horas || 0)} color={PTA_COLORS.DOCENCIA} />
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                           <DetalleChip label="Programa" value={a.programa_nombre} />
+                          <DetalleChip label="Pensum" value={formatPtaPensum(a.pensum)} />
                           <DetalleChip icon={MapPin} label="CETAP" value={a.cetap_nombre} color={PTA_COLORS.DOCENCIA} />
                           <DetalleChip label="Territorial" value={a.territorial_nombre} />
                           <DetalleChip label="Modalidad" value={MODALIDAD_LABELS[a.modalidad] || a.modalidad} />

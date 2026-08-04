@@ -84,7 +84,7 @@ export function ValidationTable({ relaciones }: ValidationTableProps) {
                           {rel.asignaturas.map((a: any, i: number) => (
                             <div key={i} className="text-xs flex gap-2 justify-between p-2 bg-white rounded border border-gray-100 shadow-sm">
                               <span className="font-semibold text-gray-700 truncate" title={a.nombre}>{a.nombre}</span>
-                              <span className="text-gray-400 shrink-0">{a.codigo}</span>
+                              <span className="text-gray-400 shrink-0">{a.pensum || 'Sin pensum'} · {a.codigo}</span>
                             </div>
                           ))}
                         </div>

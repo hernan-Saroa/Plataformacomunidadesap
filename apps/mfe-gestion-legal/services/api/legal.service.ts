@@ -1379,11 +1379,13 @@ export class CorreosJuridicosService {
      */
     async forwardEmail(
         correoId: string,
-        to: string,
+        to: string | string[],
         comment: string,
         attachments?: { name: string; contentBytes: string; contentType: string }[],
+        cc?: string[],
+        bcc?: string[],
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment, attachments });
+        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment, attachments, cc, bcc });
     }
 
     /**

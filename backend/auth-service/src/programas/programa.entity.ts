@@ -32,6 +32,18 @@ export class ProgramaAcademico {
   @Column({ name: 'horas_pregrado_central', type: 'int', nullable: true })
   horasPregradoCentral: number | null;
 
+  @Column({ name: 'categoria_horas_circular003', type: 'varchar', length: 50, nullable: true })
+  categoriaHorasCircular003: string | null;
+
+  @Column({ name: 'descripcion_categoria_circular003', type: 'text', nullable: true })
+  descripcionCategoriaCircular003: string | null;
+
+  @Column({ name: 'horas_pta_referencia_circular003', type: 'varchar', length: 150, nullable: true })
+  horasPtaReferenciaCircular003: string | null;
+
+  @Column({ name: 'formula_calculo_horas', type: 'text', nullable: true })
+  formulaCalculoHoras: string | null;
+
   @Column({ type: 'boolean', default: true })
   activo: boolean;
 

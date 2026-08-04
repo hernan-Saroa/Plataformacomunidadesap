@@ -16,6 +16,7 @@ const services = [
   { name: 'notifications-service', host: '127.0.0.1', port: 3009, paths: ['/health', '/'] },
   { name: 'travel-expenses-service', host: '127.0.0.1', port: 3010, paths: ['/health', '/'] },
   { name: 'audit-service', host: '127.0.0.1', port: 3011, paths: ['/health', '/'] },
+  { name: 'hiring-service', host: '127.0.0.1', port: 3012, paths: ['/health', '/'] },
 
   // Frontend Host
   { name: 'frontend-shell (Host)', host: 'localhost', port: 3000, paths: ['/'] },
@@ -33,7 +34,8 @@ const services = [
   { name: 'mfe-control-interno', host: '127.0.0.1', port: 3110, paths: ['/remotes/mfe-control-interno/'] },
   { name: 'mfe-control-disciplinario', host: '127.0.0.1', port: 3111, paths: ['/remotes/mfe-control-disciplinario/'] },
   { name: 'mfe-gestion-legal', host: '127.0.0.1', port: 3112, paths: ['/remotes/mfe-gestion-legal/'] },
-  { name: 'mfe-pta', host: '127.0.0.1', port: 3113, paths: ['/remotes/mfe-pta/'] }
+  { name: 'mfe-pta', host: '127.0.0.1', port: 3113, paths: ['/remotes/mfe-pta/'] },
+  { name: 'mfe-contratacion', host: '127.0.0.1', port: 3114, paths: ['/remotes/mfe-contratacion/'] }
 ];
 
 function checkPath(host, port, path) {

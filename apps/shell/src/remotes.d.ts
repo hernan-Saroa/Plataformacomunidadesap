@@ -98,3 +98,9 @@ declare module 'pta/Portal' {
   export { Module as PTAPortalModule };
   export default Module;
 }
+
+declare module 'contratacion/Module' {
+  const Module: React.ComponentType;
+  export { Module as ContratacionModulePremium };
+  export default Module;
+}

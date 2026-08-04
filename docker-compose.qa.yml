@@ -74,6 +74,7 @@ services:
       NOTIFICATIONS_SERVICE_URL: http://notifications-service-qa:3009
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service-qa:3010
       AUDIT_SERVICE_URL: http://audit-service:3011
+      HIRING_SERVICE_URL: http://hiring-service-qa:3012
     ports:
       - "3000:3000"
     depends_on:
@@ -88,6 +89,7 @@ services:
       - notifications-service
       - travel-expenses-service
       - audit-service
+      - hiring-service
     networks:
       - superapp-net-qa
     restart: unless-stopped
@@ -516,6 +518,35 @@ services:
     networks:
       - superapp-net-qa
     restart: unless-stopped
+
+  # ============ HIRING SERVICE ============
+  hiring-service:
+    build:
+      context: ./backend/hiring-service
+      dockerfile: Dockerfile
+    container_name: hiring-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3012
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: hiring
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_qa_2024}
+    ports:
+      - "3012:3012"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
 
   # ============ POSTGRES ============
   db:

@@ -34,6 +34,7 @@ services:
       - frontend-mfe-control-disciplinario
       - frontend-mfe-gestion-legal
       - frontend-mfe-pta
+      - frontend-mfe-contratacion
       - api-gateway
       - onlyoffice
     volumes:
@@ -207,3 +208,16 @@ services:
         FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-pta
     container_name: superapp-mfe-pta${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
+
+  frontend-mfe-contratacion:
+    build:
+      context: .
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
+      args:
+        <<: *frontend-build-args
+        FRONTEND_APP_DIR: mfe-contratacion
+        FRONTEND_DIST_DIR: /app/build/remotes/mfe-contratacion
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-contratacion
+    container_name: superapp-mfe-contratacion${FRONTEND_CONTAINER_SUFFIX:--prod}
+    <<: *frontend-service
+
