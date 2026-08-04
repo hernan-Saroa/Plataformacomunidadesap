@@ -339,9 +339,11 @@ export class CorreosJuridicosController {
     async forwardEmail(
         @Param('id') id: string,
         @Body() body: {
-            to: string;
+            to: string | string[];
             comment: string;
             attachments?: { name: string; contentBytes: string; contentType: string }[];
+            cc?: string[];
+            bcc?: string[];
         },
         @Req() req: any,
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
@@ -351,6 +353,8 @@ export class CorreosJuridicosController {
             body.comment || '',
             body.attachments,
             req,
+            body.cc,
+            body.bcc,
         );
         return { success: result.success, correo: result.correo };
     }
