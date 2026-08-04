@@ -172,6 +172,37 @@ export class PtaPermissionsService {
     return REVIEW_SUBSECCIONES_BY_COMPONENT[componente as PTAComponentKey] || [];
   }
 
+  /**
+   * Territoriales (auth.seccionales.id_seccional) a las que pertenece el usuario.
+   *
+   * Sigue la convención ya documentada en `auth.role.alcance` para
+   * JEFATURA_TERRITORIAL: *"El rol se filtra por la seccional asignada a la persona,
+   * no por roles separados"* → la territorial NO vive en el rol sino en
+   * auth.personas.id_seccional. Se usa para que un aprobador/revisor territorial solo
+   * pueda actuar sobre las asignaturas de SU territorial.
+   *
+   * Devuelve [] si no se puede resolver; quien lo consuma decide (los llamadores
+   * tratan el vacío como "sin alcance territorial", que es fail-closed para el
+   * componente territorial).
+   */
+  async resolveTerritorialIdsForUser(userId: string | null | undefined): Promise<string[]> {
+    if (!userId) return [];
+    try {
+      const rows: Array<{ id_seccional: string }> = await this.dataSource.query(
+        `SELECT p.id_seccional::text AS id_seccional
+           FROM auth."user" u
+           INNER JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user::text = $1
+            AND p.id_seccional IS NOT NULL`,
+        [String(userId)],
+      );
+      return Array.from(new Set((rows || []).map((r) => String(r.id_seccional)).filter(Boolean)));
+    } catch (error: any) {
+      this.logger.error(`No se pudo resolver la territorial del usuario ${userId}: ${error?.message}`);
+      return [];
+    }
+  }
+
   /** Permiso granular asociado a una subsección de revisión (para mensajes de error). */
   reviewPermissionForSubseccion(componente: string, subseccion: string): string | undefined {
     return reviewPermissionFor(componente, subseccion);

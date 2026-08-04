@@ -2727,6 +2727,20 @@ export class PtaService {
       }
     }
 
+    // Territoriales (no Sede Central) presentes en las asignaturas del lote, para
+    // enrutar Docencia también por territorialidad en el listado. Se resuelve una sola
+    // vez para todos los PTAs, igual que el tipo de programa.
+    const territorialIdsLote = Array.from(new Set(
+      dtos.flatMap(dto => (Array.isArray(dto?.asignaturas) ? dto.asignaturas : []))
+        .map((a: any) => coalesceLookupKey(a?.territorial_id))
+        .filter((v): v is string => !!v),
+    ));
+    const seccionalesNoCentrales = await this.resolveTerritorialIdsNoCentrales(territorialIdsLote);
+    const esAsignaturaTerritorial = (a: any): boolean => {
+      const t = coalesceLookupKey(a?.territorial_id);
+      return !!t && seccionalesNoCentrales.has(t);
+    };
+
     // BASE_KEYS ya no incluye Docencia: se colapsa por separado (DOCENCIA_KEYS,
     // más abajo) exactamente con el mismo patrón que Extensión — varios
     // componentes reales agrupados bajo un solo rótulo visible.
@@ -2752,8 +2766,21 @@ export class PtaService {
         const asignaturas: any[] = Array.isArray(dto?.asignaturas) ? dto.asignaturas : [];
         let horasDocPregrado = 0;
         let horasDocPosgrado = 0;
+        let horasDocTerritorial = 0;
+        // Territoriales concretas presentes en la Docencia de ESTE PTA: el frontend las
+        // usa para que un aprobador/revisor territorial solo vea los PTAs de su
+        // seccional (el permiso habilita el componente, la seccional acota cuál).
+        const territorialesDocencia = new Set<string>();
         for (const a of asignaturas) {
           const horas = Number(a?.total_horas ?? a?.horas) || 0;
+          // La territorialidad manda sobre el nivel, igual que en
+          // clasificarAsignaturasDocencia (fuente de verdad del enrutamiento).
+          if (esAsignaturaTerritorial(a)) {
+            horasDocTerritorial += horas;
+            const t = coalesceLookupKey(a?.territorial_id);
+            if (t) territorialesDocencia.add(t);
+            continue;
+          }
           const programaId = coalesceLookupKey(a?.programa_id);
           const tipo = programaId ? tipoPorPrograma.get(programaId) : undefined;
           if (tipo && POSGRADO_PROGRAMA_TIPOS.has(tipo)) horasDocPosgrado += horas;
@@ -2767,9 +2794,20 @@ export class PtaService {
           horasDocPregrado = Number(dto.horas_docencia) || 0;
         }
 
+        // Se exponen en el DTO para que el listado pueda filtrar por alcance real del
+        // usuario (qué componente de Docencia y de qué territorial) sin re-resolver
+        // los joins en el cliente.
+        dto.docencia_por_componente = {
+          academica_pregrado: horasDocPregrado,
+          academica_posgrado: horasDocPosgrado,
+          academica_territorial: horasDocTerritorial,
+        };
+        dto.territoriales_docencia_ids = [...territorialesDocencia];
+
         const horasPorComp: Record<string, number> = {
           academica_pregrado: horasDocPregrado,
           academica_posgrado: horasDocPosgrado,
+          academica_territorial: horasDocTerritorial,
           investigacion: Number(dto?.horas_investigacion || 0),
           // horas_complementarias ya incluye la sección académico-administrativa.
           complementarias: Number(dto?.horas_complementarias || 0),
@@ -7335,6 +7373,73 @@ export class PtaService {
     return out;
   }
 
+  /** Nombres legibles de un conjunto de seccionales, para mensajes de error. */
+  private async resolveNombresSeccionales(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    try {
+      const rows = await this.ptaRepo.manager.query(
+        `SELECT nom_seccional AS nombre
+           FROM auth.seccionales
+          WHERE id_seccional::text = ANY($1::text[])`,
+        [ids],
+      );
+      const nombres = (rows || []).map((r: any) => String(r?.nombre || '')).filter(Boolean);
+      return nombres.length > 0 ? nombres : ids;
+    } catch {
+      return ids;
+    }
+  }
+
+  /**
+   * Alcance territorial: un revisor/aprobador de "Docencia - Territorial" solo puede
+   * actuar sobre las asignaturas de SU territorial.
+   *
+   * El permiso `pta.*.academica.territorial` habilita el componente, pero NO dice
+   * cuál territorial; esa se toma de la seccional de la persona
+   * (auth.personas.id_seccional), siguiendo la convención ya documentada en
+   * `auth.role.alcance` para JEFATURA_TERRITORIAL. Sin esta verificación, un rol de
+   * Antioquia podía revisar/aprobar las asignaturas de Chocó o Huila.
+   *
+   * Fail-closed: si el usuario no tiene seccional resuelta, no puede actuar sobre el
+   * componente territorial.
+   */
+  private async assertAlcanceTerritorial(
+    componente: string,
+    existingPta: PlanTrabajoAcademicoEntity,
+    auth: PtaAuthenticatedUser,
+    accion: 'revisar' | 'aprobar',
+  ): Promise<void> {
+    if (componente !== 'academica_territorial') return;
+    if (auth.isSuperUser) return;
+
+    const ds = (existingPta.datosEstructurados as any) || {};
+    const asignaturas = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
+    const part = await this.clasificarAsignaturasDocencia(asignaturas);
+    const territorialesPta = Array.from(new Set(
+      part.academica_territorial
+        .map((a: any) => coalesceLookupKey(a?.territorial_id))
+        .filter((v): v is string => !!v),
+    ));
+    if (territorialesPta.length === 0) return;
+
+    const propias = new Set((auth.territorialIds || []).map((v) => String(v)));
+    if (propias.size === 0) {
+      throw new ForbiddenException(
+        `No tiene una territorial asignada, por lo que no puede ${accion} el componente de Docencia territorial. `
+        + 'La territorial se toma de la seccional registrada para la persona.',
+      );
+    }
+
+    const ajenas = territorialesPta.filter((id) => !propias.has(id));
+    if (ajenas.length > 0) {
+      const nombres = await this.resolveNombresSeccionales(ajenas);
+      throw new ForbiddenException(
+        `Solo puede ${accion} las asignaturas de Docencia de su propia territorial. `
+        + `Este PTA incluye asignaturas de: ${nombres.join(', ')}.`,
+      );
+    }
+  }
+
   /** Horas de Docencia por componente (pregrado / posgrado / territorial). */
   private async splitHorasDocenciaPorNivel(
     asignaturas: any[],
@@ -7531,6 +7636,10 @@ export class PtaService {
       throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
     }
 
+    // Alcance territorial: el permiso habilita el componente, pero la territorial
+    // concreta la define la seccional de la persona.
+    await this.assertAlcanceTerritorial(componente, existingPta, auth, 'revisar');
+
     const ds = (existingPta.datosEstructurados as any) || {};
     const requeridas = await this.getRequiredSubsecciones(componente, ds);
     if (!requeridas.includes(subseccion)) {
@@ -7657,6 +7766,10 @@ export class PtaService {
     if (['Terminado', 'TERMINADO'].includes(String(existingPta.estado))) {
       throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
     }
+
+    // Alcance territorial: un aprobador de Docencia territorial solo puede aprobar
+    // las asignaturas de su propia territorial (aplica también a la devolución).
+    await this.assertAlcanceTerritorial(componente, existingPta, auth, 'aprobar');
 
     // ── Bloqueo estructural: no se puede aprobar sin revisión previa completa ──
     // Esto aplica sin importar qué permiso tenga quien llama (no es solo un
