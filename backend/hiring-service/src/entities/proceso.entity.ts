@@ -12,6 +12,15 @@ export class Proceso {
   @Column({ type: 'text' })
   objeto: string;
 
+  /**
+   * Modalidad de selección; referencia a hiring.modalidades.
+   *
+   * Nullable solo por los procesos creados antes de exigirla: inventarles una
+   * falsearía el expediente. Las creaciones nuevas la exigen en el DTO.
+   */
+  @Column({ length: 60, nullable: true })
+  modalidad: string | null;
+
   /** Etapa de la matriz de flujo. Este HU trabaja siempre sobre la 3. */
   @Column({ type: 'int', default: 3 })
   etapa: number;

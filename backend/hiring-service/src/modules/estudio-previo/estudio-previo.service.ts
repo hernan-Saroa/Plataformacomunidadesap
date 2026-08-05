@@ -17,6 +17,7 @@ import { Documento } from '../../entities/documento.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
+import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 
@@ -60,9 +61,27 @@ export class EstudioPrevioService {
 
   // ------------------------------------------------------------- proceso ---
 
+  /** Modalidades vigentes, en el orden de las columnas de la matriz. */
+  async modalidades() {
+    return this.dataSource.getRepository(Modalidad).find({
+      where: { activa: true },
+      order: { orden: 'ASC' },
+    });
+  }
+
   async crearProceso(dto: CrearProcesoDto, acceso: HiringAccess) {
     return this.dataSource.transaction(async (em) => {
       const anio = new Date().getFullYear();
+
+      // La FK ya lo impediría, pero devolvería un 500 sin explicación.
+      const modalidad = await em.findOne(Modalidad, {
+        where: { codigo: dto.modalidad, activa: true },
+      });
+      if (!modalidad) {
+        throw new BadRequestException(
+          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
+        );
+      }
 
       // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
       const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);
@@ -71,6 +90,7 @@ export class EstudioPrevioService {
       const proceso = await em.save(Proceso, {
         radicado: `CTO-${anio}-${String(nRad).padStart(4, '0')}`,
         objeto: dto.objeto,
+        modalidad: modalidad.codigo,
         etapa: ETAPA_ESTUDIOS_PREVIOS,
         createdBy: acceso.userName,
       } as Partial<Proceso>);
@@ -88,9 +108,13 @@ export class EstudioPrevioService {
         datos: {},
       } as Partial<ProcesoActividad>);
 
+      // La modalidad queda en la traza: si el catálogo cambia, el expediente
+      // sigue mostrando con cuál nació el proceso.
       await this.traza(em, proceso.id, 'proceso', proceso.id, 'CREAR', acceso, {
         radicado: proceso.radicado,
         expediente: expediente.numeroExpediente,
+        modalidad: modalidad.codigo,
+        modalidadNombre: modalidad.nombre,
       });
 
       return { ...proceso, expediente, actividad };

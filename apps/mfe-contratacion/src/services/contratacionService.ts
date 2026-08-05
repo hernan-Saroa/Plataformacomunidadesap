@@ -4,6 +4,7 @@ import {
   ConflictoError,
   EstudioPrevio,
   Expediente,
+  Modalidad,
   ProcesoResumen,
   RevisionEstudioPrevio,
 } from '../types';
@@ -57,10 +58,13 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
 export const contratacionService = {
   listarProcesos: () => pedir<ProcesoResumen[]>('/procesos'),
 
-  crearProceso: (objeto: string) =>
+  /** Catálogo para el selector; se consulta antes de crear el proceso. */
+  modalidades: () => pedir<Modalidad[]>('/modalidades'),
+
+  crearProceso: (objeto: string, modalidad: string) =>
     pedir<ProcesoResumen>('/procesos', {
       method: 'POST',
-      body: JSON.stringify({ objeto }),
+      body: JSON.stringify({ objeto, modalidad }),
     }),
 
   obtenerEstudioPrevio: (procesoId: string) =>

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ProcesoResumen } from '../../types';
+import { Modalidad, ProcesoResumen } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
 import { StepperCompacto } from './StepperCompacto';
@@ -79,6 +79,8 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [creando, setCreando] = useState(false);
   const [objeto, setObjeto] = useState('');
+  const [modalidades, setModalidades] = useState<Modalidad[]>([]);
+  const [modalidad, setModalidad] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
@@ -96,16 +98,20 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
 
   useEffect(() => {
     cargar();
+    // El catálogo cambia con la normativa, así que se lee del backend en vez
+    // de fijarlo en el bundle.
+    contratacionService.modalidades().then(setModalidades).catch(() => setModalidades([]));
   }, []);
 
   const crear = async () => {
-    if (!objeto.trim()) return;
+    if (!objeto.trim() || !modalidad) return;
     setGuardando(true);
     setError(null);
     try {
-      const proceso = await contratacionService.crearProceso(objeto.trim());
+      const proceso = await contratacionService.crearProceso(objeto.trim(), modalidad);
       setCreando(false);
       setObjeto('');
+      setModalidad('');
       onAbrir(proceso.id);
     } catch (err: any) {
       setError(err.message);
@@ -148,7 +154,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
           <>
             <button
               onClick={crear}
-              disabled={!objeto.trim() || guardando}
+              disabled={!objeto.trim() || !modalidad || guardando}
               className="px-3.5 py-2 text-xs font-extrabold rounded-lg text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 transition-all"
             >
               {guardando ? 'Creando…' : 'Crear y abrir estudio previo'}
@@ -175,6 +181,27 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
         <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
           Describe con precisión el bien, servicio u obra a contratar. Este texto queda como objeto
           del proceso y se precarga en el estudio previo.
+        </p>
+
+        <label htmlFor="nueva-modalidad" className="block text-xs font-bold text-gray-600 mb-1.5 mt-4">
+          Modalidad de selección <span className="text-red-600">*</span>
+        </label>
+        <select
+          id="nueva-modalidad"
+          value={modalidad}
+          onChange={(e) => setModalidad(e.target.value)}
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+        >
+          <option value="">Selecciona la modalidad…</option>
+          {modalidades.map((m) => (
+            <option key={m.codigo} value={m.codigo}>
+              {m.nombre}
+            </option>
+          ))}
+        </select>
+        <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
+          Define qué actividades recorre el proceso: no todas aplican a todas las modalidades. Se
+          ratifica al definir la modalidad en la actividad 3.5.
         </p>
       </Modal>
 
