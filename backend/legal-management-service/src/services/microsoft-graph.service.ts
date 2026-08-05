@@ -3,6 +3,12 @@ import { ClientSecretCredential } from '@azure/identity';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
 
+export interface GraphRecipientSuggestion {
+    name: string;
+    email: string;
+    source: 'contacto' | 'frecuente' | 'directorio';
+}
+
 export interface GraphEmail {
     id: string;
     subject: string;
@@ -560,5 +566,84 @@ export class MicrosoftGraphService {
             this.logger.error(`Error replying to message ${messageId}:`, error);
             throw error;
         }
+    }
+
+    /**
+     * Busca destinatarios sugeridos para autocompletar el campo "Destinatarios",
+     * combinando contactos personales del buzón (Contacts.Read), personas frecuentes
+     * (People.Read.All) y el directorio institucional de Azure AD (User.Read.All).
+     * Los permisos son de aplicación (app-only): si alguno no está concedido, esa
+     * fuente simplemente se omite en lugar de romper toda la búsqueda.
+     */
+    async searchRecipients(query: string, mailbox?: string): Promise<GraphRecipientSuggestion[]> {
+        const q = query.trim();
+        if (q.length < 2) return [];
+
+        if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
+            this.logger.warn(`[DEV MOCK] Búsqueda de destinatarios deshabilitada (sin credenciales Azure): "${q}"`);
+            return [];
+        }
+
+        const account = mailbox || this.emailAccount;
+        const client = this.getClient();
+        const escaped = q.replace(/"/g, '\\"');
+
+        const [peopleResult, contactsResult, directoryResult] = await Promise.allSettled([
+            client
+                .api(`/users/${account}/people`)
+                .search(`"${escaped}"`)
+                .top(10)
+                .select('displayName,scoredEmailAddresses')
+                .get(),
+            client
+                .api(`/users/${account}/contacts`)
+                .search(`"displayName:${escaped}"`)
+                .top(10)
+                .select('displayName,emailAddresses')
+                .get(),
+            client
+                .api('/users')
+                .header('ConsistencyLevel', 'eventual')
+                .search(`"displayName:${escaped}" OR "mail:${escaped}"`)
+                .count(true)
+                .top(10)
+                .select('displayName,mail,userPrincipalName')
+                .get(),
+        ]);
+
+        const suggestions = new Map<string, GraphRecipientSuggestion>();
+        const addSuggestion = (name: string | undefined, email: string | undefined, source: GraphRecipientSuggestion['source']) => {
+            const addr = (email || '').trim().toLowerCase();
+            if (!addr || !addr.includes('@')) return;
+            if (!suggestions.has(addr)) {
+                suggestions.set(addr, { name: name?.trim() || addr, email: addr, source });
+            }
+        };
+
+        if (peopleResult.status === 'fulfilled') {
+            for (const person of peopleResult.value?.value || []) {
+                addSuggestion(person.displayName, person.scoredEmailAddresses?.[0]?.address, 'frecuente');
+            }
+        } else {
+            this.logger.warn(`Búsqueda de personas frecuentes no disponible (¿falta People.Read.All?): ${peopleResult.reason?.message || peopleResult.reason}`);
+        }
+
+        if (contactsResult.status === 'fulfilled') {
+            for (const contact of contactsResult.value?.value || []) {
+                addSuggestion(contact.displayName, contact.emailAddresses?.[0]?.address, 'contacto');
+            }
+        } else {
+            this.logger.warn(`Búsqueda de contactos no disponible (¿falta Contacts.Read?): ${contactsResult.reason?.message || contactsResult.reason}`);
+        }
+
+        if (directoryResult.status === 'fulfilled') {
+            for (const user of directoryResult.value?.value || []) {
+                addSuggestion(user.displayName, user.mail || user.userPrincipalName, 'directorio');
+            }
+        } else {
+            this.logger.warn(`Búsqueda en el directorio institucional no disponible (¿falta User.Read.All?): ${directoryResult.reason?.message || directoryResult.reason}`);
+        }
+
+        return Array.from(suggestions.values()).slice(0, 10);
     }
 }

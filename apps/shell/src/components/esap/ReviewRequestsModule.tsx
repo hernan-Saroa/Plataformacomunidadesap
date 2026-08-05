@@ -335,7 +335,10 @@ export function ReviewRequestsModule({
     value.replace(/[^A-Za-z0-9]+/g, '').slice(0, maxLength);
 
   const sanitizePersonName = (value: string) =>
-    value.normalize('NFC').slice(0, PERSON_NAME_MAX_LENGTH);
+    value
+      .normalize('NFC')
+      .replace(/[^\p{L}\s'’-]+/gu, '')
+      .slice(0, PERSON_NAME_MAX_LENGTH);
 
   const getPersonNameValidationError = (value: string, fieldLabel: string) => {
     const normalized = normalizeSpaces(value);
