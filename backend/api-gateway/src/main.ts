@@ -42,8 +42,22 @@ async function bootstrap() {
     }
   }
 
+  // En desarrollo Vite escoge el primer puerto libre (3000, 3007, 3114...),
+  // así que cualquier localhost es válido; fuera de desarrollo se respeta la lista.
+  const isDev = process.env.NODE_ENV !== 'production';
+  const localhostPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+  const corsOrigin: any = (origin: string | undefined, cb: (e: Error | null, ok?: boolean) => void) => {
+    if (!origin) return cb(null, true); // curl, Postman, same-origin
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    if (isDev && localhostPattern.test(origin)) return cb(null, true);
+    // cb(null, false) responde 204 sin cabecera y el navegador lo bloquea igual,
+    // pero un error deja rastro en el log en vez de fallar en silencio.
+    return cb(new Error(`Origen no permitido por CORS: ${origin}`));
+  };
+
   app.enableCors({
-    origin: allowedOrigins,
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token', 'X-User-ID', 'X-User-Roles', 'X-User-Email', 'X-User-Name'],
     credentials: true,
