@@ -193,3 +193,8 @@ backend/hiring-service/uploads/
 package-lock.json
 
 .claude/
+# Material de trabajo del equipo, no del producto: notas de planeacion,
+# anexos convertidos y el compose de desarrollo local.
+PLAN_*.md
+docs/contratacion/
+docker-compose.backend.yml
