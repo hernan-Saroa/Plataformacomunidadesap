@@ -22,6 +22,7 @@ import type { PtaAuthenticatedUser } from './auth/pta-auth.guard';
 import {
   COMPONENT_PERMISSION,
   DOCENCIA_COMPONENT_KEYS,
+  COMPLEMENTARIAS_COMPONENT_KEYS,
   REVIEW_SUBSECCIONES_BY_COMPONENT,
   reviewPermissionFor,
   type PTAComponentKey,
@@ -172,6 +173,10 @@ const COMPONENT_APPROVAL_KEYS = [
   'ext_fortalecimiento',
   'ext_gobierno',
   'complementarias',
+  // 'complementarias' es ahora el catch-all "sin programa asociado" (ver
+  // clasificarComplementarias); estos dos cubren lo asociado a Pregrado/Posgrado.
+  'complementarias_pregrado',
+  'complementarias_posgrado',
 ];
 
 // Tipos de academic_work_plan.programa.tipo que se consideran "posgrado" para
@@ -203,7 +208,7 @@ const SOLICITUD_COMPONENT_APPROVAL_KEYS: Record<string, string[]> = {
   docencia: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'],
   investigacion: ['investigacion'],
   extension: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'],
-  complementarias: ['complementarias'],
+  complementarias: COMPLEMENTARIAS_COMPONENT_KEYS,
 };
 const ESTADOS_PTA_RESTAURABLES_EDICION = new Set([
   'APROBADO',
@@ -260,6 +265,8 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
   academica_posgrado: 'REVISION_DOCENTE_N1',
   academica_territorial: 'REVISION_DOCENTE_N1',
   complementarias: 'REVISION_DOCENTE_N1',
+  complementarias_pregrado: 'REVISION_DOCENTE_N1',
+  complementarias_posgrado: 'REVISION_DOCENTE_N1',
   investigacion: 'REVISION_DOCENTE_N2',
   ext_capacitacion: 'REVISION_DOCENTE_N2',
   ext_procesos: 'REVISION_DOCENTE_N2',
@@ -687,7 +694,16 @@ function flattenConfiguredComplementaryActivity(
     filas_reconocimiento: recognitionRows,
     requiere_seleccion_jerarquica: recognitionRows.length > 0,
     consumeTotalidad: consumesFullPTA,
+    // Programa asociado a este TIPO de actividad (config-driven, no por instancia):
+    // 'pregrado' | 'posgrado' | ausente = sin programa. Enruta la aprobación/revisión
+    // a complementarias_pregrado / complementarias_posgrado / complementarias (catch-all).
+    nivel_programa: normalizeNivelProgramaComplementaria(activity?.nivel_programa),
   };
+}
+
+function normalizeNivelProgramaComplementaria(value: unknown): 'pregrado' | 'posgrado' | undefined {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'pregrado' || normalized === 'posgrado' ? normalized : undefined;
 }
 
 function normalizeExtensionSections(raw: any): any[] {
@@ -2741,14 +2757,29 @@ export class PtaService {
       return !!t && seccionalesNoCentrales.has(t);
     };
 
-    // BASE_KEYS ya no incluye Docencia: se colapsa por separado (DOCENCIA_KEYS,
-    // más abajo) exactamente con el mismo patrón que Extensión — varios
-    // componentes reales agrupados bajo un solo rótulo visible.
-    const BASE_KEYS = ['investigacion', 'complementarias'];
+    // Catálogo de nivel_programa por actividad complementaria, resuelto una sola vez
+    // para todo el lote (igual patrón que tipoPorPrograma/seccionalesNoCentrales
+    // arriba) — evita una consulta de configuración por PTA.
+    const [catComplementariasLote, catAadmLote] = await Promise.all([
+      this.getCatalogoActividadesComplementarias(),
+      this.getCatalogoActividadesAcademicoAdmin(),
+    ]);
+    const nivelProgramaPorActividadIdLote = new Map<string, 'pregrado' | 'posgrado'>();
+    for (const act of [...catComplementariasLote, ...catAadmLote]) {
+      const nivel = normalizeNivelProgramaComplementaria((act as any)?.nivel_programa);
+      if (act?.id && nivel) nivelProgramaPorActividadIdLote.set(String(act.id), nivel);
+    }
+
+    // BASE_KEYS ya no incluye Docencia ni Complementarias: ambos se colapsan por
+    // separado (DOCENCIA_KEYS / COMPLEMENTARIAS_KEYS_LOTE, más abajo) con el mismo
+    // patrón que ya usa Extensión — varios componentes reales agrupados bajo un solo
+    // rótulo visible.
+    const BASE_KEYS = ['investigacion'];
     // Incluye también academica_territorial: las asignaturas dictadas en Direcciones
     // Territoriales son un componente de aprobación aparte, pero se siguen mostrando
     // bajo el mismo rótulo colapsado "Docencia" en el listado.
     const DOCENCIA_KEYS = [...DOCENCIA_COMPONENT_KEYS];
+    const COMPLEMENTARIAS_KEYS_LOTE = [...COMPLEMENTARIAS_COMPONENT_KEYS];
     const EXT_SUB_SECTIONS: Record<string, string[]> = {
       ext_capacitacion: ['capacitacion'],
       ext_procesos: ['seleccion'],
@@ -2804,13 +2835,56 @@ export class PtaService {
         };
         dto.territoriales_docencia_ids = [...territorialesDocencia];
 
+        // Complementarias: mismo enrutamiento que clasificarComplementarias(), pero
+        // resuelto en lote (nivelProgramaPorActividadIdLote ya calculado arriba) para
+        // no repetir la consulta de configuración por cada PTA de la lista.
+        const complementariasRaw: any[] = Array.isArray(dto?.complementarias) ? dto.complementarias : [];
+        let horasCompPregrado = 0;
+        let horasCompPosgrado = 0;
+        let horasCompNinguno = 0;
+        const compSeccionesPorBucket: Record<string, { docencia: number; academico_administrativas: number }> = {
+          complementarias: { docencia: 0, academico_administrativas: 0 },
+          complementarias_pregrado: { docencia: 0, academico_administrativas: 0 },
+          complementarias_posgrado: { docencia: 0, academico_administrativas: 0 },
+        };
+        for (const item of complementariasRaw) {
+          const horas = Number(item?.horas) || 0;
+          const actividadId = coalesceLookupKey(item?.actividad_id ?? item?.id);
+          const nivel = actividadId ? nivelProgramaPorActividadIdLote.get(actividadId) : undefined;
+          const bucket = nivel === 'pregrado' ? 'complementarias_pregrado'
+            : nivel === 'posgrado' ? 'complementarias_posgrado'
+              : 'complementarias';
+          if (bucket === 'complementarias_pregrado') horasCompPregrado += horas;
+          else if (bucket === 'complementarias_posgrado') horasCompPosgrado += horas;
+          else horasCompNinguno += horas;
+          const esAadm = this.normalizeCompSeccion(item?.seccion, item) === 'academico_administrativas';
+          compSeccionesPorBucket[bucket][esAadm ? 'academico_administrativas' : 'docencia'] += horas;
+        }
+        // Respaldo cuando el DTO no trae el detalle por ítem (mismo criterio "sin
+        // dato, no bloquear" que ya usa Docencia arriba): todo cae en el catch-all.
+        if (complementariasRaw.length === 0 && Number(dto?.horas_complementarias || 0) > 0) {
+          horasCompNinguno = Number(dto.horas_complementarias) || 0;
+          const secciones = dto?.complementarias_secciones || {};
+          compSeccionesPorBucket.complementarias = {
+            docencia: Number(secciones.complementarias_docencia || 0),
+            academico_administrativas: Number(secciones.academico_administrativas || 0),
+          };
+        }
+        dto.complementarias_por_componente = {
+          complementarias: horasCompNinguno,
+          complementarias_pregrado: horasCompPregrado,
+          complementarias_posgrado: horasCompPosgrado,
+        };
+        dto.complementarias_secciones_por_componente = compSeccionesPorBucket;
+
         const horasPorComp: Record<string, number> = {
           academica_pregrado: horasDocPregrado,
           academica_posgrado: horasDocPosgrado,
           academica_territorial: horasDocTerritorial,
           investigacion: Number(dto?.horas_investigacion || 0),
-          // horas_complementarias ya incluye la sección académico-administrativa.
-          complementarias: Number(dto?.horas_complementarias || 0),
+          complementarias: horasCompNinguno,
+          complementarias_pregrado: horasCompPregrado,
+          complementarias_posgrado: horasCompPosgrado,
           ext_capacitacion: extHoras(EXT_SUB_SECTIONS.ext_capacitacion),
           ext_procesos: extHoras(EXT_SUB_SECTIONS.ext_procesos),
           ext_fortalecimiento: extHoras(EXT_SUB_SECTIONS.ext_fortalecimiento),
@@ -2834,11 +2908,11 @@ export class PtaService {
         // Docencia ya no necesita caso especial: al ser dos componentes reales, cae
         // en la regla genérica igual que investigación/extensión.
         const requeridasPorComponente = (k: string): string[] => {
-          if (k === 'complementarias') {
-            const secciones = dto?.complementarias_secciones || {};
+          if ((COMPLEMENTARIAS_KEYS_LOTE as string[]).includes(k)) {
+            const secciones = compSeccionesPorBucket[k] || { docencia: 0, academico_administrativas: 0 };
             const req: string[] = [];
-            if (Number(secciones.complementarias_docencia || 0) > 0) req.push('docencia');
-            if (Number(secciones.academico_administrativas || 0) > 0) req.push('academico_administrativas');
+            if (secciones.docencia > 0) req.push('docencia');
+            if (secciones.academico_administrativas > 0) req.push('academico_administrativas');
             return req;
           }
           return (horasPorComp[k] || 0) > 0 ? ['general'] : [];
@@ -2886,9 +2960,29 @@ export class PtaService {
           else estado = recs.get(c) || 'pendiente';
           componentesEstado.push({
             key: c,
-            label: c === 'investigacion' ? 'Investigacion' : 'Complementarias',
+            label: 'Investigacion',
             estado,
           });
+        }
+
+        // Complementarias colapsada: mismo patrón que Docencia — cuenta como 1 si
+        // tiene horas en cualquiera de sus 3 componentes (sin programa/pregrado/
+        // posgrado); aprobada solo si TODOS los que tienen horas lo están. El rótulo
+        // de salida se mantiene 'complementarias' por compatibilidad.
+        const compTieneHoras = COMPLEMENTARIAS_KEYS_LOTE.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
+        if (compTieneHoras) {
+          total++;
+          const compAprobada = COMPLEMENTARIAS_KEYS_LOTE.every(k => estaAprobado(k));
+          if (compAprobada) aprobados++;
+          const compEstados = COMPLEMENTARIAS_KEYS_LOTE.map(k => recs.get(k)).filter(Boolean);
+          const compEnRevision = COMPLEMENTARIAS_KEYS_LOTE.some(k => (horasPorComp[k] || 0) > 0 && !revisionCompleta(k));
+          let compEstado: string;
+          if (esBorrador) compEstado = 'no_iniciado';
+          else if (compAprobada) compEstado = 'aprobado';
+          else if (compEstados.includes('devuelto')) compEstado = 'devuelto';
+          else if (compEnRevision) compEstado = 'en_revision';
+          else compEstado = 'pendiente';
+          componentesEstado.push({ key: 'complementarias', label: 'Complementarias', estado: compEstado });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
         const extTieneHoras = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
@@ -3175,6 +3269,26 @@ export class PtaService {
       }
     }
 
+    // Anota por actividad complementaria a QUÉ componente pertenece
+    // (complementarias / complementarias_pregrado / complementarias_posgrado), mismo
+    // patrón que componente_docencia arriba, para que el frontend restrinja edición
+    // por fila sin reimplementar la clasificación.
+    if (Array.isArray(dto.complementarias) && dto.complementarias.length > 0) {
+      try {
+        const part = await this.clasificarComplementarias({ complementarias: dto.complementarias });
+        const componentePorItem = new Map<any, string>();
+        for (const key of COMPLEMENTARIAS_COMPONENT_KEYS) {
+          for (const item of (part as any)[key]) componentePorItem.set(item, key);
+        }
+        dto.complementarias = dto.complementarias.map((item: any) => ({
+          ...item,
+          componente_complementaria: componentePorItem.get(item) || 'complementarias',
+        }));
+      } catch (err) {
+        console.error('[getPTAById] Error resolving componente_complementaria:', err);
+      }
+    }
+
     return {
       ...dto,
       evidencias: evidencias.map((e) => this.toEvidenciaDto(e)),
@@ -3229,10 +3343,26 @@ export class PtaService {
       preserveField('investigacion_proyecto');
       preserveField('investigacion_actividades');
     }
-    if (!allowed.has('complementarias')) {
+    // Complementarias se enruta a TRES componentes (sin programa / pregrado / posgrado,
+    // ver clasificarComplementarias) pero comparte un único array `complementarias`.
+    // Mismo patrón de partición que Docencia arriba: si el alcance autorizado no los
+    // cubre a todos, se aceptan del payload solo los ítems de los componentes
+    // autorizados y se conservan intactos los del resto.
+    const complementariasAutorizada = COMPLEMENTARIAS_COMPONENT_KEYS.filter(key => allowed.has(key));
+    if (complementariasAutorizada.length === 0) {
       // Complementarias ahora incluye la sección académico-administrativa; se preserva
       // también el array legacy academico_admin para PTAs no migrados.
       preserveField('complementarias');
+      preserveField('academico_admin');
+    } else if (complementariasAutorizada.length < COMPLEMENTARIAS_COMPONENT_KEYS.length) {
+      const entrantes = Array.isArray(input.complementarias) ? input.complementarias : [];
+      const [partEntrantes, partPrevias] = await Promise.all([
+        this.clasificarComplementarias({ complementarias: entrantes }),
+        this.clasificarComplementarias(existingData),
+      ]);
+      merged.complementarias = COMPLEMENTARIAS_COMPONENT_KEYS.flatMap(key =>
+        allowed.has(key) ? (partEntrantes as any)[key] : (partPrevias as any)[key],
+      );
       preserveField('academico_admin');
     }
 
@@ -7235,9 +7365,13 @@ export class PtaService {
     } = await this.splitHorasDocenciaPorNivel(asignaturas);
     const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
-    // Complementarias unificado = sección docencia + sección académico-administrativa.
-    const hComp = compDocencia.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0)
-      + compAadm.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    // Complementarias se enruta por programa asociado (sin programa/pregrado/posgrado,
+    // ver clasificarComplementarias), igual patrón que Docencia por nivel arriba.
+    const part = await this.clasificarComplementarias(ds);
+    const sumarHoras = (arr: any[]) => arr.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const hCompNinguno = sumarHoras(part.complementarias);
+    const hCompPregrado = sumarHoras(part.complementarias_pregrado);
+    const hCompPosgrado = sumarHoras(part.complementarias_posgrado);
 
     const extMult = await this.getExtMultiplicadores();
     const extBySeccion = (secciones: string[]) =>
@@ -7264,7 +7398,9 @@ export class PtaService {
       ext_procesos: extBySeccion(['seleccion']),
       ext_fortalecimiento: extBySeccion(['fortalecimiento']),
       ext_gobierno: extBySeccion(['alto_gobierno']),
-      complementarias: hComp,
+      complementarias: hCompNinguno,
+      complementarias_pregrado: hCompPregrado,
+      complementarias_posgrado: hCompPosgrado,
     };
 
     // Si todos los arrays están vacíos, probablemente hay un problema de datos
@@ -7373,6 +7509,50 @@ export class PtaService {
     return out;
   }
 
+  /**
+   * Enruta las actividades de Complementarias (docencia + académico-administrativas
+   * fusionadas, ver readComplementariasSecciones) según el `nivel_programa`
+   * configurado para su TIPO de actividad en el catálogo (comp_actividades_v2, ver
+   * flattenConfiguredComplementaryActivity). Es un eje de configuración, no de
+   * captura: el docente no elige programa, cada tipo de actividad ya trae la
+   * etiqueta puesta una sola vez en Configuración de Reglas PTA.
+   *
+   * Sin etiqueta (o actividad no encontrada en el catálogo) → 'complementarias'
+   * (catch-all: mismo componente/permiso que existía antes del split, sin cambios).
+   */
+  private async clasificarComplementarias(ds: any): Promise<{
+    complementarias_pregrado: any[];
+    complementarias_posgrado: any[];
+    complementarias: any[];
+  }> {
+    const out = {
+      complementarias_pregrado: [] as any[],
+      complementarias_posgrado: [] as any[],
+      complementarias: [] as any[],
+    };
+    const { all } = this.readComplementariasSecciones(ds);
+    if (all.length === 0) return out;
+
+    const [catDocencia, catAadm] = await Promise.all([
+      this.getCatalogoActividadesComplementarias(),
+      this.getCatalogoActividadesAcademicoAdmin(),
+    ]);
+    const nivelPorActividadId = new Map<string, 'pregrado' | 'posgrado'>();
+    for (const act of [...catDocencia, ...catAadm]) {
+      const nivel = normalizeNivelProgramaComplementaria(act?.nivel_programa);
+      if (act?.id && nivel) nivelPorActividadId.set(String(act.id), nivel);
+    }
+
+    for (const item of all) {
+      const actividadId = coalesceLookupKey(item?.actividad_id ?? item?.id);
+      const nivel = actividadId ? nivelPorActividadId.get(actividadId) : undefined;
+      if (nivel === 'pregrado') out.complementarias_pregrado.push(item);
+      else if (nivel === 'posgrado') out.complementarias_posgrado.push(item);
+      else out.complementarias.push(item);
+    }
+    return out;
+  }
+
   /** Nombres legibles de un conjunto de seccionales, para mensajes de error. */
   private async resolveNombresSeccionales(ids: string[]): Promise<string[]> {
     if (ids.length === 0) return [];
@@ -7467,11 +7647,16 @@ export class PtaService {
   private async getRequiredSubsecciones(componente: string, ds: any): Promise<string[]> {
     const posibles = REVIEW_SUBSECCIONES_BY_COMPONENT[componente as PTAComponentKey] || [];
 
-    if (componente === 'complementarias') {
-      const { docencia, aadm } = this.readComplementariasSecciones(ds);
+    if (COMPLEMENTARIAS_COMPONENT_KEYS.includes(componente as PTAComponentKey)) {
+      const part = await this.clasificarComplementarias(ds);
+      const items: any[] = (part as any)[componente] || [];
       const requeridas: string[] = [];
-      if (docencia.length > 0) requeridas.push('docencia');
-      if (aadm.length > 0) requeridas.push('academico_administrativas');
+      if (items.some((item) => this.normalizeCompSeccion(item?.seccion, item) !== 'academico_administrativas')) {
+        requeridas.push('docencia');
+      }
+      if (items.some((item) => this.normalizeCompSeccion(item?.seccion, item) === 'academico_administrativas')) {
+        requeridas.push('academico_administrativas');
+      }
       return requeridas;
     }
 

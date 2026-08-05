@@ -24,9 +24,11 @@ import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
   ChevronRight, ChevronDown, Plus, Filter, Calendar, User,
   Archive, CheckCircle2, AlertCircle, Clock,
-  File, FolderCheck, FileCheck, Loader2, X
+  File, FolderCheck, FileCheck, Loader2, X, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
+import { renderAsync } from 'docx-preview';
 
 // Servicio API
 import { controlInternoService } from '../services/api/controlInternoService';
@@ -1293,9 +1295,59 @@ interface ModalVerDocumentoProps {
   onClose: () => void;
 }
 
+function getDocExtension(doc: { nombre?: string; nombreArchivo?: string }): string {
+  const filename = doc.nombreArchivo || doc.nombre || '';
+  if (filename.includes('.')) {
+    return String(filename.split('.').pop() || '').toLowerCase();
+  }
+  return '';
+}
+
+function isWordDoc(doc: { tipoMime?: string; nombre?: string; nombreArchivo?: string }): boolean {
+  const mime = String(doc.tipoMime || '').toLowerCase();
+  const ext = getDocExtension(doc);
+  return mime.includes('word') || mime.includes('wordprocessingml') || ext === 'doc' || ext === 'docx';
+}
+
+function isDocxDoc(doc: { tipoMime?: string; nombre?: string; nombreArchivo?: string }): boolean {
+  const mime = String(doc.tipoMime || '').toLowerCase();
+  const ext = getDocExtension(doc);
+  return mime.includes('officedocument.wordprocessingml.document') || ext === 'docx';
+}
+
+function isExcelDoc(doc: { tipoMime?: string; nombre?: string; nombreArchivo?: string }): boolean {
+  const mime = String(doc.tipoMime || '').toLowerCase();
+  const ext = getDocExtension(doc);
+  return (
+    mime.includes('excel') ||
+    mime.includes('spreadsheet') ||
+    mime.includes('sheet') ||
+    mime.includes('csv') ||
+    ext === 'xls' ||
+    ext === 'xlsx' ||
+    ext === 'csv'
+  );
+}
+
+function isPowerPointDoc(doc: { tipoMime?: string; nombre?: string; nombreArchivo?: string }): boolean {
+  const mime = String(doc.tipoMime || '').toLowerCase();
+  const ext = getDocExtension(doc);
+  return (
+    mime.includes('powerpoint') ||
+    mime.includes('presentation') ||
+    ext === 'ppt' ||
+    ext === 'pptx'
+  );
+}
+
 function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
+  const [excelHtml, setExcelHtml] = useState<string | null>(null);
+  const [docxReady, setDocxReady] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const docxContainerRef = useRef<HTMLDivElement | null>(null);
 
   const baseUrl = getFilesBaseUrl();
   const previewUrl = documento.tipo === 'evidencia_hallazgo'
@@ -1309,38 +1361,140 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
       ? (documento.rutaArchivo || '')
       : `${baseUrl}/documentos/${documento.id}/download`;
 
+  const ext = getDocExtension(documento);
   const tipoMime = documento.tipoMime || 'application/octet-stream';
-  const canPreview = tipoMime.startsWith('application/pdf') ||
-                     tipoMime.startsWith('image/');
+  const esImagen = tipoMime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+  const esPdf = tipoMime === 'application/pdf' || ext === 'pdf';
+  const esWord = isWordDoc(documento);
+  const esDocx = isDocxDoc(documento);
+  const esExcel = isExcelDoc(documento);
+  const esPowerPoint = isPowerPointDoc(documento);
 
-  const isOfficeDoc = tipoMime.includes('word') ||
-                      tipoMime.includes('excel') ||
-                      tipoMime.includes('spreadsheet') ||
-                      tipoMime.includes('powerpoint') ||
-                      tipoMime.includes('presentation');
-
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
+    const rawUrl = downloadUrl || previewUrl;
+    if (!rawUrl) return;
     try {
-      const res = await fetch(downloadUrl, { headers: getDefaultHeaders() });
+      const url = rawUrl.startsWith('http') ? rawUrl : `${window.location.origin}${rawUrl}`;
+      const res = await fetch(url, { headers: getDefaultHeaders() });
       if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
       const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
+      const u = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = blobUrl;
+      link.href = u;
       link.download = documento.nombre || documento.nombreArchivo || 'documento';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
+      URL.revokeObjectURL(u);
       toast.success('Descarga iniciada', { description: documento.nombre || documento.nombreArchivo, duration: 3000 });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error al descargar');
     }
-  };
+  }, [downloadUrl, previewUrl, documento.nombre, documento.nombreArchivo]);
 
   const handleOpenInNewTab = () => {
-    window.open(previewUrl, '_blank');
+    if (blobUrl) {
+      window.open(blobUrl, '_blank');
+    } else if (previewUrl) {
+      window.open(previewUrl.startsWith('http') ? previewUrl : `${window.location.origin}${previewUrl}`, '_blank');
+    }
   };
+
+  useEffect(() => {
+    const sourceUrl = (esWord || esExcel) ? downloadUrl || previewUrl : previewUrl || downloadUrl;
+    if (!sourceUrl) {
+      setError('No hay URL disponible para este documento');
+      setCargando(false);
+      return;
+    }
+
+    const url = sourceUrl.startsWith('http') ? sourceUrl : `${window.location.origin}${sourceUrl}`;
+    let revoked = false;
+    setCargando(true);
+    setError(null);
+    setBlobUrl(null);
+    setDocumentBlob(null);
+    setExcelHtml(null);
+    setDocxReady(false);
+
+    fetch(url, { headers: getDefaultHeaders() })
+      .then(res => {
+        if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+        return res.blob();
+      })
+      .then(async (blob) => {
+        if (revoked) return;
+
+        if (esExcel) {
+          try {
+            const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            if (!firstSheetName) throw new Error('El archivo Excel no contiene hojas');
+            const worksheet = workbook.Sheets[firstSheetName];
+            const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-preview-table' });
+            if (!revoked) setExcelHtml(html);
+          } catch (err) {
+            if (!revoked) setError(err instanceof Error ? err.message : 'Error al procesar archivo Excel');
+          }
+          return;
+        }
+
+        if (esWord) {
+          if (!esDocx) {
+            throw new Error('La vista previa de Word solo soporta archivos .docx. Descargue el archivo para verlo.');
+          }
+          setDocumentBlob(blob);
+          return;
+        }
+
+        setBlobUrl(URL.createObjectURL(blob));
+      })
+      .catch(e => {
+        if (!revoked) setError(e instanceof Error ? e.message : 'Error al cargar el documento');
+      })
+      .finally(() => {
+        if (!revoked) setCargando(false);
+      });
+
+    return () => {
+      revoked = true;
+      setBlobUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [previewUrl, downloadUrl, esWord, esExcel, esDocx]);
+
+  useEffect(() => {
+    if (!documentBlob || !esDocx || !docxContainerRef.current) return;
+
+    let cancelled = false;
+    const container = docxContainerRef.current;
+    container.innerHTML = '';
+    setDocxReady(false);
+
+    renderAsync(documentBlob, container, undefined, {
+      inWrapper: true,
+      ignoreWidth: true,
+      ignoreHeight: true,
+      breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+    })
+      .then(() => {
+        if (!cancelled) setDocxReady(true);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Error al renderizar documento Word');
+      });
+
+    return () => {
+      cancelled = true;
+      container.innerHTML = '';
+    };
+  }, [documentBlob, esDocx]);
+
+  const srcParaPreview = esImagen || esPdf ? blobUrl : null;
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 overflow-y-auto">
@@ -1349,17 +1503,35 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
         onClick={onClose}
       />
       
-      <div className="relative w-full max-w-5xl bg-white rounded-xl shadow-2xl z-10 my-8 max-h-[90vh] flex flex-col">
+      <div className="relative w-full max-w-5xl bg-white rounded-xl shadow-2xl z-10 my-8 max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-medium">Vista Previa del Documento</h3>
-              <p className="text-sm text-blue-100 mt-1">{documento.nombre || documento.nombreArchivo}</p>
-            </div>
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl flex-shrink-0 flex items-center justify-between">
+          <div className="min-w-0 pr-4">
+            <h3 className="text-xl font-medium truncate">Vista Previa del Documento</h3>
+            <p className="text-sm text-blue-100 mt-1 truncate">{documento.nombre || documento.nombreArchivo}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleDownload}
+              className="p-2 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors flex items-center gap-1.5 text-xs font-semibold"
+              title="Descargar archivo"
+            >
+              <Download className="w-4 h-4" />
+              <span>Descargar</span>
+            </button>
+            {blobUrl && (
+              <button
+                onClick={handleOpenInNewTab}
+                className="p-2 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors"
+                title="Abrir en nueva pestaña"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white"
+              title="Cerrar"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1395,127 +1567,123 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
         </div>
 
         {/* Vista Previa */}
-        <div className="flex-1 overflow-hidden min-h-[500px]">
-          {canPreview ? (
-            // PDF o Imagen: usar iframe/embed
-            <div className="w-full h-full relative">
-              {cargando && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-                  <div className="text-center">
-                    <Loader2 className="w-8 h-8 text-[#1e5da8] mx-auto animate-spin mb-2" />
-                    <p className="text-sm text-gray-600">Cargando documento...</p>
-                  </div>
-                </div>
-              )}
-              {error && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-                  <div className="text-center p-6">
-                    <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
-                    <p className="text-sm text-gray-700 mb-4">{error}</p>
-                    <button
-                      onClick={handleDownload}
-                      className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm"
-                    >
-                      Descargar archivo
-                    </button>
-                  </div>
-                </div>
-              )}
-              {tipoMime.startsWith('image/') ? (
-                <img
-                  src={previewUrl}
-                  alt={documento.nombre}
-                  className="w-full h-full object-contain p-4"
-                  onLoad={() => setCargando(false)}
-                  onError={() => {
-                    setCargando(false);
-                    setError('No se pudo cargar la imagen');
-                  }}
-                />
-              ) : (
-                <iframe
-                  src={previewUrl}
-                  className="w-full h-full border-0"
-                  onLoad={() => setCargando(false)}
-                  onError={() => {
-                    setCargando(false);
-                    setError('No se pudo cargar el documento');
-                  }}
-                  title={`Vista previa: ${documento.nombre}`}
-                />
-              )}
-            </div>
-          ) : isOfficeDoc ? (
-            // Archivos Office: mostrar info y opciones
-            <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
-              <FileText className="w-20 h-20 text-[#1e5da8] mb-4" />
-              <h4 className="text-lg text-gray-900 font-medium mb-2">
-                Documento de {getMimeTypeLabel(tipoMime)}
-              </h4>
-              <p className="text-sm text-amber-700 font-medium mb-6 text-center max-w-md">
-                Este tipo de archivo no se puede previsualizar. Descárguelo para abrirlo con la aplicación correspondiente.
-              </p>
-              <div className="flex gap-3">
+        <div className="flex-1 overflow-hidden min-h-[500px] p-4 bg-gray-100 flex flex-col">
+          <div className="flex-1 bg-white rounded-lg border border-gray-200 p-2 flex flex-col w-full h-full overflow-hidden relative">
+            {cargando ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
+                <Loader2 className="w-10 h-10 text-[#1e5da8] animate-spin" />
+                <p className="text-sm font-semibold">Cargando vista previa...</p>
+              </div>
+            ) : error ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center text-center py-8 px-4">
+                <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+                <p className="text-gray-700 font-semibold mb-2">{error}</p>
+                <p className="text-sm text-gray-500 mb-6">No fue posible renderizar la vista previa de este documento.</p>
                 <button
                   onClick={handleDownload}
-                  className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] font-bold transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Descargar
+                  Descargar archivo
                 </button>
               </div>
-            </div>
-          ) : (
-            // Otros archivos: solo descargar
-            <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
-              <File className="w-20 h-20 text-gray-400 mb-4" />
-              <h4 className="text-lg text-gray-900 font-medium mb-2">
-                {getMimeTypeLabel(tipoMime)}
-              </h4>
-              <p className="text-sm text-amber-700 font-medium mb-6 text-center max-w-md">
-                Este tipo no se puede visualizar. Descargue el archivo para verlo.
-              </p>
-              <button
-                onClick={handleDownload}
-                className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Descargar archivo
-              </button>
-            </div>
-          )}
+            ) : esImagen && srcParaPreview ? (
+              <div className="w-full h-full flex-1 flex items-center justify-center overflow-auto p-2">
+                <img
+                  src={srcParaPreview}
+                  alt={documento.nombre}
+                  className="max-w-full max-h-full object-contain rounded shadow"
+                />
+              </div>
+            ) : esPdf && srcParaPreview ? (
+              <div className="w-full h-full flex-1 flex flex-col overflow-hidden">
+                <iframe
+                  src={srcParaPreview}
+                  className="w-full h-full flex-1 border-0 rounded-lg"
+                  title={`Vista previa: ${documento.nombre}`}
+                />
+              </div>
+            ) : esDocx ? (
+              <div className="relative w-full h-full flex-1 overflow-auto rounded-lg bg-white p-4 flex flex-col justify-start items-stretch">
+                {!docxReady && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/80 text-gray-500">
+                    <Loader2 className="w-8 h-8 text-[#1e5da8] animate-spin" />
+                    <p className="text-sm font-semibold">Renderizando documento Word...</p>
+                  </div>
+                )}
+                <div ref={docxContainerRef} className="docx-preview-content min-h-[300px] w-full flex-1" />
+              </div>
+            ) : esExcel && excelHtml ? (
+              <div className="w-full h-full flex-1 overflow-auto rounded-lg bg-white p-3 flex flex-col justify-start items-stretch">
+                <div
+                  className="w-full flex-1 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-gray-200 [&_td]:px-3 [&_td]:py-1.5 [&_td]:text-sm [&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-100 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-bold text-gray-800"
+                  dangerouslySetInnerHTML={{ __html: excelHtml }}
+                />
+              </div>
+            ) : esWord || esExcel || esPowerPoint ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center text-center py-12 px-4">
+                <FileText className="w-20 h-20 text-[#1e5da8] mx-auto mb-4" />
+                <h4 className="text-lg font-bold text-gray-900 mb-2">
+                  {esPowerPoint ? 'Presentación de PowerPoint' : 'Documento de Office'}
+                </h4>
+                <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
+                  Este formato de archivo no permite visualización directa en el navegador. Descárguelo para abrirlo en su aplicación local.
+                </p>
+                <button
+                  onClick={handleDownload}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#1e5da8] text-white rounded-xl hover:bg-[#174a8a] font-bold shadow-lg shadow-blue-500/25 transition-all"
+                >
+                  <Download className="w-5 h-5" />
+                  Descargar para ver
+                </button>
+              </div>
+            ) : (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center text-center py-12 px-4">
+                <File className="w-20 h-20 text-gray-400 mx-auto mb-4" />
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Vista previa no disponible</h4>
+                <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
+                  Descargue el archivo para abrirlo en su equipo. Tipo: {getMimeTypeLabel(tipoMime)}
+                </p>
+                <button
+                  onClick={handleDownload}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] font-bold shadow-lg transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar archivo
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl flex-shrink-0">
-          <div className="flex justify-between items-center">
-            <div className="text-xs text-gray-600">
-              ID: {documento.id}
-            </div>
-            <div className="flex gap-3">
-              {canPreview && (
-                <button
-                  onClick={handleOpenInNewTab}
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
-                >
-                  <Eye className="w-4 h-4" />
-                  Abrir en nueva pestaña
-                </button>
-              )}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl flex-shrink-0 flex justify-between items-center">
+          <div className="text-xs text-gray-600">
+            ID: {documento.id}
+          </div>
+          <div className="flex gap-3">
+            {blobUrl && (
               <button
-                onClick={handleDownload}
+                onClick={handleOpenInNewTab}
                 className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
               >
-                <Download className="w-4 h-4" />
-                Descargar
+                <Eye className="w-4 h-4" />
+                Abrir en nueva pestaña
               </button>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm"
-              >
-                Cerrar
-              </button>
-            </div>
+            )}
+            <button
+              onClick={handleDownload}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Descargar
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm font-medium"
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       </div>

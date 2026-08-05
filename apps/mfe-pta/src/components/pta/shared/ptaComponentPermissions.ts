@@ -12,7 +12,9 @@ export type PTAComponentKey =
   | 'ext_procesos'
   | 'ext_fortalecimiento'
   | 'ext_gobierno'
-  | 'complementarias';
+  | 'complementarias'
+  | 'complementarias_pregrado'
+  | 'complementarias_posgrado';
 
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
@@ -27,7 +29,13 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   ext_gobierno: 'pta.approve.extension.alto_gobierno',
   // 'complementarias' cubre ambas secciones: complementarias a la docencia y
   // académico-administrativas (AADM se fusionó como sección de complementarias).
+  // Es el catch-all "sin programa asociado" (ver COMPLEMENTARIAS_COMPONENT_KEYS).
   complementarias: 'pta.approve.complementarias',
+  // Sin permiso propio: reutilizan el permiso de aprobación de Docencia por nivel
+  // (mismo aprobador Pregrado/Posgrado ya existente, según el tipo de actividad
+  // configurado en comp_actividades_v2 — ver clasificarComplementarias en el backend).
+  complementarias_pregrado: 'pta.approve.academica.pregrado',
+  complementarias_posgrado: 'pta.approve.academica.posgrado',
 };
 
 export const PTA_COMPONENT_KEYS = Object.keys(PTA_COMPONENT_PERMISSION) as PTAComponentKey[];
@@ -37,6 +45,17 @@ export const PTA_DOCENCIA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_pregrado',
   'academica_posgrado',
   'academica_territorial',
+];
+
+/**
+ * Componentes que en conjunto forman el rótulo visible "Complementarias".
+ * 'complementarias' es el catch-all "sin programa asociado"; los otros dos se
+ * enrutan según el `nivel_programa` configurado por TIPO de actividad.
+ */
+export const PTA_COMPLEMENTARIAS_COMPONENT_KEYS: PTAComponentKey[] = [
+  'complementarias',
+  'complementarias_pregrado',
+  'complementarias_posgrado',
 ];
 
 /**
@@ -57,6 +76,8 @@ export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
   academica_posgrado: 1,
   academica_territorial: 1,
   complementarias: 1,
+  complementarias_pregrado: 1,
+  complementarias_posgrado: 1,
   investigacion: 2,
   ext_capacitacion: 2,
   ext_procesos: 2,
@@ -85,6 +106,8 @@ export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReview
   academica_posgrado: ['general'],
   academica_territorial: ['general'],
   complementarias: ['docencia', 'academico_administrativas'],
+  complementarias_pregrado: ['docencia', 'academico_administrativas'],
+  complementarias_posgrado: ['docencia', 'academico_administrativas'],
   investigacion: ['general'],
   ext_capacitacion: ['general'],
   ext_procesos: ['general'],
@@ -103,6 +126,12 @@ export const PTA_COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   'academica_territorial:general': 'pta.review.academica.territorial',
   'complementarias:docencia': 'pta.review.complementarias.docencia',
   'complementarias:academico_administrativas': 'pta.review.complementarias.academico_administrativas',
+  // Sin permisos propios: mismo revisor de Docencia por nivel (ya existente) revisa
+  // también las dos subsecciones de Complementarias de su nivel.
+  'complementarias_pregrado:docencia': 'pta.review.academica.pregrado',
+  'complementarias_pregrado:academico_administrativas': 'pta.review.academica.pregrado',
+  'complementarias_posgrado:docencia': 'pta.review.academica.posgrado',
+  'complementarias_posgrado:academico_administrativas': 'pta.review.academica.posgrado',
   'investigacion:general': 'pta.review.investigacion',
   'ext_capacitacion:general': 'pta.review.extension.capacitacion',
   'ext_procesos:general': 'pta.review.extension.procesos_seleccion',
@@ -180,14 +209,31 @@ export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolea
       return hasExtensionSectionData(pta, ['fortalecimiento', 'laboratorio_innovacion', 'investigacion_aplicada']);
     case 'ext_gobierno':
       return hasExtensionSectionData(pta, ['alto_gobierno']);
-    case 'complementarias':
-      // Complementarias ahora incluye la sección académico-administrativa; se cuenta
-      // también la data legacy de AADM para PTAs no migrados.
+    case 'complementarias': {
+      // Catch-all "sin programa asociado". Preferir el agregado del backend
+      // (complementarias_por_componente, ver pta.service.ts) cuando esté disponible;
+      // si no, mismo criterio que antes del split (cuenta toda la data, incluida la
+      // legacy de AADM para PTAs no migrados).
+      const backend = pta?.complementarias_por_componente;
+      if (backend && typeof backend === 'object') return Number(backend.complementarias || 0) > 0;
       return Number(pta?.horas_complementarias || 0) > 0
         || Number(pta?.horas_acad_admin || 0) > 0
         || (Array.isArray(pta?.complementarias) && pta.complementarias.length > 0)
         || (Array.isArray(pta?.academico_admin) && pta.academico_admin.length > 0)
         || (Array.isArray(pta?.academicas_admin) && pta.academicas_admin.length > 0);
+    }
+    case 'complementarias_pregrado': {
+      const backend = pta?.complementarias_por_componente;
+      if (backend && typeof backend === 'object') return Number(backend.complementarias_pregrado || 0) > 0;
+      const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_pregrado');
+    }
+    case 'complementarias_posgrado': {
+      const backend = pta?.complementarias_por_componente;
+      if (backend && typeof backend === 'object') return Number(backend.complementarias_posgrado || 0) > 0;
+      const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_posgrado');
+    }
     default:
       return false;
   }
