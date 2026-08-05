@@ -81,6 +81,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   const [objeto, setObjeto] = useState('');
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
   const [modalidad, setModalidad] = useState('');
+  const [errorModalidades, setErrorModalidades] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
@@ -99,8 +100,18 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   useEffect(() => {
     cargar();
     // El catálogo cambia con la normativa, así que se lee del backend en vez
-    // de fijarlo en el bundle.
-    contratacionService.modalidades().then(setModalidades).catch(() => setModalidades([]));
+    // de fijarlo en el bundle. Si falla hay que decirlo: la modalidad es
+    // obligatoria, y un desplegable vacío sin explicación deja al usuario sin
+    // poder crear el proceso ni saber por qué.
+    contratacionService
+      .modalidades()
+      .then((lista) => {
+        setModalidades(lista);
+        setErrorModalidades(
+          lista.length === 0 ? 'No hay modalidades configuradas. Avisa al administrador.' : null,
+        );
+      })
+      .catch((err: any) => setErrorModalidades(err.message));
   }, []);
 
   const crear = async () => {
@@ -190,19 +201,28 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
           id="nueva-modalidad"
           value={modalidad}
           onChange={(e) => setModalidad(e.target.value)}
-          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+          disabled={modalidades.length === 0}
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
         >
-          <option value="">Selecciona la modalidad…</option>
+          <option value="">
+            {modalidades.length === 0 ? 'No se pudo cargar el listado' : 'Selecciona la modalidad…'}
+          </option>
           {modalidades.map((m) => (
             <option key={m.codigo} value={m.codigo}>
               {m.nombre}
             </option>
           ))}
         </select>
-        <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
-          Define qué actividades recorre el proceso: no todas aplican a todas las modalidades. Se
-          ratifica al definir la modalidad en la actividad 3.5.
-        </p>
+        {errorModalidades ? (
+          <p role="alert" className="text-[11px] font-bold text-red-600 mt-2 mb-0 leading-relaxed">
+            {errorModalidades}
+          </p>
+        ) : (
+          <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
+            Define qué actividades recorre el proceso: no todas aplican a todas las modalidades. Se
+            ratifica al definir la modalidad en la actividad 3.5.
+          </p>
+        )}
       </Modal>
 
       {error && (
