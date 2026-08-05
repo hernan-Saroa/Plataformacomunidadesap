@@ -31,10 +31,21 @@ export interface CampoFormulario {
   opciones?: string[];
 }
 
+/**
+ * Modalidad de selección: es la columna de la matriz de flujo, así que
+ * determina qué actividades aplican al proceso. Se elige al crearlo.
+ */
+export interface Modalidad {
+  codigo: string;
+  nombre: string;
+  orden: number;
+}
+
 export interface ProcesoResumen {
   id: string;
   radicado: string;
   objeto: string;
+  modalidad?: string | null;
   etapa: number;
   fechaRadicacion: string;
   expediente?: { numeroExpediente: string };

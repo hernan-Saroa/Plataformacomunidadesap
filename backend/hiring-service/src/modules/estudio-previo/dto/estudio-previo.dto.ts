@@ -7,6 +7,17 @@ export class CrearProcesoDto {
   @IsNotEmpty({ message: 'El objeto del proceso es obligatorio' })
   @MaxLength(4000)
   objeto: string;
+
+  /**
+   * La matriz de flujo marca SI/NO por modalidad en cada actividad, así que sin
+   * este dato no se sabe cuáles aplican al proceso. El código se valida contra
+   * hiring.modalidades, no con un enum: el catálogo cambia con la normativa.
+   */
+  @ApiProperty({ description: 'Código de la modalidad de selección', example: 'MINIMA_CUANTIA' })
+  @IsString()
+  @IsNotEmpty({ message: 'La modalidad de selección es obligatoria' })
+  @MaxLength(60)
+  modalidad: string;
 }
 
 export class GuardarBorradorDto {
