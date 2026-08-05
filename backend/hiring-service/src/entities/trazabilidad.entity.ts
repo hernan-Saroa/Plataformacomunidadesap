@@ -1,0 +1,39 @@
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+
+export type AccionTraza =
+  | 'CREAR'
+  | 'GUARDAR'
+  | 'ENVIAR'
+  | 'ADJUNTAR'
+  | 'APROBAR'
+  | 'DEVOLVER';
+
+@Entity('trazabilidad', { schema: 'hiring' })
+export class Trazabilidad {
+  @PrimaryGeneratedColumn('increment', { type: 'bigint' })
+  id: string;
+
+  @Column({ name: 'proceso_id', type: 'uuid', nullable: true })
+  procesoId: string;
+
+  @Column({ length: 80 })
+  entidad: string;
+
+  @Column({ name: 'entidad_id', type: 'uuid', nullable: true })
+  entidadId: string;
+
+  @Column({ length: 60 })
+  accion: AccionTraza;
+
+  @Column({ type: 'jsonb', nullable: true })
+  detalle: Record<string, any>;
+
+  @Column({ name: 'usuario_id', length: 120, nullable: true })
+  usuarioId: string;
+
+  @Column({ name: 'usuario_nombre', length: 200, nullable: true })
+  usuarioNombre: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt: Date;
+}
