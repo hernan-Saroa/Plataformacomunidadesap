@@ -171,6 +171,10 @@ interface AsignaturaItem {
   modalidad: string;       // PRESENCIAL | VIRTUAL | MIXTA
   fecha_inicio: string;    // YYYY-MM-DD
   fecha_fin: string;       // YYYY-MM-DD
+  // Anotado por el backend en getPTAById (clasificarAsignaturasDocencia): a qué
+  // componente de aprobación de Docencia pertenece esta asignatura. Ausente en
+  // filas nuevas que el docente todavía no ha guardado.
+  componente_docencia?: string;
   _showObs?: boolean;      // UI-only: toggle observaciones
 }
 
@@ -286,6 +290,11 @@ interface ComplementariaItem {
   seleccion_jerarquica?: HierarchySelectionSnapshot[];
   fecha_inicio: string;
   fecha_fin: string;
+  // Anotado por el backend en getPTAById (clasificarComplementarias): a qué
+  // componente de aprobación pertenece esta actividad (complementarias /
+  // complementarias_pregrado / complementarias_posgrado, según el nivel_programa
+  // configurado para su TIPO en el catálogo). Ausente en filas nuevas sin guardar.
+  componente_complementaria?: string;
 }
 
 function ResolutionFilePreviewButton({
@@ -1718,7 +1727,12 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   ext_procesos: 'extension',
   ext_fortalecimiento: 'extension',
   ext_gobierno: 'extension',
+  // Mismo patrón que Docencia: Complementarias se aprueba como 3 componentes
+  // independientes (sin programa / pregrado / posgrado, ver clasificarComplementarias
+  // en el backend), pero el docente sigue viendo una sola pestaña "Complementarias".
   complementarias: 'complementarias',
+  complementarias_pregrado: 'complementarias',
+  complementarias_posgrado: 'complementarias',
 };
 const ALL_COMPONENT_KEYS = Object.keys(COMPONENT_TO_FORM_SECTION) as PTAComponentKey[];
 
@@ -1734,6 +1748,8 @@ const COMPONENT_LABEL: Record<string, string> = {
   ext_fortalecimiento: 'Extensión — Fortalecimiento',
   ext_gobierno: 'Extensión — Alto Gobierno',
   complementarias: 'Complementarias',
+  complementarias_pregrado: 'Complementarias (Pregrado)',
+  complementarias_posgrado: 'Complementarias (Posgrado)',
   // Legacy
   academicas_admin: 'Actividades Académico-Administrativas',
   academico_admin: 'Actividades Académico-Administrativas',
@@ -2009,6 +2025,26 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   }, [allowedFormSectionSet]);
   const canEditExtensionSubsection = useCallback((section: string) => {
     return !isComponentRestricted || allowedComponentKeySet.has(componentKeyForExtensionSubsection(section));
+  }, [allowedComponentKeySet, isComponentRestricted]);
+  // Docencia comparte una sola pestaña entre 3 componentes de aprobación
+  // (academica_pregrado/posgrado/territorial, ver COMPONENT_TO_FORM_SECTION).
+  // Sin este chequeo por asignatura, devolver solo uno de los tres reabre TODA
+  // la pestaña "Docencia" (mismo bug que canEditExtensionSubsection resuelve
+  // para Extensión). `componente_docencia` lo anota el backend en getPTAById
+  // (pta.service.ts) a partir de clasificarAsignaturasDocencia; una asignatura
+  // nueva del docente (sin ese dato todavía) no se bloquea aquí — el backend
+  // la reclasifica y filtra igualmente al guardar (mergeRestrictedAdminEditInput).
+  const canEditDocenciaAsignatura = useCallback((asig: { componente_docencia?: string }) => {
+    if (!isComponentRestricted || !asig.componente_docencia) return true;
+    return allowedComponentKeySet.has(asig.componente_docencia as PTAComponentKey);
+  }, [allowedComponentKeySet, isComponentRestricted]);
+  // Mismo patrón que canEditDocenciaAsignatura: Complementarias comparte una sola
+  // pestaña entre 3 componentes de aprobación (sin programa/pregrado/posgrado, ver
+  // COMPONENT_TO_FORM_SECTION). `componente_complementaria` lo anota el backend en
+  // getPTAById a partir de clasificarComplementarias.
+  const canEditComplementariaItem = useCallback((item: { componente_complementaria?: string }) => {
+    if (!isComponentRestricted || !item.componente_complementaria) return true;
+    return allowedComponentKeySet.has(item.componente_complementaria as PTAComponentKey);
   }, [allowedComponentKeySet, isComponentRestricted]);
 
   useEffect(() => {
@@ -5778,7 +5814,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const tieneAdvertencia = docenciaAdvisoryIds.has(asig.id);
                         // Para bloqueo por jefatura territorial
                         const bloqueadaPorTerritorial = !!(jefaturaTerritorialId && asig.territorial_id && asig.territorial_id !== jefaturaTerritorialId);
-                        const rowEditable = isEditable && !bloqueadaPorTerritorial;
+                        // Devolución/edición parcial: esta asignatura pertenece a un
+                        // sub-componente de Docencia (pregrado/posgrado/territorial)
+                        // distinto del que fue devuelto o autorizado a editar.
+                        const bloqueadaPorComponente = !canEditDocenciaAsignatura(asig);
+                        const rowEditable = isEditable && !bloqueadaPorTerritorial && !bloqueadaPorComponente;
                         // Datos de CETAP según la territorial de ESTA asignatura
                         const tIdAsig = asig.territorial_id;
                         const cetapsCargadosAsig = tIdAsig in cetapsMap;
@@ -5807,7 +5847,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 ? 'border-red-200 bg-red-50/30 shadow-sm border-l-4 border-l-red-500 hover:shadow-md'
                                 : tieneAdvertencia
                                   ? 'border-amber-200 bg-amber-50/30 shadow-sm border-l-4 border-l-amber-500 hover:shadow-md'
-                                : bloqueadaPorTerritorial
+                                : (bloqueadaPorTerritorial || bloqueadaPorComponente)
                                   ? 'border-gray-200 bg-gray-50/80 opacity-75'
                                   : isComplete
                                     ? `border-slate-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} shadow-[0_2px_10px_rgba(15,23,42,0.07)] border-l-4 border-l-emerald-500 hover:shadow-md hover:border-slate-300`
@@ -5847,7 +5887,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     Aviso de cruce
                                   </span>
                                 )}
-                                {!isComplete && !bloqueadaPorTerritorial && !tieneConflicto && !tieneAdvertencia && (
+                                {!isComplete && !bloqueadaPorTerritorial && !bloqueadaPorComponente && !tieneConflicto && !tieneAdvertencia && (
                                   <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md ml-1 shadow-sm">
                                     En progreso
                                   </span>
@@ -5857,9 +5897,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     🔒 {territorialNombre}
                                   </span>
                                 )}
+                                {bloqueadaPorComponente && (
+                                  <span
+                                    className="text-[10px] font-bold px-2 py-0.5 bg-slate-200 text-slate-600 rounded-md flex items-center gap-1 shadow-sm"
+                                    title="Esta asignatura no forma parte de la devolución/edición vigente y no es editable en este momento."
+                                  >
+                                    🔒 {COMPONENT_LABEL[asig.componente_docencia || ''] || 'Otro componente'}
+                                  </span>
+                                )}
                               </div>
 
-                              {isEditable && !bloqueadaPorTerritorial && (
+                              {rowEditable && (
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveAsig(asig.id)}
@@ -7106,15 +7154,25 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const compCat = actComplementarias.find((a: any) => a.id === comp.actividad_id) || comp;
                         const compConstraint = getComplementariaConstraint(compCat, ptaRules, horasAProgramar);
                         const compRecognitionRows = getConfiguredRecognitionRows(compCat, horasAProgramar);
+                        const compBloqueadaPorComponente = !canEditComplementariaItem(comp);
+                        const compRowEditable = isEditable && !compBloqueadaPorComponente;
 
                         return (
-                          <div key={comp.id} className={repeatedEntryCardClass(compIdx, 'complementarias')}>
+                          <div key={comp.id} className={`${repeatedEntryCardClass(compIdx, 'complementarias')}${compBloqueadaPorComponente ? ' opacity-75' : ''}`}>
                             <RepeatedEntryHeader
                               index={compIdx}
                               label="Actividad complementaria"
                               color={PTA_COLORS.COMPLEMENTARIAS}
                             />
-                            {isEditable && (
+                            {compBloqueadaPorComponente && (
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 bg-slate-200 text-slate-600 rounded-md inline-flex items-center gap-1 shadow-sm mb-2 w-fit"
+                                title="Esta actividad no forma parte de la devolución/edición vigente y no es editable en este momento."
+                              >
+                                🔒 {componentLabel(comp.componente_complementaria || '')}
+                              </span>
+                            )}
+                            {compRowEditable && (
                               <button type="button" onClick={() => setComplementarias(prev => prev.filter(c => c.id !== comp.id))}
                                 title="Eliminar Actividad Complementaria"
                                 aria-label="Eliminar Actividad Complementaria"
@@ -7126,7 +7184,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               <FormSelect
                                 label="Territorial"
                                 value={comp.territorial_id}
-                                disabled={!isEditable}
+                                disabled={!compRowEditable}
                                 required
                                 fieldKey={ptaFieldKey.complementaria(comp.id, 'territorial_id')}
                                 error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'territorial_id')]}
@@ -7137,7 +7195,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             </div>
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
-                                <FormSelect label="Actividad" value={comp.actividad_id} disabled={!isEditable}
+                                <FormSelect label="Actividad" value={comp.actividad_id} disabled={!compRowEditable}
                                   required
                                   fieldKey={ptaFieldKey.complementaria(comp.id, 'actividad_id')}
                                   error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'actividad_id')]}
@@ -7185,7 +7243,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     value={comp.horas}
                                     min={compConstraint.min}
                                     max={compConstraint.max}
-                                    disabled={!isEditable}
+                                    disabled={!compRowEditable}
                                     required
                                     fieldKey={ptaFieldKey.complementaria(comp.id, 'horas')}
                                     error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'horas')]}
@@ -7205,7 +7263,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 activity={compCat}
                                 item={comp}
                                 horasAProgramar={horasAProgramar}
-                                disabled={!isEditable}
+                                disabled={!compRowEditable}
                                 fieldKey={ptaFieldKey.complementaria(comp.id, 'horas')}
                                 onChange={(rowIndex, value) => handleCompRowHoursChange(comp.id, rowIndex, value)}
                                 onToggle={(rowIndex, branchKey, conflictingKeys, clearOnly) =>
@@ -7220,7 +7278,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             )}
                             <div className="flex flex-col sm:flex-row gap-2">
                               <div className="flex-1">
-                                <FormInput label="Descripción" type="text" value={comp.descripcion} disabled={!isEditable}
+                                <FormInput label="Descripción" type="text" value={comp.descripcion} disabled={!compRowEditable}
                                   required
                                   fieldKey={ptaFieldKey.complementaria(comp.id, 'descripcion')}
                                   error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'descripcion')]}
@@ -7228,7 +7286,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleCompChange(comp.id, 'descripcion', v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚüÜñÑ\s]/g, ''))} />
                               </div>
                               <div className="w-36">
-                                <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!isEditable}
+                                <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!compRowEditable}
                                   required
                                   fieldKey={ptaFieldKey.complementaria(comp.id, 'fecha_inicio')}
                                   error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'fecha_inicio')]}
@@ -7237,7 +7295,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleCompChange(comp.id, 'fecha_inicio', v)} />
                               </div>
                               <div className="w-36">
-                                <FormInput label="Fecha Fin" type="date" value={comp.fecha_fin} disabled={!isEditable}
+                                <FormInput label="Fecha Fin" type="date" value={comp.fecha_fin} disabled={!compRowEditable}
                                   required
                                   fieldKey={ptaFieldKey.complementaria(comp.id, 'fecha_fin')}
                                   error={requiredFieldErrors[ptaFieldKey.complementaria(comp.id, 'fecha_fin')]}
@@ -7309,20 +7367,30 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         const acadConsumesFullPTA = isFullPTAActivity(acadCat);
                         const acadUsesOfficialSupportField = acadConsumesFullPTA || isMisionesProfesoralesActivity(acadCat);
                         const acadRecognitionRows = getConfiguredRecognitionRows(acadCat, horasAProgramar);
+                        const acadBloqueadaPorComponente = !canEditComplementariaItem(comp);
+                        const acadRowEditable = isEditable && !acadBloqueadaPorComponente;
 
                         return (
                           <div
                             key={comp.id}
-                            className={acadConsumesFullPTA
+                            className={(acadConsumesFullPTA
                               ? 'flex flex-col gap-3 p-3.5 md:p-4 rounded-xl border border-l-4 border-amber-300 border-l-amber-500 bg-amber-50/70 relative shadow-[0_2px_8px_rgba(15,23,42,0.06)] hover:shadow-[0_5px_16px_rgba(15,23,42,0.10)] transition-all duration-200'
-                              : repeatedEntryCardClass(acadIdx, 'academico')}
+                              : repeatedEntryCardClass(acadIdx, 'academico')) + (acadBloqueadaPorComponente ? ' opacity-75' : '')}
                           >
                             <RepeatedEntryHeader
                               index={acadIdx}
                               label="Actividad académico-administrativa"
                               color={acadConsumesFullPTA ? '#D97706' : PTA_COLORS.ACAD_ADMIN}
                             />
-                            {isEditable && (
+                            {acadBloqueadaPorComponente && (
+                              <span
+                                className="text-[10px] font-bold px-2 py-0.5 bg-slate-200 text-slate-600 rounded-md inline-flex items-center gap-1 shadow-sm mb-2 w-fit"
+                                title="Esta actividad no forma parte de la devolución/edición vigente y no es editable en este momento."
+                              >
+                                🔒 {componentLabel(comp.componente_complementaria || '')}
+                              </span>
+                            )}
+                            {acadRowEditable && (
                               <button type="button" onClick={() => setAcademicoAdmin(prev => prev.filter(c => c.id !== comp.id))}
                                 title="Eliminar Actividad Académico-Administrativa"
                                 aria-label="Eliminar Actividad Académico-Administrativa"
@@ -7334,7 +7402,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               <FormSelect
                                 label="Territorial"
                                 value={comp.territorial_id}
-                                disabled={!isEditable}
+                                disabled={!acadRowEditable}
                                 required
                                 fieldKey={ptaFieldKey.academico(comp.id, 'territorial_id')}
                                 error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'territorial_id')]}
@@ -7345,7 +7413,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                             </div>
                             <div className="flex flex-col sm:flex-row gap-2 pr-8">
                               <div className="flex-1">
-                                <FormSelect label="Actividad" value={comp.actividad_id} disabled={!isEditable}
+                                <FormSelect label="Actividad" value={comp.actividad_id} disabled={!acadRowEditable}
                                   required
                                   fieldKey={ptaFieldKey.academico(comp.id, 'actividad_id')}
                                   error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'actividad_id')]}
@@ -7400,7 +7468,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                     value={comp.horas}
                                     min={acadConstraint.min}
                                     max={acadConstraint.max}
-                                    disabled={!isEditable}
+                                    disabled={!acadRowEditable}
                                     required
                                     fieldKey={ptaFieldKey.academico(comp.id, 'horas')}
                                     error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'horas')]}
@@ -7416,7 +7484,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                 activity={acadCat}
                                 item={comp}
                                 horasAProgramar={horasAProgramar}
-                                disabled={!isEditable}
+                                disabled={!acadRowEditable}
                                 fieldKey={ptaFieldKey.academico(comp.id, 'horas')}
                                 onChange={(rowIndex, value) => handleAcadRowHoursChange(comp.id, rowIndex, value)}
                                 onToggle={(rowIndex, branchKey, conflictingKeys, clearOnly) =>
@@ -7435,7 +7503,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   label={acadUsesOfficialSupportField
                                     ? 'Número de Acto Administrativo / Comunicación Oficial (opcional)'
                                     : 'Descripción (opcional)'}
-                                  type="text" value={comp.descripcion} disabled={!isEditable}
+                                  type="text" value={comp.descripcion} disabled={!acadRowEditable}
                                   required={false}
                                   fieldKey={ptaFieldKey.academico(comp.id, 'descripcion')}
                                   error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'descripcion')]}
@@ -7451,7 +7519,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   )} />
                               </div>
                               <div className="w-36">
-                                <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!isEditable}
+                                <FormInput label="Fecha Inicio" type="date" value={comp.fecha_inicio} disabled={!acadRowEditable}
                                   required
                                   fieldKey={ptaFieldKey.academico(comp.id, 'fecha_inicio')}
                                   error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'fecha_inicio')]}
@@ -7460,7 +7528,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                                   onChange={v => handleAcadChange(comp.id, 'fecha_inicio', v)} />
                               </div>
                               <div className="w-36">
-                                <FormInput label="Fecha Fin" type="date" value={comp.fecha_fin} disabled={!isEditable}
+                                <FormInput label="Fecha Fin" type="date" value={comp.fecha_fin} disabled={!acadRowEditable}
                                   required
                                   fieldKey={ptaFieldKey.academico(comp.id, 'fecha_fin')}
                                   error={requiredFieldErrors[ptaFieldKey.academico(comp.id, 'fecha_fin')]}
