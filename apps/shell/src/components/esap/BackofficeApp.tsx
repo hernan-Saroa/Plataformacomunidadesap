@@ -178,6 +178,7 @@ interface BackofficeAppProps {
     restrictedAccess?: boolean;
     roles?: string[];
     modules?: string[];
+    permissions?: string[];
   };
   userRoles?: string[];
 }
@@ -237,26 +238,27 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
 
 const SIDEBAR_VIEW_ORDER: ModuleView[] = [
   'users-management',
+  'banco-docentes-pta',
   'carpeta-digital',
   'estructura-organizacional',
   'programas-academicos',
   'roles-administration',
   'audit',
   'reports',
-  'graduates',
+  'firma-electronica',
+  'graduates-verification',
   'graduates-certificates',
-  'gestion-profesoral',
   'pta',
   'certificados-laborales',
-  'firma-electronica',
   'control-interno',
   'control-disciplinario',
   'gestion-legal',
-  'gestion-passwords',
+  'contratacion',
 ];
 
 const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   dashboard: 'executive',
+  executive: 'executive',
   'users-management': 'users-management',
   'carpeta-digital': 'carpeta-digital',
   'roles-administration': 'roles-administration',
@@ -340,8 +342,45 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     );
   }
 
+  const userPermissionsList = (userData?.permissions as string[]) || [];
+  const normalizedRoleCodes = ((userData?.roles || []) as string[]).map(normalizeRoleCode);
+  const normalizedEmail = String(currentUser.email || userData?.email || '').trim().toLowerCase();
+  const isSuperAdmin =
+    normalizedRoleCodes.some((role) => ['SUPER_ADMIN', 'SUPERADMIN', 'SUPER_ADMINISTRADOR'].includes(role)) ||
+    normalizedEmail === 'superuser@esap.edu.co';
+  const isSystemAdmin =
+    isSuperAdmin ||
+    normalizedRoleCodes.some((role) => ['ADMIN', 'ADMINISTRADOR'].includes(role)) ||
+    normalizedEmail === 'admin@esap.edu.co';
+  const usesPeopleOnlySidebar = normalizedEmail === 'admin@esap.edu.co';
+
+  // Esta misma lista alimenta el sidebar y la resolucion de la pantalla inicial.
+  const computedAssignedModules = (() => {
+    let modules = [...(((userData?.modules || []) as string[]).filter(Boolean))];
+
+    if (isSystemAdmin) return ['all'];
+
+    const hasCertLaborales = modules.includes('certificados-laborales');
+    const hasSignPermission =
+      userPermissionsList.includes('certificados-laborales.certificate.sign') ||
+      userPermissionsList.includes('cl.certificate.sign');
+
+    if (hasCertLaborales && hasSignPermission && !modules.includes('firma-electronica')) {
+      modules = [...modules, 'firma-electronica'];
+    } else if (hasCertLaborales && !hasSignPermission) {
+      modules = modules.filter((module) => module !== 'firma-electronica');
+    }
+
+    // En el menu, el acceso historico `graduates` se presenta como esta vista.
+    if (modules.includes('graduates') && !modules.includes('graduates-verification')) {
+      modules = [...modules, 'graduates-verification'];
+    }
+
+    return modules;
+  })();
+
   // Compute first accessible module respecting sidebar display order (not backend array order)
-  const assignedModuleCodes = ((userData?.modules || []) as string[]).filter(Boolean);
+  const assignedModuleCodes = computedAssignedModules;
   const hasAllAssignedModules = assignedModuleCodes.includes('all');
   const accessibleViews = new Set<ModuleView>();
 
@@ -358,7 +397,15 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     return accessibleViews.has(view);
   };
 
-  const moduleFromArray: ModuleView | undefined = SIDEBAR_VIEW_ORDER.find((view) => accessibleViews.has(view));
+  const moduleFromArray: ModuleView | undefined = assignedModuleCodes.length > 0
+    ? SIDEBAR_VIEW_ORDER.find((view) => isViewAccessible(view))
+    : undefined;
+
+  const hasDashboardAccess = !usesPeopleOnlySidebar && (
+    isSuperAdmin ||
+    hasAllAssignedModules ||
+    assignedModuleCodes.some((module) => ['executive', 'dashboard', 'principal'].includes(module))
+  );
 
   const initialModule: ModuleView = userData?.module === 'control-interno' ? 'control-interno'
     : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
@@ -379,6 +426,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
   
   const finalInitialModule =
+    (hasDashboardAccess ? 'executive' : undefined) ??
     moduleFromArray ??
     (isViewAccessible(initialModule as ModuleView) ? initialModule : undefined) ??
     (esRolAuditOTipoJefe ? 'control-interno' : 'dashboard');
@@ -508,36 +556,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     avatar: undefined,
     initials: userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   };
-
-  const userPermissionsList = (userData?.permissions as string[]) || [];
-
-  // Controla firma-electronica en sidebar según permiso certificate.sign del módulo cert-laborales
-  const computedAssignedModules = (() => {
-    const mods = (userData?.modules as string[]) || [];
-    const roleCodes = ((userData?.roles as string[]) || []).map((role) => String(role).toUpperCase());
-    const email = String(currentUser.email || userData?.email || '').toLowerCase();
-    const isSystemAdmin =
-      roleCodes.some((role) => ['SUPER_ADMIN', 'ADMIN', 'ADMINISTRADOR'].includes(role)) ||
-      email === 'superuser@esap.edu.co' ||
-      email === 'admin@esap.edu.co';
-
-    if (isSystemAdmin) return ['all'];
-
-    const hasCertLaborales = mods.includes('certificados-laborales');
-    const hasSignPerm =
-      userPermissionsList.includes('certificados-laborales.certificate.sign') ||
-      userPermissionsList.includes('cl.certificate.sign');
-
-    if (!hasCertLaborales) return mods;
-
-    if (hasSignPerm && !mods.includes('firma-electronica')) {
-      return [...mods, 'firma-electronica'];
-    }
-    if (!hasSignPerm && mods.includes('firma-electronica')) {
-      return mods.filter((m) => m !== 'firma-electronica');
-    }
-    return mods;
-  })();
 
   // Handlers
   const handleLogout = () => {

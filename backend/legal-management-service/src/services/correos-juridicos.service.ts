@@ -595,6 +595,12 @@ export class CorreosJuridicosService {
         return this.graphService.getMailboxes();
     }
 
+    /** Sugerencias de destinatarios (contactos, personas frecuentes y directorio) para el autocompletado. */
+    async buscarDestinatarios(query: string, buzon?: string) {
+        const account = this.graphService.resolveAccount(buzon);
+        return this.graphService.searchRecipients(query, account);
+    }
+
     /**
      * Get all emails with filters
      */

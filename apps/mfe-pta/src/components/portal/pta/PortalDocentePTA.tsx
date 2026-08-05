@@ -902,7 +902,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                 <EmptyStateIllustration 
                   title="Aún no tienes PTAs registrados"
                   description="No tienes planes de trabajo en tu base de datos para este periodo."
-                  actionText={puedeCrearPTA ? "Crear mi primer PTA" : undefined}
+                  actionText={puedeCrearPTA ? "Crear PTA" : undefined}
                   onAction={puedeCrearPTA ? () => { setVista('v03_formulario'); setEditPtaId(null); } : undefined}
                 />
               ) : (

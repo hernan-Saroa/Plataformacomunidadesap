@@ -191,7 +191,5 @@ backend/hiring-service/uploads/
 
 # Package locks local
 package-lock.json
-backend/auth-service/package-lock.json
-backend/internal-disciplinary-control-service/package-lock.json
 
 .claude/

@@ -390,10 +390,12 @@ function ApprovalTracker({
       baseColor: '#059669'
     },
     {
-      // Complementarias incluye la sub-sección Académico-Administrativa (AADM).
+      // Complementarias incluye la sub-sección Académico-Administrativa (AADM) y se
+      // enruta en 3 componentes reales según programa asociado (sin programa /
+      // pregrado / posgrado), igual patrón que Docencia arriba.
       label: 'Complementarias',
       icon: Briefcase,
-      status: getStatusForComponent(['complementarias']),
+      status: getStatusForComponent(['complementarias', 'complementarias_pregrado', 'complementarias_posgrado']),
       baseColor: '#FFC000'
     }
   ].filter(step => step.status !== 'hidden');
@@ -717,6 +719,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       ext_gobierno: 'Extension - Alto Gobierno',
       ext_secciones: 'Extension - otras secciones',
       complementarias: 'Complementarias',
+      complementarias_pregrado: 'Complementarias - Pregrado',
+      complementarias_posgrado: 'Complementarias - Posgrado',
       academicas_admin: 'AADM',
     };
     return visibleComponentKeys.map(key => labels[key] || key).join(', ');
@@ -821,7 +825,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     investigacion: 'Investigación',
     ext_capacitacion: 'Ext. Capacitación', ext_procesos: 'Ext. Procesos Selección',
     ext_fortalecimiento: 'Ext. Fortalecimiento', ext_gobierno: 'Ext. Alto Gobierno',
-    complementarias: 'Complementarias', academicas_admin: 'Acad. Admin.',
+    complementarias: 'Complementarias', complementarias_pregrado: 'Complementarias (Pregrado)', complementarias_posgrado: 'Complementarias (Posgrado)',
+    academicas_admin: 'Acad. Admin.',
   };
 
   const handleAprobarComponente = async (componente: string, estado: 'aprobado' | 'devuelto') => {

@@ -166,7 +166,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   restrictedMode = undefined; // Nuevo: No restringir módulos en modo de desarrollo
   const canShowModule = (module: ModuleType): boolean => {
     // console.log('module', module);
-    if (module === 'executive' || module === 'dashboard') return true;
+    if (module === 'executive' || module === 'dashboard') {
+      // Mantener compatibilidad con sesiones antiguas sin modules, pero respetar
+      // la asignación explícita cuando el backend sí la entrega.
+      if (!assignedModules || assignedModules.length === 0) return true;
+      const aliases = getModuleAliases(module);
+      return hasAllModules || aliases.some((alias) => assignedModules.includes(alias));
+    }
     if (userRole?.includes('SUPER_ADMIN') && module === 'modules') return true;
 
     // 1. Si la API devolvió los módulos activos de la DB (is_active = true),

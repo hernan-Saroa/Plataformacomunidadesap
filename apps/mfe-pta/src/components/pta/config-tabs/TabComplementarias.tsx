@@ -88,7 +88,7 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
     setExpandedBlocks(prev => ({ ...prev, [targetKey]: expanded }));
   };
   const updateAct = (secKey: string, idx: number, field: string, val: any) => {
-    const stringFields = ['nombre', 'id', 'linea'];
+    const stringFields = ['nombre', 'id', 'linea', 'nivel_programa'];
     const currentActs = actsDeSeccion(secKey);
     if (field === 'id') {
       const oldKey = `${secKey}:${currentActs[idx]?.id}`;
@@ -964,6 +964,19 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                     onChange={e => updateAct(sec.key, aIdx, 'nombre', e.target.value)}
                                     placeholder={`Valor de ${getStructureLabels(sec.key).root.toLocaleLowerCase()}...`}
                                     className="w-full bg-white border border-slate-200 text-slate-800 font-semibold text-[13px] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none" />
+                                </div>
+                                <div className="w-32 shrink-0">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Programa</span>
+                                  <select
+                                    value={(act as any).nivel_programa || ''}
+                                    onChange={e => updateAct(sec.key, aIdx, 'nivel_programa', e.target.value)}
+                                    title="Enruta la aprobación/revisión de esta actividad al mismo Revisor/Aprobador de Docencia Pregrado o Posgrado. Sin selección (Ninguno): la revisa/aprueba Complementarias."
+                                    className="w-full bg-white border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none"
+                                  >
+                                    <option value="">Ninguno</option>
+                                    <option value="pregrado">Pregrado</option>
+                                    <option value="posgrado">Posgrado</option>
+                                  </select>
                                 </div>
                                 {!isRootOnly && (
                                 <div className="shrink-0">
