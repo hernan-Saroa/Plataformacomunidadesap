@@ -50,6 +50,18 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Sugerencias de destinatarios para autocompletar "Para/CC/CCO" a partir de
+     * contactos, personas frecuentes y el directorio institucional de Outlook.
+     */
+    @Get('destinatarios/buscar')
+    async buscarDestinatarios(
+        @Query('q') q?: string,
+        @Query('buzon') buzon?: string,
+    ) {
+        return this.correosService.buscarDestinatarios(q || '', buzon);
+    }
+
+    /**
      * Reclassify ALL emails with updated heuristics
      */
     @Post('reclassify-all')

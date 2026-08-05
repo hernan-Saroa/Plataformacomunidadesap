@@ -21,6 +21,8 @@ export type PTAComponentKey =
   | 'academica_posgrado'
   | 'academica_territorial'
   | 'complementarias'
+  | 'complementarias_pregrado'
+  | 'complementarias_posgrado'
   | 'investigacion'
   | 'ext_capacitacion'
   | 'ext_procesos'
@@ -33,11 +35,25 @@ export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_posgrado',
   'academica_territorial',
   'complementarias',
+  'complementarias_pregrado',
+  'complementarias_posgrado',
   'investigacion',
   'ext_capacitacion',
   'ext_procesos',
   'ext_fortalecimiento',
   'ext_gobierno',
+];
+
+/**
+ * Los tres componentes en los que se enruta Complementarias, según el `nivel_programa`
+ * configurado por TIPO de actividad (no por instancia, ver clasificarComplementarias en
+ * pta.service.ts). 'complementarias' es el catch-all "sin programa asociado" — es el
+ * mismo componente/permiso que existía antes del split, sin cambios ni deprecación.
+ */
+export const COMPLEMENTARIAS_COMPONENT_KEYS: PTAComponentKey[] = [
+  'complementarias',
+  'complementarias_pregrado',
+  'complementarias_posgrado',
 ];
 
 /**
@@ -60,6 +76,10 @@ export const COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_posgrado: 'pta.approve.academica.posgrado',
   academica_territorial: 'pta.approve.academica.territorial',
   complementarias: 'pta.approve.complementarias',
+  // Sin permiso propio: reutilizan el permiso de aprobación de Docencia por nivel
+  // (mismo aprobador Pregrado/Posgrado ya existente, no se crea ningún permiso nuevo).
+  complementarias_pregrado: 'pta.approve.academica.pregrado',
+  complementarias_posgrado: 'pta.approve.academica.posgrado',
   investigacion: 'pta.approve.investigacion',
   ext_capacitacion: 'pta.approve.extension.capacitacion',
   ext_procesos: 'pta.approve.extension.procesos_seleccion',
@@ -75,6 +95,8 @@ export const COMPONENT_LEVEL: Record<PTAComponentKey, 1 | 2 | 3> = {
   // de Docencia.
   academica_territorial: 1,
   complementarias: 1,
+  complementarias_pregrado: 1,
+  complementarias_posgrado: 1,
   investigacion: 2,
   ext_capacitacion: 2,
   ext_procesos: 2,
@@ -126,6 +148,8 @@ export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReview
   academica_posgrado: ['general'],
   academica_territorial: ['general'],
   complementarias: ['docencia', 'academico_administrativas'],
+  complementarias_pregrado: ['docencia', 'academico_administrativas'],
+  complementarias_posgrado: ['docencia', 'academico_administrativas'],
   investigacion: ['general'],
   ext_capacitacion: ['general'],
   ext_procesos: ['general'],
@@ -149,6 +173,12 @@ export const COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   [reviewKey('academica_territorial', 'general')]: 'pta.review.academica.territorial',
   [reviewKey('complementarias', 'docencia')]: 'pta.review.complementarias.docencia',
   [reviewKey('complementarias', 'academico_administrativas')]: 'pta.review.complementarias.academico_administrativas',
+  // Sin permisos de revisión propios: mismo revisor de Docencia por nivel (ya
+  // existente) revisa también las dos subsecciones de Complementarias de su nivel.
+  [reviewKey('complementarias_pregrado', 'docencia')]: 'pta.review.academica.pregrado',
+  [reviewKey('complementarias_pregrado', 'academico_administrativas')]: 'pta.review.academica.pregrado',
+  [reviewKey('complementarias_posgrado', 'docencia')]: 'pta.review.academica.posgrado',
+  [reviewKey('complementarias_posgrado', 'academico_administrativas')]: 'pta.review.academica.posgrado',
   [reviewKey('investigacion', 'general')]: 'pta.review.investigacion',
   [reviewKey('ext_capacitacion', 'general')]: 'pta.review.extension.capacitacion',
   [reviewKey('ext_procesos', 'general')]: 'pta.review.extension.procesos_seleccion',

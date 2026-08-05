@@ -53,30 +53,32 @@ BEGIN
     UPDATE auth.module SET name = 'Gestión Legal', description = 'Sistema integrado legal' WHERE code = 'gestion-legal';
     UPDATE auth.module SET name = 'Verificación de Títulos', description = 'Verificación y solicitudes' WHERE code = 'graduates-certificates';
 
-    INSERT INTO auth.module (
-        id_module,
-        code,
-        name,
-        description,
-        icon,
-        color,
-        display_order,
-        category,
-        is_active,
-        created_at,
-        updated_at
-    ) VALUES (
-        gen_random_uuid(),
-        'dashboard',
-        'Dashboard Ejecutivo',
-        'Nivel gerencial',
-        'TrendingUp',
-        '#003DA5',
-        0,
-        'backoffice',
-        true,
-        NOW(),
-        NOW()
-    );
+    IF NOT EXISTS (SELECT 1 FROM auth.module WHERE code = 'dashboard') THEN
+        INSERT INTO auth.module (
+            id_module,
+            code,
+            name,
+            description,
+            icon,
+            color,
+            display_order,
+            category,
+            is_active,
+            created_at,
+            updated_at
+        ) VALUES (
+            gen_random_uuid(),
+            'dashboard',
+            'Dashboard Ejecutivo',
+            'Nivel gerencial',
+            'TrendingUp',
+            '#003DA5',
+            0,
+            'backoffice',
+            true,
+            NOW(),
+            NOW()
+        );
+    END IF;
 
 END $$;
