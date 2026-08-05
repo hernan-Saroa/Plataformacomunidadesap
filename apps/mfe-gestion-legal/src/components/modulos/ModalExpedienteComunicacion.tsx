@@ -391,18 +391,21 @@ export function ModalExpedienteComunicacion({
   const handleDescargarAdjunto = async (adjunto: AdjuntoCorreo) => {
     setDownloadingId(adjunto.id);
     try {
-      const blobUrl = await correosJuridicosService.downloadAdjunto(adjunto.id);
+      const url = correosJuridicosService.getAdjuntoUrl(adjunto.id);
+      // fetch con credentials 'include' envía la cookie httpOnly de sesión
+      // (mismo mecanismo que Defensa Judicial/ModalExpediente.handleDescargarDocumento)
+      const response = await fetch(url, { method: 'GET', credentials: 'include' });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
-      // Create temporary link to trigger download
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
       link.download = adjunto.nombre;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
-      // Cleanup blob URL
-      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100);
+      window.URL.revokeObjectURL(blobUrl);
 
       toast.success('✅ Descarga completada', {
         description: adjunto.nombre
@@ -415,11 +418,11 @@ export function ModalExpedienteComunicacion({
     }
   };
 
-  const handleVerAdjunto = async (adjunto: AdjuntoCorreo) => {
+  const handleVerAdjunto = (adjunto: AdjuntoCorreo) => {
     setPreviewingId(adjunto.id);
     try {
-      const blobUrl = await correosJuridicosService.downloadAdjunto(adjunto.id);
-      setDocParaVisor({ url: blobUrl, nombre: adjunto.nombre });
+      const url = correosJuridicosService.getAdjuntoUrl(adjunto.id);
+      setDocParaVisor({ url, nombre: adjunto.nombre });
       setVisorAbierto(true);
     } catch (error) {
       console.error('Error previewing adjunto:', error);
@@ -431,9 +434,6 @@ export function ModalExpedienteComunicacion({
 
   const handleCerrarVisor = () => {
     setVisorAbierto(false);
-    if (docParaVisor?.url) {
-      window.URL.revokeObjectURL(docParaVisor.url);
-    }
     setDocParaVisor(null);
   };
 

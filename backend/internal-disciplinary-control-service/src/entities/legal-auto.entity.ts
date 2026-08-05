@@ -80,6 +80,9 @@ export class LegalAuto {
   @Column({ type: 'varchar', length: 100 })
   tipo: string;
 
+  @Column('uuid', { nullable: true })
+  autoConfigurationId: string | null; // Plantilla exacta (autos_configuration.id) usada al crear el auto
+
   @Column({ type: 'varchar', length: 150, nullable: true })
   numero: string;
 

@@ -127,7 +127,13 @@ export async function savePTA(data: any) {
       files.forEach(f => formData.append(f.key, f.file, f.file.name));
       raw = await (apiClient as any).upload<any>(`${PTA_BASE}/save`, formData);
     } else {
-      raw = await apiClient.post<any>(`${PTA_BASE}/save`, data);
+      // Guardar es una mutación: un 4xx no se corrige repitiendo el mismo POST y
+      // antes generaba cuatro solicitudes idénticas por cada auto-guardado fallido.
+      // El siguiente ciclo de auto-guardado o la acción manual ya permiten reintentar.
+      raw = await apiClient.post<any>(`${PTA_BASE}/save`, data, {
+        retries: 0,
+        skipErrorToast: true,
+      });
     }
 
     const normalized = normalizeResult<any>(raw, null);
@@ -508,6 +514,40 @@ export async function aprobarComponente(ptaId: string, data: {
       success: false,
       data: null,
       message: (error as any)?.message || 'Error al actualizar el estado del componente',
+    };
+  }
+}
+
+export async function getComponentesRevision(ptaId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-revision`);
+    const normalized = normalizeResult<any[]>(raw, []);
+    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+  } catch (error) {
+    console.warn('[mfe-pta][getComponentesRevision] No disponible:', error instanceof Error ? error.message : error);
+    return { success: false, data: [] };
+  }
+}
+
+export async function revisarComponente(ptaId: string, data: {
+  componente: string;
+  subseccion: string;
+  estado: 'revisado' | 'devuelto';
+  revisorId: string;
+  revisorNombre: string;
+  revisorRol: string;
+  comentarios?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/revisar-componente`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('[mfe-pta][revisarComponente] Error:', error);
+    return {
+      success: false,
+      data: null,
+      message: (error as any)?.message || 'Error al actualizar la revisión del componente',
     };
   }
 }

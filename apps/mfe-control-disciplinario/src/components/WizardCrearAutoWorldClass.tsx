@@ -600,6 +600,9 @@ export function WizardCrearAutoWorldClass({
       // Si el tipo viene del backend (con campo 'tipo'), usarlo directamente
       // Sino, usar la función de mapeo por nombre
       const tipoAutoValue = tipoSeleccionado.tipo || mapNombreToAutoType(tipoSeleccionado.nombre);
+      // Solo enviar autoConfigurationId si es un UUID real del backend (no un id mock local)
+      const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tipoSeleccionado.id);
+      const autoConfigurationId = esUuid ? tipoSeleccionado.id : undefined;
 
       // ✅ PASO 1: Subir el archivo primero para obtener documentUrl
       // El backend necesita el archivo en disco para estampar el consecutivo en el PDF
@@ -620,6 +623,7 @@ export function WizardCrearAutoWorldClass({
       const autoCreado = await disciplinaryService.crearAuto({
         processId: proceso.id,
         tipoAuto: tipoAutoValue,
+        autoConfigurationId,
         contenidoHtml: `<p>${observaciones || 'Auto generado desde wizard'}</p>`,
         comentarios: observacionesAdjunto || observaciones,
         documentUrl: documentUrl,

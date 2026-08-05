@@ -6,7 +6,7 @@ import {
   Upload, Trash2, AlertTriangle, Loader2, CheckCircle2,
   Edit3, BookOpen, FlaskConical, Globe, Briefcase,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { crearSolicitudPTA, uploadSolicitudFiles } from '../../../services/api/ptaApi';
 
 interface SolicitudPTAModalProps {

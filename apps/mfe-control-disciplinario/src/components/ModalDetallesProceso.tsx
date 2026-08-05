@@ -35,7 +35,7 @@ import {
   type DisciplinaryProcessActuacion,
   type DisciplinaryProcessNote,
   type DisciplinaryProcessTask,
-} from '../../../services/api/disciplinary.service';
+} from '../../services/api/disciplinary.service';
 import { API_MODE, buildApiUrl } from '../../../config/environment';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -3654,7 +3654,7 @@ export function ModalDetallesProceso({
       }
 
       if (archivo.downloadUrl) {
-        const normalizedUrl = disciplinaryService.getFileUrl(archivo.downloadUrl);
+        const normalizedUrl = resolveArchivoRequestUrl(archivo, proceso.id);
         await disciplinaryService.downloadFileFromUrl(normalizedUrl, nombreArchivo);
       } else {
         await disciplinaryService.downloadDocument(proceso.id, archivo.id, nombreArchivo);

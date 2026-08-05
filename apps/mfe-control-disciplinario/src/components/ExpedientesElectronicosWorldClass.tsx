@@ -1327,10 +1327,14 @@ export function ExpedientesElectronicosWorldClass() {
      
      try {
        let downloadUrl: string;
-       // Si el documento tiene una URL de descarga directa (documentos de noticia), usarla
-       // De lo contrario, usar el endpoint del proceso
-       if (doc.downloadUrl) {
+       // Según el origen del documento, doc.downloadUrl llega en 3 formas distintas:
+       // - /files/... (adjuntos de noticia): usar getAbsoluteFileUrl
+       // - /disciplinary-autos/... (autos aprobados sin archivo físico, solo HTML): pasar la ruta tal cual
+       // - ruta de API de disciplinary-processes/.../documents/.../download (documentos agregados al proceso): reconstruir desde expedienteId/id
+       if (doc.downloadUrl && doc.downloadUrl.startsWith('/files/')) {
          downloadUrl = disciplinaryService.getAbsoluteFileUrl(doc.downloadUrl);
+       } else if (doc.downloadUrl && doc.downloadUrl.startsWith('/disciplinary-autos/')) {
+         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? doc.downloadUrl : `/api/v1${doc.downloadUrl}`);
        } else {
          const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download?view=true`;
          downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
@@ -1402,9 +1406,14 @@ export function ExpedientesElectronicosWorldClass() {
        toast.loading('Descargando documento...', { id: 'download' });
 
        let downloadUrl: string;
-       // Si el documento tiene una URL de descarga directa (documentos de noticia), usarla
-       if (doc.downloadUrl) {
+       // Según el origen del documento, doc.downloadUrl llega en 3 formas distintas:
+       // - /files/... (adjuntos de noticia): usar getAbsoluteFileUrl
+       // - /disciplinary-autos/... (autos aprobados sin archivo físico, solo HTML): pasar la ruta tal cual
+       // - ruta de API de disciplinary-processes/.../documents/.../download (documentos agregados al proceso): reconstruir desde expedienteId/id
+       if (doc.downloadUrl && doc.downloadUrl.startsWith('/files/')) {
          downloadUrl = disciplinaryService.getAbsoluteFileUrl(doc.downloadUrl);
+       } else if (doc.downloadUrl && doc.downloadUrl.startsWith('/disciplinary-autos/')) {
+         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? doc.downloadUrl : `/api/v1${doc.downloadUrl}`);
        } else {
          const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
          downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
