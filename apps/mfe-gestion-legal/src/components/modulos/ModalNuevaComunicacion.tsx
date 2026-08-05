@@ -20,7 +20,7 @@ import { Card } from '@esap-mfe/shared-ui/card';
 import { Label } from '@esap-mfe/shared-ui/label';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { correosJuridicosService } from '../../../../services/api/legal.service';
+import { correosJuridicosService, type DestinatarioSugerido } from '../../../../services/api/legal.service';
 
 interface ModalNuevaComunicacionProps {
   isOpen: boolean;
@@ -191,6 +191,12 @@ function EmailChip({
   );
 }
 
+const SOURCE_LABEL: Record<DestinatarioSugerido['source'], string> = {
+  contacto: 'Contacto',
+  frecuente: 'Frecuente',
+  directorio: 'Directorio',
+};
+
 // ── Campo de destinatarios tipo Outlook ───────────────────────────────────────
 function EmailTagInput({
   id,
@@ -198,17 +204,57 @@ function EmailTagInput({
   onEmailsChange,
   placeholder = 'nombre@ejemplo.com',
   readOnly = false,
+  buzon,
 }: {
   id: string;
   emails: string[];
   onEmailsChange: (emails: string[]) => void;
   placeholder?: string;
   readOnly?: boolean;
+  buzon?: string;
 }) {
   const [inputValue, setInputValue] = useState('');
   const [focused, setFocused] = useState(false);
+  const [suggestions, setSuggestions] = useState<DestinatarioSugerido[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
+
+  // Autocompletado: busca contactos institucionales de Outlook (contactos, personas
+  // frecuentes y directorio) 300ms después de que el usuario deja de escribir.
+  useEffect(() => {
+    if (readOnly) return;
+    const q = inputValue.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const reqId = ++requestIdRef.current;
+    debounceRef.current = setTimeout(async () => {
+      setLoadingSuggestions(true);
+      try {
+        const results = await correosJuridicosService.buscarDestinatarios(q, buzon);
+        if (reqId !== requestIdRef.current) return;
+        setSuggestions(results.filter((r) => !emails.includes(r.email)));
+        setShowSuggestions(true);
+        setActiveSuggestion(0);
+      } catch {
+        if (reqId === requestIdRef.current) setSuggestions([]);
+      } finally {
+        if (reqId === requestIdRef.current) setLoadingSuggestions(false);
+      }
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `emails` sólo se usa para filtrar, no debe re-disparar la búsqueda
+  }, [inputValue, buzon, readOnly]);
 
   const commitInput = (raw: string) => {
     const trimmed = raw.trim().replace(/[,;]+$/, '').trim();
@@ -219,7 +265,39 @@ function EmailTagInput({
     setInputValue('');
   };
 
+  const selectSuggestion = (suggestion?: DestinatarioSugerido) => {
+    if (!suggestion) return;
+    if (!emails.includes(suggestion.email)) {
+      onEmailsChange([...emails, suggestion.email]);
+    }
+    setInputValue('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setActiveSuggestion(0);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (showSuggestions && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveSuggestion((i) => (i + 1) % suggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveSuggestion((i) => (i - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setShowSuggestions(false);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        selectSuggestion(suggestions[activeSuggestion]);
+        return;
+      }
+    }
     if (['Enter', ',', ';', 'Tab'].includes(e.key)) {
       e.preventDefault();
       commitInput(inputValue);
@@ -246,6 +324,7 @@ function EmailTagInput({
   const handleBlur = () => {
     commitInput(inputValue);
     setFocused(false);
+    setShowSuggestions(false);
   };
 
   const removeEmail = (idx: number) => {
@@ -259,7 +338,7 @@ function EmailTagInput({
       <div
         ref={containerRef}
         onClick={() => !readOnly && inputRef.current?.focus()}
-        className={`min-h-[42px] flex flex-wrap gap-1.5 items-center px-3 py-2 rounded-md border bg-white cursor-text transition-colors ${
+        className={`relative min-h-[42px] flex flex-wrap gap-1.5 items-center px-3 py-2 rounded-md border bg-white cursor-text transition-colors ${
           readOnly
             ? 'bg-gray-100 cursor-not-allowed border-gray-200'
             : focused
@@ -279,11 +358,46 @@ function EmailTagInput({
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+              setFocused(true);
+              if (suggestions.length > 0) setShowSuggestions(true);
+            }}
             onBlur={handleBlur}
             placeholder={emails.length === 0 ? placeholder : ''}
             className="flex-1 min-w-[180px] outline-none text-sm bg-transparent placeholder:text-gray-400 text-gray-900"
+            autoComplete="off"
           />
+        )}
+
+        {!readOnly && showSuggestions && (loadingSuggestions || suggestions.length > 0) && (
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+            {suggestions.length === 0 ? (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Buscando en Outlook…
+              </div>
+            ) : (
+              suggestions.map((s, idx) => (
+                <button
+                  key={s.email}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => selectSuggestion(s)}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                    idx === activeSuggestion ? 'bg-blue-50' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-gray-900">{s.name}</span>
+                    <span className="block truncate text-xs text-gray-500">{s.email}</span>
+                  </span>
+                  <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-gray-400">
+                    {SOURCE_LABEL[s.source]}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
         )}
       </div>
       {invalidCount > 0 && (
@@ -297,7 +411,7 @@ function EmailTagInput({
           Presione <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Enter</kbd>,{' '}
           <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">,</kbd> o{' '}
           <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Tab</kbd>{' '}
-          para agregar · Pegue múltiples correos a la vez
+          para agregar · Pegue múltiples correos a la vez · Escriba un nombre para ver sugerencias de Outlook
         </p>
       )}
     </div>
@@ -805,6 +919,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                       onEmailsChange={(v) => { setParaEmails(v); markDirty(); }}
                       placeholder="destinatario@ejemplo.com"
                       readOnly={isReply}
+                      buzon={buzon}
                     />
                   </div>
 
@@ -836,6 +951,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                         emails={ccEmails}
                         onEmailsChange={(v) => { setCcEmails(v); markDirty(); }}
                         placeholder="copia@ejemplo.com"
+                        buzon={buzon}
                       />
                     </div>
                   )}
@@ -868,6 +984,7 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData,
                         emails={bccEmails}
                         onEmailsChange={(v) => { setBccEmails(v); markDirty(); }}
                         placeholder="copia.oculta@ejemplo.com"
+                        buzon={buzon}
                       />
                       <p className="text-xs text-gray-400">
                         Los destinatarios en CCO no serán visibles para los demás.
