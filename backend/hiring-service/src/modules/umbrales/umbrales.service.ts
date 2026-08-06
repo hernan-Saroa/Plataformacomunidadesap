@@ -8,7 +8,7 @@ import { DataSource, IsNull } from 'typeorm';
 import { UmbralModalidad } from '../../entities/umbral-modalidad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Smmlv } from '../../entities/smmlv.entity';
-import { HiringAccess } from '../../auth/hiring-access';
+import { HiringAccess, ROLES_ADMIN_UMBRALES } from '../../auth/hiring-access';
 import { CrearUmbralDto } from './dto/umbral.dto';
 
 /**
@@ -177,7 +177,7 @@ export class UmbralesService {
    * Devuelve también la modalidad completa para que quien consuma sepa cuáles
    * no se deciden por cuantía sin tener que cruzar dos endpoints.
    */
-  async vigentes() {
+  async vigentes(acceso?: HiringAccess) {
     const [umbrales, modalidades, smmlv] = await Promise.all([
       this.dataSource.getRepository(UmbralModalidad).find({
         where: { vigenciaHasta: IsNull() },
@@ -188,16 +188,22 @@ export class UmbralesService {
 
     const porModalidad = new Map(umbrales.map((u) => [u.modalidad, u]));
 
-    return modalidades.map((m) => {
-      const umbral = porModalidad.get(m.codigo);
-      return {
-        modalidad: m.codigo,
-        nombre: m.nombre,
-        orden: m.orden,
-        determinadaPorCuantia: m.determinadaPorCuantia,
-        umbral: umbral ? this.aVista(umbral, smmlv) : null,
-      };
-    });
+    return {
+      // Lo decide el backend, que ya tiene los roles del token: replicar la
+      // matriz de permisos en el cliente la dejaría desactualizada en cuanto
+      // cambie aquí, y la pantalla ofrecería acciones que la API rechaza.
+      puedeEditar: ROLES_ADMIN_UMBRALES.some((r) => acceso?.roles.includes(r) ?? false),
+      modalidades: modalidades.map((m) => {
+        const umbral = porModalidad.get(m.codigo);
+        return {
+          modalidad: m.codigo,
+          nombre: m.nombre,
+          orden: m.orden,
+          determinadaPorCuantia: m.determinadaPorCuantia,
+          umbral: umbral ? this.aVista(umbral, smmlv) : null,
+        };
+      }),
+    };
   }
 
   /**

@@ -28,9 +28,11 @@ export class UmbralesController {
   @Roles(...ROLES_LECTURA_CONTRATACION)
   @ApiOperation({
     summary: 'Umbrales vigentes por modalidad, con sus límites convertidos a pesos',
+    description:
+      'Incluye `puedeEditar`, para que la interfaz sepa si ofrecer la edición sin replicar la matriz de roles.',
   })
-  vigentes() {
-    return this.service.vigentes();
+  vigentes(@Req() req: any) {
+    return this.service.vigentes(getHiringAccess(req));
   }
 
   // Se consulta antes de crear el proceso, así que no cuelga de ninguno: recibe

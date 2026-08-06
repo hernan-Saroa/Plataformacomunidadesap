@@ -61,6 +61,46 @@ export interface SugerenciaModalidad {
   advertencia: string | null;
 }
 
+export type UnidadUmbral = 'SMMLV' | 'PESOS';
+
+/** Umbral vigente de una modalidad, con su equivalente en pesos ya resuelto. */
+export interface UmbralVigente {
+  id: string;
+  modalidad: string;
+  limiteInferior: number | null;
+  limiteSuperior: number | null;
+  unidad: UnidadUmbral;
+  enPesos: { inferior: number | null; superior: number | null } | null;
+  smmlvAplicado: { anio: number; valor: number; confirmado: boolean } | null;
+  vigenciaDesde: string;
+  vigenciaHasta: string | null;
+  vigente: boolean;
+  /** False mientras la Dirección de Contratación no confirme la cifra. */
+  confirmado: boolean;
+  advertencia: string | null;
+}
+
+export interface ModalidadConUmbral {
+  modalidad: string;
+  nombre: string;
+  orden: number;
+  /** False cuando se elige por causal: ningún monto la sugiere ni la descarta. */
+  determinadaPorCuantia: boolean;
+  umbral: UmbralVigente | null;
+}
+
+export interface UmbralesVigentes {
+  /** Lo decide el backend según los roles del token, no el cliente. */
+  puedeEditar: boolean;
+  modalidades: ModalidadConUmbral[];
+}
+
+export interface SmmlvAnual {
+  anio: number;
+  valor: number;
+  confirmado: boolean;
+}
+
 export interface ProcesoResumen {
   id: string;
   radicado: string;

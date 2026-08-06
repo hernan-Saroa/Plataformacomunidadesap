@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, FileSignature, ClipboardCheck } from 'lucide-react';
+import { Briefcase, FileSignature, ClipboardCheck, Scale } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 // Maquetación propia del módulo. Va aquí, en el componente expuesto por Module
@@ -11,8 +11,9 @@ import '../styles/layout.css';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { VistaProcesos } from './procesos/VistaProcesos';
 import { DetalleProceso } from './proceso/DetalleProceso';
+import { VistaUmbrales } from './umbrales/VistaUmbrales';
 
-type Seccion = 'estudios-previos' | 'revision';
+type Seccion = 'estudios-previos' | 'revision' | 'umbrales';
 
 /**
  * Módulo de Gestión de Contratación — HU EFDS-1146.
@@ -50,11 +51,26 @@ export default function ContratacionModulePremium() {
         },
       ],
     },
+    {
+      // Aparte del trabajo diario: no se administra un umbral mientras se
+      // diligencia un proceso.
+      title: 'Configuración',
+      items: [
+        {
+          id: 'umbrales',
+          label: 'Umbrales',
+          subtitle: 'Cuantías por modalidad',
+          icon: <Scale className="w-5 h-5" />,
+          color: '#7C3AED',
+        },
+      ],
+    },
   ];
 
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (seccion === 'umbrales') return <VistaUmbrales />;
     if (procesoId) {
       return (
         <DetalleProceso

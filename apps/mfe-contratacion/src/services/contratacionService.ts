@@ -7,7 +7,11 @@ import {
   Modalidad,
   ProcesoResumen,
   RevisionEstudioPrevio,
+  SmmlvAnual,
   SugerenciaModalidad,
+  UmbralesVigentes,
+  UmbralVigente,
+  UnidadUmbral,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -68,6 +72,33 @@ export const contratacionService = {
    */
   sugerenciaModalidad: (valorEstimado: number, signal?: AbortSignal) =>
     pedir<SugerenciaModalidad>(`/umbrales/sugerencia?valorEstimado=${valorEstimado}`, { signal }),
+
+  // ------------------------------------------- administración de umbrales ---
+
+  umbrales: () => pedir<UmbralesVigentes>('/umbrales'),
+
+  smmlv: () => pedir<SmmlvAnual[]>('/umbrales/smmlv'),
+
+  guardarSmmlv: (anio: number, valor: number) =>
+    pedir<SmmlvAnual>('/umbrales/smmlv', {
+      method: 'PUT',
+      body: JSON.stringify({ anio, valor }),
+    }),
+
+  /** Cierra el umbral vigente de la modalidad y abre el nuevo. */
+  guardarUmbral: (
+    modalidad: string,
+    cambio: {
+      limiteInferior: number | null;
+      limiteSuperior: number | null;
+      unidad: UnidadUmbral;
+      vigenciaDesde?: string;
+    },
+  ) =>
+    pedir<UmbralVigente>(`/umbrales/${modalidad}`, {
+      method: 'PUT',
+      body: JSON.stringify(cambio),
+    }),
 
   crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
     pedir<ProcesoResumen>('/procesos', {
