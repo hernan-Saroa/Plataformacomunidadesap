@@ -10,7 +10,7 @@ import { CertificateTemplate } from './certificate-template.entity';
 import { Signer } from './signer.entity';
 import { TemplateConfig } from './template-config.entity';
 import { TemplateConfigChange } from './template-config-change.entity';
-import { Firmante } from './firmante.entity';
+import { TemplateSigner } from './template-signer.entity';
 import { TemplateConfigController } from './template-config.controller';
 import { TemplateConfigService } from './template-config.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
@@ -29,7 +29,7 @@ import { LaborOracleIntegrationService } from './labor-oracle-integration.servic
       Signer,
       TemplateConfig,
       TemplateConfigChange,
-      Firmante,
+      TemplateSigner,
       TechnicalBonusAssignment,
       TechnicalBonusTemplate,
     ]),

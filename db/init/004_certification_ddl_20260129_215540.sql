@@ -55,8 +55,8 @@ CREATE TABLE certification.certificate_requests (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     validation_code character varying(10),
     validation_expires_at timestamp without time zone,
-    cod_cargo character varying(255),
-    cod_grade character varying(255)
+    position_code character varying(255),
+    grade_code character varying(255)
 );
 
 
@@ -108,12 +108,12 @@ COMMENT ON COLUMN certification.certificate_requests.salary_text IS 'DATA8: Sala
 
 CREATE TABLE certification.certificate_template_config (
     id integer NOT NULL,
-    firmante_id uuid,
+    signer_id uuid,
     entity_logo_url text,
     entity_logo_filename character varying(255),
     entity_logo_size character varying(50),
     typography_font character varying(100) DEFAULT 'Times New Roman'::character varying,
-    cargo_title text,
+    signer_title text,
     certificate_content_html text,
     version character varying(20) DEFAULT '1.0.0'::character varying,
     status character varying(50) DEFAULT 'draft'::character varying,
@@ -134,49 +134,49 @@ CREATE TABLE certification.certificate_template_config (
 -- Name: TABLE certificate_template_config; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON TABLE certification.certificate_template_config IS 'Configuración de plantilla para certificados laborales';
+COMMENT ON TABLE certification.certificate_template_config IS 'Labor-certificate template configuration';
 
 
 --
--- Name: COLUMN certificate_template_config.firmante_id; Type: COMMENT; Schema: certification; Owner: -
+-- Name: COLUMN certificate_template_config.signer_id; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_template_config.firmante_id IS 'Referencia al firmante principal (tabla firmantes)';
+COMMENT ON COLUMN certification.certificate_template_config.signer_id IS 'Reference to the signer assigned to this template';
 
 
 --
 -- Name: COLUMN certificate_template_config.entity_logo_url; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_template_config.entity_logo_url IS 'URL del logo institucional de ESAP';
+COMMENT ON COLUMN certification.certificate_template_config.entity_logo_url IS 'URL of the institutional ESAP logo';
 
 
 --
 -- Name: COLUMN certificate_template_config.typography_font; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_template_config.typography_font IS 'Fuente tipográfica aplicada al certificado';
+COMMENT ON COLUMN certification.certificate_template_config.typography_font IS 'Font family applied to the certificate';
 
 
 --
--- Name: COLUMN certificate_template_config.cargo_title; Type: COMMENT; Schema: certification; Owner: -
+-- Name: COLUMN certificate_template_config.signer_title; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_template_config.cargo_title IS 'Título del cargo que aparece en el encabezado del certificado';
+COMMENT ON COLUMN certification.certificate_template_config.signer_title IS 'Signer title displayed in the certificate heading';
 
 
 --
 -- Name: COLUMN certificate_template_config.certificate_content_html; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_template_config.certificate_content_html IS 'Contenido HTML del certificado con variables dinámicas';
+COMMENT ON COLUMN certification.certificate_template_config.certificate_content_html IS 'Certificate HTML content with dynamic placeholders';
 
 
 --
 -- Name: COLUMN certificate_template_config.is_active; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_template_config.is_active IS 'Solo debe haber una configuración activa a la vez';
+COMMENT ON COLUMN certification.certificate_template_config.is_active IS 'Indicates whether this configuration is active';
 
 
 --
@@ -249,21 +249,21 @@ CREATE TABLE certification.certificate_validations (
 -- Name: TABLE certificate_validations; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON TABLE certification.certificate_validations IS 'Historial de validaciones de certificados laborales';
+COMMENT ON TABLE certification.certificate_validations IS 'Labor-certificate validation history';
 
 
 --
 -- Name: COLUMN certificate_validations.certificate_id; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_validations.certificate_id IS 'Referencia al certificado validado';
+COMMENT ON COLUMN certification.certificate_validations.certificate_id IS 'Reference to the validated certificate';
 
 
 --
 -- Name: COLUMN certificate_validations.result; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.certificate_validations.result IS 'Resultado de la validación (válido, inválido, expirado, etc.)';
+COMMENT ON COLUMN certification.certificate_validations.result IS 'Certificate validation result';
 
 
 --
@@ -338,11 +338,11 @@ CREATE TABLE certification.certificates (
     validation_count integer DEFAULT 0,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    cod_cargo character varying(255),
+    position_code character varying(255),
     technical_bonus numeric(12,2) DEFAULT 0,
     include_salary boolean DEFAULT true,
     include_technical_bonus boolean DEFAULT false,
-    cod_grade character varying(255)
+    grade_code character varying(255)
 );
 
 
@@ -354,41 +354,41 @@ COMMENT ON TABLE certification.certificates IS 'Generated and valid certificates
 
 
 --
--- Name: firmantes; Type: TABLE; Schema: certification; Owner: -
+-- Name: template_signers; Type: TABLE; Schema: certification; Owner: -
 --
 
-CREATE TABLE certification.firmantes (
+CREATE TABLE certification.template_signers (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
-    nombre_completo character varying(255) NOT NULL,
-    cargo character varying(150) NOT NULL,
-    dependencia character varying(255) NOT NULL,
-    activo boolean DEFAULT true,
-    es_principal boolean DEFAULT false,
-    firma_digital_url text,
+    full_name character varying(255) NOT NULL,
+    "position" character varying(150) NOT NULL,
+    department character varying(255) NOT NULL,
+    is_active boolean DEFAULT true,
+    is_primary boolean DEFAULT false,
+    signature_url text,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 
 
 --
--- Name: TABLE firmantes; Type: COMMENT; Schema: certification; Owner: -
+-- Name: TABLE template_signers; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON TABLE certification.firmantes IS 'Firmantes autorizados para certificados laborales';
-
-
---
--- Name: COLUMN firmantes.es_principal; Type: COMMENT; Schema: certification; Owner: -
---
-
-COMMENT ON COLUMN certification.firmantes.es_principal IS 'Indica si es el firmante principal por defecto';
+COMMENT ON TABLE certification.template_signers IS 'Signers available for labor-certificate templates';
 
 
 --
--- Name: COLUMN firmantes.firma_digital_url; Type: COMMENT; Schema: certification; Owner: -
+-- Name: COLUMN template_signers.is_primary; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.firmantes.firma_digital_url IS 'URL de la imagen de la firma digital (grafo)';
+COMMENT ON COLUMN certification.template_signers.is_primary IS 'Indicates whether this is the default template signer';
+
+
+--
+-- Name: COLUMN template_signers.signature_url; Type: COMMENT; Schema: certification; Owner: -
+--
+
+COMMENT ON COLUMN certification.template_signers.signature_url IS 'URL of the signer signature image';
 
 
 --
@@ -416,34 +416,6 @@ COMMENT ON TABLE certification.signers IS 'Authorized persons to sign certificat
 
 
 --
--- Name: stage_configuration; Type: TABLE; Schema: certification; Owner: -
---
-
-CREATE TABLE certification.stage_configuration (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    etapa character varying NOT NULL,
-    "diasHabiles" integer DEFAULT 30 NOT NULL,
-    descripcion text,
-    activo boolean DEFAULT true NOT NULL,
-    "createdAt" timestamp without time zone DEFAULT now() NOT NULL,
-    "updatedAt" timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: system_configuration; Type: TABLE; Schema: certification; Owner: -
---
-
-CREATE TABLE certification.system_configuration (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    "roleCapacities" jsonb DEFAULT '{}'::jsonb NOT NULL,
-    "notificationSettings" jsonb DEFAULT '{}'::jsonb NOT NULL,
-    "alertSettings" jsonb DEFAULT '{}'::jsonb NOT NULL,
-    "securitySettings" jsonb DEFAULT '{}'::jsonb NOT NULL
-);
-
-
---
 -- Name: template_config_changes; Type: TABLE; Schema: certification; Owner: -
 --
 
@@ -464,42 +436,42 @@ CREATE TABLE certification.template_config_changes (
 -- Name: TABLE template_config_changes; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON TABLE certification.template_config_changes IS 'Historial de cambios en la configuración de plantillas de certificados';
+COMMENT ON TABLE certification.template_config_changes IS 'Certificate-template configuration change history';
 
 
 --
 -- Name: COLUMN template_config_changes.change_type; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.template_config_changes.change_type IS 'Tipo de cambio: logo, firma, nombre, tipografia, contenido, titulo_cargo, multiple';
+COMMENT ON COLUMN certification.template_config_changes.change_type IS 'Template configuration change category';
 
 
 --
 -- Name: COLUMN template_config_changes.field_name; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.template_config_changes.field_name IS 'Campo específico modificado en la entidad';
+COMMENT ON COLUMN certification.template_config_changes.field_name IS 'Physical configuration field modified by the change';
 
 
 --
 -- Name: COLUMN template_config_changes.old_value; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.template_config_changes.old_value IS 'Valor anterior del campo';
+COMMENT ON COLUMN certification.template_config_changes.old_value IS 'Field value before the change';
 
 
 --
 -- Name: COLUMN template_config_changes.new_value; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.template_config_changes.new_value IS 'Nuevo valor del campo';
+COMMENT ON COLUMN certification.template_config_changes.new_value IS 'Field value after the change';
 
 
 --
 -- Name: COLUMN template_config_changes.metadata; Type: COMMENT; Schema: certification; Owner: -
 --
 
-COMMENT ON COLUMN certification.template_config_changes.metadata IS 'Información adicional en formato JSON';
+COMMENT ON COLUMN certification.template_config_changes.metadata IS 'Additional change metadata stored as JSON';
 
 
 --
@@ -534,22 +506,6 @@ ALTER TABLE ONLY certification.certificate_template_config ALTER COLUMN id SET D
 --
 
 ALTER TABLE ONLY certification.template_config_changes ALTER COLUMN id SET DEFAULT nextval('certification.template_config_changes_id_seq'::regclass);
-
-
---
--- Name: stage_configuration PK_stage_configuration; Type: CONSTRAINT; Schema: certification; Owner: -
---
-
-ALTER TABLE ONLY certification.stage_configuration
-    ADD CONSTRAINT "PK_stage_configuration" PRIMARY KEY (id);
-
-
---
--- Name: system_configuration PK_system_configuration; Type: CONSTRAINT; Schema: certification; Owner: -
---
-
-ALTER TABLE ONLY certification.system_configuration
-    ADD CONSTRAINT "PK_system_configuration" PRIMARY KEY (id);
 
 
 --
@@ -617,11 +573,11 @@ ALTER TABLE ONLY certification.certificates
 
 
 --
--- Name: firmantes firmantes_pkey; Type: CONSTRAINT; Schema: certification; Owner: -
+-- Name: template_signers template_signers_pkey; Type: CONSTRAINT; Schema: certification; Owner: -
 --
 
-ALTER TABLE ONLY certification.firmantes
-    ADD CONSTRAINT firmantes_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY certification.template_signers
+    ADD CONSTRAINT template_signers_pkey PRIMARY KEY (id);
 
 
 --
@@ -711,10 +667,10 @@ CREATE INDEX idx_certificates_status ON certification.certificates USING btree (
 
 
 --
--- Name: idx_firmantes_principal; Type: INDEX; Schema: certification; Owner: -
+-- Name: idx_template_signers_primary; Type: INDEX; Schema: certification; Owner: -
 --
 
-CREATE INDEX idx_firmantes_principal ON certification.firmantes USING btree (es_principal) WHERE (es_principal = true);
+CREATE INDEX idx_template_signers_primary ON certification.template_signers USING btree (is_primary) WHERE (is_primary = true);
 
 
 --
@@ -781,11 +737,11 @@ CREATE INDEX idx_validations_date ON certification.certificate_validations USING
 
 
 --
--- Name: certificate_template_config certificate_template_config_firmante_id_fkey; Type: FK CONSTRAINT; Schema: certification; Owner: -
+-- Name: certificate_template_config certificate_template_config_signer_id_fkey; Type: FK CONSTRAINT; Schema: certification; Owner: -
 --
 
 ALTER TABLE ONLY certification.certificate_template_config
-    ADD CONSTRAINT certificate_template_config_firmante_id_fkey FOREIGN KEY (firmante_id) REFERENCES certification.firmantes(id) ON DELETE SET NULL;
+    ADD CONSTRAINT certificate_template_config_signer_id_fkey FOREIGN KEY (signer_id) REFERENCES certification.template_signers(id) ON DELETE SET NULL;
 
 
 --
