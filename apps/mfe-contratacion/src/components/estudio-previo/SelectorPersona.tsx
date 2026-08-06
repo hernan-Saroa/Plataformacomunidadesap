@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { Check, ChevronDown, Search, X } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { Persona } from '../../types';
@@ -11,6 +11,16 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   invalido?: boolean;
+}
+
+/** Iniciales de nombre y apellido, como en los equipos de Control Interno. */
+function iniciales(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  // Primer nombre y primer apellido: en "Ana María Torres Ruiz" el apellido
+  // está en la posición 2, no en la última.
+  return (partes[0][0] + (partes[2]?.[0] ?? partes[1][0])).toUpperCase();
 }
 
 /**
@@ -95,9 +105,20 @@ export function SelectorPersona({
             invalido ? 'border-red-500' : 'border-gray-300 focus:border-[#003DA5]'
           }`}
       >
-        <span className={value ? 'text-slate-800 truncate' : 'text-gray-400'}>
-          {value || placeholder}
-        </span>
+        {value ? (
+          <span className="flex items-center gap-2 min-w-0">
+            <span
+              aria-hidden="true"
+              className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center
+                text-[10px] font-bold bg-[#003DA5] text-white"
+            >
+              {iniciales(value)}
+            </span>
+            <span className="text-slate-800 truncate">{value}</span>
+          </span>
+        ) : (
+          <span className="text-gray-400">{placeholder}</span>
+        )}
         <span className="flex items-center gap-1 flex-shrink-0">
           {value && !disabled && (
             // Limpiar sin tener que borrar a mano un nombre largo.
@@ -161,13 +182,33 @@ export function SelectorPersona({
                   role="option"
                   aria-selected={persona.nombre === value}
                   onClick={() => elegir(persona)}
-                  className="w-full px-3 py-1.5 text-left text-[12.5px] text-slate-700 hover:bg-blue-50 hover:text-[#003DA5]"
+                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-blue-50 ${
+                    persona.nombre === value ? 'bg-blue-50' : ''
+                  }`}
                 >
-                  <span className="block truncate">{persona.nombre}</span>
-                  {persona.email && (
-                    <span className="block text-[10.5px] text-gray-400 truncate">
-                      {persona.email}
+                  <span
+                    aria-hidden="true"
+                    className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center
+                      text-[10px] font-bold ${
+                        persona.nombre === value
+                          ? 'bg-[#003DA5] text-white'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}
+                  >
+                    {iniciales(persona.nombre)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12.5px] text-slate-700 truncate">
+                      {persona.nombre}
                     </span>
+                    {persona.email && (
+                      <span className="block text-[10.5px] text-gray-400 truncate">
+                        {persona.email}
+                      </span>
+                    )}
+                  </span>
+                  {persona.nombre === value && (
+                    <Check className="w-3.5 h-3.5 text-[#003DA5] flex-shrink-0" />
                   )}
                 </button>
               </li>
