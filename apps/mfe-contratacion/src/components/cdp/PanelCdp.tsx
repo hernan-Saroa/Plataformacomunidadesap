@@ -258,8 +258,10 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
                 Es inferior al valor estimado del proceso ({formatoPesos.format(valorEstimado)})
               </p>
             )}
-          <Origen />
-          <Siguiente texto="Continúa en 4.4, adjuntando el soporte al expediente." />
+          <Origen conSoporte={respaldo.soporteAdjunto} />
+          {!respaldo.soporteAdjunto && (
+            <Siguiente texto="Continúa en 4.4, adjuntando el soporte al expediente." />
+          )}
         </Marco>
       );
     }
@@ -403,10 +405,19 @@ const SinPermiso = ({ quien }: { quien: string }) => (
   </div>
 );
 
-const Origen = () => (
+/**
+ * De dónde sale el dato.
+ *
+ * No hay enlace con KLIC ni está previsto por ahora, así que el certificado se
+ * registra a mano y el soporte cargado en el expediente es la única evidencia
+ * de que existe. Quien consulta debe saberlo, y saber si esa evidencia está.
+ */
+const Origen = ({ conSoporte }: { conSoporte: boolean }) => (
   <p className="text-[10.5px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-    Registrado por la Dirección Financiera. Pendiente de validación automática con KLIC.
+    {conSoporte
+      ? 'Registrado por la Dirección Financiera. El soporte adjunto en 4.4 es la evidencia del certificado.'
+      : 'Registrado por la Dirección Financiera. Aún sin soporte adjunto: el certificado no tiene evidencia en el expediente.'}
   </p>
 );
 
