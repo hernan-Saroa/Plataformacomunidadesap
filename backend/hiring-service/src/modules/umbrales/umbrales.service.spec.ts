@@ -1,11 +1,15 @@
 import { BadRequestException } from '@nestjs/common';
 
+
 import {
   anioDeVigencia,
   convertirAPesos,
+  formatoPesos,
   resolverModalidad,
   TramoResoluble,
+  UmbralesService,
 } from './umbrales.service';
+import { Modalidad } from '../../entities/modalidad.entity';
 
 /**
  * La conversión decide contra qué cifra se compara el valor estimado de un
@@ -215,5 +219,86 @@ describe('resolverModalidad', () => {
     // Sin esto la interfaz solo podría decir "es mínima cuantía" sin el porqué.
     const r = resolverModalidad(45000000, TRAMOS);
     expect(r.tramo).toEqual({ modalidad: 'MINIMA_CUANTIA', inferior: 0, superior: MINIMA });
+  });
+});
+
+/**
+ * Segundo criterio de aceptación de EFDS-1147: superado el umbral, la
+ * licitación pública es obligatoria y no se admite una modalidad de menor
+ * cuantía. La validación vive en el backend porque es regla de negocio: quien
+ * llame la API saltándose el formulario debe encontrarse el mismo rechazo.
+ */
+describe('exigirModalidadPermitida', () => {
+  const LICITACION = 1623500000; // 1.000 SMMLV
+  const SUPERA = 5000000000;
+  const NO_SUPERA = 800000000;
+
+  const modalidad = (codigo: string, determinadaPorCuantia = true): Modalidad =>
+    ({ codigo, nombre: codigo, orden: 10, activa: true, determinadaPorCuantia }) as Modalidad;
+
+  /** Service con `sugerir` sustituido: la resolución ya se prueba aparte. */
+  const servicioCon = (forzosa: boolean) => {
+    const service = new UmbralesService({} as any);
+    jest.spyOn(service, 'sugerir').mockResolvedValue({
+      modalidad: forzosa ? 'LICITACION_PUBLICA' : 'ABREVIADA_MENOR_CUANTIA',
+      tramo: { modalidad: 'LICITACION_PUBLICA', inferior: LICITACION, superior: null },
+      forzosa,
+      advertencia: null,
+    });
+    return service;
+  };
+
+  it('rechaza una modalidad de menor cuantía cuando el valor supera el umbral', async () => {
+    await expect(
+      servicioCon(true).exigirModalidadPermitida(SUPERA, modalidad('MINIMA_CUANTIA')),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('explica el motivo y cita el umbral aplicado', async () => {
+    // Un "modalidad no permitida" a secas dejaría al gestor sin saber qué
+    // corregir ni por qué.
+    await expect(
+      servicioCon(true).exigirModalidadPermitida(SUPERA, modalidad('MINIMA_CUANTIA')),
+    ).rejects.toThrow(/supera el umbral de licitación pública/);
+
+    try {
+      await servicioCon(true).exigirModalidadPermitida(SUPERA, modalidad('MINIMA_CUANTIA'));
+      fail('debió rechazar');
+    } catch (e: any) {
+      expect(e.message).toContain(formatoPesos(SUPERA));
+      expect(e.message).toContain(formatoPesos(LICITACION));
+    }
+  });
+
+  it('deja pasar la licitación pública, que no puede rechazarse a sí misma', async () => {
+    await expect(
+      servicioCon(true).exigirModalidadPermitida(SUPERA, modalidad('LICITACION_PUBLICA')),
+    ).resolves.toBeUndefined();
+  });
+
+  it('no bloquea las modalidades que se eligen por causal', async () => {
+    // Contratación directa, 092/2017 y enajenación proceden cualquiera sea el
+    // monto: bloquearlas impediría contrataciones que la ley permite.
+    for (const codigo of ['CONTRATACION_DIRECTA', 'REGIMEN_ESPECIAL_092', 'ENAJENACION_SUBASTA']) {
+      await expect(
+        servicioCon(true).exigirModalidadPermitida(SUPERA, modalidad(codigo, false)),
+      ).resolves.toBeUndefined();
+    }
+  });
+
+  it('no interviene cuando la cuantía no obliga a licitación', async () => {
+    // Por debajo del umbral la sugerencia orienta pero no ata.
+    await expect(
+      servicioCon(false).exigirModalidadPermitida(NO_SUPERA, modalidad('MINIMA_CUANTIA')),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('formatoPesos', () => {
+  it('describe los valores ausentes en vez de imprimir NaN', () => {
+    // El mensaje de error no puede salir con "$NaN" delante del usuario.
+    expect(formatoPesos(null)).toBe('sin valor');
+    expect(formatoPesos(undefined)).toBe('sin valor');
+    expect(formatoPesos(Number.NaN)).toBe('sin valor');
   });
 });

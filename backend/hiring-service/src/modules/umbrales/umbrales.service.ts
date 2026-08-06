@@ -61,6 +61,16 @@ export function convertirAPesos(
  */
 export const MODALIDAD_FORZOSA = 'LICITACION_PUBLICA';
 
+/** Pesos colombianos sin decimales, para los mensajes de error. */
+export function formatoPesos(valor: number | null | undefined): string {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return 'sin valor';
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    maximumFractionDigits: 0,
+  }).format(valor);
+}
+
 /** Un tramo listo para comparar: límites ya en pesos. */
 export interface TramoResoluble {
   modalidad: string;
@@ -231,6 +241,34 @@ export class UmbralesService {
     }
 
     return resolverModalidad(valorEstimado, tramos);
+  }
+
+  /**
+   * Rechaza una modalidad de menor cuantía cuando el valor obliga a licitación
+   * pública (RF-EST-03, segundo criterio de EFDS-1147).
+   *
+   * Vive en el backend y no solo en el formulario a propósito: es una regla de
+   * negocio, no una ayuda de interfaz. Quien llame la API saltándose la
+   * pantalla debe encontrarse con el mismo rechazo.
+   */
+  async exigirModalidadPermitida(valorEstimado: number | null, modalidad: Modalidad) {
+    // Contratación directa, régimen especial 092 y enajenación por subasta se
+    // eligen por la causal: proceden cualquiera sea el monto, y bloquearlas
+    // aquí impediría contrataciones que la ley permite.
+    if (!modalidad.determinadaPorCuantia) return;
+
+    // La modalidad forzosa es ella misma: no puede rechazarse a sí misma.
+    if (modalidad.codigo === MODALIDAD_FORZOSA) return;
+
+    const sugerencia = await this.sugerir(valorEstimado);
+    if (!sugerencia.forzosa) return;
+
+    const piso = sugerencia.tramo?.inferior;
+    throw new BadRequestException(
+      `El valor estimado (${formatoPesos(valorEstimado)}) supera el umbral de licitación pública` +
+        (piso !== null && piso !== undefined ? ` (${formatoPesos(piso)})` : '') +
+        `: el proceso debe adelantarse por Licitación Pública y no admite ${modalidad.nombre}`,
+    );
   }
 
   /** Historial completo de una modalidad, del más reciente al más antiguo. */

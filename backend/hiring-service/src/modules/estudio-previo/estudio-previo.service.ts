@@ -20,6 +20,7 @@ import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
+import { UmbralesService } from '../umbrales/umbrales.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -73,7 +74,10 @@ function sha256(texto: string): string {
 
 @Injectable()
 export class EstudioPrevioService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly umbrales: UmbralesService,
+  ) {}
 
   // ------------------------------------------------------------- proceso ---
 
@@ -98,6 +102,12 @@ export class EstudioPrevioService {
           `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
         );
       }
+
+      // Antes de gastar consecutivos: si la cuantía obliga a licitación
+      // pública, el proceso no puede nacer con una modalidad de menor cuantía
+      // (RF-EST-03). Se valida aquí y no solo en el formulario porque es una
+      // regla de negocio, no una ayuda de interfaz.
+      await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
 
       // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
       const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);
