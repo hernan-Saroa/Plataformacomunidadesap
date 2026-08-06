@@ -44,7 +44,7 @@ export function esVacio(tipo: TipoCampo, valor: unknown): boolean {
 }
 
 /** JSON con claves ordenadas: el hash de un mismo contenido no debe variar. */
-function jsonCanonico(valor: any): string {
+export function jsonCanonico(valor: any): string {
   if (valor === null || typeof valor !== 'object') return JSON.stringify(valor);
   if (Array.isArray(valor)) return `[${valor.map(jsonCanonico).join(',')}]`;
   const claves = Object.keys(valor).sort();
