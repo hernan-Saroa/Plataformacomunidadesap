@@ -267,6 +267,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelCdp
+                numeral={actividadSeleccionada.numeral}
                 procesoId={procesoId}
                 valorEstimado={datos.proceso.valorEstimado}
                 onCambio={() => setTokenExpediente((t) => t + 1)}

@@ -94,6 +94,9 @@ export interface EstadoRespaldo {
   /** Lo que de verdad decide si el proceso avanza. */
   puedeAbrirse: boolean;
   motivo: string | null;
+  /** Lo resuelve el backend con los roles del token, no el cliente. */
+  puedeSolicitar: boolean;
+  puedeGestionar: boolean;
 }
 
 /** Actividad de la matriz, con el estado que lleva en este proceso. */

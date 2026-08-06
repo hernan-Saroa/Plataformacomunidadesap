@@ -1,20 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  Check,
-  FileText,
-  Info,
-  Landmark,
-  Paperclip,
-  Send,
-  Undo2,
-} from 'lucide-react';
+import { AlertTriangle, Check, FileText, Info, Landmark, Lock, Paperclip, Send, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoRespaldo } from '../../types';
 
 interface Props {
+  /** Cuál de las cuatro actividades del ciclo se está viendo. */
+  numeral: string;
   procesoId: string;
   valorEstimado?: number | null;
   onCambio?: () => void;
@@ -26,13 +19,6 @@ const formatoPesos = new Intl.NumberFormat('es-CO', {
   maximumFractionDigits: 0,
 });
 
-/** Cada paso del ciclo con su color; el estado se lee de un vistazo. */
-const PASOS = [
-  { estado: 'SOLICITADO', etiqueta: 'Solicitado', ayuda: 'El área radicó la solicitud' },
-  { estado: 'VERIFICADO', etiqueta: 'Verificado', ayuda: 'La Financiera confirmó que hay saldo' },
-  { estado: 'EXPEDIDO', etiqueta: 'Expedido', ayuda: 'La partida quedó apartada' },
-] as const;
-
 function aNumero(texto: string): number | null {
   const limpio = texto.replace(/[^\d]/g, '');
   if (!limpio) return null;
@@ -41,13 +27,13 @@ function aNumero(texto: string): number | null {
 }
 
 /**
- * Ciclo del CDP — etapa 4 (EFDS-1148).
+ * Una actividad del ciclo del CDP (etapa 4).
  *
- * Muestra en qué punto va el respaldo presupuestal y qué falta para que el
- * proceso pueda abrirse. Las acciones de la Dirección Financiera se ofrecen
- * siempre: si el rol no alcanza, el backend responde 403 y se dice.
+ * Cada numeral muestra su propio paso y no el ciclo entero: el riel es
+ * navegación, y si las cuatro llevaran al mismo contenido, seleccionar una u
+ * otra daría igual y el usuario no sabría dónde está parado.
  */
-export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
+export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props) {
   const [respaldo, setRespaldo] = useState<EstadoRespaldo | null>(null);
   const [cargando, setCargando] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
@@ -56,6 +42,7 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
   const [valorTexto, setValorTexto] = useState('');
   const [numero, setNumero] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [motivo, setMotivo] = useState('');
   const inputArchivo = useRef<HTMLInputElement>(null);
 
   const cargar = async () => {
@@ -73,7 +60,6 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
     cargar();
   }, [procesoId]);
 
-  /** Toda acción del ciclo recarga y avisa; el error del backend se muestra. */
   const ejecutar = async (accion: () => Promise<unknown>, exito: string) => {
     setTrabajando(true);
     try {
@@ -89,275 +75,382 @@ export function PanelCdp({ procesoId, valorEstimado, onCambio }: Props) {
   };
 
   if (cargando) {
-    return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando el CDP…</p>;
+    return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
   }
   if (!respaldo) {
     return <p className="text-xs text-red-600 m-0 px-4 py-3">No se pudo cargar el respaldo</p>;
   }
 
-  // Modalidad exenta: se dice y no se ofrece nada más. Un formulario vacío
-  // sugeriría que falta algo por hacer.
   if (!respaldo.aplica) {
     return (
-      <div className="p-4">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3 flex items-start gap-2.5">
-          <Check className="w-4 h-4 text-emerald-700 mt-0.5 flex-shrink-0" strokeWidth={3} />
-          <div>
-            <p className="text-[12.5px] font-bold text-emerald-800 m-0">
-              Esta modalidad no requiere CDP
-            </p>
-            <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
-              La entidad no compromete gasto, así que no hay disponibilidad presupuestal que
-              certificar. El proceso puede abrirse sin este requisito.
-            </p>
-          </div>
-        </div>
-      </div>
+      <Marco>
+        <Aviso tono="ok" titulo="Esta modalidad no requiere CDP">
+          La entidad no compromete gasto, así que no hay disponibilidad presupuestal que
+          certificar. El proceso puede abrirse sin este requisito.
+        </Aviso>
+      </Marco>
     );
   }
 
   const cdp = respaldo.cdp;
   const estado = cdp?.estado ?? null;
-  const indiceActual = PASOS.findIndex((p) => p.estado === estado);
-  const rechazado = estado === 'RECHAZADO';
 
-  return (
-    <div className="p-4 space-y-4">
-      {/* Ciclo: dónde va y qué sigue */}
-      <div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {PASOS.map((paso, i) => {
-            const cumplido = indiceActual >= i && !rechazado;
-            return (
-              <React.Fragment key={paso.estado}>
-                <div
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${
-                    cumplido ? 'bg-[#E0EDFF] text-[#003DA5]' : 'bg-slate-100 text-slate-400'
-                  }`}
-                  title={paso.ayuda}
-                >
-                  {cumplido && <Check className="w-3 h-3" strokeWidth={3} />}
-                  {paso.etiqueta}
-                </div>
-                {i < PASOS.length - 1 && <span className="text-slate-300 text-[11px]">›</span>}
-              </React.Fragment>
-            );
-          })}
-          {rechazado && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-red-50 text-red-700">
-              <Undo2 className="w-3 h-3" />
-              Rechazado
-            </span>
-          )}
+  // ------------------------------------------------------------ 4.1 ------
+  if (numeral === '4.1') {
+    if (cdp) {
+      return (
+        <Marco>
+          <Aviso tono="ok" titulo="Solicitud radicada">
+            {cdp.solicitadoPor ? `Radicada por ${cdp.solicitadoPor}. ` : ''}
+            Rubro {cdp.rubro ?? '—'} por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'}.
+          </Aviso>
+          <Siguiente texto="Continúa en 4.2, donde la Dirección Financiera verifica la disponibilidad." />
+        </Marco>
+      );
+    }
+    if (!respaldo.puedeSolicitar) {
+      return (
+        <Marco>
+          <SinPermiso quien="el área solicitante o la Dirección de Contratación" />
+        </Marco>
+      );
+    }
+    return (
+      <Marco>
+        <Titulo>Radicar la solicitud de CDP</Titulo>
+        <Ayuda>
+          El área solicitante pide el respaldo presupuestal indicando contra qué rubro y por cuánto.
+        </Ayuda>
+        <div className="grid grid-cols-2 gap-2.5">
+          <input
+            value={rubro}
+            onChange={(e) => setRubro(e.target.value)}
+            placeholder="Rubro presupuestal"
+            aria-label="Rubro presupuestal"
+            className={campo}
+          />
+          <input
+            value={valorTexto}
+            onChange={(e) => setValorTexto(e.target.value)}
+            inputMode="numeric"
+            placeholder="Valor a respaldar"
+            aria-label="Valor a respaldar"
+            className={`${campo} tabular-nums`}
+          />
         </div>
+        <Boton
+          disabled={trabajando || !rubro.trim() || aNumero(valorTexto) === null}
+          onClick={() =>
+            ejecutar(
+              () =>
+                contratacionService.solicitarCdp(procesoId, {
+                  rubro: rubro.trim(),
+                  valor: aNumero(valorTexto)!,
+                }),
+              'Solicitud de CDP radicada',
+            )
+          }
+          icono={<Send className="w-3.5 h-3.5" />}
+        >
+          Radicar solicitud
+        </Boton>
+      </Marco>
+    );
+  }
 
-        {!respaldo.puedeAbrirse && (
-          <p className="text-[11.5px] text-amber-800 m-0 mt-2.5 leading-relaxed">
-            {respaldo.motivo}. Sin el CDP expedido el proceso no puede abrirse.
-          </p>
-        )}
-      </div>
+  // ------------------------------------------------------------ 4.2 ------
+  if (numeral === '4.2') {
+    if (!cdp) return <Marco><Pendiente falta="4.1" texto="Aún no se ha radicado la solicitud de CDP." /></Marco>;
+    if (estado === 'RECHAZADO') {
+      return (
+        <Marco>
+          <Aviso tono="error" titulo="Solicitud rechazada">
+            {cdp.observaciones}
+          </Aviso>
+        </Marco>
+      );
+    }
+    if (estado !== 'SOLICITADO') {
+      return (
+        <Marco>
+          <Aviso tono="ok" titulo="Disponibilidad verificada">
+            La Dirección Financiera confirmó que hay saldo en el rubro {cdp.rubro ?? '—'}.
+          </Aviso>
+          <Siguiente texto="Continúa en 4.3, la expedición del certificado." />
+        </Marco>
+      );
+    }
+    if (!respaldo.puedeGestionar) {
+      return <Marco><SinPermiso quien="la Dirección Financiera" /></Marco>;
+    }
+    return (
+      <Marco>
+        <Titulo>Verificar la disponibilidad presupuestal</Titulo>
+        <Ayuda>
+          Confirma que el rubro {cdp.rubro ?? '—'} tiene saldo para cubrir{' '}
+          {cdp.valor !== null ? formatoPesos.format(cdp.valor) : 'el valor solicitado'}. Si no lo
+          hay, rechaza indicando el motivo.
+        </Ayuda>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Boton
+            disabled={trabajando}
+            onClick={() =>
+              ejecutar(() => contratacionService.verificarCdp(procesoId), 'Disponibilidad verificada')
+            }
+            icono={<Landmark className="w-3.5 h-3.5" />}
+          >
+            Confirmar disponibilidad
+          </Boton>
+        </div>
+        <div className="pt-2 border-t border-gray-200 space-y-2">
+          <Ayuda>¿No hay saldo? Indica el motivo para que el área sepa qué corregir.</Ayuda>
+          <input
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Motivo del rechazo"
+            aria-label="Motivo del rechazo"
+            className={campo}
+          />
+          <button
+            type="button"
+            disabled={trabajando || !motivo.trim()}
+            onClick={() =>
+              ejecutar(
+                () => contratacionService.rechazarCdp(procesoId, motivo.trim()),
+                'Solicitud rechazada',
+              )
+            }
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50 transition-all"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+            Rechazar solicitud
+          </button>
+        </div>
+      </Marco>
+    );
+  }
 
-      {/* Datos del CDP ya registrado */}
-      {cdp && (
-        <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-1.5">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-            <Dato etiqueta="Número" valor={cdp.numero ?? 'sin asignar'} />
-            <Dato
-              etiqueta="Valor"
-              valor={cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'}
-            />
-            <Dato etiqueta="Rubro" valor={cdp.rubro ?? '—'} />
-            <Dato etiqueta="Expedición" valor={cdp.fechaExpedicion ?? '—'} />
-          </div>
-
-          {cdp.observaciones && (
-            <p className="text-[11.5px] text-slate-700 m-0 pt-1.5 border-t border-gray-200 leading-relaxed">
-              {cdp.observaciones}
-            </p>
-          )}
-
-          {/* El CDP no alcanza el estimado: se avisa, no se impide. */}
+  // ------------------------------------------------------------ 4.3 ------
+  if (numeral === '4.3') {
+    if (!cdp || estado === 'SOLICITADO') {
+      return <Marco><Pendiente falta="4.2" texto="Falta que la Dirección Financiera verifique la disponibilidad." /></Marco>;
+    }
+    if (estado === 'RECHAZADO') {
+      return (
+        <Marco>
+          <Aviso tono="error" titulo="Solicitud rechazada">{cdp.observaciones}</Aviso>
+        </Marco>
+      );
+    }
+    if (estado === 'EXPEDIDO') {
+      return (
+        <Marco>
+          <Aviso tono="ok" titulo={`CDP ${cdp.numero} expedido`}>
+            Por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'} el{' '}
+            {cdp.fechaExpedicion}. La partida quedó apartada y el proceso ya puede abrirse.
+          </Aviso>
           {cdp.valor !== null &&
             valorEstimado !== null &&
             valorEstimado !== undefined &&
             cdp.valor < valorEstimado && (
-              <p className="text-[11px] font-bold text-amber-700 m-0 pt-1.5 flex items-start gap-1.5">
+              <p className="text-[11px] font-bold text-amber-700 m-0 flex items-start gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-                El CDP es inferior al valor estimado del proceso (
-                {formatoPesos.format(valorEstimado)})
+                Es inferior al valor estimado del proceso ({formatoPesos.format(valorEstimado)})
               </p>
             )}
-        </div>
-      )}
-
-      {/* De dónde viene el dato. Mientras no exista el enlace con KLIC, el
-          "expedido" es lo que declara la Financiera, no un hecho verificado.
-          Quien consulta el expediente debe saberlo. */}
-      {respaldo.expedido && (
-        <p className="text-[10.5px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
-          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-          Registrado por la Dirección Financiera. Pendiente de validación automática con KLIC.
-        </p>
-      )}
-
-      {/* Acciones según el punto del ciclo */}
-      {!cdp && (
-        <div className="space-y-2.5">
-          <p className="text-[11.5px] font-bold text-gray-600 m-0">Radicar la solicitud</p>
-          <div className="grid grid-cols-2 gap-2.5">
-            <input
-              value={rubro}
-              onChange={(e) => setRubro(e.target.value)}
-              placeholder="Rubro presupuestal"
-              aria-label="Rubro presupuestal"
-              className={campo}
-            />
-            <input
-              value={valorTexto}
-              onChange={(e) => setValorTexto(e.target.value)}
-              inputMode="numeric"
-              placeholder="Valor a respaldar"
-              aria-label="Valor a respaldar"
-              className={`${campo} tabular-nums`}
-            />
-          </div>
-          <button
-            type="button"
-            disabled={trabajando || !rubro.trim() || aNumero(valorTexto) === null}
-            onClick={() =>
-              ejecutar(
-                () =>
-                  contratacionService.solicitarCdp(procesoId, {
-                    rubro: rubro.trim(),
-                    valor: aNumero(valorTexto)!,
-                  }),
-                'Solicitud de CDP radicada',
-              )
-            }
-            className={boton}
-          >
-            <Send className="w-3.5 h-3.5" />
-            Radicar solicitud
-          </button>
-        </div>
-      )}
-
-      {estado === 'SOLICITADO' && (
-        <button
-          type="button"
-          disabled={trabajando}
-          onClick={() =>
-            ejecutar(() => contratacionService.verificarCdp(procesoId), 'Disponibilidad verificada')
-          }
-          className={boton}
-        >
-          <Landmark className="w-3.5 h-3.5" />
-          Verificar disponibilidad
-        </button>
-      )}
-
-      {estado === 'VERIFICADO' && (
-        <div className="space-y-2.5">
-          <p className="text-[11.5px] font-bold text-gray-600 m-0">Expedir el CDP</p>
-          <div className="grid grid-cols-3 gap-2.5">
-            <input
-              value={numero}
-              onChange={(e) => setNumero(e.target.value)}
-              placeholder="Número"
-              aria-label="Número del CDP"
-              className={campo}
-            />
-            <input
-              value={valorTexto}
-              onChange={(e) => setValorTexto(e.target.value)}
-              inputMode="numeric"
-              placeholder="Valor"
-              aria-label="Valor certificado"
-              className={`${campo} tabular-nums`}
-            />
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              aria-label="Fecha de expedición"
-              className={campo}
-            />
-          </div>
-          <button
-            type="button"
-            disabled={trabajando || !numero.trim() || aNumero(valorTexto) === null}
-            onClick={() =>
-              ejecutar(
-                () =>
-                  contratacionService.expedirCdp(procesoId, {
-                    numero: numero.trim(),
-                    valor: aNumero(valorTexto)!,
-                    fechaExpedicion: fecha,
-                  }),
-                'CDP expedido',
-              )
-            }
-            className={boton}
-          >
-            <Check className="w-3.5 h-3.5" strokeWidth={3} />
-            Registrar expedición
-          </button>
-        </div>
-      )}
-
-      {/* El soporte solo tras la expedición: prueba lo que el registro afirma */}
-      {estado === 'EXPEDIDO' && (
-        <div>
+          <Origen />
+          <Siguiente texto="Continúa en 4.4, adjuntando el soporte al expediente." />
+        </Marco>
+      );
+    }
+    if (!respaldo.puedeGestionar) {
+      return <Marco><SinPermiso quien="la Dirección Financiera" /></Marco>;
+    }
+    return (
+      <Marco>
+        <Titulo>Expedir el CDP</Titulo>
+        <Ayuda>
+          Registra el certificado emitido. Desde este momento la partida queda apartada para el
+          proceso y la apertura deja de estar bloqueada.
+        </Ayuda>
+        <div className="grid grid-cols-3 gap-2.5">
           <input
-            ref={inputArchivo}
-            type="file"
-            className="hidden"
-            accept=".pdf,.doc,.docx,.xls,.xlsx"
-            onChange={(e) =>
-              e.target.files?.[0] &&
-              ejecutar(
-                () => contratacionService.adjuntarCdp(procesoId, e.target.files![0]),
-                'Soporte del CDP adjuntado',
-              )
-            }
+            value={numero}
+            onChange={(e) => setNumero(e.target.value)}
+            placeholder="Número"
+            aria-label="Número del CDP"
+            className={campo}
           />
-          {respaldo.soporteAdjunto ? (
-            <p className="text-[11.5px] text-emerald-700 font-bold m-0 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5" />
-              Soporte adjunto al expediente
-            </p>
-          ) : (
-            <button
-              type="button"
-              disabled={trabajando}
-              onClick={() => inputArchivo.current?.click()}
-              className={botonSecundario}
-            >
-              <Paperclip className="w-3.5 h-3.5" />
-              Adjuntar el CDP al expediente
-            </button>
-          )}
+          <input
+            value={valorTexto}
+            onChange={(e) => setValorTexto(e.target.value)}
+            inputMode="numeric"
+            placeholder="Valor"
+            aria-label="Valor certificado"
+            className={`${campo} tabular-nums`}
+          />
+          <input
+            type="date"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+            aria-label="Fecha de expedición"
+            className={campo}
+          />
         </div>
-      )}
-    </div>
+        <Boton
+          disabled={trabajando || !numero.trim() || aNumero(valorTexto) === null}
+          onClick={() =>
+            ejecutar(
+              () =>
+                contratacionService.expedirCdp(procesoId, {
+                  numero: numero.trim(),
+                  valor: aNumero(valorTexto)!,
+                  fechaExpedicion: fecha,
+                }),
+              'CDP expedido',
+            )
+          }
+          icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+        >
+          Registrar expedición
+        </Boton>
+      </Marco>
+    );
+  }
+
+  // ------------------------------------------------------------ 4.4 ------
+  if (!cdp || estado !== 'EXPEDIDO') {
+    return <Marco><Pendiente falta="4.3" texto="El soporte se adjunta una vez expedido el CDP." /></Marco>;
+  }
+  if (respaldo.soporteAdjunto) {
+    return (
+      <Marco>
+        <Aviso tono="ok" titulo="Soporte adjunto al expediente">
+          El CDP queda consultable desde las etapas siguientes.
+        </Aviso>
+      </Marco>
+    );
+  }
+  return (
+    <Marco>
+      <Titulo>Adjuntar el CDP al expediente</Titulo>
+      <Ayuda>
+        Carga el certificado firmado para que quede consultable en las etapas siguientes. No frena
+        la apertura del proceso: eso lo habilitó la expedición.
+      </Ayuda>
+      <input
+        ref={inputArchivo}
+        type="file"
+        className="hidden"
+        accept=".pdf,.doc,.docx,.xls,.xlsx"
+        onChange={(e) =>
+          e.target.files?.[0] &&
+          ejecutar(
+            () => contratacionService.adjuntarCdp(procesoId, e.target.files![0]),
+            'Soporte del CDP adjuntado',
+          )
+        }
+      />
+      <button
+        type="button"
+        disabled={trabajando}
+        onClick={() => inputArchivo.current?.click()}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] disabled:opacity-50 transition-all"
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        Seleccionar archivo
+      </button>
+    </Marco>
   );
 }
 
-function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 m-0">{etiqueta}</p>
-      <p className="text-[12.5px] text-slate-800 m-0 tabular-nums truncate">{valor}</p>
+// ------------------------------------------------------------- piezas ----
+
+const Marco = ({ children }: { children: React.ReactNode }) => (
+  <div className="p-4 space-y-3">{children}</div>
+);
+
+const Titulo = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-[12.5px] font-bold text-slate-800 m-0">{children}</p>
+);
+
+const Ayuda = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">{children}</p>
+);
+
+/** Qué falta antes de poder trabajar esta actividad, y en cuál se hace. */
+const Pendiente = ({ falta, texto }: { falta: string; texto: string }) => (
+  <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3">
+    <p className="text-[12.5px] font-bold text-slate-700 m-0">Pendiente del paso {falta}</p>
+    <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">{texto}</p>
+  </div>
+);
+
+const Siguiente = ({ texto }: { texto: string }) => (
+  <p className="text-[11px] text-slate-500 m-0 leading-relaxed">{texto}</p>
+);
+
+/** El rol no alcanza: se dice quién puede, en vez de dejar un botón que da 403. */
+const SinPermiso = ({ quien }: { quien: string }) => (
+  <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 flex items-start gap-2.5">
+    <Lock className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+    <div>
+      <p className="text-[12.5px] font-bold text-slate-700 m-0">Este paso lo realiza {quien}</p>
+      <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
+        Puedes consultarlo, pero no ejecutarlo con tu rol.
+      </p>
     </div>
-  );
-}
+  </div>
+);
+
+const Origen = () => (
+  <p className="text-[10.5px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
+    <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+    Registrado por la Dirección Financiera. Pendiente de validación automática con KLIC.
+  </p>
+);
+
+const TONOS = {
+  ok: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+  error: 'border-red-200 bg-red-50 text-red-900',
+} as const;
+
+const Aviso = ({
+  tono,
+  titulo,
+  children,
+}: {
+  tono: keyof typeof TONOS;
+  titulo: string;
+  children: React.ReactNode;
+}) => (
+  <div className={`rounded-lg border px-3.5 py-3 flex items-start gap-2.5 ${TONOS[tono]}`}>
+    {tono === 'ok' ? (
+      <Check className="w-4 h-4 mt-0.5 flex-shrink-0" strokeWidth={3} />
+    ) : (
+      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+    )}
+    <div className="min-w-0">
+      <p className="text-[12.5px] font-bold m-0">{titulo}</p>
+      <p className="text-[11.5px] m-0 mt-0.5 leading-relaxed">{children}</p>
+    </div>
+  </div>
+);
+
+const Boton = ({
+  children,
+  icono,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => (
+  <button
+    type="button"
+    {...props}
+    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 transition-all"
+  >
+    {icono}
+    {children}
+  </button>
+);
 
 const campo =
   'w-full px-2.5 py-1.5 text-[12.5px] rounded-md border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20';
-
-const boton =
-  'inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 transition-all';
-
-const botonSecundario =
-  'inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] disabled:opacity-50 transition-all';

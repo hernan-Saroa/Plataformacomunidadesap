@@ -13,7 +13,11 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { HiringAccess } from '../../auth/hiring-access';
+import {
+  HiringAccess,
+  ROLES_GESTION_CDP,
+  ROLES_SOLICITUD_CDP,
+} from '../../auth/hiring-access';
 import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
 
 /** Actividad 4.4: el CDP cargado al expediente. */
@@ -226,10 +230,18 @@ export class CdpService {
    * Estado del respaldo presupuestal del proceso, en la forma que necesitan las
    * validaciones de apertura (EFDS-1340) y de contratación directa (EFDS-1341).
    */
-  async estadoRespaldo(procesoId: string, em?: EntityManager) {
+  async estadoRespaldo(procesoId: string, em?: EntityManager, acceso?: HiringAccess) {
     const manager = em ?? this.dataSource.manager;
     const proceso = await manager.getRepository(Proceso).findOne({ where: { id: procesoId } });
     if (!proceso) throw new NotFoundException('El proceso no existe');
+
+    // Quién puede hacer qué lo responde el backend, que ya tiene los roles del
+    // token. Si la pantalla lo dedujera por su cuenta, ofrecería botones que la
+    // API rechaza con un 403 cuando ya es tarde.
+    const permisos = {
+      puedeSolicitar: ROLES_SOLICITUD_CDP.some((r) => acceso?.roles.includes(r) ?? false),
+      puedeGestionar: ROLES_GESTION_CDP.some((r) => acceso?.roles.includes(r) ?? false),
+    };
 
     const aplica = await this.aplicaCdp(proceso.modalidad, em);
     if (!aplica) {
@@ -243,6 +255,7 @@ export class CdpService {
         soporteAdjunto: false,
         puedeAbrirse: true,
         motivo: null,
+        ...permisos,
       };
     }
 
@@ -265,6 +278,7 @@ export class CdpService {
         : cdp
           ? `El CDP del proceso está en estado ${cdp.estado} y aún no ha sido expedido`
           : 'El proceso no tiene CDP solicitado',
+      ...permisos,
     };
   }
 

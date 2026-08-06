@@ -70,8 +70,8 @@ export class CdpController {
     description:
       'Devuelve el CDP en curso, si la modalidad lo requiere y por qué el proceso todavía no puede abrirse.',
   })
-  estado(@Param('id', ParseUUIDPipe) procesoId: string) {
-    return this.service.estadoRespaldo(procesoId);
+  estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.estadoRespaldo(procesoId, undefined, getHiringAccess(req));
   }
 
   @Post()
