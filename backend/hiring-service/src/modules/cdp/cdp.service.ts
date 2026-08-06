@@ -38,6 +38,15 @@ export const NUMERAL_DOCUMENTOS = '5.1';
  */
 export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
 
+/**
+ * Etapas con actividades ya construidas.
+ *
+ * El riel muestra estas y no solo la etapa en curso: si únicamente listara la
+ * actual, un proceso en la etapa 3 no tendría por dónde llegar al CDP. Al
+ * entregar la etapa 5 se agrega aquí.
+ */
+export const ETAPAS_ENTREGADAS = [3, ETAPA_CDP];
+
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
   SOLICITADO: ['VERIFICADO', 'RECHAZADO', 'ANULADO'],
@@ -105,6 +114,55 @@ export class CdpService {
     const repo = (em ?? this.dataSource.manager).getRepository(Actividad);
     const filas = await repo.find({ where: { etapa: ETAPA_CDP }, order: { orden: 'ASC' } });
     return filas.map((a) => a.numeral);
+  }
+
+  /**
+   * Actividades de una etapa del proceso, con el estado de cada una.
+   *
+   * El riel de la interfaz se alimenta de aquí y no de una lista en el bundle:
+   * la matriz tiene 63 actividades y corregir el nombre de una no debería
+   * exigir un despliegue del microfrontend.
+   */
+  async actividadesDelProceso(procesoId: string, etapa?: number) {
+    const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
+
+    // Sin etapa se devuelve todo el camino entregado hasta hoy, no solo la
+    // etapa en curso: el riel tiene que dejar ver lo que sigue, o no habría
+    // cómo llegar al CDP desde un proceso que todavía está en la etapa 3.
+    const etapas = etapa !== undefined ? [etapa] : ETAPAS_ENTREGADAS;
+
+    const [actividades, excluidas, instanciadas] = await Promise.all([
+      this.dataSource.getRepository(Actividad).find({
+        where: { etapa: In(etapas), activa: true },
+        order: { etapa: 'ASC', orden: 'ASC' },
+      }),
+      proceso.modalidad
+        ? this.dataSource
+            .getRepository(ActividadExcluida)
+            .find({ where: { modalidad: proceso.modalidad } })
+        : Promise.resolve([]),
+      this.dataSource
+        .getRepository(ProcesoActividad)
+        .find({ where: { procesoId } }),
+    ]);
+
+    const noAplica = new Set(excluidas.map((e) => e.numeral));
+    const porNumeral = new Map(instanciadas.map((a) => [a.numeral, a]));
+
+    return actividades.map((a) => {
+      const propia = porNumeral.get(a.numeral);
+      return {
+        numeral: a.numeral,
+        nombre: a.nombre,
+        descripcion: a.descripcion,
+        etapa: a.etapa,
+        // Se listan tachadas en vez de ocultarse: que la matriz las marque NO
+        // para esta modalidad es información, no un hueco.
+        aplica: !noAplica.has(a.numeral),
+        estado: propia?.estado ?? null,
+        actualizadoEn: propia?.updatedAt ?? null,
+      };
+    });
   }
 
   /** Actividades de la etapa 4 que aplican a la modalidad del proceso. */
@@ -248,6 +306,14 @@ export class CdpService {
       }
 
       await this.instanciarEtapa4(em, proceso);
+
+      // Radicar la solicitud es lo que mete al proceso en la etapa 4. Sin esto
+      // el proceso se quedaría en la 3 con su CDP en curso, y el stepper
+      // mostraría una etapa que ya no es la que se está trabajando.
+      if (proceso.etapa < ETAPA_CDP) {
+        proceso.etapa = ETAPA_CDP;
+        await em.save(proceso);
+      }
 
       const cdp = await em.save(
         em.create(Cdp, {

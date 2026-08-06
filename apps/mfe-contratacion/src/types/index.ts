@@ -61,6 +61,53 @@ export interface SugerenciaModalidad {
   advertencia: string | null;
 }
 
+/**
+ * SOLICITADO → VERIFICADO → EXPEDIDO
+ *           ↘ RECHAZADO
+ */
+export type EstadoCdp = 'SOLICITADO' | 'VERIFICADO' | 'EXPEDIDO' | 'RECHAZADO' | 'ANULADO';
+
+export interface Cdp {
+  id: string;
+  numero: string | null;
+  valor: number | null;
+  rubro: string | null;
+  fechaExpedicion: string | null;
+  vigenciaFiscal: number | null;
+  estado: EstadoCdp;
+  observaciones: string | null;
+  documentoId: string | null;
+  solicitadoPor: string | null;
+  expedidoPor: string | null;
+  /** Avisa si el CDP no alcanza a cubrir el valor estimado del proceso. */
+  advertencia?: string | null;
+  cubreValorEstimado?: boolean;
+}
+
+export interface EstadoRespaldo {
+  /** False en las modalidades que no comprometen gasto. */
+  aplica: boolean;
+  cdp: Cdp | null;
+  /** Existe el certificado: la partida quedó apartada para el proceso. */
+  expedido: boolean;
+  soporteAdjunto: boolean;
+  /** Lo que de verdad decide si el proceso avanza. */
+  puedeAbrirse: boolean;
+  motivo: string | null;
+}
+
+/** Actividad de la matriz, con el estado que lleva en este proceso. */
+export interface ActividadProceso {
+  numeral: string;
+  nombre: string;
+  descripcion: string | null;
+  etapa: number;
+  /** False cuando la matriz la marca NO para la modalidad del proceso. */
+  aplica: boolean;
+  estado: EstadoActividad | null;
+  actualizadoEn: string | null;
+}
+
 export type UnidadUmbral = 'SMMLV' | 'PESOS';
 
 /** Umbral vigente de una modalidad, con su equivalente en pesos ya resuelto. */

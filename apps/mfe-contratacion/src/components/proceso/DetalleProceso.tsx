@@ -2,12 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstudioPrevio } from '../../types';
+import { ActividadProceso, EstudioPrevio } from '../../types';
 import { StepperEtapas, ETAPAS } from './StepperEtapas';
 import { ActividadEtapa } from './ListaActividades';
 import { RielActividades } from './RielActividades';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
+import { PanelCdp } from '../cdp/PanelCdp';
+
+/** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
+const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -62,6 +66,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
+  const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
   /** Documentos por numeral, para mostrar el contador en cada actividad. */
   const [adjuntosPorNumeral, setAdjuntosPorNumeral] = useState<Record<string, number>>({});
@@ -77,6 +83,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         setAdjuntosPorNumeral(conteo);
       })
       .catch(() => undefined);
+  }, [procesoId, tokenExpediente]);
+
+  useEffect(() => {
+    // Si falla se sigue con la lista de la etapa 3 que había antes: el riel no
+    // puede quedarse vacío por una consulta caída.
+    contratacionService
+      .actividades(procesoId)
+      .then(setCatalogo)
+      .catch(() => setCatalogo([]));
   }, [procesoId, tokenExpediente]);
 
   useEffect(() => {
@@ -127,20 +142,38 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     return 'Listo para enviar a revisión';
   };
 
-  // Solo el 3.1 tiene HU entregada; el resto se muestra como estructura.
-  const actividades: ActividadEtapa[] = ACTIVIDADES_ETAPA_3.map((act) => {
-    const adjuntos = adjuntosPorNumeral[act.numeral] ?? 0;
-    if (act.numeral === '3.1') {
-      return {
-        ...act,
-        estado: aprobado ? 'aprobada' : 'en_curso',
-        detalle: detalle31(),
-        disponible: true,
-        adjuntos,
-      };
-    }
-    return { ...act, estado: 'pendiente', disponible: false, adjuntos };
-  });
+  // El catálogo llega del backend desde EFDS-1342: la matriz tiene 63
+  // actividades y corregir el nombre de una no debería exigir un despliegue.
+  // Si la consulta falla se cae a la etapa 3, que es lo único que había antes.
+  const delCatalogo: ActividadEtapa[] = (catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3).map(
+    (act: any) => {
+      const adjuntos = adjuntosPorNumeral[act.numeral] ?? 0;
+      const aplica = act.aplica !== false;
+
+      if (act.numeral === '3.1') {
+        return {
+          ...act,
+          estado: aprobado ? 'aprobada' : 'en_curso',
+          detalle: detalle31(),
+          disponible: true,
+          adjuntos,
+        };
+      }
+      // Las actividades del CDP se trabajan aquí desde EFDS-1148.
+      if (NUMERALES_CDP.includes(act.numeral)) {
+        return {
+          ...act,
+          estado: act.estado === 'APROBADO' ? 'aprobada' : aplica ? 'en_curso' : 'pendiente',
+          disponible: aplica,
+          detalle: aplica ? undefined : 'No aplica a esta modalidad',
+          adjuntos,
+        };
+      }
+      return { ...act, estado: 'pendiente', disponible: false, adjuntos };
+    },
+  );
+
+  const actividades = delCatalogo;
 
   const nombreEtapa =
     ETAPAS.find((e) => e.numero === datos.proceso.etapa)?.nombre ?? `Etapa ${datos.proceso.etapa}`;
@@ -231,7 +264,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         />
 
         <div className="min-w-0">
-          {actividadSeleccionada?.numeral === '3.1' ? (
+          {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelCdp
+                procesoId={procesoId}
+                valorEstimado={datos.proceso.valorEstimado}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === '3.1' ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <ContenidoEstudioPrevio
                 procesoId={procesoId}

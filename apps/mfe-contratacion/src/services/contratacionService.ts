@@ -1,7 +1,10 @@
 import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
+  ActividadProceso,
   CamposFaltantesError,
+  Cdp,
   ConflictoError,
+  EstadoRespaldo,
   EstudioPrevio,
   Expediente,
   Modalidad,
@@ -72,6 +75,50 @@ export const contratacionService = {
    */
   sugerenciaModalidad: (valorEstimado: number, signal?: AbortSignal) =>
     pedir<SugerenciaModalidad>(`/umbrales/sugerencia?valorEstimado=${valorEstimado}`, { signal }),
+
+  // ------------------------------------------------------ etapa 4 · CDP ----
+
+  /** Actividades de una etapa con su estado; alimenta el riel. */
+  actividades: (procesoId: string, etapa?: number) =>
+    pedir<ActividadProceso[]>(
+      `/procesos/${procesoId}/actividades${etapa ? `?etapa=${etapa}` : ''}`,
+    ),
+
+  respaldoCdp: (procesoId: string) => pedir<EstadoRespaldo>(`/procesos/${procesoId}/cdp`),
+
+  solicitarCdp: (
+    procesoId: string,
+    datos: { rubro: string; valor: number; vigenciaFiscal?: number; observaciones?: string },
+  ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
+
+  verificarCdp: (procesoId: string) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, { method: 'POST' }),
+
+  expedirCdp: (
+    procesoId: string,
+    datos: { numero: string; valor: number; fechaExpedicion: string; vigenciaFiscal?: number },
+  ) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/expedir`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  rechazarCdp: (procesoId: string, observaciones: string) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  adjuntarCdp: (procesoId: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
+  },
+
+  abrirProceso: (procesoId: string) =>
+    pedir<{ id: string; radicado: string; etapa: number }>(`/procesos/${procesoId}/abrir`, {
+      method: 'POST',
+    }),
 
   // ------------------------------------------- administración de umbrales ---
 

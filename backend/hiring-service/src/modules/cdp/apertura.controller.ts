@@ -1,10 +1,15 @@
-import { Controller, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CdpService } from './cdp.service';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
-import { getHiringAccess, ROLES_SOLICITUD_CDP } from '../../auth/hiring-access';
+import {
+  getHiringAccess,
+  ROLES_GESTION_CDP,
+  ROLES_LECTURA_CONTRATACION,
+  ROLES_SOLICITUD_CDP,
+} from '../../auth/hiring-access';
 
 /**
  * Actividades de la etapa 5 que el CDP condiciona.
@@ -18,6 +23,21 @@ import { getHiringAccess, ROLES_SOLICITUD_CDP } from '../../auth/hiring-access';
 @Controller('procesos')
 export class AperturaController {
   constructor(private readonly cdp: CdpService) {}
+
+  @Get(':id/actividades')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_GESTION_CDP)
+  @ApiOperation({
+    summary: 'Actividades de una etapa del proceso, con su estado',
+    description:
+      'Alimenta el riel de la interfaz. Por omisión devuelve las de la etapa en que va el proceso; con ?etapa=N, las de esa etapa.',
+  })
+  actividades(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Query('etapa') etapa?: string,
+  ) {
+    return this.cdp.actividadesDelProceso(procesoId, etapa ? Number(etapa) : undefined);
+  }
 
   @Post(':id/documentos/iniciar')
   @UseGuards(RolesGuard)
