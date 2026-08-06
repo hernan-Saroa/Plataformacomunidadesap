@@ -1,10 +1,18 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
+import { HiringAccess } from '../../auth/hiring-access';
+import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
@@ -171,5 +179,183 @@ export class CdpService {
     cdp.estado = hacia;
     cdp.updatedAt = new Date();
     return cdp;
+  }
+
+  // --------------------------------------------------------- ciclo (4.1-4.3)
+
+  /**
+   * Actividad 4.1: el área solicitante radica la solicitud formal.
+   *
+   * Aquí nacen también las actividades de la etapa, porque es el momento en que
+   * el proceso entra de verdad a la etapa 4.
+   */
+  async solicitar(procesoId: string, dto: SolicitarCdpDto, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+
+      if (!(await this.aplicaCdp(proceso.modalidad, em))) {
+        throw new BadRequestException(
+          'Esta modalidad no requiere CDP: la entidad no compromete gasto',
+        );
+      }
+
+      const enCurso = await this.delProceso(procesoId, em);
+      if (enCurso) {
+        throw new ConflictException(
+          `El proceso ya tiene un CDP en estado ${enCurso.estado}`,
+        );
+      }
+
+      await this.instanciarEtapa4(em, proceso);
+
+      const cdp = await em.save(
+        em.create(Cdp, {
+          procesoId,
+          rubro: dto.rubro,
+          valor: dto.valor,
+          vigenciaFiscal: dto.vigenciaFiscal ?? new Date().getFullYear(),
+          observaciones: dto.observaciones ?? null,
+          estado: 'SOLICITADO' as const,
+          solicitadoPor: acceso.userName,
+          solicitadoAt: new Date(),
+        }),
+      );
+
+      await this.cerrarActividad(em, procesoId, '4.1', acceso);
+      await this.traza(em, procesoId, cdp.id, 'SOLICITAR', acceso, {
+        rubro: dto.rubro,
+        valor: dto.valor,
+      });
+
+      return this.conAdvertencia(cdp, proceso);
+    });
+  }
+
+  /** Actividad 4.2: la Dirección Financiera verifica la disponibilidad. */
+  async verificar(procesoId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      const cdp = await this.exigirCdp(em, procesoId);
+
+      await this.transicionar(cdp, 'VERIFICADO');
+      await em.save(cdp);
+
+      await this.cerrarActividad(em, procesoId, '4.2', acceso);
+      await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso);
+
+      return this.conAdvertencia(cdp, proceso);
+    });
+  }
+
+  /**
+   * Actividad 4.3: se expide el CDP y queda afectado al proceso.
+   *
+   * Mientras no exista la integración con KLIC (EFDS-1343), el número y el
+   * valor se registran a mano con el soporte que expide la Financiera.
+   */
+  async expedir(procesoId: string, dto: ExpedirCdpDto, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      const cdp = await this.exigirCdp(em, procesoId);
+
+      await this.transicionar(cdp, 'EXPEDIDO');
+      cdp.numero = dto.numero;
+      cdp.valor = dto.valor;
+      cdp.fechaExpedicion = dto.fechaExpedicion;
+      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? cdp.vigenciaFiscal;
+      cdp.expedidoPor = acceso.userName;
+      await em.save(cdp);
+
+      await this.cerrarActividad(em, procesoId, '4.3', acceso);
+      await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
+        numero: dto.numero,
+        valor: dto.valor,
+      });
+
+      return this.conAdvertencia(cdp, proceso);
+    });
+  }
+
+  /** No hay disponibilidad en el rubro: el ciclo se cierra con su motivo. */
+  async rechazar(procesoId: string, dto: RechazarCdpDto, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      const cdp = await this.exigirCdp(em, procesoId);
+
+      await this.transicionar(cdp, 'RECHAZADO');
+      cdp.observaciones = dto.observaciones;
+      await em.save(cdp);
+
+      await this.traza(em, procesoId, cdp.id, 'RECHAZAR', acceso, {
+        observaciones: dto.observaciones,
+      });
+
+      return this.conAdvertencia(cdp, proceso);
+    });
+  }
+
+  // ------------------------------------------------------------- auxiliares
+
+  private async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    if (!proceso) throw new NotFoundException('El proceso no existe');
+    return proceso;
+  }
+
+  private async exigirCdp(em: EntityManager, procesoId: string): Promise<Cdp> {
+    const cdp = await this.delProceso(procesoId, em);
+    if (!cdp) {
+      throw new NotFoundException(
+        'El proceso no tiene una solicitud de CDP en curso',
+      );
+    }
+    return cdp;
+  }
+
+  /**
+   * Marca cumplida la actividad del riel.
+   *
+   * Si no existe no se crea al vuelo: significaría que la modalidad no la
+   * incluye, y darla por cumplida falsearía el expediente.
+   */
+  private async cerrarActividad(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+    acceso: HiringAccess,
+  ) {
+    const actividad = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral },
+    });
+    if (!actividad) return;
+    actividad.estado = 'APROBADO';
+    actividad.revisadoPor = acceso.userName;
+    actividad.revisadoAt = new Date();
+    await em.save(actividad);
+  }
+
+  /** El CDP con el aviso de si alcanza a cubrir el valor estimado. */
+  private conAdvertencia(cdp: Cdp, proceso: Proceso) {
+    const { cubre, advertencia } = cdpCubreElProceso(cdp.valor, proceso.valorEstimado);
+    return { ...cdp, cubreValorEstimado: cubre, advertencia };
+  }
+
+  private traza(
+    em: EntityManager,
+    procesoId: string,
+    cdpId: string,
+    accion: AccionTraza,
+    acceso: HiringAccess,
+    detalle?: Record<string, any>,
+  ) {
+    return em.save(Trazabilidad, {
+      procesoId,
+      entidad: 'cdp',
+      entidadId: cdpId,
+      accion,
+      detalle,
+      usuarioId: acceso.userId,
+      usuarioNombre: acceso.userName,
+    } as Partial<Trazabilidad>);
   }
 }

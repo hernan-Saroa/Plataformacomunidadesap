@@ -6,6 +6,8 @@
 export const ROL_GESTOR_CONTRATACION = 'GESTOR_CONTRATACION';
 export const ROL_REVISOR_CONTRATACION = 'REVISOR_CONTRATACION';
 export const ROL_DIRECTOR_CONTRATACION = 'DIRECTOR_CONTRATACION';
+/** Dirección Financiera: verifica la disponibilidad y expide el CDP. */
+export const ROL_ESTRUCTURADOR_FINANCIERO = 'ESTRUCTURADOR_FINANCIERO';
 export const ROL_SUPER_ADMIN = 'SUPER_ADMIN';
 
 /** Roles que pueden escribir sobre un proceso en etapa de estudios previos. */
@@ -36,6 +38,22 @@ export const ROLES_REVISION_ESTUDIO_PREVIO = [
  * Contratación. El revisor aprueba procesos, no reescribe la regla.
  */
 export const ROLES_ADMIN_UMBRALES = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
+/**
+ * Quién decide sobre el CDP (etapa 4).
+ *
+ * La solicitud la radica el área solicitante, pero verificar la disponibilidad
+ * y expedir el certificado es competencia de la Dirección Financiera: es ella
+ * la que compromete el presupuesto de la entidad.
+ */
+export const ROLES_GESTION_CDP = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
+
+/** Quién puede radicar la solicitud de CDP (actividad 4.1). */
+export const ROLES_SOLICITUD_CDP = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
 
 export interface HiringUser {
   userId?: string;
