@@ -113,6 +113,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   const [errorModalidades, setErrorModalidades] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroModalidad, setFiltroModalidad] = useState('');
   const [pagina, setPagina] = useState(1);
   const [porPagina, setPorPagina] = useState(20);
   // La lista responde "qué hay"; el tablero, "dónde está represado". Se recuerda
@@ -200,13 +201,41 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
     }
   };
 
+  /**
+   * Modalidades presentes en los procesos, con cuántos hay de cada una.
+   *
+   * Se arma de lo que existe y no del catálogo completo: ofrecer las once
+   * llenaría el selector de opciones que no devuelven nada.
+   */
+  const modalidadesPresentes = useMemo(() => {
+    const conteo = new Map<string, { nombre: string; n: number }>();
+    for (const p of procesos) {
+      if (!p.modalidad) continue;
+      const previo = conteo.get(p.modalidad);
+      conteo.set(p.modalidad, {
+        nombre: p.modalidadNombre ?? p.modalidad,
+        n: (previo?.n ?? 0) + 1,
+      });
+    }
+    return [...conteo.entries()]
+      .map(([codigo, v]) => ({ codigo, ...v }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [procesos]);
+
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return procesos;
-    return procesos.filter(
-      (p) => p.radicado.toLowerCase().includes(q) || p.objeto.toLowerCase().includes(q),
-    );
-  }, [procesos, busqueda]);
+    return procesos.filter((p) => {
+      if (filtroModalidad && p.modalidad !== filtroModalidad) return false;
+      if (!q) return true;
+      // La modalidad entra en la búsqueda: es lo que se lee en cada fila, y
+      // buscar lo que se ve es lo que la gente espera.
+      return (
+        p.radicado.toLowerCase().includes(q) ||
+        p.objeto.toLowerCase().includes(q) ||
+        (p.modalidadNombre ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [procesos, busqueda, filtroModalidad]);
 
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / porPagina));
 
@@ -214,7 +243,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   // la tabla se vería vacía teniendo resultados. Se vuelve a la primera.
   useEffect(() => {
     setPagina(1);
-  }, [busqueda, porPagina]);
+  }, [busqueda, filtroModalidad, porPagina]);
 
   const visibles = useMemo(
     () => filtrados.slice((pagina - 1) * porPagina, pagina * porPagina),
@@ -381,7 +410,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
               type="search"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por radicado u objeto…"
+              placeholder="Buscar por radicado, objeto o modalidad…"
               aria-label="Buscar procesos"
               className="w-full pl-9 pr-3 py-2 text-[13px] rounded-lg border border-slate-200 bg-slate-50
                 placeholder:text-slate-400 transition-colors
@@ -390,9 +419,32 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
             />
           </div>
 
-          {/* El contador solo aparece cuando filtra: sin búsqueda repetiría el
+          {/* La modalidad decide qué actividades recorre el proceso, así que es
+              el corte natural del listado: "muéstrame las licitaciones". */}
+          {modalidadesPresentes.length > 1 && (
+            <select
+              value={filtroModalidad}
+              onChange={(e) => setFiltroModalidad(e.target.value)}
+              aria-label="Filtrar por modalidad"
+              className={`px-2.5 py-2 text-[12.5px] rounded-lg border bg-white transition-colors
+                focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/15 ${
+                  filtroModalidad
+                    ? 'border-[#003DA5] text-[#003DA5] font-bold'
+                    : 'border-slate-200 text-slate-600'
+                }`}
+            >
+              <option value="">Todas las modalidades</option>
+              {modalidadesPresentes.map((m) => (
+                <option key={m.codigo} value={m.codigo}>
+                  {m.nombre} ({m.n})
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* El contador solo aparece cuando filtra: sin filtro repetiría el
               total que ya está en el pie de la tabla. */}
-          {busqueda.trim() && (
+          {(busqueda.trim() || filtroModalidad) && (
             <span className="text-[11px] font-bold text-slate-500 tabular-nums" aria-live="polite">
               {filtrados.length} de {procesos.length}
             </span>
@@ -441,16 +493,24 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
       ) : filtrados.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-xl">
           <EmptyState
-            variant={busqueda ? 'search' : 'default'}
-            icon={busqueda ? Search : FolderOpen}
-            title={busqueda ? 'Sin resultados' : 'Aún no hay procesos'}
+            variant={busqueda || filtroModalidad ? 'search' : 'default'}
+            icon={busqueda || filtroModalidad ? Search : FolderOpen}
+            title={busqueda || filtroModalidad ? 'Sin resultados' : 'Aún no hay procesos'}
             description={
-              busqueda
-                ? 'Prueba con otro radicado u objeto.'
-                : 'Crea el primero para elaborar su estudio previo.'
+              // Se distingue el filtro de la búsqueda: si el vacío lo causa la
+              // modalidad, decir "prueba con otro radicado" no ayuda en nada.
+              filtroModalidad && !busqueda.trim()
+                ? 'No hay procesos con esa modalidad.'
+                : busqueda
+                  ? 'Prueba con otro radicado, objeto o modalidad.'
+                  : 'Crea el primero para elaborar su estudio previo.'
             }
             action={
-              busqueda ? undefined : { label: 'Nuevo proceso', onClick: () => setCreando(true), icon: Plus }
+              filtroModalidad
+                ? { label: 'Quitar filtro', onClick: () => setFiltroModalidad('') }
+                : busqueda
+                  ? undefined
+                  : { label: 'Nuevo proceso', onClick: () => setCreando(true), icon: Plus }
             }
           />
         </div>
