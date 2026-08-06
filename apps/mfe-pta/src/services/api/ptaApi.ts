@@ -518,6 +518,43 @@ export async function aprobarComponente(ptaId: string, data: {
   }
 }
 
+export type AprobarComponentesLoteResultado = {
+  ptaId: string;
+  componente: string;
+  estado: 'aprobado' | 'omitido' | 'fallido';
+  motivo?: string;
+};
+
+export async function aprobarComponentesLote(data: {
+  ptaIds: string[];
+  componentes: string[];
+  comentarios?: string;
+  // Mismos campos que aprobarComponente(): el backend prioriza la identidad del
+  // token (auth.userId/name) para aprobadorId/aprobadorNombre, pero aprobadorRol
+  // sí se respeta desde el body — se envía para que la trazabilidad (historial,
+  // panel de detalle) muestre el mismo rótulo de rol que dejaría la aprobación
+  // individual, en vez de caer al fallback genérico de roles del token.
+  aprobadorId?: string;
+  aprobadorNombre?: string;
+  aprobadorRol?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/aprobar-componentes-lote`, data);
+    const normalized = normalizeResult<{
+      resumen: { total: number; aprobados: number; omitidos: number; fallidos: number };
+      resultados: AprobarComponentesLoteResultado[];
+    }>(raw, { resumen: { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
+    return { success: normalized.success, data: normalized.data };
+  } catch (error) {
+    console.error('[mfe-pta][aprobarComponentesLote] Error:', error);
+    return {
+      success: false,
+      data: { resumen: { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
+      message: (error as any)?.message || 'Error al aprobar los componentes seleccionados',
+    };
+  }
+}
+
 export async function getComponentesRevision(ptaId: string) {
   try {
     const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-revision`);
