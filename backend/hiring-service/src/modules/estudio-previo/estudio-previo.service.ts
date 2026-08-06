@@ -185,6 +185,12 @@ export class EstudioPrevioService {
       },
     });
 
+    // Una sola lectura del catálogo para todo el listado, en vez de una por
+    // proceso: son once filas y no cambian dentro de la misma respuesta.
+    const nombreModalidad = new Map(
+      (await this.dataSource.getRepository(Modalidad).find()).map((m) => [m.codigo, m.nombre]),
+    );
+
     const porProceso = new Map<string, ProcesoActividad[]>();
     for (const a of actividades) {
       if (!porProceso.has(a.procesoId)) porProceso.set(a.procesoId, []);
@@ -201,6 +207,9 @@ export class EstudioPrevioService {
 
       return {
         ...proceso,
+        modalidadNombre: proceso.modalidad
+          ? (nombreModalidad.get(proceso.modalidad) ?? proceso.modalidad)
+          : null,
         // Estado del numeral 3.1 y cuánto le falta para poder enviarse
         estudioPrevio: estudioPrevio
           ? {
@@ -224,12 +233,22 @@ export class EstudioPrevioService {
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
     const campos = await this.camposDe(this.dataSource.manager);
 
+    // El nombre y no solo el código: la pantalla debe decir "Mínima Cuantía",
+    // no "MINIMA_CUANTIA", y resolverlo en el cliente obligaría a pedir el
+    // catálogo entero solo para traducir una palabra.
+    const modalidad = proceso.modalidad
+      ? await this.dataSource
+          .getRepository(Modalidad)
+          .findOne({ where: { codigo: proceso.modalidad } })
+      : null;
+
     return {
       proceso: {
         id: proceso.id,
         radicado: proceso.radicado,
         objeto: proceso.objeto,
         modalidad: proceso.modalidad,
+        modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
         valorEstimado: proceso.valorEstimado,
         etapa: proceso.etapa,
         expediente: proceso.expediente?.numeroExpediente,

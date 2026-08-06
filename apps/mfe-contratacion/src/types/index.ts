@@ -106,6 +106,8 @@ export interface ProcesoResumen {
   radicado: string;
   objeto: string;
   modalidad?: string | null;
+  /** Nombre legible; el código crudo no se muestra nunca. */
+  modalidadNombre?: string | null;
   /** Cuantía del proceso, en pesos. Es dato del proceso, no del estudio previo. */
   valorEstimado?: number | null;
   etapa: number;
@@ -128,6 +130,7 @@ export interface EstudioPrevio {
     radicado: string;
     objeto: string;
     modalidad?: string | null;
+    modalidadNombre?: string | null;
     /** Se elige al crear el proceso; el formulario lo muestra en solo lectura. */
     valorEstimado?: number | null;
     etapa: number;

@@ -521,7 +521,18 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                       {estado.detalle}
                     </span>
 
+                    {/* La modalidad decide qué actividades recorre el proceso;
+                        sin verla, dos procesos distintos parecen el mismo. */}
                     <p className="text-[11px] text-gray-400 m-0 mt-1.5 tabular-nums">
+                      {p.modalidadNombre || p.modalidad ? (
+                        <span className="font-bold text-[#003DA5]">
+                          {p.modalidadNombre ?? p.modalidad}
+                        </span>
+                      ) : null}
+                      {(p.modalidadNombre || p.modalidad) && ' · '}
+                      {typeof p.valorEstimado === 'number'
+                        ? `${formatoPesos.format(p.valorEstimado)} · `
+                        : ''}
                       Radicado {new Date(p.fechaRadicacion).toLocaleDateString('es-CO')}
                       {p.expediente ? ` · ${p.expediente.numeroExpediente}` : ''}
                     </p>

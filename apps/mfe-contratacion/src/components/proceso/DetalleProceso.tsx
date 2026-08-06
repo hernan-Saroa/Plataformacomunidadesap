@@ -158,6 +158,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     .filter(Boolean)
     .join(' · ');
 
+  // La modalidad manda sobre todo el flujo —determina qué actividades aplican—
+  // así que va destacada y no perdida en la línea de datos menores.
+  const modalidad = datos.proceso.modalidadNombre ?? datos.proceso.modalidad ?? null;
+
   return (
     <div className="space-y-3 md:space-y-4">
       {/* Cabecera del proceso */}
@@ -184,6 +188,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               <h2 className="text-[15px] font-bold text-slate-900 m-0 mt-0.5 leading-snug">
                 {datos.proceso.objeto}
               </h2>
+              {modalidad && (
+                <span className="inline-block mt-1.5 px-2 py-0.5 rounded-md bg-[#E0EDFF] text-[#003DA5] text-[11px] font-bold">
+                  {modalidad}
+                </span>
+              )}
               {ficha && (
                 <p className="text-[11px] text-gray-400 m-0 mt-1 tabular-nums">{ficha}</p>
               )}
