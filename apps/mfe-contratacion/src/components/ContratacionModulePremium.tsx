@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
 import { Briefcase, FileSignature, ClipboardCheck } from 'lucide-react';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
+
+// Maquetación propia del módulo. Va aquí, en el componente expuesto por Module
+// Federation, para que entre en el bundle del microfrontend: la plataforma
+// genera Tailwind escaneando solo el shell, así que los valores arbitrarios
+// que el shell no use no existen. Ver el encabezado de layout.css.
+import '../styles/layout.css';
 
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { VistaProcesos } from './procesos/VistaProcesos';
@@ -89,6 +96,9 @@ export default function ContratacionModulePremium() {
       }}
     >
       {contenido()}
+      {/* Misma configuración que gestión legal y control interno, para que las
+          notificaciones se comporten igual en toda la plataforma. */}
+      <Toaster position="bottom-right" richColors closeButton duration={4000} />
     </ModuleLayout>
   );
 }

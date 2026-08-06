@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EstudioPrevio } from '../../types';
 import { StepperEtapas, ETAPAS } from './StepperEtapas';
 import { ActividadEtapa } from './ListaActividades';
-import { AcordeonEtapas } from './AcordeonEtapas';
+import { RielActividades } from './RielActividades';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
 
@@ -43,6 +43,12 @@ const ACTIVIDADES_ETAPA_3 = [
   },
 ];
 
+const formatoPesos = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 0,
+});
+
 interface Props {
   procesoId: string;
   onVolver: () => void;
@@ -55,6 +61,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
+  const [expedienteAbierto, setExpedienteAbierto] = useState(false);
   const [tokenExpediente, setTokenExpediente] = useState(0);
   /** Documentos por numeral, para mostrar el contador en cada actividad. */
   const [adjuntosPorNumeral, setAdjuntosPorNumeral] = useState<Record<string, number>>({});
@@ -135,14 +142,21 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     return { ...act, estado: 'pendiente', disponible: false, adjuntos };
   });
 
-  // Las 10 etapas con sus actividades. Solo la 3 tiene actividades definidas
-  // hoy; las demás se listan vacías hasta que lleguen sus HUs.
-  const etapasConActividades = ETAPAS.map((e) => ({
-    numero: e.numero,
-    nombre: e.nombre,
-    fueraDeAlcance: e.fueraDeAlcance,
-    actividades: e.numero === 3 ? actividades : [],
-  }));
+  const nombreEtapa =
+    ETAPAS.find((e) => e.numero === datos.proceso.etapa)?.nombre ?? `Etapa ${datos.proceso.etapa}`;
+
+  const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
+
+  // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
+  // proceso, no del estudio previo, y de ella depende la modalidad aplicable.
+  const ficha = [
+    datos.proceso.expediente ? `Expediente ${datos.proceso.expediente}` : null,
+    typeof datos.proceso.valorEstimado === 'number'
+      ? `Valor estimado ${formatoPesos.format(datos.proceso.valorEstimado)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -170,29 +184,46 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               <h2 className="text-[15px] font-bold text-slate-900 m-0 mt-0.5 leading-snug">
                 {datos.proceso.objeto}
               </h2>
-              {datos.proceso.expediente && (
-                <p className="text-[11px] text-gray-400 m-0 mt-1 tabular-nums">
-                  Expediente {datos.proceso.expediente}
-                </p>
+              {ficha && (
+                <p className="text-[11px] text-gray-400 m-0 mt-1 tabular-nums">{ficha}</p>
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <StepperEtapas etapaActual={datos.proceso.etapa} />
+
+            <button
+              type="button"
+              onClick={() => setExpedienteAbierto((v) => !v)}
+              aria-expanded={expedienteAbierto}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                border transition-colors ${
+                  expedienteAbierto
+                    ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                    : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                }`}
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              Expediente
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Actividades de la etapa + expediente */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3 md:gap-4 items-start">
-        <AcordeonEtapas
-          etapas={etapasConActividades}
-          etapaActual={datos.proceso.etapa}
-          onAbrirActividad={(numeral) => setExpandida((a) => (a === numeral ? null : numeral))}
-          expandida={expandida}
-          contenidoExpandido={
-            expandida === '3.1' ? (
+      {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
+      <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
+        <RielActividades
+          etapa={datos.proceso.etapa}
+          nombreEtapa={nombreEtapa}
+          actividades={actividades}
+          seleccionada={expandida}
+          onSeleccionar={setExpandida}
+        />
+
+        <div className="min-w-0">
+          {actividadSeleccionada?.numeral === '3.1' ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <ContenidoEstudioPrevio
                 procesoId={procesoId}
                 onCambio={() => {
@@ -203,17 +234,35 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                   setTokenExpediente((t) => t + 1);
                 }}
               />
-            ) : null
-          }
-        />
-
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <PanelExpediente
-            procesoId={procesoId}
-            editable={!aprobado && !enRevision}
-            recargarToken={tokenExpediente}
-          />
+            </div>
+          ) : (
+            /* El riel deja pulsar solo lo disponible, pero al entrar sin
+               actividad elegida hay que decir qué hacer. */
+            <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
+              <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
+              <p className="text-sm font-bold text-gray-600 m-0">
+                {actividadSeleccionada
+                  ? `${actividadSeleccionada.numeral} · ${actividadSeleccionada.nombre}`
+                  : 'Elige una actividad'}
+              </p>
+              <p className="text-xs text-gray-400 m-0 mt-1">
+                {actividadSeleccionada
+                  ? 'Esta actividad aún no está habilitada en la plataforma.'
+                  : 'Selecciona una actividad del panel izquierdo para trabajar en ella.'}
+              </p>
+            </div>
+          )}
         </div>
+
+        {expedienteAbierto && (
+          <div className="panel-expediente bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <PanelExpediente
+              procesoId={procesoId}
+              editable={!aprobado && !enRevision}
+              recargarToken={tokenExpediente}
+            />
+          </div>
+        )}
       </div>
 
     </div>

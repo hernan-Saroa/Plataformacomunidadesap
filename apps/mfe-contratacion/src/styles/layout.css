@@ -1,0 +1,130 @@
+/**
+ * Maquetación del módulo de Contratación.
+ *
+ * Por qué CSS propio y no utilidades de Tailwind:
+ * la plataforma genera Tailwind escaneando únicamente el código del shell, así
+ * que cualquier valor arbitrario que el shell no use —`w-[268px]`,
+ * `grid-cols-[1fr_320px]`, `xl:grid-cols-[...]`— no se genera y se ignora sin
+ * avisar. Las utilidades estándar (`flex`, `bg-slate-50`, `line-clamp-2`) sí
+ * están y se siguen usando en los componentes; aquí va solo lo que Tailwind no
+ * puede darnos.
+ *
+ * Este archivo sí entra en el bundle del microfrontend, que carga su propio CSS.
+ */
+
+/* ---------------------------------------------------- lista de procesos --- */
+
+/* Apilada: icono a la izquierda, todo lo demás en una columna. */
+.fila-proceso,
+.encabezado-procesos {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  gap: 0.5rem 0.75rem;
+  align-items: start;
+}
+
+/* Mismo motivo que en el detalle: sin esto, un objeto de contrato largo
+   ensancha la fila y con ella toda la tabla. */
+.fila-proceso > *,
+.encabezado-procesos > * {
+  min-width: 0;
+}
+
+/* Las celdas que en apilado van bajo el bloque principal, no junto al icono. */
+.fila-proceso > .celda-apilada {
+  grid-column: 2;
+}
+
+.encabezado-procesos {
+  display: none;
+}
+
+/* Desde 1280px hay ancho para repartir los datos en columnas. */
+@media (min-width: 1280px) {
+  .fila-proceso,
+  .encabezado-procesos {
+    grid-template-columns: 2.25rem minmax(0, 1fr) 15rem 16rem 12rem;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .fila-proceso > .celda-apilada {
+    grid-column: auto;
+  }
+
+  .encabezado-procesos {
+    display: grid;
+  }
+
+  /* El estado tiene columna propia; deja de acompañar al radicado. */
+  .solo-apilado {
+    display: none;
+  }
+
+  .solo-columnas {
+    display: block;
+  }
+}
+
+.solo-columnas {
+  display: none;
+}
+
+/* ------------------------------------------------------------- tablero --- */
+
+.columna-tablero {
+  width: 17rem;
+  flex-shrink: 0;
+}
+
+/* --------------------------------------------- detalle del proceso -------- */
+
+/*
+ * Riel de actividades a la izquierda, superficie de trabajo a la derecha y,
+ * si se pide, el expediente como tercera columna.
+ *
+ * Apilado por debajo de 1024px: con el riel y el formulario compitiendo por
+ * menos de mil píxeles, ninguno de los dos sirve.
+ */
+.detalle-proceso {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+/*
+ * Clave: los hijos de una rejilla nacen con `min-width: auto`, así que no
+ * pueden encogerse por debajo del ancho de su contenido y desbordan la
+ * rejilla por mucho que la pista sea `minmax(0, 1fr)`. Esto es lo que hacía
+ * que el formulario empujara la página y el riel saliera de vista.
+ */
+.detalle-proceso > * {
+  min-width: 0;
+}
+
+/*
+ * Dos columnas solo desde 1280px. El shell ya se lleva 260px, así que por
+ * debajo de ese ancho el riel y el formulario se quedarían ambos sin sitio;
+ * apilados funcionan mejor.
+ */
+@media (min-width: 1280px) {
+  .detalle-proceso {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+
+  /* Sin ancho para una tercera columna, el expediente va debajo, completo. */
+  .detalle-proceso.con-expediente > .panel-expediente {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1600px) {
+  .detalle-proceso.con-expediente {
+    grid-template-columns: 15rem minmax(0, 1fr) 19rem;
+  }
+
+  .detalle-proceso.con-expediente > .panel-expediente {
+    grid-column: auto;
+  }
+}

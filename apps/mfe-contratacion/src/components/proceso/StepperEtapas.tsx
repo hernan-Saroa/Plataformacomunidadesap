@@ -1,5 +1,5 @@
-import React from 'react';
-import { Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, ChevronDown } from 'lucide-react';
 
 export interface EtapaProceso {
   numero: number;
@@ -28,10 +28,44 @@ interface Props {
 
 /**
  * Ubicación del proceso dentro de las 10 etapas.
- * En pantallas estrechas scrollea en horizontal en vez de encogerse,
- * porque con 10 pasos los nombres serían ilegibles.
+ *
+ * Se muestra resumido: de las diez etapas, dos están fuera de alcance y hoy
+ * solo la tercera está implementada, así que la banda completa gastaba una
+ * franja permanente para mostrar sobre todo estados futuros. El recorrido
+ * entero sigue disponible, a un clic.
+ *
+ * Desplegado scrollea en horizontal en vez de encogerse, porque con 10 pasos
+ * los nombres serían ilegibles.
  */
 export function StepperEtapas({ etapaActual }: Props) {
+  const [desplegado, setDesplegado] = useState(false);
+  const actual = ETAPAS.find((e) => e.numero === etapaActual);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setDesplegado((v) => !v)}
+        aria-expanded={desplegado}
+        className="flex items-center gap-2 text-[11px] font-bold text-[#003DA5] hover:bg-[#E0EDFF]
+          rounded-lg px-2 py-1 -ml-2 transition-colors"
+      >
+        <span className="tabular-nums">
+          Etapa {etapaActual} de {ETAPAS.length}
+        </span>
+        {actual && <span className="text-gray-500 font-semibold">· {actual.nombre}</span>}
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform ${desplegado ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {desplegado && <div className="mt-3">{recorrido(etapaActual)}</div>}
+    </div>
+  );
+}
+
+function recorrido(etapaActual: number) {
   return (
     <div className="overflow-x-auto -mx-1 px-1">
       <ol className="flex m-0 p-0 list-none" style={{ minWidth: 620 }}>

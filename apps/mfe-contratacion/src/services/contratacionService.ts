@@ -61,10 +61,10 @@ export const contratacionService = {
   /** Catálogo para el selector; se consulta antes de crear el proceso. */
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
 
-  crearProceso: (objeto: string, modalidad: string) =>
+  crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
     pedir<ProcesoResumen>('/procesos', {
       method: 'POST',
-      body: JSON.stringify({ objeto, modalidad }),
+      body: JSON.stringify({ objeto, modalidad, valorEstimado }),
     }),
 
   obtenerEstudioPrevio: (procesoId: string) =>
