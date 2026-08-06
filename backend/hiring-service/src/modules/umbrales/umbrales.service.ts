@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource, IsNull, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 import { UmbralModalidad } from '../../entities/umbral-modalidad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
@@ -172,6 +172,23 @@ export class UmbralesService {
   }
 
   /**
+   * Umbrales que rigen hoy.
+   *
+   * No basta con `vigenciaHasta IS NULL`: un umbral programado para el año que
+   * viene también la tiene nula y se aplicaría desde que se guarda, que es
+   * justo lo contrario de lo que promete la fecha de vigencia. Hay que mirar
+   * los dos extremos. El cierre es inclusive: el último día todavía rige.
+   */
+  private umbralesDeHoy(hoy = new Date().toISOString().slice(0, 10)) {
+    return this.dataSource.getRepository(UmbralModalidad).find({
+      where: [
+        { vigenciaDesde: LessThanOrEqual(hoy), vigenciaHasta: IsNull() },
+        { vigenciaDesde: LessThanOrEqual(hoy), vigenciaHasta: MoreThanOrEqual(hoy) },
+      ],
+    });
+  }
+
+  /**
    * Umbrales vigentes con sus límites ya en pesos.
    *
    * Devuelve también la modalidad completa para que quien consuma sepa cuáles
@@ -179,9 +196,7 @@ export class UmbralesService {
    */
   async vigentes(acceso?: HiringAccess) {
     const [umbrales, modalidades, smmlv] = await Promise.all([
-      this.dataSource.getRepository(UmbralModalidad).find({
-        where: { vigenciaHasta: IsNull() },
-      }),
+      this.umbralesDeHoy(),
       this.dataSource.getRepository(Modalidad).find({ order: { orden: 'ASC' } }),
       this.salarios(),
     ]);
@@ -215,9 +230,7 @@ export class UmbralesService {
    */
   async sugerir(valorEstimado: number | null): Promise<SugerenciaModalidad> {
     const [umbrales, modalidades, smmlv] = await Promise.all([
-      this.dataSource.getRepository(UmbralModalidad).find({
-        where: { vigenciaHasta: IsNull() },
-      }),
+      this.umbralesDeHoy(),
       this.dataSource.getRepository(Modalidad).find(),
       this.salarios(),
     ]);
@@ -302,7 +315,7 @@ export class UmbralesService {
     if (pisoLicitacion === null) return [];
 
     const [umbrales, modalidades, smmlv] = await Promise.all([
-      this.dataSource.getRepository(UmbralModalidad).find({ where: { vigenciaHasta: IsNull() } }),
+      this.umbralesDeHoy(),
       this.dataSource.getRepository(Modalidad).find({ where: { activa: true }, order: { orden: 'ASC' } }),
       this.salarios(),
     ]);
@@ -459,6 +472,11 @@ export class UmbralesService {
     return repo.save({ ...(existente ?? {}), anio, valor, confirmado: true });
   }
 
+  /** Un umbral rige hoy si ya arrancó y no ha cerrado. Cierre inclusive. */
+  private rigeHoy(umbral: UmbralModalidad, hoy = new Date().toISOString().slice(0, 10)): boolean {
+    return umbral.vigenciaDesde <= hoy && (umbral.vigenciaHasta === null || umbral.vigenciaHasta >= hoy);
+  }
+
   private async exigirModalidad(codigo: string) {
     const modalidad = await this.dataSource
       .getRepository(Modalidad)
@@ -499,7 +517,11 @@ export class UmbralesService {
       smmlvAplicado: salario ? { anio, valor: salario.valor, confirmado: salario.confirmado } : null,
       vigenciaDesde: umbral.vigenciaDesde,
       vigenciaHasta: umbral.vigenciaHasta,
-      vigente: umbral.vigenciaHasta === null,
+      // Rige hoy, no "está abierto": uno programado para enero tiene la fecha
+      // de cierre nula y todavía no manda sobre nada.
+      vigente: this.rigeHoy(umbral),
+      /** Aún no arranca: se guardó para que entre a regir más adelante. */
+      programado: umbral.vigenciaDesde > new Date().toISOString().slice(0, 10),
       confirmado: umbral.confirmado,
       advertencia,
     };

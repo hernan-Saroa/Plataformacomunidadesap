@@ -404,6 +404,45 @@ describe('sugerirParaFormulario', () => {
   });
 });
 
+/**
+ * Un umbral programado para el futuro no puede aplicarse desde que se guarda.
+ * El defecto original consultaba solo `vigenciaHasta IS NULL`, que también es
+ * nula en los programados: guardar un umbral para enero lo activaba en agosto y
+ * dejaba fuera al que sí regía.
+ */
+describe('vigencia por fecha', () => {
+  const rigeHoy = (desde: string, hasta: string | null, hoy: string) =>
+    desde <= hoy && (hasta === null || hasta >= hoy);
+
+  const HOY = '2026-08-06';
+
+  it('no toma el umbral que arranca mañana', () => {
+    expect(rigeHoy('2026-08-07', null, HOY)).toBe(false);
+  });
+
+  it('toma el que cierra hoy, porque el último día todavía rige', () => {
+    expect(rigeHoy('2026-01-01', '2026-08-06', HOY)).toBe(true);
+  });
+
+  it('descarta el que cerró ayer', () => {
+    expect(rigeHoy('2026-01-01', '2026-08-05', HOY)).toBe(false);
+  });
+
+  it('toma el abierto que ya arrancó', () => {
+    expect(rigeHoy('2026-01-01', null, HOY)).toBe(true);
+  });
+
+  it('el cierre y la apertura no dejan ni hueco ni solape', () => {
+    // Como los deja el reemplazo: el viejo cierra el día antes del nuevo.
+    const viejo = { desde: '2026-01-01', hasta: '2026-08-06' };
+    const nuevo = { desde: '2026-08-07', hasta: null };
+    for (const dia of ['2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08']) {
+      const activos = [viejo, nuevo].filter((u) => rigeHoy(u.desde, u.hasta, dia));
+      expect(activos).toHaveLength(1);
+    }
+  });
+});
+
 describe('formatoPesos', () => {
   it('describe los valores ausentes en vez de imprimir NaN', () => {
     // El mensaje de error no puede salir con "$NaN" delante del usuario.
