@@ -19,6 +19,14 @@ import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
 /** Actividad 4.4: el CDP cargado al expediente. */
 export const NUMERAL_ADJUNTO_CDP = '4.4';
 
+/**
+ * Actividad 5.7 de la matriz: la apertura del proceso.
+ *
+ * Está en la etapa 5 y no en la 4, así que el bloqueo por CDP cruza etapas.
+ */
+export const NUMERAL_APERTURA = '5.7';
+export const ETAPA_APERTURA = 5;
+
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
   SOLICITADO: ['VERIFICADO', 'RECHAZADO', 'ANULADO'],
@@ -156,7 +164,17 @@ export class CdpService {
 
     const aplica = await this.aplicaCdp(proceso.modalidad, em);
     if (!aplica) {
-      return { aplica: false, cdp: null, expedido: true as const, motivo: null };
+      // No lleva CDP, así que nada la frena por este lado. `expedido` queda en
+      // false porque es la verdad —no existe ningún certificado— y quien
+      // decide si el proceso avanza es `puedeAbrirse`.
+      return {
+        aplica: false,
+        cdp: null,
+        expedido: false,
+        soporteAdjunto: false,
+        puedeAbrirse: true,
+        motivo: null,
+      };
     }
 
     const cdp = await this.delProceso(procesoId, em);
@@ -165,11 +183,14 @@ export class CdpService {
     return {
       aplica: true,
       cdp,
+      /** Existe el certificado: la partida quedó apartada para el proceso. */
       expedido,
-      // El soporte se reporta aparte de `expedido` a propósito: la apertura la
-      // habilita el certificado, no su PDF. Que falte el adjunto deja la
-      // actividad 4.4 abierta, pero no es lo que bloquea el proceso.
+      // Se reporta aparte de `expedido` a propósito: la apertura la habilita el
+      // certificado, no su PDF. Que falte el adjunto deja abierta la actividad
+      // 4.4, pero no frena el proceso.
       soporteAdjunto: cdp?.documentoId !== null && cdp?.documentoId !== undefined,
+      /** La pregunta que de verdad hace quien consume esto. */
+      puedeAbrirse: expedido,
       motivo: expedido
         ? null
         : cdp
@@ -357,6 +378,64 @@ export class CdpService {
       });
 
       return { ...this.conAdvertencia(cdp, proceso), documento };
+    });
+  }
+
+  // ------------------------------------------------------ apertura (5.7) ---
+
+  /**
+   * Primer criterio de EFDS-1148 (RF-EST-05): sin CDP expedido no se abre.
+   *
+   * Vive en el backend y no solo en la pantalla porque es la regla que protege
+   * el presupuesto: abrir un proceso sin respaldo compromete a la entidad con
+   * una plata que nadie apartó.
+   */
+  async exigirCdpParaApertura(procesoId: string, em?: EntityManager) {
+    const respaldo = await this.estadoRespaldo(procesoId, em);
+    if (respaldo.puedeAbrirse) return;
+
+    throw new ConflictException(
+      `No se puede abrir el proceso: ${respaldo.motivo}. Se requiere el CDP expedido antes de la apertura.`,
+    );
+  }
+
+  /**
+   * Actividad 5.7: se abre el proceso.
+   *
+   * Solo cubre el control presupuestal. Los demás requisitos de la etapa 5
+   * —pliego definitivo, publicación en SECOP, respuesta a observaciones— son de
+   * historias posteriores y aquí no se validan.
+   */
+  async abrirProceso(procesoId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+
+      if (proceso.etapa >= ETAPA_APERTURA) {
+        throw new ConflictException('El proceso ya fue abierto');
+      }
+
+      await this.exigirCdpParaApertura(procesoId, em);
+
+      proceso.etapa = ETAPA_APERTURA;
+      await em.save(proceso);
+
+      await em.save(
+        em.create(ProcesoActividad, {
+          procesoId,
+          numeral: NUMERAL_APERTURA,
+          estado: 'APROBADO' as const,
+          datos: {},
+          revisadoPor: acceso.userName,
+          revisadoAt: new Date(),
+        }),
+      );
+
+      await this.traza(em, procesoId, procesoId, 'APROBAR', acceso, {
+        actividad: NUMERAL_APERTURA,
+        etapa: ETAPA_APERTURA,
+      });
+
+      return { id: proceso.id, radicado: proceso.radicado, etapa: proceso.etapa };
     });
   }
 
