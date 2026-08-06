@@ -5,6 +5,7 @@ import { EstudioPrevioController } from './estudio-previo.controller';
 import { EstudioPrevioService } from './estudio-previo.service';
 import { FilesController } from './files.controller';
 import { ModalidadesController } from './modalidades.controller';
+import { PersonasController } from './personas.controller';
 
 import { Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -25,7 +26,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
       CampoFormulario,
       Documento, Trazabilidad, Revision, Plantilla, Modalidad]),
   ],
-  controllers: [EstudioPrevioController, ModalidadesController, FilesController],
+  controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],
 })
 export class EstudioPrevioModule {}

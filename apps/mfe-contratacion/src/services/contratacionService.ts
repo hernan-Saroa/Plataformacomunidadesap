@@ -5,6 +5,7 @@ import {
   EstudioPrevio,
   Expediente,
   Modalidad,
+  Persona,
   ProcesoResumen,
   RevisionEstudioPrevio,
 } from '../types';
@@ -60,6 +61,9 @@ export const contratacionService = {
 
   /** Catálogo para el selector; se consulta antes de crear el proceso. */
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
+
+  /** Personas para los selectores; el termino filtra por nombre. */
+  personas: (q = '') => pedir<Persona[]>(`/personas?q=${encodeURIComponent(q)}`),
 
   crearProceso: (objeto: string, modalidad: string) =>
     pedir<ProcesoResumen>('/procesos', {
