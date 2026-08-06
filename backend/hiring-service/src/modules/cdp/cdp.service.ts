@@ -27,6 +27,17 @@ export const NUMERAL_ADJUNTO_CDP = '4.4';
 export const NUMERAL_APERTURA = '5.7';
 export const ETAPA_APERTURA = 5;
 
+/** Actividad 5.1: elaboración de los documentos del proceso. */
+export const NUMERAL_DOCUMENTOS = '5.1';
+
+/**
+ * La única modalidad con la regla de orden reforzada del CDP (RF-EST-06).
+ *
+ * Es una constante y no un parámetro porque la excepción viene del requisito,
+ * no de una política que la entidad pueda cambiar.
+ */
+export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
+
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
   SOLICITADO: ['VERIFICADO', 'RECHAZADO', 'ANULADO'],
@@ -436,6 +447,71 @@ export class CdpService {
       });
 
       return { id: proceso.id, radicado: proceso.radicado, etapa: proceso.etapa };
+    });
+  }
+
+  // ---------------------------------------- documentos del proceso (5.1) ---
+
+  /**
+   * Segundo criterio de EFDS-1148 (RF-EST-06): en contratación directa el CDP
+   * se exige antes de elaborar los demás documentos.
+   *
+   * Regla de orden reforzada, y solo para esa modalidad. En las demás el
+   * control es la apertura; en directa no hay convocatoria ni pliego que
+   * publicar, así que sin adelantar la exigencia el área podría redactar la
+   * minuta de un contrato que el presupuesto no respalda.
+   */
+  async exigirCdpParaDocumentos(procesoId: string, em?: EntityManager) {
+    const manager = em ?? this.dataSource.manager;
+    const proceso = await this.exigirProceso(manager, procesoId);
+
+    if (proceso.modalidad !== MODALIDAD_CONTRATACION_DIRECTA) return;
+
+    const respaldo = await this.estadoRespaldo(procesoId, em);
+    if (respaldo.puedeAbrirse) return;
+
+    throw new ConflictException(
+      `En contratación directa el CDP se exige antes de elaborar los documentos del proceso: ${respaldo.motivo}.`,
+    );
+  }
+
+  /** Actividad 5.1: arranca la elaboración documental del proceso. */
+  async iniciarDocumentos(procesoId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+
+      const excluida = await em.getRepository(ActividadExcluida).findOne({
+        where: { numeral: NUMERAL_DOCUMENTOS, modalidad: proceso.modalidad ?? '' },
+      });
+      if (excluida) {
+        throw new BadRequestException(
+          `Esta modalidad no elabora los documentos ordinarios del proceso: ${excluida.motivo}`,
+        );
+      }
+
+      await this.exigirCdpParaDocumentos(procesoId, em);
+
+      const existente = await em.getRepository(ProcesoActividad).findOne({
+        where: { procesoId, numeral: NUMERAL_DOCUMENTOS },
+      });
+      if (existente) {
+        throw new ConflictException('La elaboración de documentos ya está iniciada');
+      }
+
+      const actividad = await em.save(
+        em.create(ProcesoActividad, {
+          procesoId,
+          numeral: NUMERAL_DOCUMENTOS,
+          estado: 'BORRADOR' as const,
+          datos: {},
+        }),
+      );
+
+      await this.traza(em, procesoId, actividad.id, 'CREAR', acceso, {
+        actividad: NUMERAL_DOCUMENTOS,
+      });
+
+      return { numeral: actividad.numeral, estado: actividad.estado };
     });
   }
 

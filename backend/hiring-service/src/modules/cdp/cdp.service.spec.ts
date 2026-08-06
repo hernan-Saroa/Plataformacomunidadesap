@@ -1,4 +1,11 @@
-import { cdpCubreElProceso, puedeTransicionar } from './cdp.service';
+import { ConflictException } from '@nestjs/common';
+
+import {
+  cdpCubreElProceso,
+  CdpService,
+  MODALIDAD_CONTRATACION_DIRECTA,
+  puedeTransicionar,
+} from './cdp.service';
 import { EstadoCdp } from '../../entities/cdp.entity';
 
 /**
@@ -73,5 +80,57 @@ describe('cdpCubreElProceso', () => {
 
   it('trata el cero del estimado como cubierto', () => {
     expect(cdpCubreElProceso(0, 0).cubre).toBe(true);
+  });
+});
+
+/**
+ * Segundo criterio de EFDS-1148 (RF-EST-06). Es una regla de orden reforzada y
+ * solo para contratación directa: en las demás modalidades el control
+ * presupuestal es la apertura, y adelantarlo a la elaboración documental
+ * frenaría procesos que la ley permite avanzar.
+ */
+describe('exigirCdpParaDocumentos', () => {
+  const servicio = (modalidad: string, puedeAbrirse: boolean) => {
+    const service = new CdpService({ manager: {} } as any);
+    jest
+      .spyOn(service as any, 'exigirProceso')
+      .mockResolvedValue({ id: 'p1', modalidad } as any);
+    jest.spyOn(service, 'estadoRespaldo').mockResolvedValue({
+      aplica: true,
+      cdp: null,
+      expedido: puedeAbrirse,
+      soporteAdjunto: false,
+      puedeAbrirse,
+      motivo: puedeAbrirse ? null : 'El proceso no tiene CDP solicitado',
+    } as any);
+    return service;
+  };
+
+  it('bloquea la elaboración en directa sin CDP expedido', async () => {
+    await expect(
+      servicio(MODALIDAD_CONTRATACION_DIRECTA, false).exigirCdpParaDocumentos('p1'),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('distingue su mensaje del bloqueo general de apertura', async () => {
+    // Si dijera lo mismo que la apertura, el usuario buscaría el problema en
+    // el paso equivocado.
+    await expect(
+      servicio(MODALIDAD_CONTRATACION_DIRECTA, false).exigirCdpParaDocumentos('p1'),
+    ).rejects.toThrow(/antes de elaborar los documentos/);
+  });
+
+  it('deja pasar en directa cuando el CDP ya está expedido', async () => {
+    await expect(
+      servicio(MODALIDAD_CONTRATACION_DIRECTA, true).exigirCdpParaDocumentos('p1'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('no interviene en las demás modalidades, ni siquiera sin CDP', async () => {
+    // Ahí el CDP se exige para abrir, no para redactar: bloquear aquí sería
+    // inventar una restricción que el requisito no pide.
+    for (const m of ['LICITACION_PUBLICA', 'MINIMA_CUANTIA', 'ABREVIADA_MENOR_CUANTIA']) {
+      await expect(servicio(m, false).exigirCdpParaDocumentos('p1')).resolves.toBeUndefined();
+    }
   });
 });

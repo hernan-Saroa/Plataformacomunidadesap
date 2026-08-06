@@ -7,17 +7,29 @@ import { Roles } from '../../auth/roles.decorator';
 import { getHiringAccess, ROLES_SOLICITUD_CDP } from '../../auth/hiring-access';
 
 /**
- * Apertura del proceso — actividad 5.7 de la matriz.
+ * Actividades de la etapa 5 que el CDP condiciona.
  *
- * Va aparte del controller del CDP porque abrir el proceso no es parte del
- * ciclo presupuestal: solo está condicionada por él. Cuando lleguen las demás
- * actividades de la etapa 5 —pliego definitivo, publicación en SECOP— este es
- * el punto donde se acumulan sus requisitos.
+ * Van aparte del controller del CDP porque no son parte del ciclo
+ * presupuestal: solo están condicionadas por él. Cuando lleguen las demás
+ * actividades de la etapa —cronograma, publicación en SECOP— este es el punto
+ * donde se acumulan sus requisitos.
  */
-@ApiTags('Apertura del proceso')
+@ApiTags('Etapa 5 · Elaboración y apertura')
 @Controller('procesos')
 export class AperturaController {
   constructor(private readonly cdp: CdpService) {}
+
+  @Post(':id/documentos/iniciar')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_SOLICITUD_CDP)
+  @ApiOperation({
+    summary: 'Actividad 5.1 · Iniciar la elaboración de documentos',
+    description:
+      'En contratación directa exige el CDP expedido antes de empezar (RF-EST-06). En las demás modalidades el control presupuestal es la apertura, no este paso.',
+  })
+  iniciarDocumentos(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.cdp.iniciarDocumentos(procesoId, getHiringAccess(req));
+  }
 
   @Post(':id/abrir')
   @UseGuards(RolesGuard)
