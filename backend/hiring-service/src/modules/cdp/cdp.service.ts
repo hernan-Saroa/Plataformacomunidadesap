@@ -11,8 +11,13 @@ import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/activida
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
+import { Documento } from '../../entities/documento.entity';
+import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
+
+/** Actividad 4.4: el CDP cargado al expediente. */
+export const NUMERAL_ADJUNTO_CDP = '4.4';
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
@@ -161,6 +166,10 @@ export class CdpService {
       aplica: true,
       cdp,
       expedido,
+      // El soporte se reporta aparte de `expedido` a propósito: la apertura la
+      // habilita el certificado, no su PDF. Que falte el adjunto deja la
+      // actividad 4.4 abierta, pero no es lo que bloquea el proceso.
+      soporteAdjunto: cdp?.documentoId !== null && cdp?.documentoId !== undefined,
       motivo: expedido
         ? null
         : cdp
@@ -291,6 +300,63 @@ export class CdpService {
       });
 
       return this.conAdvertencia(cdp, proceso);
+    });
+  }
+
+  /**
+   * Actividad 4.4: se carga el soporte del CDP al expediente.
+   *
+   * Se exige el CDP expedido: el soporte prueba lo que el registro afirma, y
+   * adjuntar un papel a una solicitud que aún no se ha resuelto daría por
+   * cumplida la actividad sin que exista el certificado.
+   */
+  async adjuntarSoporte(
+    procesoId: string,
+    archivo: { filename: string; originalname: string; mimetype: string; size: number },
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      const cdp = await this.exigirCdp(em, procesoId);
+
+      if (cdp.estado !== 'EXPEDIDO') {
+        throw new ConflictException(
+          `El CDP está en estado ${cdp.estado}: el soporte se adjunta una vez expedido`,
+        );
+      }
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const documento = await em.save(
+        em.create(Documento, {
+          expedienteId: expediente.id,
+          numeral: NUMERAL_ADJUNTO_CDP,
+          tipo: 'ADJUNTO',
+          nombre: archivo.originalname,
+          archivoUrl: `hiring/files/${archivo.filename}`,
+          archivoNombreOriginal: archivo.originalname,
+          archivoMimeType: archivo.mimetype,
+          archivoTamano: archivo.size,
+          hashSha256: hash,
+          subidoPor: acceso.userName,
+        } as Partial<Documento>),
+      );
+
+      // El vínculo va en el dato y no por convención de numeral: si mañana se
+      // anula este CDP y se expide otro, cada uno conserva su propio soporte.
+      cdp.documentoId = documento.id;
+      cdp.updatedAt = new Date();
+      await em.save(cdp);
+
+      await this.cerrarActividad(em, procesoId, NUMERAL_ADJUNTO_CDP, acceso);
+      await this.traza(em, procesoId, cdp.id, 'ADJUNTAR', acceso, {
+        documento: documento.id,
+        nombre: archivo.originalname,
+      });
+
+      return { ...this.conAdvertencia(cdp, proceso), documento };
     });
   }
 

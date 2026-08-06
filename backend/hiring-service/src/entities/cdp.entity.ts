@@ -59,6 +59,13 @@ export class Cdp {
   @Column({ type: 'text', nullable: true })
   observaciones: string | null;
 
+  /**
+   * Soporte documental en el expediente (actividad 4.4). Null mientras no se
+   * haya cargado: el CDP puede estar expedido y su PDF aún no adjunto.
+   */
+  @Column({ name: 'documento_id', type: 'uuid', nullable: true })
+  documentoId: string | null;
+
   @Column({ name: 'solicitado_por', length: 160, nullable: true })
   solicitadoPor: string | null;
 

@@ -9,6 +9,8 @@ import { Actividad, ActividadExcluida } from '../../entities/actividad.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
+import { Documento } from '../../entities/documento.entity';
+import { Expediente } from '../../entities/expediente.entity';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
       Proceso,
       ProcesoActividad,
       Trazabilidad,
+      Documento,
+      Expediente,
     ]),
   ],
   controllers: [CdpController],

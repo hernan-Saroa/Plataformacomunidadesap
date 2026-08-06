@@ -1,5 +1,22 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { createHash, randomBytes } from 'crypto';
+import { createReadStream } from 'fs';
 
 import { CdpService } from './cdp.service';
 import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
@@ -11,6 +28,28 @@ import {
   ROLES_LECTURA_CONTRATACION,
   ROLES_SOLICITUD_CDP,
 } from '../../auth/hiring-access';
+
+// Mismo destino y mismos formatos que los adjuntos del estudio previo: el
+// expediente es uno solo y sus documentos se guardan igual sea cual sea la
+// etapa que los produce.
+const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
+const MIME_PERMITIDOS = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+
+function sha256Archivo(ruta: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(ruta)
+      .on('data', (c) => hash.update(c))
+      .on('end', () => resolve(hash.digest('hex')))
+      .on('error', reject);
+  });
+}
 
 /**
  * Ciclo del CDP — etapa 4 (EFDS-1148).
@@ -69,6 +108,38 @@ export class CdpController {
     @Req() req: any,
   ) {
     return this.service.expedir(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('documento')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_GESTION_CDP, ...ROLES_SOLICITUD_CDP)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: STORAGE_PATH,
+        filename: (_req, file, cb) =>
+          cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 25 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) =>
+        MIME_PERMITIDOS.includes(file.mimetype)
+          ? cb(null, true)
+          : cb(new BadRequestException('Solo se admiten archivos PDF, Word o Excel'), false),
+    }),
+  )
+  @ApiOperation({
+    summary: 'Actividad 4.4 · Adjuntar el CDP al expediente',
+    description:
+      'El soporte queda vinculado al CDP, no solo al numeral, para que un CDP anulado y su reemplazo conserven cada uno el suyo.',
+  })
+  async adjuntar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
+    return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req));
   }
 
   @Post('rechazar')
