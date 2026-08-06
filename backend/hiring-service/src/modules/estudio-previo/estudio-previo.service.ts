@@ -43,6 +43,22 @@ export function esVacio(tipo: TipoCampo, valor: unknown): boolean {
   }
 }
 
+/**
+ * Un campo bloquea el envío solo si es obligatorio, se diligencia en el
+ * formulario y está vacío.
+ *
+ * Los de solo lectura quedan fuera aunque sean obligatorios: su valor vive en
+ * el proceso y nunca aparece en el JSON de la actividad, así que contarlos los
+ * dejaría como faltantes para siempre y ningún estudio previo podría enviarse.
+ */
+export function esFaltante(
+  campo: Pick<CampoFormulario, 'codigo' | 'tipo' | 'obligatorio' | 'soloLectura'>,
+  datos: Record<string, any> | null | undefined,
+): boolean {
+  if (!campo.obligatorio || campo.soloLectura) return false;
+  return esVacio(campo.tipo, datos?.[campo.codigo]);
+}
+
 /** JSON con claves ordenadas: el hash de un mismo contenido no debe variar. */
 function jsonCanonico(valor: any): string {
   if (valor === null || typeof valor !== 'object') return JSON.stringify(valor);
@@ -91,6 +107,7 @@ export class EstudioPrevioService {
         radicado: `CTO-${anio}-${String(nRad).padStart(4, '0')}`,
         objeto: dto.objeto,
         modalidad: modalidad.codigo,
+        valorEstimado: dto.valorEstimado,
         etapa: ETAPA_ESTUDIOS_PREVIOS,
         createdBy: acceso.userName,
       } as Partial<Proceso>);
@@ -147,8 +164,15 @@ export class EstudioPrevioService {
     const actividades = await this.dataSource.getRepository(ProcesoActividad).find({
       where: { procesoId: In(ids) },
     });
+    // Los de solo lectura se llenan desde el proceso y nunca están en el JSON
+    // de la actividad; contarlos los dejaría como faltantes para siempre.
     const obligatorios = await this.dataSource.getRepository(CampoFormulario).find({
-      where: { numeral: NUMERAL_ESTUDIO_PREVIO, obligatorio: true, activo: true },
+      where: {
+        numeral: NUMERAL_ESTUDIO_PREVIO,
+        obligatorio: true,
+        activo: true,
+        soloLectura: false,
+      },
     });
 
     const porProceso = new Map<string, ProcesoActividad[]>();
@@ -195,12 +219,17 @@ export class EstudioPrevioService {
         id: proceso.id,
         radicado: proceso.radicado,
         objeto: proceso.objeto,
+        modalidad: proceso.modalidad,
+        valorEstimado: proceso.valorEstimado,
         etapa: proceso.etapa,
         expediente: proceso.expediente?.numeroExpediente,
       },
       estado: actividad.estado,
       version: actividad.version,
-      datos: actividad.datos,
+      // El valor estimado vive en el proceso desde EFDS-1147. Se inyecta aquí
+      // para que el estudio previo lo siga mostrando en su sitio sin duplicar
+      // el dato en el JSON de la actividad.
+      datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado },
       definicionCampos: campos,
       editable: actividad.estado === 'BORRADOR',
     };
@@ -258,7 +287,7 @@ export class EstudioPrevioService {
 
       const campos = await this.camposDe(em);
       const faltantes = campos
-        .filter((c) => c.obligatorio && esVacio(c.tipo, actividad.datos?.[c.codigo]))
+        .filter((c) => esFaltante(c, actividad.datos))
         .map((c) => ({ codigo: c.codigo, etiqueta: c.etiqueta, grupo: c.grupo }));
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
@@ -542,6 +571,11 @@ export class EstudioPrevioService {
     for (const [codigo, valor] of Object.entries(datos ?? {})) {
       const campo = porCodigo.get(codigo)!;
       if (valor === null || valor === undefined) continue;
+
+      // Los campos de solo lectura se devuelven al front para que los muestre,
+      // así que vuelven en el guardado. No se persisten aquí: su origen es el
+      // proceso, y guardarlos crearía una segunda copia que puede divergir.
+      if (campo.soloLectura) continue;
 
       switch (campo.tipo) {
         case 'numero':

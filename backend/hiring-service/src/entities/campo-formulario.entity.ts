@@ -43,4 +43,12 @@ export class CampoFormulario {
 
   @Column({ default: true })
   activo: boolean;
+
+  /**
+   * El campo se muestra pero no se edita porque su valor vive fuera del
+   * formulario. Hoy solo aplica a `valor_estimado`, que se captura al crear el
+   * proceso para poder determinar la modalidad por cuantía (EFDS-1147).
+   */
+  @Column({ name: 'solo_lectura', default: false })
+  soloLectura: boolean;
 }

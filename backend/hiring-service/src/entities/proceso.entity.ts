@@ -21,6 +21,29 @@ export class Proceso {
   @Column({ length: 60, nullable: true })
   modalidad: string | null;
 
+  /**
+   * Valor estimado del contrato, en pesos.
+   *
+   * Vive en el proceso y no en el estudio previo porque la modalidad se
+   * determina por cuantía (EFDS-1147) y hay que conocerla al crear el proceso,
+   * antes de que exista el estudio previo.
+   *
+   * `numeric` llega como string desde el driver; el transformer lo devuelve
+   * como número para que el cálculo de umbrales no compare cadenas.
+   */
+  @Column({
+    name: 'valor_estimado',
+    type: 'numeric',
+    precision: 18,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (valor: number | null) => valor,
+      from: (valor: string | null) => (valor === null ? null : Number(valor)),
+    },
+  })
+  valorEstimado: number | null;
+
   /** Etapa de la matriz de flujo. Este HU trabaja siempre sobre la 3. */
   @Column({ type: 'int', default: 3 })
   etapa: number;

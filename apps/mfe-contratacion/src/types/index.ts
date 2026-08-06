@@ -29,6 +29,8 @@ export interface CampoFormulario {
   grupo?: string;
   orden: number;
   opciones?: string[];
+  /** Se muestra pero no se edita: su valor vive en el proceso, no en el formulario. */
+  soloLectura?: boolean;
 }
 
 /**
@@ -46,6 +48,8 @@ export interface ProcesoResumen {
   radicado: string;
   objeto: string;
   modalidad?: string | null;
+  /** Cuantía del proceso, en pesos. Es dato del proceso, no del estudio previo. */
+  valorEstimado?: number | null;
   etapa: number;
   fechaRadicacion: string;
   expediente?: { numeroExpediente: string };
@@ -65,6 +69,9 @@ export interface EstudioPrevio {
     id: string;
     radicado: string;
     objeto: string;
+    modalidad?: string | null;
+    /** Se elige al crear el proceso; el formulario lo muestra en solo lectura. */
+    valorEstimado?: number | null;
     etapa: number;
     expediente?: string;
   };

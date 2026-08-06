@@ -1,4 +1,4 @@
-import { esVacio } from './estudio-previo.service';
+import { esFaltante, esVacio } from './estudio-previo.service';
 
 /**
  * El criterio 2 del HU depende por completo de esta función: si decide mal qué
@@ -86,5 +86,50 @@ describe('esVacio', () => {
     // Un objeto suelto en `datos` es un error de cliente, no un valor.
     expect(esVacio('texto', {})).toBe(true);
     expect(esVacio('numero', {})).toBe(true);
+  });
+});
+
+/**
+ * Decide qué campos bloquean el envío del estudio previo. Desde EFDS-1147 el
+ * valor estimado se pide al crear el proceso y su campo del formulario quedó en
+ * solo lectura: si siguiera contando como faltante, su valor nunca estaría en
+ * el JSON de la actividad y ningún estudio previo podría enviarse jamás.
+ */
+describe('esFaltante', () => {
+  const valorEstimado = {
+    codigo: 'valor_estimado',
+    tipo: 'moneda' as const,
+    obligatorio: true,
+    soloLectura: true,
+  };
+
+  it('no exige un campo de solo lectura ausente del formulario', () => {
+    expect(esFaltante(valorEstimado, {})).toBe(false);
+    expect(esFaltante(valorEstimado, { objeto: 'Compra de equipos' })).toBe(false);
+  });
+
+  it('tampoco lo exige cuando el backend lo inyecta desde el proceso', () => {
+    // El GET devuelve el valor dentro de `datos` para que el front lo muestre.
+    expect(esFaltante(valorEstimado, { valor_estimado: 45000000 })).toBe(false);
+  });
+
+  it('sigue exigiendo los obligatorios editables que están vacíos', () => {
+    const objeto = { codigo: 'objeto', tipo: 'texto_largo' as const, obligatorio: true, soloLectura: false };
+    expect(esFaltante(objeto, {})).toBe(true);
+    expect(esFaltante(objeto, { objeto: '   ' })).toBe(true);
+    expect(esFaltante(objeto, { objeto: 'Compra de equipos' })).toBe(false);
+  });
+
+  it('no exige los campos opcionales', () => {
+    const ayuda = { codigo: 'observaciones', tipo: 'texto' as const, obligatorio: false, soloLectura: false };
+    expect(esFaltante(ayuda, {})).toBe(false);
+  });
+
+  it('tolera una actividad sin datos', () => {
+    const objeto = { codigo: 'objeto', tipo: 'texto' as const, obligatorio: true, soloLectura: false };
+    expect(esFaltante(objeto, null)).toBe(true);
+    expect(esFaltante(objeto, undefined)).toBe(true);
+    // El de solo lectura no se cae ni siquiera sin datos.
+    expect(esFaltante(valorEstimado, null)).toBe(false);
   });
 });

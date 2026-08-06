@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class CrearProcesoDto {
   @ApiProperty({ description: 'Objeto a contratar', example: 'Adquisición de 50 equipos de cómputo' })
@@ -18,6 +27,15 @@ export class CrearProcesoDto {
   @IsNotEmpty({ message: 'La modalidad de selección es obligatoria' })
   @MaxLength(60)
   modalidad: string;
+
+  /**
+   * Se pide al crear y no en el estudio previo porque de él depende la
+   * modalidad aplicable por cuantía (EFDS-1147).
+   */
+  @ApiProperty({ description: 'Valor estimado del contrato en pesos', example: 45000000 })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor estimado debe ser un número' })
+  @Min(0, { message: 'El valor estimado no puede ser negativo' })
+  valorEstimado: number;
 }
 
 export class GuardarBorradorDto {

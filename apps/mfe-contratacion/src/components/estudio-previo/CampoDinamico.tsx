@@ -23,6 +23,10 @@ function formatearMoneda(valor: number | string | undefined): string {
  * de datos, así que agregar un campo al estudio previo no toca este archivo.
  */
 export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props) {
+  // Los campos de solo lectura se muestran siempre inertes, aunque el estudio
+  // previo esté en borrador: su valor se define al crear el proceso.
+  const soloLectura = campo.soloLectura === true;
+  disabled = disabled || soloLectura;
   const id = `campo-${campo.codigo}`;
   const describedBy = [error ? `${id}-error` : null, campo.ayuda ? `${id}-ayuda` : null]
     .filter(Boolean)
@@ -130,10 +134,14 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
     >
       <label htmlFor={id} className="text-[11px] font-bold text-gray-600 leading-tight">
         {campo.etiqueta}
-        {campo.obligatorio && (
+        {campo.obligatorio && !soloLectura && (
           <span className="text-red-600 ml-0.5" aria-label="obligatorio">
             *
           </span>
+        )}
+        {/* Sin esto el campo se ve gris sin motivo y parece una falla. */}
+        {soloLectura && (
+          <span className="ml-1.5 font-semibold text-slate-400">· se define al crear el proceso</span>
         )}
       </label>
 
