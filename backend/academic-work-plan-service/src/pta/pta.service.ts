@@ -7778,6 +7778,28 @@ export class PtaService {
    * pueda aprobar el componente completo (ver el bloqueo estructural agregado
    * en aprobarComponente()).
    */
+  /**
+   * Bloquea acciones (aprobar/devolver/revisar) sobre un componente cuando
+   * OTRO componente del mismo PTA ya fue devuelto y está pendiente de
+   * corrección por el docente. Sin este candado, cualquier usuario con
+   * permiso de aprobación/revisión puede seguir aprobando o devolviendo los
+   * demás componentes mientras el PTA ya tiene una devolución sin resolver,
+   * lo que rompe la trazabilidad del flujo (ver bug reportado sobre
+   * componentes "resolubles independientemente").
+   */
+  private async assertSinDevolucionPendienteEnOtroComponente(ptaId: string, componenteActual: string) {
+    const componentes = await this.getComponentesAprobacion(ptaId);
+    const otroDevuelto = componentes.find(
+      (c) => c.componente !== componenteActual && c.estado === 'devuelto',
+    );
+    if (otroDevuelto) {
+      throw new BadRequestException(
+        `El componente "${otroDevuelto.componente}" fue devuelto y está pendiente de corrección por el docente. ` +
+          'No se pueden aprobar, devolver ni revisar otros componentes hasta que el PTA sea corregido y reenviado a revisión.',
+      );
+    }
+  }
+
   async revisarComponente(ptaId: string, body: any, auth?: PtaAuthenticatedUser) {
     const componente = coalesceString(body?.componente);
     const subseccion = coalesceString(body?.subseccion) || 'general';
@@ -7824,6 +7846,8 @@ export class PtaService {
     // Alcance territorial: el permiso habilita el componente, pero la territorial
     // concreta la define la seccional de la persona.
     await this.assertAlcanceTerritorial(componente, existingPta, auth, 'revisar');
+
+    await this.assertSinDevolucionPendienteEnOtroComponente(ptaId, componente);
 
     const ds = (existingPta.datosEstructurados as any) || {};
     const requeridas = await this.getRequiredSubsecciones(componente, ds);
@@ -7955,6 +7979,8 @@ export class PtaService {
     // Alcance territorial: un aprobador de Docencia territorial solo puede aprobar
     // las asignaturas de su propia territorial (aplica también a la devolución).
     await this.assertAlcanceTerritorial(componente, existingPta, auth, 'aprobar');
+
+    await this.assertSinDevolucionPendienteEnOtroComponente(ptaId, componente);
 
     // ── Bloqueo estructural: no se puede aprobar sin revisión previa completa ──
     // Esto aplica sin importar qué permiso tenga quien llama (no es solo un

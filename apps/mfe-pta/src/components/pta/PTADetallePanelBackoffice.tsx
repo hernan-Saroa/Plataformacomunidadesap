@@ -980,8 +980,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Estados en los que puede haber componentes individuales aún pendientes de
   // aprobar/concertar aunque el estado AGREGADO del PTA ya no sea "Pendiente X" (p.ej.
   // quedó en REVISION_DOCENTE_N1 porque se devolvió un componente, pero otro sigue
-  // pendiente para un revisor distinto). Se usa para las acciones POR COMPONENTE, para
-  // que puedan resolverse de forma simultánea e independiente sin esperarse entre sí.
+  // pendiente para un revisor distinto). Se usa para las acciones POR COMPONENTE. Nótese
+  // que "accionable" no implica independiente: si algún componente del PTA ya fue
+  // devuelto y está pendiente de corrección del docente, `hayOtroComponenteDevuelto`
+  // (calculado en renderComponentCard) bloquea aprobar/devolver/revisar en los demás.
   const ESTADOS_ACCIONABLES_COMPONENTE = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'];
   const puedeActuarSobreComponentes = ESTADOS_ACCIONABLES_COMPONENTE.includes(pta.estado);
   const hayComponentesPendientesParaMi = puedeActuarSobreComponentes &&
@@ -1505,8 +1507,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // es la única forma de reabrir uno ya aprobado.
     const revisionesComponente = subseccionesRevision(key);
     const revisionCompleta = todasRevisionesCompletas(key);
+    // Si OTRO componente del PTA ya fue devuelto y está pendiente de corrección
+    // del docente, se bloquean Aprobar/Devolver sobre este componente hasta que
+    // el docente corrija y reenvíe el PTA a revisión (evita aprobaciones/devoluciones
+    // concurrentes mientras hay una devolución sin resolver).
+    const hayOtroComponenteDevuelto = componentesAprobacion.some(
+      c => c.componente !== key && (c.estado || 'pendiente') === 'devuelto'
+    );
     const canEvaluateComponent = puedeAprobar && puedeActuarSobreComponentes && componentAuthorized && !isAutoAprobado &&
-      revisionCompleta &&
+      revisionCompleta && !hayOtroComponenteDevuelto &&
       (estado === 'pendiente' || !!evaluandoComponente[key]);
 
     const getAssignmentDate = () => {
@@ -1946,7 +1955,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {r.comentarios}
                     </div>
                   )}
-                  {!estaResuelta && puedeRevisarEsta && (
+                  {!estaResuelta && puedeRevisarEsta && hayOtroComponenteDevuelto && (
+                    <div style={{
+                      fontSize: '0.68rem', color: '#B91C1C', background: '#FEF2F2',
+                      border: '1px solid #FECACA', borderRadius: 8, padding: '6px 9px',
+                    }}>
+                      Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede revisar hasta que el PTA sea corregido y reenviado.
+                    </div>
+                  )}
+                  {!estaResuelta && puedeRevisarEsta && !hayOtroComponenteDevuelto && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <textarea
                         value={comentariosRevision[subKey] || ''}
@@ -2140,6 +2157,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             <span>
               {!componentAuthorized
                 ? 'No tienes los permisos para aprobar este componente.'
+                : hayOtroComponenteDevuelto
+                ? 'Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede aprobar ni devolver hasta que el PTA sea corregido y reenviado.'
                 : !revisionCargada
                 ? 'No se pudo cargar el estado de la revisión previa; recarga la página para poder aprobar.'
                 : !revisionCompleta
