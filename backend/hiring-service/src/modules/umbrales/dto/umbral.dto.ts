@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -52,6 +53,18 @@ export class CrearUmbralDto {
   @IsOptional()
   @IsISO8601({ strict: true }, { message: 'La vigencia debe tener formato YYYY-MM-DD' })
   vigenciaDesde?: string;
+}
+
+export class ConsultarSugerenciaDto {
+  /**
+   * Llega como texto en la query. `Type` lo convierte antes de validar; sin eso
+   * `IsNumber` rechazaría siempre, porque "45000000" es un string.
+   */
+  @ApiProperty({ description: 'Valor estimado del contrato en pesos', example: 45000000 })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor estimado debe ser un número' })
+  @Min(0, { message: 'El valor estimado no puede ser negativo' })
+  valorEstimado: number;
 }
 
 export class GuardarSmmlvDto {

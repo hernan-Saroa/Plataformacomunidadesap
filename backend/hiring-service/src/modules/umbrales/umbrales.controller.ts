@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { UmbralesService } from './umbrales.service';
-import { CrearUmbralDto, GuardarSmmlvDto } from './dto/umbral.dto';
+import { ConsultarSugerenciaDto, CrearUmbralDto, GuardarSmmlvDto } from './dto/umbral.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import {
@@ -31,6 +31,20 @@ export class UmbralesController {
   })
   vigentes() {
     return this.service.vigentes();
+  }
+
+  // Se consulta antes de crear el proceso, así que no cuelga de ninguno: recibe
+  // la cuantía y responde qué modalidad corresponde.
+  @Get('sugerencia')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @ApiOperation({
+    summary: 'Modalidad que corresponde a una cuantía, con el umbral aplicado',
+    description:
+      'Devuelve la modalidad sugerida, el umbral que la decidió, si la asignación es forzosa y qué modalidades quedan bloqueadas por el monto. La sugerencia orienta, salvo en licitación pública.',
+  })
+  sugerencia(@Query() dto: ConsultarSugerenciaDto) {
+    return this.service.sugerirParaFormulario(dto.valorEstimado);
   }
 
   @Get('smmlv')

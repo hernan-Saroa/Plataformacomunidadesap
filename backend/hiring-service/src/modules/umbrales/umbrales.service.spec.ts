@@ -236,9 +236,30 @@ describe('exigirModalidadPermitida', () => {
   const modalidad = (codigo: string, determinadaPorCuantia = true): Modalidad =>
     ({ codigo, nombre: codigo, orden: 10, activa: true, determinadaPorCuantia }) as Modalidad;
 
+  const CATALOGO = [
+    { codigo: 'LICITACION_PUBLICA', nombre: 'Licitación Pública', determinadaPorCuantia: true, activa: true },
+    { codigo: 'ABREVIADA_MENOR_CUANTIA', nombre: 'Menor Cuantía', determinadaPorCuantia: true, activa: true },
+    { codigo: 'MINIMA_CUANTIA', nombre: 'Mínima Cuantía', determinadaPorCuantia: true, activa: true },
+    { codigo: 'CONCURSO_MERITOS_ABIERTO', nombre: 'Concurso de Méritos', determinadaPorCuantia: true, activa: true },
+  ];
+
+  const UMBRALES = [
+    { modalidad: 'MINIMA_CUANTIA', limiteInferior: 0, limiteSuperior: 162350000, unidad: 'PESOS', vigenciaDesde: '2026-01-01' },
+    { modalidad: 'ABREVIADA_MENOR_CUANTIA', limiteInferior: 162350000, limiteSuperior: LICITACION, unidad: 'PESOS', vigenciaDesde: '2026-01-01' },
+    { modalidad: 'LICITACION_PUBLICA', limiteInferior: LICITACION, limiteSuperior: null, unidad: 'PESOS', vigenciaDesde: '2026-01-01' },
+  ];
+
   /** Service con `sugerir` sustituido: la resolución ya se prueba aparte. */
   const servicioCon = (forzosa: boolean) => {
-    const service = new UmbralesService({} as any);
+    const service = new UmbralesService({
+      getRepository: (entidad: any) => ({
+        find: async () => {
+          if (entidad?.name === 'UmbralModalidad') return UMBRALES;
+          if (entidad?.name === 'Smmlv') return [];
+          return CATALOGO;
+        },
+      }),
+    } as any);
     jest.spyOn(service, 'sugerir').mockResolvedValue({
       modalidad: forzosa ? 'LICITACION_PUBLICA' : 'ABREVIADA_MENOR_CUANTIA',
       tramo: { modalidad: 'LICITACION_PUBLICA', inferior: LICITACION, superior: null },
@@ -291,6 +312,95 @@ describe('exigirModalidadPermitida', () => {
     await expect(
       servicioCon(false).exigirModalidadPermitida(NO_SUPERA, modalidad('MINIMA_CUANTIA')),
     ).resolves.toBeUndefined();
+  });
+
+  it('deja pasar una modalidad sin umbral configurado', async () => {
+    // Mismo criterio que usa el formulario para deshabilitar: si el rechazo
+    // fuera más amplio que el veto, la pantalla ofrecería opciones que la API
+    // rechaza.
+    await expect(
+      servicioCon(true).exigirModalidadPermitida(SUPERA, modalidad('CONCURSO_MERITOS_ABIERTO')),
+    ).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * Lo que consume el formulario de creación (EFDS-1328). El campo delicado es
+ * `modalidadesBloqueadas`: si el microfrontend dedujera por su cuenta cuáles
+ * vetar, habría dos versiones de la misma regla y bastaría un despliegue
+ * desfasado para que discreparan.
+ */
+describe('sugerirParaFormulario', () => {
+  const LICITACION = 1623500000;
+
+  const CATALOGO = [
+    { codigo: 'LICITACION_PUBLICA', nombre: 'Licitación Pública', determinadaPorCuantia: true, activa: true },
+    { codigo: 'ABREVIADA_MENOR_CUANTIA', nombre: 'Menor Cuantía', determinadaPorCuantia: true, activa: true },
+    // Sin umbral configurado: no hay base para vetarla.
+    { codigo: 'CONCURSO_MERITOS_ABIERTO', nombre: 'Concurso de Méritos', determinadaPorCuantia: true, activa: true },
+    { codigo: 'MINIMA_CUANTIA', nombre: 'Mínima Cuantía', determinadaPorCuantia: true, activa: true },
+    { codigo: 'CONTRATACION_DIRECTA', nombre: 'Directa', determinadaPorCuantia: false, activa: true },
+    { codigo: 'ENAJENACION_SUBASTA', nombre: 'Enajenación', determinadaPorCuantia: false, activa: true },
+  ];
+
+  const UMBRALES = [
+    { modalidad: 'MINIMA_CUANTIA', limiteInferior: 0, limiteSuperior: 162350000, unidad: 'PESOS', vigenciaDesde: '2026-01-01' },
+    { modalidad: 'ABREVIADA_MENOR_CUANTIA', limiteInferior: 162350000, limiteSuperior: LICITACION, unidad: 'PESOS', vigenciaDesde: '2026-01-01' },
+    { modalidad: 'LICITACION_PUBLICA', limiteInferior: LICITACION, limiteSuperior: null, unidad: 'PESOS', vigenciaDesde: '2026-01-01' },
+  ];
+
+  const servicio = (forzosa: boolean, modalidad: string) => {
+    const service = new UmbralesService({
+      getRepository: (entidad: any) => ({
+        find: async () => (entidad?.name === 'UmbralModalidad' ? UMBRALES : CATALOGO),
+      }),
+    } as any);
+    jest.spyOn(service, 'sugerir').mockResolvedValue({
+      modalidad,
+      tramo: { modalidad, inferior: forzosa ? LICITACION : 0, superior: null },
+      forzosa,
+      advertencia: null,
+    });
+    return service;
+  };
+
+  it('bloquea solo las modalidades con umbral por debajo del de licitación', async () => {
+    const r = await servicio(true, 'LICITACION_PUBLICA').sugerirParaFormulario(5000000000);
+
+    expect(r.forzosa).toBe(true);
+    expect(r.modalidad).toBe('LICITACION_PUBLICA');
+    expect(r.modalidadesBloqueadas).toEqual(['ABREVIADA_MENOR_CUANTIA', 'MINIMA_CUANTIA']);
+    expect(r.motivo).toContain('umbral de licitación pública');
+  });
+
+  it('no bloquea una modalidad sin umbral configurado', async () => {
+    // Vetar el concurso de méritos en una consultoría grande impediría una
+    // contratación legítima por un dato que todavía no está cargado.
+    const r = await servicio(true, 'LICITACION_PUBLICA').sugerirParaFormulario(5000000000);
+    expect(r.modalidadesBloqueadas).not.toContain('CONCURSO_MERITOS_ABIERTO');
+  });
+
+  it('nunca bloquea las modalidades por causal, aunque la cuantía obligue', async () => {
+    const r = await servicio(true, 'LICITACION_PUBLICA').sugerirParaFormulario(5000000000);
+    expect(r.modalidadesBloqueadas).not.toContain('CONTRATACION_DIRECTA');
+    expect(r.modalidadesBloqueadas).not.toContain('ENAJENACION_SUBASTA');
+  });
+
+  it('no se bloquea a sí misma la licitación pública', async () => {
+    const r = await servicio(true, 'LICITACION_PUBLICA').sugerirParaFormulario(5000000000);
+    expect(r.modalidadesBloqueadas).not.toContain('LICITACION_PUBLICA');
+  });
+
+  it('no bloquea nada cuando la sugerencia solo orienta', async () => {
+    const r = await servicio(false, 'MINIMA_CUANTIA').sugerirParaFormulario(45000000);
+    expect(r.forzosa).toBe(false);
+    expect(r.modalidadesBloqueadas).toEqual([]);
+    expect(r.motivo).toBeNull();
+  });
+
+  it('resuelve el nombre para mostrar, no solo el código', async () => {
+    const r = await servicio(false, 'MINIMA_CUANTIA').sugerirParaFormulario(45000000);
+    expect(r.nombre).toBe('Mínima Cuantía');
   });
 });
 

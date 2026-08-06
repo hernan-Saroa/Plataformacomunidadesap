@@ -244,6 +244,87 @@ export class UmbralesService {
   }
 
   /**
+   * Sugerencia lista para pintar en el formulario de creación.
+   *
+   * Devuelve además qué modalidades quedan bloqueadas por la cuantía, para que
+   * el microfrontend las deshabilite sin reimplementar la regla: si el cliente
+   * dedujera por su cuenta cuáles vetar, habría dos versiones de la misma norma
+   * y bastaría un despliegue desfasado para que discreparan.
+   */
+  async sugerirParaFormulario(valorEstimado: number | null) {
+    const [sugerencia, modalidades] = await Promise.all([
+      this.sugerir(valorEstimado),
+      this.dataSource.getRepository(Modalidad).find({
+        where: { activa: true },
+        order: { orden: 'ASC' },
+      }),
+    ]);
+
+    const porCodigo = new Map(modalidades.map((m) => [m.codigo, m]));
+
+    const bloqueadas = sugerencia.forzosa
+      ? await this.modalidadesDeMenorCuantia(sugerencia.tramo?.inferior ?? null)
+      : [];
+
+    return {
+      valorEstimado,
+      modalidad: sugerencia.modalidad,
+      nombre: sugerencia.modalidad ? (porCodigo.get(sugerencia.modalidad)?.nombre ?? null) : null,
+      forzosa: sugerencia.forzosa,
+      umbral: sugerencia.tramo
+        ? { desde: sugerencia.tramo.inferior, hasta: sugerencia.tramo.superior }
+        : null,
+      modalidadesBloqueadas: bloqueadas,
+      motivo: sugerencia.forzosa
+        ? `Supera el umbral de licitación pública (${formatoPesos(sugerencia.tramo?.inferior)})`
+        : null,
+      advertencia: sugerencia.advertencia,
+    };
+  }
+
+  /**
+   * Modalidades que la cuantía descarta cuando la licitación es forzosa.
+   *
+   * Solo se descarta lo que hay evidencia de que es de menor cuantía: una
+   * modalidad con umbral vigente cuyo piso está por debajo del de licitación.
+   * Las que no tienen umbral configurado NO se descartan, porque nada dice que
+   * dependan del monto hacia abajo: vetar el concurso de méritos en una
+   * consultoría grande impediría una contratación legítima por un dato que
+   * todavía no está cargado.
+   */
+  private async modalidadesDeMenorCuantia(pisoLicitacion: number | null): Promise<string[]> {
+    if (pisoLicitacion === null) return [];
+
+    const [umbrales, modalidades, smmlv] = await Promise.all([
+      this.dataSource.getRepository(UmbralModalidad).find({ where: { vigenciaHasta: IsNull() } }),
+      this.dataSource.getRepository(Modalidad).find({ where: { activa: true }, order: { orden: 'ASC' } }),
+      this.salarios(),
+    ]);
+
+    const porCuantia = new Map(
+      modalidades.filter((m) => m.determinadaPorCuantia).map((m) => [m.codigo, m]),
+    );
+
+    const menores: string[] = [];
+    for (const umbral of umbrales) {
+      if (umbral.modalidad === MODALIDAD_FORZOSA) continue;
+      if (!porCuantia.has(umbral.modalidad)) continue;
+
+      const salario = smmlv.get(anioDeVigencia(umbral.vigenciaDesde))?.valor ?? null;
+      try {
+        const { inferior } = convertirAPesos(umbral, salario);
+        if (inferior !== null && inferior < pisoLicitacion) menores.push(umbral.modalidad);
+      } catch {
+        // Sin salario del año no se puede situar el tramo. No se veta a ciegas.
+        continue;
+      }
+    }
+
+    // El orden del catálogo, para que la interfaz los liste como la matriz.
+    return [...porCuantia.keys()].filter((c) => menores.includes(c));
+  }
+
+  /**
    * Rechaza una modalidad de menor cuantía cuando el valor obliga a licitación
    * pública (RF-EST-03, segundo criterio de EFDS-1147).
    *
@@ -263,7 +344,13 @@ export class UmbralesService {
     const sugerencia = await this.sugerir(valorEstimado);
     if (!sugerencia.forzosa) return;
 
-    const piso = sugerencia.tramo?.inferior;
+    const piso = sugerencia.tramo?.inferior ?? null;
+
+    // Mismo criterio que usa el formulario para deshabilitar: si el veto y el
+    // rechazo no coincidieran, la pantalla ofrecería opciones que la API
+    // rechaza, o al revés.
+    const vetadas = await this.modalidadesDeMenorCuantia(piso);
+    if (!vetadas.includes(modalidad.codigo)) return;
     throw new BadRequestException(
       `El valor estimado (${formatoPesos(valorEstimado)}) supera el umbral de licitación pública` +
         (piso !== null && piso !== undefined ? ` (${formatoPesos(piso)})` : '') +
