@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { HealthController } from './health/health.controller';
 import { HiringModule } from './modules/hiring/hiring.module';
 import { EstudioPrevioModule } from './modules/estudio-previo/estudio-previo.module';
+import { UmbralesModule } from './modules/umbrales/umbrales.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -18,6 +19,8 @@ import { Trazabilidad } from './entities/trazabilidad.entity';
 import { Revision } from './entities/revision.entity';
 import { Plantilla } from './entities/plantilla.entity';
 import { Modalidad } from './entities/modalidad.entity';
+import { UmbralModalidad } from './entities/umbral-modalidad.entity';
+import { Smmlv } from './entities/smmlv.entity';
 
 @Module({
   imports: [
@@ -35,7 +38,7 @@ import { Modalidad } from './entities/modalidad.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -44,6 +47,7 @@ import { Modalidad } from './entities/modalidad.entity';
     AuthModule,
     HiringModule,
     EstudioPrevioModule,
+    UmbralesModule,
   ],
   controllers: [HealthController],
   providers: [

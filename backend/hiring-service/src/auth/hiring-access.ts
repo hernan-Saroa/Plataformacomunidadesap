@@ -28,6 +28,15 @@ export const ROLES_REVISION_ESTUDIO_PREVIO = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Roles que pueden mover los umbrales de cuantía (EFDS-1147).
+ *
+ * Más estrecho que la revisión: cambiar un umbral no afecta a un proceso sino a
+ * todos los que se creen después, así que queda en la Dirección de
+ * Contratación. El revisor aprueba procesos, no reescribe la regla.
+ */
+export const ROLES_ADMIN_UMBRALES = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
