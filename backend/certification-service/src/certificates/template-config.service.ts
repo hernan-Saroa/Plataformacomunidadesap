@@ -5,7 +5,7 @@ import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { TemplateConfig } from './template-config.entity';
 import { TemplateConfigChange } from './template-config-change.entity';
-import { Firmante } from './firmante.entity';
+import { TemplateSigner } from './template-signer.entity';
 
 @Injectable()
 export class TemplateConfigService {
@@ -26,8 +26,8 @@ export class TemplateConfigService {
     private templateConfigRepository: Repository<TemplateConfig>,
     @InjectRepository(TemplateConfigChange)
     private changeRepository: Repository<TemplateConfigChange>,
-    @InjectRepository(Firmante)
-    private firmanteRepository: Repository<Firmante>,
+    @InjectRepository(TemplateSigner)
+    private templateSignerRepository: Repository<TemplateSigner>,
   ) {}
 
   // Evita que las variables lleguen en negrita por defecto; el usuario decide el estilo
@@ -50,7 +50,7 @@ export class TemplateConfigService {
     return sanitized;
   }
 
-  private getDefaultCargoTitle(_templateType: string): string {
+  private getDefaultSignerTitle(_templateType: string): string {
     return 'LA DIRECTORA T\u00C9CNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACI\u00D3N P\u00DABLICA - ESAP';
   }
 
@@ -64,7 +64,7 @@ export class TemplateConfigService {
   private async getOrCreateConfig(templateType: string): Promise<TemplateConfig> {
     let config = await this.templateConfigRepository.findOne({
       where: { isActive: true, templateType },
-      relations: ['firmante'],
+      relations: ['signer'],
     });
 
     if (!config) {
@@ -81,13 +81,13 @@ export class TemplateConfigService {
     const config = await this.getOrCreateConfig(templateType);
 
     // Si no tiene firmante asignado, buscar el firmante principal
-    let firmante = config.firmante;
-    if (!firmante) {
-      const firmantePrincipal = await this.firmanteRepository.findOne({
-        where: { es_principal: true, activo: true },
+    let signer = config.signer;
+    if (!signer) {
+      const primarySigner = await this.templateSignerRepository.findOne({
+        where: { is_primary: true, is_active: true },
       });
-      if (firmantePrincipal) {
-        firmante = firmantePrincipal;
+      if (primarySigner) {
+        signer = primarySigner;
       }
     }
 
@@ -95,20 +95,20 @@ export class TemplateConfigService {
       id: config.id,
       version: config.version,
       status: config.status,
-      firmante: firmante
+      firmante: signer
         ? {
-            id: firmante.id,
-            nombreCompleto: config.signerNameOverride || firmante.nombre_completo,
-            cargo: firmante.cargo,
-            dependencia: firmante.dependencia,
-            firmaDigitalUrl: config.signatureUrl || firmante.firma_digital_url,
+            id: signer.id,
+            nombreCompleto: config.signerNameOverride || signer.full_name,
+            cargo: signer.position,
+            dependencia: signer.department,
+            firmaDigitalUrl: config.signatureUrl || signer.signature_url,
           }
         : null,
       logo: await this.ensureLogoInfo(config),
       typography: {
         font: this.normalizeTypographyFont(config.typographyFont),
       },
-      cargoTitle: config.cargoTitle || this.getDefaultCargoTitle(templateType),
+      cargoTitle: config.signerTitle || this.getDefaultSignerTitle(templateType),
       certificateContentHtml: this.stripVariableBold(
         config.certificateContentHtml || this.getDefaultContent(templateType),
       ),
@@ -121,12 +121,12 @@ export class TemplateConfigService {
 
   /**
    * Actualiza el nombre del firmante
-   * (Actualiza directamente el registro del firmante en la tabla firmantes)
+   * (Actualiza el override por plantilla sin modificar template_signers)
    */
   async updateSignerName(signerName: string, updatedBy: string, templateType = 'docente'): Promise<any> {
     const config = await this.getOrCreateConfig(templateType);
 
-    const oldValue = config.signerNameOverride || config.firmante?.nombre_completo || '';
+    const oldValue = config.signerNameOverride || config.signer?.full_name || '';
 
     config.signerNameOverride = signerName;
     config.updatedBy = updatedBy;
@@ -150,17 +150,17 @@ export class TemplateConfigService {
   async resetSignerName(updatedBy: string, templateType = 'docente'): Promise<any> {
     const config = await this.getOrCreateConfig(templateType);
 
-    let firmante = config.firmante;
-    if (!firmante) {
-      const firmantePrincipal = await this.firmanteRepository.findOne({
-        where: { es_principal: true, activo: true },
+    let signer = config.signer;
+    if (!signer) {
+      const primarySigner = await this.templateSignerRepository.findOne({
+        where: { is_primary: true, is_active: true },
       });
-      if (firmantePrincipal) {
-        firmante = firmantePrincipal;
+      if (primarySigner) {
+        signer = primarySigner;
       }
     }
 
-    const defaultName = firmante?.nombre_completo || '';
+    const defaultName = signer?.full_name || '';
     const oldValue = config.signerNameOverride || defaultName;
 
     config.signerNameOverride = null;
@@ -266,18 +266,18 @@ export class TemplateConfigService {
   ): Promise<any> {
     const config = await this.getOrCreateConfig(templateType);
 
-    let firmante = config.firmante;
-    if (!firmante) {
-      const firmantePrincipal = await this.firmanteRepository.findOne({
-        where: { es_principal: true, activo: true },
+    let signer = config.signer;
+    if (!signer) {
+      const primarySigner = await this.templateSignerRepository.findOne({
+        where: { is_primary: true, is_active: true },
       });
-      if (!firmantePrincipal) {
+      if (!primarySigner) {
         throw new NotFoundException('No se encontró firmante principal');
       }
-      firmante = firmantePrincipal;
+      signer = primarySigner;
     }
 
-    const oldSignatureUrl = config.signatureUrl || firmante.firma_digital_url || 'Sin firma';
+    const oldSignatureUrl = config.signatureUrl || signer.signature_url || 'Sin firma';
 
     // Guardar la firma en la configuración (aislada por tipo)
     config.signatureUrl = signatureUrl;
@@ -460,18 +460,18 @@ export class TemplateConfigService {
     }
 
     if (fieldName === 'signature_url') {
-      let firmante = config.firmante;
-      if (!firmante) {
-        const firmantePrincipal = await this.firmanteRepository.findOne({
-          where: { es_principal: true, activo: true },
+      let signer = config.signer;
+      if (!signer) {
+        const primarySigner = await this.templateSignerRepository.findOne({
+          where: { is_primary: true, is_active: true },
         });
-        if (!firmantePrincipal) {
+        if (!primarySigner) {
           throw new NotFoundException('No se encontr\u00F3 firmante principal');
         }
-        firmante = firmantePrincipal;
+        signer = primarySigner;
       }
 
-      const currentSignature = config.signatureUrl || firmante.firma_digital_url || 'Sin firma';
+      const currentSignature = config.signatureUrl || signer.signature_url || 'Sin firma';
       const nextSignatureUrl = this.isEmptyValue(oldValue) ? '' : oldValue;
       const nextFilename = this.isEmptyValue(oldValue)
         ? null
@@ -496,17 +496,17 @@ export class TemplateConfigService {
     }
 
     if (fieldName === 'signer_name_override') {
-      let firmante = config.firmante;
-      if (!firmante) {
-        const firmantePrincipal = await this.firmanteRepository.findOne({
-          where: { es_principal: true, activo: true },
+      let signer = config.signer;
+      if (!signer) {
+        const primarySigner = await this.templateSignerRepository.findOne({
+          where: { is_primary: true, is_active: true },
         });
-        if (firmantePrincipal) {
-          firmante = firmantePrincipal;
+        if (primarySigner) {
+          signer = primarySigner;
         }
       }
 
-      const defaultName = firmante?.nombre_completo || '';
+      const defaultName = signer?.full_name || '';
       const currentName = config.signerNameOverride || defaultName;
       const nextName = oldValue || defaultName;
 
@@ -545,17 +545,17 @@ export class TemplateConfigService {
       return this.getActiveConfig(config.templateType);
     }
 
-    if (fieldName === 'cargo_title') {
-      const currentTitle = config.cargoTitle || this.getDefaultCargoTitle(templateType);
-      const nextTitle = oldValue || this.getDefaultCargoTitle(templateType);
-      config.cargoTitle = nextTitle;
+    if (fieldName === 'signer_title' || fieldName === 'cargo_title') {
+      const currentTitle = config.signerTitle || this.getDefaultSignerTitle(templateType);
+      const nextTitle = oldValue || this.getDefaultSignerTitle(templateType);
+      config.signerTitle = nextTitle;
       config.updatedBy = updatedBy;
       await this.templateConfigRepository.save(config);
 
       await this.recordChange({
         templateConfigId: config.id,
         changeType: 'titulo_cargo',
-        fieldName: fieldName,
+        fieldName: 'signer_title',
         oldValue: currentTitle,
         newValue: nextTitle,
         changedBy: updatedBy,
@@ -624,14 +624,14 @@ export class TemplateConfigService {
     }
 
     // Actualizar título del cargo si cambió
-    if (data.cargoTitle && data.cargoTitle !== config.cargoTitle) {
+    if (data.cargoTitle && data.cargoTitle !== config.signerTitle) {
       changes.push({
         changeType: 'titulo_cargo',
-        fieldName: 'cargo_title',
-        oldValue: config.cargoTitle || '',
+        fieldName: 'signer_title',
+        oldValue: config.signerTitle || '',
         newValue: data.cargoTitle,
       });
-      config.cargoTitle = data.cargoTitle;
+      config.signerTitle = data.cargoTitle;
     }
 
     // Actualizar contenido HTML si cambió
@@ -669,17 +669,17 @@ export class TemplateConfigService {
    */
   async resetCargoTitle(updatedBy: string, templateType = 'docente'): Promise<any> {
     const config = await this.getOrCreateConfig(templateType);
-    const defaultTitle = this.getDefaultCargoTitle(templateType);
-    const oldValue = config.cargoTitle || '';
+    const defaultTitle = this.getDefaultSignerTitle(templateType);
+    const oldValue = config.signerTitle || '';
 
-    config.cargoTitle = defaultTitle;
+    config.signerTitle = defaultTitle;
     config.updatedBy = updatedBy;
     await this.templateConfigRepository.save(config);
 
     await this.recordChange({
       templateConfigId: config.id,
       changeType: 'titulo_cargo',
-      fieldName: 'cargo_title',
+      fieldName: 'signer_title',
       oldValue: oldValue,
       newValue: defaultTitle,
       changedBy: updatedBy,
@@ -716,12 +716,12 @@ export class TemplateConfigService {
    */
   private async createDefaultConfig(templateType: string): Promise<TemplateConfig> {
     const defaultLogo = this.getDefaultLogoInfo();
-    const firmantePrincipal = await this.firmanteRepository.findOne({
-      where: { es_principal: true, activo: true },
+    const primarySigner = await this.templateSignerRepository.findOne({
+      where: { is_primary: true, is_active: true },
     });
 
     const config = this.templateConfigRepository.create({
-      firmanteId: firmantePrincipal?.id || undefined,
+      signerId: primarySigner?.id || undefined,
       version: '1.0.0',
       status: 'draft',
       createdBy: 'Sistema',
@@ -732,7 +732,7 @@ export class TemplateConfigService {
       entityLogoSize: defaultLogo.size,
       templateType,
       certificateContentHtml: this.getDefaultContent(templateType),
-      cargoTitle: this.getDefaultCargoTitle(templateType),
+      signerTitle: this.getDefaultSignerTitle(templateType),
       typographyFont: this.defaultTypographyFont,
     });
 

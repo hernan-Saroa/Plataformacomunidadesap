@@ -1973,6 +1973,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       'nombre_completo': 'Nombre del firmante',
       'typography_font': 'Fuente tipografica',
       'cargo_title': 'Titulo del cargo',
+      'signer_title': 'Titulo del cargo',
       'certificate_content_html': 'Contenido del certificado',
       'typographyFont': 'Fuente tipografica',
       'cargoTitle': 'Titulo del cargo',
@@ -2021,6 +2022,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
       'cargo_title': 'Titulo del cargo',
+      'signer_title': 'Titulo del cargo',
 
 
 

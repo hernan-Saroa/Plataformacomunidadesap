@@ -1,27 +1,33 @@
-import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
-@Entity('firmantes')
-export class Firmante {
+@Entity('template_signers')
+export class TemplateSigner {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ length: 255 })
-  nombre_completo: string;
+  full_name: string;
 
   @Column({ length: 150 })
-  cargo: string;
+  position: string;
 
   @Column({ length: 255 })
-  dependencia: string;
+  department: string;
 
   @Column({ default: true })
-  activo: boolean;
+  is_active: boolean;
 
   @Column({ default: false })
-  es_principal: boolean;
+  is_primary: boolean;
 
   @Column({ type: 'text', nullable: true })
-  firma_digital_url: string;
+  signature_url: string;
 
   @CreateDateColumn()
   created_at: Date;
