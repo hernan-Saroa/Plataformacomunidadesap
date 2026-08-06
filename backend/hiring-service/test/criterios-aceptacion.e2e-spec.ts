@@ -224,6 +224,9 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
         numeral: '3.1',
         tipo: 'ADJUNTO',
         nombre: 'estudio-previo-firmado.pdf',
+        // ck_doc_contenido exige archivo en un adjunto: un ADJUNTO sin ruta no
+        // apuntaría a nada y el expediente quedaría con un registro hueco.
+        archivoUrl: '/uploads/pruebas/estudio-previo-firmado.pdf',
         hashSha256: 'a'.repeat(64),
         subidoPor: gestor.userName,
       } as Partial<Documento>);
