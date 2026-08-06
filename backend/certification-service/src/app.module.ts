@@ -12,7 +12,7 @@ import { CertificateTemplate } from './certificates/certificate-template.entity'
 import { Signer } from './certificates/signer.entity';
 import { TemplateConfig } from './certificates/template-config.entity';
 import { TemplateConfigChange } from './certificates/template-config-change.entity';
-import { Firmante } from './certificates/firmante.entity';
+import { TemplateSigner } from './certificates/template-signer.entity';
 import { TechnicalBonusAssignment } from './certificates/technical-bonus-assignment.entity';
 import { TechnicalBonusTemplate } from './certificates/technical-bonus-template.entity';
 import { AuthModule } from './auth/auth.module';
@@ -37,7 +37,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
         Signer,
         TemplateConfig,
         TemplateConfigChange,
-        Firmante,
+        TemplateSigner,
         TechnicalBonusAssignment,
         TechnicalBonusTemplate,
       ],
