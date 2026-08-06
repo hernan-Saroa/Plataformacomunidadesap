@@ -7,6 +7,7 @@ import {
   Modalidad,
   ProcesoResumen,
   RevisionEstudioPrevio,
+  SugerenciaModalidad,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -60,6 +61,13 @@ export const contratacionService = {
 
   /** Catálogo para el selector; se consulta antes de crear el proceso. */
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
+
+  /**
+   * Modalidad que corresponde a una cuantía. Se consulta mientras se digita el
+   * valor, antes de que el proceso exista.
+   */
+  sugerenciaModalidad: (valorEstimado: number, signal?: AbortSignal) =>
+    pedir<SugerenciaModalidad>(`/umbrales/sugerencia?valorEstimado=${valorEstimado}`, { signal }),
 
   crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
     pedir<ProcesoResumen>('/procesos', {

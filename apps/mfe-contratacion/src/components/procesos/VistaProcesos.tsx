@@ -12,12 +12,14 @@ import {
   Lock,
   List as ListIcon,
   Columns3,
+  Lightbulb,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@esap-mfe/shared-ui/empty-state';
 import { SkeletonTable } from '@esap-mfe/shared-ui/skeleton';
 
 import { contratacionService } from '../../services/contratacionService';
+import { useSugerenciaModalidad } from '../../hooks/useSugerenciaModalidad';
 import { Modalidad, ProcesoResumen } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
@@ -160,6 +162,19 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   }, []);
 
   const valorEstimado = useMemo(() => aNumero(valorTexto), [valorTexto]);
+  const { sugerencia, consultando } = useSugerenciaModalidad(creando ? valorEstimado : null);
+
+  const bloqueadas = sugerencia?.modalidadesBloqueadas ?? [];
+
+  // Superado el umbral, la licitación pública es obligatoria: se fija sola en
+  // vez de dejar al usuario elegir algo que el backend va a rechazar. Solo se
+  // pisa lo que quedó vetado; si eligió una modalidad permitida, se respeta.
+  useEffect(() => {
+    if (!sugerencia?.forzosa || !sugerencia.modalidad) return;
+    if (modalidad === '' || bloqueadas.includes(modalidad)) {
+      setModalidad(sugerencia.modalidad);
+    }
+  }, [sugerencia, modalidad]);
 
   const crear = async () => {
     if (!objeto.trim() || !modalidad || valorEstimado === null) return;
@@ -294,27 +309,64 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
           value={modalidad}
           onChange={(e) => setModalidad(e.target.value)}
           disabled={modalidades.length === 0}
+          aria-describedby="ayuda-modalidad"
           className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
         >
           <option value="">
             {modalidades.length === 0 ? 'No se pudo cargar el listado' : 'Selecciona la modalidad…'}
           </option>
-          {modalidades.map((m) => (
-            <option key={m.codigo} value={m.codigo}>
-              {m.nombre}
-            </option>
-          ))}
+          {modalidades.map((m) => {
+            // Se deshabilitan en vez de ocultarse: ver la opción vetada y su
+            // motivo explica la regla; quitarla del listado la haría parecer
+            // inexistente.
+            const vetada = bloqueadas.includes(m.codigo);
+            return (
+              <option key={m.codigo} value={m.codigo} disabled={vetada}>
+                {m.nombre}
+                {vetada ? ' — no aplica por la cuantía' : ''}
+              </option>
+            );
+          })}
         </select>
-        {errorModalidades ? (
-          <p role="alert" className="text-[11px] font-bold text-red-600 mt-2 mb-0 leading-relaxed">
-            {errorModalidades}
-          </p>
-        ) : (
-          <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
-            Define qué actividades recorre el proceso: no todas aplican a todas las modalidades. Se
-            ratifica al definir la modalidad en la actividad 3.5.
-          </p>
-        )}
+
+        <div id="ayuda-modalidad">
+          {errorModalidades ? (
+            <p role="alert" className="text-[11px] font-bold text-red-600 mt-2 mb-0 leading-relaxed">
+              {errorModalidades}
+            </p>
+          ) : consultando ? (
+            <p className="text-[11px] text-gray-400 mt-2 mb-0">Calculando la modalidad…</p>
+          ) : sugerencia?.forzosa && sugerencia.modalidad ? (
+            // Asignación obligatoria: el tono es de aviso, no de sugerencia.
+            <div
+              role="status"
+              className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-start gap-2"
+            >
+              <Lock className="w-3.5 h-3.5 text-amber-700 mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-amber-900 m-0 leading-relaxed">
+                <span className="font-bold">{sugerencia.nombre} obligatoria.</span>{' '}
+                {sugerencia.motivo}. Las modalidades de menor cuantía quedan deshabilitadas.
+              </p>
+            </div>
+          ) : sugerencia?.modalidad ? (
+            // Orientación: se puede ignorar, y se dice explícitamente.
+            <div
+              role="status"
+              className="mt-2 rounded-lg border border-[#003DA5]/20 bg-[#E0EDFF] px-3 py-2 flex items-start gap-2"
+            >
+              <Lightbulb className="w-3.5 h-3.5 text-[#003DA5] mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-slate-700 m-0 leading-relaxed">
+                Por la cuantía corresponde <span className="font-bold">{sugerencia.nombre}</span>.
+                Es una sugerencia: puedes elegir otra si la causal lo justifica.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
+              Define qué actividades recorre el proceso: no todas aplican a todas las modalidades.
+              Se ratifica al definir la modalidad en la actividad 3.5.
+            </p>
+          )}
+        </div>
       </Modal>
 
       {/* Barra de herramientas: buscar a la izquierda, elegir vista a la derecha. */}

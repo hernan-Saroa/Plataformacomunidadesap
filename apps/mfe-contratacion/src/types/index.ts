@@ -43,6 +43,24 @@ export interface Modalidad {
   orden: number;
 }
 
+/**
+ * Modalidad que corresponde a una cuantía, según los umbrales vigentes.
+ *
+ * `modalidadesBloqueadas` la calcula el backend a propósito: si el formulario
+ * dedujera por su cuenta cuáles vetar, habría dos versiones de la misma regla.
+ */
+export interface SugerenciaModalidad {
+  valorEstimado: number | null;
+  modalidad: string | null;
+  nombre: string | null;
+  /** Solo la licitación pública ata; el resto orienta. */
+  forzosa: boolean;
+  umbral: { desde: number | null; hasta: number | null } | null;
+  modalidadesBloqueadas: string[];
+  motivo: string | null;
+  advertencia: string | null;
+}
+
 export interface ProcesoResumen {
   id: string;
   radicado: string;
