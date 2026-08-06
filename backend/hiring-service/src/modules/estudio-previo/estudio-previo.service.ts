@@ -225,7 +225,7 @@ export class EstudioPrevioService {
       }
 
       const campos = await this.camposDe(em);
-      actividad.datos = this.filtrarYValidar(dto.datos, campos);
+      actividad.datos = await this.filtrarYValidar(em, dto.datos, campos);
       actividad.version += 1;
       await em.save(ProcesoActividad, actividad);
 
@@ -529,13 +529,34 @@ export class EstudioPrevioService {
    * Solo entran códigos definidos en la configuración, con el tipo correcto.
    * Evita que el expediente termine guardando basura enviada por el cliente.
    */
-  private filtrarYValidar(datos: Record<string, any>, campos: CampoFormulario[]) {
+  private async filtrarYValidar(
+    em: EntityManager,
+    datos: Record<string, any>,
+    campos: CampoFormulario[],
+  ) {
     const porCodigo = new Map(campos.map((c) => [c.codigo, c]));
     const desconocidos = Object.keys(datos ?? {}).filter((k) => !porCodigo.has(k));
+
     if (desconocidos.length > 0) {
-      throw new BadRequestException(
-        `Campos no definidos para el estudio previo: ${desconocidos.join(', ')}`,
-      );
+      // Un código que existe pero está desactivado es un campo retirado del
+      // formulario: los procesos que alcanzaron a diligenciarlo siguen
+      // enviándolo, y rechazarlos los dejaría sin poder guardar. Se descarta.
+      // Uno que no existe en absoluto sí es un cliente inventando claves, y
+      // ahí el rechazo protege el expediente.
+      const retirados = await em.find(CampoFormulario, {
+        where: { numeral: NUMERAL_ESTUDIO_PREVIO, codigo: In(desconocidos) },
+        select: ['codigo'],
+      });
+      const conocidos = new Set(retirados.map((c) => c.codigo));
+      const inventados = desconocidos.filter((c) => !conocidos.has(c));
+
+      if (inventados.length > 0) {
+        throw new BadRequestException(
+          `Campos no definidos para el estudio previo: ${inventados.join(', ')}`,
+        );
+      }
+
+      for (const codigo of desconocidos) delete datos[codigo];
     }
 
     const limpio: Record<string, any> = {};

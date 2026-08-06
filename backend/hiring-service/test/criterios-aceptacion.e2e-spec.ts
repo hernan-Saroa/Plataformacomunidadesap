@@ -247,5 +247,34 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
       expect(despues.estado).toBe('BORRADOR');
       expect(despues.editable).toBe(true);
     });
+    it('descarta los campos retirados en vez de rechazar el guardado', async () => {
+      // Al desactivar un campo, los procesos que alcanzaron a diligenciarlo
+      // siguen enviandolo desde el formulario. Rechazarlos los dejaria sin
+      // poder guardar nunca mas, que es lo que ocurrio con
+      // modalidad_propuesta tras la migracion 007.
+      const proceso = await crearProceso();
+      const datos = await datosCompletos();
+
+      await service.guardarBorrador(
+        proceso.id,
+        { datos: { ...datos, modalidad_propuesta: 'Minima Cuantia' }, version: 1 },
+        gestor,
+      );
+      const leido = await service.obtener(proceso.id);
+
+      expect(leido.datos.modalidad_propuesta).toBeUndefined();
+      expect(leido.datos).toMatchObject(datos);
+    });
+
+    it('rechaza una clave que nunca existio', async () => {
+      // Lo contrario del caso anterior: un codigo inventado si debe frenarse,
+      // porque de otro modo un cliente podria meter cualquier cosa en el
+      // expediente.
+      const proceso = await crearProceso();
+
+      await expect(
+        service.guardarBorrador(proceso.id, { datos: { inventado_xyz: 'x' }, version: 1 }, gestor),
+      ).rejects.toThrow(/Campos no definidos/);
+    });
   });
 });
