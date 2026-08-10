@@ -26,7 +26,8 @@ import {
   guardarFirmaDigitalPTA, getPTAUserData, savePTAUserData, deletePTA,
   getAllPtasConEvidencias, revisarEvidenciaPTA,
   getSolicitudesPTA, resolverSolicitudPTA, getCatalogoTerritoriales,
-  getPTAById,
+  getPTAById, aprobarComponentesLote,
+  type AprobarComponentesLoteResultado,
 } from '../../services/api/ptaApi';
 import { apiClient } from '../../../../shell/src/services/api';
 import { usePTARealtimeSync } from '../../hooks/usePTARealtimeSync';
@@ -64,7 +65,9 @@ import {
   PTA_COMPONENT_PERMISSION,
   PTA_APPROVE_ALL_PERMISSION,
   PTA_EXTENSION_COMPONENT_KEYS,
+  PTA_BULK_APPROVAL_GROUPS,
   type PTAComponentKey,
+  type PTABulkApprovalGroupKey,
   hasAnyComponentApprovalData,
   componentKeyForEvidencia,
   isEvidenciaAuthorized,
@@ -1380,6 +1383,18 @@ function NavDropdownPortal({ id, label, icon: Icon, isActive, isOpen, onToggle, 
   );
 }
 
+const BULK_APPROVAL_GROUP_ICON: Record<PTABulkApprovalGroupKey, React.ComponentType<any>> = {
+  docencia_pregrado: GraduationCap,
+  docencia_posgrado: GraduationCap,
+  docencia_territorial: MapPin,
+  investigacion: FlaskConical,
+  ext_capacitacion: Globe,
+  ext_procesos: Globe,
+  ext_fortalecimiento: Globe,
+  ext_gobierno: Globe,
+  complementarias: Briefcase,
+};
+
 function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}) {
   const { permisos, tieneVista, rolLabel, isSimulando, perfil, rolColor, rolBg } = usePermisosPTA();
   const auth = useAuth();
@@ -1391,6 +1406,17 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }, [isSuperUserEffective, permisos.componentesAprobables]);
   const shouldRestrictByComponentPermission = !isSuperUserEffective && visibleComponentKeys.length > 0;
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
+
+  /**
+   * Botones de aprobación masiva que le corresponden a ESTE aprobador: uno por
+   * permiso granular que tenga (Docencia Pregrado/Posgrado/Territorial,
+   * Investigación, cada sección de Extensión, Complementarias) — nunca un botón
+   * único "aprobar todo". Un rol con dos permisos ve dos botones independientes.
+   */
+  const bulkApprovalGroups = useMemo(() => {
+    if (isSuperUserEffective) return PTA_BULK_APPROVAL_GROUPS;
+    return PTA_BULK_APPROVAL_GROUPS.filter(g => g.componentKeys.some(k => visibleComponentKeySet.has(k)));
+  }, [isSuperUserEffective, visibleComponentKeySet]);
 
   /**
    * ¿Este PTA tiene algún componente pendiente que le toque a MÍ?
@@ -1626,6 +1652,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   // ═══ Feature 16: Batch Devolucion ═══
   const [showBatchDevolucion, setShowBatchDevolucion] = useState(false);
   const [batchDevMotivo, setBatchDevMotivo] = useState('');
+
+  // ═══ Aprobación masiva por componente (un botón por permiso granular) ═══
+  const [bulkComponentGroupKey, setBulkComponentGroupKey] = useState<PTABulkApprovalGroupKey | null>(null);
+  const [bulkComponentComentarios, setBulkComponentComentarios] = useState('');
+  const [bulkComponentResult, setBulkComponentResult] = useState<{
+    groupLabel: string;
+    resumen: { total: number; aprobados: number; omitidos: number; fallidos: number };
+    resultados: AprobarComponentesLoteResultado[];
+  } | null>(null);
 
   // ═══ Feature 17: Shift+Click Range Selection ═══
   const lastClickedIdx = useRef<number>(-1);
@@ -3975,6 +4010,58 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             </motion.div>
           )}
 
+          {/* Aprobación masiva por componente: un botón por permiso granular del rol.
+              Independiente de la barra de "Aprobar Lote" de arriba (esa avanza el
+              estado GENERAL del PTA por nivel; esta aprueba componentes puntuales
+              — Docencia Pregrado/Posgrado/Territorial, Investigación, cada sección
+              de Extensión, Complementarias — sin tocar el resto del PTA). */}
+          {selectedIds.size > 0 && bulkApprovalGroups.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                padding: '12px 16px', borderRadius: 12, marginBottom: 12,
+                background: 'linear-gradient(135deg, #065F46 0%, #047857 100%)',
+                color: 'white', boxShadow: '0 4px 16px rgba(5,95,70,0.3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle style={{ width: 16, height: 16 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                      Aprobar componentes de {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''}
+                    </div>
+                    <div style={{ fontSize: '0.65rem', opacity: 0.85 }}>
+                      Cada botón aprueba solo el componente correspondiente a su permiso, en los PTAs seleccionados que lo tengan pendiente
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {bulkApprovalGroups.map((group) => {
+                    const Icon = BULK_APPROVAL_GROUP_ICON[group.key] || CheckCircle;
+                    return (
+                      <button
+                        key={group.key}
+                        onClick={() => { setBulkComponentGroupKey(group.key); setBulkComponentComentarios(''); }}
+                        style={{
+                          padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
+                          background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                          backdropFilter: 'blur(4px)', transition: 'all 0.15s',
+                        }}
+                      >
+                        <Icon style={{ width: 12, height: 12 }} /> {group.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* PTA List */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px 20px', background: 'white', borderRadius: 14, border: '1px solid #E5E7EB' }}>
@@ -5322,6 +5409,167 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 >
                   <Send style={{ width: 13, height: 13 }} />
                   {procesando ? 'Procesando...' : `Aprobar ${selectedIds.size} PTAs`}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ MODAL: Confirmar aprobación masiva por componente ═══ */}
+      <AnimatePresence>
+        {bulkComponentGroupKey && selectedIds.size > 0 && (() => {
+          const group = bulkApprovalGroups.find(g => g.key === bulkComponentGroupKey);
+          if (!group) return null;
+          return (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 55, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(17,24,39,0.6)', backdropFilter: 'blur(4px)' }}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+              >
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <CheckCircle style={{ width: 20, height: 20, color: '#059669' }} />
+                    Aprobar {group.label}
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
+                    Se aprobará este componente en los {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''} que lo tengan pendiente. Los que no apliquen o ya estén aprobados se omiten; los que no cumplan un requisito (revisión pendiente, alcance territorial, otro componente devuelto) se reportan sin afectar al resto.
+                  </p>
+                </div>
+                <div style={{ padding: '16px 24px' }}>
+                  <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 14, borderRadius: 8, border: '1px solid #E5E7EB' }}>
+                    {filteredPtas.filter((p: any) => selectedIds.has(p.id)).map((p: any) => (
+                      <div key={p.id} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '8px 12px', borderBottom: '1px solid #F9FAFB', fontSize: '0.82rem',
+                      }}>
+                        <span style={{ fontWeight: 600, color: '#111827' }}>{p.docente_nombre || 'Docente'}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                    Comentarios para todos (opcional)
+                  </label>
+                  <textarea
+                    value={bulkComponentComentarios}
+                    onChange={e => setBulkComponentComentarios(e.target.value)}
+                    placeholder="Comentarios aplicables a todos los PTAs seleccionados..."
+                    rows={3}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #D1D5DB', fontSize: '0.82rem', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }}
+                  />
+                </div>
+                <div style={{ padding: '14px 24px', borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button
+                    onClick={() => { setBulkComponentGroupKey(null); setBulkComponentComentarios(''); }}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setProcesando(true);
+                      const ptaIds = Array.from(selectedIds);
+                      const res = await aprobarComponentesLote({
+                        ptaIds,
+                        componentes: group.componentKeys,
+                        comentarios: bulkComponentComentarios || undefined,
+                        // Mismos campos de identidad que envía la aprobación
+                        // individual (ejecutarAprobacionComponente en
+                        // PTADetallePanelBackoffice.tsx), para que la trazabilidad
+                        // quede igual sin importar si se aprobó uno por uno o en lote.
+                        aprobadorId,
+                        aprobadorNombre,
+                        aprobadorRol: rolLabel || 'Revisor',
+                      });
+                      setProcesando(false);
+                      setBulkComponentGroupKey(null);
+                      setBulkComponentComentarios('');
+                      if (res.success) {
+                        setBulkComponentResult({ groupLabel: group.label, resumen: res.data.resumen, resultados: res.data.resultados });
+                        setSelectedIds(new Set());
+                        if (res.data.resumen.aprobados > 0) {
+                          addNotification({
+                            title: `Aprobación masiva — ${group.label}`,
+                            message: `${res.data.resumen.aprobados} componente(s) aprobado(s) en ${ptaIds.length} PTA(s) seleccionados`,
+                            type: 'success',
+                          });
+                          loadData();
+                        }
+                      } else {
+                        toast.error(res.message || 'Error al procesar la aprobación masiva');
+                      }
+                    }}
+                    disabled={procesando}
+                    style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#047857', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
+                  >
+                    <Send style={{ width: 13, height: 13 }} />
+                    {procesando ? 'Procesando...' : `Aprobar ${group.label}`}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ═══ MODAL: Resultado de aprobación masiva por componente ═══ */}
+      <AnimatePresence>
+        {bulkComponentResult && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 55, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(17,24,39,0.6)', backdropFilter: 'blur(4px)' }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            >
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CheckCircle style={{ width: 20, height: 20, color: '#059669' }} />
+                  Resultado — {bulkComponentResult.groupLabel}
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
+                  {bulkComponentResult.resumen.aprobados} aprobado(s) · {bulkComponentResult.resumen.omitidos} omitido(s) · {bulkComponentResult.resumen.fallidos} fallido(s)
+                </p>
+              </div>
+              <div style={{ padding: '12px 24px', overflowY: 'auto', flex: 1 }}>
+                {bulkComponentResult.resultados
+                  .filter(r => r.estado !== 'aprobado')
+                  .map((r, idx) => {
+                    const pta = ptas.find((p: any) => p.id === r.ptaId);
+                    const isFallido = r.estado === 'fallido';
+                    return (
+                      <div key={`${r.ptaId}-${r.componente}-${idx}`} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8,
+                        padding: '8px 12px', borderBottom: '1px solid #F9FAFB', fontSize: '0.8rem',
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#111827' }}>{pta?.docente_nombre || r.ptaId}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>{r.motivo || (isFallido ? 'No se pudo aprobar' : 'Omitido')}</div>
+                        </div>
+                        <span style={{
+                          padding: '1px 8px', borderRadius: 4, fontSize: '0.62rem', fontWeight: 700, whiteSpace: 'nowrap',
+                          background: isFallido ? '#FEE2E2' : '#F3F4F6',
+                          color: isFallido ? '#B91C1C' : '#6B7280',
+                        }}>
+                          {isFallido ? 'FALLIDO' : 'OMITIDO'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                {bulkComponentResult.resultados.every(r => r.estado === 'aprobado') && (
+                  <p style={{ fontSize: '0.82rem', color: '#059669', textAlign: 'center', padding: '16px 0' }}>
+                    Todos los componentes seleccionados se aprobaron correctamente.
+                  </p>
+                )}
+              </div>
+              <div style={{ padding: '14px 24px', borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setBulkComponentResult(null)}
+                  style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cerrar
                 </button>
               </div>
             </motion.div>

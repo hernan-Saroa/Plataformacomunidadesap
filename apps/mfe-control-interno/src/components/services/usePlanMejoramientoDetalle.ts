@@ -328,6 +328,7 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
       || '';
 
     return {
+      ...a,
       id: a.id,
       hallazgoId,
       descripcion: a.descripcion || a.titulo || 'Sin descripción',

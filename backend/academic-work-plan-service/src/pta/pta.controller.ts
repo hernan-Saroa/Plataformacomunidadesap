@@ -890,6 +890,15 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Post('aprobar-componentes-lote')
+  @UseGuards(PtaAuthGuard)
+  async aprobarComponentesLote(@Body() body: any, @Req() req: Request) {
+    // Aprobación masiva: mismo criterio de autorización que aprobar-componente,
+    // aplicado individualmente por cada (ptaId, componente) del lote.
+    const data = await this.ptaService.aprobarComponentesLote(body, req.ptaAuth);
+    return { success: true, data };
+  }
+
   @Get(':ptaId/componentes-revision')
   async getComponentesRevision(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getComponentesRevision(ptaId);

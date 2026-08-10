@@ -25,7 +25,7 @@ import {
   BookOpen, FlaskConical, Globe, Briefcase, Users, MessageSquare,
   ChevronDown, ChevronRight, ArrowRight, AlertTriangle, Calendar,
   MapPin, Award, Hash, Calculator, TrendingUp, Shield, Printer,
-  GraduationCap, Scale, Zap, Target, Building2, Layers, BarChart3, Loader2, Edit2,
+  GraduationCap, Scale, Zap, Target, Building2, Layers, BarChart3, Loader2,
   Activity, Download, ExternalLink, Lock, ShieldCheck
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
@@ -34,7 +34,6 @@ import { toast } from 'sonner';
 import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
-import { PTAForm } from '../portal/pta/PTAForm';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
@@ -673,9 +672,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [comentariosRevision, setComentariosRevision] = useState<Record<string, string>>({});
   const [procesandoRevision, setProcesandoRevision] = useState<Record<string, boolean>>({});
 
-  // ═══ FEATURE 3: MODO EDICIÓN ═══
   const { rules } = usePTARules();
-  const [showEditForm, setShowEditForm] = useState(false);
 
   // ── Autorización por COMPONENTE basada en permisos granulares (pta.approve.*) ──
   // Si el usuario tiene algún permiso granular pta.approve.*, la autorización se basa
@@ -698,33 +695,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return componentKeysForApprovalLevel(nivelAprobacion);
   }, [isSuperUser, apruebaTodo, puedePerm, permisosPta.componentesAprobables, nivelAprobacion]);
   const visibleComponentKeySet = useMemo(() => new Set<string>(visibleComponentKeys), [visibleComponentKeys]);
-  // Ya no controla visibilidad (todos los componentes del PTA se muestran siempre para
-  // dar contexto completo); solo indica si el rol actual tiene su alcance de edición/
-  // aprobación restringido a un subconjunto de componentes (usado para el formulario de
-  // Concertar y sus textos, no para ocultar contenido de esta vista).
-  const hasRestrictedApprovalScope =
-    !isSuperUser
-    && !apruebaTodo
-    && visibleComponentKeys.length > 0
-    && visibleComponentKeys.length < PTA_COMPONENT_KEYS.length;
-  const componentEditScopeLabel = useMemo(() => {
-    const labels: Record<string, string> = {
-      academica_pregrado: 'Docencia - Pregrado',
-      academica_posgrado: 'Docencia - Posgrado',
-      academica_territorial: 'Docencia - Territorial',
-      investigacion: 'Investigacion',
-      ext_capacitacion: 'Extension - Capacitacion',
-      ext_procesos: 'Extension - Seleccion',
-      ext_fortalecimiento: 'Extension - Fortalecimiento',
-      ext_gobierno: 'Extension - Alto Gobierno',
-      ext_secciones: 'Extension - otras secciones',
-      complementarias: 'Complementarias',
-      complementarias_pregrado: 'Complementarias - Pregrado',
-      complementarias_posgrado: 'Complementarias - Posgrado',
-      academicas_admin: 'AADM',
-    };
-    return visibleComponentKeys.map(key => labels[key] || key).join(', ');
-  }, [visibleComponentKeys]);
   const isComponentAuthorized = useCallback((key: string): boolean => {
     if (apruebaTodo) return true;
     if (visibleComponentKeySet.size > 0) return visibleComponentKeySet.has(key);
@@ -1010,8 +980,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Estados en los que puede haber componentes individuales aún pendientes de
   // aprobar/concertar aunque el estado AGREGADO del PTA ya no sea "Pendiente X" (p.ej.
   // quedó en REVISION_DOCENTE_N1 porque se devolvió un componente, pero otro sigue
-  // pendiente para un revisor distinto). Se usa para las acciones POR COMPONENTE, para
-  // que puedan resolverse de forma simultánea e independiente sin esperarse entre sí.
+  // pendiente para un revisor distinto). Se usa para las acciones POR COMPONENTE. Nótese
+  // que "accionable" no implica independiente: si algún componente del PTA ya fue
+  // devuelto y está pendiente de corrección del docente, `hayOtroComponenteDevuelto`
+  // (calculado en renderComponentCard) bloquea aprobar/devolver/revisar en los demás.
   const ESTADOS_ACCIONABLES_COMPONENTE = ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'];
   const puedeActuarSobreComponentes = ESTADOS_ACCIONABLES_COMPONENTE.includes(pta.estado);
   const hayComponentesPendientesParaMi = puedeActuarSobreComponentes &&
@@ -1462,13 +1434,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const shouldShowComponentKey = useCallback((key: string): boolean => {
     if (isSuperUser || apruebaTodo || revisaTodo) return true;
-    if (rolLabel === 'Docente') return true;
-    // Sin permisos granulares de aprobación NI de revisión no hay alcance que
-    // restringir (rol legacy por nivel): se conserva la vista completa.
+    // Nota: NO se usa `rolLabel === 'Docente'` aquí a propósito. Un rol granular sin
+    // patrón reconocido por deriveRolPTA (p.ej. "Revisor Docencia Pregrados") cae por
+    // defecto en el bucket 'docente' (ver PermisosPTAContext) aunque tenga permisos
+    // pta.approve.*/pta.review.* — depender de rolLabel mostraría todos los componentes
+    // a ese revisor en vez de solo los suyos. El chequeo de abajo ya cubre al docente
+    // real: sin ningún permiso granular pta.approve.*/pta.review.* no hay alcance que
+    // restringir (rol legacy por nivel), así que se conserva la vista completa.
     if (!tieneAlgunPermisoComponente && !tieneAlgunPermisoRevision) return true;
     return isComponentAuthorized(key) || puedeRevisarAlgunaSubseccion(key);
   }, [
-    isSuperUser, apruebaTodo, revisaTodo, rolLabel,
+    isSuperUser, apruebaTodo, revisaTodo,
     tieneAlgunPermisoComponente, tieneAlgunPermisoRevision,
     isComponentAuthorized, puedeRevisarAlgunaSubseccion,
   ]);
@@ -1526,14 +1502,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
     const componentAuthorized = isComponentAuthorized(key);
     // Una vez el componente queda resuelto (aprobado o devuelto), deja de ser una
-    // opción editable por defecto — así el botón "Concertar" nunca desaparece del
-    // panel general y cada componente se puede resolver de forma independiente sin
-    // esperar a los demás. "Volver a evaluar" (evaluandoComponente) es la única forma
-    // de reabrir uno ya aprobado.
+    // opción editable por defecto, así cada componente se puede resolver de forma
+    // independiente sin esperar a los demás. "Volver a evaluar" (evaluandoComponente)
+    // es la única forma de reabrir uno ya aprobado.
     const revisionesComponente = subseccionesRevision(key);
     const revisionCompleta = todasRevisionesCompletas(key);
+    // Si OTRO componente del PTA ya fue devuelto y está pendiente de corrección
+    // del docente, se bloquean Aprobar/Devolver sobre este componente hasta que
+    // el docente corrija y reenvíe el PTA a revisión (evita aprobaciones/devoluciones
+    // concurrentes mientras hay una devolución sin resolver).
+    const hayOtroComponenteDevuelto = componentesAprobacion.some(
+      c => c.componente !== key && (c.estado || 'pendiente') === 'devuelto'
+    );
     const canEvaluateComponent = puedeAprobar && puedeActuarSobreComponentes && componentAuthorized && !isAutoAprobado &&
-      revisionCompleta &&
+      revisionCompleta && !hayOtroComponenteDevuelto &&
       (estado === 'pendiente' || !!evaluandoComponente[key]);
 
     const getAssignmentDate = () => {
@@ -1973,7 +1955,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {r.comentarios}
                     </div>
                   )}
-                  {!estaResuelta && puedeRevisarEsta && (
+                  {!estaResuelta && puedeRevisarEsta && hayOtroComponenteDevuelto && (
+                    <div style={{
+                      fontSize: '0.68rem', color: '#B91C1C', background: '#FEF2F2',
+                      border: '1px solid #FECACA', borderRadius: 8, padding: '6px 9px',
+                    }}>
+                      Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede revisar hasta que el PTA sea corregido y reenviado.
+                    </div>
+                  )}
+                  {!estaResuelta && puedeRevisarEsta && !hayOtroComponenteDevuelto && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <textarea
                         value={comentariosRevision[subKey] || ''}
@@ -2167,6 +2157,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             <span>
               {!componentAuthorized
                 ? 'No tienes los permisos para aprobar este componente.'
+                : hayOtroComponenteDevuelto
+                ? 'Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede aprobar ni devolver hasta que el PTA sea corregido y reenviado.'
                 : !revisionCargada
                 ? 'No se pudo cargar el estado de la revisión previa; recarga la página para poder aprobar.'
                 : !revisionCompleta
@@ -3051,33 +3043,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* ═══ TAB: Concertación (detalle por componente + aprobar/devolver) ═══ */}
           {activeTab === 'componentes' && (
             <div>
-              {/* Edición completa ("Concertar"). Ya NO se ofrece a revisores/aprobadores:
-                  en el flujo de Revisión → Aprobación la devolución tiene su propio botón
-                  "Devolver" en cada componente, así que "Concertar" solo confundía (QA pidió
-                  ocultarlo). Se mantiene únicamente para el DOCENTE, que sí edita su PTA. */}
-              {(rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado)) && (
-                <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
-                    {rolLabel === 'Docente'
-                      ? 'Puede editar su PTA'
-                      : hasRestrictedApprovalScope
-                        ? `Como revisor puede concertar solo: ${componentEditScopeLabel}`
-                        : 'Como revisor puede concertar el PTA completo antes de aprobar'}
-                  </span>
-                  <button
-                    onClick={() => setShowEditForm(true)}
-                    style={{
-                      padding: '6px 12px', borderRadius: 6, border: 'none',
-                      background: '#003DA5', color: 'white',
-                      fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <Edit2 style={{ width: 12, height: 12 }} /> {hasRestrictedApprovalScope ? 'Concertar componente' : 'Concertar'}
-                  </button>
-                </div>
-              )}
-
               {/* Header + traza de aprobación granular (antes tab "Aprobación") */}
               <div style={{
                 background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
@@ -4154,75 +4119,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         document.body
       )}
 
-      {/* Modal de edición completa — overlay con blur, montado en document.body */}
-      {showEditForm && createPortal(
-        <div
-          onClick={(e) => { if (e.target === e.currentTarget) setShowEditForm(false); }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 10000,
-            background: 'rgba(0,0,0,0.45)',
-            backdropFilter: 'blur(6px)',
-            WebkitBackdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '20px',
-          }}
-        >
-          <div style={{
-            position: 'relative',
-            width: '100%', maxWidth: 980,
-            maxHeight: 'calc(100vh - 40px)',
-            background: 'white',
-            borderRadius: 16,
-            border: '1.5px solid rgba(0,61,165,0.15)',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,61,165,0.08)',
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            display: 'flex', flexDirection: 'column',
-            padding: 0,
-          }}>
-            {/* Botón cerrar modal */}
-            <button
-              onClick={() => setShowEditForm(false)}
-              style={{
-                position: 'sticky', top: 12, left: '100%',
-                zIndex: 10001, marginRight: 12, marginLeft: 'auto',
-                width: 32, height: 32, borderRadius: '50%',
-                border: 'none', background: '#F3F4F6', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                flexShrink: 0,
-              }}
-            >
-              <X style={{ width: 16, height: 16, color: '#374151' }} />
-            </button>
-            <PTAForm
-              ptaId={pta.id}
-              userPersonId={''}
-              isAdminEdit={true}
-              jefaturaTerritorialId={jefaturaTerritorialId}
-              allowedComponentKeys={hasRestrictedApprovalScope ? visibleComponentKeys : undefined}
-              componentEditScopeLabel={hasRestrictedApprovalScope ? componentEditScopeLabel : undefined}
-              concertacionActorId={actorId}
-              concertacionActorNombre={actorNombre || rolLabel}
-              onBack={async () => {
-                setShowEditForm(false);
-                const res = await getPTAById(pta.id);
-                if (res.success && res.data) {
-                  setPta((prev: any) => normalizePTAData(res.data, prev));
-                  // Notificar al módulo padre para que actualice la fila en la lista
-                  onUpdated?.(res.data);
-                }
-                // Refrescar también las aprobaciones por componente: Concertar puede
-                // haber aprobado/devuelto uno o más, y sin esto el tab de Concertación
-                // quedaba con el estado viejo hasta recargar la página (F5).
-                const resComp = await getComponentesAprobacion(pta.id);
-                if (resComp.success) setComponentesAprobacion(resComp.data || []);
-              }}
-            />
-          </div>
-        </div>,
-        document.body
-      )}
     </motion.div>
   );
 });
