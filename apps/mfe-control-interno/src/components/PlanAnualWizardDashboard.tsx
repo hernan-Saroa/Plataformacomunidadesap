@@ -412,11 +412,11 @@ const AUDITORES_DEFAULT: Auditor[] = [
 
 // Roles (debe coincidir con el principal)
 const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
-  { numero: 1, nombre: 'Liderazgo estratégico', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
-  { numero: 2, nombre: 'Enfoque hacia la prevención', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
-  { numero: 3, nombre: 'Evaluación de la gestión del riesgo', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
-  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✔', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
-  { numero: 5, nombre: 'Relación con entes externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
+  { numero: 1, nombre: 'Liderazgo estratégico - Decreto 648 de 2017', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
+  { numero: 2, nombre: 'Enfoque hacia la prevención - Decreto 648 de 2017', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
+  { numero: 3, nombre: 'Evaluación de la gestión del riesgo - Decreto 648 de 2017', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
+  { numero: 4, nombre: 'Evaluación y seguimiento - Decreto 648 de 2017', color: '#AA00FF', icono: '✔', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
+  { numero: 5, nombre: 'Relación con entes externos de control - Decreto 648 de 2017', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
 ];
 
 // Tipo para configuración de roles en el wizard
@@ -4135,7 +4135,7 @@ function Paso2({
         <p className={soloLectura ? 'text-slate-600' : 'text-gray-600'}>
           {soloLectura
             ? 'Solo consulta: revise actividades, responsables y cortes de seguimiento sin modificar datos.'
-            : 'Selecciona las actividades del Decreto 648/2017 y asigna los responsables para cada rol estratégico'}
+            : 'Selecciona las actividades y asigna los responsables para cada rol estratégico'}
         </p>
       </div>
 
@@ -4182,24 +4182,24 @@ function Paso2({
                 className="flex items-center justify-between p-5 cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setRolExpandido(isExpanded ? null : rol.numero)}
               >
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center justify-center cursor-pointer" onClick={(e) => e.stopPropagation()} title="Habilitar/Deshabilitar Rol">
+                <div className="flex items-center gap-4 flex-1 min-w-0 mr-4">
+                  <label className="flex items-center justify-center cursor-pointer shrink-0" onClick={(e) => e.stopPropagation()} title="Habilitar/Deshabilitar Rol">
                     <div className={`w-10 h-5 rounded-full transition-colors relative ${rol.activo !== false ? 'bg-blue-600' : 'bg-gray-300'}`}
                          onClick={() => {
                            if (soloLectura) return;
                            const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? { ...r, activo: r.activo === false ? true : false } : r);
                            onRolesChange(nuevaConfig);
                          }}>
-                      <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${rol.activo !== false ? 'left-5' : 'left-1'}`} />
+                      <div className={`w-4 h-4 bg-white rounded-full absolute transition-all shadow-sm ${rol.activo !== false ? 'left-5' : 'left-1'}`} style={{ top: '2px' }} />
                     </div>
                   </label>
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: rol.color + '20' }}>
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl shrink-0" style={{ backgroundColor: rol.color + '20' }}>
                     {rol.icono}
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     {!soloLectura ? (
-                      <div className="flex items-center gap-1">
-                        <span className="font-bold text-gray-900 whitespace-nowrap">Rol {rol.numero}:</span>
+                      <div className="flex items-center gap-1 min-w-0 w-full">
+                        <span className="font-bold text-gray-900 whitespace-nowrap shrink-0">Rol {rol.numero}:</span>
                         <input 
                           type="text" 
                           value={rol.nombre}
@@ -4208,12 +4208,12 @@ function Paso2({
                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? { ...r, nombre: e.target.value } : r);
                              onRolesChange(nuevaConfig);
                           }}
-                          className="font-bold text-gray-900 bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-full"
+                          className="font-bold text-gray-900 bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none flex-1 min-w-0 w-full"
                           placeholder="Nombre del rol"
                         />
                       </div>
                     ) : (
-                      <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
+                      <h3 className="font-bold text-gray-900 truncate">Rol {rol.numero}: {rol.nombre}</h3>
                     )}
                     <p className="text-sm text-gray-600">
                       {totalRol} actividades • {(() => {
@@ -4229,7 +4229,7 @@ function Paso2({
                           <div
                             key={responsablePrincipal.id}
                             title={responsablePrincipal.nombre}
-                            className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold"
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold"
                             style={{ backgroundColor: rol.color }}
                           >
                             {responsablePrincipal.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -4344,7 +4344,7 @@ function Paso2({
                       <div>
                         <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                           <Shield className="w-4 h-4" />
-                          Actividades del Decreto 648/2017
+                          Actividades
                         </h4>
                         <div className="space-y-2">
                           {actividadesBase.map((actividad, index) => {
