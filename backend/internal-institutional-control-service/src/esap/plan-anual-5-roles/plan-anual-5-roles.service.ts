@@ -103,7 +103,7 @@ export class PlanAnual5RolesService {
     const query = this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
-      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('roles.actividades', 'actividades', 'actividades.activo IS NOT FALSE')
       .where('plan.año > 0')
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
@@ -150,7 +150,7 @@ export class PlanAnual5RolesService {
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
-      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('roles.actividades', 'actividades', 'actividades.activo IS NOT FALSE')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.id = :id', { id })
       .andWhere('plan.año > 0')
@@ -184,7 +184,7 @@ export class PlanAnual5RolesService {
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
-      .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('roles.actividades', 'actividades', 'actividades.activo IS NOT FALSE')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
       .andWhere('plan.año > 0')

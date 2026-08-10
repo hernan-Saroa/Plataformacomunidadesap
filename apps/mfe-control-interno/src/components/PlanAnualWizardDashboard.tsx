@@ -942,9 +942,9 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
       };
     }
 
-    const actividadesConfiguradas = rolEdit.actividades.map((act) =>
-      enriquecerActividadDesdeBackend(act, plan.vigencia),
-    );
+    const actividadesConfiguradas = (rolEdit.actividades || [])
+      .filter((act: any) => act.activo !== false)
+      .map((act) => enriquecerActividadDesdeBackend(act, plan.vigencia));
 
     const actividadesTemplate = getActividadesPorRol(rolDef.numero);
     const nombresTemplate = actividadesTemplate.map((a) => a.nombre);
@@ -964,9 +964,9 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
   const customRoles = plan.roles
     .filter((r) => (r.rol_numero ?? r.numero ?? 0) > 5)
     .map((rolEdit) => {
-      const actividadesConfiguradas = rolEdit.actividades.map((act) =>
-        enriquecerActividadDesdeBackend(act, plan.vigencia),
-      );
+      const actividadesConfiguradas = (rolEdit.actividades || [])
+        .filter((act: any) => act.activo !== false)
+        .map((act) => enriquecerActividadDesdeBackend(act, plan.vigencia));
       return {
         numero: rolEdit.rol_numero ?? rolEdit.numero,
         nombre: rolEdit.nombre,
@@ -3724,6 +3724,12 @@ function Paso2({
   const puedeEditarActividadesBase = puedeRealizar('configuraciones', 'edit');
 
   const [editandoActividadBase, setEditandoActividadBase] = useState<{rolNumero: number, actId: string} | null>(null);
+  const [actividadCustomAEliminar, setActividadCustomAEliminar] = useState<{
+    numeroRol: number;
+    index: number;
+    actividad: ActividadBase;
+  } | null>(null);
+  const [eliminandoCustomBackend, setEliminandoCustomBackend] = useState(false);
 
   const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
     if (soloLectura) return;
@@ -3907,7 +3913,22 @@ function Paso2({
     setMostrarFormActividad(null);
   };
 
-  const eliminarActividadCustom = (numeroRol: number, index: number) => {
+  const eliminarActividadCustom = async (numeroRol: number, index: number, actividad?: ActividadBase) => {
+    const actId = actividad?.id;
+    if (actId && typeof actId === 'string' && actId.trim() !== '' && !actId.startsWith('custom-')) {
+      try {
+        const res = await actividadesApi.delete(actId);
+        if (res && res.success === false) {
+          toast.error(res.error || 'No se pudo eliminar la actividad en el servidor');
+          return;
+        }
+      } catch (err: any) {
+        console.error('Error al eliminar actividad personalizada en backend:', err);
+        toast.error('Error al eliminar la actividad en el backend');
+        return;
+      }
+    }
+
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         return {
@@ -3918,7 +3939,7 @@ function Paso2({
       return rol;
     });
     onRolesChange(nuevaConfig);
-    toast.success('Actividad eliminada');
+    toast.success('Actividad personalizada eliminada');
   };
 
   const toggleAutorizacionCustom = (numeroRol: number, index: number) => {
@@ -5036,14 +5057,19 @@ function Paso2({
                                       />
                                     </div>
                                   </div>
+                                  {/* Boton para eliminar una actividad personalizada */}
                                   <button
+                                    type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (confirm('¿Eliminar esta actividad personalizada?')) {
-                                        eliminarActividadCustom(rol.numero, index);
-                                      }
+                                      setActividadCustomAEliminar({
+                                        numeroRol: rol.numero,
+                                        index,
+                                        actividad,
+                                      });
                                     }}
-                                    className="text-red-600 hover:text-red-800 p-1"
+                                    className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50 transition-colors"
+                                    title="Eliminar actividad personalizada"
                                   >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -5721,12 +5747,89 @@ function Paso2({
                 const actividad = rol.actividadesSeleccionadas.find(
                   a => a.nombre === actividadConfigurando.nombreActividad
                 );
-                return actividad?.frecuenciaPuntosControl;
               }
             })()
           }
           onGuardar={guardarPuntosControl}
         />
+      )}
+
+      {/* Modal de confirmación para eliminar actividad personalizada */}
+      {actividadCustomAEliminar && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => !eliminandoCustomBackend && setActividadCustomAEliminar(null)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md flex flex-col z-10 overflow-hidden"
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-slate-900">
+                    ¿Eliminar actividad personalizada?
+                  </h3>
+                  <p className="text-sm text-slate-600 mt-2">
+                    ¿Está seguro de que desea eliminar la actividad personalizada{' '}
+                    <strong className="font-semibold text-slate-900">
+                      "{actividadCustomAEliminar.actividad.nombre}"
+                    </strong>
+                    ? Esta acción la eliminará de este plan y del servidor si ya ha sido guardada.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={eliminandoCustomBackend}
+                onClick={() => setActividadCustomAEliminar(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={eliminandoCustomBackend}
+                onClick={async () => {
+                  setEliminandoCustomBackend(true);
+                  try {
+                    await eliminarActividadCustom(
+                      actividadCustomAEliminar.numeroRol,
+                      actividadCustomAEliminar.index,
+                      actividadCustomAEliminar.actividad
+                    );
+                  } finally {
+                    setEliminandoCustomBackend(false);
+                    setActividadCustomAEliminar(null);
+                  }
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 active:bg-red-800 rounded-lg transition-colors shadow-sm shadow-red-100 flex items-center gap-2 disabled:opacity-50"
+              >
+                {eliminandoCustomBackend ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    Eliminando...
+                  </>
+                ) : (
+                  'Confirmar eliminación'
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
       )}
     </motion.div>
   );
