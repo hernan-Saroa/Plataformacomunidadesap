@@ -4458,11 +4458,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   };
                   const activeCols = ALL_COLUMNS.filter(c => effectiveCols.has(c.key));
                   const gridCols = [
+                    '32px', // selección (checkbox)
                     ...activeCols.map(c => colSizes[c.key] || '100px'),
                     'minmax(60px, 0.5fr)', // acciones
                   ].join(' ');
-                  const minW = activeCols.reduce((sum, col) => sum + (colMinWidths[col.key] || 100), 72) + (activeCols.length * 16);
+                  const minW = activeCols.reduce((sum, col) => sum + (colMinWidths[col.key] || 100), 72 + 32) + (activeCols.length * 16);
                   const tableMinWidth = `max(${minW}px, 100%)`;
+                  const seleccionablesPagina = paginated.filter((p: any) => isEstadoPendienteAprobacion(p.estado));
+                  const todosSeleccionadosEnPagina = seleccionablesPagina.length > 0
+                    && seleccionablesPagina.every((p: any) => selectedIds.has(p.id));
 
                   return (
                   <div ref={tableContainerRef} style={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
@@ -4479,6 +4483,27 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       position: 'sticky', top: 0, zIndex: 5,
                     }}>
 
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title={seleccionablesPagina.length === 0 ? 'No hay PTAs pendientes en esta página' : (todosSeleccionadosEnPagina ? 'Deseleccionar todos en esta página' : 'Seleccionar todos los pendientes de esta página')}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={seleccionablesPagina.length === 0}
+                          checked={todosSeleccionadosEnPagina}
+                          onChange={() => {
+                            const next = new Set(selectedIds);
+                            if (todosSeleccionadosEnPagina) {
+                              seleccionablesPagina.forEach((p: any) => next.delete(p.id));
+                            } else {
+                              seleccionablesPagina.forEach((p: any) => next.add(p.id));
+                            }
+                            setSelectedIds(next);
+                          }}
+                          style={{ width: 15, height: 15, cursor: seleccionablesPagina.length === 0 ? 'default' : 'pointer', accentColor: '#003DA5' }}
+                        />
+                      </span>
                       {effectiveCols.has('docente') && <SortableHeader label="Docente" field="docente_nombre" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('estado') && <SortableHeader label="Estado" field="estado" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('aging') && <span title="Días en estado actual">Días</span>}
@@ -4625,6 +4650,24 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           }}
                         >
 
+                          {/* Selección para acciones en lote */}
+                          <span
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={!isPendiente}
+                              checked={isSelected}
+                              onChange={() => {}}
+                              onClick={(e: React.MouseEvent<HTMLInputElement>) => {
+                                handleRowSelect(pta.id, idx, e.shiftKey, paginated);
+                                lastClickedIdx.current = idx;
+                              }}
+                              title={!isPendiente ? 'Solo se pueden seleccionar PTAs pendientes' : 'Seleccionar (Shift+clic para seleccionar un rango)'}
+                              style={{ width: 15, height: 15, cursor: isPendiente ? 'pointer' : 'default', accentColor: '#003DA5' }}
+                            />
+                          </span>
 
                           {/* Docente */}
                           {effectiveCols.has('docente') && (
