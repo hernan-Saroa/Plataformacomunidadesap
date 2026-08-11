@@ -137,6 +137,33 @@ export interface EstadoPublicacion {
   puedeRegistrar: boolean;
 }
 
+/** Plazo de publicidad configurado para una modalidad (EFDS-1387). */
+export interface PlazoModalidad {
+  diasHabiles: number;
+  /** De dónde sale la cifra: norma o acta que la respalda. */
+  fundamento: string | null;
+  /** False mientras la Dirección de Contratación no valide el número. */
+  confirmado: boolean;
+  actualizadoEn: string;
+}
+
+export interface ModalidadConPlazo {
+  modalidad: string;
+  nombre: string;
+  orden: number;
+  /** False cuando la modalidad no lleva proyecto de pliego que publicar. */
+  aplicaPublicacion: boolean;
+  motivoExclusion: string | null;
+  /** Null cuando la modalidad todavía no tiene plazo configurado. */
+  plazo: PlazoModalidad | null;
+}
+
+export interface PlazosPublicacion {
+  /** Lo decide el backend según los roles del token, no el cliente. */
+  puedeEditar: boolean;
+  modalidades: ModalidadConPlazo[];
+}
+
 /** Actividad de la matriz, con el estado que lleva en este proceso. */
 export interface ActividadProceso {
   numeral: string;

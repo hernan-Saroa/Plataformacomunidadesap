@@ -67,6 +67,18 @@ export const ROLES_PUBLICACION_PLIEGO = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién mueve los plazos de publicidad (EFDS-1387).
+ *
+ * Mismo criterio que los umbrales y por la misma razón: cambiar un plazo no
+ * afecta a un proceso sino a todos los que se publiquen después, así que queda
+ * en la Dirección de Contratación. El gestor publica; no reescribe el término.
+ *
+ * Constante propia y no un alias de ROLES_ADMIN_UMBRALES: hoy coinciden, pero
+ * son dos parámetros distintos y nada obliga a que sigan coincidiendo.
+ */
+export const ROLES_ADMIN_PLAZOS = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

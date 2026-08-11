@@ -13,15 +13,24 @@ import {
 import { PlazoPublicacion } from '../../entities/plazo-publicacion.entity';
 import { DiaNoHabil } from '../../entities/dia-no-habil.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
+import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { HiringAccess, ROLES_PUBLICACION_PLIEGO } from '../../auth/hiring-access';
+import {
+  HiringAccess,
+  ROLES_ADMIN_PLAZOS,
+  ROLES_PUBLICACION_PLIEGO,
+} from '../../auth/hiring-access';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from './dias-habiles';
 import { festivosEntre } from './festivos-colombia';
-import { AnularPublicacionDto, RegistrarPublicacionDto } from './dto/publicacion.dto';
+import {
+  AnularPublicacionDto,
+  GuardarPlazoDto,
+  RegistrarPublicacionDto,
+} from './dto/publicacion.dto';
 
 /** Actividad 5.2 de la matriz: la publicación del proyecto de pliego. */
 export const NUMERAL_PUBLICACION = '5.2';
@@ -102,6 +111,113 @@ export class PublicacionService {
     if (!modalidad) return null;
     const manager = em ?? this.dataSource.manager;
     return manager.getRepository(PlazoPublicacion).findOne({ where: { modalidad } });
+  }
+
+  // ------------------------------------------- administración de plazos ----
+
+  /**
+   * Todas las modalidades con su plazo, tengan fila o no (EFDS-1387).
+   *
+   * Se devuelven las once y no solo las configuradas: "esta modalidad no tiene
+   * plazo" es justamente lo que hay que poder ver y corregir, y una lista que
+   * omitiera las vacías escondería el trabajo pendiente.
+   *
+   * Las modalidades sin proyecto de pliego se marcan pero no se ocultan, por la
+   * misma razón que las actividades excluidas se tachan en vez de desaparecer.
+   */
+  async plazosVigentes(acceso?: HiringAccess, em?: EntityManager) {
+    // Recibe el manager como el resto de consultas del servicio: al llamarla
+    // desde dentro de la transacción de `guardarPlazo`, leer por fuera devolvía
+    // el estado anterior y la respuesta contradecía lo que se acababa de
+    // guardar. La fila estaba bien; lo que mentía era el acuse de recibo.
+    const manager = em ?? this.dataSource.manager;
+
+    const [modalidades, plazos, excluidas] = await Promise.all([
+      manager.getRepository(Modalidad).find({ order: { orden: 'ASC' } }),
+      manager.getRepository(PlazoPublicacion).find(),
+      manager
+        .getRepository(ActividadExcluida)
+        .find({ where: { numeral: NUMERAL_PUBLICACION } }),
+    ]);
+
+    const porModalidad = new Map(plazos.map((p) => [p.modalidad, p]));
+    const sinPliego = new Map(excluidas.map((e) => [e.modalidad, e.motivo]));
+
+    return {
+      // Lo decide el backend, que ya tiene los roles del token: replicar la
+      // matriz de permisos en el cliente la dejaría desactualizada en cuanto
+      // cambie aquí, y la pantalla ofrecería acciones que la API rechaza.
+      puedeEditar: ROLES_ADMIN_PLAZOS.some((r) => acceso?.roles.includes(r) ?? false),
+      modalidades: modalidades.map((m) => {
+        const plazo = porModalidad.get(m.codigo);
+        return {
+          modalidad: m.codigo,
+          nombre: m.nombre,
+          orden: m.orden,
+          /** False cuando la modalidad no lleva proyecto de pliego que publicar. */
+          aplicaPublicacion: !sinPliego.has(m.codigo),
+          motivoExclusion: sinPliego.get(m.codigo) ?? null,
+          plazo: plazo
+            ? {
+                diasHabiles: plazo.diasHabiles,
+                fundamento: plazo.fundamento,
+                confirmado: plazo.confirmado,
+                actualizadoEn: plazo.updatedAt,
+              }
+            : null,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Fija el plazo de una modalidad, creándolo si no existía.
+   *
+   * A diferencia de los umbrales, el plazo se edita en vez de cerrarse y
+   * abrirse de nuevo: no hace falta historial de vigencias porque cada
+   * publicación ya congela el plazo que le aplicó el día del registro. Los
+   * procesos ya publicados no se enteran de este cambio, que es justo lo que
+   * debe pasar.
+   */
+  async guardarPlazo(modalidad: string, dto: GuardarPlazoDto, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const catalogo = await em.getRepository(Modalidad).findOne({
+        where: { codigo: modalidad },
+      });
+      if (!catalogo) throw new NotFoundException(`La modalidad ${modalidad} no existe`);
+
+      const repo = em.getRepository(PlazoPublicacion);
+      const anterior = await repo.findOne({ where: { modalidad } });
+
+      const plazo = anterior ?? repo.create({ modalidad });
+      const antes = anterior
+        ? { diasHabiles: anterior.diasHabiles, confirmado: anterior.confirmado }
+        : null;
+
+      plazo.diasHabiles = dto.diasHabiles;
+      if (dto.fundamento !== undefined) plazo.fundamento = dto.fundamento;
+      // Sin decir nada, un plazo que alguien acaba de tocar deja de estar
+      // confirmado: la confirmación es sobre una cifra concreta, no sobre la
+      // fila. Se marca explícitamente o no se marca.
+      plazo.confirmado = dto.confirmado ?? false;
+      plazo.updatedAt = new Date();
+
+      await em.save(plazo);
+
+      // De esta cifra dependen los términos legales de todo lo que se publique
+      // después, así que quién la movió y cuándo tiene que quedar registrado.
+      await em.save(Trazabilidad, {
+        procesoId: null,
+        entidad: 'plazo_publicacion',
+        entidadId: null,
+        accion: 'GUARDAR' as AccionTraza,
+        detalle: { modalidad, antes, ahora: { diasHabiles: plazo.diasHabiles, confirmado: plazo.confirmado } },
+        usuarioId: acceso.userId,
+        usuarioNombre: acceso.userName,
+      } as Partial<Trazabilidad>);
+
+      return this.plazosVigentes(acceso, em);
+    });
   }
 
   /** Publicación vigente del proceso, o null si nunca se registró o se anuló. */

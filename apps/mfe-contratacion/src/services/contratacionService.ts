@@ -9,6 +9,7 @@ import {
   EstudioPrevio,
   Expediente,
   Modalidad,
+  PlazosPublicacion,
   ProcesoResumen,
   RevisionEstudioPrevio,
   SmmlvAnual,
@@ -160,6 +161,26 @@ export const contratacionService = {
     pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego/anular`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
+    }),
+
+  // -------------------------------- administración de plazos de publicidad ---
+
+  /** Las once modalidades con su plazo, tengan fila o no. */
+  plazosPublicacion: () => pedir<PlazosPublicacion>('/plazos-publicacion'),
+
+  /**
+   * Fija el plazo de una modalidad, creándolo si no lo tenía.
+   *
+   * No afecta a lo ya publicado: cada publicación congeló el plazo que le
+   * aplicó el día de su registro.
+   */
+  guardarPlazoPublicacion: (
+    modalidad: string,
+    datos: { diasHabiles: number; fundamento?: string; confirmado?: boolean },
+  ) =>
+    pedir<PlazosPublicacion>(`/plazos-publicacion/${modalidad}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
     }),
 
   // ------------------------------------------- administración de umbrales ---
