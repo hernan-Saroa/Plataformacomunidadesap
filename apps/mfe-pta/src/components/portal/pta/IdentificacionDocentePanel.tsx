@@ -1,6 +1,5 @@
 import { useId, useMemo, useState } from 'react';
 import { Calendar, ChevronDown, UserRound } from 'lucide-react';
-import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface IdentificacionDocentePanelProps {
   pta: any;
@@ -8,7 +7,7 @@ interface IdentificacionDocentePanelProps {
   periodoAcademico?: any;
 }
 
-interface DatoIdentificacion {
+interface DatoPerfil {
   label: string;
   value: any;
 }
@@ -18,29 +17,6 @@ const datoNoVacio = (...values: any[]): any => values.find((value) => (
   && value !== undefined
   && String(value).trim() !== ''
 ));
-
-const esUuid = (value: any): boolean => (
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    .test(String(value || '').trim())
-);
-
-const documentoReal = (...values: any[]): string | null => {
-  const value = values.find((candidate) => (
-    candidate !== null
-    && candidate !== undefined
-    && String(candidate).trim() !== ''
-    && !esUuid(candidate)
-  ));
-  return value === undefined ? null : String(value).trim();
-};
-
-const fmtDocumento = (value: string | null): string | null => {
-  if (!value) return null;
-  const compact = value.replace(/\s+/g, '');
-  return /^\d+$/.test(compact)
-    ? compact.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-    : value;
-};
 
 const fmtFecha = (value?: any): string | null => {
   if (value === null || value === undefined || String(value).trim() === '') return null;
@@ -52,67 +28,22 @@ const fmtFecha = (value?: any): string | null => {
   return Number.isNaN(parsed.getTime()) ? text : parsed.toLocaleDateString('es-CO');
 };
 
-const numero = (value: any): number => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-function Dato({ label, value }: DatoIdentificacion) {
+function Dato({ label, value }: DatoPerfil) {
   const vacio = value === null || value === undefined || value === '';
-  const destacado = label === 'Total horas PTA';
 
   return (
-    <div className={destacado ? 'identificacion-docente-oficial-total' : undefined} style={{
-      minWidth: 0,
-      minHeight: 118,
-      display: 'flex',
-      flexDirection: 'column',
-      background: '#FFFFFF',
-    }}>
-      <div style={{
-        height: 43,
-        boxSizing: 'border-box',
-        padding: '6px 7px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#64748B',
-        background: '#EEF2F7',
-        borderBottom: '1px solid #D9E2EC',
-        fontSize: '0.55rem',
-        fontWeight: 800,
-        letterSpacing: '0.015em',
-        lineHeight: 1.15,
-        textAlign: 'center',
-        textTransform: 'uppercase',
-      }}>
-        {label}
-      </div>
-      <div style={{
-        flex: 1,
-        minHeight: 75,
-        padding: '10px 8px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: vacio ? '#94A3B8' : (destacado ? '#003DA5' : '#172033'),
-        background: destacado ? '#EFF6FF' : '#FFFFFF',
-        fontSize: destacado ? '0.92rem' : '0.69rem',
-        fontWeight: destacado ? 900 : 700,
-        lineHeight: 1.3,
-        overflowWrap: 'anywhere',
-        textAlign: 'center',
-        whiteSpace: 'pre-line',
-      }}>
+    <div className="perfil-docente-card">
+      <span className="perfil-docente-card-label">{label}</span>
+      <span className={`perfil-docente-card-value${vacio ? ' perfil-docente-card-value-empty' : ''}`}>
         {vacio ? '—' : value}
-      </div>
+      </span>
     </div>
   );
 }
 
 /**
- * Versión de consulta del encabezado dinámico del reporte PTA. Conserva sus
- * fuentes de datos, pero usa un diseño propio de pantalla y desplegable.
+ * Información institucional del perfil docente. Es un bloque de consulta:
+ * su despliegue no altera los datos ni el estado del PTA.
  */
 export function IdentificacionDocentePanel({
   pta,
@@ -128,86 +59,33 @@ export function IdentificacionDocentePanel({
       periodoAcademico?.codigo,
     ) || '').trim();
 
-    const horasDisponibles = numero(pta?.horas_asignables ?? pta?.horas_a_programar ?? 0);
-    const horasProgramables = [
-      pta?.horas_asignables,
-      pta?.horas_a_programar,
-      horasDisponibles,
-      userPerfil?.horas_programables,
-    ].map(numero).find(value => value > 0) || 0;
-    const horasProgramadas = numero(
-      pta?.horas_totales
-      ?? pta?.total_horas_programadas
-      ?? (
-        numero(pta?.horas_docencia)
-        + numero(pta?.horas_investigacion)
-        + numero(pta?.horas_extension)
-        + numero(pta?.horas_complementarias)
-      ),
-    );
-
     return {
       periodoCodigo,
-      identidad: [
-        {
-          label: 'Número de cédula',
-          value: fmtDocumento(documentoReal(
-            userPerfil?.documento_identidad,
-            userPerfil?.documento,
-            userPerfil?.identificacion,
-            pta?.docente_documento,
-          )),
-        },
-        {
-          label: 'Nombre',
-          value: datoNoVacio(userPerfil?.nombre_completo, userPerfil?.nombre, pta?.docente_nombre),
-        },
-        {
-          label: 'Correo institucional',
-          value: datoNoVacio(
-            userPerfil?.correo_institucional,
-            userPerfil?.email,
-            pta?.docente_email,
-            pta?.correo_institucional,
-          ),
-        },
-        {
-          label: 'Correo personal',
-          value: datoNoVacio(userPerfil?.correo_personal, userPerfil?.correo_alternativo),
-        },
-        {
-          label: 'Número celular',
-          value: datoNoVacio(userPerfil?.telefono, userPerfil?.numero_celular, pta?.telefono_docente),
-        },
-      ],
       perfil: [
         {
           label: 'Perfil académico',
           value: datoNoVacio(userPerfil?.perfil_academico, userPerfil?.perfil_academico_pro),
         },
         { label: 'Categoría', value: datoNoVacio(userPerfil?.categoria) },
-        { label: 'Núcleo temático de vinculación', value: datoNoVacio(userPerfil?.nucleo_tematico) },
-        { label: 'Sede territorial de vinculación', value: datoNoVacio(userPerfil?.territorial) },
-        { label: 'Situación administrativa', value: datoNoVacio(userPerfil?.situacion_administrativa) },
-        { label: 'Última evaluación docente', value: datoNoVacio(userPerfil?.ultima_evaluacion) },
+        { label: 'Sede territorial', value: datoNoVacio(userPerfil?.territorial) },
+        { label: 'Núcleo temático', value: datoNoVacio(userPerfil?.nucleo_tematico) },
         {
-          label: 'Tipo de vinculación',
-          value: datoNoVacio(userPerfil?.vinculacion, pta?.tipo_vinculacion),
-        },
-        {
-          label: 'Tipo de dedicación',
-          value: datoNoVacio(userPerfil?.dedicacion, pta?.dedicacion),
-        },
-        {
-          label: 'Acto administrativo de vinculación',
+          label: 'Acto administrativo',
           value: datoNoVacio(userPerfil?.acto_administrativo_vinculacion),
         },
-        { label: 'Fecha inicio de vinculación', value: fmtFecha(userPerfil?.inicio_vinculacion) },
-        { label: 'Fecha fin de vinculación', value: fmtFecha(userPerfil?.fin_vinculacion) },
+        { label: 'Situación administrativa', value: datoNoVacio(userPerfil?.situacion_administrativa) },
       ],
-      periodo: [
+      fechas: [
         {
-          label: `Inicio período académico${periodoCodigo ? ` ${periodoCodigo}` : ''}`,
+          label: 'Fecha inicio de vinculación',
+          value: fmtFecha(userPerfil?.inicio_vinculacion),
+        },
+        {
+          label: 'Fecha fin de vinculación',
+          value: fmtFecha(userPerfil?.fin_vinculacion),
+        },
+        {
+          label: 'Inicio período académico',
           value: fmtFecha(datoNoVacio(
             periodoAcademico?.fechaInicio,
             periodoAcademico?.fecha_inicio,
@@ -215,45 +93,20 @@ export function IdentificacionDocentePanel({
           )),
         },
         {
-          label: `Fin período académico${periodoCodigo ? ` ${periodoCodigo}` : ''}`,
+          label: 'Fin período académico',
           value: fmtFecha(datoNoVacio(
             periodoAcademico?.fechaFin,
             periodoAcademico?.fecha_fin,
             pta?.periodo_fecha_fin,
           )),
         },
-        {
-          label: 'Total horas PTA',
-          value: `${horasProgramadas}h / ${horasProgramables}h (${formatPtaCompletionPercentage(horasProgramadas, horasProgramables)}%)`,
-        },
       ],
     };
   }, [pta, userPerfil, periodoAcademico]);
 
-  // Orden equivalente al encabezado GTH-F081 del reporte institucional.
-  const campos: DatoIdentificacion[] = [
-    data.identidad[0], // Número de cédula
-    data.identidad[1], // Nombre
-    data.perfil[0], // Perfil académico
-    data.perfil[1], // Categoría
-    data.perfil[3], // Sede territorial
-    data.perfil[4], // Situación administrativa
-    data.perfil[5], // Última evaluación
-    data.identidad[2], // Correo institucional
-    data.identidad[3], // Correo personal
-    data.identidad[4], // Número celular
-    data.perfil[6], // Tipo de vinculación
-    data.perfil[7], // Tipo de dedicación
-    data.perfil[2], // Núcleo temático
-    data.perfil[8], // Acto administrativo
-    data.perfil[9], // Inicio de vinculación
-    data.perfil[10], // Fin de vinculación
-    ...data.periodo,
-  ];
-
   return (
     <section
-      aria-label="Identificación docente"
+      aria-label="Perfil docente"
       style={{
         overflow: 'hidden',
         borderRadius: 16,
@@ -263,48 +116,97 @@ export function IdentificacionDocentePanel({
       }}
     >
       <style>{`
-        .identificacion-docente-oficial-toggle:hover {
+        .perfil-docente-toggle:hover {
           filter: brightness(0.975);
         }
-        .identificacion-docente-oficial-toggle:focus-visible {
+        .perfil-docente-toggle:focus-visible {
           outline: 3px solid #FACC15;
           outline-offset: -3px;
         }
-        .identificacion-docente-oficial-grid {
+        .perfil-docente-content {
+          padding: 15px 16px 16px;
+        }
+        .perfil-docente-grid {
           display: grid;
-          grid-template-columns: repeat(10, minmax(0, 1fr));
-          gap: 1px;
-          padding: 1px;
-          background: #D5DFEA;
+          gap: 10px;
         }
-        .identificacion-docente-oficial-total {
-          grid-column: span 2;
+        .perfil-docente-grid-profile {
+          grid-template-columns: repeat(6, minmax(0, 1fr));
         }
-        @media (max-width: 1279px) {
-          .identificacion-docente-oficial-grid {
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+        .perfil-docente-grid-dates {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+        .perfil-docente-section-title {
+          margin: 14px 0 8px;
+          color: #64748B;
+          font-size: 0.61rem;
+          font-weight: 850;
+          letter-spacing: 0.045em;
+          line-height: 1.25;
+          text-transform: uppercase;
+        }
+        .perfil-docente-card {
+          min-width: 0;
+          min-height: 76px;
+          padding: 10px 11px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          box-sizing: border-box;
+          border: 1px solid #E7EBF0;
+          border-radius: 10px;
+          background: #F3F4F6;
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
+        }
+        .perfil-docente-card-label {
+          color: #8A94A4;
+          font-size: 0.56rem;
+          font-weight: 800;
+          letter-spacing: 0.025em;
+          line-height: 1.2;
+          text-transform: uppercase;
+        }
+        .perfil-docente-card-value {
+          color: #172033;
+          font-size: 0.69rem;
+          font-weight: 750;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+          white-space: pre-line;
+        }
+        .perfil-docente-card-value-empty {
+          color: #94A3B8;
+        }
+        @media (max-width: 1250px) {
+          .perfil-docente-grid-profile {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+        }
+        @media (max-width: 900px) {
+          .perfil-docente-grid-profile,
+          .perfil-docente-grid-dates {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
         @media (max-width: 720px) {
-          .identificacion-docente-oficial-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .identificacion-docente-oficial-subtitle,
-          .identificacion-docente-oficial-toggle-label {
+          .perfil-docente-subtitle,
+          .perfil-docente-toggle-label {
             display: none !important;
           }
         }
-        @media (max-width: 430px) {
-          .identificacion-docente-oficial-grid {
-            grid-template-columns: minmax(0, 1fr);
+        @media (max-width: 480px) {
+          .perfil-docente-content {
+            padding: 12px;
           }
-          .identificacion-docente-oficial-total {
-            grid-column: span 1;
+          .perfil-docente-grid-profile,
+          .perfil-docente-grid-dates {
+            grid-template-columns: minmax(0, 1fr);
           }
         }
       `}</style>
+
       <button
-        className="identificacion-docente-oficial-toggle"
+        className="perfil-docente-toggle"
         type="button"
         aria-expanded={expanded}
         aria-controls={contentId}
@@ -345,9 +247,9 @@ export function IdentificacionDocentePanel({
           </span>
           <span style={{ minWidth: 0 }}>
             <span style={{ display: 'block', color: '#172033', fontSize: '0.79rem', fontWeight: 850, letterSpacing: '0.005em', lineHeight: 1.2 }}>
-              Identificación docente
+              Perfil docente
             </span>
-            <span className="identificacion-docente-oficial-subtitle" style={{ display: 'block', marginTop: 3, color: '#64748B', fontSize: '0.6rem', fontWeight: 650, lineHeight: 1.25 }}>
+            <span className="perfil-docente-subtitle" style={{ display: 'block', marginTop: 3, color: '#64748B', fontSize: '0.6rem', fontWeight: 650, lineHeight: 1.25 }}>
               Información institucional de consulta
             </span>
           </span>
@@ -385,7 +287,7 @@ export function IdentificacionDocentePanel({
             fontSize: '0.61rem',
             fontWeight: 850,
           }}>
-            <span className="identificacion-docente-oficial-toggle-label">
+            <span className="perfil-docente-toggle-label">
               {expanded ? 'Ocultar datos' : 'Mostrar datos'}
             </span>
             <ChevronDown
@@ -411,9 +313,17 @@ export function IdentificacionDocentePanel({
         }}
       >
         <div style={{ minHeight: 0, overflow: 'hidden' }}>
-          <div className="identificacion-docente-oficial-grid">
-            {campos.map(item => <Dato key={item.label} {...item} />)}
+          <div className="perfil-docente-content">
+            <div className="perfil-docente-grid perfil-docente-grid-profile">
+              {data.perfil.map(item => <Dato key={item.label} {...item} />)}
+            </div>
+
+            <div className="perfil-docente-section-title">Fechas de vinculación</div>
+            <div className="perfil-docente-grid perfil-docente-grid-dates">
+              {data.fechas.map(item => <Dato key={item.label} {...item} />)}
+            </div>
           </div>
+
           <div style={{
             padding: '7px 11px',
             borderTop: '1px solid #D8E2EE',
