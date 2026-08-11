@@ -31,7 +31,7 @@ import {
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
@@ -657,6 +657,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const [componentesAprobacion, setComponentesAprobacion] = useState<any[]>([]);
   const [loadingComponentesAprobacion, setLoadingComponentesAprobacion] = useState(false);
+  // Aprobación parcial por territorial de "academica_territorial" (ver assertAlcanceTerritorial
+  // en el backend). Vacío cuando el PTA no tiene 2+ territoriales distintas en ese componente.
+  const [aprobacionTerritorial, setAprobacionTerritorial] = useState<TerritorialApprovalRow[]>([]);
   const [comentariosComponente, setComentariosComponente] = useState<Record<string, string>>({});
   const [procesandoAprobacionComponente, setProcesandoAprobacionComponente] = useState<Record<string, boolean>>({});
   const [evaluandoComponente, setEvaluandoComponente] = useState<Record<string, boolean>>({});
@@ -766,6 +769,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         if (res.success) setComponentesAprobacion(res.data || []);
         setLoadingComponentesAprobacion(false);
       }).catch(() => setLoadingComponentesAprobacion(false));
+      getAprobacionTerritorial(pta.id).then(res => {
+        if (res.success) setAprobacionTerritorial(res.data || []);
+      }).catch(() => {});
     }
   }, [pta?.id]);
 
@@ -851,6 +857,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         if (resList.success) {
           setComponentesAprobacion(resList.data || []);
         }
+        if (componente === 'academica_territorial') {
+          const resTerritorial = await getAprobacionTerritorial(pta.id);
+          if (resTerritorial.success) setAprobacionTerritorial(resTerritorial.data || []);
+        }
 
         if (res.data?.estadoGeneral) {
           const nuevoEstado = res.data.estadoGeneral;
@@ -929,6 +939,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
         ]);
         if (resRevision.success) setComponentesRevision(resRevision.data || []);
         if (resAprobacion.success) setComponentesAprobacion(resAprobacion.data || []);
+        if (componente === 'academica_territorial') {
+          const resTerritorial = await getAprobacionTerritorial(pta.id);
+          if (resTerritorial.success) setAprobacionTerritorial(resTerritorial.data || []);
+        }
 
         if (res.data?.estadoGeneral) {
           const nuevoEstado = res.data.estadoGeneral;
@@ -1704,6 +1718,49 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           </div>
         </div>
 
+        {/* Aprobación parcial por territorial: el PTA tiene asignaturas de 2+
+            Direcciones Territoriales distintas en este componente, así que el badge
+            de arriba (estado consolidado) solo llega a "Aprobado" cuando TODAS estén
+            aprobadas. Cada aprobador solo puede actuar sobre la(s) suya(s) — el botón
+            Aprobar/Devolver de abajo sigue siendo uno solo y el backend decide sobre
+            qué territorial(es) aplica según quién esté autenticado. */}
+        {key === 'academica_territorial' && aprobacionTerritorial.length >= 2 && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 6,
+            paddingLeft: 6,
+            marginTop: -4,
+          }}>
+            {aprobacionTerritorial.map((t) => {
+              const pillColors = t.estado === 'aprobado'
+                ? { bg: 'rgba(16, 185, 129, 0.08)', color: '#065F46', border: '1px solid rgba(16, 185, 129, 0.2)' }
+                : t.estado === 'devuelto'
+                  ? { bg: 'rgba(239, 68, 68, 0.08)', color: '#991B1B', border: '1px solid rgba(239, 68, 68, 0.2)' }
+                  : { bg: 'rgba(148, 163, 184, 0.12)', color: '#475569', border: '1px solid rgba(148, 163, 184, 0.25)' };
+              const estadoLabel = t.estado === 'aprobado' ? 'Aprobada' : t.estado === 'devuelto' ? 'Devuelta' : 'Pendiente';
+              return (
+                <span
+                  key={t.territorialId}
+                  title={t.actorNombre ? `${estadoLabel} por ${t.actorNombre}` : estadoLabel}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '3px 10px',
+                    borderRadius: '99px',
+                    fontSize: '0.66rem',
+                    fontWeight: 700,
+                    ...pillColors,
+                  }}
+                >
+                  {t.territorialNombre}: {estadoLabel}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
         {/* Detalle de Devolución Guardada */}
         {isEditing && approval.estado === 'devuelto' && (
           <div style={{
@@ -2051,6 +2108,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               <Shield style={{ width: 14, height: 14, color: '#003DA5' }} />
               Formulario de Revisión del Componente
             </div>
+            {key === 'academica_territorial' && aprobacionTerritorial.length >= 2 && (
+              <div style={{ fontSize: '0.68rem', color: '#64748B', fontStyle: 'italic', marginTop: -6 }}>
+                Este PTA tiene asignaturas de varias territoriales. Su decisión solo aplica a la(s) suya(s)
+                {' '}({aprobacionTerritorial.map(t => t.territorialNombre).join(', ')}); las demás quedan intactas.
+              </div>
+            )}
             <textarea
               value={comentariosComponente[key] || ''}
               onChange={e => setComentariosComponente(prev => ({ ...prev, [key]: e.target.value }))}

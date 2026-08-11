@@ -23,6 +23,7 @@ import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity'
 import { PtaEventoEntity } from './entities/pta-evento.entity';
 import { PtaComponentApprovalEntity } from './entities/pta-component-approval.entity';
 import { PtaComponentReviewEntity } from './entities/pta-component-review.entity';
+import { PtaTerritorialApprovalEntity } from './entities/pta-territorial-approval.entity';
 
 // New entities
 import { FacultadEntity } from './entities/facultad.entity';
@@ -74,6 +75,7 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
       OfertaCetapProgramaEntity,
       PtaComponentApprovalEntity,
       PtaComponentReviewEntity,
+      PtaTerritorialApprovalEntity,
       RundCampoEstadoEntity,
       RundSoporteCampoEntity,
     ]),

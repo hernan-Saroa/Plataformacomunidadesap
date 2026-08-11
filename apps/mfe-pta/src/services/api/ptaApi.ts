@@ -494,6 +494,27 @@ export async function getComponentesAprobacion(ptaId: string) {
   }
 }
 
+export type TerritorialApprovalRow = {
+  territorialId: string;
+  territorialNombre: string;
+  estado: 'pendiente' | 'aprobado' | 'devuelto';
+  actorNombre: string | null;
+  comentarios: string | null;
+  fechaDecision: string | null;
+};
+
+/** Estado por territorial del componente "academica_territorial" (aprobación parcial). */
+export async function getAprobacionTerritorial(ptaId: string) {
+  try {
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/aprobacion-territorial`);
+    const normalized = normalizeResult<TerritorialApprovalRow[]>(raw, []);
+    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+  } catch (error) {
+    console.warn('[mfe-pta][getAprobacionTerritorial] No disponible:', error instanceof Error ? error.message : error);
+    return { success: false, data: [] as TerritorialApprovalRow[] };
+  }
+}
+
 export async function aprobarComponente(ptaId: string, data: {
   componente: string;
   estado: 'aprobado' | 'devuelto';
@@ -503,6 +524,11 @@ export async function aprobarComponente(ptaId: string, data: {
   comentarios?: string;
   scope?: string;
   scopeId?: string;
+  // Solo aplica a 'academica_territorial' cuando el PTA tiene 2+ territoriales
+  // distintas: identifica sobre cuál decide esta acción (aprobación parcial).
+  // Si se omite, el backend decide sobre la(s) territorial(es) propia(s) del
+  // aprobador autenticado.
+  territorialId?: string;
 }) {
   try {
     const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/aprobar-componente`, data);
