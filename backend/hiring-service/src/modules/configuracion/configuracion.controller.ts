@@ -9,6 +9,7 @@ import {
   ActualizarActividadDto,
   AplicabilidadDto,
   GuardarReglaDto,
+  ActualizarCampoDto,
 } from './dto/configuracion.dto';
 
 /**
@@ -95,5 +96,32 @@ export class ConfiguracionController {
   @ApiOperation({ summary: 'Derogar una regla sin borrarla del historico' })
   derogarRegla(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.derogarRegla(id);
+  }
+
+  @Get('actividades/:numeral/cobertura')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @ApiOperation({
+    summary: 'Matriz de la actividad: que exige cada modalidad',
+    description: 'Una fila por condicion, sin repetir la global en cada columna.',
+  })
+  cobertura(@Param('numeral') numeral: string) {
+    return this.service.cobertura(numeral);
+  }
+
+  @Get('actividades/:numeral/campos')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @ApiOperation({ summary: 'Campos del formulario de la actividad' })
+  campos(@Param('numeral') numeral: string) {
+    return this.service.campos(numeral);
+  }
+
+  @Put('campos/:id')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_ADMIN_UMBRALES)
+  @ApiOperation({ summary: 'Corregir la etiqueta o la ayuda de un campo' })
+  actualizarCampo(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ActualizarCampoDto) {
+    return this.service.actualizarCampo(id, dto);
   }
 }

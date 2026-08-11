@@ -84,3 +84,32 @@ export class GuardarReglaDto {
   @Min(0)
   orden?: number;
 }
+
+/**
+ * Texto que el gestor lee en el formulario.
+ *
+ * El `codigo` queda fuera a propósito: lo referencian las reglas y los datos
+ * ya guardados, así que renombrarlo dejaría huérfano todo lo anterior.
+ */
+export class ActualizarCampoDto {
+  @ApiProperty({ example: 'Objeto del contrato' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(300)
+  etiqueta: string;
+
+  @ApiPropertyOptional({ description: 'Texto de apoyo bajo el campo.' })
+  @IsOptional()
+  @IsString()
+  ayuda?: string;
+
+  @ApiPropertyOptional({ description: 'Agrupa campos en el formulario.' })
+  @IsOptional()
+  @IsString()
+  grupo?: string;
+
+  @ApiPropertyOptional({ description: 'Un campo inactivo deja de pedirse.' })
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}

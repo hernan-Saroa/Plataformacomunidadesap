@@ -22,8 +22,8 @@ const FORMA: Record<
     etiqueta: 'Documento requerido',
     ayuda: 'Exige que el expediente tenga al menos un documento de ese tipo.',
     campos: [
-      { clave: 'tipoDocumento', label: 'Tipo de documento', tipo: 'texto', ayuda: 'p. ej. CDP, ESTUDIO_PREVIO' },
-      { clave: 'cantidad', label: 'Cantidad mínima', tipo: 'numero' },
+      { clave: 'tipo', label: 'Tipo de documento', tipo: 'texto', ayuda: 'p. ej. ADJUNTO, CDP. Vacío acepta cualquiera' },
+      { clave: 'minimo', label: 'Cantidad mínima', tipo: 'numero' },
     ],
   },
   RANGO_VALOR: {
@@ -43,15 +43,17 @@ const FORMA: Record<
   BLOQUEA_AVANCE: {
     etiqueta: 'Bloquea el avance',
     ayuda: 'Impide pasar a la siguiente actividad hasta que se cumpla.',
-    campos: [{ clave: 'motivo', label: 'Motivo', tipo: 'texto' }],
+    campos: [
+      { clave: 'numeral', label: 'Actividad previa', tipo: 'texto', ayuda: 'La que debe completarse antes, p. ej. 4.3' },
+    ],
   },
   REGLA_DERIVADA: {
     etiqueta: 'Depende de otro dato',
     ayuda: 'Solo se exige cuando otro campo tiene cierto valor.',
     campos: [
-      { clave: 'codigo', label: 'Campo que se exige', tipo: 'texto' },
-      { clave: 'dependeDe', label: 'Campo del que depende', tipo: 'texto' },
-      { clave: 'valor', label: 'Valor que lo activa', tipo: 'texto' },
+      { clave: 'si_campo', label: 'Campo del que depende', tipo: 'texto' },
+      { clave: 'si_valor', label: 'Valor que lo activa', tipo: 'texto' },
+      { clave: 'entonces_campo', label: 'Campo que se vuelve obligatorio', tipo: 'texto' },
     ],
   },
 };

@@ -7,6 +7,8 @@ import {
   EstadoRespaldo,
   EstudioPrevio,
   Expediente,
+  Cobertura,
+  CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
   EtapaConActividades,
@@ -264,6 +266,22 @@ export const contratacionService = {
 
   derogarRegla: (id: string) =>
     pedir<ReglaActividad>(`/configuracion/reglas/${id}`, { method: 'DELETE' }),
+
+  /** Matriz de la actividad: que exige cada modalidad. */
+  cobertura: (numeral: string) =>
+    pedir<Cobertura>(`/configuracion/actividades/${numeral}/cobertura`),
+
+  campos: (numeral: string) =>
+    pedir<CampoConfigurable[]>(`/configuracion/actividades/${numeral}/campos`),
+
+  actualizarCampo: (
+    id: string,
+    datos: { etiqueta: string; ayuda?: string; grupo?: string; activo?: boolean },
+  ) =>
+    pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

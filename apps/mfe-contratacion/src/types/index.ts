@@ -305,3 +305,44 @@ export interface GuardarRegla {
   mensaje?: string;
   orden?: number;
 }
+
+/** Estado de una celda de la matriz de cobertura. */
+export type EstadoCelda = 'GLOBAL' | 'ESPECIFICA' | 'SIN_REGLA' | 'NO_APLICA';
+
+export interface CeldaCobertura {
+  modalidad: string;
+  estado: EstadoCelda;
+  reglaId?: string;
+}
+
+export interface FilaCobertura {
+  clave: string;
+  tipo: TipoRegla;
+  /** El campo, el documento o el tipo: lo que identifica la condicion. */
+  etiqueta: string;
+  alcance: 'GLOBAL' | 'ESPECIFICA';
+  reglaGlobalId: string | null;
+  mensaje: string | null;
+  celdas: CeldaCobertura[];
+}
+
+export interface Cobertura {
+  numeral: string;
+  nombre: string;
+  modalidades: { codigo: string; nombre: string; aplica: boolean; motivo: string | null }[];
+  filas: FilaCobertura[];
+}
+
+export interface CampoConfigurable {
+  id: string;
+  numeral: string;
+  codigo: string;
+  etiqueta: string;
+  ayuda?: string | null;
+  tipo: string;
+  obligatorio: boolean;
+  grupo?: string | null;
+  orden: number;
+  activo: boolean;
+  soloLectura: boolean;
+}

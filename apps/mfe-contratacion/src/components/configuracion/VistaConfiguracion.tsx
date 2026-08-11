@@ -7,6 +7,8 @@ import { ActividadAplicable, GuardarRegla, Modalidad, ReglaActividad } from '../
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
 import { EditorRegla } from './EditorRegla';
+import { MatrizCobertura } from './MatrizCobertura';
+import { PanelCampos } from './PanelCampos';
 
 const ETIQUETA_REGLA: Record<string, string> = {
   CAMPO_OBLIGATORIO: 'Campo obligatorio',
@@ -55,6 +57,7 @@ export function VistaConfiguracion() {
   const [nombre, setNombre] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [editandoRegla, setEditandoRegla] = useState<ReglaActividad | null | undefined>(undefined);
+  const [pestana, setPestana] = useState<'reglas' | 'cobertura' | 'campos'>('reglas');
 
   const actividad = useMemo(
     () => actividades.find((a) => a.numeral === seleccion) ?? null,
@@ -340,6 +343,43 @@ export function VistaConfiguracion() {
               </div>
             </div>
 
+            <div className="flex gap-1 border-b border-gray-200">
+              {([
+                ['reglas', 'Reglas'],
+                ['cobertura', 'Cobertura'],
+                ['campos', 'Campos del formulario'],
+              ] as const).map(([id, texto]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPestana(id)}
+                  className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                    pestana === id
+                      ? 'border-[#003DA5] text-[#003DA5]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {texto}
+                </button>
+              ))}
+            </div>
+
+            {pestana === 'cobertura' && (
+              <MatrizCobertura
+                numeral={actividad.numeral}
+                onAbrirRegla={(id) => {
+                  const r = reglas.find((x) => x.id === id);
+                  if (r) {
+                    setPestana('reglas');
+                    setEditandoRegla(r);
+                  }
+                }}
+              />
+            )}
+
+            {pestana === 'campos' && <PanelCampos numeral={actividad.numeral} />}
+
+            {pestana === 'reglas' && (
             <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
               <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2.5">
                 <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide m-0">
@@ -414,6 +454,7 @@ export function VistaConfiguracion() {
                 </ul>
               )}
             </div>
+            )}
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-10 text-center">

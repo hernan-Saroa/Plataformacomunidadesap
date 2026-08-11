@@ -12,6 +12,7 @@ import {
   ActualizarActividadDto,
   AplicabilidadDto,
   GuardarReglaDto,
+  ActualizarCampoDto,
 } from './dto/configuracion.dto';
 import {
   ContextoEvaluacion,
@@ -273,4 +274,117 @@ export class ConfiguracionService {
     regla.vigenteHasta = new Date();
     return repo.save(regla);
   }
+
+  // ----------------------------------------------------------- cobertura ---
+
+  /**
+   * Matriz de una actividad: que exige cada modalidad.
+   *
+   * Se resuelve en el servidor y no pidiendo las reglas modalidad por
+   * modalidad porque serian once viajes para pintar una tabla, y porque el
+   * cruce entre la regla global y la excepcion tiene que salir igual para
+   * todas: hacerlo en el cliente lo dejaria a merced del orden de llegada.
+   */
+  async cobertura(numeral: string) {
+    const actividad = await this.dataSource.getRepository(Actividad).findOne({
+      where: { numeral },
+    });
+    if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe`);
+
+    const modalidades = await this.dataSource.query(
+      `SELECT codigo, nombre FROM hiring.modalidades WHERE activa ORDER BY orden`,
+    );
+    const excluidas = await this.dataSource.getRepository(ActividadExcluida).find({
+      where: { numeral },
+    });
+    const noAplica = new Map(excluidas.map((e) => [e.modalidad, e.motivo]));
+
+    const reglas = await this.dataSource.getRepository(ReglaActividad).find({
+      where: { numeral },
+      order: { orden: 'ASC' },
+    });
+    const vigentes = reglas.filter((r) => !r.vigenteHasta);
+
+    // Una fila por condicion distinta, sin repetir la global en cada columna.
+    const filas = new Map<string, any>();
+    for (const r of vigentes) {
+      const clave = `${r.tipo}::${claveDeConfig(r)}`;
+      if (!filas.has(clave)) {
+        filas.set(clave, {
+          clave,
+          tipo: r.tipo,
+          etiqueta: claveDeConfig(r),
+          global: null as ReglaActividad | null,
+          porModalidad: {} as Record<string, any>,
+        });
+      }
+      const fila = filas.get(clave);
+      if (r.modalidad) fila.porModalidad[r.modalidad] = { id: r.id, mensaje: r.mensaje };
+      else fila.global = { id: r.id, mensaje: r.mensaje };
+    }
+
+    return {
+      numeral,
+      nombre: actividad.nombre,
+      modalidades: modalidades.map((m: any) => ({
+        codigo: m.codigo,
+        nombre: m.nombre,
+        aplica: !noAplica.has(m.codigo),
+        motivo: noAplica.get(m.codigo) ?? null,
+      })),
+      filas: [...filas.values()].map((f) => ({
+        clave: f.clave,
+        tipo: f.tipo,
+        etiqueta: f.etiqueta,
+        alcance: f.global ? 'GLOBAL' : 'ESPECIFICA',
+        // El id de la global sirve para editarla desde cualquier celda.
+        reglaGlobalId: f.global?.id ?? null,
+        mensaje: f.global?.mensaje ?? null,
+        celdas: modalidades.map((m: any) => {
+          if (noAplica.has(m.codigo)) return { modalidad: m.codigo, estado: 'NO_APLICA' };
+          const propia = f.porModalidad[m.codigo];
+          if (propia) {
+            return { modalidad: m.codigo, estado: 'ESPECIFICA', reglaId: propia.id };
+          }
+          return f.global
+            ? { modalidad: m.codigo, estado: 'GLOBAL', reglaId: f.global.id }
+            : { modalidad: m.codigo, estado: 'SIN_REGLA' };
+        }),
+      })),
+    };
+  }
+
+  // -------------------------------------------------------------- campos ---
+
+  /** Campos del formulario de una actividad, con su texto editable. */
+  async campos(numeral: string) {
+    return this.dataSource.getRepository(CampoFormulario).find({
+      where: { numeral },
+      order: { orden: 'ASC' },
+    });
+  }
+
+  /**
+   * Corrige el texto que el gestor lee en el formulario.
+   *
+   * `codigo` no se toca: es lo que referencian las reglas y los datos ya
+   * guardados, asi que renombrarlo dejaria huerfano todo lo anterior. Lo que
+   * se edita es la etiqueta y la ayuda, que es lo que se lee.
+   */
+  async actualizarCampo(id: string, dto: ActualizarCampoDto) {
+    const repo = this.dataSource.getRepository(CampoFormulario);
+    const campo = await repo.findOne({ where: { id } });
+    if (!campo) throw new NotFoundException('El campo no existe');
+
+    campo.etiqueta = dto.etiqueta;
+    if (dto.ayuda !== undefined) campo.ayuda = dto.ayuda || null;
+    if (dto.grupo !== undefined) campo.grupo = dto.grupo || null;
+    if (dto.activo !== undefined) campo.activo = dto.activo;
+    return repo.save(campo);
+  }
+}
+/** Lo que identifica la condicion: el campo, el documento o el tipo a secas. */
+function claveDeConfig(regla: ReglaActividad): string {
+  const c = regla.config ?? {};
+  return c.codigo ?? c.entonces_campo ?? c.tipo ?? c.numeral ?? regla.tipo;
 }
