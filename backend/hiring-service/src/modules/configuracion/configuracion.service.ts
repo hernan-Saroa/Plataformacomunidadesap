@@ -13,6 +13,7 @@ import {
   AplicabilidadDto,
   GuardarReglaDto,
   ActualizarCampoDto,
+  SimularDto,
 } from './dto/configuracion.dto';
 import {
   ContextoEvaluacion,
@@ -20,6 +21,7 @@ import {
   evaluarReglas,
   reglasAplicables,
 } from './evaluador-reglas';
+import { descripcion, proyectarFormulario } from './evaluador-condiciones';
 
 /**
  * Módulo de Configuración de Etapas.
@@ -227,6 +229,9 @@ export class ConfiguracionService {
       config: dto.config,
       mensaje: dto.mensaje ?? null,
       orden: dto.orden ?? 100,
+      condiciones: dto.condiciones ?? [],
+      acciones: dto.acciones ?? [],
+      conector: dto.conector ?? 'AND',
       vigenteDesde: new Date(),
       vigenteHasta: null,
     } as Partial<ReglaActividad>);
@@ -258,6 +263,9 @@ export class ConfiguracionService {
         config: dto.config,
         mensaje: dto.mensaje ?? null,
         orden: dto.orden ?? vigente.orden,
+        condiciones: dto.condiciones ?? vigente.condiciones ?? [],
+        acciones: dto.acciones ?? vigente.acciones ?? [],
+        conector: dto.conector ?? vigente.conector ?? 'AND',
         vigenteDesde: ahora,
         vigenteHasta: null,
       } as Partial<ReglaActividad>);
@@ -354,6 +362,51 @@ export class ConfiguracionService {
     };
   }
 
+  // ------------------------------------------------------------ simulacion --
+
+  /**
+   * Como queda el formulario con las reglas configuradas.
+   *
+   * Se ejecutan las reglas en vez de describirlas: es la unica forma de que el
+   * administrador vea el efecto de lo que acaba de configurar antes de que un
+   * gestor se tope con un campo que no puede llenar.
+   */
+  async simular(numeral: string, modalidad: string, datos: Record<string, any>) {
+    const campos = await this.dataSource.getRepository(CampoFormulario).find({
+      where: { numeral, activo: true },
+      order: { orden: 'ASC' },
+    });
+    const reglas = await this.reglasDe(numeral, modalidad);
+
+    const estado = proyectarFormulario(
+      reglas,
+      campos.map((c) => c.codigo),
+      { datos, modalidad },
+    );
+
+    return {
+      numeral,
+      modalidad,
+      campos: campos.map((c) => ({
+        codigo: c.codigo,
+        etiqueta: c.etiqueta,
+        tipo: c.tipo,
+        ayuda: c.ayuda,
+        // El obligatorio del catalogo es el punto de partida; las reglas
+        // pueden endurecerlo pero no relajarlo.
+        visible: estado[c.codigo]?.visible ?? true,
+        obligatorio: c.obligatorio || (estado[c.codigo]?.obligatorio ?? false),
+        porque: estado[c.codigo]?.porque ?? [],
+      })),
+      reglasEvaluadas: reglas.length,
+    };
+  }
+
+  /** Las reglas de una actividad con su frase legible, para la lista. */
+  async reglasLegibles(numeral: string, modalidad: string | null) {
+    const reglas = await this.reglasDe(numeral, modalidad);
+    return reglas.map((r) => ({ ...r, descripcion: descripcion(r) }));
+  }
   // -------------------------------------------------------------- campos ---
 
   /** Campos del formulario de una actividad, con su texto editable. */

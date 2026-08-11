@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -83,6 +84,23 @@ export class GuardarReglaDto {
   @IsInt()
   @Min(0)
   orden?: number;
+
+  @ApiPropertyOptional({
+    description: 'Cuando aplica: [{campo, operador, valor}]. Vacio = siempre.',
+  })
+  @IsOptional()
+  @IsArray()
+  condiciones?: any[];
+
+  @ApiPropertyOptional({ description: 'Que hace: [{accion, objetivo, valor}].' })
+  @IsOptional()
+  @IsArray()
+  acciones?: any[];
+
+  @ApiPropertyOptional({ enum: ['AND', 'OR'], default: 'AND' })
+  @IsOptional()
+  @IsIn(['AND', 'OR'])
+  conector?: 'AND' | 'OR';
 }
 
 /**
@@ -112,4 +130,17 @@ export class ActualizarCampoDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+}
+
+/** Datos con los que simular el formulario. */
+export class SimularDto {
+  @ApiProperty({ example: 'CONTRATACION_DIRECTA' })
+  @IsString()
+  @IsNotEmpty()
+  modalidad: string;
+
+  @ApiPropertyOptional({ description: 'Valores del formulario a esa altura.' })
+  @IsOptional()
+  @IsObject()
+  datos?: Record<string, any>;
 }

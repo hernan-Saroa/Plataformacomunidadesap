@@ -293,7 +293,12 @@ export interface ReglaActividad {
   mensaje?: string | null;
   orden: number;
   vigenteDesde: string;
-  vigenteHasta?: string | null;
+  vigenteHasta?: string | null;
+  condiciones?: Condicion[];
+  acciones?: Accion[];
+  conector?: 'AND' | 'OR';
+  /** Frase legible que arma el backend. */
+  descripcion?: string;
 }
 
 /** Lo que se envia al crear o reemplazar una regla. */
@@ -303,7 +308,10 @@ export interface GuardarRegla {
   tipo: TipoRegla;
   config: Record<string, any>;
   mensaje?: string;
-  orden?: number;
+  orden?: number;
+  condiciones?: Condicion[];
+  acciones?: Accion[];
+  conector?: 'AND' | 'OR';
 }
 
 /** Estado de una celda de la matriz de cobertura. */
@@ -345,4 +353,45 @@ export interface CampoConfigurable {
   orden: number;
   activo: boolean;
   soloLectura: boolean;
+}
+
+export type Operador = 'ES' | 'NO_ES' | 'MAYOR_QUE' | 'MENOR_QUE' | 'ESTA_VACIO' | 'TIENE_VALOR';
+
+export type TipoAccion =
+  | 'EXIGIR_CAMPO'
+  | 'MOSTRAR_CAMPO'
+  | 'OCULTAR_CAMPO'
+  | 'EXIGIR_DOCUMENTO'
+  | 'BLOQUEAR_AVANCE';
+
+export interface Condicion {
+  /** Codigo del campo, o `modalidad` para condicionar por la del proceso. */
+  campo: string;
+  operador: Operador;
+  valor?: any;
+}
+
+export interface Accion {
+  accion: TipoAccion;
+  objetivo: string;
+  valor?: any;
+}
+
+/** Un campo tal como queda tras aplicar las reglas. */
+export interface CampoSimulado {
+  codigo: string;
+  etiqueta: string;
+  tipo: string;
+  ayuda?: string | null;
+  visible: boolean;
+  obligatorio: boolean;
+  /** Que reglas lo dejaron asi. */
+  porque: string[];
+}
+
+export interface SimulacionFormulario {
+  numeral: string;
+  modalidad: string;
+  campos: CampoSimulado[];
+  reglasEvaluadas: number;
 }

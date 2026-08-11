@@ -1,47 +1,48 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Settings, Check, Minus, Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { Settings, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ActividadAplicable, GuardarRegla, Modalidad, ReglaActividad } from '../../types';
+import {
+  ActividadAplicable,
+  CampoConfigurable,
+  GuardarRegla,
+  Modalidad,
+  ReglaActividad,
+} from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
+
+import { ArbolActividades, ETAPA_INICIAL } from './ArbolActividades';
+import { CabeceraActividad } from './CabeceraActividad';
+import { ConstructorCondiciones } from './ConstructorCondiciones';
+import { DialogoImpacto } from './DialogoImpacto';
 import { EditorRegla } from './EditorRegla';
+import { EditorReglaSimple } from './EditorReglaSimple';
+import { LeyendaEstados } from './estados';
 import { MatrizCobertura } from './MatrizCobertura';
 import { PanelCampos } from './PanelCampos';
+import { PanelReglas } from './PanelReglas';
+import { VistaPreviaFormulario } from './VistaPreviaFormulario';
 
-const ETIQUETA_REGLA: Record<string, string> = {
-  CAMPO_OBLIGATORIO: 'Campo obligatorio',
-  DOCUMENTO_REQUERIDO: 'Documento requerido',
-  RANGO_VALOR: 'Rango de valor',
-  PLAZO_MINIMO: 'Plazo mínimo',
-  BLOQUEA_AVANCE: 'Bloquea el avance',
-  REGLA_DERIVADA: 'Depende de otro dato',
-};
+type Pestana = 'reglas' | 'cobertura' | 'campos' | 'preview';
 
-/** El módulo arranca en la etapa 3: es donde empieza el trabajo en el sistema. */
-const ETAPA_INICIAL = 3;
-
-const NOMBRE_ETAPA: Record<number, string> = {
-  1: 'Identificación y planeación',
-  2: 'Plan Anual de Adquisiciones',
-  3: 'Estudios previos',
-  4: 'CDP',
-  5: 'Elaboración y publicación',
-  6: 'Evaluación',
-  7: 'Adjudicación',
-  8: 'Suscripción',
-  9: 'Ejecución',
-  10: 'Liquidación',
-};
+const PESTANAS: [Pestana, string][] = [
+  ['reglas', 'Reglas'],
+  ['cobertura', 'Cobertura'],
+  ['campos', 'Campos'],
+  ['preview', 'Vista previa'],
+];
 
 /**
- * Configuración de etapas.
+ * Módulo de Configuración de Etapas.
  *
- * Dos paneles: a la izquierda las actividades de la modalidad elegida, a la
- * derecha el detalle de la seleccionada con sus reglas. Antes era una lista
- * de solo lectura, así que corregir el nombre de una actividad o ajustar un
- * plazo obligaba a entrar a la base de datos.
+ * Orquesta las piezas: el árbol a la izquierda, y a la derecha la actividad
+ * elegida con sus reglas, su cobertura entre modalidades, los textos de su
+ * formulario y una vista previa de lo que producen las reglas.
+ *
+ * La modalidad es un filtro y no el eje: la mayoría de reglas aplican a todas,
+ * así que ordenar la pantalla por modalidad escondía justo lo compartido.
  */
 export function VistaConfiguracion() {
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
@@ -49,15 +50,19 @@ export function VistaConfiguracion() {
   const [actividades, setActividades] = useState<ActividadAplicable[]>([]);
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [reglas, setReglas] = useState<ReglaActividad[]>([]);
+  const [campos, setCampos] = useState<CampoConfigurable[]>([]);
+  const [reglasPorNumeral, setReglasPorNumeral] = useState<Record<string, number>>({});
+  const [pestana, setPestana] = useState<Pestana>('reglas');
+
   const [cargando, setCargando] = useState(false);
   const [cargandoReglas, setCargandoReglas] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [editandoTexto, setEditandoTexto] = useState(false);
-  const [nombre, setNombre] = useState('');
-  const [descripcion, setDescripcion] = useState('');
-  const [editandoRegla, setEditandoRegla] = useState<ReglaActividad | null | undefined>(undefined);
-  const [pestana, setPestana] = useState<'reglas' | 'cobertura' | 'campos'>('reglas');
+  const [editando, setEditando] = useState<ReglaActividad | null | undefined>(undefined);
+  const [alcanceNueva, setAlcanceNueva] = useState<'global' | 'excepcion'>('global');
+  const [avisandoImpacto, setAvisandoImpacto] = useState<ReglaActividad | null>(null);
+  // Contratacion configura lo comun; soporte entra al constructor completo.
+  const [modoAvanzado, setModoAvanzado] = useState(false);
 
   const actividad = useMemo(
     () => actividades.find((a) => a.numeral === seleccion) ?? null,
@@ -82,8 +87,6 @@ export function VistaConfiguracion() {
       .actividadesDeModalidad(modalidad)
       .then((lista) => {
         setActividades(lista);
-        // Se conserva la selección al cambiar de modalidad: comparar la misma
-        // actividad entre modalidades es justo el caso de uso.
         setSeleccion((actual) =>
           actual && lista.some((a) => a.numeral === actual)
             ? actual
@@ -97,80 +100,48 @@ export function VistaConfiguracion() {
   useEffect(() => {
     if (!seleccion) return;
     setCargandoReglas(true);
-    contratacionService
-      .reglasDe(seleccion, modalidad)
-      .then(setReglas)
-      .catch(() => setReglas([]))
+    Promise.all([
+      contratacionService.reglasDe(seleccion, modalidad),
+      contratacionService.campos(seleccion),
+    ])
+      .then(([lista, defs]) => {
+        setReglas(lista);
+        setCampos(defs);
+        // El árbol necesita saber cuántas reglas tiene cada actividad para
+        // marcar su estado; se va llenando conforme se visitan.
+        setReglasPorNumeral((previo) => ({ ...previo, [seleccion]: lista.length }));
+      })
+      .catch(() => {
+        setReglas([]);
+        setCampos([]);
+      })
       .finally(() => setCargandoReglas(false));
   }, [seleccion, modalidad]);
 
-  const recargarReglas = async () => {
+  const recargar = async () => {
     if (!seleccion) return;
-    setReglas(await contratacionService.reglasDe(seleccion, modalidad));
+    const lista = await contratacionService.reglasDe(seleccion, modalidad);
+    setReglas(lista);
+    setReglasPorNumeral((previo) => ({ ...previo, [seleccion]: lista.length }));
   };
 
-  const abrirEdicionTexto = () => {
-    if (!actividad) return;
-    setNombre(actividad.nombre);
-    setDescripcion(actividad.descripcion ?? '');
-    setEditandoTexto(true);
-  };
-
-  const guardarTexto = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!actividad) return;
-    try {
-      await contratacionService.actualizarActividad(actividad.numeral, {
-        nombre: nombre.trim(),
-        descripcion: descripcion.trim() || undefined,
-      });
-      setActividades((lista) =>
-        lista.map((a) =>
-          a.numeral === actividad.numeral
-            ? { ...a, nombre: nombre.trim(), descripcion: descripcion.trim() || null }
-            : a,
-        ),
-      );
-      setEditandoTexto(false);
-      toast.success('Actividad actualizada');
-    } catch (err: any) {
-      toast.error(err.message ?? 'No se pudo guardar');
-    }
-  };
-
-  const alternarAplica = async () => {
-    if (!actividad) return;
-    const aplica = !actividad.aplica;
-    const motivo = aplica
-      ? undefined
-      : window.prompt('¿Por qué no aplica a esta modalidad? (queda en el expediente)') ?? undefined;
-    if (!aplica && motivo === undefined) return;
-
-    try {
-      await contratacionService.cambiarAplicabilidad(actividad.numeral, {
-        modalidad,
-        aplica,
-        motivo,
-      });
-      setActividades((lista) =>
-        lista.map((a) =>
-          a.numeral === actividad.numeral ? { ...a, aplica, motivo: motivo ?? null } : a,
-        ),
-      );
-      toast.success(aplica ? 'La actividad ahora aplica' : 'Actividad marcada como no aplica');
-    } catch (err: any) {
-      toast.error(err.message ?? 'No se pudo cambiar');
-    }
+  /** Editar una global avisa antes: el cambio se propaga a todas. */
+  const pedirEdicion = (regla: ReglaActividad) => {
+    // Editar entra siempre al constructor: la regla puede tener una forma que
+    // el modo simple no sabria representar sin perder informacion.
+    setModoAvanzado(true);
+    if (!regla.modalidad) setAvisandoImpacto(regla);
+    else setEditando(regla);
   };
 
   const guardarRegla = async (datos: GuardarRegla) => {
     if (!seleccion) return;
     try {
-      if (editandoRegla) await contratacionService.reemplazarRegla(editandoRegla.id, datos);
+      if (editando) await contratacionService.reemplazarRegla(editando.id, datos);
       else await contratacionService.crearRegla(seleccion, datos);
-      await recargarReglas();
-      setEditandoRegla(undefined);
-      toast.success(editandoRegla ? 'Regla actualizada' : 'Regla creada');
+      await recargar();
+      setEditando(undefined);
+      toast.success(editando ? 'Regla actualizada' : 'Regla creada');
     } catch (err: any) {
       toast.error(err.message ?? 'No se pudo guardar la regla');
     }
@@ -180,21 +151,17 @@ export function VistaConfiguracion() {
     if (!window.confirm('La regla deja de aplicarse a los procesos nuevos. ¿Continuar?')) return;
     try {
       await contratacionService.derogarRegla(regla.id);
-      await recargarReglas();
+      await recargar();
       toast.success('Regla derogada');
     } catch (err: any) {
       toast.error(err.message ?? 'No se pudo derogar');
     }
   };
 
-  const porEtapa = useMemo(() => {
-    const mapa = new Map<number, ActividadAplicable[]>();
-    for (const a of actividades) {
-      if (!mapa.has(a.etapa)) mapa.set(a.etapa, []);
-      mapa.get(a.etapa)!.push(a);
-    }
-    return [...mapa.entries()].sort(([a], [b]) => a - b);
-  }, [actividades]);
+  const cambiarActividad = (cambios: Partial<ActividadAplicable>) =>
+    setActividades((lista) =>
+      lista.map((a) => (a.numeral === seleccion ? { ...a, ...cambios } : a)),
+    );
 
   return (
     <div className="space-y-5">
@@ -205,21 +172,24 @@ export function VistaConfiguracion() {
         color="#64748B"
       />
 
-      <div className="flex items-center gap-3">
-        <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
-          Modalidad
-        </label>
-        <select
-          value={modalidad}
-          onChange={(e) => setModalidad(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm min-w-[280px] focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
-        >
-          {modalidades.map((m) => (
-            <option key={m.codigo} value={m.codigo}>
-              {m.nombre}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
+            Modalidad
+          </label>
+          <select
+            value={modalidad}
+            onChange={(e) => setModalidad(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm min-w-[280px] focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
+          >
+            {modalidades.map((m) => (
+              <option key={m.codigo} value={m.codigo}>
+                {m.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+        <LeyendaEstados />
       </div>
 
       {error && (
@@ -232,128 +202,32 @@ export function VistaConfiguracion() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] items-start">
-        {/* Actividades de la modalidad */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] items-start">
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-          <div className="border-b border-gray-200 bg-gray-50 px-4 py-2.5">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide m-0">
-              Actividades
-            </h3>
-          </div>
-          {cargando ? (
-            <div className="p-4 space-y-2">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="h-9 rounded-lg bg-gray-100 animate-pulse" />
-              ))}
-            </div>
-          ) : (
-            <div className="max-h-[70vh] overflow-y-auto">
-              {porEtapa.map(([etapa, lista]) => (
-                <div key={etapa}>
-                  <div className="sticky top-0 bg-white/95 backdrop-blur px-4 py-1.5 border-b border-gray-100">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                      Etapa {etapa} · {NOMBRE_ETAPA[etapa] ?? ''}
-                    </span>
-                  </div>
-                  {lista.map((a) => (
-                    <button
-                      key={a.numeral}
-                      type="button"
-                      onClick={() => setSeleccion(a.numeral)}
-                      className={`w-full flex items-start gap-2.5 px-4 py-2.5 text-left border-b border-gray-100 transition-colors ${
-                        seleccion === a.numeral ? 'bg-[#E0EDFF]' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <span
-                        className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded flex items-center justify-center ${
-                          a.aplica ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'
-                        }`}
-                        title={a.aplica ? 'Aplica' : 'No aplica'}
-                      >
-                        {a.aplica ? <Check className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-xs font-bold text-gray-500">{a.numeral}</span>
-                        <span
-                          className={`block text-sm leading-snug ${
-                            a.aplica ? 'text-gray-800' : 'text-gray-400 line-through'
-                          }`}
-                        >
-                          {a.nombre}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
+          <ArbolActividades
+            actividades={actividades}
+            seleccion={seleccion}
+            onSeleccionar={setSeleccion}
+            reglasPorNumeral={reglasPorNumeral}
+            cargando={cargando}
+          />
         </div>
 
-        {/* Detalle de la actividad seleccionada */}
         {actividad ? (
           <div className="space-y-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <span className="text-xs font-bold text-gray-500">
-                    Numeral {actividad.numeral}
-                  </span>
-                  <h2 className="text-lg font-bold text-gray-900 mt-0.5 mb-1 leading-snug">
-                    {actividad.nombre}
-                  </h2>
-                  {actividad.descripcion && (
-                    <p className="text-sm text-gray-600 m-0 leading-relaxed">
-                      {actividad.descripcion}
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={abrirEdicionTexto}
-                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  Editar
-                </button>
-              </div>
+            <CabeceraActividad
+              actividad={actividad}
+              modalidad={modalidad}
+              onCambio={cambiarActividad}
+            />
 
-              <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-gray-700 m-0">
-                    {actividad.aplica
-                      ? 'Aplica a esta modalidad'
-                      : 'No aplica a esta modalidad'}
-                  </p>
-                  {!actividad.aplica && actividad.motivo && (
-                    <p className="text-[11px] text-gray-500 mt-0.5 mb-0">{actividad.motivo}</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={alternarAplica}
-                  className={`flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                    actividad.aplica
-                      ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                      : 'border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                  }`}
-                >
-                  {actividad.aplica ? 'Marcar que no aplica' : 'Marcar que aplica'}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex gap-1 border-b border-gray-200">
-              {([
-                ['reglas', 'Reglas'],
-                ['cobertura', 'Cobertura'],
-                ['campos', 'Campos del formulario'],
-              ] as const).map(([id, texto]) => (
+            <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+              {PESTANAS.map(([id, texto]) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => setPestana(id)}
-                  className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                  className={`whitespace-nowrap px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
                     pestana === id
                       ? 'border-[#003DA5] text-[#003DA5]'
                       : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -364,6 +238,21 @@ export function VistaConfiguracion() {
               ))}
             </div>
 
+            {pestana === 'reglas' && (
+              <PanelReglas
+                reglas={reglas}
+                modalidades={modalidades}
+                cargando={cargandoReglas}
+                onCrear={(alcance) => {
+                  setAlcanceNueva(alcance);
+                  setModoAvanzado(false);
+                  setEditando(null);
+                }}
+                onEditar={pedirEdicion}
+                onDerogar={derogar}
+              />
+            )}
+
             {pestana === 'cobertura' && (
               <MatrizCobertura
                 numeral={actividad.numeral}
@@ -371,7 +260,7 @@ export function VistaConfiguracion() {
                   const r = reglas.find((x) => x.id === id);
                   if (r) {
                     setPestana('reglas');
-                    setEditandoRegla(r);
+                    pedirEdicion(r);
                   }
                 }}
               />
@@ -379,81 +268,12 @@ export function VistaConfiguracion() {
 
             {pestana === 'campos' && <PanelCampos numeral={actividad.numeral} />}
 
-            {pestana === 'reglas' && (
-            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2.5">
-                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide m-0">
-                  Reglas vigentes
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setEditandoRegla(null)}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#003DA5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#00307f]"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Agregar
-                </button>
-              </div>
-
-              {cargandoReglas ? (
-                <div className="p-4 space-y-2">
-                  {[0, 1].map((i) => (
-                    <div key={i} className="h-14 rounded-lg bg-gray-100 animate-pulse" />
-                  ))}
-                </div>
-              ) : reglas.length === 0 ? (
-                <p className="text-sm text-gray-500 px-4 py-8 text-center m-0">
-                  Sin reglas: la actividad se puede dar por terminada sin validaciones.
-                </p>
-              ) : (
-                <ul className="divide-y divide-gray-100 m-0 p-0 list-none">
-                  {reglas.map((r) => (
-                    <li key={r.id} className="flex items-start justify-between gap-3 px-4 py-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="rounded bg-[#E0EDFF] px-2 py-0.5 text-[10px] font-bold text-[#003DA5] uppercase tracking-wide">
-                            {ETIQUETA_REGLA[r.tipo] ?? r.tipo}
-                          </span>
-                          {r.modalidad ? (
-                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-                              Solo esta modalidad
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-gray-500">Todas las modalidades</span>
-                          )}
-                        </div>
-                        {r.mensaje && (
-                          <p className="text-sm text-gray-700 mt-1 mb-0 leading-snug">{r.mensaje}</p>
-                        )}
-                        <p className="text-[11px] text-gray-500 mt-1 mb-0 font-mono">
-                          {Object.entries(r.config)
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(' · ') || '—'}
-                        </p>
-                      </div>
-                      <div className="flex-shrink-0 flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setEditandoRegla(r)}
-                          title="Editar"
-                          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => derogar(r)}
-                          title="Derogar"
-                          className="rounded-lg p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {pestana === 'preview' && (
+              <VistaPreviaFormulario
+                numeral={actividad.numeral}
+                modalidades={modalidades}
+                modalidadInicial={modalidad}
+              />
             )}
           </div>
         ) : (
@@ -463,74 +283,56 @@ export function VistaConfiguracion() {
         )}
       </div>
 
-      <Modal
-        isOpen={editandoTexto}
-        onClose={() => setEditandoTexto(false)}
-        title="Editar actividad"
-        description={`Numeral ${actividad?.numeral ?? ''}`}
-        size="medium"
-        icon={<Pencil className="w-5 h-5" />}
-      >
-        <form onSubmit={guardarTexto} className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1.5">
-              Nombre
-            </label>
-            <input
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              required
-              maxLength={200}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1.5">
-              Descripción
-            </label>
-            <textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none resize-none"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setEditandoTexto(false)}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="rounded-lg bg-[#003DA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#00307f]"
-            >
-              Guardar
-            </button>
-          </div>
-        </form>
-      </Modal>
+      <DialogoImpacto
+        abierto={avisandoImpacto !== null}
+        cuantasModalidades={modalidades.length}
+        modalidadActual={
+          modalidades.find((m) => m.codigo === modalidad)?.nombre ?? modalidad
+        }
+        onCambiarEnTodas={() => {
+          setEditando(avisandoImpacto);
+          setAvisandoImpacto(null);
+        }}
+        onCrearExcepcion={() => {
+          // Nace como excepción con el contenido de la global, para no
+          // reescribirla desde cero.
+          setAlcanceNueva('excepcion');
+          setEditando(null);
+          setAvisandoImpacto(null);
+        }}
+        onCancelar={() => setAvisandoImpacto(null)}
+      />
 
       <Modal
-        isOpen={editandoRegla !== undefined}
-        onClose={() => setEditandoRegla(undefined)}
-        title={editandoRegla ? 'Editar regla' : 'Nueva regla'}
-        description={`Numeral ${actividad?.numeral ?? ''}`}
+        isOpen={editando !== undefined}
+        onClose={() => setEditando(undefined)}
+        title={editando ? 'Editar regla' : modoAvanzado ? 'Nueva regla · avanzado' : 'Nueva regla'}
+        description={actividad ? `${actividad.numeral} · ${actividad.nombre}` : ''}
         size="large"
         icon={<Settings className="w-5 h-5" />}
       >
-        {editandoRegla !== undefined && seleccion && (
-          <EditorRegla
-            numeral={seleccion}
-            modalidadActual={modalidad}
-            modalidades={modalidades}
-            regla={editandoRegla}
-            onGuardar={guardarRegla}
-            onCancelar={() => setEditandoRegla(undefined)}
-          />
-        )}
+        {editando !== undefined &&
+          (modoAvanzado || editando ? (
+            <EditorRegla
+              modalidadActual={modalidad}
+              modalidades={modalidades}
+              campos={campos}
+              regla={editando}
+              alcanceInicial={alcanceNueva}
+              onGuardar={guardarRegla}
+              onCancelar={() => setEditando(undefined)}
+            />
+          ) : (
+            <EditorReglaSimple
+              modalidadActual={modalidad}
+              modalidades={modalidades}
+              campos={campos}
+              alcanceInicial={alcanceNueva}
+              onGuardar={guardarRegla}
+              onCancelar={() => setEditando(undefined)}
+              onAvanzado={() => setModoAvanzado(true)}
+            />
+          ))}
       </Modal>
     </div>
   );

@@ -7,6 +7,7 @@ import {
   EstadoRespaldo,
   EstudioPrevio,
   Expediente,
+  SimulacionFormulario,
   Cobertura,
   CampoConfigurable,
   ActividadCatalogo,
@@ -281,6 +282,13 @@ export const contratacionService = {
     pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
       method: 'PUT',
       body: JSON.stringify(datos),
+    }),
+
+  /** Como queda el formulario con las reglas configuradas. */
+  simular: (numeral: string, modalidad: string, datos: Record<string, any>) =>
+    pedir<SimulacionFormulario>(`/configuracion/actividades/${numeral}/simular`, {
+      method: 'POST',
+      body: JSON.stringify({ modalidad, datos }),
     }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,

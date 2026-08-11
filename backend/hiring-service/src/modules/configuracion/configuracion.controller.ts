@@ -10,6 +10,7 @@ import {
   AplicabilidadDto,
   GuardarReglaDto,
   ActualizarCampoDto,
+  SimularDto,
 } from './dto/configuracion.dto';
 
 /**
@@ -123,5 +124,16 @@ export class ConfiguracionController {
   @ApiOperation({ summary: 'Corregir la etiqueta o la ayuda de un campo' })
   actualizarCampo(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ActualizarCampoDto) {
     return this.service.actualizarCampo(id, dto);
+  }
+
+  @Post('actividades/:numeral/simular')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @ApiOperation({
+    summary: 'Como queda el formulario con las reglas configuradas',
+    description: 'Ejecuta las reglas en vez de describirlas: es la vista previa.',
+  })
+  simular(@Param('numeral') numeral: string, @Body() dto: SimularDto) {
+    return this.service.simular(numeral, dto.modalidad, dto.datos ?? {});
   }
 }

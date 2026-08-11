@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const ORIGEN = 'docs/contratacion/A2_MATRIZ_FLUJO.md';
-const DESTINO = 'db/migrations/hiring/013_catalogo_actividades.sql';
+const DESTINO = 'db/migrations/hiring/024_matriz_completa.sql';
 
 /** Códigos del catálogo, en el orden de las columnas de la matriz. */
 const MODALIDADES = [
@@ -86,6 +86,8 @@ function interpretarCelda(bruto) {
 // dejan de engancharla.
 const lineas = readFileSync(ORIGEN, 'utf8').split(/\r?\n/);
 const actividades = [];
+/** Numerales ya usados en cada etapa, para no repetirlos. */
+const porEtapaVistas = new Map();
 let etapaActual = null;
 
 for (const linea of lineas) {
@@ -107,11 +109,30 @@ for (const linea of lineas) {
   const nombre = celdas[2]?.trim();
   if (!nombre) continue;
 
+  // Ocho filas del Excel traen ahí el número de fila de la hoja en vez del
+  // numeral —"153" donde debería decir "5.10"—, y eso deja actividades con un
+  // identificador que no corresponde a su etapa. Se reconstruye a partir de la
+  // etapa y de cuántas van, que es lo que el documento numera.
+  // El numeral es único: dos actividades distintas no pueden compartirlo. Se
+  // toma el del Excel cuando corresponde a la etapa y no está tomado; si no
+  // —ocho filas traen el número de fila de la hoja, y algunas repiten uno ya
+  // usado— se continúa la numeración de la etapa.
+  const tomados = porEtapaVistas.get(etapaActual) ?? new Set();
+  porEtapaVistas.set(etapaActual, tomados);
+
+  let suyo = numeral;
+  if (!numeral.startsWith(`${etapaActual}.`) || tomados.has(numeral)) {
+    let n = tomados.size + 1;
+    while (tomados.has(`${etapaActual}.${n}`)) n++;
+    suyo = `${etapaActual}.${n}`;
+  }
+  tomados.add(suyo);
+
   const descripcion = celdas[3]?.trim() || null;
   const columnas = celdas.slice(4, 4 + MODALIDADES.length);
 
   actividades.push({
-    numeral,
+    numeral: suyo,
     etapa: etapaActual,
     nombre,
     descripcion,
@@ -139,39 +160,7 @@ partes.push(`-- ================================================================
 -- Aplicabilidad: ${actividades.length * MODALIDADES.length} filas
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS hiring.actividades_catalogo (
-  numeral      varchar(10)  PRIMARY KEY,
-  etapa        int          NOT NULL,
-  nombre       varchar(300) NOT NULL,
-  descripcion  text,
-  -- Orden dentro de la etapa; conserva la lectura de la matriz.
-  orden        int          NOT NULL,
-  -- Una actividad derogada deja de instanciarse sin romper los procesos que
-  -- ya la recorrieron.
-  activa       boolean      NOT NULL DEFAULT true,
-  created_at   timestamptz  NOT NULL DEFAULT now(),
-  updated_at   timestamptz  NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_act_cat_etapa
-  ON hiring.actividades_catalogo (etapa, orden) WHERE activa;
-
-CREATE TABLE IF NOT EXISTS hiring.actividad_modalidad (
-  numeral    varchar(10) NOT NULL REFERENCES hiring.actividades_catalogo (numeral) ON DELETE CASCADE,
-  modalidad  varchar(60) NOT NULL REFERENCES hiring.modalidades (codigo),
-  -- NULL cuando la celda venía vacía: no es lo mismo "no aplica" que
-  -- "la matriz no lo dice".
-  aplica     boolean,
-  -- Texto de la celda cuando no era SI/NO, como el "TVEC" del numeral 2.3.
-  variante   varchar(120),
-  -- Por qué esta celda necesita revisión, si la necesita.
-  nota       text,
-  PRIMARY KEY (numeral, modalidad)
-);
-
-CREATE INDEX IF NOT EXISTS idx_act_mod_aplica
-  ON hiring.actividad_modalidad (modalidad) WHERE aplica;
-
+-- Las tablas ya existen desde 010_cdp.sql: aqui solo se siembran los datos.
 -- ------------------------------------------------------------ actividades --
 `);
 
@@ -182,7 +171,7 @@ for (const a of actividades) {
   a.orden = orden;
 }
 
-partes.push('INSERT INTO hiring.actividades_catalogo (numeral, etapa, nombre, descripcion, orden) VALUES');
+partes.push('INSERT INTO hiring.actividades (numeral, etapa, nombre, descripcion, orden) VALUES');
 partes.push(
   actividades
     .map((a) => `  (${sql(a.numeral)}, ${a.etapa}, ${sql(a.nombre)}, ${sql(a.descripcion)}, ${a.orden})`)
@@ -192,32 +181,39 @@ partes.push(`ON CONFLICT (numeral) DO UPDATE
   SET etapa = EXCLUDED.etapa,
       nombre = EXCLUDED.nombre,
       descripcion = EXCLUDED.descripcion,
-      orden = EXCLUDED.orden,
-      updated_at = now();
+      orden = EXCLUDED.orden;
 
 -- -------------------------------------------------------- aplicabilidad ---
+-- Solo se registran los NO: la ausencia de fila significa que la actividad
+-- aplica, que es el caso mayoritario. De 693 celdas, la inmensa mayoria son SI.
 `);
 
-partes.push('INSERT INTO hiring.actividad_modalidad (numeral, modalidad, aplica, variante, nota) VALUES');
-const filas = [];
+// Se limpian primero las exclusiones de las actividades que se van a sembrar:
+// si una celda paso de NO a SI, la fila vieja tiene que desaparecer.
+partes.push('DELETE FROM hiring.actividades_excluidas WHERE numeral IN (');
+partes.push('  ' + actividades.map((a) => sql(a.numeral)).join(', '));
+partes.push(');');
+partes.push('');
+
+const exclusiones = [];
 for (const a of actividades) {
   for (const m of a.aplicabilidad) {
-    filas.push(
-      `  (${sql(a.numeral)}, ${sql(m.codigo)}, ${m.aplica === null ? 'NULL' : m.aplica}, ${sql(m.variante)}, ${sql(m.nota)})`,
-    );
+    // NULL es "la matriz no lo dice": ante la duda la actividad aplica, que es
+    // lo seguro —omitirla dejaria el proceso incompleto sin avisar a nadie.
+    if (m.aplica === false) {
+      const motivo = m.nota ?? (m.variante ? `La matriz dice "${m.variante}"` : null);
+      exclusiones.push(`  (${sql(a.numeral)}, ${sql(m.codigo)}, ${sql(motivo)})`);
+    }
   }
 }
-partes.push(filas.join(',\n'));
-partes.push(`ON CONFLICT (numeral, modalidad) DO UPDATE
-  SET aplica = EXCLUDED.aplica,
-      variante = EXCLUDED.variante,
-      nota = EXCLUDED.nota;
-`);
+
+if (exclusiones.length > 0) {
+  partes.push('INSERT INTO hiring.actividades_excluidas (numeral, modalidad, motivo) VALUES');
+  partes.push(exclusiones.join(',\n'));
+  partes.push('ON CONFLICT (numeral, modalidad) DO UPDATE SET motivo = EXCLUDED.motivo;');
+}
 
 writeFileSync(DESTINO, partes.join('\n'));
 
-const conNota = filas.filter((f) => f.includes('condición no documentada')).length;
-const conVariante = filas.filter((f) => !f.endsWith('NULL, NULL)')).length - conNota;
-console.log(`${actividades.length} actividades, ${filas.length} filas de aplicabilidad`);
-console.log(`${conNota} celdas marcadas para revisar, ${conVariante} con variante`);
+console.log(`${actividades.length} actividades, ${exclusiones.length} exclusiones`);
 console.log(`escrito en ${DESTINO}`);

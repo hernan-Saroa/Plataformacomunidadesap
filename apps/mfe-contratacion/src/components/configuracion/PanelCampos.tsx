@@ -5,6 +5,17 @@ import { toast } from 'sonner';
 import { contratacionService } from '../../services/contratacionService';
 import { CampoConfigurable } from '../../types';
 
+/** El nombre del tipo como lo entiende quien no programa. */
+const TIPO_LEGIBLE: Record<string, string> = {
+  texto: 'Texto corto',
+  textarea: 'Texto largo',
+  numero: 'Número',
+  moneda: 'Valor en pesos',
+  fecha: 'Fecha',
+  seleccion: 'Lista de opciones',
+  booleano: 'Sí o no',
+};
+
 /**
  * Textos del formulario de una actividad.
  *
@@ -144,8 +155,11 @@ export function PanelCampos({ numeral }: { numeral: string }) {
                   {campo.ayuda && (
                     <p className="text-[11px] text-gray-500 mt-0.5 mb-0">{campo.ayuda}</p>
                   )}
-                  <p className="text-[10px] text-gray-400 font-mono mt-0.5 mb-0">
-                    {campo.codigo} · {campo.tipo}
+                  <p
+                    className="text-[10px] text-gray-400 mt-0.5 mb-0"
+                    title={`Código interno: ${campo.codigo}`}
+                  >
+                    {TIPO_LEGIBLE[campo.tipo] ?? campo.tipo}
                   </p>
                 </div>
                 <div className="flex-shrink-0 flex items-center gap-1">

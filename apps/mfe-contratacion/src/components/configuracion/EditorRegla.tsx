@@ -1,102 +1,76 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 
-import { GuardarRegla, Modalidad, ReglaActividad, TipoRegla } from '../../types';
-
-/**
- * Cada tipo de regla necesita datos distintos, y esa forma es la que define
- * `config`. Declararla aquí evita que el usuario tenga que escribir JSON a
- * mano y que un campo mal nombrado deje la regla sin efecto.
- */
-const FORMA: Record<
-  TipoRegla,
-  { etiqueta: string; ayuda: string; campos: { clave: string; label: string; tipo: 'texto' | 'numero'; ayuda?: string }[] }
-> = {
-  CAMPO_OBLIGATORIO: {
-    etiqueta: 'Campo obligatorio',
-    ayuda: 'El estudio previo no se puede enviar mientras ese campo esté vacío.',
-    campos: [
-      { clave: 'codigo', label: 'Código del campo', tipo: 'texto', ayuda: 'Como aparece en el formulario, p. ej. objeto_contratar' },
-    ],
-  },
-  DOCUMENTO_REQUERIDO: {
-    etiqueta: 'Documento requerido',
-    ayuda: 'Exige que el expediente tenga al menos un documento de ese tipo.',
-    campos: [
-      { clave: 'tipo', label: 'Tipo de documento', tipo: 'texto', ayuda: 'p. ej. ADJUNTO, CDP. Vacío acepta cualquiera' },
-      { clave: 'minimo', label: 'Cantidad mínima', tipo: 'numero' },
-    ],
-  },
-  RANGO_VALOR: {
-    etiqueta: 'Rango de valor',
-    ayuda: 'El valor del campo debe caer dentro del rango. Dejar un extremo vacío lo deja abierto.',
-    campos: [
-      { clave: 'codigo', label: 'Código del campo', tipo: 'texto' },
-      { clave: 'min', label: 'Mínimo', tipo: 'numero' },
-      { clave: 'max', label: 'Máximo', tipo: 'numero' },
-    ],
-  },
-  PLAZO_MINIMO: {
-    etiqueta: 'Plazo mínimo',
-    ayuda: 'Días que deben transcurrir desde que la actividad inició.',
-    campos: [{ clave: 'dias', label: 'Días hábiles', tipo: 'numero' }],
-  },
-  BLOQUEA_AVANCE: {
-    etiqueta: 'Bloquea el avance',
-    ayuda: 'Impide pasar a la siguiente actividad hasta que se cumpla.',
-    campos: [
-      { clave: 'numeral', label: 'Actividad previa', tipo: 'texto', ayuda: 'La que debe completarse antes, p. ej. 4.3' },
-    ],
-  },
-  REGLA_DERIVADA: {
-    etiqueta: 'Depende de otro dato',
-    ayuda: 'Solo se exige cuando otro campo tiene cierto valor.',
-    campos: [
-      { clave: 'si_campo', label: 'Campo del que depende', tipo: 'texto' },
-      { clave: 'si_valor', label: 'Valor que lo activa', tipo: 'texto' },
-      { clave: 'entonces_campo', label: 'Campo que se vuelve obligatorio', tipo: 'texto' },
-    ],
-  },
-};
+import {
+  Accion,
+  CampoConfigurable,
+  Condicion,
+  GuardarRegla,
+  Modalidad,
+  ReglaActividad,
+} from '../../types';
+import { ConstructorCondiciones } from './ConstructorCondiciones';
 
 interface Props {
-  numeral: string;
   modalidadActual: string;
   modalidades: Modalidad[];
+  campos: CampoConfigurable[];
   regla?: ReglaActividad | null;
+  /** Con qué alcance nace una regla nueva. */
+  alcanceInicial: 'global' | 'excepcion';
   onGuardar: (datos: GuardarRegla) => Promise<void>;
   onCancelar: () => void;
 }
 
+/**
+ * Editor de una regla.
+ *
+ * La regla se arma con bloques CUANDO/ENTONCES y se traduce a una frase antes
+ * de guardarla: el administrador tiene que poder leer lo que configuró sin
+ * interpretar JSON, que es donde una clave mal escrita pasaba desapercibida.
+ */
 export function EditorRegla({
-  numeral,
   modalidadActual,
   modalidades,
+  campos,
   regla,
+  alcanceInicial,
   onGuardar,
   onCancelar,
 }: Props) {
-  const [tipo, setTipo] = useState<TipoRegla>(regla?.tipo ?? 'CAMPO_OBLIGATORIO');
-  const [alcance, setAlcance] = useState<'todas' | 'esta'>(
-    regla ? (regla.modalidad ? 'esta' : 'todas') : 'todas',
+  const [alcance, setAlcance] = useState<'global' | 'excepcion'>(
+    regla ? (regla.modalidad ? 'excepcion' : 'global') : alcanceInicial,
   );
-  const [config, setConfig] = useState<Record<string, any>>(regla?.config ?? {});
+  const [condiciones, setCondiciones] = useState<Condicion[]>(regla?.condiciones ?? []);
+  const [acciones, setAcciones] = useState<Accion[]>(regla?.acciones ?? []);
+  const [conector, setConector] = useState<'AND' | 'OR'>(regla?.conector ?? 'AND');
   const [mensaje, setMensaje] = useState(regla?.mensaje ?? '');
   const [guardando, setGuardando] = useState(false);
 
-  const forma = FORMA[tipo];
+  const nombreModalidad =
+    modalidades.find((m) => m.codigo === modalidadActual)?.nombre ?? modalidadActual;
+
+  const frase = useMemo(
+    () => describir(condiciones, acciones, conector, campos, modalidades),
+    [condiciones, acciones, conector, campos, modalidades],
+  );
+
+  const completa = acciones.length > 0 && acciones.every((a) => a.objetivo.trim() !== '');
 
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!completa) return;
     setGuardando(true);
     try {
       await onGuardar({
-        modalidad: alcance === 'esta' ? modalidadActual : null,
-        tipo,
-        // Los vacíos se descartan: una clave con cadena vacía haría que el
-        // evaluador la tomara por configurada.
-        config: Object.fromEntries(
-          Object.entries(config).filter(([, v]) => v !== '' && v !== null && v !== undefined),
-        ),
+        modalidad: alcance === 'excepcion' ? modalidadActual : null,
+        // El tipo se conserva por compatibilidad con el evaluador anterior;
+        // lo que manda ahora son las acciones.
+        tipo: acciones[0]?.accion === 'EXIGIR_DOCUMENTO' ? 'DOCUMENTO_REQUERIDO' : 'CAMPO_OBLIGATORIO',
+        config: {},
+        condiciones,
+        acciones,
+        conector,
         mensaje: mensaje.trim() || undefined,
       });
     } finally {
@@ -108,37 +82,14 @@ export function EditorRegla({
     <form onSubmit={enviar} className="space-y-5">
       <div>
         <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1.5">
-          Tipo de regla
-        </label>
-        <select
-          value={tipo}
-          onChange={(e) => {
-            setTipo(e.target.value as TipoRegla);
-            // La forma cambia por completo: conservar los valores anteriores
-            // dejaría claves que el nuevo tipo no entiende.
-            setConfig({});
-          }}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
-        >
-          {(Object.keys(FORMA) as TipoRegla[]).map((t) => (
-            <option key={t} value={t}>
-              {FORMA[t].etiqueta}
-            </option>
-          ))}
-        </select>
-        <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">{forma.ayuda}</p>
-      </div>
-
-      <div>
-        <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1.5">
-          Aplica a
+          Alcance
         </label>
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setAlcance('todas')}
+            onClick={() => setAlcance('global')}
             className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-              alcance === 'todas'
+              alcance === 'global'
                 ? 'border-[#003DA5] bg-[#E0EDFF] text-[#003DA5]'
                 : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
             }`}
@@ -147,46 +98,28 @@ export function EditorRegla({
           </button>
           <button
             type="button"
-            onClick={() => setAlcance('esta')}
+            onClick={() => setAlcance('excepcion')}
             className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-              alcance === 'esta'
+              alcance === 'excepcion'
                 ? 'border-[#003DA5] bg-[#E0EDFF] text-[#003DA5]'
                 : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
             }`}
           >
-            Solo {modalidades.find((m) => m.codigo === modalidadActual)?.nombre ?? modalidadActual}
+            Solo {nombreModalidad}
           </button>
         </div>
       </div>
 
-      <div className="space-y-3 rounded-lg bg-gray-50 border border-gray-200 p-3">
-        {forma.campos.map((campo) => (
-          <div key={campo.clave}>
-            <label className="block text-[11px] font-semibold text-gray-700 mb-1">
-              {campo.label}
-            </label>
-            <input
-              type={campo.tipo === 'numero' ? 'number' : 'text'}
-              value={config[campo.clave] ?? ''}
-              onChange={(e) =>
-                setConfig((c) => ({
-                  ...c,
-                  [campo.clave]:
-                    campo.tipo === 'numero'
-                      ? e.target.value === ''
-                        ? ''
-                        : Number(e.target.value)
-                      : e.target.value,
-                }))
-              }
-              className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
-            />
-            {campo.ayuda && (
-              <p className="text-[10px] text-gray-500 mt-1 mb-0">{campo.ayuda}</p>
-            )}
-          </div>
-        ))}
-      </div>
+      <ConstructorCondiciones
+        condiciones={condiciones}
+        acciones={acciones}
+        conector={conector}
+        campos={campos}
+        modalidades={modalidades}
+        onCambiarCondiciones={setCondiciones}
+        onCambiarAcciones={setAcciones}
+        onCambiarConector={setConector}
+      />
 
       <div>
         <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wide mb-1.5">
@@ -198,6 +131,21 @@ export function EditorRegla({
           placeholder="Lo que verá cuando la regla no se cumpla"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
         />
+      </div>
+
+      {/* La frase es lo que convierte los bloques en algo revisable: si no se
+          lee como se esperaba, la regla está mal antes de guardarla. */}
+      <div className="rounded-lg border border-[#003DA5]/20 bg-[#E0EDFF]/40 px-3 py-2.5">
+        <p className="flex items-center gap-1.5 text-[10px] font-bold text-[#003DA5] uppercase tracking-wide m-0 mb-1">
+          <Sparkles className="w-3 h-3" />
+          Resultado
+        </p>
+        <p className="text-sm text-slate-800 m-0 leading-relaxed">{frase}</p>
+        <p className="text-[11px] text-slate-600 m-0 mt-1">
+          {alcance === 'global'
+            ? `Afecta a las ${modalidades.length} modalidades.`
+            : `Afecta solo a ${nombreModalidad}.`}
+        </p>
       </div>
 
       {regla && (
@@ -217,7 +165,8 @@ export function EditorRegla({
         </button>
         <button
           type="submit"
-          disabled={guardando}
+          disabled={guardando || !completa}
+          title={completa ? undefined : 'Falta al menos una acción con su campo'}
           className="rounded-lg bg-[#003DA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#00307f] disabled:opacity-50"
         >
           {guardando ? 'Guardando…' : regla ? 'Guardar nueva versión' : 'Crear regla'}
@@ -225,4 +174,60 @@ export function EditorRegla({
       </div>
     </form>
   );
+}
+
+/** Traduce los bloques a español, con las etiquetas que el gestor ve. */
+function describir(
+  condiciones: Condicion[],
+  acciones: Accion[],
+  conector: 'AND' | 'OR',
+  campos: CampoConfigurable[],
+  modalidades: Modalidad[],
+): string {
+  if (acciones.length === 0) return 'Agrega una acción para ver qué hará la regla.';
+
+  const etiqueta = (codigo: string) =>
+    campos.find((c) => c.codigo === codigo)?.etiqueta ?? (codigo || '…');
+
+  const verbos: Record<string, (o: string) => string> = {
+    EXIGIR_CAMPO: (o) => `exige «${etiqueta(o)}»`,
+    MOSTRAR_CAMPO: (o) => `muestra «${etiqueta(o)}»`,
+    OCULTAR_CAMPO: (o) => `oculta «${etiqueta(o)}»`,
+    EXIGIR_DOCUMENTO: (o) => `exige el documento ${o || '…'}`,
+    BLOQUEAR_AVANCE: (o) => `bloquea el avance hasta ${o || '…'}`,
+  };
+
+  const queHace = acciones.map((a) => verbos[a.accion]?.(a.objetivo) ?? a.accion).join(' y ');
+
+  if (condiciones.length === 0) {
+    return `Siempre ${queHace}.`;
+  }
+
+  const nombreModalidad = (codigo: string) =>
+    modalidades.find((m) => m.codigo === codigo)?.nombre ?? (codigo || '…');
+
+  const cuando = condiciones
+    .map((c) => {
+      const sujeto = c.campo === 'modalidad' ? 'la modalidad' : `«${etiqueta(c.campo)}»`;
+      const valor = c.campo === 'modalidad' ? nombreModalidad(c.valor) : (c.valor ?? '…');
+      switch (c.operador) {
+        case 'ES':
+          return `${sujeto} es ${valor}`;
+        case 'NO_ES':
+          return `${sujeto} no es ${valor}`;
+        case 'MAYOR_QUE':
+          return `${sujeto} supera ${valor}`;
+        case 'MENOR_QUE':
+          return `${sujeto} es menor que ${valor}`;
+        case 'ESTA_VACIO':
+          return `${sujeto} está vacío`;
+        case 'TIENE_VALOR':
+          return `${sujeto} tiene valor`;
+        default:
+          return sujeto;
+      }
+    })
+    .join(conector === 'OR' ? ' o ' : ' y ');
+
+  return `Si ${cuando}, ${queHace}.`;
 }
