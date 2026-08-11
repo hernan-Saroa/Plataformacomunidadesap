@@ -28,6 +28,10 @@ import { Actividad, ActividadExcluida } from './entities/actividad.entity';
 import { PublicacionPliego } from './entities/publicacion-pliego.entity';
 import { PlazoPublicacion } from './entities/plazo-publicacion.entity';
 import { DiaNoHabil } from './entities/dia-no-habil.entity';
+import { ObservacionPliego } from './entities/observacion-pliego.entity';
+import { ManifestacionMipyme } from './entities/manifestacion-mipyme.entity';
+import { LimitacionMipyme } from './entities/limitacion-mipyme.entity';
+import { ParametroMipyme } from './entities/parametro-mipyme.entity';
 
 @Module({
   imports: [
@@ -45,7 +49,7 @@ import { DiaNoHabil } from './entities/dia-no-habil.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
