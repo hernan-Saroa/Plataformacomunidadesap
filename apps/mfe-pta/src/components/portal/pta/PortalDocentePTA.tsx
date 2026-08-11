@@ -431,6 +431,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
   const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
   const loadPtasRequestRef = useRef(0);
+  const loadSolicitudesRequestRef = useRef(0);
 
   // El portal docente siempre trabaja en el periodo marcado como vigente. Los
   // registros históricos se conservan en memoria para no modificar reglas
@@ -512,22 +513,49 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
   // ═══ Solicitudes PTA — cargar notificaciones resueltas ═══
   const loadSolicitudes = useCallback(async () => {
+    const requestId = ++loadSolicitudesRequestRef.current;
     try {
       const res = await getMisSolicitudesPTA(userPersonId);
+      if (requestId !== loadSolicitudesRequestRef.current) return;
       if (res.success && Array.isArray(res.data)) {
         setTodasLasSolicitudes(res.data);
+      } else {
+        setTodasLasSolicitudes([]);
       }
     } catch (err) {
+      if (requestId !== loadSolicitudesRequestRef.current) return;
+      setTodasLasSolicitudes([]);
       console.log('[Portal] Error loading solicitudes:', err);
     }
   }, [userPersonId]);
 
-  const solicitudesResueltas = useMemo(() =>
-    todasLasSolicitudes.filter(s =>
-      ['aprobado', 'denegado', 'gestionada'].includes(s.estado)
-      && !s.notificacionLeida
-    ),
-  [todasLasSolicitudes]);
+  // El mismo árbol React puede reutilizarse al cambiar de cuenta en el portal.
+  // Invalidar de inmediato la petición anterior evita que sus avisos se pinten
+  // sobre el siguiente docente mientras termina la nueva consulta.
+  useEffect(() => {
+    loadSolicitudesRequestRef.current += 1;
+    setTodasLasSolicitudes([]);
+  }, [userPersonId]);
+
+  const solicitudesResueltas = useMemo(() => {
+    const ptaIdsPropios = new Set(
+      allPtas.map((pta: any) => String(pta?.id || '').trim()).filter(Boolean),
+    );
+
+    return todasLasSolicitudes.filter((solicitud: any) => {
+      if (!['aprobado', 'denegado', 'gestionada'].includes(solicitud?.estado)) return false;
+      if (solicitud?.notificacionLeida) return false;
+
+      // Una resolución de edición solo pertenece al portal que también posee el
+      // PTA asociado. Es una segunda barrera frente a respuestas obsoletas o a
+      // registros históricos inconsistentes; las solicitudes de creación no
+      // tienen ptaId y siguen dependiendo del aislamiento del endpoint.
+      const esEdicion = (solicitud?.tipoSolicitud || 'creacion') === 'edicion_componentes';
+      if (!esEdicion) return true;
+      const ptaId = String(solicitud?.ptaId || '').trim();
+      return Boolean(ptaId && ptaIdsPropios.has(ptaId));
+    });
+  }, [todasLasSolicitudes, allPtas]);
 
   // HU-12 — Versiones del PTA del mismo periodo (R01, R02, …). El docente puede tener
   // hasta 2 PTAs por periodo (el original R01 + el segundo R02 tras solicitud aprobada).
