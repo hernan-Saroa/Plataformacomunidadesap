@@ -431,6 +431,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
   const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
   const loadPtasRequestRef = useRef(0);
+  const loadSolicitudesRequestRef = useRef(0);
 
   // El portal docente siempre trabaja en el periodo marcado como vigente. Los
   // registros históricos se conservan en memoria para no modificar reglas
@@ -512,22 +513,49 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
   // ═══ Solicitudes PTA — cargar notificaciones resueltas ═══
   const loadSolicitudes = useCallback(async () => {
+    const requestId = ++loadSolicitudesRequestRef.current;
     try {
       const res = await getMisSolicitudesPTA(userPersonId);
+      if (requestId !== loadSolicitudesRequestRef.current) return;
       if (res.success && Array.isArray(res.data)) {
         setTodasLasSolicitudes(res.data);
+      } else {
+        setTodasLasSolicitudes([]);
       }
     } catch (err) {
+      if (requestId !== loadSolicitudesRequestRef.current) return;
+      setTodasLasSolicitudes([]);
       console.log('[Portal] Error loading solicitudes:', err);
     }
   }, [userPersonId]);
 
-  const solicitudesResueltas = useMemo(() =>
-    todasLasSolicitudes.filter(s =>
-      ['aprobado', 'denegado', 'gestionada'].includes(s.estado)
-      && !s.notificacionLeida
-    ),
-  [todasLasSolicitudes]);
+  // El mismo árbol React puede reutilizarse al cambiar de cuenta en el portal.
+  // Invalidar de inmediato la petición anterior evita que sus avisos se pinten
+  // sobre el siguiente docente mientras termina la nueva consulta.
+  useEffect(() => {
+    loadSolicitudesRequestRef.current += 1;
+    setTodasLasSolicitudes([]);
+  }, [userPersonId]);
+
+  const solicitudesResueltas = useMemo(() => {
+    const ptaIdsPropios = new Set(
+      allPtas.map((pta: any) => String(pta?.id || '').trim()).filter(Boolean),
+    );
+
+    return todasLasSolicitudes.filter((solicitud: any) => {
+      if (!['aprobado', 'denegado', 'gestionada'].includes(solicitud?.estado)) return false;
+      if (solicitud?.notificacionLeida) return false;
+
+      // Una resolución de edición solo pertenece al portal que también posee el
+      // PTA asociado. Es una segunda barrera frente a respuestas obsoletas o a
+      // registros históricos inconsistentes; las solicitudes de creación no
+      // tienen ptaId y siguen dependiendo del aislamiento del endpoint.
+      const esEdicion = (solicitud?.tipoSolicitud || 'creacion') === 'edicion_componentes';
+      if (!esEdicion) return true;
+      const ptaId = String(solicitud?.ptaId || '').trim();
+      return Boolean(ptaId && ptaIdsPropios.has(ptaId));
+    });
+  }, [todasLasSolicitudes, allPtas]);
 
   // HU-12 — Versiones del PTA del mismo periodo (R01, R02, …). El docente puede tener
   // hasta 2 PTAs por periodo (el original R01 + el segundo R02 tras solicitud aprobada).
@@ -541,6 +569,19 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         new Date(a.created_at || a.createdAt || 0).getTime() -
         new Date(b.created_at || b.createdAt || 0).getTime());
   }, [ptas, selectedPta]);
+
+  // El detalle actual del API expone `historialEstados`; `historial` se mantiene
+  // como fallback para respuestas legacy. Normalizarlo aquí evita que la traza
+  // exista en base de datos/backoffice pero aparezca vacía en el portal docente.
+  const historialPtaSeleccionado = useMemo(() => {
+    const raw = selectedPta?.historialEstados ?? selectedPta?.historial;
+    if (!Array.isArray(raw)) return [];
+    return [...raw].sort((a: any, b: any) => {
+      const fechaA = new Date(a?.createdAt || a?.created_at || a?.fecha || 0).getTime();
+      const fechaB = new Date(b?.createdAt || b?.created_at || b?.fecha || 0).getTime();
+      return fechaB - fechaA;
+    });
+  }, [selectedPta]);
 
   const handleDismissSolicitud = async (id: string) => {
     await marcarSolicitudLeida(id);
@@ -1582,30 +1623,37 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
               )}
 
               {/* Historial */}
-              {selectedPta.historial?.length > 0 && (
+              {historialPtaSeleccionado.length > 0 && (
                 <div style={{ background: 'white', borderRadius: 14, border: '1px solid #E5E7EB', padding: '18px 22px' }}>
                   <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Clock style={{ width: 15, height: 15, color: '#D97706' }} /> Historial ({selectedPta.historial.length})
+                    <Clock style={{ width: 15, height: 15, color: '#D97706' }} /> Historial ({historialPtaSeleccionado.length})
                   </h4>
                   <div style={{ paddingLeft: 8 }}>
-                    {selectedPta.historial.slice().reverse().map((h: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 6, position: 'relative' }}>
-                        {i < selectedPta.historial.length - 1 && (
-                          <div style={{ position: 'absolute', left: 5, top: 14, bottom: -6, width: 2, background: '#E5E7EB' }} />
-                        )}
-                        <div style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, marginTop: 3, background: i === 0 ? '#003DA5' : '#E5E7EB' }} />
-                        <div>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827' }}>
-                            {h.estado_nuevo || h.accion}
-                            <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6, fontSize: '0.68rem' }}>
-                              {h.fecha ? new Date(h.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                            </span>
+                    {historialPtaSeleccionado.map((h: any, i: number) => {
+                      const accion = h.tipoAccion || h.tipo_accion || h.accion;
+                      const fecha = h.createdAt || h.created_at || h.fecha;
+                      const comentarios = h.comentarios || h.observaciones;
+                      const actor = h.actorNombre || h.actor_nombre || h.actor || h.actorId || h.actor_id;
+                      return (
+                        <div key={h.id || i} style={{ display: 'flex', gap: 10, marginBottom: 6, position: 'relative' }}>
+                          {i < historialPtaSeleccionado.length - 1 && (
+                            <div style={{ position: 'absolute', left: 5, top: 14, bottom: -6, width: 2, background: '#E5E7EB' }} />
+                          )}
+                          <div style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, marginTop: 3, background: i === 0 ? '#003DA5' : '#E5E7EB' }} />
+                          <div>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827' }}>
+                              {h.estadoNuevo || h.estado_nuevo || accion || 'Actualización del PTA'}
+                              <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6, fontSize: '0.68rem' }}>
+                                {fecha ? new Date(fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                              </span>
+                            </div>
+                            {accion && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>{String(accion).replace(/_/g, ' ')}</div>}
+                            {comentarios && <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 1 }}>{comentarios}</div>}
+                            {actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {actor}</div>}
                           </div>
-                          {h.observaciones && <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 1 }}>{h.observaciones}</div>}
-                          {h.actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {h.actor}</div>}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

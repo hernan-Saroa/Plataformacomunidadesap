@@ -67,22 +67,51 @@ export class Graduate {
   @Column({ name: 'diploma_number', length: 100, unique: true, nullable: true })
   diplomaNumber: string;
 
-  @Column({ name: 'acta_number', length: 100, nullable: true })
+  // Legacy API alias; the PostgreSQL identifier is standardized in English.
+  @Column({
+    name: 'registry_reference',
+    length: 100,
+    nullable: true,
+    comment:
+      'Composite registry, folio and book reference used by issued certificates',
+  })
   actaNumber: string;
 
   @Column({ name: 'resolution_number', length: 100, nullable: true })
   resolutionNumber: string;
 
-  @Column({ name: 'num_acta', length: 100, nullable: true })
+  // These property names remain stable for HTTP, Oracle and spreadsheet clients.
+  @Column({
+    name: 'graduation_record_number',
+    length: 100,
+    nullable: true,
+    comment:
+      'Graduation record number received from the academic source system',
+  })
   numActa: string;
 
-  @Column({ name: 'num_folio', length: 100, nullable: true })
+  @Column({
+    name: 'folio_number',
+    length: 100,
+    nullable: true,
+    comment: 'Academic registry folio number',
+  })
   numFolio: string;
 
-  @Column({ name: 'num_libro', length: 100, nullable: true })
+  @Column({
+    name: 'book_number',
+    length: 100,
+    nullable: true,
+    comment: 'Academic registry book number',
+  })
   numLibro: string;
 
-  @Column({ name: 'num_registro', length: 100, nullable: true })
+  @Column({
+    name: 'registry_number',
+    length: 100,
+    nullable: true,
+    comment: 'Academic registry number',
+  })
   numRegistro: string;
 
   // Estado y validación
@@ -96,7 +125,12 @@ export class Graduate {
   @Column({ length: 100, nullable: true })
   campus: string;
 
-  @Column({ name: 'seccional_name', length: 255, nullable: true })
+  @Column({
+    name: 'regional_office_name',
+    length: 255,
+    nullable: true,
+    comment: 'Regional office assigned to the graduate',
+  })
   seccionalName: string;
 
   // Auditoría

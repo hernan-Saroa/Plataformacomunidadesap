@@ -3822,7 +3822,21 @@ export class PtaService {
         if (isPendingRoleApprovalState(estadoActual)) {
           nuevoEstado = pendingApprovalState(estadoActual);
         } else {
-          // fallback para estados legacy
+          // fallback para estados legacy: si el PTA está en REVISION_DOCENTE_N* (o
+          // cualquier otro estado) porque uno o más componentes fueron devueltos y
+          // aún no los corrige el docente, este fallback NO puede aprobar el PTA
+          // completo saltándose esa devolución pendiente. Sin este candado,
+          // "aprobar" caía directo a 'Aprobado' sin mirar el estado por componente
+          // (bug: el proceso quedaba aprobado con una devolución de componente sin
+          // resolver).
+          const componentesVigentes = await this.getComponentesAprobacion(ptaId);
+          const componenteDevuelto = componentesVigentes.find(c => c.estado === 'devuelto');
+          if (componenteDevuelto) {
+            throw new BadRequestException(
+              `El componente "${componenteDevuelto.componente}" fue devuelto y está pendiente de corrección por el docente. ` +
+                'No se puede aprobar el PTA hasta que sea corregido y reenviado.',
+            );
+          }
           nuevoEstado = 'Aprobado';
         }
       } else if (a === 'devolver') {
@@ -4516,6 +4530,12 @@ export class PtaService {
       const meta = roleApprovalMetaByLevel(targetLevel) || roleApprovalMetaByLevel(1)!;
       const row = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente: meta.key } });
       if (row) {
+        if (row.estado === 'devuelto') {
+          throw new BadRequestException(
+            `El nivel "${meta.label}" ya fue devuelto y está pendiente de corrección por el docente. ` +
+              'No se puede volver a devolver hasta que el docente corrija y reenvíe.',
+          );
+        }
         await this.ptaComponentApprovalRepo.save({
           ...row,
           estado: 'devuelto',
@@ -4556,6 +4576,11 @@ export class PtaService {
 
       const row = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente: meta.key } });
       if (row) {
+        // No sobrescribir una devolución sin resolver: ese nivel debe quedar
+        // pendiente de corrección del docente, no aprobarse de todas formas.
+        if (row.estado === 'devuelto') {
+          continue;
+        }
         await this.ptaComponentApprovalRepo.save({
           ...row,
           estado: 'aprobado',
@@ -7779,16 +7804,54 @@ export class PtaService {
    * en aprobarComponente()).
    */
   /**
-   * Bloquea acciones (aprobar/devolver/revisar) sobre un componente cuando
-   * OTRO componente del mismo PTA ya fue devuelto y está pendiente de
-   * corrección por el docente. Sin este candado, cualquier usuario con
-   * permiso de aprobación/revisión puede seguir aprobando o devolviendo los
-   * demás componentes mientras el PTA ya tiene una devolución sin resolver,
-   * lo que rompe la trazabilidad del flujo (ver bug reportado sobre
-   * componentes "resolubles independientemente").
+   * Bloquea decisiones sobre un componente mientras el docente todavía lo
+   * está editando y también cuando OTRO componente del PTA fue devuelto.
+   *
+   * La primera validación es especialmente importante para la edición
+   * parcial: al aprobar la solicitud, sus componentes quedan en `devuelto`
+   * con scope `solicitud_edicion`, pero aún no deben poder revisarse. Solo el
+   * reenvío del docente cambia la solicitud a `en_aprobacion`. Sin este
+   * candado, una solicitud de Investigación (un único componente interno)
+   * podía marcarse como revisada antes de que el docente guardara los cambios,
+   * y esa revisión obsoleta sobrevivía al reenvío.
    */
-  private async assertSinDevolucionPendienteEnOtroComponente(ptaId: string, componenteActual: string) {
+  private async assertComponenteDisponibleParaDecision(ptaId: string, componenteActual: string) {
     const componentes = await this.getComponentesAprobacion(ptaId);
+    const componenteVigente = componentes.find((c) => c.componente === componenteActual);
+
+    if (componenteVigente?.scope === 'solicitud_edicion') {
+      const solicitudId = coalesceString(componenteVigente.scopeId);
+      if (!solicitudId) {
+        throw new BadRequestException('La reaprobación no tiene una solicitud de edición asociada.');
+      }
+
+      const solicitud = await this.solicitudRepo.findOne({
+        where: {
+          id: solicitudId,
+          ptaId,
+          tipoSolicitud: SOLICITUD_EDICION_TIPO,
+        } as any,
+      });
+      if (!solicitud) {
+        throw new BadRequestException('No se encontró la solicitud que habilitó esta edición.');
+      }
+      if (solicitud.estado === 'aprobado') {
+        throw new BadRequestException(
+          'El docente todavía no ha enviado los cambios de este componente a reaprobación.',
+        );
+      }
+      if (solicitud.estado === 'en_aprobacion') {
+        const componentesAutorizados = expandSolicitudComponentes(
+          normalizeSolicitudComponentes(solicitud.componentes),
+        );
+        if (!componentesAutorizados.includes(componenteActual)) {
+          throw new ForbiddenException(
+            'Este componente no forma parte de la solicitud de edición autorizada.',
+          );
+        }
+      }
+    }
+
     const otroDevuelto = componentes.find(
       (c) => c.componente !== componenteActual && c.estado === 'devuelto',
     );
@@ -7847,7 +7910,7 @@ export class PtaService {
     // concreta la define la seccional de la persona.
     await this.assertAlcanceTerritorial(componente, existingPta, auth, 'revisar');
 
-    await this.assertSinDevolucionPendienteEnOtroComponente(ptaId, componente);
+    await this.assertComponenteDisponibleParaDecision(ptaId, componente);
 
     const ds = (existingPta.datosEstructurados as any) || {};
     const requeridas = await this.getRequiredSubsecciones(componente, ds);
@@ -7980,7 +8043,7 @@ export class PtaService {
     // las asignaturas de su propia territorial (aplica también a la devolución).
     await this.assertAlcanceTerritorial(componente, existingPta, auth, 'aprobar');
 
-    await this.assertSinDevolucionPendienteEnOtroComponente(ptaId, componente);
+    await this.assertComponenteDisponibleParaDecision(ptaId, componente);
 
     // ── Bloqueo estructural: no se puede aprobar sin revisión previa completa ──
     // Esto aplica sin importar qué permiso tenga quien llama (no es solo un
@@ -8012,6 +8075,21 @@ export class PtaService {
         componente,
         estado: 'pendiente',
       });
+    }
+
+    // ── Bloqueo de auto-devolución: ni aprobar ni devolver de nuevo mientras el
+    // PROPIO componente ya está devuelto y pendiente de corrección por el
+    // docente. `assertSinDevolucionPendienteEnOtroComponente` (arriba) solo
+    // cubre OTROS componentes; sin este candado, un usuario podía aprobar el
+    // componente igual (dejando el PTA aprobado con una devolución sin
+    // resolver) o generar una segunda devolución duplicada sobre el mismo
+    // registro. Se libera automáticamente cuando el docente corrige y reenvía
+    // (resetComponentApprovalWorkflow vuelve el estado a 'pendiente').
+    if (approval.estado === 'devuelto') {
+      throw new BadRequestException(
+        `El componente "${componente}" ya fue devuelto y está pendiente de corrección por el docente. ` +
+          'No se puede aprobar ni volver a devolver hasta que el docente corrija y reenvíe el componente.',
+      );
     }
 
     // El alcance especial se asigna únicamente al aprobar una solicitud de
