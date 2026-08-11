@@ -98,7 +98,11 @@ export function MatrizGeneral({ onAbrir }: Props) {
         else if (c.estado === 'NO_APLICA') noAplican++;
       }
     }
-    return { actividades: visibles.length, salvedades, noAplican };
+    // Una actividad sin campos se cierra con un clic y no deja constancia en el
+    // expediente. Casi todas producen algún documento, así que es lo primero
+    // que hay que repasar antes de dar la configuración por buena.
+    const sinEvidencia = visibles.filter((f) => f.campos === 0).length;
+    return { actividades: visibles.length, salvedades, noAplican, sinEvidencia };
   }, [datos]);
 
   if (cargando) {
@@ -192,6 +196,12 @@ export function MatrizGeneral({ onAbrir }: Props) {
                 </strong>{' '}
                 modalidades
               </span>
+              {resumen.sinEvidencia > 0 && (
+                <span className="text-amber-700">
+                  <strong className="font-bold">{resumen.sinEvidencia}</strong> sin nada que
+                  pedirle al gestor
+                </span>
+              )}
               {resumen.salvedades > 0 && (
                 <span className="text-amber-700">
                   <strong className="font-bold">{resumen.salvedades}</strong> con salvedad

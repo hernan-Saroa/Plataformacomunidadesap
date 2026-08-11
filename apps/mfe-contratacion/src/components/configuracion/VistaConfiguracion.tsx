@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Settings } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ActividadAplicable, Modalidad } from '../../types';
+import { ActividadAplicable, CampoConfigurable, Modalidad } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
 
 import { DetalleActividad } from './DetalleActividad';
 import { MatrizGeneral } from './MatrizGeneral';
+import { PETICIONES, Peticion } from './peticiones';
 
 /**
  * Módulo de Configuración de Etapas.
@@ -27,6 +29,8 @@ export function VistaConfiguracion() {
   const [modalidad, setModalidad] = useState('');
   const [actividades, setActividades] = useState<ActividadAplicable[]>([]);
   const [seleccion, setSeleccion] = useState<string | null>(null);
+  const [campos, setCampos] = useState<CampoConfigurable[]>([]);
+  const [cargandoCampos, setCargandoCampos] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const actividad = useMemo(
@@ -59,6 +63,82 @@ export function VistaConfiguracion() {
       })
       .catch((err: any) => setError(err.message));
   }, [modalidad]);
+
+  // Los campos se piden al abrir una actividad y no con la matriz: son 63
+  // actividades y la tabla no los enseña, así que traerlos todos de entrada
+  // serían 63 consultas para dibujar una rejilla que no los usa.
+  useEffect(() => {
+    if (!seleccion) {
+      setCampos([]);
+      return;
+    }
+    setCargandoCampos(true);
+    contratacionService
+      .campos(seleccion)
+      .then(setCampos)
+      .catch(() => setCampos([]))
+      .finally(() => setCargandoCampos(false));
+  }, [seleccion]);
+
+  const recargarCampos = async () => {
+    if (!seleccion) return;
+    setCampos(await contratacionService.campos(seleccion));
+  };
+
+  /** Añade algo que el gestor tendrá que hacer para terminar la actividad. */
+  const agregarCampo = async (peticion: Peticion) => {
+    if (!seleccion) return;
+    const { tipo, etiqueta } = PETICIONES[peticion];
+    try {
+      await contratacionService.crearCampo(seleccion, { tipo, etiqueta });
+      await recargarCampos();
+      toast.success('Se agregó a lo que debe hacer el gestor');
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo agregar');
+    }
+  };
+
+  const renombrarCampo = async (campo: CampoConfigurable, etiqueta: string) => {
+    try {
+      await contratacionService.actualizarCampo(campo.id, { etiqueta });
+      await recargarCampos();
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo cambiar el texto');
+      throw err;
+    }
+  };
+
+  /** Decide si el gestor puede terminar la actividad sin diligenciarlo. */
+  const exigirCampo = async (campo: CampoConfigurable, obligatorio: boolean) => {
+    try {
+      await contratacionService.actualizarCampo(campo.id, {
+        etiqueta: campo.etiqueta,
+        obligatorio,
+      });
+      await recargarCampos();
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo cambiar');
+    }
+  };
+
+  /**
+   * Deja de pedirlo.
+   *
+   * El campo se desactiva en vez de borrarse: los procesos que ya guardaron un
+   * valor ahí lo conservan, y borrarlo dejaría huérfano lo diligenciado.
+   */
+  const quitarCampo = async (campo: CampoConfigurable) => {
+    try {
+      await contratacionService.actualizarCampo(campo.id, {
+        etiqueta: campo.etiqueta,
+        activo: false,
+      });
+      await recargarCampos();
+      toast.success('Ya no se le pedirá al gestor');
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo quitar');
+    }
+  };
 
   const cambiarActividad = (cambios: Partial<ActividadAplicable>) =>
     setActividades((lista) =>
@@ -108,14 +188,15 @@ export function VistaConfiguracion() {
         onClose={() => setSeleccion(null)}
         title={actividad ? `${actividad.numeral} · ${actividad.nombre}` : ''}
         description={`En ${nombreModalidad}`}
-        size="medium"
+        size="large"
         icon={<Settings className="w-5 h-5" />}
         footer={
           <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-            {/* Lo que hace seguro configurar: nada de esto toca lo que ya está
-                en marcha, y saberlo antes de tocar quita el miedo a probar. */}
+            {/* No hay botón de guardar porque no hay nada pendiente de guardar:
+                cada cambio se envía al salir del campo. Decirlo evita cerrar
+                el modal con la duda de haber perdido lo escrito. */}
             <p className="text-[11px] text-gray-500 m-0">
-              Los cambios no afectan procesos ya iniciados.
+              Los cambios se guardan solos y no afectan procesos ya iniciados.
             </p>
             <button
               type="button"
@@ -132,7 +213,13 @@ export function VistaConfiguracion() {
             actividad={actividad}
             modalidad={modalidad}
             modalidades={modalidades}
+            campos={campos}
+            cargandoCampos={cargandoCampos}
             onCambio={cambiarActividad}
+            onAgregarCampo={agregarCampo}
+            onRenombrarCampo={renombrarCampo}
+            onExigirCampo={exigirCampo}
+            onQuitarCampo={quitarCampo}
           />
         )}
       </Modal>

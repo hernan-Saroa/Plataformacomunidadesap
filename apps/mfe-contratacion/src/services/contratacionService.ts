@@ -228,10 +228,19 @@ export const contratacionService = {
 
   // ---------------------------------------- configuracion · escritura ----
 
-  /** Corrige el nombre o la descripcion de una actividad. */
+  /** Corrige el texto de una actividad y sus parametros de tramite. */
   actualizarActividad: (
     numeral: string,
-    datos: { nombre: string; descripcion?: string; activa?: boolean },
+    datos: {
+      nombre: string;
+      descripcion?: string;
+      activa?: boolean;
+      // Ausente conserva lo guardado; null lo borra. Enviar siempre todos
+      // haria que corregir una errata en el nombre vaciara el plazo.
+      plazoDias?: number | null;
+      responsableCargo?: string | null;
+      alertaDiasAntes?: number | null;
+    },
   ) =>
     pedir<ActividadCatalogo>(`/configuracion/actividades/${numeral}`, {
       method: 'PUT',
@@ -255,6 +264,26 @@ export const contratacionService = {
    * costaba 63 llamadas para dibujar una pantalla.
    */
   matriz: () => pedir<Matriz>('/configuracion/matriz'),
+
+  /** Lo que la actividad le pide al gestor. */
+  campos: (numeral: string) =>
+    pedir<CampoConfigurable[]>(`/configuracion/actividades/${numeral}/campos`),
+
+  crearCampo: (numeral: string, datos: { tipo: string; etiqueta: string }) =>
+    pedir<CampoConfigurable>(`/configuracion/actividades/${numeral}/campos`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Cambia el texto que lee el gestor, o deja de pedir el campo. */
+  actualizarCampo: (
+    id: string,
+    datos: { etiqueta: string; ayuda?: string; obligatorio?: boolean; activo?: boolean },
+  ) =>
+    pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

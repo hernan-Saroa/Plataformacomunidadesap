@@ -1,31 +1,49 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
-import { ActividadAplicable, Modalidad } from '../../types';
+import { ActividadAplicable, CampoConfigurable, Modalidad } from '../../types';
 
 import { CabeceraActividad } from './CabeceraActividad';
+import { QueSePide } from './QueSePide';
+import { VistaPrevia } from './VistaPrevia';
+import { Peticion } from './peticiones';
+
+type Pestana = 'configurar' | 'previa';
 
 interface Props {
   actividad: ActividadAplicable;
   modalidad: string;
   modalidades: Modalidad[];
+  campos: CampoConfigurable[];
+  cargandoCampos: boolean;
   onCambio: (cambios: Partial<ActividadAplicable>) => void;
+  onAgregarCampo: (peticion: Peticion) => Promise<void>;
+  onRenombrarCampo: (campo: CampoConfigurable, etiqueta: string) => Promise<void>;
+  onExigirCampo: (campo: CampoConfigurable, obligatorio: boolean) => Promise<void>;
+  onQuitarCampo: (campo: CampoConfigurable) => Promise<void>;
 }
 
 /**
- * Lo que se configura de una actividad: su texto y en qué modalidades se exige.
+ * Lo que se configura de una actividad.
  *
- * Antes esta pantalla también editaba las condiciones que valida cada
- * actividad —tipos de regla, operadores, excepciones por modalidad—, y eso no
- * es configuración: es lógica de negocio escrita en un formulario. Quien sabe
- * qué debe validarse no entra aquí, y quien entra no puede saberlo, así que las
- * reglas acababan viviendo en el código de todos modos con una pantalla
- * paralela que nadie mantenía.
- *
- * Queda lo que sí cambia sin desplegar y varía de verdad entre modalidades: si
- * la actividad se recorre, y el texto que lee el gestor.
+ * Dos pestañas: lo que se ajusta, y cómo queda para el gestor. La vista previa
+ * se dibuja con lo que hay en pantalla, así que responde la pregunta que trae a
+ * mirarla —«¿cómo se verá esto?»— sin cerrar y volver a abrir.
  */
-export function DetalleActividad({ actividad, modalidad, modalidades, onCambio }: Props) {
+export function DetalleActividad({
+  actividad,
+  modalidad,
+  modalidades,
+  campos,
+  cargandoCampos,
+  onCambio,
+  onAgregarCampo,
+  onRenombrarCampo,
+  onExigirCampo,
+  onQuitarCampo,
+}: Props) {
+  const [pestana, setPestana] = useState<Pestana>('configurar');
+
   return (
     <div className="space-y-4">
       <CabeceraActividad
@@ -52,12 +70,47 @@ export function DetalleActividad({ actividad, modalidad, modalidades, onCambio }
         </div>
       )}
 
-      {/* Lo que se le pide al gestor se define al construir cada etapa, no
-          aquí: decirlo evita buscar un configurador que ya no existe. */}
-      <p className="text-[11px] text-gray-400 m-0 leading-relaxed">
-        Lo que el gestor diligencia y las validaciones se definen en el desarrollo de la
-        etapa, no desde esta pantalla.
-      </p>
+      {/* Solo cuando la actividad se recorre: configurar qué pide algo que la
+          modalidad se salta es trabajo que nadie llegará a ver. */}
+      {actividad.aplica && (
+        <>
+          <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-1">
+            {(
+              [
+                ['configurar', 'Qué se pide'],
+                ['previa', 'Cómo lo verá el gestor'],
+              ] as [Pestana, string][]
+            ).map(([id, texto]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPestana(id)}
+                aria-current={pestana === id}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  pestana === id
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+
+          {pestana === 'configurar' ? (
+            <QueSePide
+              campos={campos}
+              cargando={cargandoCampos}
+              onAgregar={onAgregarCampo}
+              onRenombrar={onRenombrarCampo}
+              onExigir={onExigirCampo}
+              onQuitar={onQuitarCampo}
+            />
+          ) : (
+            <VistaPrevia actividad={actividad} campos={campos} />
+          )}
+        </>
+      )}
     </div>
   );
 }

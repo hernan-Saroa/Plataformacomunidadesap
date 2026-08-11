@@ -8,7 +8,7 @@ import {
   ActividadSalvedad,
 } from '../../entities/actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
-import { CampoFormulario } from '../../entities/campo-formulario.entity';
+import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -17,6 +17,7 @@ import {
   AplicabilidadDto,
   GuardarReglaDto,
   ActualizarCampoDto,
+  CrearCampoDto,
   SimularDto,
 } from './dto/configuracion.dto';
 import {
@@ -245,6 +246,18 @@ export class ConfiguracionService {
     actividad.nombre = dto.nombre;
     actividad.descripcion = dto.descripcion ?? null;
     if (dto.activa !== undefined) actividad.activa = dto.activa;
+
+    // Los tres parametros distinguen «no lo mandes» de «dejalo sin definir»:
+    // ausente en el cuerpo conserva lo guardado, y null lo borra. Sin esa
+    // diferencia, guardar solo el nombre borraria el plazo de la actividad.
+    if (dto.plazoDias !== undefined) actividad.plazoDias = dto.plazoDias ?? null;
+    if (dto.responsableCargo !== undefined) {
+      actividad.responsableCargo = dto.responsableCargo?.trim() || null;
+    }
+    if (dto.alertaDiasAntes !== undefined) {
+      actividad.alertaDiasAntes = dto.alertaDiasAntes ?? null;
+    }
+
     return repo.save(actividad);
   }
 
@@ -641,6 +654,47 @@ export class ConfiguracionService {
   }
 
   /**
+   * Agrega algo que la actividad le pedira al gestor.
+   *
+   * El codigo se deriva del tipo y de cuantos van: es la referencia con la que
+   * se guardan los datos diligenciados, asi que tiene que ser estable y no
+   * chocar con uno existente. Quien configura no lo ve ni lo elige.
+   */
+  async crearCampo(numeral: string, dto: CrearCampoDto) {
+    const actividad = await this.dataSource.getRepository(Actividad).findOne({
+      where: { numeral },
+    });
+    if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe`);
+
+    const repo = this.dataSource.getRepository(CampoFormulario);
+    const existentes = await repo.find({ where: { numeral } });
+
+    // Se cuenta sobre todos y no solo los activos: reutilizar el codigo de uno
+    // desactivado haria que el campo nuevo heredara los datos del viejo.
+    const base = `${dto.tipo}_${numeral.replace('.', '_')}`;
+    let codigo = base;
+    let n = 1;
+    while (existentes.some((c) => c.codigo === codigo)) {
+      n += 1;
+      codigo = `${base}_${n}`;
+    }
+
+    const orden = existentes.reduce((mayor, c) => Math.max(mayor, c.orden), 0) + 10;
+
+    const campo = repo.create();
+    campo.numeral = numeral;
+    campo.codigo = codigo;
+    campo.etiqueta = dto.etiqueta;
+    campo.ayuda = dto.ayuda || null;
+    campo.tipo = dto.tipo as TipoCampo;
+    campo.obligatorio = true;
+    campo.orden = orden;
+    campo.activo = true;
+    campo.soloLectura = false;
+    return repo.save(campo);
+  }
+
+  /**
    * Corrige el texto que el gestor lee en el formulario.
    *
    * `codigo` no se toca: es lo que referencian las reglas y los datos ya
@@ -655,6 +709,7 @@ export class ConfiguracionService {
     campo.etiqueta = dto.etiqueta;
     if (dto.ayuda !== undefined) campo.ayuda = dto.ayuda || null;
     if (dto.grupo !== undefined) campo.grupo = dto.grupo || null;
+    if (dto.obligatorio !== undefined) campo.obligatorio = dto.obligatorio;
     if (dto.activo !== undefined) campo.activo = dto.activo;
     return repo.save(campo);
   }

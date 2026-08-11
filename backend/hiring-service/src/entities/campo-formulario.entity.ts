@@ -1,6 +1,24 @@
 import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
-export type TipoCampo = 'texto' | 'texto_largo' | 'numero' | 'moneda' | 'seleccion';
+/**
+ * Cómo se diligencia un campo.
+ *
+ * Los cinco primeros vienen del estudio previo. Los cuatro últimos los añade la
+ * configuración de etapas: son las formas en que se cierran las actividades del
+ * resto del proceso —se adjunta algo, se fecha, se confirma, o alguien da su
+ * visto bueno—. `responsable` declara que hace falta una aprobación; a quién se
+ * le pide lo elige el gestor al diligenciar, porque cambia en cada proceso.
+ */
+export type TipoCampo =
+  | 'texto'
+  | 'texto_largo'
+  | 'numero'
+  | 'moneda'
+  | 'seleccion'
+  | 'archivo'
+  | 'fecha'
+  | 'casilla'
+  | 'responsable';
 
 /**
  * Definición del formulario de cada actividad. El HU pide parametrizar

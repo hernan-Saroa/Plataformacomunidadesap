@@ -22,6 +22,8 @@ export function CabeceraActividad({ actividad, modalidad, modalidades, onCambio 
     modalidades.find((m) => m.codigo === modalidad)?.nombre ?? modalidad;
   const [nombre, setNombre] = useState(actividad.nombre);
   const [descripcion, setDescripcion] = useState(actividad.descripcion ?? '');
+  const [plazo, setPlazo] = useState(actividad.plazoDias?.toString() ?? '');
+  const [alerta, setAlerta] = useState(actividad.alertaDiasAntes?.toString() ?? '');
   const [excluyendo, setExcluyendo] = useState(false);
   const [motivo, setMotivo] = useState('');
 
@@ -31,9 +33,17 @@ export function CabeceraActividad({ actividad, modalidad, modalidades, onCambio 
   useEffect(() => {
     setNombre(actividad.nombre);
     setDescripcion(actividad.descripcion ?? '');
+    setPlazo(actividad.plazoDias?.toString() ?? '');
+    setAlerta(actividad.alertaDiasAntes?.toString() ?? '');
     setExcluyendo(false);
     setMotivo('');
-  }, [actividad.numeral, actividad.nombre, actividad.descripcion]);
+  }, [
+    actividad.numeral,
+    actividad.nombre,
+    actividad.descripcion,
+    actividad.plazoDias,
+    actividad.alertaDiasAntes,
+  ]);
 
   /**
    * Guarda al salir del campo, y solo si algo cambió.
@@ -48,18 +58,38 @@ export function CabeceraActividad({ actividad, modalidad, modalidades, onCambio 
       setNombre(actividad.nombre);
       return;
     }
-    if (limpio === actividad.nombre && desc === (actividad.descripcion ?? '')) return;
+
+    // Vacío borra el parámetro; un número lo fija. `Number` sobre '' da 0, que
+    // la base rechaza, así que la cadena vacía se traduce a null a propósito.
+    const dias = plazo.trim() === '' ? null : Number(plazo);
+    const aviso = alerta.trim() === '' ? null : Number(alerta);
+
+    const sinCambios =
+      limpio === actividad.nombre &&
+      desc === (actividad.descripcion ?? '') &&
+      dias === (actividad.plazoDias ?? null) &&
+      aviso === (actividad.alertaDiasAntes ?? null);
+    if (sinCambios) return;
 
     try {
       await contratacionService.actualizarActividad(actividad.numeral, {
         nombre: limpio,
         descripcion: desc || undefined,
+        plazoDias: dias,
+        alertaDiasAntes: aviso,
       });
-      onCambio({ nombre: limpio, descripcion: desc || null });
-      toast.success('Texto actualizado');
+      onCambio({
+        nombre: limpio,
+        descripcion: desc || null,
+        plazoDias: dias,
+        alertaDiasAntes: aviso,
+      });
+      toast.success('Configuración actualizada');
     } catch (err: any) {
       setNombre(actividad.nombre);
       setDescripcion(actividad.descripcion ?? '');
+      setPlazo(actividad.plazoDias?.toString() ?? '');
+      setAlerta(actividad.alertaDiasAntes?.toString() ?? '');
       toast.error(err.message ?? 'No se pudo guardar');
     }
   };
@@ -178,6 +208,66 @@ export function CabeceraActividad({ actividad, modalidad, modalidades, onCambio 
             {actividad.aplica ? 'Sí' : 'No'}
           </span>
         </button>
+      </div>
+
+      {/* Cómo se tramita la actividad: plazo, quién responde y cuándo avisar.
+          Tres campos en una fila y no un formulario aparte, porque se ajustan
+          igual que el texto —se escribe y se guarda al salir— y separarlos
+          daría a entender que se guardan de otra manera. */}
+      <div className="grid gap-3 sm:grid-cols-2 rounded-xl border border-gray-200 px-4 py-3">
+        <div>
+          <label
+            htmlFor={`plazo-${actividad.numeral}`}
+            className="block text-[11px] font-semibold text-gray-600 mb-1"
+          >
+            Plazo para completarla
+          </label>
+          <div className="flex items-center gap-1.5">
+            <input
+              id={`plazo-${actividad.numeral}`}
+              value={plazo}
+              onChange={(e) => setPlazo(e.target.value.replace(/\D/g, ''))}
+              onBlur={guardar}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              inputMode="numeric"
+              maxLength={3}
+              placeholder="—"
+              className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm tabular-nums focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
+            />
+            <span className="text-[11px] text-gray-500">días hábiles</span>
+          </div>
+        </div>
+
+        {/* Aquí no se dice quién responde: eso cambia de un proceso a otro —en
+            uno aprueba una persona y en el siguiente otra— así que lo elige el
+            gestor al diligenciar. Lo que se configura es que la actividad pida
+            un visto bueno, y eso vive en los campos del formulario. */}
+        <div>
+          <label
+            htmlFor={`alerta-${actividad.numeral}`}
+            className="block text-[11px] font-semibold text-gray-600 mb-1"
+          >
+            Avisar antes de vencer
+          </label>
+          <div className="flex items-center gap-1.5">
+            <input
+              id={`alerta-${actividad.numeral}`}
+              value={alerta}
+              onChange={(e) => setAlerta(e.target.value.replace(/\D/g, ''))}
+              onBlur={guardar}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              inputMode="numeric"
+              maxLength={3}
+              placeholder="—"
+              className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm tabular-nums focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none"
+            />
+            <span className="text-[11px] text-gray-500">días antes</span>
+          </div>
+        </div>
       </div>
 
       {/* El motivo se pide en el sitio, no en otro modal: es un renglón, y

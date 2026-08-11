@@ -1,11 +1,26 @@
-import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ConfiguracionService } from './configuracion.service';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import { ROLES_ADMIN_UMBRALES, ROLES_LECTURA_CONTRATACION } from '../../auth/hiring-access';
-import { ActualizarActividadDto, AplicabilidadDto } from './dto/configuracion.dto';
+import {
+  ActualizarActividadDto,
+  ActualizarCampoDto,
+  AplicabilidadDto,
+  CrearCampoDto,
+} from './dto/configuracion.dto';
 
 /**
  * Módulo de Configuración de Etapas.
@@ -86,10 +101,38 @@ export class ConfiguracionController {
     return this.service.cambiarAplicabilidad(numeral, dto);
   }
 
-  // Lo que se configuraba desde la pantalla —crear y editar reglas, corregir
-  // campos, simular el formulario— dejo de exponerse: las condiciones que
-  // valida cada actividad se escriben en el codigo de su etapa, no se arman
-  // desde un formulario. El servicio y el evaluador siguen intactos porque los
-  // procesos en curso se evaluan con las reglas ya guardadas, y
-  // `instanciarActividades` lo usa estudio-previo al radicar.
+  // ------------------------------------------- que se le pide al gestor ----
+  // Lo que la actividad exige: un documento, una justificacion, una fecha, una
+  // casilla o el visto bueno de alguien. Sin condiciones ni excepciones por
+  // modalidad: una actividad pide lo mismo en todas las que la recorren, y lo
+  // que varia entre ellas es si la recorre, que ya resuelve la aplicabilidad.
+
+  @Get('actividades/:numeral/campos')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @ApiOperation({ summary: 'Lo que la actividad le pide al gestor' })
+  campos(@Param('numeral') numeral: string) {
+    return this.service.campos(numeral);
+  }
+
+  @Post('actividades/:numeral/campos')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_ADMIN_UMBRALES)
+  @ApiOperation({ summary: 'Agregar algo que el gestor tendra que hacer' })
+  crearCampo(@Param('numeral') numeral: string, @Body() dto: CrearCampoDto) {
+    return this.service.crearCampo(numeral, dto);
+  }
+
+  @Put('campos/:id')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_ADMIN_UMBRALES)
+  @ApiOperation({
+    summary: 'Corregir el texto de un campo o dejar de pedirlo',
+    description:
+      'Desactivarlo no lo borra: los procesos que ya guardaron un valor ahi lo ' +
+      'conservan, y borrarlo dejaria huerfano lo diligenciado.',
+  })
+  actualizarCampo(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ActualizarCampoDto) {
+    return this.service.actualizarCampo(id, dto);
+  }
 }

@@ -120,7 +120,13 @@ export function Modal({
   // Por portal: dentro del árbol, cualquier ancestro con overflow o transform
   // recorta el modal o rompe su posicionamiento.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
+    // El centrado deja libre la barra superior del shell: sin ese hueco, un
+    // modal alto se centra respecto a la ventana y su cabecera acaba tapada por
+    // la barra, justo donde está el botón de cerrar.
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-3"
+      style={{ paddingTop: 76, paddingBottom: 12 }}
+    >
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
         onClick={onClose}
@@ -138,7 +144,11 @@ export function Modal({
         // llega a la hoja compilada que sirve el remoto, así que un contenido
         // largo crecía hasta salirse de la pantalla por arriba y por abajo,
         // dejando fuera de vista la cabecera y el botón de cerrar.
-        style={{ maxHeight: '85vh' }}
+        //
+        // Se descuenta la barra superior del shell (64px) y un margen: con
+        // `85vh` a secas el modal se centra respecto a la ventana entera, y en
+        // pantallas cortas su cabecera queda por encima del borde visible.
+        style={{ maxHeight: 'calc(100vh - 96px)' }}
         className={`relative w-full ${ANCHOS[size]} bg-white rounded-xl
           shadow-2xl overflow-hidden flex flex-col focus:outline-none`}
       >

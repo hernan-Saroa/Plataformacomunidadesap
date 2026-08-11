@@ -260,13 +260,23 @@ export interface ActividadCatalogo {
   descripcion?: string | null;
   orden: number;
   activa: boolean;
+  /** Días hábiles previstos para completarla. Nulo = sin plazo definido. */
+  plazoDias?: number | null;
+  /** Cargo que responde por ella, no la persona que hoy lo ocupa. */
+  responsableCargo?: string | null;
+  /** Cuántos días antes del vencimiento avisar. Nulo = sin aviso. */
+  alertaDiasAntes?: number | null;
 }
 
 /** La misma actividad, ya resuelta contra una modalidad. */
 export interface ActividadAplicable extends ActividadCatalogo {
   aplica: boolean;
   /** Por qué la actividad no aplica a esta modalidad. */
-  motivo?: string | null;
+  motivo?: string | null;
+  /** La actividad aplica, pero la matriz le pone una condición ("si*"). */
+  salvedad?: string | null;
+  /** Lo que la matriz escribió en la celda: "TVEC", "Comunicación de aceptación". */
+  variante?: string | null;
   /** Reglas vigentes que le aplican a esta modalidad. */
   reglas?: number;
   /** De esas, cuantas son propias de la modalidad. */
@@ -299,7 +309,7 @@ export interface ReglaActividad {
   mensaje?: string | null;
   orden: number;
   vigenteDesde: string;
-  vigenteHasta?: string | null;
+  vigenteHasta?: string | null;
   condiciones?: Condicion[];
   acciones?: Accion[];
   conector?: 'AND' | 'OR';
@@ -314,7 +324,7 @@ export interface GuardarRegla {
   tipo: TipoRegla;
   config: Record<string, any>;
   mensaje?: string;
-  orden?: number;
+  orden?: number;
   condiciones?: Condicion[];
   acciones?: Accion[];
   conector?: 'AND' | 'OR';
@@ -334,6 +344,8 @@ export interface FilaCobertura {
   tipo: TipoRegla;
   /** El campo, el documento o el tipo: lo que identifica la condicion. */
   etiqueta: string;
+  /** Codigo interno, solo como referencia. */
+  codigo?: string;
   alcance: 'GLOBAL' | 'ESPECIFICA';
   reglaGlobalId: string | null;
   mensaje: string | null;
@@ -345,6 +357,72 @@ export interface Cobertura {
   nombre: string;
   modalidades: { codigo: string; nombre: string; aplica: boolean; motivo: string | null }[];
   filas: FilaCobertura[];
+}
+
+/**
+ * Estado de una celda de la matriz general.
+ *
+ * Distingue lo que la matriz del Excel distingue y la pantalla no distinguía:
+ * `CON_SALVEDAD` son las celdas que decían "si*" o traían texto propio.
+ */
+export type EstadoMatriz =
+  | 'APLICA'
+  | 'CON_EXCEPCION'
+  | 'CON_SALVEDAD'
+  | 'SIN_REGLAS'
+  | 'SIN_FORMULARIO'
+  | 'NO_APLICA';
+
+export interface CeldaMatriz {
+  modalidad: string;
+  estado: EstadoMatriz;
+  /** Por qué no aplica, o la condición que la matriz marca sin redactar. */
+  motivo: string | null;
+  /** El texto de la celda cuando la matriz no dice SI a secas. */
+  variante: string | null;
+  reglas: number;
+  reglasPropias: number;
+}
+
+export interface FilaMatriz {
+  numeral: string;
+  etapa: number;
+  nombre: string;
+  descripcion: string | null;
+  campos: number;
+  celdas: CeldaMatriz[];
+}
+
+export interface Matriz {
+  modalidades: Modalidad[];
+  filas: FilaMatriz[];
+}
+
+export interface ActividadDeFlujo {
+  numeral: string;
+  nombre: string;
+  descripcion: string | null;
+  aplica: boolean;
+  motivo: string | null;
+  campos: number;
+  reglas: number;
+  reglasPropias: number;
+  salvedad: string | null;
+  variante: string | null;
+}
+
+export interface EtapaDeFlujo {
+  etapa: number;
+  /** Ninguna de sus actividades aplica: el proceso pasa de largo. */
+  seSalta: boolean;
+  total: number;
+  aplican: number;
+  actividades: ActividadDeFlujo[];
+}
+
+export interface FlujoModalidad {
+  modalidad: string;
+  etapas: EtapaDeFlujo[];
 }
 
 export interface CampoConfigurable {

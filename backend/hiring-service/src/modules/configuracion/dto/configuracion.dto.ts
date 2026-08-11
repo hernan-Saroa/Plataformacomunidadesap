@@ -8,6 +8,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -38,6 +39,35 @@ export class ActualizarActividadDto {
   @IsOptional()
   @IsBoolean()
   activa?: boolean;
+
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'Días hábiles previstos para completarla. Nulo la deja sin plazo.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  plazoDias?: number | null;
+
+  @ApiPropertyOptional({
+    example: 'Director de Contratación',
+    description: 'Cargo que responde por la actividad, no la persona que hoy lo ocupa.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  responsableCargo?: string | null;
+
+  @ApiPropertyOptional({
+    example: 2,
+    description: 'Cuántos días antes del vencimiento avisar. Nulo la deja sin aviso.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  alertaDiasAntes?: number | null;
 }
 
 /** Marca o levanta la exclusión de una actividad en una modalidad. */
@@ -126,10 +156,50 @@ export class ActualizarCampoDto {
   @IsString()
   grupo?: string;
 
+  @ApiPropertyOptional({
+    description: 'Si es falso, el gestor puede terminar la actividad sin diligenciarlo.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  obligatorio?: boolean;
+
   @ApiPropertyOptional({ description: 'Un campo inactivo deja de pedirse.' })
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+}
+
+/** Los tipos que la pantalla sabe pedir. */
+export const TIPOS_CAMPO = [
+  'archivo',
+  'texto_largo',
+  'fecha',
+  'casilla',
+  'responsable',
+] as const;
+
+/**
+ * Algo nuevo que la actividad le pedira al gestor.
+ *
+ * El `codigo` no viene del cliente: lo deriva el servicio del numeral y del
+ * tipo, porque es la referencia con la que se guardan los datos diligenciados
+ * y dejarlo en manos de quien configura permitiria chocar con uno existente.
+ */
+export class CrearCampoDto {
+  @ApiProperty({ enum: TIPOS_CAMPO })
+  @IsIn(TIPOS_CAMPO as unknown as string[])
+  tipo: string;
+
+  @ApiProperty({ example: 'Documento firmado' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(300)
+  etiqueta: string;
+
+  @ApiPropertyOptional({ description: 'Texto de apoyo bajo el campo.' })
+  @IsOptional()
+  @IsString()
+  ayuda?: string;
 }
 
 /** Datos con los que simular el formulario. */
