@@ -992,7 +992,16 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     c.scope === 'solicitud_edicion'
     && ['pendiente', 'devuelto'].includes(String(c.estado || '').toLowerCase())
   );
+  // Aunque el estado AGREGADO del PTA no sea de edición parcial, el botón global
+  // "Aprobar" no debe habilitarse mientras cualquier componente siga devuelto y
+  // pendiente de corrección del docente: aprobar el PTA completo en ese momento
+  // lo dejaría "Aprobado" con una devolución sin resolver (el backend ya lo
+  // rechaza, pero el botón no debe invitar a intentarlo).
+  const hayComponenteDevueltoSinResolver = componentesAprobacion.some(
+    c => String(c.estado || '').toLowerCase() === 'devuelto'
+  );
   const puedeAprobarNivelActual = !esReaprobacionEdicionParcial
+    && !hayComponenteDevueltoSinResolver
     && puedeAprobar
     && puedeAprobarEstadoActual(pta.estado, nivelAprobacion, isSuperUser);
   // Revisión de evidencias del tab Seguimiento: modelo POR COMPONENTE. Cada evidencia
@@ -1924,6 +1933,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               const subLabel = REVIEW_SUBSECCION_LABEL[r.subseccion as PTAReviewSubseccionKey] || r.subseccion;
               const puedeRevisarEsta = isSubseccionAuthorizedToReview(key, r.subseccion);
               const estaResuelta = r.estado === 'revisado';
+              // A diferencia de `estaResuelta` (solo para mostrar el trazo de "revisado
+              // por..."), esta subsección deja de ser accionable tanto si ya fue
+              // 'revisado' como si ya fue 'devuelto': mientras el docente no corrija y
+              // reenvíe (lo que la vuelve a 'pendiente'), no debe poder generarse una
+              // segunda devolución ni una revisión sobre la misma subsección.
+              const subseccionAccionable = r.estado === 'pendiente';
               const procesandoEsta = !!procesandoRevision[subKey];
               return (
                 <div key={subKey} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1955,7 +1970,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {r.comentarios}
                     </div>
                   )}
-                  {!estaResuelta && puedeRevisarEsta && hayOtroComponenteDevuelto && (
+                  {r.estado === 'devuelto' && puedeRevisarEsta && (
+                    <div style={{
+                      fontSize: '0.68rem', color: '#B91C1C', background: '#FEF2F2',
+                      border: '1px solid #FECACA', borderRadius: 8, padding: '6px 9px',
+                    }}>
+                      Esta subsección ya fue devuelta y está pendiente de corrección del docente. No se puede volver a revisar ni devolver hasta que el docente corrija y reenvíe.
+                    </div>
+                  )}
+                  {subseccionAccionable && puedeRevisarEsta && hayOtroComponenteDevuelto && (
                     <div style={{
                       fontSize: '0.68rem', color: '#B91C1C', background: '#FEF2F2',
                       border: '1px solid #FECACA', borderRadius: 8, padding: '6px 9px',
@@ -1963,7 +1986,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede revisar hasta que el PTA sea corregido y reenviado.
                     </div>
                   )}
-                  {!estaResuelta && puedeRevisarEsta && !hayOtroComponenteDevuelto && (
+                  {subseccionAccionable && puedeRevisarEsta && !hayOtroComponenteDevuelto && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <textarea
                         value={comentariosRevision[subKey] || ''}
