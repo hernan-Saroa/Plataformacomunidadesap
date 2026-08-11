@@ -10,6 +10,7 @@ import { UmbralesModule } from './modules/umbrales/umbrales.module';
 import { CdpModule } from './modules/cdp/cdp.module';
 import { PublicacionModule } from './modules/publicacion/publicacion.module';
 import { ObservacionesModule } from './modules/observaciones/observaciones.module';
+import { MipymeModule } from './modules/mipyme/mipyme.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -63,6 +64,7 @@ import { ParametroMipyme } from './entities/parametro-mipyme.entity';
     CdpModule,
     PublicacionModule,
     ObservacionesModule,
+    MipymeModule,
   ],
   controllers: [HealthController],
   providers: [
