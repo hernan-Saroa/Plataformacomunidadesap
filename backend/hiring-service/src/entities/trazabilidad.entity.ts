@@ -12,7 +12,10 @@ export type AccionTraza =
   | 'SOLICITAR'
   | 'VERIFICAR'
   | 'EXPEDIR'
-  | 'RECHAZAR';
+  | 'RECHAZAR'
+  // Publicación del proyecto de pliego (etapa 5).
+  | 'PUBLICAR'
+  | 'ANULAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

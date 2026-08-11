@@ -24,6 +24,9 @@ import { UmbralModalidad } from './entities/umbral-modalidad.entity';
 import { Smmlv } from './entities/smmlv.entity';
 import { Cdp } from './entities/cdp.entity';
 import { Actividad, ActividadExcluida } from './entities/actividad.entity';
+import { PublicacionPliego } from './entities/publicacion-pliego.entity';
+import { PlazoPublicacion } from './entities/plazo-publicacion.entity';
+import { DiaNoHabil } from './entities/dia-no-habil.entity';
 
 @Module({
   imports: [
@@ -41,7 +44,7 @@ import { Actividad, ActividadExcluida } from './entities/actividad.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
