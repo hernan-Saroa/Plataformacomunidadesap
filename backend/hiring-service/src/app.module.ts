@@ -9,6 +9,7 @@ import { EstudioPrevioModule } from './modules/estudio-previo/estudio-previo.mod
 import { UmbralesModule } from './modules/umbrales/umbrales.module';
 import { CdpModule } from './modules/cdp/cdp.module';
 import { PublicacionModule } from './modules/publicacion/publicacion.module';
+import { ObservacionesModule } from './modules/observaciones/observaciones.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -61,6 +62,7 @@ import { ParametroMipyme } from './entities/parametro-mipyme.entity';
     UmbralesModule,
     CdpModule,
     PublicacionModule,
+    ObservacionesModule,
   ],
   controllers: [HealthController],
   providers: [

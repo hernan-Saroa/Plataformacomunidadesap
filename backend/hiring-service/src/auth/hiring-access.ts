@@ -79,6 +79,24 @@ export const ROLES_PUBLICACION_PLIEGO = [
  */
 export const ROLES_ADMIN_PLAZOS = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
 
+/**
+ * Quién gestiona las observaciones al pliego y la limitación a MIPYME
+ * (actividades 5.3 y 5.4, EFDS-1151).
+ *
+ * Mismos roles que la publicación porque es el mismo gestor llevando la etapa
+ * 5. Constante aparte y no reutilizada: un lector que viera
+ * `ROLES_PUBLICACION_PLIEGO` en un endpoint de observaciones tendría que
+ * adivinar si es intencional o un copiar y pegar.
+ */
+export const ROLES_PARTICIPACION = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/** Quién ajusta las condiciones de la limitación a MIPYME (EFDS-1393). */
+export const ROLES_ADMIN_MIPYME = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
