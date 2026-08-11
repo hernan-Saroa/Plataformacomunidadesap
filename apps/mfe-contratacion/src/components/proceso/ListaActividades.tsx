@@ -7,6 +7,8 @@ export interface ActividadEtapa {
   numeral: string;
   nombre: string;
   descripcion?: string;
+  /** Etapa de la matriz a la que pertenece; el riel agrupa por ella. */
+  etapa?: number;
   estado: EstadoActividadUI;
   /** Texto de apoyo bajo el nombre (ej. "faltan 13 campos"). */
   detalle?: string;

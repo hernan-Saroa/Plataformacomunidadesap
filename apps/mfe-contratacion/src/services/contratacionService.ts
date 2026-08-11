@@ -4,6 +4,7 @@ import {
   CamposFaltantesError,
   Cdp,
   ConflictoError,
+  EstadoPublicacion,
   EstadoRespaldo,
   EstudioPrevio,
   Expediente,
@@ -118,6 +119,47 @@ export const contratacionService = {
   abrirProceso: (procesoId: string) =>
     pedir<{ id: string; radicado: string; etapa: number }>(`/procesos/${procesoId}/abrir`, {
       method: 'POST',
+    }),
+
+  // ---------------------------- etapa 5 · publicación del proyecto de pliego -
+
+  /** Publicación vigente y estado del plazo de publicidad. */
+  publicacionPliego: (procesoId: string) =>
+    pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego`),
+
+  /**
+   * Registra la publicación con su evidencia en una sola petición.
+   *
+   * La evidencia va aquí y no en un paso posterior porque sin ella no hay
+   * registro: es lo único que prueba que la publicación existió, y el registro
+   * arranca un plazo legal. Admite imágenes además de documentos, que la prueba
+   * suele ser una captura de SECOP II.
+   *
+   * La fecha es la de la publicación real, no la del registro: es la que
+   * arranca el plazo, y el backend calcula el vencimiento con ella.
+   */
+  registrarPublicacion: (
+    procesoId: string,
+    datos: { fechaPublicacion: string; secopNumero?: string; secopUrl?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('fechaPublicacion', datos.fechaPublicacion);
+    if (datos.secopNumero) cuerpo.append('secopNumero', datos.secopNumero);
+    if (datos.secopUrl) cuerpo.append('secopUrl', datos.secopUrl);
+
+    return pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto la publicación registrada para poder corregirla. */
+  anularPublicacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
     }),
 
   // ------------------------------------------- administración de umbrales ---

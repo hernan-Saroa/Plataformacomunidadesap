@@ -99,6 +99,44 @@ export interface EstadoRespaldo {
   puedeGestionar: boolean;
 }
 
+/**
+ * Estado del plazo de publicidad del proyecto de pliego (EFDS-1150).
+ *
+ * SIN_PLAZO no es "todo bien": es que la modalidad no tiene plazo parametrizado
+ * o que aún no se ha registrado la publicación. Decirlo es distinto de decir
+ * que el término está vigente.
+ */
+export type EstadoPlazo = 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'SIN_PLAZO';
+
+export interface PublicacionPliego {
+  id: string;
+  /** Fecha real de publicación en SECOP II. Arranca el conteo del plazo. */
+  fechaPublicacion: string;
+  /** Plazo vigente el día del registro, congelado. */
+  plazoDiasHabiles: number | null;
+  fechaVencimiento: string | null;
+  secopNumero: string | null;
+  secopUrl: string | null;
+  /** La evidencia es obligatoria: no hay publicación registrada sin soporte. */
+  documentoId: string;
+  publicadoPor: string | null;
+}
+
+export interface EstadoPublicacion {
+  /** False en las modalidades que no tienen pliego que publicar. */
+  aplica: boolean;
+  publicacion: PublicacionPliego | null;
+  /** Plazo configurado para la modalidad, aunque aún no se haya publicado. */
+  plazo: { diasHabiles: number; confirmado: boolean; fundamento: string | null } | null;
+  /** Positivo: quedan. Cero: vence hoy. Negativo: venció hace esos días. */
+  diasHabilesRestantes: number | null;
+  estadoPlazo: EstadoPlazo;
+  /** Por qué el plazo mostrado puede no ser de fiar. */
+  advertencia: string | null;
+  /** Lo resuelve el backend con los roles del token, no el cliente. */
+  puedeRegistrar: boolean;
+}
+
 /** Actividad de la matriz, con el estado que lleva en este proceso. */
 export interface ActividadProceso {
   numeral: string;

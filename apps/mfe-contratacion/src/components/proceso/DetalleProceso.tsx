@@ -3,45 +3,55 @@ import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
-import { StepperEtapas, ETAPAS } from './StepperEtapas';
+import { StepperEtapas } from './StepperEtapas';
 import { ActividadEtapa } from './ListaActividades';
 import { RielActividades } from './RielActividades';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
 import { PanelCdp } from '../cdp/PanelCdp';
+import { PanelPublicacionPliego } from '../publicacion/PanelPublicacionPliego';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
+
+/** Publicación del proyecto de pliego, primera actividad viva de la etapa 5. */
+const NUMERAL_PUBLICACION = '5.2';
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.1',
+    etapa: 3,
     nombre: 'Elaboración de estudios previos',
     descripcion: 'Descripción de la necesidad, fundamento jurídico y modalidad propuesta',
   },
   {
     numeral: '3.2',
+    etapa: 3,
     nombre: 'Análisis del sector y estudio de mercado',
     descripcion: 'Consulta de proveedores y precios para estimar el valor',
   },
   {
     numeral: '3.3',
+    etapa: 3,
     nombre: 'Radicación en la Dirección de Contratación',
     descripcion: 'Genera consecutivo en el aplicativo de gestión documental',
   },
   {
     numeral: '3.4',
+    etapa: 3,
     nombre: 'Revisión y reparto',
     descripcion: 'Revisiones, mesas de trabajo y observaciones al estudio previo',
   },
   {
     numeral: '3.5',
+    etapa: 3,
     nombre: 'Definir modalidad de contratación',
     descripcion: 'Según cuantía y umbral vigente (Decreto 1082/2015)',
   },
   {
     numeral: '3.6',
+    etapa: 3,
     nombre: 'Comité de contratación',
     descripcion: 'Revisa, observa o aprueba los documentos del proceso',
   },
@@ -159,11 +169,17 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           adjuntos,
         };
       }
-      // Las actividades del CDP se trabajan aquí desde EFDS-1148.
-      if (NUMERALES_CDP.includes(act.numeral)) {
+      // Las actividades del CDP se trabajan aquí desde EFDS-1148, y la
+      // publicación del pliego desde EFDS-1150. Se tratan igual: el riel las
+      // habilita cuando la matriz las marca aplicables a la modalidad.
+      if (NUMERALES_CDP.includes(act.numeral) || act.numeral === NUMERAL_PUBLICACION) {
+        // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
+        // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
+        // se hacía— una actividad que la modalidad excluye se veía igual que
+        // una que está por hacer, y el contador la exigía para llegar al 100%.
         return {
           ...act,
-          estado: act.estado === 'APROBADO' ? 'aprobada' : aplica ? 'en_curso' : 'pendiente',
+          estado: act.estado === 'APROBADO' ? 'aprobada' : aplica ? 'en_curso' : 'no_aplica',
           disponible: aplica,
           detalle: aplica ? undefined : 'No aplica a esta modalidad',
           adjuntos,
@@ -174,9 +190,6 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   );
 
   const actividades = delCatalogo;
-
-  const nombreEtapa =
-    ETAPAS.find((e) => e.numero === datos.proceso.etapa)?.nombre ?? `Etapa ${datos.proceso.etapa}`;
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
@@ -256,8 +269,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
       <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
         <RielActividades
-          etapa={datos.proceso.etapa}
-          nombreEtapa={nombreEtapa}
+          etapaActual={datos.proceso.etapa}
           actividades={actividades}
           seleccionada={expandida}
           onSeleccionar={setExpandida}
@@ -270,6 +282,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 numeral={actividadSeleccionada.numeral}
                 procesoId={procesoId}
                 valorEstimado={datos.proceso.valorEstimado}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelPublicacionPliego
+                procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>

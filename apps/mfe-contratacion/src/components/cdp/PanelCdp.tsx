@@ -1,9 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, FileText, Info, Landmark, Lock, Paperclip, Send, Undo2 } from 'lucide-react';
+import { AlertTriangle, Check, Info, Landmark, Paperclip, Send, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoRespaldo } from '../../types';
+import {
+  Aviso,
+  Boton,
+  BotonSecundario,
+  campo,
+  Marco,
+  Ayuda,
+  Pendiente,
+  Siguiente,
+  SinPermiso,
+  Titulo,
+} from '../shared/PiezasPanel';
 
 interface Props {
   /** Cuál de las cuatro actividades del ciclo se está viendo. */
@@ -211,8 +223,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
             aria-label="Motivo del rechazo"
             className={campo}
           />
-          <button
-            type="button"
+          <BotonSecundario
             disabled={trabajando || !motivo.trim()}
             onClick={() =>
               ejecutar(
@@ -220,11 +231,10 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
                 'Solicitud rechazada',
               )
             }
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50 transition-all"
+            icono={<Undo2 className="w-3.5 h-3.5" />}
           >
-            <Undo2 className="w-3.5 h-3.5" />
             Rechazar solicitud
-          </button>
+          </BotonSecundario>
         </div>
       </Marco>
     );
@@ -368,43 +378,6 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
 
 // ------------------------------------------------------------- piezas ----
 
-const Marco = ({ children }: { children: React.ReactNode }) => (
-  <div className="p-4 space-y-3">{children}</div>
-);
-
-const Titulo = ({ children }: { children: React.ReactNode }) => (
-  <p className="text-[12.5px] font-bold text-slate-800 m-0">{children}</p>
-);
-
-const Ayuda = ({ children }: { children: React.ReactNode }) => (
-  <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">{children}</p>
-);
-
-/** Qué falta antes de poder trabajar esta actividad, y en cuál se hace. */
-const Pendiente = ({ falta, texto }: { falta: string; texto: string }) => (
-  <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3">
-    <p className="text-[12.5px] font-bold text-slate-700 m-0">Pendiente del paso {falta}</p>
-    <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">{texto}</p>
-  </div>
-);
-
-const Siguiente = ({ texto }: { texto: string }) => (
-  <p className="text-[11px] text-slate-500 m-0 leading-relaxed">{texto}</p>
-);
-
-/** El rol no alcanza: se dice quién puede, en vez de dejar un botón que da 403. */
-const SinPermiso = ({ quien }: { quien: string }) => (
-  <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 flex items-start gap-2.5">
-    <Lock className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
-    <div>
-      <p className="text-[12.5px] font-bold text-slate-700 m-0">Este paso lo realiza {quien}</p>
-      <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
-        Puedes consultarlo, pero no ejecutarlo con tu rol.
-      </p>
-    </div>
-  </div>
-);
-
 /**
  * De dónde sale el dato.
  *
@@ -420,48 +393,3 @@ const Origen = ({ conSoporte }: { conSoporte: boolean }) => (
       : 'Registrado por la Dirección Financiera. Aún sin soporte adjunto: el certificado no tiene evidencia en el expediente.'}
   </p>
 );
-
-const TONOS = {
-  ok: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-  error: 'border-red-200 bg-red-50 text-red-900',
-} as const;
-
-const Aviso = ({
-  tono,
-  titulo,
-  children,
-}: {
-  tono: keyof typeof TONOS;
-  titulo: string;
-  children: React.ReactNode;
-}) => (
-  <div className={`rounded-lg border px-3.5 py-3 flex items-start gap-2.5 ${TONOS[tono]}`}>
-    {tono === 'ok' ? (
-      <Check className="w-4 h-4 mt-0.5 flex-shrink-0" strokeWidth={3} />
-    ) : (
-      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-    )}
-    <div className="min-w-0">
-      <p className="text-[12.5px] font-bold m-0">{titulo}</p>
-      <p className="text-[11.5px] m-0 mt-0.5 leading-relaxed">{children}</p>
-    </div>
-  </div>
-);
-
-const Boton = ({
-  children,
-  icono,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => (
-  <button
-    type="button"
-    {...props}
-    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 transition-all"
-  >
-    {icono}
-    {children}
-  </button>
-);
-
-const campo =
-  'w-full px-2.5 py-1.5 text-[12.5px] rounded-md border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20';
