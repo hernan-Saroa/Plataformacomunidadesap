@@ -74,12 +74,52 @@ export class ConfiguracionService {
     });
     const porNumeral = new Map(excluidas.map((e) => [e.numeral, e]));
 
+    // El conteo viene en la misma respuesta: pedirlo actividad por actividad
+    // dejaria el arbol marcando todo como sin configurar hasta visitarlas una
+    // a una, que es justo lo que el administrador viene a evitar.
+    const conteos = await this.dataSource.query(
+      `SELECT r.numeral,
+              count(*) FILTER (WHERE r.modalidad IS NULL) AS globales,
+              count(*) FILTER (WHERE r.modalidad = $1) AS propias,
+              (SELECT count(*) FROM hiring.campos_formulario c
+                WHERE c.numeral = r.numeral AND c.activo) AS campos
+         FROM hiring.reglas_actividad r
+        WHERE r.vigente_hasta IS NULL
+          AND (r.modalidad IS NULL OR r.modalidad = $1)
+        GROUP BY r.numeral`,
+      [modalidad],
+    );
+    const porConteo = new Map<string, { reglas: number; propias: number; campos: number }>(
+      conteos.map((c: any) => [
+        c.numeral,
+        {
+          reglas: Number(c.globales) + Number(c.propias),
+          propias: Number(c.propias),
+          campos: Number(c.campos),
+        },
+      ]),
+    );
+
+    // Un formulario sin reglas no esta "sin configurar": puede que no las
+    // necesite. Se distingue de la actividad que ni siquiera tiene formulario.
+    const conFormulario = await this.dataSource.query(
+      `SELECT numeral, count(*) AS campos FROM hiring.campos_formulario
+        WHERE activo GROUP BY numeral`,
+    );
+    const camposPorNumeral = new Map<string, number>(
+      conFormulario.map((c: any) => [c.numeral, Number(c.campos)]),
+    );
+
     return actividades.map((a) => {
       const excluida = porNumeral.get(a.numeral);
+      const conteo = porConteo.get(a.numeral);
       return {
         ...a,
         aplica: !excluida,
         motivo: excluida?.motivo ?? null,
+        reglas: conteo?.reglas ?? 0,
+        reglasPropias: conteo?.propias ?? 0,
+        campos: camposPorNumeral.get(a.numeral) ?? 0,
       };
     });
   }

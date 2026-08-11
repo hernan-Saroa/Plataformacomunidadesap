@@ -73,7 +73,7 @@ export function PanelReglas({
         }
       >
         {globales.length === 0 ? (
-          <Vacio texto="Sin reglas comunes: cada modalidad tendría que configurarse por separado." />
+          <Vacio texto="Sin reglas comunes. Agrega una para que se exija en todas las modalidades." />
         ) : (
           <ul className="divide-y divide-gray-100 m-0 p-0 list-none">
             {globales.map((r) => (

@@ -266,7 +266,13 @@ export interface ActividadCatalogo {
 export interface ActividadAplicable extends ActividadCatalogo {
   aplica: boolean;
   /** Por qué la actividad no aplica a esta modalidad. */
-  motivo?: string | null;
+  motivo?: string | null;
+  /** Reglas vigentes que le aplican a esta modalidad. */
+  reglas?: number;
+  /** De esas, cuantas son propias de la modalidad. */
+  reglasPropias?: number;
+  /** Campos del formulario; 0 = la actividad no tiene formulario todavia. */
+  campos?: number;
 }
 
 export interface EtapaConActividades {

@@ -24,8 +24,6 @@ interface Props {
   actividades: ActividadAplicable[];
   seleccion: string | null;
   onSeleccionar: (numeral: string) => void;
-  /** Cuántas reglas tiene cada actividad; lo que decide si está configurada. */
-  reglasPorNumeral: Record<string, number>;
   cargando?: boolean;
 }
 
@@ -41,7 +39,6 @@ export function ArbolActividades({
   actividades,
   seleccion,
   onSeleccionar,
-  reglasPorNumeral,
   cargando,
 }: Props) {
   const [abiertas, setAbiertas] = useState<Set<number>>(new Set([ETAPA_INICIAL]));
@@ -77,7 +74,7 @@ export function ArbolActividades({
     <div className="max-h-[70vh] overflow-y-auto">
       {porEtapa.map(([etapa, lista]) => {
         const abierta = abiertas.has(etapa);
-        const resumen = contar(lista, reglasPorNumeral);
+        const resumen = contar(lista);
 
         return (
           <div key={etapa}>
@@ -117,7 +114,7 @@ export function ArbolActividades({
 
             {abierta &&
               lista.map((a) => {
-                const estado = estadoDe(a, reglasPorNumeral[a.numeral] ?? 0);
+                const estado = estadoDe(a);
                 return (
                   <button
                     key={a.numeral}
@@ -131,7 +128,22 @@ export function ArbolActividades({
                       <IconoEstado estado={estado} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-bold text-gray-500">{a.numeral}</span>
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-gray-500">{a.numeral}</span>
+                        {(a.reglas ?? 0) > 0 && (
+                          <span className="rounded bg-gray-100 px-1 text-[10px] font-semibold text-gray-600">
+                            {a.reglas} regla{a.reglas === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        {(a.reglasPropias ?? 0) > 0 && (
+                          <span
+                            title="Tiene reglas propias de esta modalidad"
+                            className="rounded bg-[#E0EDFF] px-1 text-[10px] font-semibold text-[#003DA5]"
+                          >
+                            excepción
+                          </span>
+                        )}
+                      </span>
                       <span
                         className={`block text-sm leading-snug ${
                           estado === EstadoActividad.NoAplica
@@ -152,13 +164,13 @@ export function ArbolActividades({
   );
 }
 
-function contar(lista: ActividadAplicable[], reglas: Record<string, number>) {
+function contar(lista: ActividadAplicable[]) {
   let configuradas = 0;
   let pendientes = 0;
   let noAplica = 0;
 
   for (const a of lista) {
-    const estado = estadoDe(a, reglas[a.numeral] ?? 0);
+    const estado = estadoDe(a);
     if (estado === EstadoActividad.NoAplica) noAplica++;
     else if (estado === EstadoActividad.Configurada || estado === EstadoActividad.ConExcepciones) {
       configuradas++;

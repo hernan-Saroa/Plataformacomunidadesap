@@ -20,8 +20,8 @@ export enum EstadoActividad {
 }
 
 export const DESCRIPCION_ESTADO: Record<EstadoActividad, string> = {
-  [EstadoActividad.SinConfigurar]: 'Sin reglas: se puede terminar sin validar nada',
-  [EstadoActividad.Incompleta]: 'Tiene reglas, pero falta cubrir alguna modalidad',
+  [EstadoActividad.SinConfigurar]: 'Sin formulario definido todavía',
+  [EstadoActividad.Incompleta]: 'Tiene formulario pero ninguna regla lo valida',
   [EstadoActividad.Configurada]: 'Configurada',
   [EstadoActividad.ConExcepciones]: 'Alguna modalidad se desvía de la regla general',
   [EstadoActividad.ConErrores]: 'Alguna regla apunta a un campo que ya no existe',
@@ -53,9 +53,13 @@ export function IconoEstado({ estado, className }: { estado: EstadoActividad; cl
  * `ConErrores` no se deduce aquí: exige comparar cada regla contra los campos
  * vigentes, y eso lo resuelve la vista de detalle, que ya tiene ambos datos.
  */
-export function estadoDe(actividad: ActividadAplicable, cuantasReglas: number): EstadoActividad {
+export function estadoDe(actividad: ActividadAplicable): EstadoActividad {
   if (!actividad.aplica) return EstadoActividad.NoAplica;
-  if (cuantasReglas === 0) return EstadoActividad.SinConfigurar;
+  // Sin formulario no hay nada que configurar todavía: distinguirlo de "tiene
+  // formulario y nadie le puso reglas" es lo que dice dónde falta trabajo.
+  if ((actividad.campos ?? 0) === 0) return EstadoActividad.SinConfigurar;
+  if ((actividad.reglas ?? 0) === 0) return EstadoActividad.Incompleta;
+  if ((actividad.reglasPropias ?? 0) > 0) return EstadoActividad.ConExcepciones;
   return EstadoActividad.Configurada;
 }
 

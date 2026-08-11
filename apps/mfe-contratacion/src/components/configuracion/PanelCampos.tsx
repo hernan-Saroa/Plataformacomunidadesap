@@ -87,9 +87,15 @@ export function PanelCampos({ numeral }: { numeral: string }) {
 
   if (campos.length === 0) {
     return (
-      <p className="text-sm text-gray-500 px-4 py-10 text-center m-0">
-        La actividad no tiene formulario definido.
-      </p>
+      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center">
+        <p className="text-sm font-semibold text-gray-700 m-0">
+          Esta actividad todavía no tiene formulario
+        </p>
+        <p className="text-xs text-gray-500 mt-1.5 mb-0 leading-relaxed max-w-md mx-auto">
+          De las 63 actividades de la matriz, por ahora solo el estudio previo (3.1) tiene
+          formulario. Los campos de las demás se definen al construir cada etapa.
+        </p>
+      </div>
     );
   }
 

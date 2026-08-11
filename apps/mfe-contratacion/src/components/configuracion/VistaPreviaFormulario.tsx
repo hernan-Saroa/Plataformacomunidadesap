@@ -94,9 +94,16 @@ export function VistaPreviaFormulario({ numeral, modalidades, modalidadInicial }
             ))}
           </div>
         ) : visibles.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-8 m-0">
-            Ningún campo visible con esta configuración.
-          </p>
+          <div className="text-center py-8">
+            <p className="text-sm font-semibold text-gray-700 m-0">
+              No hay nada que mostrar
+            </p>
+            <p className="text-xs text-gray-500 mt-1 mb-0">
+              {simulacion && simulacion.campos.length === 0
+                ? 'Esta actividad todavía no tiene formulario definido.'
+                : 'Con esta modalidad y estos valores, ninguna regla deja campos visibles.'}
+            </p>
+          </div>
         ) : (
           <div className="space-y-3.5">
             {visibles.map((campo) => (

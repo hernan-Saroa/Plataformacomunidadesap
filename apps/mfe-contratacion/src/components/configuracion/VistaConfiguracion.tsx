@@ -51,7 +51,6 @@ export function VistaConfiguracion() {
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [reglas, setReglas] = useState<ReglaActividad[]>([]);
   const [campos, setCampos] = useState<CampoConfigurable[]>([]);
-  const [reglasPorNumeral, setReglasPorNumeral] = useState<Record<string, number>>({});
   const [pestana, setPestana] = useState<Pestana>('reglas');
 
   const [cargando, setCargando] = useState(false);
@@ -107,9 +106,6 @@ export function VistaConfiguracion() {
       .then(([lista, defs]) => {
         setReglas(lista);
         setCampos(defs);
-        // El árbol necesita saber cuántas reglas tiene cada actividad para
-        // marcar su estado; se va llenando conforme se visitan.
-        setReglasPorNumeral((previo) => ({ ...previo, [seleccion]: lista.length }));
       })
       .catch(() => {
         setReglas([]);
@@ -120,9 +116,14 @@ export function VistaConfiguracion() {
 
   const recargar = async () => {
     if (!seleccion) return;
-    const lista = await contratacionService.reglasDe(seleccion, modalidad);
+    const [lista, actualizadas] = await Promise.all([
+      contratacionService.reglasDe(seleccion, modalidad),
+      // El árbol muestra cuántas reglas tiene cada actividad, así que crear o
+      // derogar una cambia lo que se ve a la izquierda.
+      contratacionService.actividadesDeModalidad(modalidad),
+    ]);
     setReglas(lista);
-    setReglasPorNumeral((previo) => ({ ...previo, [seleccion]: lista.length }));
+    setActividades(actualizadas);
   };
 
   /** Editar una global avisa antes: el cambio se propaga a todas. */
@@ -208,7 +209,6 @@ export function VistaConfiguracion() {
             actividades={actividades}
             seleccion={seleccion}
             onSeleccionar={setSeleccion}
-            reglasPorNumeral={reglasPorNumeral}
             cargando={cargando}
           />
         </div>
