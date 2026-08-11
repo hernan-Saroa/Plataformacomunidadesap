@@ -2,7 +2,11 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
-import { Actividad, ActividadExcluida } from '../../entities/actividad.entity';
+import {
+  Actividad,
+  ActividadExcluida,
+  ActividadSalvedad,
+} from '../../entities/actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { CampoFormulario } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
@@ -74,6 +78,14 @@ export class ConfiguracionService {
     });
     const porNumeral = new Map(excluidas.map((e) => [e.numeral, e]));
 
+    // Las celdas que aplican pero con matiz: "si*" y las variantes de texto de
+    // la matriz. Viajan con la actividad porque son parte de lo que el
+    // administrador tiene que resolver, no un detalle de una pantalla aparte.
+    const salvedades = await this.dataSource.getRepository(ActividadSalvedad).find({
+      where: { modalidad },
+    });
+    const salvedadDe = new Map(salvedades.map((s) => [s.numeral, s]));
+
     // El conteo viene en la misma respuesta: pedirlo actividad por actividad
     // dejaria el arbol marcando todo como sin configurar hasta visitarlas una
     // a una, que es justo lo que el administrador viene a evitar.
@@ -113,10 +125,13 @@ export class ConfiguracionService {
     return actividades.map((a) => {
       const excluida = porNumeral.get(a.numeral);
       const conteo = porConteo.get(a.numeral);
+      const salvedad = salvedadDe.get(a.numeral);
       return {
         ...a,
         aplica: !excluida,
         motivo: excluida?.motivo ?? null,
+        salvedad: salvedad?.nota ?? null,
+        variante: salvedad?.variante ?? null,
         reglas: conteo?.reglas ?? 0,
         reglasPropias: conteo?.propias ?? 0,
         campos: camposPorNumeral.get(a.numeral) ?? 0,
@@ -402,6 +417,174 @@ export class ConfiguracionService {
     };
   }
 
+  // --------------------------------------------------------------- matriz --
+
+  /**
+   * La matriz completa: 63 actividades por 11 modalidades, en una sola llamada.
+   *
+   * Es la vista que Contratación ya tiene en el Excel y que la pantalla no
+   * ofrecía: `cobertura()` responde por una actividad, así que reconstruir la
+   * rejilla desde el cliente costaba 63 peticiones. Con esto el administrador
+   * abre el módulo y ve de entrada qué recorre cada modalidad.
+   *
+   * Cuatro consultas fijas en vez de una por actividad: el volumen es de
+   * cientos de filas, no de miles, y traerlas juntas evita el N+1.
+   */
+  async matriz() {
+    const [actividades, modalidades, excluidas, salvedades] = await Promise.all([
+      this.dataSource.getRepository(Actividad).find({
+        where: { activa: true },
+        order: { etapa: 'ASC', orden: 'ASC' },
+      }),
+      this.dataSource.query(
+        `SELECT codigo, nombre, orden FROM hiring.modalidades WHERE activa ORDER BY orden`,
+      ),
+      this.dataSource.getRepository(ActividadExcluida).find(),
+      this.dataSource.getRepository(ActividadSalvedad).find(),
+    ]);
+
+    // Cuántas reglas y campos tiene cada actividad, y cuáles son propias de
+    // una modalidad. Sin esto la matriz diría que aplica pero no si está
+    // configurada, que es la mitad de la pregunta.
+    const conteos = await this.dataSource.query(
+      `SELECT r.numeral,
+              r.modalidad,
+              count(*) AS reglas
+         FROM hiring.reglas_actividad r
+        WHERE r.vigente_hasta IS NULL
+        GROUP BY r.numeral, r.modalidad`,
+    );
+    const camposPorNumeral = new Map<string, number>(
+      (
+        await this.dataSource.query(
+          `SELECT numeral, count(*) AS campos FROM hiring.campos_formulario
+            WHERE activo GROUP BY numeral`,
+        )
+      ).map((c: any) => [c.numeral, Number(c.campos)]),
+    );
+
+    const globales = new Map<string, number>();
+    const propias = new Map<string, number>();
+    for (const c of conteos as any[]) {
+      if (c.modalidad === null) globales.set(c.numeral, Number(c.reglas));
+      else propias.set(`${c.numeral}::${c.modalidad}`, Number(c.reglas));
+    }
+
+    const excluidaDe = new Map(excluidas.map((e) => [`${e.numeral}::${e.modalidad}`, e]));
+    const salvedadDe = new Map(salvedades.map((s) => [`${s.numeral}::${s.modalidad}`, s]));
+
+    const filas = actividades.map((a) => {
+      const campos = camposPorNumeral.get(a.numeral) ?? 0;
+      const reglasGlobales = globales.get(a.numeral) ?? 0;
+
+      return {
+        numeral: a.numeral,
+        etapa: a.etapa,
+        nombre: a.nombre,
+        descripcion: a.descripcion,
+        campos,
+        celdas: (modalidades as any[]).map((m) => {
+          const llave = `${a.numeral}::${m.codigo}`;
+          const excluida = excluidaDe.get(llave);
+          if (excluida) {
+            return {
+              modalidad: m.codigo,
+              estado: 'NO_APLICA' as const,
+              motivo: excluida.motivo,
+              variante: null,
+              reglas: 0,
+              reglasPropias: 0,
+            };
+          }
+
+          const reglasPropias = propias.get(llave) ?? 0;
+          const salvedad = salvedadDe.get(llave);
+          const reglas = reglasGlobales + reglasPropias;
+
+          // El orden importa: una celda con salvedad se señala como tal
+          // aunque además tenga reglas propias, porque la salvedad viene de la
+          // matriz y es lo que hay que ir a resolver con Contratación.
+          const estado = salvedad
+            ? ('CON_SALVEDAD' as const)
+            : reglasPropias > 0
+              ? ('CON_EXCEPCION' as const)
+              : campos === 0
+                ? ('SIN_FORMULARIO' as const)
+                : reglas === 0
+                  ? ('SIN_REGLAS' as const)
+                  : ('APLICA' as const);
+
+          return {
+            modalidad: m.codigo,
+            estado,
+            motivo: salvedad?.nota ?? null,
+            variante: salvedad?.variante ?? null,
+            reglas,
+            reglasPropias,
+          };
+        }),
+      };
+    });
+
+    return {
+      modalidades: (modalidades as any[]).map((m) => ({
+        codigo: m.codigo,
+        nombre: m.nombre,
+        orden: m.orden,
+      })),
+      filas,
+    };
+  }
+
+  /**
+   * El recorrido completo de una modalidad, etapa por etapa.
+   *
+   * La vista previa mostraba el formulario de una actividad suelta, que no
+   * responde "cómo queda el proceso": para eso hace falta ver las diez etapas
+   * seguidas, cuáles se saltan enteras y qué pide cada una. Es la misma
+   * información de `actividadesDe()` agrupada por etapa y con el resumen que
+   * permite leerla de corrido.
+   */
+  async flujoDe(modalidad: string) {
+    const actividades = await this.actividadesDe(modalidad);
+
+    const etapas = new Map<number, typeof actividades>();
+    for (const a of actividades) {
+      if (!etapas.has(a.etapa)) etapas.set(a.etapa, []);
+      etapas.get(a.etapa)!.push(a);
+    }
+
+    return {
+      modalidad,
+      etapas: [...etapas.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([etapa, lista]) => {
+          const aplican = lista.filter((a) => a.aplica);
+          return {
+            etapa,
+            // Una etapa donde ninguna actividad aplica se salta entera: el
+            // proceso pasa de largo y conviene que se vea así, no como una
+            // etapa vacía.
+            seSalta: aplican.length === 0,
+            total: lista.length,
+            aplican: aplican.length,
+            actividades: lista.map((a) => ({
+              numeral: a.numeral,
+              nombre: a.nombre,
+              descripcion: a.descripcion,
+              aplica: a.aplica,
+              motivo: a.motivo,
+              campos: a.campos,
+              reglas: a.reglas,
+              reglasPropias: a.reglasPropias,
+              salvedad: a.salvedad,
+              variante: a.variante,
+            })),
+          };
+        }),
+    };
+  }
+
   // ------------------------------------------------------------ simulacion --
 
   /**
@@ -476,6 +659,21 @@ export class ConfiguracionService {
     return repo.save(campo);
   }
 }
+/** Los tipos de documento tampoco son legibles tal como se guardan. */
+const NOMBRE_DOCUMENTO: Record<string, string> = {
+  ADJUNTO: 'Documento firmado del estudio previo',
+  CDP: 'Certificado de disponibilidad presupuestal',
+  ESTUDIO_PREVIO: 'Estudio previo',
+  SNAPSHOT_FORMULARIO: 'Copia del formulario diligenciado',
+};
+
+/** "objeto_contratar" -> "Objeto contratar", cuando no hay etiqueta definida. */
+function legible(codigo: string): string {
+  if (NOMBRE_DOCUMENTO[codigo]) return NOMBRE_DOCUMENTO[codigo];
+  const texto = codigo.replace(/_/g, ' ').trim();
+  return texto.charAt(0).toUpperCase() + texto.slice(1).toLowerCase();
+}
+
 /** Lo que identifica la condicion: el campo, el documento o el tipo a secas. */
 function claveDeConfig(regla: ReglaActividad): string {
   const c = regla.config ?? {};

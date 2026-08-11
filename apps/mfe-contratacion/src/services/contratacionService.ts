@@ -9,6 +9,8 @@ import {
   Expediente,
   SimulacionFormulario,
   Cobertura,
+  Matriz,
+  FlujoModalidad,
   CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
@@ -224,12 +226,6 @@ export const contratacionService = {
   actividadesDeModalidad: (modalidad: string) =>
     pedir<ActividadAplicable[]>(`/configuracion/actividades/modalidad/${modalidad}`),
 
-  /** Reglas vigentes de una actividad. */
-  reglasDe: (numeral: string, modalidad?: string) =>
-    pedir<ReglaActividad[]>(
-      `/configuracion/reglas/${numeral}${modalidad ? `?modalidad=${modalidad}` : ''}`,
-    ),
-
   // ---------------------------------------- configuracion · escritura ----
 
   /** Corrige el nombre o la descripcion de una actividad. */
@@ -252,44 +248,13 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
-  crearRegla: (numeral: string, datos: GuardarRegla) =>
-    pedir<ReglaActividad>(`/configuracion/actividades/${numeral}/reglas`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
-  /** Cierra la regla vigente y abre la nueva: el historico queda auditable. */
-  reemplazarRegla: (id: string, datos: GuardarRegla) =>
-    pedir<ReglaActividad>(`/configuracion/reglas/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(datos),
-    }),
-
-  derogarRegla: (id: string) =>
-    pedir<ReglaActividad>(`/configuracion/reglas/${id}`, { method: 'DELETE' }),
-
-  /** Matriz de la actividad: que exige cada modalidad. */
-  cobertura: (numeral: string) =>
-    pedir<Cobertura>(`/configuracion/actividades/${numeral}/cobertura`),
-
-  campos: (numeral: string) =>
-    pedir<CampoConfigurable[]>(`/configuracion/actividades/${numeral}/campos`),
-
-  actualizarCampo: (
-    id: string,
-    datos: { etiqueta: string; ayuda?: string; grupo?: string; activo?: boolean },
-  ) =>
-    pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(datos),
-    }),
-
-  /** Como queda el formulario con las reglas configuradas. */
-  simular: (numeral: string, modalidad: string, datos: Record<string, any>) =>
-    pedir<SimulacionFormulario>(`/configuracion/actividades/${numeral}/simular`, {
-      method: 'POST',
-      body: JSON.stringify({ modalidad, datos }),
-    }),
+  /**
+   * La rejilla completa: cada actividad contra cada modalidad.
+   *
+   * Una sola peticion para toda la tabla: pedirla actividad por actividad
+   * costaba 63 llamadas para dibujar una pantalla.
+   */
+  matriz: () => pedir<Matriz>('/configuracion/matriz'),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

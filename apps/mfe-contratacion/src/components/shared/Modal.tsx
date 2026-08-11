@@ -134,13 +134,20 @@ export function Modal({
         aria-labelledby={idTitulo}
         aria-describedby={description ? idDescripcion : undefined}
         tabIndex={-1}
-        className={`relative w-full ${ANCHOS[size]} max-h-[85vh] bg-white rounded-xl
+        // El tope de altura va en línea y no como clase: `max-h-[85vh]` no
+        // llega a la hoja compilada que sirve el remoto, así que un contenido
+        // largo crecía hasta salirse de la pantalla por arriba y por abajo,
+        // dejando fuera de vista la cabecera y el botón de cerrar.
+        style={{ maxHeight: '85vh' }}
+        className={`relative w-full ${ANCHOS[size]} bg-white rounded-xl
           shadow-2xl overflow-hidden flex flex-col focus:outline-none`}
       >
         <div className="px-5 py-3.5 border-b border-gray-200 flex items-start gap-3 flex-shrink-0">
           {icon && (
+            // El icono va en blanco: sobre el cuadro de color heredaba el gris
+            // oscuro del texto y se leía como una mancha negra.
             <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-white"
               style={{ background: color }}
             >
               {icon}

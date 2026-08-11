@@ -4,7 +4,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfiguracionController } from './configuracion.controller';
 import { ConfiguracionService } from './configuracion.service';
 
-import { Actividad, ActividadExcluida } from '../../entities/actividad.entity';
+import {
+  Actividad,
+  ActividadExcluida,
+  ActividadSalvedad,
+} from '../../entities/actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { CampoFormulario } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
@@ -16,6 +20,7 @@ import { Expediente } from '../../entities/expediente.entity';
     TypeOrmModule.forFeature([
       Actividad,
       ActividadExcluida,
+      ActividadSalvedad,
       ReglaActividad,
       CampoFormulario,
       Documento,
