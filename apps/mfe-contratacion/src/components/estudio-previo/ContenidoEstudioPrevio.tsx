@@ -122,8 +122,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
     setError(null);
     try {
       await contratacionService.adjuntarDocumento(procesoId, archivo);
-      await cargarAnexos();
-      onCambio?.();
+      // Se relee todo, no solo los anexos: el formulario conserva la version
+      // que leyo al abrirse, y guardar despues con una version vieja provoca
+      // un conflicto contra un cambio del propio usuario.
+      await refrescar();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -248,10 +250,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           procesoId={procesoId}
           documentos={documentos}
           bloqueado={bloqueado}
-          onAdjuntado={async () => {
-            await cargarAnexos();
-            onCambio?.();
-          }}
+          onAdjuntado={refrescar}
         />
       )}
 

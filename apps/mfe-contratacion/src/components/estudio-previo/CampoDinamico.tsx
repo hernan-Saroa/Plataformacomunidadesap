@@ -1,5 +1,13 @@
 import React from 'react';
 import { CampoFormulario } from '../../types';
+import { SelectorPersona } from './SelectorPersona';
+
+/**
+ * Campos que nombran a un funcionario. Va por codigo y no por tipo porque
+ * campos_formulario no distingue "texto" de "nombre de persona": agregarle un
+ * tipo nuevo obligaria a migrar el CHECK y a que el backend lo entienda.
+ */
+const CAMPOS_DE_PERSONA = ['responsable_area'];
 
 interface Props {
   campo: CampoFormulario;
@@ -40,6 +48,21 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
   const clase = `${claseBase} ${claseEstado}`;
 
   const control = () => {
+    // Los campos que nombran a un funcionario se eligen del directorio, no se
+    // escriben: con texto libre la misma persona queda registrada de varias
+    // formas y el expediente deja de servir para filtrar por responsable.
+    if (CAMPOS_DE_PERSONA.includes(campo.codigo)) {
+      return (
+        <SelectorPersona
+          id={id}
+          value={valor ?? ''}
+          disabled={disabled}
+          invalido={!!error}
+          onChange={onChange}
+        />
+      );
+    }
+
     switch (campo.tipo) {
       case 'texto_largo':
         return (

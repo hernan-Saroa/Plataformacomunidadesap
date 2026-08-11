@@ -7778,6 +7778,28 @@ export class PtaService {
    * pueda aprobar el componente completo (ver el bloqueo estructural agregado
    * en aprobarComponente()).
    */
+  /**
+   * Bloquea acciones (aprobar/devolver/revisar) sobre un componente cuando
+   * OTRO componente del mismo PTA ya fue devuelto y está pendiente de
+   * corrección por el docente. Sin este candado, cualquier usuario con
+   * permiso de aprobación/revisión puede seguir aprobando o devolviendo los
+   * demás componentes mientras el PTA ya tiene una devolución sin resolver,
+   * lo que rompe la trazabilidad del flujo (ver bug reportado sobre
+   * componentes "resolubles independientemente").
+   */
+  private async assertSinDevolucionPendienteEnOtroComponente(ptaId: string, componenteActual: string) {
+    const componentes = await this.getComponentesAprobacion(ptaId);
+    const otroDevuelto = componentes.find(
+      (c) => c.componente !== componenteActual && c.estado === 'devuelto',
+    );
+    if (otroDevuelto) {
+      throw new BadRequestException(
+        `El componente "${otroDevuelto.componente}" fue devuelto y está pendiente de corrección por el docente. ` +
+          'No se pueden aprobar, devolver ni revisar otros componentes hasta que el PTA sea corregido y reenviado a revisión.',
+      );
+    }
+  }
+
   async revisarComponente(ptaId: string, body: any, auth?: PtaAuthenticatedUser) {
     const componente = coalesceString(body?.componente);
     const subseccion = coalesceString(body?.subseccion) || 'general';
@@ -7824,6 +7846,8 @@ export class PtaService {
     // Alcance territorial: el permiso habilita el componente, pero la territorial
     // concreta la define la seccional de la persona.
     await this.assertAlcanceTerritorial(componente, existingPta, auth, 'revisar');
+
+    await this.assertSinDevolucionPendienteEnOtroComponente(ptaId, componente);
 
     const ds = (existingPta.datosEstructurados as any) || {};
     const requeridas = await this.getRequiredSubsecciones(componente, ds);
@@ -7955,6 +7979,8 @@ export class PtaService {
     // Alcance territorial: un aprobador de Docencia territorial solo puede aprobar
     // las asignaturas de su propia territorial (aplica también a la devolución).
     await this.assertAlcanceTerritorial(componente, existingPta, auth, 'aprobar');
+
+    await this.assertSinDevolucionPendienteEnOtroComponente(ptaId, componente);
 
     // ── Bloqueo estructural: no se puede aprobar sin revisión previa completa ──
     // Esto aplica sin importar qué permiso tenga quien llama (no es solo un
@@ -8222,6 +8248,145 @@ export class PtaService {
       approval,
       estadoGeneral: nuevoEstadoPta,
     };
+  }
+
+  /**
+   * Aprobación masiva: aprueba, para cada PTA de `ptaIds`, cada componente de
+   * `componentes` que esté aplicable y pendiente. Reutiliza `aprobarComponente`
+   * por combinación (ptaId, componente) para no duplicar ninguna regla de
+   * negocio (permiso, alcance territorial, revisión previa, bloqueo por
+   * devolución cruzada) — este método solo orquesta el lote y clasifica cada
+   * intento como aprobado/omitido/fallido, sin abortar el resto si uno falla.
+   *
+   * `componentes` es deliberadamente genérico (no depende de un "grupo" con
+   * nombre): la agrupación en botones por permiso (Docencia Pregrado,
+   * Investigación, Extensión x4, etc.) es una decisión de UI en el frontend;
+   * la autorización real sigue siendo, como siempre, por componente individual.
+   */
+  async aprobarComponentesLote(body: any, auth?: PtaAuthenticatedUser) {
+    if (!auth) {
+      throw new ForbiddenException('No autenticado para aprobar componentes del PTA.');
+    }
+
+    const ptaIds: string[] = Array.isArray(body?.ptaIds)
+      ? Array.from(new Set<string>(
+          (body.ptaIds as unknown[])
+            .map((v) => coalesceString(v))
+            .filter((v): v is string => !!v),
+        ))
+      : [];
+    const componentes: string[] = Array.isArray(body?.componentes)
+      ? Array.from(new Set<string>(
+          (body.componentes as unknown[])
+            .map((v) => coalesceString(v))
+            .filter((v): v is string => !!v),
+        ))
+      : [];
+
+    if (ptaIds.length === 0) {
+      throw new BadRequestException('Debe indicar al menos un PTA para la aprobación masiva.');
+    }
+    if (componentes.length === 0) {
+      throw new BadRequestException('Debe indicar al menos un componente para la aprobación masiva.');
+    }
+    const componenteInvalido = componentes.find((c) => !COMPONENT_APPROVAL_KEY_SET.has(c));
+    if (componenteInvalido) {
+      throw new BadRequestException(`Componente PTA no soportado: ${componenteInvalido}`);
+    }
+
+    type ResultadoLote = {
+      ptaId: string;
+      componente: string;
+      estado: 'aprobado' | 'omitido' | 'fallido';
+      motivo?: string;
+    };
+    const resultados: ResultadoLote[] = [];
+
+    for (const ptaId of ptaIds) {
+      // Verificación de existencia explícita: getComponentesAprobacion() no valida
+      // que el PTA exista — con datosEstructurados vacío igual autocrea filas de
+      // aprobación 'pendiente', y ese INSERT termina violando la FK de
+      // PtaComponentApproval hacia un ptaId que no existe. Cortar aquí evita ese
+      // error de base de datos crudo y deja un motivo legible.
+      const existePta = await this.ptaRepo.exists({ where: { id: ptaId } });
+      if (!existePta) {
+        for (const componente of componentes) {
+          resultados.push({ ptaId, componente, estado: 'fallido', motivo: 'PTA no encontrado' });
+        }
+        continue;
+      }
+
+      let componentesDelPta: Awaited<ReturnType<PtaService['getComponentesAprobacion']>>;
+      try {
+        componentesDelPta = await this.getComponentesAprobacion(ptaId);
+      } catch (error) {
+        const motivo = error instanceof Error ? error.message : 'PTA no encontrado';
+        for (const componente of componentes) {
+          resultados.push({ ptaId, componente, estado: 'fallido', motivo });
+        }
+        continue;
+      }
+      const estadoPorComponente = new Map(componentesDelPta.map((c: any) => [c.componente, c.estado]));
+
+      for (const componente of componentes) {
+        const estadoActual = estadoPorComponente.get(componente);
+        if (estadoActual === undefined) {
+          resultados.push({ ptaId, componente, estado: 'omitido', motivo: 'No aplica a este PTA' });
+          continue;
+        }
+        if (estadoActual === 'aprobado') {
+          resultados.push({ ptaId, componente, estado: 'omitido', motivo: 'Ya estaba aprobado' });
+          continue;
+        }
+        if (estadoActual === 'devuelto') {
+          resultados.push({
+            ptaId,
+            componente,
+            estado: 'omitido',
+            motivo: 'Devuelto: pendiente de corrección del docente',
+          });
+          continue;
+        }
+        try {
+          // Mismo body que enviaría la aprobación individual (ver
+          // ejecutarAprobacionComponente en PTADetallePanelBackoffice.tsx): la
+          // identidad real (aprobadorId/aprobadorNombre) la impone auth server-side
+          // igual que allá, pero aprobadorRol sí se respeta desde el body — sin
+          // pasarlo, la trazabilidad de un componente aprobado en lote mostraría el
+          // rol crudo del token en vez del mismo rótulo que dejaría la aprobación
+          // individual.
+          await this.aprobarComponente(ptaId, {
+            componente,
+            estado: 'aprobado',
+            comentarios: body?.comentarios,
+            aprobadorId: body?.aprobadorId,
+            aprobadorNombre: body?.aprobadorNombre,
+            aprobadorRol: body?.aprobadorRol,
+          }, auth);
+          resultados.push({ ptaId, componente, estado: 'aprobado' });
+        } catch (error) {
+          resultados.push({
+            ptaId,
+            componente,
+            estado: 'fallido',
+            motivo: error instanceof Error ? error.message : 'Error desconocido',
+          });
+        }
+      }
+    }
+
+    const resumen = resultados.reduce(
+      (acc, r) => {
+        acc.total += 1;
+        if (r.estado === 'aprobado') acc.aprobados += 1;
+        else if (r.estado === 'omitido') acc.omitidos += 1;
+        else acc.fallidos += 1;
+        return acc;
+      },
+      { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 },
+    );
+
+    return { resumen, resultados };
   }
 
   async getRUNDDocente(docenteId: string) {

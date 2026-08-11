@@ -90,6 +90,98 @@ export function componentKeysForApprovalLevel(level: number): PTAComponentKey[] 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Aprobación masiva — un botón por cada permiso granular de aprobación (no un
+// botón único "aprobar todo"). La agrupación es puramente de UI: la
+// autorización real sigue ocurriendo por componente individual en el backend
+// (ver aprobarComponentesLote en pta.service.ts), así que estos grupos no se
+// espejan allá — el backend no necesita saber que "Pregrado" existe como
+// concepto, solo qué componentes puede aprobar cada permiso.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type PTABulkApprovalGroupKey =
+  | 'docencia_pregrado'
+  | 'docencia_posgrado'
+  | 'docencia_territorial'
+  | 'investigacion'
+  | 'ext_capacitacion'
+  | 'ext_procesos'
+  | 'ext_fortalecimiento'
+  | 'ext_gobierno'
+  | 'complementarias';
+
+export type PTABulkApprovalGroup = {
+  key: PTABulkApprovalGroupKey;
+  label: string;
+  /** Permiso que habilita el botón (visibilidad). */
+  permission: string;
+  /** Componentes reales que el botón aprueba en cada PTA seleccionado. */
+  componentKeys: PTAComponentKey[];
+};
+
+export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
+  {
+    key: 'docencia_pregrado',
+    label: 'Docencia Pregrado',
+    permission: PTA_COMPONENT_PERMISSION.academica_pregrado,
+    // Mismo permiso habilita Docencia y Complementarias de pregrado (ver
+    // COMPONENT_PERMISSION en el backend): el botón aprueba ambos a la vez.
+    componentKeys: ['academica_pregrado', 'complementarias_pregrado'],
+  },
+  {
+    key: 'docencia_posgrado',
+    label: 'Docencia Posgrado',
+    permission: PTA_COMPONENT_PERMISSION.academica_posgrado,
+    componentKeys: ['academica_posgrado', 'complementarias_posgrado'],
+  },
+  {
+    key: 'docencia_territorial',
+    label: 'Docencia Territorial',
+    permission: PTA_COMPONENT_PERMISSION.academica_territorial,
+    // Sin contraparte en Complementarias: no existe 'complementarias_territorial'.
+    // El alcance por seccional del aprobador lo valida el backend por PTA
+    // (assertAlcanceTerritorial), no esta pantalla.
+    componentKeys: ['academica_territorial'],
+  },
+  {
+    key: 'investigacion',
+    label: 'Investigación',
+    permission: PTA_COMPONENT_PERMISSION.investigacion,
+    componentKeys: ['investigacion'],
+  },
+  {
+    key: 'ext_capacitacion',
+    label: 'Extensión · Capacitación',
+    permission: PTA_COMPONENT_PERMISSION.ext_capacitacion,
+    componentKeys: ['ext_capacitacion'],
+  },
+  {
+    key: 'ext_procesos',
+    label: 'Extensión · Procesos de selección',
+    permission: PTA_COMPONENT_PERMISSION.ext_procesos,
+    componentKeys: ['ext_procesos'],
+  },
+  {
+    key: 'ext_fortalecimiento',
+    label: 'Extensión · Fortalecimiento',
+    permission: PTA_COMPONENT_PERMISSION.ext_fortalecimiento,
+    componentKeys: ['ext_fortalecimiento'],
+  },
+  {
+    key: 'ext_gobierno',
+    label: 'Extensión · Alto Gobierno',
+    permission: PTA_COMPONENT_PERMISSION.ext_gobierno,
+    componentKeys: ['ext_gobierno'],
+  },
+  {
+    key: 'complementarias',
+    label: 'Complementarias',
+    permission: PTA_COMPONENT_PERMISSION.complementarias,
+    // Catch-all: ni pregrado ni posgrado (ver clasificarComplementarias).
+    componentKeys: ['complementarias'],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Etapa de Revisión (preaprobación) — espejo EXACTO de
 // backend/academic-work-plan-service/src/pta/auth/pta-permissions.constants.ts
 // (REVIEW_SUBSECCIONES_BY_COMPONENT / COMPONENT_REVIEW_PERMISSION / PTA_REVIEW_ALL).

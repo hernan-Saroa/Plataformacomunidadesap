@@ -196,6 +196,10 @@ partes.push(');');
 partes.push('');
 
 const exclusiones = [];
+// Celdas que aplican pero no dicen SI a secas: "si*" y las variantes de texto.
+// Se sembraban solo cuando la celda estaba en NO —donde nunca hay ninguna—, asi
+// que las veinte que traen matiz llegaban a la base como un SI cualquiera.
+const salvedades = [];
 for (const a of actividades) {
   for (const m of a.aplicabilidad) {
     // NULL es "la matriz no lo dice": ante la duda la actividad aplica, que es
@@ -203,6 +207,9 @@ for (const a of actividades) {
     if (m.aplica === false) {
       const motivo = m.nota ?? (m.variante ? `La matriz dice "${m.variante}"` : null);
       exclusiones.push(`  (${sql(a.numeral)}, ${sql(m.codigo)}, ${sql(motivo)})`);
+    } else if (m.nota || m.variante) {
+      const nota = m.nota ?? `En esta modalidad la matriz dice "${m.variante}"`;
+      salvedades.push(`  (${sql(a.numeral)}, ${sql(m.codigo)}, ${sql(m.variante)}, ${sql(nota)})`);
     }
   }
 }
@@ -213,7 +220,26 @@ if (exclusiones.length > 0) {
   partes.push('ON CONFLICT (numeral, modalidad) DO UPDATE SET motivo = EXCLUDED.motivo;');
 }
 
+partes.push(`
+-- ------------------------------------------------------------ salvedades --
+-- Las celdas que aplican con una condicion ("si*") o con una variante propia
+-- de la modalidad ("TVEC", "Comunicacion de aceptacion"). La tabla la crea
+-- 025_salvedades_matriz.sql.
+`);
+partes.push('DELETE FROM hiring.actividades_salvedad WHERE numeral IN (');
+partes.push('  ' + actividades.map((a) => sql(a.numeral)).join(', '));
+partes.push(');');
+
+if (salvedades.length > 0) {
+  partes.push('');
+  partes.push('INSERT INTO hiring.actividades_salvedad (numeral, modalidad, variante, nota) VALUES');
+  partes.push(salvedades.join(',\n'));
+  partes.push(`ON CONFLICT (numeral, modalidad) DO UPDATE
+  SET variante = EXCLUDED.variante,
+      nota = EXCLUDED.nota;`);
+}
+
 writeFileSync(DESTINO, partes.join('\n'));
 
-console.log(`${actividades.length} actividades, ${exclusiones.length} exclusiones`);
+console.log(`${actividades.length} actividades, ${exclusiones.length} exclusiones, ${salvedades.length} salvedades`);
 console.log(`escrito en ${DESTINO}`);

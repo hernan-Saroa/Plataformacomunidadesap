@@ -246,3 +246,32 @@ INSERT INTO hiring.actividades_excluidas (numeral, modalidad, motivo) VALUES
   ('8.8', 'ABREVIADA_BOLSA_MERCANTIL', NULL),
   ('9.4', 'ENAJENACION_SUBASTA', NULL)
 ON CONFLICT (numeral, modalidad) DO UPDATE SET motivo = EXCLUDED.motivo;
+
+-- ------------------------------------------------------------ salvedades --
+-- Las celdas que aplican con una condicion ("si*") o con una variante propia
+-- de la modalidad ("TVEC", "Comunicacion de aceptacion"). La tabla la crea
+-- 025_salvedades_matriz.sql.
+
+DELETE FROM hiring.actividades_salvedad WHERE numeral IN (
+  '1.1', '1.2', '1.3', '1.4', '2.1', '2.2', '2.3', '2.4', '3.1', '3.2', '3.3', '3.4', '3.5', '3.6', '3.7', '4.1', '4.2', '4.3', '4.4', '5.1', '5.2', '5.3', '5.4', '5.5', '5.6', '5.7', '5.8', '5.9', '5.10', '5.11', '5.12', '5.13', '6.1', '6.2', '6.3', '6.4', '6.5', '6.6', '6.7', '6.8', '6.9', '6.10', '7.1', '7.2', '7.3', '7.4', '8.1', '8.2', '8.3', '8.4', '8.5', '8.6', '8.7', '8.8', '9.1', '9.2', '9.3', '9.4', '9.5', '10.1', '10.2', '10.3', '10.4'
+);
+
+INSERT INTO hiring.actividades_salvedad (numeral, modalidad, variante, nota) VALUES
+  ('2.3', 'ABREVIADA_TVEC', 'TVEC', 'En esta modalidad la matriz dice "TVEC"'),
+  ('3.2', 'CONCURSO_MERITOS_PRECAL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('3.6', 'CONTRATACION_DIRECTA', 'Numeral 4 Artículo 2 de la Ley 1150 de 2007', 'En esta modalidad la matriz dice "Numeral 4 Artículo 2 de la Ley 1150 de 2007"'),
+  ('5.1', 'ABREVIADA_BOLSA_MERCANTIL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('5.1', 'CONTRATACION_DIRECTA', 'Justificación de contratación directa y minuta', 'En esta modalidad la matriz dice "Justificación de contratación directa y minuta"'),
+  ('5.3', 'ABREVIADA_TVEC', 'TVEC', 'En esta modalidad la matriz dice "TVEC"'),
+  ('5.3', 'ABREVIADA_BOLSA_MERCANTIL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('5.7', 'ABREVIADA_BOLSA_MERCANTIL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('5.13', 'ABREVIADA_BOLSA_MERCANTIL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('6.4', 'ABREVIADA_BOLSA_MERCANTIL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('6.5', 'ABREVIADA_BOLSA_MERCANTIL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('6.6', 'ABREVIADA_BOLSA_MERCANTIL', NULL, 'La matriz marca una condición no documentada; verificar con la Dirección de Contratación'),
+  ('7.4', 'MINIMA_CUANTIA', 'Comunicación de aceptación', 'En esta modalidad la matriz dice "Comunicación de aceptación"'),
+  ('7.4', 'REGIMEN_ESPECIAL_092', 'Acto administrativo de autorización para contratar', 'En esta modalidad la matriz dice "Acto administrativo de autorización para contratar"'),
+  ('8.1', 'MINIMA_CUANTIA', 'Comunicación de aceptación', 'En esta modalidad la matriz dice "Comunicación de aceptación"')
+ON CONFLICT (numeral, modalidad) DO UPDATE
+  SET variante = EXCLUDED.variante,
+      nota = EXCLUDED.nota;

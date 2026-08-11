@@ -18,7 +18,7 @@
  * - Headers sticky con métricas
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, AlertTriangle, Target, Users, Calendar, Clock,
@@ -754,12 +754,23 @@ function SeguimientoView({
     <div className="w-full p-3">
       {/* Header con Métricas */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-4">
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between">
           <div>
             <h2 className="text-sm font-bold text-gray-900">Panel de Seguimiento</h2>
             <p className="text-[11px] text-gray-500">Gestión integral de planes de mejoramiento</p>
           </div>
-          
+          {vistaTablero === 'kanban' && (
+          <div className="flex-1 relative px-2">
+            <input
+              type="text"
+              placeholder="Buscar por código, auditoría, área o responsable..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8] text-sm"
+            />
+            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          </div>
+          )}
           <div className="flex items-center gap-3">
             {/* Botón Crear Plan */}
             <button
@@ -796,6 +807,7 @@ function SeguimientoView({
       </div>
 
       {/* Búsqueda */}
+      {vistaTablero === 'lista' && (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-4">
         <div className="flex items-center gap-4">
           <div className="flex-1 relative">
@@ -808,8 +820,6 @@ function SeguimientoView({
             />
             <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           </div>
-          
-          {vistaTablero === 'lista' && (
             <div className="flex gap-2">
               <FilterButton
                 active={filtroEstado === 'TODOS'}
@@ -846,9 +856,9 @@ function SeguimientoView({
                 color="emerald"
               />
             </div>
-          )}
         </div>
       </div>
+      )}
 
       {/* Contenido según vista */}
       {vistaTablero === 'kanban' ? (
@@ -901,21 +911,21 @@ interface VistaKanbanProps {
 function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, columnasColapsadas, onToggleColapso, columnasKanban }: VistaKanbanProps) {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
-  const scrollLeft = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: -350, behavior: 'smooth' });
-    }
-  };
+  const navegarColumna = (direccion: 'prev' | 'next') => {
+    if (!scrollContainerRef.current) return;
 
-  const scrollRight = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: 350, behavior: 'smooth' });
-    }
+    const container = scrollContainerRef.current;
+    const columnWidth = container.scrollWidth / Math.max(columnasKanban.length, 1);
+    const scrollAmount = direccion === 'next' ? columnWidth : -columnWidth;
+
+    container.scrollBy({
+      left: scrollAmount,
+      behavior: 'smooth'
+    });
   };
 
   return (
-    <>
-
+    <div className="relative">
       {/* Indicador Mobile - FASE 1 DÍA 2 */}
       <div className="lg:hidden bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 mb-4">
         <p className="text-sm text-blue-900">
@@ -978,7 +988,28 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
         );
       })}
     </div>
-    </>
+
+    {/* Botones de navegación discretos — aparecen sutilmente al costado */}
+    <motion.button
+      onClick={() => navegarColumna('prev')}
+      className="hidden md:flex absolute -left-4 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-10 h-14 rounded-xl bg-blue-200 text-blue-600 opacity-80 hover:opacity-100 hover:bg-blue-300 transition-all shadow-md"
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      title="Columna anterior"
+    >
+      <ChevronLeft className="w-6 h-6" />
+    </motion.button>
+
+    <motion.button
+      onClick={() => navegarColumna('next')}
+      className="hidden md:flex absolute -right-4 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-10 h-14 rounded-xl bg-blue-200 text-blue-600 opacity-80 hover:opacity-100 hover:bg-blue-300 transition-all shadow-md"
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      title="Columna siguiente"
+    >
+      <ChevronRight className="w-6 h-6" />
+    </motion.button>
+    </div>
   );
 }
 
@@ -1095,15 +1126,17 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
     );
   }
 
+  const accent = (columna as any).color || '#003DA5';
   // Versión expandida
   return (
     <div 
-      className="w-full flex-shrink-0 border border-gray-200 rounded-lg"
+      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col flex-shrink-0 w-80 overflow-hidden transition-all duration-300 ease-in-out"
       style={{
-        minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : undefined,
-        width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : '100%'
+        height: '100%',
+        maxHeight: '100%'
       }}
     >
+      <div style={{ height: 3, background: accent, flexShrink: 0 }} />
       {/* Header Columna */}
       <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl bg-white" style={{backgroundColor: 'white'}}>
         <div className="flex items-center justify-between mb-2">
@@ -1124,9 +1157,12 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, onCompletarP
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge className="font-semibold text-sm px-2 py-1 bg-white border border-gray-200 text-gray-700">
+            <span
+              className={`inline-flex items-center justify-center font-bold text-[10px] md:text-xs min-w-[22px] h-[22px] md:h-6 px-1.5 rounded-md text-white`}
+              style={{ backgroundColor: accent }}
+            >
               {planes.length}
-            </Badge>
+            </span>
             
             <button
               onClick={onToggleColapso}
