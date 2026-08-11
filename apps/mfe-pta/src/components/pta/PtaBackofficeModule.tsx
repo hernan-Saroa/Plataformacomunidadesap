@@ -4774,9 +4774,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 lineHeight: 1.15, textAlign: 'center',
                                 cursor: canShowComponentPopover ? 'pointer' : 'default',
                               }}
-                              onClick={() => {
+                              onClick={(e) => {
                                 if (canShowComponentPopover) {
-                                  setInlineStatusPtaId(inlineStatusPtaId === pta.id ? null : pta.id);
+                                  if (inlineStatusPtaId === pta.id) {
+                                    setInlineStatusPtaId(null);
+                                  } else {
+                                    openPopoverAt(e.currentTarget, 270, 280);
+                                    setInlineStatusPtaId(pta.id);
+                                    setShowMoreMenuPtaId(null);
+                                  }
                                 }
                               }}
                               title={canShowComponentPopover ? `Ver componentes: ${badgeTitle}` : badgeTitle}
@@ -4786,15 +4792,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 <Layers style={{ width: 8, height: 8, flexShrink: 0 }} />
                               )}
                             </span>
-                            {inlineStatusPtaId === pta.id && (
+                            {inlineStatusPtaId === pta.id && createPortal(
                               <>
                                 <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setInlineStatusPtaId(null)} />
                                 <div style={{
-                                  position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 9999,
+                                  position: 'fixed', ...(popoverPos.openUp ? { bottom: popoverPos.bottom } : { top: popoverPos.top }), right: popoverPos.right, zIndex: 9999,
                                   background: 'white', borderRadius: 8, border: '1px solid #E5E7EB',
-                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 'min(280px, calc(100vw - 32px))',
-                                  maxWidth: 280, padding: 10, overflow: 'hidden',
-                                }}>
+                                  boxShadow: popoverPos.openUp ? '0 -8px 20px rgba(0,0,0,0.12)' : '0 8px 20px rgba(0,0,0,0.12)',
+                                  width: 'min(280px, calc(100vw - 16px))', maxWidth: 280,
+                                  maxHeight: popoverPos.maxH, padding: 10, overflowY: 'auto', overflowX: 'hidden',
+                                }} onClick={e => e.stopPropagation()}>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingBottom: 7, borderBottom: '1px solid #F3F4F6' }}>
                                     <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Componentes</span>
                                     <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 7px', whiteSpace: 'nowrap' }}>
@@ -4865,7 +4872,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                     </div>
                                   )}
                                 </div>
-                              </>
+                              </>,
+                              document.body
                             )}
                           </div>
                           )}
