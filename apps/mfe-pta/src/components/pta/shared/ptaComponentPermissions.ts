@@ -116,6 +116,13 @@ export type PTABulkApprovalGroup = {
   permission: string;
   /** Componentes reales que el botón aprueba en cada PTA seleccionado. */
   componentKeys: PTAComponentKey[];
+  /** Color de texto/ícono del botón — el mismo que usa este componente en el
+   * resto del módulo (lista colapsada y/o detalle del PTA), para que el botón
+   * se identifique de un vistazo con su sección. */
+  color: string;
+  /** Fondo claro a juego con `color` (mismo patrón de "chip" que ya usan los
+   * badges de estado en este módulo: texto en color fuerte, fondo pálido). */
+  colorBg: string;
 };
 
 export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
@@ -126,12 +133,17 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     // Mismo permiso habilita Docencia y Complementarias de pregrado (ver
     // COMPONENT_PERMISSION en el backend): el botón aprueba ambos a la vez.
     componentKeys: ['academica_pregrado', 'complementarias_pregrado'],
+    // Azul ESAP: mismo tono que usa "academica" colapsado en esta pantalla.
+    color: '#003DA5',
+    colorBg: '#EFF6FF',
   },
   {
     key: 'docencia_posgrado',
     label: 'Docencia Posgrado',
     permission: PTA_COMPONENT_PERMISSION.academica_posgrado,
     componentKeys: ['academica_posgrado', 'complementarias_posgrado'],
+    color: '#003DA5',
+    colorBg: '#EFF6FF',
   },
   {
     key: 'docencia_territorial',
@@ -141,36 +153,53 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     // El alcance por seccional del aprobador lo valida el backend por PTA
     // (assertAlcanceTerritorial), no esta pantalla.
     componentKeys: ['academica_territorial'],
+    color: '#003DA5',
+    colorBg: '#EFF6FF',
   },
   {
     key: 'investigacion',
     label: 'Investigación',
     permission: PTA_COMPONENT_PERMISSION.investigacion,
     componentKeys: ['investigacion'],
+    // Morado: mismo tono que usa Investigación en el resto de esta pantalla.
+    color: '#7C3AED',
+    colorBg: '#F3E8FF',
   },
   {
     key: 'ext_capacitacion',
     label: 'Extensión · Capacitación',
     permission: PTA_COMPONENT_PERMISSION.ext_capacitacion,
     componentKeys: ['ext_capacitacion'],
+    // Colores por sección tal cual el detalle del PTA (PTADetallePanelBackoffice).
+    color: '#059669',
+    colorBg: '#D1FAE5',
   },
   {
     key: 'ext_procesos',
     label: 'Extensión · Procesos de selección',
     permission: PTA_COMPONENT_PERMISSION.ext_procesos,
     componentKeys: ['ext_procesos'],
+    color: '#0284C7',
+    colorBg: '#E0F2FE',
   },
   {
     key: 'ext_fortalecimiento',
     label: 'Extensión · Fortalecimiento',
     permission: PTA_COMPONENT_PERMISSION.ext_fortalecimiento,
     componentKeys: ['ext_fortalecimiento'],
+    // El detalle del PTA usa el mismo morado que Investigación (#7C3AED) para
+    // este ítem; aquí se usa un violeta distinguible para no confundir los dos
+    // botones entre sí.
+    color: '#6D28D9',
+    colorBg: '#EDE9FE',
   },
   {
     key: 'ext_gobierno',
     label: 'Extensión · Alto Gobierno',
     permission: PTA_COMPONENT_PERMISSION.ext_gobierno,
     componentKeys: ['ext_gobierno'],
+    color: '#B45309',
+    colorBg: '#FEF3C7',
   },
   {
     key: 'complementarias',
@@ -178,6 +207,9 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     permission: PTA_COMPONENT_PERMISSION.complementarias,
     // Catch-all: ni pregrado ni posgrado (ver clasificarComplementarias).
     componentKeys: ['complementarias'],
+    // Amarillo — tono oscuro para que el texto sea legible sobre fondo claro.
+    color: '#A16207',
+    colorBg: '#FEF9C3',
   },
 ];
 

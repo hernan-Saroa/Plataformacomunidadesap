@@ -4021,20 +4021,20 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               animate={{ opacity: 1, y: 0 }}
               style={{
                 padding: '12px 16px', borderRadius: 12, marginBottom: 12,
-                background: 'linear-gradient(135deg, #065F46 0%, #047857 100%)',
-                color: 'white', boxShadow: '0 4px 16px rgba(5,95,70,0.3)',
+                background: 'white', border: '1px solid #E5E7EB',
+                boxShadow: '0 1px 4px rgba(15,23,42,0.06)',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <CheckCircle style={{ width: 16, height: 16 }} />
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle style={{ width: 16, height: 16, color: '#374151' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
                       Aprobar componentes de {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''}
                     </div>
-                    <div style={{ fontSize: '0.65rem', opacity: 0.85 }}>
+                    <div style={{ fontSize: '0.65rem', color: '#6B7280' }}>
                       Cada botón aprueba solo el componente correspondiente a su permiso, en los PTAs seleccionados que lo tengan pendiente
                     </div>
                   </div>
@@ -4047,10 +4047,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                         key={group.key}
                         onClick={() => { setBulkComponentGroupKey(group.key); setBulkComponentComentarios(''); }}
                         style={{
-                          padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
-                          background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
+                          padding: '7px 14px', borderRadius: 8, border: `1px solid ${group.color}33`,
+                          background: group.colorBg, color: group.color, fontSize: '0.78rem', fontWeight: 700,
                           cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                          backdropFilter: 'blur(4px)', transition: 'all 0.15s',
+                          transition: 'all 0.15s',
                         }}
                       >
                         <Icon style={{ width: 12, height: 12 }} /> {group.label}
