@@ -947,9 +947,87 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
       .map((act) => enriquecerActividadDesdeBackend(act, plan.vigencia));
 
     const actividadesTemplate = getActividadesPorRol(rolDef.numero);
-    const nombresTemplate = actividadesTemplate.map((a) => a.nombre);
-    const actividadesSeleccionadas = actividadesConfiguradas.filter((a) => nombresTemplate.includes(a.nombre));
-    const actividadesCustom = actividadesConfiguradas.filter((a) => !nombresTemplate.includes(a.nombre));
+    const actividadesSeleccionadas: any[] = [];
+    const actividadesCustom: any[] = [];
+    const templateUsados = new Set<string>();
+
+    function encontrarTemplateCoincidente(
+      actNombre: string,
+      actividadesTemplateList: ActividadBase[],
+      usedTemplatesSet: Set<string>,
+      actNombreOriginal?: string
+    ): ActividadBase | undefined {
+      const norm = (s: string) => (s || '').toLowerCase().trim();
+      const target = norm(actNombre);
+      const targetOrig = actNombreOriginal ? norm(actNombreOriginal) : '';
+
+      // 1. Coincidencia exacta por nombre o nombreOriginal
+      let match = actividadesTemplateList.find(
+        (t) => (!usedTemplatesSet.has(t.nombre)) && (norm(t.nombre) === target || (targetOrig && norm(t.nombre) === targetOrig))
+      );
+      if (match) return match;
+
+      // 2. Coincidencia por prefijo / subcadena de al menos 15 caracteres
+      let mejorMatch: ActividadBase | undefined = undefined;
+      let maxSimilitud = 0;
+
+      for (const t of actividadesTemplateList) {
+        if (usedTemplatesSet.has(t.nombre)) continue;
+        const tNorm = norm(t.nombre);
+        
+        let commonLength = 0;
+        for (let i = 0; i < Math.min(target.length, tNorm.length); i++) {
+          if (target[i] === tNorm[i]) commonLength++;
+          else break;
+        }
+
+        if (commonLength >= 15 && commonLength > maxSimilitud) {
+          maxSimilitud = commonLength;
+          mejorMatch = t;
+        } else if (target.includes(tNorm.slice(0, 20)) || tNorm.includes(target.slice(0, 20))) {
+          if (20 > maxSimilitud) {
+            maxSimilitud = 20;
+            mejorMatch = t;
+          }
+        }
+      }
+
+      return mejorMatch;
+    }
+
+    for (const act of actividadesConfiguradas) {
+      const orig = act.nombreOriginal || act.nombre_original;
+      let matchTemplate = encontrarTemplateCoincidente(act.nombre, actividadesTemplate, templateUsados, orig);
+
+      if (matchTemplate) {
+        templateUsados.add(matchTemplate.nombre);
+        actividadesSeleccionadas.push({
+          ...act,
+          nombreOriginal: matchTemplate.nombre,
+          esCustom: false,
+        });
+      } else if (act.esCustom === true || act.es_custom === true) {
+        actividadesCustom.push({
+          ...act,
+          esCustom: true,
+        });
+      } else {
+        const primerTemplateLibre = actividadesTemplate.find((t) => !templateUsados.has(t.nombre));
+        if (primerTemplateLibre && actividadesConfiguradas.length <= actividadesTemplate.length) {
+          templateUsados.add(primerTemplateLibre.nombre);
+          actividadesSeleccionadas.push({
+            ...act,
+            nombreOriginal: primerTemplateLibre.nombre,
+            esCustom: false,
+          });
+        } else {
+          actividadesCustom.push({
+            ...act,
+            esCustom: true,
+          });
+        }
+      }
+    }
 
     return {
       ...rolDef,
@@ -3724,6 +3802,9 @@ function Paso2({
   const puedeEditarActividadesBase = puedeRealizar('configuraciones', 'edit');
 
   const [editandoActividadBase, setEditandoActividadBase] = useState<{rolNumero: number, actId: string} | null>(null);
+  const [nombreEditando, setNombreEditando] = useState<string>('');
+  const [descripcionEditando, setDescripcionEditando] = useState<string>('');
+  const [guardandoActividadBackend, setGuardandoActividadBackend] = useState<boolean>(false);
   const [actividadCustomAEliminar, setActividadCustomAEliminar] = useState<{
     numeroRol: number;
     index: number;
@@ -3731,12 +3812,136 @@ function Paso2({
   } | null>(null);
   const [eliminandoCustomBackend, setEliminandoCustomBackend] = useState(false);
 
+  const handleGuardarActividadBase = async (
+    numeroRol: number,
+    actId: string,
+    idActividadEnEstado: string,
+    nombreInput: string,
+    descInput: string,
+    actividadBaseObj: ActividadBase,
+    actividadDataObj?: ActividadBase
+  ) => {
+    const nuevoNombre = nombreInput.trim() || actividadBaseObj.nombre;
+    const nuevaDesc = descInput.trim();
+
+    setGuardandoActividadBackend(true);
+    try {
+      const nuevaConfig = rolesConfig.map(r => {
+        if (r.numero !== numeroRol) return r;
+        const existeEnSeleccionadas = r.actividadesSeleccionadas.some(
+          a => a.id === idActividadEnEstado || a.nombre === actividadBaseObj.nombre || (a.nombreOriginal && a.nombreOriginal === actividadBaseObj.nombre)
+        );
+        if (existeEnSeleccionadas) {
+          return {
+            ...r,
+            actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
+              (a.id === idActividadEnEstado || a.nombre === actividadBaseObj.nombre || (a.nombreOriginal && a.nombreOriginal === actividadBaseObj.nombre))
+                ? { ...a, nombre: nuevoNombre, descripcion: nuevaDesc, nombreOriginal: a.nombreOriginal || a.nombre }
+                : a
+            )
+          };
+        } else {
+          const añoVig = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
+          return {
+            ...r,
+            actividadesSeleccionadas: [
+              ...r.actividadesSeleccionadas,
+              {
+                ...actividadBaseObj,
+                id: idActividadEnEstado,
+                nombre: nuevoNombre,
+                descripcion: nuevaDesc,
+                nombreOriginal: actividadBaseObj.nombre,
+                incluidaEnPlan: true,
+                tipoEvidencia: 'SOLO_CHECK' as const,
+                fechaCorte: resolverFechaCorteActividad(actividadBaseObj, añoVig),
+                responsables: [],
+              }
+            ]
+          };
+        }
+      });
+
+      onRolesChange(nuevaConfig);
+
+      const backendId = actividadDataObj?.id || (idActividadEnEstado && !idActividadEnEstado.startsWith('rol-') && !idActividadEnEstado.startsWith('custom-') ? idActividadEnEstado : undefined);
+      if (backendId && typeof backendId === 'string' && !backendId.startsWith('rol-') && !backendId.startsWith('custom-')) {
+        const res = await actividadesApi.update(backendId, {
+          nombre: nuevoNombre,
+          descripcion: nuevaDesc,
+        } as any);
+        if (res && res.success) {
+          toast.success('Actividad actualizada en el servidor');
+        } else {
+          toast.error(res?.error || 'Error al guardar en el servidor');
+        }
+      } else {
+        toast.success('Actividad actualizada');
+      }
+    } catch (err) {
+      console.error('Error al guardar actividad base:', err);
+      toast.error('Error al guardar la actividad');
+    } finally {
+      setGuardandoActividadBackend(false);
+      setEditandoActividadBase(null);
+    }
+  };
+
+  const handleGuardarActividadCustom = async (
+    numeroRol: number,
+    index: number,
+    actividadObj: ActividadBase,
+    nombreInput: string,
+    descInput: string
+  ) => {
+    const nuevoNombre = nombreInput.trim() || actividadObj.nombre;
+    const nuevaDesc = descInput.trim();
+
+    setGuardandoActividadBackend(true);
+    try {
+      const nuevaConfig = rolesConfig.map(r => {
+        if (r.numero !== numeroRol) return r;
+        return {
+          ...r,
+          actividadesCustom: r.actividadesCustom.map((a, i) =>
+            i === index ? { ...a, nombre: nuevoNombre, descripcion: nuevaDesc } : a
+          )
+        };
+      });
+
+      onRolesChange(nuevaConfig);
+
+      const backendId = actividadObj.id;
+      if (backendId && typeof backendId === 'string' && !backendId.startsWith('custom-')) {
+        const res = await actividadesApi.update(backendId, {
+          nombre: nuevoNombre,
+          descripcion: nuevaDesc,
+        } as any);
+        if (res && res.success) {
+          toast.success('Actividad personalizada guardada en el servidor');
+        } else {
+          toast.error(res?.error || 'Error al guardar en el servidor');
+        }
+      } else {
+        toast.success('Actividad personalizada actualizada');
+      }
+    } catch (err) {
+      console.error('Error al guardar actividad personalizada:', err);
+      toast.error('Error al guardar en el servidor');
+    } finally {
+      setGuardandoActividadBackend(false);
+      setEditandoActividadBase(null);
+    }
+  };
+
   const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
     if (soloLectura) return;
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero !== numeroRol) return rol;
 
-      const idx = rol.actividadesSeleccionadas.findIndex(a => a.id === actId || a.nombre === nombreActividad);
+      const idx = rol.actividadesSeleccionadas.findIndex(
+        a => a.id === actId || a.nombre === nombreActividad || (a.nombreOriginal && a.nombreOriginal === nombreActividad)
+      );
       const existente = idx >= 0 ? rol.actividadesSeleccionadas[idx] : undefined;
 
       if (existente) {
@@ -3839,7 +4044,7 @@ function Paso2({
     return rolesConfig.some(rol =>
       rol.actividadesSeleccionadas.some(
         a =>
-          (a.id === actId || (!!nombreActividad && a.nombre === nombreActividad)) &&
+          (a.id === actId || (!!nombreActividad && (a.nombre === nombreActividad || (a.nombreOriginal && a.nombreOriginal === nombreActividad)))) &&
           actividadIncluidaEnPlan(a)
       )
     );
@@ -4351,7 +4556,9 @@ function Paso2({
                             // a Generar ID único para esta actividad
                             const actId = `rol-${rol.numero}-act-${index}`;
                             const seleccionada = estaSeleccionada(actId, actividad.nombre);
-                            const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId || a.nombre === actividad.nombre);
+                            const actividadData = rol.actividadesSeleccionadas.find(
+                              a => a.id === actId || a.nombre === actividad.nombre || (a.nombreOriginal && a.nombreOriginal === actividad.nombre)
+                            );
                             /** UUID del backend vs id sintético del template  las mutaciones deben usar el id real en estado */
                             const idActividadEnEstado = actividadData?.id ?? actId;
                             const fechaCorteMostrar = actividadData ? fechaCorteDisplayDesdeActividad(actividadData) : undefined;
@@ -4386,48 +4593,43 @@ function Paso2({
                                         <input 
                                           type="text" 
                                           className="w-full font-semibold text-gray-900 text-sm border-b-2 border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white px-2 py-1 rounded-t transition-colors"
-                                          defaultValue={actividadData?.nombre || actividad.nombre}
+                                          value={nombreEditando}
+                                          onChange={(e) => setNombreEditando(e.target.value)}
                                           placeholder="Nombre de la actividad"
-                                          onBlur={(e) => {
-                                            const nuevoNombre = e.target.value.trim();
-                                            if (nuevoNombre && actividadData) {
-                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                                ...r,
-                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
-                                                  a.id === idActividadEnEstado ? { ...a, nombre: nuevoNombre, nombreOriginal: a.nombreOriginal || a.nombre } : a
-                                                )
-                                              } : r);
-                                              onRolesChange(nuevaConfig);
-                                            }
-                                          }}
                                         />
                                         <textarea 
                                           className="w-full text-xs text-gray-600 border border-gray-300 rounded p-2 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-colors"
-                                          defaultValue={actividadData?.descripcion || actividad.descripcion}
+                                          value={descripcionEditando}
+                                          onChange={(e) => setDescripcionEditando(e.target.value)}
                                           placeholder="Descripción de la actividad"
                                           rows={2}
-                                          onBlur={(e) => {
-                                            const nuevaDesc = e.target.value.trim();
-                                            if (actividadData) {
-                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                                ...r,
-                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
-                                                  a.id === idActividadEnEstado ? { ...a, descripcion: nuevaDesc } : a
-                                                )
-                                              } : r);
-                                              onRolesChange(nuevaConfig);
-                                            }
-                                          }}
                                         />
                                         <div className="flex justify-end mt-2">
                                           <button 
-                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors" 
+                                            type="button"
+                                            disabled={guardandoActividadBackend}
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50" 
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setEditandoActividadBase(null);
+                                              handleGuardarActividadBase(
+                                                rol.numero,
+                                                actId,
+                                                idActividadEnEstado,
+                                                nombreEditando,
+                                                descripcionEditando,
+                                                actividad,
+                                                actividadData
+                                              );
                                             }}
                                           >
-                                            Guardar
+                                            {guardandoActividadBackend ? (
+                                              <>
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                Guardando...
+                                              </>
+                                            ) : (
+                                              'Guardar'
+                                            )}
                                           </button>
                                         </div>
                                       </div>
@@ -4442,6 +4644,10 @@ function Paso2({
                                             title="Editar texto de actividad"
                                             onClick={(e) => { 
                                               e.stopPropagation(); 
+                                              const actualNombre = actividadData?.nombre || actividad.nombre;
+                                              const actualDesc = actividadData?.descripcion || actividad.descripcion;
+                                              setNombreEditando(actualNombre);
+                                              setDescripcionEditando(actualDesc);
                                               setEditandoActividadBase({rolNumero: rol.numero, actId: idActividadEnEstado}); 
                                             }}
                                           >
@@ -4937,46 +5143,41 @@ function Paso2({
                                         <input 
                                           type="text" 
                                           className="w-full font-semibold text-gray-900 text-sm border-b-2 border-transparent hover:border-gray-300 focus:border-green-500 focus:outline-none bg-green-50 focus:bg-white px-2 py-1 rounded-t transition-colors"
-                                          defaultValue={actividad.nombre}
+                                          value={nombreEditando}
+                                          onChange={(e) => setNombreEditando(e.target.value)}
                                           placeholder="Nombre de la actividad personalizada"
-                                          onBlur={(e) => {
-                                            const nuevoNombre = e.target.value.trim();
-                                            if (nuevoNombre) {
-                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                                ...r,
-                                                actividadesCustom: r.actividadesCustom.map((a, i) => 
-                                                  i === index ? { ...a, nombre: nuevoNombre } : a
-                                                )
-                                              } : r);
-                                              onRolesChange(nuevaConfig);
-                                            }
-                                          }}
                                         />
                                         <textarea 
                                           className="w-full text-xs text-gray-600 border border-gray-300 rounded p-2 focus:border-green-500 focus:outline-none bg-green-50 focus:bg-white transition-colors"
-                                          defaultValue={actividad.descripcion}
+                                          value={descripcionEditando}
+                                          onChange={(e) => setDescripcionEditando(e.target.value)}
                                           placeholder="Descripción de la actividad personalizada"
                                           rows={2}
-                                          onBlur={(e) => {
-                                            const nuevaDesc = e.target.value.trim();
-                                            const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                              ...r,
-                                              actividadesCustom: r.actividadesCustom.map((a, i) => 
-                                                i === index ? { ...a, descripcion: nuevaDesc } : a
-                                              )
-                                            } : r);
-                                            onRolesChange(nuevaConfig);
-                                          }}
                                         />
                                         <div className="flex justify-end mt-2">
                                           <button 
-                                            className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors" 
+                                            type="button"
+                                            disabled={guardandoActividadBackend}
+                                            className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50" 
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setEditandoActividadBase(null);
+                                              handleGuardarActividadCustom(
+                                                rol.numero,
+                                                index,
+                                                actividad,
+                                                nombreEditando,
+                                                descripcionEditando
+                                              );
                                             }}
                                           >
-                                            Guardar
+                                            {guardandoActividadBackend ? (
+                                              <>
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                Guardando...
+                                              </>
+                                            ) : (
+                                              'Guardar'
+                                            )}
                                           </button>
                                         </div>
                                       </div>
@@ -4991,6 +5192,8 @@ function Paso2({
                                             title="Editar texto de actividad personalizada"
                                             onClick={(e) => { 
                                               e.stopPropagation(); 
+                                              setNombreEditando(actividad.nombre);
+                                              setDescripcionEditando(actividad.descripcion || '');
                                               setEditandoActividadBase({rolNumero: rol.numero, actId: `custom-${index}`}); 
                                             }}
                                           >

@@ -360,6 +360,7 @@ export class PlanAnual5RolesService {
       }
     }
 
+    delete (plan as any).roles;
     const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
 
     // Propagar fechas del plan a actividades que aún tienen las fechas anteriores
