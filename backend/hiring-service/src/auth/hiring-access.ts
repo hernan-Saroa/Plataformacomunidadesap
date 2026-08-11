@@ -55,6 +55,18 @@ export const ROLES_SOLICITUD_CDP = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién registra la publicación del proyecto de pliego (actividad 5.2).
+ *
+ * La publicación en SECOP II la hace el gestor del proceso, no la Dirección
+ * Financiera: no hay presupuesto de por medio, es un trámite de publicidad.
+ */
+export const ROLES_PUBLICACION_PLIEGO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

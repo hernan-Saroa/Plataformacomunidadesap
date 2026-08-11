@@ -8,6 +8,7 @@ import { HiringModule } from './modules/hiring/hiring.module';
 import { EstudioPrevioModule } from './modules/estudio-previo/estudio-previo.module';
 import { UmbralesModule } from './modules/umbrales/umbrales.module';
 import { CdpModule } from './modules/cdp/cdp.module';
+import { PublicacionModule } from './modules/publicacion/publicacion.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -55,6 +56,7 @@ import { DiaNoHabil } from './entities/dia-no-habil.entity';
     EstudioPrevioModule,
     UmbralesModule,
     CdpModule,
+    PublicacionModule,
   ],
   controllers: [HealthController],
   providers: [
