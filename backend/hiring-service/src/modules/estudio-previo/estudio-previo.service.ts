@@ -21,6 +21,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
+import { ConfiguracionService } from '../configuracion/configuracion.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -61,7 +62,7 @@ export function esFaltante(
 }
 
 /** JSON con claves ordenadas: el hash de un mismo contenido no debe variar. */
-function jsonCanonico(valor: any): string {
+export function jsonCanonico(valor: any): string {
   if (valor === null || typeof valor !== 'object') return JSON.stringify(valor);
   if (Array.isArray(valor)) return `[${valor.map(jsonCanonico).join(',')}]`;
   const claves = Object.keys(valor).sort();
@@ -77,6 +78,7 @@ export class EstudioPrevioService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
+    private readonly configuracionService: ConfiguracionService,
   ) {}
 
   // ------------------------------------------------------------- proceso ---
@@ -127,13 +129,15 @@ export class EstudioPrevioService {
         numeroExpediente: `EXP-${anio}-${String(nExp).padStart(4, '0')}`,
       } as Partial<Expediente>);
 
-      // El estudio previo nace como borrador vacío junto con el proceso.
-      const actividad = await em.save(ProcesoActividad, {
-        procesoId: proceso.id,
-        numeral: NUMERAL_ESTUDIO_PREVIO,
-        estado: 'BORRADOR',
-        datos: {},
-      } as Partial<ProcesoActividad>);
+      // Instancia las 63 actividades de la matriz según la modalidad: las que
+      // no aplican quedan en NO_APLICA en vez de omitirse, para que el
+      // expediente deje constancia de por qué el proceso tuvo menos pasos.
+      await this.configuracionService.instanciarActividades(em, proceso.id, modalidad.codigo);
+
+      // El estudio previo (3.1) es la primera con la que trabaja el gestor.
+      const actividad = await em.findOneOrFail(ProcesoActividad, {
+        where: { procesoId: proceso.id, numeral: NUMERAL_ESTUDIO_PREVIO },
+      });
 
       // La modalidad queda en la traza: si el catálogo cambia, el expediente
       // sigue mostrando con cuál nació el proceso.
@@ -283,7 +287,7 @@ export class EstudioPrevioService {
       }
 
       const campos = await this.camposDe(em);
-      actividad.datos = this.filtrarYValidar(dto.datos, campos);
+      actividad.datos = await this.filtrarYValidar(em, dto.datos, campos);
       actividad.version += 1;
       await em.save(ProcesoActividad, actividad);
 
@@ -587,13 +591,34 @@ export class EstudioPrevioService {
    * Solo entran códigos definidos en la configuración, con el tipo correcto.
    * Evita que el expediente termine guardando basura enviada por el cliente.
    */
-  private filtrarYValidar(datos: Record<string, any>, campos: CampoFormulario[]) {
+  private async filtrarYValidar(
+    em: EntityManager,
+    datos: Record<string, any>,
+    campos: CampoFormulario[],
+  ) {
     const porCodigo = new Map(campos.map((c) => [c.codigo, c]));
     const desconocidos = Object.keys(datos ?? {}).filter((k) => !porCodigo.has(k));
+
     if (desconocidos.length > 0) {
-      throw new BadRequestException(
-        `Campos no definidos para el estudio previo: ${desconocidos.join(', ')}`,
-      );
+      // Un código que existe pero está desactivado es un campo retirado del
+      // formulario: los procesos que alcanzaron a diligenciarlo siguen
+      // enviándolo, y rechazarlos los dejaría sin poder guardar. Se descarta.
+      // Uno que no existe en absoluto sí es un cliente inventando claves, y
+      // ahí el rechazo protege el expediente.
+      const retirados = await em.find(CampoFormulario, {
+        where: { numeral: NUMERAL_ESTUDIO_PREVIO, codigo: In(desconocidos) },
+        select: ['codigo'],
+      });
+      const conocidos = new Set(retirados.map((c) => c.codigo));
+      const inventados = desconocidos.filter((c) => !conocidos.has(c));
+
+      if (inventados.length > 0) {
+        throw new BadRequestException(
+          `Campos no definidos para el estudio previo: ${inventados.join(', ')}`,
+        );
+      }
+
+      for (const codigo of desconocidos) delete datos[codigo];
     }
 
     const limpio: Record<string, any> = {};

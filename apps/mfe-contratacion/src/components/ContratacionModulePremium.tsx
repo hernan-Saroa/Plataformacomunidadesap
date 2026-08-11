@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, FileSignature, ClipboardCheck, Scale } from 'lucide-react';
+import { Briefcase, FileSignature, ClipboardCheck, Scale, Settings } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 // Maquetación propia del módulo. Va aquí, en el componente expuesto por Module
@@ -12,8 +12,9 @@ import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { VistaProcesos } from './procesos/VistaProcesos';
 import { DetalleProceso } from './proceso/DetalleProceso';
 import { VistaUmbrales } from './umbrales/VistaUmbrales';
+import { VistaConfiguracion } from './configuracion/VistaConfiguracion';
 
-type Seccion = 'estudios-previos' | 'revision' | 'umbrales';
+type Seccion = 'estudios-previos' | 'revision' | 'umbrales' | 'configuracion';
 
 /**
  * Módulo de Gestión de Contratación — HU EFDS-1146.
@@ -63,6 +64,13 @@ export default function ContratacionModulePremium() {
           icon: <Scale className="w-5 h-5" />,
           color: '#7C3AED',
         },
+        {
+          id: 'configuracion',
+          label: 'Configuración',
+          subtitle: 'Etapas y reglas',
+          icon: <Settings className="w-5 h-5" />,
+          color: '#64748B',
+        },
       ],
     },
   ];
@@ -71,6 +79,7 @@ export default function ContratacionModulePremium() {
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
     if (seccion === 'umbrales') return <VistaUmbrales />;
+    if (seccion === 'configuracion') return <VistaConfiguracion />;
     if (procesoId) {
       return (
         <DetalleProceso

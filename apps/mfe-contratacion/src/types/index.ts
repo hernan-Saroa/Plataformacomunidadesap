@@ -33,6 +33,13 @@ export interface CampoFormulario {
   soloLectura?: boolean;
 }
 
+/** Funcionario de auth.personas, para los campos que nombran a alguien. */
+export interface Persona {
+  id: string;
+  nombre: string;
+  email?: string;
+}
+
 /**
  * Modalidad de selección: es la columna de la matriz de flujo, así que
  * determina qué actividades aplican al proceso. Se elige al crearlo.
@@ -241,4 +248,60 @@ export class ConflictoError extends Error {
     super(message);
     this.name = 'ConflictoError';
   }
+}
+
+// ------------------------------------ Configuración de etapas (EFDS-1187) --
+
+/** Una de las 63 actividades de la matriz de flujo. */
+export interface ActividadCatalogo {
+  numeral: string;
+  etapa: number;
+  nombre: string;
+  descripcion?: string | null;
+  orden: number;
+  activa: boolean;
+}
+
+/** La misma actividad, ya resuelta contra una modalidad. */
+export interface ActividadAplicable extends ActividadCatalogo {
+  aplica: boolean;
+  /** Por qué la actividad no aplica a esta modalidad. */
+  motivo?: string | null;
+}
+
+export interface EtapaConActividades {
+  etapa: number;
+  actividades: ActividadCatalogo[];
+}
+
+export type TipoRegla =
+  | 'CAMPO_OBLIGATORIO'
+  | 'DOCUMENTO_REQUERIDO'
+  | 'RANGO_VALOR'
+  | 'PLAZO_MINIMO'
+  | 'BLOQUEA_AVANCE'
+  | 'REGLA_DERIVADA';
+
+/** Condición que debe cumplirse para dar por terminada una actividad. */
+export interface ReglaActividad {
+  id: string;
+  numeral: string;
+  /** null = aplica a todas las modalidades. */
+  modalidad: string | null;
+  tipo: TipoRegla;
+  config: Record<string, any>;
+  mensaje?: string | null;
+  orden: number;
+  vigenteDesde: string;
+  vigenteHasta?: string | null;
+}
+
+/** Lo que se envia al crear o reemplazar una regla. */
+export interface GuardarRegla {
+  /** Vacio = aplica a todas las modalidades. */
+  modalidad?: string | null;
+  tipo: TipoRegla;
+  config: Record<string, any>;
+  mensaje?: string;
+  orden?: number;
 }

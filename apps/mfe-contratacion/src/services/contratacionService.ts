@@ -7,7 +7,13 @@ import {
   EstadoRespaldo,
   EstudioPrevio,
   Expediente,
+  ActividadCatalogo,
+  ActividadAplicable,
+  EtapaConActividades,
   Modalidad,
+  GuardarRegla,
+  ReglaActividad,
+  Persona,
   ProcesoResumen,
   RevisionEstudioPrevio,
   SmmlvAnual,
@@ -68,6 +74,9 @@ export const contratacionService = {
 
   /** Catálogo para el selector; se consulta antes de crear el proceso. */
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
+
+  /** Personas para los selectores; el termino filtra por nombre. */
+  personas: (q = '') => pedir<Persona[]>(`/personas?q=${encodeURIComponent(q)}`),
 
   /**
    * Modalidad que corresponde a una cuantía. Se consulta mientras se digita el
@@ -148,6 +157,7 @@ export const contratacionService = {
     }),
 
   crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
+
     pedir<ProcesoResumen>('/procesos', {
       method: 'POST',
       body: JSON.stringify({ objeto, modalidad, valorEstimado }),
@@ -201,6 +211,59 @@ export const contratacionService = {
       { method: 'POST', body: form },
     );
   },
+
+  // ------------------------------------------ configuración de etapas ---
+
+  /** Las 63 actividades de la matriz, agrupadas por etapa. */
+  catalogoActividades: () => pedir<EtapaConActividades[]>('/configuracion/actividades'),
+
+  /** Actividades marcadas según apliquen o no a la modalidad. */
+  actividadesDeModalidad: (modalidad: string) =>
+    pedir<ActividadAplicable[]>(`/configuracion/actividades/modalidad/${modalidad}`),
+
+  /** Reglas vigentes de una actividad. */
+  reglasDe: (numeral: string, modalidad?: string) =>
+    pedir<ReglaActividad[]>(
+      `/configuracion/reglas/${numeral}${modalidad ? `?modalidad=${modalidad}` : ''}`,
+    ),
+
+  // ---------------------------------------- configuracion · escritura ----
+
+  /** Corrige el nombre o la descripcion de una actividad. */
+  actualizarActividad: (
+    numeral: string,
+    datos: { nombre: string; descripcion?: string; activa?: boolean },
+  ) =>
+    pedir<ActividadCatalogo>(`/configuracion/actividades/${numeral}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Marca si la actividad aplica a una modalidad. */
+  cambiarAplicabilidad: (
+    numeral: string,
+    datos: { modalidad: string; aplica: boolean; motivo?: string },
+  ) =>
+    pedir<ActividadAplicable>(`/configuracion/actividades/${numeral}/aplicabilidad`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  crearRegla: (numeral: string, datos: GuardarRegla) =>
+    pedir<ReglaActividad>(`/configuracion/actividades/${numeral}/reglas`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Cierra la regla vigente y abre la nueva: el historico queda auditable. */
+  reemplazarRegla: (id: string, datos: GuardarRegla) =>
+    pedir<ReglaActividad>(`/configuracion/reglas/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  derogarRegla: (id: string) =>
+    pedir<ReglaActividad>(`/configuracion/reglas/${id}`, { method: 'DELETE' }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };
