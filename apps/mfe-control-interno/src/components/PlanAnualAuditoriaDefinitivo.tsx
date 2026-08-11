@@ -2002,7 +2002,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               color: rol.color || '#3B82F6',
               icono: obtenerIconoRol(rol.rol_numero ?? rol.numero ?? 0),
               descripcion: rol.descripcion || '',
-              actividades: (rol.actividades || []).map((act: any) => ({
+              actividades: (rol.actividades || [])
+                .filter((act: any) => act.activo !== false)
+                .map((act: any) => ({
                 id: act.id,
                 nombre: act.nombre || '',
                 descripcion: act.descripcion || '',
@@ -2426,7 +2428,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           responsable: rol.responsable,
           responsable_id: rol.responsable_id,
           responsables: mapResponsablesRolDesdeBackend(rol),
-          actividades: (rol.actividades || []).map((act: any) => {
+          actividades: (rol.actividades || [])
+            .filter((act: any) => act.activo !== false)
+            .map((act: any) => {
             const pcsWizard = mapPuntosControlFechasVigencia(
               act.puntos_control || act.puntosControl,
               vigenciaPlan,
