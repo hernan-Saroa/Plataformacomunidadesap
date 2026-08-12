@@ -15,11 +15,11 @@ import {
  * Actividades de la etapa 5 que el CDP condiciona.
  *
  * Van aparte del controller del CDP porque no son parte del ciclo
- * presupuestal: solo están condicionadas por él. Cuando lleguen las demás
- * actividades de la etapa —cronograma, publicación en SECOP— este es el punto
- * donde se acumulan sus requisitos.
+ * presupuestal: solo están condicionadas por él. Desde EFDS-1152 la apertura
+ * tiene su propio módulo, porque registrar la resolución y el pliego definitivo
+ * dejó de ser un asunto del CDP.
  */
-@ApiTags('Etapa 5 · Elaboración y apertura')
+@ApiTags('Etapa 5 · Actividades y elaboración')
 @Controller('procesos')
 export class AperturaController {
   constructor(private readonly cdp: CdpService) {}
@@ -51,15 +51,10 @@ export class AperturaController {
     return this.cdp.iniciarDocumentos(procesoId, getHiringAccess(req));
   }
 
-  @Post(':id/abrir')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_SOLICITUD_CDP)
-  @ApiOperation({
-    summary: 'Actividad 5.7 · Abrir el proceso',
-    description:
-      'Impide la apertura mientras el CDP no esté expedido (RF-EST-05). Hoy solo cubre el control presupuestal: los demás requisitos de la etapa 5 son de historias posteriores.',
-  })
-  abrir(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.cdp.abrirProceso(procesoId, getHiringAccess(req));
-  }
+  // La apertura del proceso se registra en POST /procesos/:id/apertura desde
+  // EFDS-1152. Aquí había un endpoint que solo movía la etapa; mantenerlo habría
+  // dejado una vía para abrir un proceso sin la resolución que lo respalda. La
+  // regla del CDP que introdujo EFDS-1148 sigue exigiéndose: vive en
+  // CdpService.abrirProceso, que es lo que aquel endpoint llamaba y lo que el
+  // registro de la apertura invoca ahora.
 }

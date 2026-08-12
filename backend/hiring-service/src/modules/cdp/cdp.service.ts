@@ -497,25 +497,31 @@ export class CdpService {
   /**
    * Actividad 5.7: se abre el proceso.
    *
-   * Solo cubre el control presupuestal. Los demás requisitos de la etapa 5
-   * —pliego definitivo, publicación en SECOP, respuesta a observaciones— son de
-   * historias posteriores y aquí no se validan.
+   * Cubre el control presupuestal y el cambio de etapa. Desde EFDS-1152 el
+   * registro de la resolución de apertura y del pliego definitivo lo lleva
+   * AperturaService, que invoca este método dentro de su propia transacción:
+   * la mecánica de abrir es una sola, y duplicarla dejaría dos sitios donde
+   * corregir la regla del CDP.
+   *
+   * Por eso acepta un EntityManager: sin él, la transacción de quien llama y la
+   * de aquí serían dos, y un fallo posterior al registro dejaría el proceso
+   * abierto sin resolución.
    */
-  async abrirProceso(procesoId: string, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const proceso = await this.exigirProceso(em, procesoId);
+  async abrirProceso(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
+    const ejecutar = async (manager: EntityManager) => {
+      const proceso = await this.exigirProceso(manager, procesoId);
 
       if (proceso.etapa >= ETAPA_APERTURA) {
         throw new ConflictException('El proceso ya fue abierto');
       }
 
-      await this.exigirCdpParaApertura(procesoId, em);
+      await this.exigirCdpParaApertura(procesoId, manager);
 
       proceso.etapa = ETAPA_APERTURA;
-      await em.save(proceso);
+      await manager.save(proceso);
 
-      await em.save(
-        em.create(ProcesoActividad, {
+      await manager.save(
+        manager.create(ProcesoActividad, {
           procesoId,
           numeral: NUMERAL_APERTURA,
           estado: 'APROBADO' as const,
@@ -525,13 +531,15 @@ export class CdpService {
         }),
       );
 
-      await this.traza(em, procesoId, procesoId, 'APROBAR', acceso, {
+      await this.traza(manager, procesoId, procesoId, 'APROBAR', acceso, {
         actividad: NUMERAL_APERTURA,
         etapa: ETAPA_APERTURA,
       });
 
       return { id: proceso.id, radicado: proceso.radicado, etapa: proceso.etapa };
-    });
+    };
+
+    return em ? ejecutar(em) : this.dataSource.transaction(ejecutar);
   }
 
   // ---------------------------------------- documentos del proceso (5.1) ---

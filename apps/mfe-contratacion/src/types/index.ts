@@ -437,6 +437,33 @@ export interface DocumentoRequerido {
   } | null;
 }
 
+/** Apertura formal registrada del proceso (actividad 5.7, EFDS-1152). */
+export interface AperturaRegistrada {
+  resolucionNumero: string;
+  resolucionFecha: string;
+  secopUrl: string | null;
+  abiertoPor: string | null;
+  abiertoAt: string;
+}
+
+/** Estado de la apertura del proceso y de lo que falta para poder abrirlo. */
+export interface EstadoApertura {
+  /** False en las modalidades sin apertura formal: directa y régimen 092. */
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  abierta: boolean;
+  apertura: AperturaRegistrada | null;
+  requisitos: {
+    /** El CDP expedido bloquea la apertura si falta (RF-EST-05). */
+    cdp: { cumplido: boolean; motivo: string | null };
+    /** Informativo: la elaboración de documentos no bloquea. */
+    documentos: { cumplido: boolean };
+  };
+  puedeAbrir: boolean;
+}
+
 /** Estado de la elaboración de documentos del proceso (actividad 5.1). */
 export interface EstadoDocumentos {
   /** False en las modalidades que no elaboran los documentos ordinarios. */

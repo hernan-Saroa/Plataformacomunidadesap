@@ -2,6 +2,7 @@ import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
   CamposFaltantesError,
+  EstadoApertura,
   Cdp,
   CondicionesMipymeConfig,
   ConflictoError,
@@ -125,10 +126,36 @@ export const contratacionService = {
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 
-  abrirProceso: (procesoId: string) =>
-    pedir<{ id: string; radicado: string; etapa: number }>(`/procesos/${procesoId}/abrir`, {
+  // ------------------------------ etapa 5 · apertura del proceso (5.7) ------
+
+  /** Estado de la apertura y qué falta para poder abrir. */
+  apertura: (procesoId: string) => pedir<EstadoApertura>(`/procesos/${procesoId}/apertura`),
+
+  /**
+   * Registra la resolución de apertura con el pliego definitivo y abre el proceso.
+   *
+   * Los dos documentos viajan con los datos en la misma petición: el proceso se
+   * abre con ambos o no se abre, y dejarlo en dos pasos permitiría un proceso
+   * abierto sin el acto que lo respalda.
+   */
+  registrarApertura: (
+    procesoId: string,
+    datos: { resolucionNumero: string; resolucionFecha: string; secopUrl?: string },
+    resolucion: File,
+    pliegoDefinitivo: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('resolucion', resolucion);
+    cuerpo.append('pliegoDefinitivo', pliegoDefinitivo);
+    cuerpo.append('resolucionNumero', datos.resolucionNumero);
+    cuerpo.append('resolucionFecha', datos.resolucionFecha);
+    if (datos.secopUrl) cuerpo.append('secopUrl', datos.secopUrl);
+
+    return pedir<EstadoApertura>(`/procesos/${procesoId}/apertura`, {
       method: 'POST',
-    }),
+      body: cuerpo,
+    });
+  },
 
   // ------------------------- etapa 5 · documentos del proceso (5.1) ---------
 
