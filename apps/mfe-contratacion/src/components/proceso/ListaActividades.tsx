@@ -1,7 +1,10 @@
 import React, { ReactNode } from 'react';
 import { Check, Minus, ChevronDown, Lock, Paperclip } from 'lucide-react';
 
-export type EstadoActividadUI = 'aprobada' | 'en_curso' | 'pendiente' | 'no_aplica';
+// El tipo vive con la función que lo produce; se reexporta porque el riel y el
+// detalle ya lo importaban desde aquí.
+export type { EstadoActividadUI } from './estadoActividad';
+import type { EstadoActividadUI } from './estadoActividad';
 
 export interface ActividadEtapa {
   numeral: string;

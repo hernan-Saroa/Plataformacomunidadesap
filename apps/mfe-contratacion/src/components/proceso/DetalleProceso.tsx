@@ -5,6 +5,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
 import { StepperEtapas } from './StepperEtapas';
 import { ActividadEtapa } from './ListaActividades';
+import { estadoDeActividad } from './estadoActividad';
 import { RielActividades } from './RielActividades';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
@@ -201,7 +202,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         // una que está por hacer, y el contador la exigía para llegar al 100%.
         return {
           ...act,
-          estado: act.estado === 'APROBADO' ? 'aprobada' : aplica ? 'en_curso' : 'no_aplica',
+          // Antes se daba por en curso todo lo aplicable, así que el riel
+          // encendía en azul las nueve actividades de las etapas 4 y 5 desde el
+          // minuto uno y el color dejaba de informar.
+          estado: estadoDeActividad(aplica, act.estado),
           disponible: aplica,
           detalle: aplica ? undefined : 'No aplica a esta modalidad',
           adjuntos,
