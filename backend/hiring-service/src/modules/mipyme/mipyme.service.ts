@@ -395,6 +395,11 @@ export class MipymeService {
         ? await this.guardarSoporte(em, procesoId, archivo, hash!, acceso)
         : null;
 
+      // Solo cuando el tope va en SMMLV: con un tope en pesos el salario no
+      // entra en el cálculo, y guardarlo sugeriría que sí.
+      const smmlvAplicado =
+        tope.unidad === 'SMMLV' ? await this.salarioDelAnio(em) : null;
+
       const repo = em.getRepository(LimitacionMipyme);
       const previa = await repo.findOne({ where: { procesoId } });
       const decision = previa ?? repo.create({ procesoId });
@@ -407,6 +412,10 @@ export class MipymeService {
       decision.valorProceso = proceso.valorEstimado ?? null;
       decision.topeValorAplicado = tope.valor;
       decision.unidadTopeAplicada = tope.unidad;
+      // El salario también entró en el cálculo, y vive en una tabla que se
+      // edita desde Umbrales: sin congelarlo, corregirlo mañana dejaría esta
+      // decisión sin forma de rehacer la conversión del tope a pesos.
+      decision.smmlvAplicado = smmlvAplicado;
       decision.minimoManifestaciones = minimo.valor;
       decision.motivo = dto.motivo?.trim() || null;
       if (documento) decision.documentoId = documento.id;

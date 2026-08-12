@@ -240,6 +240,11 @@ export interface DecisionMipyme {
   valorProceso: number | null;
   topeValorAplicado: number | null;
   unidadTopeAplicada: string | null;
+  /**
+   * Salario con el que se convirtió el tope a pesos. Null si el tope se aplicó
+   * en pesos, o si la decisión es anterior a que se empezara a guardar.
+   */
+  smmlvAplicado: number | null;
   minimoManifestaciones: number | null;
   /** Obligatorio cuando la decisión se aparta del cálculo. */
   motivo: string | null;

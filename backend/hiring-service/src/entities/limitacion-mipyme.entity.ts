@@ -58,6 +58,24 @@ export class LimitacionMipyme {
   @Column({ name: 'unidad_tope_aplicada', length: 10, nullable: true })
   unidadTopeAplicada: string | null;
 
+  /**
+   * Salario con el que se convirtió el tope a pesos.
+   *
+   * Sin él, corregir el salario del año en la pantalla de Umbrales dejaría esta
+   * decisión sin forma de reconstruir contra cuántos pesos se comparó. Null si
+   * el tope se aplicó en pesos —el salario no entró en el cálculo— o si la
+   * decisión es anterior a la migración 018.
+   */
+  @Column({
+    name: 'smmlv_aplicado',
+    type: 'numeric',
+    precision: 18,
+    scale: 2,
+    nullable: true,
+    transformer: aNumero,
+  })
+  smmlvAplicado: number | null;
+
   @Column({ name: 'minimo_manifestaciones', type: 'int', nullable: true })
   minimoManifestaciones: number | null;
 
