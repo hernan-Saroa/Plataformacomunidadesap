@@ -34,11 +34,20 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     puedeEditar: true,
   };
 
-  /** Datos completos según los campos obligatorios vigentes en base. */
+  /**
+   * Datos completos según los campos obligatorios vigentes en base.
+   *
+   * Se excluyen los de solo lectura: desde EFDS-1147 el valor estimado se pide
+   * al crear el proceso y el backend lo inyecta al releer, así que enviarlo
+   * desde el formulario haría esperar de vuelta un valor que el proceso ya
+   * sustituyó por el suyo.
+   */
   const datosCompletos = async (): Promise<Record<string, any>> => {
-    const obligatorios = await dataSource.getRepository(CampoFormulario).find({
-      where: { numeral: '3.1', obligatorio: true, activo: true },
-    });
+    const obligatorios = (
+      await dataSource.getRepository(CampoFormulario).find({
+        where: { numeral: '3.1', obligatorio: true, activo: true },
+      })
+    ).filter((campo) => !campo.soloLectura);
 
     const valores: Record<string, any> = {};
     for (const campo of obligatorios) {

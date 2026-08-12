@@ -97,6 +97,20 @@ export const ROLES_PARTICIPACION = [
 /** Quién ajusta las condiciones de la limitación a MIPYME (EFDS-1393). */
 export const ROLES_ADMIN_MIPYME = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
 
+/**
+ * Quién elabora y carga los documentos del proceso (actividad 5.1, EFDS-1149).
+ *
+ * La matriz asigna la elaboración a la Dirección de Contratación, así que son
+ * los mismos roles que llevan la etapa. El estructurador financiero queda
+ * fuera: interviene en el CDP, que condiciona esta actividad en contratación
+ * directa, pero no redacta el pliego.
+ */
+export const ROLES_DOCUMENTOS_PROCESO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

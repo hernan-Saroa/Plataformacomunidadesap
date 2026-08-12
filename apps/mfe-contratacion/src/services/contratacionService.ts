@@ -5,6 +5,7 @@ import {
   Cdp,
   CondicionesMipymeConfig,
   ConflictoError,
+  EstadoDocumentos,
   EstadoMipyme,
   EstadoObservaciones,
   EstadoPublicacion,
@@ -127,6 +128,36 @@ export const contratacionService = {
   abrirProceso: (procesoId: string) =>
     pedir<{ id: string; radicado: string; etapa: number }>(`/procesos/${procesoId}/abrir`, {
       method: 'POST',
+    }),
+
+  // ------------------------- etapa 5 · documentos del proceso (5.1) ---------
+
+  /** Qué documentos exige la modalidad y cuáles ya están cargados. */
+  documentosProceso: (procesoId: string) =>
+    pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`),
+
+  /**
+   * Carga uno de los documentos que la actividad exige.
+   *
+   * El código viaja en el cuerpo junto al archivo: la petición ya es multipart,
+   * y ponerlo en la ruta chocaría con `/documentos/iniciar`.
+   */
+  cargarDocumentoProceso: (procesoId: string, codigo: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('codigo', codigo);
+
+    return pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto un documento cargado para sustituirlo por otro. */
+  anularDocumentoProceso: (procesoId: string, documentoId: string) =>
+    pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos/${documentoId}/anular`, {
+      method: 'POST',
+      body: '{}',
     }),
 
   // ---------------------------- etapa 5 · publicación del proyecto de pliego -

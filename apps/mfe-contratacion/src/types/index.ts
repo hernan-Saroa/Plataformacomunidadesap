@@ -421,6 +421,37 @@ export interface Expediente {
   documentos: DocumentoExpediente[];
 }
 
+/** Uno de los documentos que la actividad 5.1 exige (EFDS-1149). */
+export interface DocumentoRequerido {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  obligatorio: boolean;
+  /** Null mientras no se haya cargado. */
+  cargado: {
+    id: string;
+    nombre: string;
+    archivoUrl: string;
+    cargadoPor: string | null;
+    cargadoAt: string;
+  } | null;
+}
+
+/** Estado de la elaboración de documentos del proceso (actividad 5.1). */
+export interface EstadoDocumentos {
+  /** False en las modalidades que no elaboran los documentos ordinarios. */
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  iniciada: boolean;
+  estado: string;
+  /** Los que pide esta modalidad: aviso y pliego, o acto de justificación. */
+  documentos: DocumentoRequerido[];
+  /** Todos los obligatorios están cargados. */
+  completa: boolean;
+}
+
 /** Error 422 del envío: trae la lista de campos que faltan. */
 export class CamposFaltantesError extends Error {
   constructor(

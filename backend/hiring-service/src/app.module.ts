@@ -11,6 +11,7 @@ import { CdpModule } from './modules/cdp/cdp.module';
 import { PublicacionModule } from './modules/publicacion/publicacion.module';
 import { ObservacionesModule } from './modules/observaciones/observaciones.module';
 import { MipymeModule } from './modules/mipyme/mipyme.module';
+import { DocumentosModule } from './modules/documentos/documentos.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -34,6 +35,8 @@ import { ObservacionPliego } from './entities/observacion-pliego.entity';
 import { ManifestacionMipyme } from './entities/manifestacion-mipyme.entity';
 import { LimitacionMipyme } from './entities/limitacion-mipyme.entity';
 import { ParametroMipyme } from './entities/parametro-mipyme.entity';
+import { DocumentoRequerido } from './entities/documento-requerido.entity';
+import { DocumentoProceso } from './entities/documento-proceso.entity';
 
 @Module({
   imports: [
@@ -51,7 +54,7 @@ import { ParametroMipyme } from './entities/parametro-mipyme.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -65,6 +68,10 @@ import { ParametroMipyme } from './entities/parametro-mipyme.entity';
     PublicacionModule,
     ObservacionesModule,
     MipymeModule,
+    // Después de CdpModule a propósito: `POST /procesos/:id/documentos/iniciar`
+    // vive en el controller de la apertura y debe seguir resolviéndose antes de
+    // que Nest considere las rutas de este módulo.
+    DocumentosModule,
   ],
   controllers: [HealthController],
   providers: [

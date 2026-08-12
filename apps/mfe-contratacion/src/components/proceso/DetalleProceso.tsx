@@ -12,11 +12,14 @@ import { PanelCdp } from '../cdp/PanelCdp';
 import { PanelPublicacionPliego } from '../publicacion/PanelPublicacionPliego';
 import { PanelObservaciones } from '../observaciones/PanelObservaciones';
 import { PanelMipyme } from '../mipyme/PanelMipyme';
+import { PanelDocumentosProceso } from '../documentos/PanelDocumentosProceso';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
 
-/** Publicación del proyecto de pliego, primera actividad viva de la etapa 5. */
+/** Elaboración de los documentos del proceso (EFDS-1149). */
+const NUMERAL_DOCUMENTOS = '5.1';
+/** Publicación del proyecto de pliego, primera actividad publicada de la etapa 5. */
 const NUMERAL_PUBLICACION = '5.2';
 /** Observaciones al pliego (EFDS-1151), sobre la publicación ya registrada. */
 const NUMERAL_OBSERVACIONES = '5.3';
@@ -24,7 +27,12 @@ const NUMERAL_OBSERVACIONES = '5.3';
 const NUMERAL_MIPYME = '5.4';
 
 /** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
-const NUMERALES_ETAPA_5 = [NUMERAL_PUBLICACION, NUMERAL_OBSERVACIONES, NUMERAL_MIPYME];
+const NUMERALES_ETAPA_5 = [
+  NUMERAL_DOCUMENTOS,
+  NUMERAL_PUBLICACION,
+  NUMERAL_OBSERVACIONES,
+  NUMERAL_MIPYME,
+];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -292,6 +300,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 numeral={actividadSeleccionada.numeral}
                 procesoId={procesoId}
                 valorEstimado={datos.proceso.valorEstimado}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_DOCUMENTOS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelDocumentosProceso
+                procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
