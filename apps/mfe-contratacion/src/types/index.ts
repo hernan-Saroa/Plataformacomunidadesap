@@ -470,6 +470,8 @@ export interface EstadoApertura {
     cdp: { cumplido: boolean; motivo: string | null };
     /** Informativo: la elaboración de documentos no bloquea. */
     documentos: { cumplido: boolean };
+    /** Bloquea donde la audiencia es obligatoria (RF-PUB-04, EFDS-1153). */
+    audienciaRiesgos: { cumplido: boolean; motivo: string | null };
   };
   puedeAbrir: boolean;
 }

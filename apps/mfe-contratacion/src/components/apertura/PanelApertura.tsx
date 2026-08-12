@@ -157,20 +157,35 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
     );
   }
 
-  // El CDP es el único requisito que bloquea (RF-EST-05). Se dice qué falta y
-  // dónde se resuelve, en vez de dejar el formulario muerto sin explicación.
-  if (!estado.requisitos.cdp.cumplido) {
+  // Dos requisitos bloquean: el CDP (RF-EST-05) y la audiencia de riesgos donde
+  // es obligatoria (RF-PUB-04). Se listan los que falten, con la actividad en
+  // que se resuelven, en vez de dejar el formulario muerto sin explicación.
+  const bloqueos = [
+    estado.requisitos.cdp.cumplido
+      ? null
+      : {
+          falta: '4.3',
+          texto: estado.requisitos.cdp.motivo
+            ? `${estado.requisitos.cdp.motivo}. El proceso no puede abrirse sin el CDP expedido.`
+            : 'El proceso no puede abrirse mientras el CDP no esté expedido.',
+        },
+    estado.requisitos.audienciaRiesgos.cumplido
+      ? null
+      : {
+          falta: '5.5',
+          texto:
+            estado.requisitos.audienciaRiesgos.motivo ??
+            'La audiencia de asignación de riesgos es obligatoria en esta modalidad y no se ha celebrado.',
+        },
+  ].filter((b): b is { falta: string; texto: string } => b !== null);
+
+  if (bloqueos.length > 0) {
     return (
       <Marco>
         <Titulo>Apertura del proceso</Titulo>
-        <Pendiente
-          falta="4.3"
-          texto={
-            estado.requisitos.cdp.motivo
-              ? `${estado.requisitos.cdp.motivo}. El proceso no puede abrirse sin el CDP expedido.`
-              : 'El proceso no puede abrirse mientras el CDP no esté expedido.'
-          }
-        />
+        {bloqueos.map((b) => (
+          <Pendiente key={b.falta} falta={b.falta} texto={b.texto} />
+        ))}
       </Marco>
     );
   }

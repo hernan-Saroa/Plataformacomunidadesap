@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { AperturaService } from '../src/modules/apertura/apertura.service';
 import { CdpService } from '../src/modules/cdp/cdp.service';
+import { RiesgosService } from '../src/modules/riesgos/riesgos.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
 
@@ -20,6 +21,7 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
   let app: INestApplication;
   let apertura: AperturaService;
   let cdp: CdpService;
+  let riesgos: RiesgosService;
   let procesos: EstudioPrevioService;
   let dataSource: DataSource;
 
@@ -53,7 +55,13 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     resolucionFecha: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
   };
 
-  const crear = (modalidad = 'LICITACION_PUBLICA') =>
+  /**
+   * Mínima cuantía por defecto: es una modalidad con apertura formal, pero sin
+   * audiencia de riesgos obligatoria (EFDS-1153). Así los casos que prueban la
+   * apertura miden la apertura, y no acaban comprobando de refilón el requisito
+   * de otra historia. Los que sí van de eso piden licitación explícitamente.
+   */
+  const crear = (modalidad = 'MINIMA_CUANTIA') =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
 
   /** Lleva el CDP hasta expedido, que es lo que la apertura exige. */
@@ -66,6 +74,18 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
       financiero,
     );
   };
+
+  /** La audiencia de riesgos, que en licitación pública condiciona la apertura. */
+  const celebrarAudiencia = (procesoId: string) =>
+    riesgos.registrar(
+      procesoId,
+      { fechaCelebracion: datos.resolucionFecha },
+      archivo('acta-audiencia.pdf'),
+      '7'.repeat(64),
+      archivo('matriz-riesgos.xlsx'),
+      '8'.repeat(64),
+      gestor,
+    );
 
   const abrir = (procesoId: string) =>
     apertura.registrar(
@@ -87,6 +107,7 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
 
     apertura = app.get(AperturaService);
     cdp = app.get(CdpService);
+    riesgos = app.get(RiesgosService);
     procesos = app.get(EstudioPrevioService);
     dataSource = app.get(DataSource);
   });
@@ -257,6 +278,49 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
         proceso.id,
       ]);
       expect(fila.etapa).toBe(3);
+    });
+  });
+
+  // ------------------------------- audiencia de riesgos obligatoria (1153) --
+
+  describe('La audiencia de riesgos obligatoria condiciona la apertura', () => {
+    it('impide abrir una licitación sin la audiencia celebrada', async () => {
+      // Segundo criterio de EFDS-1153: avanzar en la etapa 5 es abrir, y sin la
+      // audiencia obligatoria no se avanza. El CDP no basta.
+      const proceso = await crear('LICITACION_PUBLICA');
+      await expedirCdp(proceso.id);
+
+      await expect(abrir(proceso.id)).rejects.toThrow(/audiencia/i);
+    });
+
+    it('lo dice en el estado, junto al requisito del CDP', async () => {
+      const proceso = await crear('LICITACION_PUBLICA');
+      await expedirCdp(proceso.id);
+
+      const estado = await apertura.estado(proceso.id);
+
+      expect(estado.requisitos.cdp.cumplido).toBe(true);
+      expect(estado.requisitos.audienciaRiesgos.cumplido).toBe(false);
+      expect(estado.puedeAbrir).toBe(false);
+    });
+
+    it('con la audiencia celebrada el proceso abre', async () => {
+      const proceso = await crear('LICITACION_PUBLICA');
+      await expedirCdp(proceso.id);
+      await celebrarAudiencia(proceso.id);
+
+      const estado = await abrir(proceso.id);
+      expect(estado.abierta).toBe(true);
+    });
+
+    it('en una modalidad sin audiencia obligatoria no estorba', async () => {
+      // Mínima cuantía puede celebrarla, pero no la exige: pedirla aquí
+      // bloquearía procesos que la norma no bloquea.
+      const proceso = await crear('MINIMA_CUANTIA');
+      await expedirCdp(proceso.id);
+
+      const estado = await abrir(proceso.id);
+      expect(estado.abierta).toBe(true);
     });
   });
 

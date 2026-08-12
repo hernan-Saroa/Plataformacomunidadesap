@@ -16,6 +16,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CdpService } from '../cdp/cdp.service';
 import { DocumentosService } from '../documentos/documentos.service';
+import { RiesgosService } from '../riesgos/riesgos.service';
 import { RegistrarAperturaDto } from './dto/apertura.dto';
 
 /** Actividad 5.7 de la matriz: la apertura formal del proceso. */
@@ -35,6 +36,7 @@ export class AperturaService {
     private readonly dataSource: DataSource,
     private readonly cdp: CdpService,
     private readonly documentos: DocumentosService,
+    private readonly riesgos: RiesgosService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -65,6 +67,7 @@ export class AperturaService {
 
     const respaldo = await this.cdp.estadoRespaldo(procesoId);
     const documentos = await this.documentos.estado(procesoId);
+    const audiencia = await this.riesgos.requisitoParaApertura(procesoId);
 
     // Los tres documentos del acto, para que el panel pueda enseñarlos sin
     // pedir el expediente entero.
@@ -111,8 +114,11 @@ export class AperturaService {
         // condiciona el CDP—, pero abrir con la elaboración a medias es una
         // señal de que algo se saltó, y callarlo no ayuda a nadie.
         documentos: { cumplido: !documentos.aplica || documentos.completa },
+        // La audiencia de riesgos sí bloquea donde es obligatoria: es el
+        // segundo criterio de EFDS-1153, y avanzar en la etapa 5 es abrir.
+        audienciaRiesgos: audiencia,
       },
-      puedeAbrir: !excluida && !apertura && respaldo.puedeAbrirse,
+      puedeAbrir: !excluida && !apertura && respaldo.puedeAbrirse && audiencia.cumplido,
     };
   }
 
@@ -153,6 +159,14 @@ export class AperturaService {
         throw new ConflictException(
           `El proceso ya fue abierto con la resolución ${yaAbierto.resolucionNumero}`,
         );
+      }
+
+      // RF-PUB-04: la audiencia obligatoria condiciona la apertura igual que el
+      // CDP. Se comprueba aquí y no solo en la pantalla porque es una regla de
+      // negocio: un cliente que llame la API directamente tampoco puede saltarla.
+      const audiencia = await this.riesgos.requisitoParaApertura(procesoId, em);
+      if (!audiencia.cumplido) {
+        throw new ConflictException(`No se puede abrir el proceso: ${audiencia.motivo}`);
       }
 
       this.validarFecha(dto.resolucionFecha);

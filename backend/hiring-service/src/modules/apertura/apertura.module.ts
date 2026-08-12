@@ -13,6 +13,7 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { CdpModule } from '../cdp/cdp.module';
 import { DocumentosModule } from '../documentos/documentos.module';
+import { RiesgosModule } from '../riesgos/riesgos.module';
 
 @Module({
   imports: [
@@ -29,6 +30,8 @@ import { DocumentosModule } from '../documentos/documentos.module';
     CdpModule,
     // Para informar si la elaboración de documentos quedó a medias (EFDS-1149).
     DocumentosModule,
+    // La audiencia de riesgos obligatoria condiciona la apertura (EFDS-1153).
+    RiesgosModule,
   ],
   controllers: [AperturaProcesoController],
   providers: [AperturaService],
