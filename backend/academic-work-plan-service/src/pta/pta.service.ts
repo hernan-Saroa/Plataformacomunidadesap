@@ -2250,10 +2250,6 @@ export class PtaService {
       }
     }
 
-    if (horas.sumComp <= 0) {
-      throw new BadRequestException('El PTA debe incluir actividades complementarias a la docencia antes de enviarse.');
-    }
-
     const maxAadm = this.getScaledRuleLimit(
       rules,
       horasAProgramar,

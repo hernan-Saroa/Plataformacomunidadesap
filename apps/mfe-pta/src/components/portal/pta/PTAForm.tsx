@@ -4381,19 +4381,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return true;
   }, [asignaturas, defaultTerritorial]);
 
-  const validarComposicionParaEnvio = useCallback(() => {
-    const tieneTotalidad = hasFullPTAActivity;
-    if (tieneTotalidad) return true;
-
-    if (hComplementarias <= 0) {
-      toast.error('El PTA debe incluir actividades complementarias a la docencia antes de enviarse.');
-      setActiveSection('complementarias');
-      return false;
-    }
-
-    return true;
-  }, [hasFullPTAActivity, hComplementarias]);
-
   const finishSaving = (result: boolean) => {
     setSaving(false);
     savingRef.current = false;
@@ -4422,10 +4409,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     // Validación: al menos una asignatura con mínimo 3 créditos
     if (enviar && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
-      return finishSaving(false);
-    }
-
-    if (enviar && !validarComposicionParaEnvio()) {
       return finishSaving(false);
     }
 
@@ -4762,9 +4745,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         return false;
       }
     }
-    if (!validarComposicionParaEnvio()) {
-      return false;
-    }
     // Bloqueo por topes individuales y por la suma global de los componentes.
     if (hasBlockingHourLimits) {
       const firstViolation = componentLimitViolations[0];
@@ -4815,7 +4795,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     setConfirmResumenData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
     setShowConfirmResumen(true);
     return false; // El resumen se muestra siempre antes de solicitar la firma del docente.
-  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
+  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
