@@ -128,3 +128,85 @@
     grid-column: auto;
   }
 }
+
+/* ======================================================================
+   Utilidades con valor arbitrario que el shell no genera
+
+   El CSS de Tailwind se compila escaneando únicamente el código del shell
+   (ver la nota de arriba), así que un `text-[11.5px]` que solo aparece en
+   este microfrontend no existe en la hoja y el navegador lo descarta sin
+   avisar. No es un fallo visible —el elemento hereda el tamaño anterior— y
+   por eso llevaba tiempo pasando desapercibido en toda la etapa 3 a la 5.
+
+   Se declaran aquí, con el nombre escapado tal como lo escribiría Tailwind,
+   para no tener que reescribir las clases en veinte componentes. Cuando el
+   shell empiece a escanear los microfrontends, este bloque sobra entero.
+
+   Cada valor reproduce lo que Tailwind habría generado: `text-[Npx]` solo
+   fija el tamaño, los anillos de foco solo aportan el color al sistema de
+   `--tw-ring-*` que el shell ya define, y las sombras se enganchan a la
+   misma cadena de variables que usa `shadow-sm`.
+   ====================================================================== */
+
+/* ------------------------------------------------------- tipografía --- */
+.text-\[9\.5px\]  { font-size: 9.5px; }
+.text-\[10\.5px\] { font-size: 10.5px; }
+.text-\[11\.5px\] { font-size: 11.5px; }
+.text-\[12px\]    { font-size: 12px; }
+.text-\[12\.5px\] { font-size: 12.5px; }
+.text-\[13px\]    { font-size: 13px; }
+.text-\[15px\]    { font-size: 15px; }
+
+/* -------------------------------------------------------- medidas ----- */
+.w-\[2px\]        { width: 2px; }
+.w-\[18px\]       { width: 18px; }
+.h-\[2px\]        { height: 2px; }
+.h-\[18px\]       { height: 18px; }
+.min-h-\[36px\]   { min-height: 36px; }
+.min-h-\[70px\]   { min-height: 70px; }
+.min-h-\[72px\]   { min-height: 72px; }
+.min-h-\[110px\]  { min-height: 110px; }
+.max-h-\[85vh\]   { max-height: 85vh; }
+.max-w-\[220px\]  { max-width: 220px; }
+.pl-\[52px\]      { padding-left: 52px; }
+.left-\[27px\]    { left: 27px; }
+.top-\[11px\]     { top: 11px; }
+.top-\[38px\]     { top: 38px; }
+
+/* --------------------------------------------------------- sombras ---- */
+/* Misma cadena de variables que `shadow-sm`: si no, una sombra arbitraria
+   pisaría el ring y el inset que el shell compone en `box-shadow`. */
+.shadow-\[0_1px_3px_rgba\(0\,0\,0\,0\.04\)\] {
+  --tw-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+}
+
+.shadow-\[0_1px_3px_rgba\(0\,0\,0\,0\.06\)\] {
+  --tw-shadow: 0 1px 3px rgba(0, 0, 0, .06);
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+}
+
+.backdrop-blur-\[2px\] {
+  --tw-backdrop-blur: blur(2px);
+  -webkit-backdrop-filter: var(--tw-backdrop-blur, );
+  backdrop-filter: var(--tw-backdrop-blur, );
+}
+
+/* ------------------------------------- color institucional #003DA5 ---- */
+/* El azul de la ESAP en sus variantes de estado. El shell genera las
+   versiones planas (`text-[#003DA5]`, `bg-[#003DA5]`) porque él mismo las
+   usa; faltan las que solo aparecen al pasar el ratón o al enfocar. */
+.border-\[\#003DA5\]\/30            { border-color: rgb(0 61 165 / .3); }
+.hover\:border-\[\#003DA5\]\/30:hover { border-color: rgb(0 61 165 / .3); }
+.hover\:border-\[\#003DA5\]\/40:hover { border-color: rgb(0 61 165 / .4); }
+.hover\:border-\[\#003DA5\]:hover     { border-color: rgb(0 61 165); }
+.hover\:text-\[\#003DA5\]:hover       { color: rgb(0 61 165); }
+.focus\:border-\[\#003DA5\]:focus     { border-color: rgb(0 61 165); }
+.hover\:bg-\[\#002e7d\]:hover         { background-color: rgb(0 46 125); }
+.hover\:bg-\[\#E0EDFF\]:hover         { background-color: rgb(224 237 255); }
+
+/* Solo el color: el grosor del anillo lo pone `ring-2`, que sí existe. */
+.focus\:ring-\[\#003DA5\]\/15:focus                 { --tw-ring-color: rgb(0 61 165 / .15); }
+.focus\:ring-\[\#003DA5\]\/20:focus                 { --tw-ring-color: rgb(0 61 165 / .2); }
+.focus\:ring-\[\#003DA5\]\/30:focus                 { --tw-ring-color: rgb(0 61 165 / .3); }
+.focus-visible\:ring-\[\#003DA5\]\/40:focus-visible { --tw-ring-color: rgb(0 61 165 / .4); }
