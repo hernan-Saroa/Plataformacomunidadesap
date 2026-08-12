@@ -4021,20 +4021,20 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               animate={{ opacity: 1, y: 0 }}
               style={{
                 padding: '12px 16px', borderRadius: 12, marginBottom: 12,
-                background: 'linear-gradient(135deg, #065F46 0%, #047857 100%)',
-                color: 'white', boxShadow: '0 4px 16px rgba(5,95,70,0.3)',
+                background: 'white', border: '1px solid #E5E7EB',
+                boxShadow: '0 1px 4px rgba(15,23,42,0.06)',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <CheckCircle style={{ width: 16, height: 16 }} />
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle style={{ width: 16, height: 16, color: '#374151' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>
                       Aprobar componentes de {selectedIds.size} PTA{selectedIds.size > 1 ? 's' : ''}
                     </div>
-                    <div style={{ fontSize: '0.65rem', opacity: 0.85 }}>
+                    <div style={{ fontSize: '0.65rem', color: '#6B7280' }}>
                       Cada botón aprueba solo el componente correspondiente a su permiso, en los PTAs seleccionados que lo tengan pendiente
                     </div>
                   </div>
@@ -4047,10 +4047,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                         key={group.key}
                         onClick={() => { setBulkComponentGroupKey(group.key); setBulkComponentComentarios(''); }}
                         style={{
-                          padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.4)',
-                          background: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '0.78rem', fontWeight: 600,
+                          padding: '7px 14px', borderRadius: 8, border: `1px solid ${group.color}33`,
+                          background: group.colorBg, color: group.color, fontSize: '0.78rem', fontWeight: 700,
                           cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                          backdropFilter: 'blur(4px)', transition: 'all 0.15s',
+                          transition: 'all 0.15s',
                         }}
                       >
                         <Icon style={{ width: 12, height: 12 }} /> {group.label}
@@ -4458,11 +4458,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   };
                   const activeCols = ALL_COLUMNS.filter(c => effectiveCols.has(c.key));
                   const gridCols = [
+                    '32px', // selección (checkbox)
                     ...activeCols.map(c => colSizes[c.key] || '100px'),
                     'minmax(60px, 0.5fr)', // acciones
                   ].join(' ');
-                  const minW = activeCols.reduce((sum, col) => sum + (colMinWidths[col.key] || 100), 72) + (activeCols.length * 16);
+                  const minW = activeCols.reduce((sum, col) => sum + (colMinWidths[col.key] || 100), 72 + 32) + (activeCols.length * 16);
                   const tableMinWidth = `max(${minW}px, 100%)`;
+                  const seleccionablesPagina = paginated.filter((p: any) => isEstadoPendienteAprobacion(p.estado));
+                  const todosSeleccionadosEnPagina = seleccionablesPagina.length > 0
+                    && seleccionablesPagina.every((p: any) => selectedIds.has(p.id));
 
                   return (
                   <div ref={tableContainerRef} style={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
@@ -4479,6 +4483,27 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       position: 'sticky', top: 0, zIndex: 5,
                     }}>
 
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title={seleccionablesPagina.length === 0 ? 'No hay PTAs pendientes en esta página' : (todosSeleccionadosEnPagina ? 'Deseleccionar todos en esta página' : 'Seleccionar todos los pendientes de esta página')}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={seleccionablesPagina.length === 0}
+                          checked={todosSeleccionadosEnPagina}
+                          onChange={() => {
+                            const next = new Set(selectedIds);
+                            if (todosSeleccionadosEnPagina) {
+                              seleccionablesPagina.forEach((p: any) => next.delete(p.id));
+                            } else {
+                              seleccionablesPagina.forEach((p: any) => next.add(p.id));
+                            }
+                            setSelectedIds(next);
+                          }}
+                          style={{ width: 15, height: 15, cursor: seleccionablesPagina.length === 0 ? 'default' : 'pointer', accentColor: '#003DA5' }}
+                        />
+                      </span>
                       {effectiveCols.has('docente') && <SortableHeader label="Docente" field="docente_nombre" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('estado') && <SortableHeader label="Estado" field="estado" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />}
                       {effectiveCols.has('aging') && <span title="Días en estado actual">Días</span>}
@@ -4625,6 +4650,24 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           }}
                         >
 
+                          {/* Selección para acciones en lote */}
+                          <span
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={!isPendiente}
+                              checked={isSelected}
+                              onChange={() => {}}
+                              onClick={(e: React.MouseEvent<HTMLInputElement>) => {
+                                handleRowSelect(pta.id, idx, e.shiftKey, paginated);
+                                lastClickedIdx.current = idx;
+                              }}
+                              title={!isPendiente ? 'Solo se pueden seleccionar PTAs pendientes' : 'Seleccionar (Shift+clic para seleccionar un rango)'}
+                              style={{ width: 15, height: 15, cursor: isPendiente ? 'pointer' : 'default', accentColor: '#003DA5' }}
+                            />
+                          </span>
 
                           {/* Docente */}
                           {effectiveCols.has('docente') && (
@@ -4731,9 +4774,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 lineHeight: 1.15, textAlign: 'center',
                                 cursor: canShowComponentPopover ? 'pointer' : 'default',
                               }}
-                              onClick={() => {
+                              onClick={(e) => {
                                 if (canShowComponentPopover) {
-                                  setInlineStatusPtaId(inlineStatusPtaId === pta.id ? null : pta.id);
+                                  if (inlineStatusPtaId === pta.id) {
+                                    setInlineStatusPtaId(null);
+                                  } else {
+                                    openPopoverAt(e.currentTarget, 270, 280);
+                                    setInlineStatusPtaId(pta.id);
+                                    setShowMoreMenuPtaId(null);
+                                  }
                                 }
                               }}
                               title={canShowComponentPopover ? `Ver componentes: ${badgeTitle}` : badgeTitle}
@@ -4743,15 +4792,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 <Layers style={{ width: 8, height: 8, flexShrink: 0 }} />
                               )}
                             </span>
-                            {inlineStatusPtaId === pta.id && (
+                            {inlineStatusPtaId === pta.id && createPortal(
                               <>
                                 <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setInlineStatusPtaId(null)} />
                                 <div style={{
-                                  position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 9999,
+                                  position: 'fixed', ...(popoverPos.openUp ? { bottom: popoverPos.bottom } : { top: popoverPos.top }), right: popoverPos.right, zIndex: 9999,
                                   background: 'white', borderRadius: 8, border: '1px solid #E5E7EB',
-                                  boxShadow: '0 8px 20px rgba(0,0,0,0.12)', width: 'min(280px, calc(100vw - 32px))',
-                                  maxWidth: 280, padding: 10, overflow: 'hidden',
-                                }}>
+                                  boxShadow: popoverPos.openUp ? '0 -8px 20px rgba(0,0,0,0.12)' : '0 8px 20px rgba(0,0,0,0.12)',
+                                  width: 'min(280px, calc(100vw - 16px))', maxWidth: 280,
+                                  maxHeight: popoverPos.maxH, padding: 10, overflowY: 'auto', overflowX: 'hidden',
+                                }} onClick={e => e.stopPropagation()}>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingBottom: 7, borderBottom: '1px solid #F3F4F6' }}>
                                     <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Componentes</span>
                                     <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '2px 7px', whiteSpace: 'nowrap' }}>
@@ -4822,7 +4872,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                     </div>
                                   )}
                                 </div>
-                              </>
+                              </>,
+                              document.body
                             )}
                           </div>
                           )}

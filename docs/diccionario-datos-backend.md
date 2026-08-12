@@ -133,16 +133,16 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `ceremony_date` | `ceremonyDate` | date | No |  | Sí | No |  |  |
 | `degree_title` | `degreeTitle` | varchar (length 255) | No |  | No | No |  |  |
 | `diploma_number` | `diplomaNumber` | varchar (length 100) | No |  | Sí | Sí |  |  |
-| `acta_number` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  |  |
+| `registry_reference` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP para la referencia registro/folio/libro. |
 | `resolution_number` | `resolutionNumber` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_acta` | `numActa` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_folio` | `numFolio` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_libro` | `numLibro` | varchar (length 100) | No |  | Sí | No |  |  |
-| `num_registro` | `numRegistro` | varchar (length 100) | No |  | Sí | No |  |  |
+| `graduation_record_number` | `numActa` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
+| `folio_number` | `numFolio` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
+| `book_number` | `numLibro` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
+| `registry_number` | `numRegistro` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP/Oracle. |
 | `status` | `status` | varchar (length 50) | No |  | No | No | ACTIVE |  |
 | `is_verified` | `isVerified` | boolean | No |  | No | No | true |  |
 | `campus` | `campus` | varchar (length 100) | No |  | Sí | No |  |  |
-| `seccional_name` | `seccionalName` | varchar (length 255) | No |  | Sí | No |  |  |
+| `regional_office_name` | `seccionalName` | varchar (length 255) | No |  | Sí | No |  | Alias de compatibilidad HTTP. |
 | `created_at` | `createdAt` | timestamp | No |  | No | No |  | Fecha de creación automática |
 | `updated_at` | `updatedAt` | timestamp | No |  | No | No |  | Fecha de actualización automática |
 | `created_by` | `createdBy` | varchar (length 255) | No |  | Sí | No |  |  |
@@ -176,7 +176,7 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `requester_email` | `requesterEmail` | varchar (length 255) | No |  | No | No |  |  |
 | `requester_phone` | `requesterPhone` | varchar (length 50) | No |  | Sí | No |  |  |
 | `company_name` | `companyName` | varchar (length 255) | No |  | Sí | No |  |  |
-| `company_nit` | `companyNit` | varchar (length 50) | No |  | Sí | No |  |  |
+| `company_tax_id` | `companyNit` | varchar (length 50) | No |  | Sí | No |  | Alias de compatibilidad para el NIT colombiano. |
 | `contact_person` | `contactPerson` | varchar (length 255) | No |  | Sí | No |  |  |
 | `certificate_type` | `certificateType` | varchar (length 50) | No |  | No | No | STANDARD |  |
 | `validation_code` | `validationCode` | varchar (length 10) | No |  | Sí | No |  |  |
@@ -239,9 +239,9 @@ MER relacionado: [academic_registration](<mer/06-may-2026/esap_db - academic_reg
 | `degree_title` | `degreeTitle` | varchar (length 255) | No |  | No | No |  |  |
 | `graduation_date` | `graduationDate` | date | No |  | No | No |  |  |
 | `diploma_number` | `diplomaNumber` | varchar (length 100) | No |  | Sí | No |  |  |
-| `acta_number` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  |  |
+| `registry_reference` | `actaNumber` | varchar (length 100) | No |  | Sí | No |  | Alias de compatibilidad HTTP para la referencia registro/folio/libro. |
 | `campus` | `campus` | varchar (length 100) | No |  | Sí | No |  |  |
-| `seccional_name` | `seccionalName` | varchar (length 150) | No |  | Sí | No |  |  |
+| `regional_office_name` | `seccionalName` | varchar (length 150) | No |  | Sí | No |  | Alias de compatibilidad HTTP. |
 | `signer_name` | `signerName` | varchar (length 255) | No |  | No | No |  |  |
 | `signer_position` | `signerPosition` | varchar (length 255) | No |  | No | No |  |  |
 | `signature_url` | `signatureUrl` | text | No |  | Sí | No |  |  |
