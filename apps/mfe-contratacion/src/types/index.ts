@@ -164,6 +164,103 @@ export interface PlazosPublicacion {
   modalidades: ModalidadConPlazo[];
 }
 
+/** Observación de un interesado al proyecto de pliego publicado (EFDS-1151). */
+export interface ObservacionPliego {
+  id: string;
+  presentadoPor: string;
+  /** Opcional: una observación anónima igual hay que responderla. */
+  identificacion: string | null;
+  /** Fecha en que se presentó, no la del registro. */
+  fechaPresentacion: string;
+  asunto: string;
+  contenido: string;
+  /** Congelado al registrar: llegó después de vencido el plazo de publicidad. */
+  fueraDeTermino: boolean;
+  documentoId: string | null;
+  registradoPor: string | null;
+  respuesta: string | null;
+  respondidaPor: string | null;
+  respondidaAt: string | null;
+  /** Si la observación llevó a modificar el pliego. Null mientras no se responda. */
+  modificoPliego: boolean | null;
+}
+
+export interface EstadoObservaciones {
+  /** False en las modalidades sin etapa de observaciones al proyecto de pliego. */
+  aplica: boolean;
+  /** Sin pliego publicado no hay sobre qué observar. */
+  publicado: boolean;
+  observaciones: ObservacionPliego[];
+  resumen: { total: number; pendientes: number; fueraDeTermino: number };
+  plazoVencido: boolean;
+  /** La actividad 5.3 ya está dada por cumplida. */
+  cumplida: boolean;
+  /** Solo con el plazo vencido y sin ninguna observación recibida. */
+  puedeCerrarse: boolean;
+  /** Lo resuelve el backend con los roles del token, no el cliente. */
+  puedeGestionar: boolean;
+}
+
+/** Manifestación de interés de una MIPYME en participar (EFDS-1151). */
+export interface ManifestacionMipyme {
+  id: string;
+  nombre: string;
+  identificacion: string;
+  fechaPresentacion: string;
+  documentoId: string | null;
+  registradoPor: string | null;
+}
+
+/**
+ * Una de las dos condiciones que habilitan la limitación.
+ *
+ * `cumple: null` es "no se pudo evaluar", que no es lo mismo que "no cumple":
+ * no saber cuánto vale el proceso y saber que excede el tope llevan a
+ * decisiones distintas.
+ */
+export interface CondicionMipyme {
+  cumple: boolean | null;
+  detalle: string;
+}
+
+export interface CondicionesMipyme {
+  valor: CondicionMipyme;
+  manifestaciones: CondicionMipyme;
+  /** Solo true si ambas se pudieron evaluar y ambas se cumplen. */
+  cumplidas: boolean;
+  topeEnPesos: number | null;
+}
+
+/** Lo que la entidad resolvió, con las condiciones del día congeladas. */
+export interface DecisionMipyme {
+  id: string;
+  limitado: boolean;
+  condicionesCumplidas: boolean;
+  manifestacionesContadas: number;
+  valorProceso: number | null;
+  topeValorAplicado: number | null;
+  unidadTopeAplicada: string | null;
+  minimoManifestaciones: number | null;
+  /** Obligatorio cuando la decisión se aparta del cálculo. */
+  motivo: string | null;
+  documentoId: string | null;
+  decididoPor: string | null;
+  decididoAt: string;
+}
+
+export interface EstadoMipyme {
+  /** False en las modalidades que no admiten limitar la convocatoria. */
+  aplica: boolean;
+  manifestaciones: ManifestacionMipyme[];
+  /** Null cuando la modalidad no aplica: no hay nada que evaluar. */
+  condiciones: CondicionesMipyme | null;
+  decision: DecisionMipyme | null;
+  /** Por qué el cálculo mostrado puede no ser de fiar. */
+  advertencia: string | null;
+  /** Lo resuelve el backend con los roles del token, no el cliente. */
+  puedeGestionar: boolean;
+}
+
 /** Actividad de la matriz, con el estado que lleva en este proceso. */
 export interface ActividadProceso {
   numeral: string;

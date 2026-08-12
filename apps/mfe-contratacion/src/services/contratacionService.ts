@@ -4,6 +4,8 @@ import {
   CamposFaltantesError,
   Cdp,
   ConflictoError,
+  EstadoMipyme,
+  EstadoObservaciones,
   EstadoPublicacion,
   EstadoRespaldo,
   EstudioPrevio,
@@ -162,6 +164,111 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
+
+  // ------------------------------- etapa 5 · observaciones al pliego (5.3) ---
+
+  /** Observaciones del proceso con el resumen que decide si la actividad cumple. */
+  observaciones: (procesoId: string) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`),
+
+  /**
+   * Registra una observación recibida, con su soporte si lo hubo.
+   *
+   * El soporte es opcional, a diferencia de la evidencia de la publicación: una
+   * observación pudo llegar por un canal que no deja documento, y exigirlo
+   * obligaría a inventarse un archivo o a no registrarla.
+   *
+   * La fecha es la de presentación, no la del registro: es la que decide si
+   * llegó dentro del plazo de publicidad.
+   */
+  registrarObservacion: (
+    procesoId: string,
+    datos: {
+      presentadoPor: string;
+      identificacion?: string;
+      fechaPresentacion: string;
+      asunto: string;
+      contenido: string;
+    },
+    soporte: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('presentadoPor', datos.presentadoPor);
+    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+    cuerpo.append('asunto', datos.asunto);
+    cuerpo.append('contenido', datos.contenido);
+
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** La respuesta cierra la observación; no se reescribe después. */
+  responderObservacion: (
+    procesoId: string,
+    observacionId: string,
+    datos: { respuesta: string; modificoPliego: boolean },
+  ) =>
+    pedir<EstadoObservaciones>(
+      `/procesos/${procesoId}/observaciones/${observacionId}/responder`,
+      { method: 'POST', body: JSON.stringify(datos) },
+    ),
+
+  /** Da por cumplida la actividad cuando venció el plazo y no llegó ninguna. */
+  cerrarSinObservaciones: (procesoId: string) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/cerrar`, {
+      method: 'POST',
+      body: '{}',
+    }),
+
+  // ---------------------------------- etapa 5 · limitación a MIPYME (5.4) ---
+
+  /** Manifestaciones, condiciones evaluadas y decisión, si ya se tomó. */
+  mipyme: (procesoId: string) => pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme`),
+
+  /** Una MIPYME manifestó interés. De cuántas lo hagan depende la decisión. */
+  registrarManifestacionMipyme: (
+    procesoId: string,
+    datos: { nombre: string; identificacion: string; fechaPresentacion: string },
+    soporte: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('nombre', datos.nombre);
+    cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+
+    return pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme/manifestaciones`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Registra la decisión sobre la limitación.
+   *
+   * El motivo lo exige el backend cuando la decisión se aparta del cálculo, y
+   * el acto administrativo cuando se limita: limitar restringe quién puede
+   * presentarse a un proceso público.
+   */
+  decidirMipyme: (
+    procesoId: string,
+    datos: { limitado: boolean; motivo?: string },
+    acto: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (acto) cuerpo.append('file', acto);
+    cuerpo.append('limitado', String(datos.limitado));
+    if (datos.motivo) cuerpo.append('motivo', datos.motivo);
+
+    return pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme/decision`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
 
   // -------------------------------- administración de plazos de publicidad ---
 

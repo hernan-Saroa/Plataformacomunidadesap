@@ -23,26 +23,11 @@ import {
   SinPermiso,
   Titulo,
 } from '../shared/PiezasPanel';
+import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
-}
-
-/**
- * Fecha `YYYY-MM-DD` en texto legible.
- *
- * Se formatea en UTC a propósito: `new Date('2026-09-21')` se interpreta como
- * medianoche UTC, y mostrarla en la zona de Bogotá la correría al día anterior.
- * En un plazo legal, un día de diferencia es el error que importa.
- */
-function fechaLarga(ymd: string): string {
-  return new Date(`${ymd}T00:00:00Z`).toLocaleDateString('es-CO', {
-    timeZone: 'UTC',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
 }
 
 function plural(n: number): string {
@@ -92,9 +77,7 @@ export function PanelPublicacionPliego({ procesoId, onCambio }: Props) {
   const [cargando, setCargando] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
 
-  const [fecha, setFecha] = useState(() =>
-    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }),
-  );
+  const [fecha, setFecha] = useState(hoyEnBogota);
   const [numero, setNumero] = useState('');
   const [enlace, setEnlace] = useState('');
   const [motivo, setMotivo] = useState('');

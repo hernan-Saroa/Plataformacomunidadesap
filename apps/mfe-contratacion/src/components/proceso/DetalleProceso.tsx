@@ -10,12 +10,21 @@ import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
 import { PanelCdp } from '../cdp/PanelCdp';
 import { PanelPublicacionPliego } from '../publicacion/PanelPublicacionPliego';
+import { PanelObservaciones } from '../observaciones/PanelObservaciones';
+import { PanelMipyme } from '../mipyme/PanelMipyme';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
 
 /** Publicación del proyecto de pliego, primera actividad viva de la etapa 5. */
 const NUMERAL_PUBLICACION = '5.2';
+/** Observaciones al pliego (EFDS-1151), sobre la publicación ya registrada. */
+const NUMERAL_OBSERVACIONES = '5.3';
+/** Limitación de la convocatoria a MIPYME (EFDS-1151). */
+const NUMERAL_MIPYME = '5.4';
+
+/** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
+const NUMERALES_ETAPA_5 = [NUMERAL_PUBLICACION, NUMERAL_OBSERVACIONES, NUMERAL_MIPYME];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -169,10 +178,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           adjuntos,
         };
       }
-      // Las actividades del CDP se trabajan aquí desde EFDS-1148, y la
-      // publicación del pliego desde EFDS-1150. Se tratan igual: el riel las
+      // Las actividades del CDP se trabajan aquí desde EFDS-1148, la
+      // publicación del pliego desde EFDS-1150 y las observaciones y la
+      // limitación a MIPYME desde EFDS-1151. Se tratan igual: el riel las
       // habilita cuando la matriz las marca aplicables a la modalidad.
-      if (NUMERALES_CDP.includes(act.numeral) || act.numeral === NUMERAL_PUBLICACION) {
+      if (NUMERALES_CDP.includes(act.numeral) || NUMERALES_ETAPA_5.includes(act.numeral)) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
         // se hacía— una actividad que la modalidad excluye se veía igual que
@@ -288,6 +298,20 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelPublicacionPliego
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_OBSERVACIONES ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelObservaciones
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_MIPYME ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelMipyme
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
