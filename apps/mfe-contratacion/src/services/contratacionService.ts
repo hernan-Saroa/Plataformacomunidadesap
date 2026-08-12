@@ -3,6 +3,7 @@ import {
   ActividadProceso,
   CamposFaltantesError,
   EstadoApertura,
+  EstadoAudienciaRiesgos,
   Cdp,
   CondicionesMipymeConfig,
   ConflictoError,
@@ -125,6 +126,43 @@ export const contratacionService = {
     cuerpo.append('file', archivo);
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
+
+  // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
+
+  /** Estado de la audiencia: si aplica, si es obligatoria y si ya se celebró. */
+  audienciaRiesgos: (procesoId: string) =>
+    pedir<EstadoAudienciaRiesgos>(`/procesos/${procesoId}/audiencia-riesgos`),
+
+  /**
+   * Registra la audiencia celebrada con su acta y su matriz consolidada.
+   *
+   * Los dos documentos van juntos porque la actividad exige la audiencia y la
+   * consolidación de su resultado: un acta sin matriz la dejaría a medias.
+   */
+  registrarAudienciaRiesgos: (
+    procesoId: string,
+    datos: { fechaCelebracion: string; observaciones?: string },
+    acta: File,
+    matriz: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('acta', acta);
+    cuerpo.append('matriz', matriz);
+    cuerpo.append('fechaCelebracion', datos.fechaCelebracion);
+    if (datos.observaciones) cuerpo.append('observaciones', datos.observaciones);
+
+    return pedir<EstadoAudienciaRiesgos>(`/procesos/${procesoId}/audiencia-riesgos`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula la audiencia para corregirla; donde es obligatoria vuelve a bloquear. */
+  anularAudienciaRiesgos: (procesoId: string, motivo: string) =>
+    pedir<EstadoAudienciaRiesgos>(`/procesos/${procesoId}/audiencia-riesgos/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
 
   // ------------------------------ etapa 5 · apertura del proceso (5.7) ------
 

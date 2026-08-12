@@ -437,6 +437,33 @@ export interface DocumentoRequerido {
   } | null;
 }
 
+/** Audiencia de asignación de riesgos celebrada (actividad 5.5, EFDS-1153). */
+export interface AudienciaRiesgos {
+  id: string;
+  fechaCelebracion: string;
+  observaciones: string | null;
+  registradoPor: string | null;
+  registradoAt: string;
+  acta: ArchivoApertura | null;
+  matriz: ArchivoApertura | null;
+}
+
+/** Estado de la audiencia de riesgos del proceso. */
+export interface EstadoAudienciaRiesgos {
+  /** False donde la modalidad no adelanta audiencia. */
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  /** Sin ella el proceso no puede abrirse; distinto de que simplemente aplique. */
+  obligatoria: boolean;
+  fundamento: string | null;
+  /** False mientras Contratación no ratifique la regla de obligatoriedad. */
+  confirmado: boolean;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  celebrada: boolean;
+  audiencia: AudienciaRiesgos | null;
+}
+
 /** Uno de los documentos que quedaron en el expediente con la apertura. */
 export interface ArchivoApertura {
   nombre: string;
