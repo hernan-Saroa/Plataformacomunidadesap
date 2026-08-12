@@ -881,6 +881,16 @@ export class PtaController {
     return { success: true, data };
   }
 
+  // Desagregado por territorial del componente "academica_territorial": cuando el
+  // PTA tiene asignaturas de 2+ Direcciones Territoriales distintas (ej. Antioquia
+  // y Bolívar), cada una se aprueba/devuelve por separado. Devuelve [] cuando el PTA
+  // no tiene asignaturas territoriales.
+  @Get(':ptaId/aprobacion-territorial')
+  async getAprobacionTerritorial(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getTerritorialApprovalStatus(ptaId);
+    return { success: true, data };
+  }
+
   @Post(':ptaId/aprobar-componente')
   @UseGuards(PtaAuthGuard)
   async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {

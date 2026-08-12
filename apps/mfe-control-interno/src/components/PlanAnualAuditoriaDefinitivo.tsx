@@ -771,7 +771,9 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
       let tipoEvidenciaConfig: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO' | undefined;
       
       if (configuracionRol) {
-        const actividadConfig = configuracionRol.actividadesSeleccionadas?.find((a: any) => a.nombre === act.nombre);
+        const actividadConfig = configuracionRol.actividadesSeleccionadas?.find(
+          (a: any) => a.nombre === act.nombre || (a.nombreOriginal && a.nombreOriginal === act.nombre) || (a.nombre && a.nombre.toLowerCase().startsWith(act.nombre.toLowerCase().slice(0, 20)))
+        );
         requiereAutorizacionJefeOCI = !!(
           actividadConfig?.requiereAutorizacionJefeOCI
           || actividadConfig?.requiereVerificacionDirector
@@ -780,7 +782,9 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
       }
 
       // ✅ Responsables específicos de la actividad (del wizard) o del rol como fallback
-      const actividadConfig2 = configuracionRol?.actividadesSeleccionadas?.find((a: any) => a.nombre === act.nombre);
+      const actividadConfig2 = configuracionRol?.actividadesSeleccionadas?.find(
+        (a: any) => a.nombre === act.nombre || (a.nombreOriginal && a.nombreOriginal === act.nombre) || (a.nombre && a.nombre.toLowerCase().startsWith(act.nombre.toLowerCase().slice(0, 20)))
+      );
       const responsablesActividad: any[] = actividadConfig2?.responsables?.length
         ? actividadConfig2.responsables
         : [];

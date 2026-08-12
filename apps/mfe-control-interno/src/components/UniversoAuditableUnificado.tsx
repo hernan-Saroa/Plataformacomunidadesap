@@ -203,7 +203,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       // ✅ Calcular horas estimadas desde evaluación o nivel de riesgo
       const horasEst = ev.horasEstimadas ?? calcHorasEstimadas(ev.nivelCriticidadDafp, ev.cicloRotacionDafp);
       const auditableCalculado =
-        ev.auditableCalculado ?? calcularAuditableDesdeCiclo(ev.cicloRotacionDafp);
+        ev.auditableCalculado ?? calcularAuditableDesdeCiclo(ev.cicloRotacionDafp, ev.priorizacionAnos);
       const auditableManual = ev.auditableManual ?? null;
       const auditable = resolverAuditableEfectivo(auditableCalculado, auditableManual);
 
@@ -386,7 +386,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       ponderacionFinalDafp: Number(ponderacionFinalDafp),
       nivelCriticidadDafp: nivelCriticidadDafp,
       cicloRotacionDafp: cicloRotacionDafp || 'No auditar',
-      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp || 'No auditar'),
+      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp || 'No auditar', datos.priorizacionAnos),
       decisionFinal: datos.decisionFinal || 'INCLUIR_AUDITORIA_POSTERIOR',
       motivoDecision: datos.motivoDecision || '',
       prioridadRegla: Number(datos.prioridadRegla) || 5,
@@ -452,7 +452,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       ponderacionFinalDafp: ponderacionFinalDafp,
       nivelCriticidadDafp: nivelCriticidadDafp,
       cicloRotacionDafp: cicloRotacionDafp,
-      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp),
+      auditableCalculado: calcularAuditableDesdeCiclo(cicloRotacionDafp, datos.priorizacionAnos),
       decisionFinal: datos.decisionFinal,
       motivoDecision: datos.motivoDecision,
       prioridadRegla: datos.prioridadRegla,

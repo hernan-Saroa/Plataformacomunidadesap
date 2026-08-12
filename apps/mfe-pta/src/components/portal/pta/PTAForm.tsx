@@ -33,6 +33,7 @@ import { getPerfilPortal } from '../portalApi';
 import { getBancoDocenteById } from '../../../services/api/ptaApi';
 import { toast as systemToast } from 'sonner';
 import { docentePtaAlert } from './DocentePtaAlert';
+import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { FirmaElectronicaModal } from './FirmaElectronicaModal';
 import { FirmaDigitalPTA, type FirmaData } from '../../pta/FirmaDigitalPTA';
@@ -2114,6 +2115,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [extActividades, setExtActividades] = useState<ExtensionActividad[]>([]);
   const [complementarias, setComplementarias] = useState<ComplementariaItem[]>([]);
   const [academicoAdmin, setAcademicoAdmin] = useState<ComplementariaItem[]>([]);
+  const [pendingDeleteAction, setPendingDeleteAction] = useState<{ message: string; action: () => void } | null>(null);
+  const requestDelete = (message: string, action: () => void) => setPendingDeleteAction({ message, action });
 
   const [activeSection, setActiveSection] = useState<'docencia' | 'investigacion' | 'extension' | 'complementarias'>('docencia');
   const [extSubseccion, setExtSubseccion] = useState('capacitacion');
@@ -4665,19 +4668,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     return true;
   }, [asignaturas, defaultTerritorial]);
 
-  const validarComposicionParaEnvio = useCallback(() => {
-    const tieneTotalidad = hasFullPTAActivity;
-    if (tieneTotalidad) return true;
-
-    if (hComplementarias <= 0) {
-      toast.error('El PTA debe incluir actividades complementarias a la docencia antes de enviarse.');
-      setActiveSection('complementarias');
-      return false;
-    }
-
-    return true;
-  }, [hasFullPTAActivity, hComplementarias]);
-
   const finishSaving = (result: boolean) => {
     setSaving(false);
     savingRef.current = false;
@@ -4706,10 +4696,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     // Validación: al menos una asignatura con mínimo 3 créditos
     if (enviar && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
-      return finishSaving(false);
-    }
-
-    if (enviar && !validarComposicionParaEnvio()) {
       return finishSaving(false);
     }
 
@@ -5046,9 +5032,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         return false;
       }
     }
-    if (!validarComposicionParaEnvio()) {
-      return false;
-    }
     // Bloqueo por topes individuales y por la suma global de los componentes.
     if (hasBlockingHourLimits) {
       const firstViolation = componentLimitViolations[0];
@@ -5099,7 +5082,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     setConfirmResumenData({ totalHoras, horasRequeridas: horasAProgramar, porcentaje });
     setShowConfirmResumen(true);
     return false; // El resumen se muestra siempre antes de solicitar la firma del docente.
-  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validarComposicionParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
+  }, [hasFullPTAActivity, asignaturas, tipoVinculacion, horasAProgramar, totalHoras, porcentaje, hasBlockingHourLimits, componentLimitViolations, docenciaBlockingOverlapWarnings, docenciaAdvisoryOverlapWarnings, invWarnings, extWarnings, firstExtensionWarningSection, compWarnings, acadWarnings, validarAsignaturasParaEnvio, validateRequiredFieldsForSubmission, isComponentRestricted, canEditFormSection, esDevolucionComponentes, respuestasDevolucionCompletas]);
 
   const getFirmaEtapaLabel = useCallback(() => {
     if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
@@ -6197,7 +6180,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               {rowEditable && (
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveAsig(asig.id)}
+                                  onClick={() => requestDelete('¿Está seguro de que desea eliminar esta asignatura? Esta acción no se puede deshacer.', () => handleRemoveAsig(asig.id))}
                                   title="Eliminar Asignatura"
                                   aria-label={`Eliminar Asignatura ${idx + 1}`}
                                   className="w-8 h-8 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:text-red-700 hover:bg-red-100 hover:border-red-300 hover:shadow-md active:scale-95 transition-all outline-none focus:ring-2 focus:ring-red-500/40 focus:ring-offset-1"
@@ -6771,7 +6754,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           <div key={act.id} className={repeatedEntryCardClass(idx, 'investigacion')}>
                             <RepeatedEntryHeader index={idx} label="Actividad de investigación" color={PTA_COLORS.INVESTIGACION} />
                             {isEditable && (
-                              <button type="button" onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
+                              <button type="button" onClick={() => requestDelete('¿Está seguro de que desea eliminar esta actividad de investigación? Esta acción no se puede deshacer.', () => setInvActividades(prev => prev.filter(a => a.id !== act.id)))}
                                 title={`Eliminar Actividad ${idx + 1}`}
                                 aria-label={`Eliminar Actividad ${idx + 1}`}
                                 className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
@@ -6935,7 +6918,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                           <div key={act.id} className={repeatedEntryCardClass(idx, 'investigacion')}>
                             <RepeatedEntryHeader index={idx} label="Actividad de investigación" color={PTA_COLORS.INVESTIGACION} />
                             {isEditable && (
-                              <button type="button" onClick={() => setInvActividades(prev => prev.filter(a => a.id !== act.id))}
+                              <button type="button" onClick={() => requestDelete('¿Está seguro de que desea eliminar esta actividad de investigación? Esta acción no se puede deshacer.', () => setInvActividades(prev => prev.filter(a => a.id !== act.id)))}
                                 title="Eliminar Actividad de Investigación"
                                 aria-label="Eliminar Actividad de Investigación"
                                 className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40 text-xs">
@@ -7171,7 +7154,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               color={sectionConfig?.color || PTA_COLORS.EXTENSION}
                             />
                             {isEditable && (
-                              <button type="button" onClick={() => setExtActividades(prev => prev.filter(e => e.id !== ext.id))}
+                              <button type="button" onClick={() => requestDelete('¿Está seguro de que desea eliminar esta actividad de extensión? Esta acción no se puede deshacer.', () => setExtActividades(prev => prev.filter(e => e.id !== ext.id)))}
                                 title="Eliminar Actividad de Extensión"
                                 aria-label="Eliminar Actividad de Extensión"
                                 className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
@@ -7465,7 +7448,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               </span>
                             )}
                             {compRowEditable && (
-                              <button type="button" onClick={() => setComplementarias(prev => prev.filter(c => c.id !== comp.id))}
+                              <button type="button" onClick={() => requestDelete('¿Está seguro de que desea eliminar esta actividad complementaria? Esta acción no se puede deshacer.', () => setComplementarias(prev => prev.filter(c => c.id !== comp.id)))}
                                 title="Eliminar Actividad Complementaria"
                                 aria-label="Eliminar Actividad Complementaria"
                                 className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
@@ -7700,7 +7683,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                               </span>
                             )}
                             {acadRowEditable && (
-                              <button type="button" onClick={() => setAcademicoAdmin(prev => prev.filter(c => c.id !== comp.id))}
+                              <button type="button" onClick={() => requestDelete('¿Está seguro de que desea eliminar esta actividad académico-administrativa? Esta acción no se puede deshacer.', () => setAcademicoAdmin(prev => prev.filter(c => c.id !== comp.id)))}
                                 title="Eliminar Actividad Académico-Administrativa"
                                 aria-label="Eliminar Actividad Académico-Administrativa"
                                 className="absolute top-2 right-2 w-7 h-7 rounded-lg border border-red-200 bg-red-50 text-red-500 shadow-sm cursor-pointer flex items-center justify-center hover:bg-red-100 hover:border-red-300 hover:text-red-700 hover:shadow-md active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/40">
@@ -7981,6 +7964,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={!!pendingDeleteAction}
+        title="Eliminar componente"
+        message={pendingDeleteAction?.message ?? ''}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        type="danger"
+        onConfirm={() => pendingDeleteAction?.action()}
+        onCancel={() => setPendingDeleteAction(null)}
+      />
     </div>
   );
 }
