@@ -14,6 +14,7 @@ import { MipymeModule } from './modules/mipyme/mipyme.module';
 import { DocumentosModule } from './modules/documentos/documentos.module';
 import { AperturaModule } from './modules/apertura/apertura.module';
 import { RiesgosModule } from './modules/riesgos/riesgos.module';
+import { AdendasModule } from './modules/adendas/adendas.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -79,6 +80,7 @@ import { Adenda } from './entities/adenda.entity';
     DocumentosModule,
     AperturaModule,
     RiesgosModule,
+    AdendasModule,
   ],
   controllers: [HealthController],
   providers: [
