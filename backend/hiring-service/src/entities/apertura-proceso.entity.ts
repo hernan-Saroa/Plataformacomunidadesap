@@ -29,6 +29,16 @@ export class AperturaProceso {
   @Column({ name: 'pliego_documento_id' })
   pliegoDocumentoId: string;
 
+  /**
+   * Soporte de que el pliego definitivo se publicó.
+   *
+   * Va aparte del pliego: uno es el documento que rige el proceso y el otro la
+   * prueba de que se hizo público. Sin esta distinción, tener el pliego en el
+   * expediente se confundiría con haberlo publicado.
+   */
+  @Column({ name: 'evidencia_documento_id' })
+  evidenciaDocumentoId: string;
+
   @Column({ name: 'secop_url', type: 'text', nullable: true })
   secopUrl: string | null;
 

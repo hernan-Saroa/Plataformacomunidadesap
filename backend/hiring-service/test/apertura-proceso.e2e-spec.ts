@@ -38,12 +38,15 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     roles: ['ESTRUCTURADOR_FINANCIERO'],
   };
 
-  const archivo = (nombre: string) => ({
-    filename: `${nombre}-en-disco.pdf`,
+  const archivo = (nombre: string, mimetype = 'application/pdf') => ({
+    filename: `${nombre}-en-disco`,
     originalname: nombre,
-    mimetype: 'application/pdf',
+    mimetype,
     size: 2048,
   });
+
+  /** La evidencia de la publicación suele ser una captura de SECOP II. */
+  const captura = () => archivo('captura-secop.png', 'image/png');
 
   const datos = {
     resolucionNumero: '0451 de 2026',
@@ -72,6 +75,8 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
       'a'.repeat(64),
       archivo('pliego-definitivo.pdf'),
       'b'.repeat(64),
+      captura(),
+      'e'.repeat(64),
       gestor,
     );
 
@@ -128,7 +133,7 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
       expect(actividad.estado).toBe('APROBADO');
     });
 
-    it('registra los dos documentos: la resolución y el pliego definitivo', async () => {
+    it('registra los tres documentos del acto', async () => {
       const proceso = await crear();
       await expedirCdp(proceso.id);
       await abrir(proceso.id);
@@ -142,9 +147,46 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
       );
 
       expect(documentos.map((d: any) => d.nombre)).toEqual([
+        'Evidencia de la publicación del pliego definitivo',
         'Pliego definitivo',
         'Resolución de apertura',
       ]);
+    });
+
+    it('la evidencia queda enlazada a la apertura y visible en el estado', async () => {
+      // EFDS-1399: el pliego en el expediente prueba que existe; la evidencia
+      // prueba que se publicó. Son dos hechos distintos y se guardan aparte.
+      const proceso = await crear();
+      await expedirCdp(proceso.id);
+      const estado = await abrir(proceso.id);
+
+      expect(estado.apertura?.evidencia?.nombre).toBe('captura-secop.png');
+      expect(estado.apertura?.pliegoDefinitivo?.nombre).toBe('pliego-definitivo.pdf');
+
+      const [fila] = await dataSource.query(
+        `SELECT evidencia_documento_id, pliego_documento_id
+           FROM hiring.aperturas_proceso WHERE proceso_id = $1`,
+        [proceso.id],
+      );
+      expect(fila.evidencia_documento_id).not.toBeNull();
+      expect(fila.evidencia_documento_id).not.toBe(fila.pliego_documento_id);
+    });
+
+    it('admite una captura de pantalla como evidencia', async () => {
+      // Igual que en la 5.2: la prueba de un hecho ocurrido en otra plataforma
+      // suele ser una imagen, y exigir PDF obligaría a convertirla.
+      const proceso = await crear();
+      await expedirCdp(proceso.id);
+      const estado = await abrir(proceso.id);
+
+      const [doc] = await dataSource.query(
+        `SELECT d.archivo_mime_type FROM hiring.documentos d
+           JOIN hiring.aperturas_proceso a ON a.evidencia_documento_id = d.id
+          WHERE a.proceso_id = $1`,
+        [proceso.id],
+      );
+      expect(doc.archivo_mime_type).toBe('image/png');
+      expect(estado.abierta).toBe(true);
     });
 
     it('no deja abrir dos veces el mismo proceso', async () => {
@@ -172,6 +214,8 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
           'c'.repeat(64),
           archivo('p.pdf'),
           'd'.repeat(64),
+          captura(),
+          'f'.repeat(64),
           gestor,
         ),
       ).rejects.toThrow(/no puede ser posterior a hoy/i);

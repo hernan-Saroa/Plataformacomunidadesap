@@ -30,6 +30,7 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
   const [secopUrl, setSecopUrl] = useState('');
   const [resolucion, setResolucion] = useState<File | null>(null);
   const [pliego, setPliego] = useState<File | null>(null);
+  const [evidencia, setEvidencia] = useState<File | null>(null);
 
   const leer = () =>
     contratacionService
@@ -47,7 +48,7 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
   }, [procesoId]);
 
   const registrar = async () => {
-    if (!numero.trim() || !fecha || !resolucion || !pliego) return;
+    if (!numero.trim() || !fecha || !resolucion || !pliego || !evidencia) return;
 
     setGuardando(true);
     try {
@@ -57,6 +58,7 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
           { resolucionNumero: numero.trim(), resolucionFecha: fecha, secopUrl: secopUrl.trim() || undefined },
           resolucion,
           pliego,
+          evidencia,
         ),
       );
       toast.success('Proceso abierto y pliego definitivo registrado');
@@ -112,6 +114,34 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
           expediente.
         </Aviso>
 
+        {/* Los tres documentos que quedaron en el expediente. Se listan aquí y
+            no solo en el expediente porque son los que responden "con qué se
+            abrió", que es lo que se le pregunta a esta actividad. */}
+        <div className="space-y-2">
+          {(
+            [
+              ['Resolución de apertura', estado.apertura.resolucion],
+              ['Pliego definitivo', estado.apertura.pliegoDefinitivo],
+              ['Evidencia de la publicación', estado.apertura.evidencia],
+            ] as const
+          ).map(([etiqueta, archivo]) =>
+            archivo ? (
+              <div
+                key={etiqueta}
+                className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 flex items-start gap-2.5"
+              >
+                <FileText className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[12.5px] font-bold text-slate-800 m-0">{etiqueta}</p>
+                  <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
+                    {archivo.nombre}
+                  </p>
+                </div>
+              </div>
+            ) : null,
+          )}
+        </div>
+
         {enlace ? (
           <a
             href={enlace}
@@ -145,7 +175,7 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
     );
   }
 
-  const listo = !!numero.trim() && !!fecha && !!resolucion && !!pliego;
+  const listo = !!numero.trim() && !!fecha && !!resolucion && !!pliego && !!evidencia;
 
   return (
     <Marco>
@@ -215,6 +245,15 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
         onElegir={setResolucion}
       />
       <SelectorArchivo etiqueta="Pliego definitivo" archivo={pliego} onElegir={setPliego} />
+      {/* Admite imagen, a diferencia de los dos anteriores: la prueba de que el
+          pliego se publicó suele ser una captura de SECOP II. */}
+      <SelectorArchivo
+        etiqueta="Evidencia de la publicación"
+        ayuda="Constancia o captura de SECOP II. Es lo único que prueba que el pliego definitivo se publicó."
+        acepta=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+        archivo={evidencia}
+        onElegir={setEvidencia}
+      />
 
       <Boton
         icono={<Gavel className="w-3.5 h-3.5" />}
@@ -230,10 +269,14 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
 /** Un adjunto obligatorio del registro, con su nombre cuando ya está elegido. */
 function SelectorArchivo({
   etiqueta,
+  ayuda,
+  acepta = '.pdf,.doc,.docx,.xls,.xlsx',
   archivo,
   onElegir,
 }: {
   etiqueta: string;
+  ayuda?: string;
+  acepta?: string;
   archivo: File | null;
   onElegir: (archivo: File) => void;
 }) {
@@ -258,14 +301,14 @@ function SelectorArchivo({
           archivo ? 'text-emerald-900' : 'text-slate-600'
         }`}
       >
-        {archivo ? archivo.name : 'Sin archivo seleccionado.'}
+        {archivo ? archivo.name : (ayuda ?? 'Sin archivo seleccionado.')}
       </p>
 
       <input
         ref={input}
         type="file"
         className="hidden"
-        accept=".pdf,.doc,.docx,.xls,.xlsx"
+        accept={acepta}
         onChange={(e) => {
           const elegido = e.target.files?.[0];
           e.target.value = '';

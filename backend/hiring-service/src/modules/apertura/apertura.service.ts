@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 
 import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
@@ -66,6 +66,27 @@ export class AperturaService {
     const respaldo = await this.cdp.estadoRespaldo(procesoId);
     const documentos = await this.documentos.estado(procesoId);
 
+    // Los tres documentos del acto, para que el panel pueda enseñarlos sin
+    // pedir el expediente entero.
+    const archivos = apertura
+      ? await this.dataSource.getRepository(Documento).find({
+          where: {
+            id: In([
+              apertura.resolucionDocumentoId,
+              apertura.pliegoDocumentoId,
+              apertura.evidenciaDocumentoId,
+            ]),
+          },
+        })
+      : [];
+
+    const archivo = (id: string) => {
+      const doc = archivos.find((d) => d.id === id);
+      return doc
+        ? { nombre: doc.archivoNombreOriginal ?? doc.nombre, url: doc.archivoUrl }
+        : null;
+    };
+
     return {
       aplica: !excluida,
       motivoNoAplica: excluida?.motivo ?? null,
@@ -79,6 +100,9 @@ export class AperturaService {
             secopUrl: apertura.secopUrl,
             abiertoPor: apertura.abiertoPor,
             abiertoAt: apertura.createdAt,
+            resolucion: archivo(apertura.resolucionDocumentoId),
+            pliegoDefinitivo: archivo(apertura.pliegoDocumentoId),
+            evidencia: archivo(apertura.evidenciaDocumentoId),
           }
         : null,
       requisitos: {
@@ -108,6 +132,8 @@ export class AperturaService {
     hashResolucion: string,
     pliego: ArchivoCargado,
     hashPliego: string,
+    evidencia: ArchivoCargado,
+    hashEvidencia: string,
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
@@ -150,6 +176,14 @@ export class AperturaService {
         hashPliego,
         acceso,
       );
+      const documentoEvidencia = await this.guardarDocumento(
+        em,
+        expediente.id,
+        'Evidencia de la publicación del pliego definitivo',
+        evidencia,
+        hashEvidencia,
+        acceso,
+      );
 
       const apertura = await em.save(
         em.create(AperturaProceso, {
@@ -158,6 +192,7 @@ export class AperturaService {
           resolucionFecha: dto.resolucionFecha,
           resolucionDocumentoId: documentoResolucion.id,
           pliegoDocumentoId: documentoPliego.id,
+          evidenciaDocumentoId: documentoEvidencia.id,
           secopUrl: dto.secopUrl ?? null,
           abiertoPor: acceso.userName,
         }),
@@ -173,6 +208,7 @@ export class AperturaService {
         resolucion: dto.resolucionNumero,
         fecha: dto.resolucionFecha,
         pliegoDefinitivo: documentoPliego.id,
+        evidencia: evidencia.originalname,
       });
     });
 

@@ -437,6 +437,12 @@ export interface DocumentoRequerido {
   } | null;
 }
 
+/** Uno de los documentos que quedaron en el expediente con la apertura. */
+export interface ArchivoApertura {
+  nombre: string;
+  url: string;
+}
+
 /** Apertura formal registrada del proceso (actividad 5.7, EFDS-1152). */
 export interface AperturaRegistrada {
   resolucionNumero: string;
@@ -444,6 +450,10 @@ export interface AperturaRegistrada {
   secopUrl: string | null;
   abiertoPor: string | null;
   abiertoAt: string;
+  resolucion: ArchivoApertura | null;
+  pliegoDefinitivo: ArchivoApertura | null;
+  /** Prueba de que el pliego definitivo se publicó (EFDS-1399). */
+  evidencia: ArchivoApertura | null;
 }
 
 /** Estado de la apertura del proceso y de lo que falta para poder abrirlo. */

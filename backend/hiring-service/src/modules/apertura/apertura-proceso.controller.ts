@@ -25,7 +25,13 @@ import {
   ROLES_LECTURA_CONTRATACION,
   ROLES_SOLICITUD_CDP,
 } from '../../auth/hiring-access';
-import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import {
+  MIME_DOCUMENTOS,
+  MIME_IMAGENES,
+  opcionesDeCarga,
+  sha256Archivo,
+  STORAGE_PATH,
+} from '../archivos';
 
 /**
  * Apertura formal del proceso — actividad 5.7 (EFDS-1152).
@@ -60,10 +66,16 @@ export class AperturaProcesoController {
       [
         { name: 'resolucion', maxCount: 1 },
         { name: 'pliegoDefinitivo', maxCount: 1 },
+        { name: 'evidencia', maxCount: 1 },
       ],
+      // Las imágenes se admiten por la evidencia, no por los otros dos: la
+      // prueba de que el pliego se publicó suele ser una captura de SECOP II,
+      // y exigir PDF obligaría a convertirla antes de subirla. Que un pliego
+      // llegue en PNG lo frena la validación del servicio, no el filtro: aquí
+      // multer no sabe a qué campo pertenece cada archivo.
       opcionesDeCarga(
-        MIME_DOCUMENTOS,
-        'La resolución y el pliego definitivo se cargan en PDF, Word o Excel',
+        [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
+        'Se admiten archivos PDF, Word, Excel o imágenes PNG y JPG',
       ),
     ),
   )
@@ -71,24 +83,38 @@ export class AperturaProcesoController {
   @ApiOperation({
     summary: 'Actividad 5.7 · Registrar la apertura y publicar el pliego definitivo',
     description:
-      'Los dos documentos van en la misma petición que los datos de la resolución: el proceso se abre con ellos o no se abre. Requiere el CDP expedido (RF-EST-05).',
+      'Los tres documentos van en la misma petición que los datos de la resolución: el proceso se abre con ellos o no se abre. La evidencia prueba que el pliego definitivo se publicó, igual que en la actividad 5.2. Requiere el CDP expedido (RF-EST-05).',
   })
   async registrar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Body() dto: RegistrarAperturaDto,
-    @UploadedFiles() archivos: { resolucion?: any[]; pliegoDefinitivo?: any[] },
+    @UploadedFiles()
+    archivos: { resolucion?: any[]; pliegoDefinitivo?: any[]; evidencia?: any[] },
     @Req() req: any,
   ) {
     const resolucion = archivos?.resolucion?.[0];
     const pliego = archivos?.pliegoDefinitivo?.[0];
+    const evidencia = archivos?.evidencia?.[0];
 
-    // Se limpian los dos aunque falte uno: multer ya escribió en disco el que
-    // sí llegó, y sin expediente que lo reclame quedaría ocupando espacio.
-    if (!resolucion || !pliego) {
-      await this.descartar(resolucion, pliego);
+    // Se limpian todos aunque falte uno: multer ya escribió en disco los que sí
+    // llegaron, y sin expediente que los reclame quedarían ocupando espacio.
+    if (!resolucion || !pliego || !evidencia) {
+      await this.descartar(resolucion, pliego, evidencia);
       throw new BadRequestException(
-        'Adjunta la resolución de apertura y el pliego definitivo: el proceso se abre con los dos',
+        'Adjunta la resolución de apertura, el pliego definitivo y la evidencia de su publicación',
       );
+    }
+
+    // El acto y el pliego se firman y rigen el proceso: una captura de pantalla
+    // no sirve como ninguno de los dos.
+    for (const [archivo, cual] of [
+      [resolucion, 'La resolución de apertura'],
+      [pliego, 'El pliego definitivo'],
+    ] as const) {
+      if (!MIME_DOCUMENTOS.includes(archivo.mimetype)) {
+        await this.descartar(resolucion, pliego, evidencia);
+        throw new BadRequestException(`${cual} debe ser un PDF, Word o Excel, no una imagen`);
+      }
     }
 
     try {
@@ -99,10 +125,12 @@ export class AperturaProcesoController {
         await sha256Archivo(join(STORAGE_PATH, resolucion.filename)),
         pliego,
         await sha256Archivo(join(STORAGE_PATH, pliego.filename)),
+        evidencia,
+        await sha256Archivo(join(STORAGE_PATH, evidencia.filename)),
         getHiringAccess(req),
       );
     } catch (error) {
-      await this.descartar(resolucion, pliego);
+      await this.descartar(resolucion, pliego, evidencia);
       throw error;
     }
   }

@@ -134,19 +134,22 @@ export const contratacionService = {
   /**
    * Registra la resolución de apertura con el pliego definitivo y abre el proceso.
    *
-   * Los dos documentos viajan con los datos en la misma petición: el proceso se
-   * abre con ambos o no se abre, y dejarlo en dos pasos permitiría un proceso
-   * abierto sin el acto que lo respalda.
+   * Los tres documentos viajan con los datos en la misma petición: el proceso
+   * se abre con todos o no se abre, y dejarlo en dos pasos permitiría un
+   * proceso abierto sin el acto que lo respalda. La evidencia prueba que el
+   * pliego definitivo se publicó, igual que en la actividad 5.2.
    */
   registrarApertura: (
     procesoId: string,
     datos: { resolucionNumero: string; resolucionFecha: string; secopUrl?: string },
     resolucion: File,
     pliegoDefinitivo: File,
+    evidencia: File,
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('resolucion', resolucion);
     cuerpo.append('pliegoDefinitivo', pliegoDefinitivo);
+    cuerpo.append('evidencia', evidencia);
     cuerpo.append('resolucionNumero', datos.resolucionNumero);
     cuerpo.append('resolucionFecha', datos.resolucionFecha);
     if (datos.secopUrl) cuerpo.append('secopUrl', datos.secopUrl);
