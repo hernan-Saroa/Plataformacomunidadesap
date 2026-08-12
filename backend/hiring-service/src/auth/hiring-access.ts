@@ -111,6 +111,21 @@ export const ROLES_DOCUMENTOS_PROCESO = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién registra la audiencia de asignación de riesgos (actividad 5.5,
+ * EFDS-1153).
+ *
+ * La audiencia la preside la Dirección de Contratación y su resultado es la
+ * matriz de riesgos del proceso. Constante propia y no reutilizada: coincide
+ * hoy con quien lleva la etapa, pero es una actuación distinta y nada obliga a
+ * que siga coincidiendo.
+ */
+export const ROLES_AUDIENCIA_RIESGOS = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

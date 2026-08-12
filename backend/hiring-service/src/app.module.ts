@@ -13,6 +13,7 @@ import { ObservacionesModule } from './modules/observaciones/observaciones.modul
 import { MipymeModule } from './modules/mipyme/mipyme.module';
 import { DocumentosModule } from './modules/documentos/documentos.module';
 import { AperturaModule } from './modules/apertura/apertura.module';
+import { RiesgosModule } from './modules/riesgos/riesgos.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -76,6 +77,7 @@ import { AudienciaRiesgos, AudienciaRiesgosConfig } from './entities/audiencia-r
     // que Nest considere las rutas de este módulo.
     DocumentosModule,
     AperturaModule,
+    RiesgosModule,
   ],
   controllers: [HealthController],
   providers: [
