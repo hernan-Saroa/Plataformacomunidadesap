@@ -96,11 +96,11 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   }, [datos?.definicionCampos]);
 
   if (cargando) {
-    return <p className="text-xs text-slate-500 m-0 py-3">Cargando…</p>;
+    return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
   }
   if (!datos) {
     return (
-      <p className="text-xs text-red-600 m-0 py-3">
+      <p className="text-xs text-red-600 m-0 px-4 py-3">
         {mensaje?.texto ?? 'No se pudo cargar el estudio previo'}
       </p>
     );
@@ -155,7 +155,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    // El padding va aquí y no en quien lo monta: el contenedor de la actividad
+    // es una tarjeta a ras de borde, y sin esto los campos quedan pegados.
+    <div className="space-y-4 p-4">
       <AlertaCamposFaltantes faltantes={faltantes} onIrACampo={irACampo} />
 
       {/* Observaciones de la última devolución */}

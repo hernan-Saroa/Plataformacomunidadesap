@@ -1,11 +1,28 @@
 import React, { useState } from 'react';
-import { Briefcase, FileSignature, ClipboardCheck } from 'lucide-react';
+import {
+  Briefcase,
+  Building2,
+  CalendarClock,
+  FileSignature,
+  ClipboardCheck,
+  Scale,
+} from 'lucide-react';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
+
+// Maquetación propia del módulo. Va aquí, en el componente expuesto por Module
+// Federation, para que entre en el bundle del microfrontend: la plataforma
+// genera Tailwind escaneando solo el shell, así que los valores arbitrarios
+// que el shell no use no existen. Ver el encabezado de layout.css.
+import '../styles/layout.css';
 
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { VistaProcesos } from './procesos/VistaProcesos';
 import { DetalleProceso } from './proceso/DetalleProceso';
+import { VistaUmbrales } from './umbrales/VistaUmbrales';
+import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
+import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 
-type Seccion = 'estudios-previos' | 'revision';
+type Seccion = 'estudios-previos' | 'revision' | 'umbrales' | 'plazos' | 'mipyme';
 
 /**
  * Módulo de Gestión de Contratación — HU EFDS-1146.
@@ -43,11 +60,42 @@ export default function ContratacionModulePremium() {
         },
       ],
     },
+    {
+      // Aparte del trabajo diario: no se administra un umbral mientras se
+      // diligencia un proceso.
+      title: 'Configuración',
+      items: [
+        {
+          id: 'umbrales',
+          label: 'Umbrales',
+          subtitle: 'Cuantías por modalidad',
+          icon: <Scale className="w-5 h-5" />,
+          color: '#7C3AED',
+        },
+        {
+          id: 'plazos',
+          label: 'Plazos',
+          subtitle: 'Publicidad del pliego',
+          icon: <CalendarClock className="w-5 h-5" />,
+          color: '#7C3AED',
+        },
+        {
+          id: 'mipyme',
+          label: 'MIPYME',
+          subtitle: 'Condiciones de limitación',
+          icon: <Building2 className="w-5 h-5" />,
+          color: '#7C3AED',
+        },
+      ],
+    },
   ];
 
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (seccion === 'umbrales') return <VistaUmbrales />;
+    if (seccion === 'plazos') return <VistaPlazosPublicacion />;
+    if (seccion === 'mipyme') return <VistaCondicionesMipyme />;
     if (procesoId) {
       return (
         <DetalleProceso
@@ -89,6 +137,9 @@ export default function ContratacionModulePremium() {
       }}
     >
       {contenido()}
+      {/* Misma configuración que gestión legal y control interno, para que las
+          notificaciones se comporten igual en toda la plataforma. */}
+      <Toaster position="bottom-right" richColors closeButton duration={4000} />
     </ModuleLayout>
   );
 }

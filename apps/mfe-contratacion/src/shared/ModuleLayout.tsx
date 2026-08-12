@@ -66,6 +66,16 @@ export function ModuleLayout({
   // El shell oculta su sidebar bajo 1024px; el del módulo hace lo mismo.
   const esMovil = ancho < 1024;
 
+  // Un sub-menú de 230px para una sola opción cuesta más de lo que aporta: el
+  // shell ya ocupa 260px a la izquierda y en un portátil de 1366px el contenido
+  // se queda sin aire. Con una sola sección navegable se muestra solo la barra
+  // de identidad del módulo y el contenido ocupa todo el ancho. Cuando haya dos
+  // o más, el sub-menú vuelve solo.
+  const navegables = groups
+    .flatMap((g) => g.items)
+    .filter((i) => i.visible !== false && !i.disabled);
+  const conSubmenu = navegables.length > 1;
+
   const navegar = (id: string) => {
     onSectionChange(id);
     setMobileOpen(false);
@@ -162,6 +172,43 @@ export function ModuleLayout({
       })}
     </nav>
   );
+
+  // Barra de identidad para cuando no hay sub-menú: sin ella el módulo perdería
+  // su nombre y su icono al entrar, que es lo único que el sidebar aportaba.
+  const barraIdentidad = (
+    <div className="bg-white border-b-2 border-gray-200 px-4 md:px-6 py-3 flex items-center gap-3">
+      <div className="p-2 rounded-xl flex-shrink-0" style={{ background: `${moduleColor}15` }}>
+        <span style={{ color: moduleColor }}>{moduleIcon}</span>
+      </div>
+      <div className="min-w-0">
+        <h2 className="font-black text-sm leading-tight m-0 truncate" style={{ color: moduleColor }}>
+          {moduleName}
+        </h2>
+        {moduleDescription && (
+          <p className="text-[11px] text-gray-400 m-0 leading-tight mt-0.5 truncate">
+            {moduleDescription}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
+  if (!conSubmenu) {
+    return (
+      /* overflow-x-auto y no -hidden: si algo llegara a desbordar, se puede
+         desplazar hasta ello. Recortarlo dejaba campos del formulario
+         inalcanzables, que es peor que una barra de desplazamiento. */
+      <div
+        className="w-full min-w-0 overflow-x-auto -m-3 md:-m-4"
+        style={{ background: '#f0f2f5', minHeight: 'calc(100vh - 64px)' }}
+      >
+        {barraIdentidad}
+        {/* Más aire que la rama con sub-menú: allí el sidebar ya separaba el
+            contenido del borde; aquí el contenido llega hasta él. */}
+        <div className="p-4 md:p-6 min-w-0">{children}</div>
+      </div>
+    );
+  }
 
   return (
     // -m-3/-m-4 anula el padding que el shell aplica al contenedor del módulo:

@@ -16,9 +16,12 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
+import { UmbralesModule } from '../umbrales/umbrales.module';
 
 @Module({
   imports: [
+    // La creación del proceso valida la modalidad contra los umbrales vigentes.
+    UmbralesModule,
     TypeOrmModule.forFeature([
       Proceso,
       Expediente,

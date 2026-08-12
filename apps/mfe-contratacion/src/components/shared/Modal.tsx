@@ -1,4 +1,5 @@
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode, useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /**
@@ -45,22 +46,80 @@ export function Modal({
   sinPadding = false,
   children,
 }: Props) {
-  // Escape cierra, y el fondo no debe scrollear mientras el modal está abierto.
+  // Únicos por instancia: con un id fijo, dos modales montados a la vez
+  // duplicarían el id y aria-labelledby dejaría de apuntar a algo unívoco.
+  const idTitulo = useId();
+  const idDescripcion = useId();
+
+  const dialogo = useRef<HTMLDivElement>(null);
+  const focoPrevio = useRef<HTMLElement | null>(null);
+
+  // onClose suele llegar como función en línea, con identidad nueva en cada
+  // render. Si el efecto dependiera de ella, cada tecla lo re-ejecutaría y el
+  // foco saltaría fuera del campo que se está escribiendo.
+  const alCerrar = useRef(onClose);
+  alCerrar.current = onClose;
+
+  // Escape cierra, el fondo no scrollea, y el foco queda dentro del diálogo
+  // mientras está abierto: con Tab suelto se puede llegar a los controles de
+  // atrás, que para un lector de pantalla es como si el modal no existiera.
   useEffect(() => {
     if (!isOpen) return;
-    const alPresionar = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+
+    focoPrevio.current = document.activeElement as HTMLElement | null;
+
+    const enfocables = () =>
+      Array.from(
+        dialogo.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+
+    // El primer control recibe el foco al abrir; si no hay ninguno, el diálogo.
+    (enfocables()[0] ?? dialogo.current)?.focus();
+
+    const alPresionar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        alCerrar.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const lista = enfocables();
+      if (lista.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const primero = lista[0];
+      const ultimo = lista[lista.length - 1];
+      if (e.shiftKey && document.activeElement === primero) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && document.activeElement === ultimo) {
+        e.preventDefault();
+        primero.focus();
+      }
+    };
+
     document.addEventListener('keydown', alPresionar);
     const overflowPrevio = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
     return () => {
       document.removeEventListener('keydown', alPresionar);
       document.body.style.overflow = overflowPrevio;
+      // Devolver el foco a donde estaba evita que el teclado quede al inicio
+      // de la página tras cerrar.
+      focoPrevio.current?.focus();
     };
-  }, [isOpen, onClose]);
+    // Solo isOpen: el efecto debe correr al abrir y al cerrar, nunca en medio.
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  return (
+  // Por portal: dentro del árbol, cualquier ancestro con overflow o transform
+  // recorta el modal o rompe su posicionamiento.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -69,11 +128,14 @@ export function Modal({
       />
 
       <div
+        ref={dialogo}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-titulo"
+        aria-labelledby={idTitulo}
+        aria-describedby={description ? idDescripcion : undefined}
+        tabIndex={-1}
         className={`relative w-full ${ANCHOS[size]} max-h-[85vh] bg-white rounded-xl
-          shadow-2xl overflow-hidden flex flex-col`}
+          shadow-2xl overflow-hidden flex flex-col focus:outline-none`}
       >
         <div className="px-5 py-3.5 border-b border-gray-200 flex items-start gap-3 flex-shrink-0">
           {icon && (
@@ -85,11 +147,13 @@ export function Modal({
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <h2 id="modal-titulo" className="text-base font-black text-gray-900 m-0 leading-tight">
+            <h2 id={idTitulo} className="text-base font-black text-gray-900 m-0 leading-tight">
               {title}
             </h2>
             {description && (
-              <p className="text-xs text-gray-500 m-0 mt-0.5 leading-snug">{description}</p>
+              <p id={idDescripcion} className="text-xs text-gray-500 m-0 mt-0.5 leading-snug">
+                {description}
+              </p>
             )}
           </div>
           <button
@@ -111,6 +175,7 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

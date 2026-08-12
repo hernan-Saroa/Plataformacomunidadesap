@@ -6,7 +6,16 @@ export type AccionTraza =
   | 'ENVIAR'
   | 'ADJUNTAR'
   | 'APROBAR'
-  | 'DEVOLVER';
+  | 'DEVOLVER'
+  // Ciclo del CDP (etapa 4). La columna es varchar, así que ampliar esta
+  // unión no exige migración.
+  | 'SOLICITAR'
+  | 'VERIFICAR'
+  | 'EXPEDIR'
+  | 'RECHAZAR'
+  // Publicación del proyecto de pliego (etapa 5).
+  | 'PUBLICAR'
+  | 'ANULAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

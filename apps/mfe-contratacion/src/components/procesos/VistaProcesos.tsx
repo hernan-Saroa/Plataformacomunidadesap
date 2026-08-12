@@ -10,12 +10,21 @@ import {
   ArrowRight,
   Send,
   Lock,
+  List as ListIcon,
+  Columns3,
+  Lightbulb,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { EmptyState } from '@esap-mfe/shared-ui/empty-state';
+import { SkeletonTable } from '@esap-mfe/shared-ui/skeleton';
 
 import { contratacionService } from '../../services/contratacionService';
+import { useSugerenciaModalidad } from '../../hooks/useSugerenciaModalidad';
 import { Modalidad, ProcesoResumen } from '../../types';
 import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
+import { PaginationPremium } from '../shared/PaginationPremium';
+import { TableroProcesos } from './TableroProcesos';
 import { StepperCompacto } from './StepperCompacto';
 
 interface Props {
@@ -65,6 +74,23 @@ function estadoDe(proceso: ProcesoResumen) {
   };
 }
 
+const formatoPesos = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 0,
+});
+
+/**
+ * Acepta lo que la gente escribe de verdad —"45.000.000", "45000000",
+ * "$ 45.000.000"— y devuelve el número, o null si no hay uno válido.
+ */
+function aNumero(texto: string): number | null {
+  const limpio = texto.replace(/[^\d,]/g, '').replace(',', '.');
+  if (!limpio) return null;
+  const n = Number(limpio);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 /** El botón dice qué va a pasar, no un genérico "Abrir". */
 function enviadoOEnCurso(proceso: ProcesoResumen) {
   const estado = proceso.estudioPrevio?.estado;
@@ -76,22 +102,44 @@ function enviadoOEnCurso(proceso: ProcesoResumen) {
 export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   const [procesos, setProcesos] = useState<ProcesoResumen[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Falló la carga del listado: cambia qué se pinta, por eso es estado y no
+  // solo un toast. El detalle del error va en la notificación.
+  const [fallo, setFallo] = useState(false);
   const [creando, setCreando] = useState(false);
   const [objeto, setObjeto] = useState('');
+  const [valorTexto, setValorTexto] = useState('');
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
   const [modalidad, setModalidad] = useState('');
   const [errorModalidades, setErrorModalidades] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroModalidad, setFiltroModalidad] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(20);
+  // La lista responde "qué hay"; el tablero, "dónde está represado". Se recuerda
+  // la elección para no obligar a cambiarla en cada visita.
+  const [vista, setVista] = useState<'lista' | 'tablero'>(
+    () => (localStorage.getItem('contratacion:vista') as 'lista' | 'tablero') || 'lista',
+  );
+
+  const cambiarVista = (nueva: 'lista' | 'tablero') => {
+    setVista(nueva);
+    localStorage.setItem('contratacion:vista', nueva);
+  };
 
   const cargar = async () => {
     setCargando(true);
     try {
       setProcesos(await contratacionService.listarProcesos());
-      setError(null);
+      setFallo(false);
     } catch (err: any) {
-      setError(err.message);
+      setFallo(true);
+      // id fijo: si la carga falla varias veces (montaje, reintento, recarga),
+      // el toast se reemplaza en vez de apilar copias idénticas.
+      toast.error('No se pudieron cargar los procesos', {
+        id: 'procesos-carga',
+        description: err.message,
+      });
     } finally {
       setCargando(false);
     }
@@ -114,30 +162,93 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
       .catch((err: any) => setErrorModalidades(err.message));
   }, []);
 
+  const valorEstimado = useMemo(() => aNumero(valorTexto), [valorTexto]);
+  const { sugerencia, consultando } = useSugerenciaModalidad(creando ? valorEstimado : null);
+
+  const bloqueadas = sugerencia?.modalidadesBloqueadas ?? [];
+
+  // Superado el umbral, la licitación pública es obligatoria: se fija sola en
+  // vez de dejar al usuario elegir algo que el backend va a rechazar. Solo se
+  // pisa lo que quedó vetado; si eligió una modalidad permitida, se respeta.
+  useEffect(() => {
+    if (!sugerencia?.forzosa || !sugerencia.modalidad) return;
+    if (modalidad === '' || bloqueadas.includes(modalidad)) {
+      setModalidad(sugerencia.modalidad);
+    }
+  }, [sugerencia, modalidad]);
+
   const crear = async () => {
-    if (!objeto.trim() || !modalidad) return;
+    if (!objeto.trim() || !modalidad || valorEstimado === null) return;
     setGuardando(true);
-    setError(null);
     try {
-      const proceso = await contratacionService.crearProceso(objeto.trim(), modalidad);
+      const proceso = await contratacionService.crearProceso(
+        objeto.trim(),
+        modalidad,
+        valorEstimado,
+      );
       setCreando(false);
       setObjeto('');
       setModalidad('');
+      setValorTexto('');
+      toast.success(`Proceso ${proceso.radicado} creado`);
       onAbrir(proceso.id);
     } catch (err: any) {
-      setError(err.message);
+      // El modal sigue abierto con lo digitado, para que no haya que
+      // reescribirlo si el guardado falla.
+      toast.error('No se pudo crear el proceso', { description: err.message });
     } finally {
       setGuardando(false);
     }
   };
 
+  /**
+   * Modalidades presentes en los procesos, con cuántos hay de cada una.
+   *
+   * Se arma de lo que existe y no del catálogo completo: ofrecer las once
+   * llenaría el selector de opciones que no devuelven nada.
+   */
+  const modalidadesPresentes = useMemo(() => {
+    const conteo = new Map<string, { nombre: string; n: number }>();
+    for (const p of procesos) {
+      if (!p.modalidad) continue;
+      const previo = conteo.get(p.modalidad);
+      conteo.set(p.modalidad, {
+        nombre: p.modalidadNombre ?? p.modalidad,
+        n: (previo?.n ?? 0) + 1,
+      });
+    }
+    return [...conteo.entries()]
+      .map(([codigo, v]) => ({ codigo, ...v }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [procesos]);
+
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return procesos;
-    return procesos.filter(
-      (p) => p.radicado.toLowerCase().includes(q) || p.objeto.toLowerCase().includes(q),
-    );
-  }, [procesos, busqueda]);
+    return procesos.filter((p) => {
+      if (filtroModalidad && p.modalidad !== filtroModalidad) return false;
+      if (!q) return true;
+      // La modalidad entra en la búsqueda: es lo que se lee en cada fila, y
+      // buscar lo que se ve es lo que la gente espera.
+      return (
+        p.radicado.toLowerCase().includes(q) ||
+        p.objeto.toLowerCase().includes(q) ||
+        (p.modalidadNombre ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [procesos, busqueda, filtroModalidad]);
+
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / porPagina));
+
+  // Al filtrar, la página actual puede quedar más allá del último resultado y
+  // la tabla se vería vacía teniendo resultados. Se vuelve a la primera.
+  useEffect(() => {
+    setPagina(1);
+  }, [busqueda, filtroModalidad, porPagina]);
+
+  const visibles = useMemo(
+    () => filtrados.slice((pagina - 1) * porPagina, pagina * porPagina),
+    [filtrados, pagina, porPagina],
+  );
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -165,7 +276,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
           <>
             <button
               onClick={crear}
-              disabled={!objeto.trim() || !modalidad || guardando}
+              disabled={!objeto.trim() || !modalidad || valorEstimado === null || guardando}
               className="px-3.5 py-2 text-xs font-extrabold rounded-lg text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm active:scale-95 disabled:opacity-50 transition-all"
             >
               {guardando ? 'Creando…' : 'Crear y abrir estudio previo'}
@@ -194,6 +305,31 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
           del proceso y se precarga en el estudio previo.
         </p>
 
+        {/* Se pide aquí y no en el estudio previo porque de la cuantía depende
+            la modalidad aplicable (EFDS-1147). */}
+        <label htmlFor="nuevo-valor" className="block text-xs font-bold text-gray-600 mb-1.5 mt-4">
+          Valor estimado del contrato <span className="text-red-600">*</span>
+        </label>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">
+            $
+          </span>
+          <input
+            id="nuevo-valor"
+            type="text"
+            inputMode="numeric"
+            value={valorTexto}
+            onChange={(e) => setValorTexto(e.target.value)}
+            placeholder="45.000.000"
+            className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-gray-300 tabular-nums focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+          />
+        </div>
+        <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
+          {valorEstimado !== null
+            ? `${formatoPesos.format(valorEstimado)} · presupuesto oficial en pesos, según el análisis del sector.`
+            : 'Presupuesto oficial en pesos, según el análisis del sector.'}
+        </p>
+
         <label htmlFor="nueva-modalidad" className="block text-xs font-bold text-gray-600 mb-1.5 mt-4">
           Modalidad de selección <span className="text-red-600">*</span>
         </label>
@@ -202,95 +338,232 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
           value={modalidad}
           onChange={(e) => setModalidad(e.target.value)}
           disabled={modalidades.length === 0}
+          aria-describedby="ayuda-modalidad"
           className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
         >
           <option value="">
             {modalidades.length === 0 ? 'No se pudo cargar el listado' : 'Selecciona la modalidad…'}
           </option>
-          {modalidades.map((m) => (
-            <option key={m.codigo} value={m.codigo}>
-              {m.nombre}
-            </option>
-          ))}
+          {modalidades.map((m) => {
+            // Se deshabilitan en vez de ocultarse: ver la opción vetada y su
+            // motivo explica la regla; quitarla del listado la haría parecer
+            // inexistente.
+            const vetada = bloqueadas.includes(m.codigo);
+            return (
+              <option key={m.codigo} value={m.codigo} disabled={vetada}>
+                {m.nombre}
+                {vetada ? ' — no aplica por la cuantía' : ''}
+              </option>
+            );
+          })}
         </select>
-        {errorModalidades ? (
-          <p role="alert" className="text-[11px] font-bold text-red-600 mt-2 mb-0 leading-relaxed">
-            {errorModalidades}
-          </p>
-        ) : (
-          <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
-            Define qué actividades recorre el proceso: no todas aplican a todas las modalidades. Se
-            ratifica al definir la modalidad en la actividad 3.5.
-          </p>
-        )}
+
+        <div id="ayuda-modalidad">
+          {errorModalidades ? (
+            <p role="alert" className="text-[11px] font-bold text-red-600 mt-2 mb-0 leading-relaxed">
+              {errorModalidades}
+            </p>
+          ) : consultando ? (
+            <p className="text-[11px] text-gray-400 mt-2 mb-0">Calculando la modalidad…</p>
+          ) : sugerencia?.forzosa && sugerencia.modalidad ? (
+            // Asignación obligatoria: el tono es de aviso, no de sugerencia.
+            <div
+              role="status"
+              className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 flex items-start gap-2"
+            >
+              <Lock className="w-3.5 h-3.5 text-amber-700 mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-amber-900 m-0 leading-relaxed">
+                <span className="font-bold">{sugerencia.nombre} obligatoria.</span>{' '}
+                {sugerencia.motivo}. Las modalidades de menor cuantía quedan deshabilitadas.
+              </p>
+            </div>
+          ) : sugerencia?.modalidad ? (
+            // Orientación: se puede ignorar, y se dice explícitamente.
+            <div
+              role="status"
+              className="mt-2 rounded-lg border border-[#003DA5]/20 bg-[#E0EDFF] px-3 py-2 flex items-start gap-2"
+            >
+              <Lightbulb className="w-3.5 h-3.5 text-[#003DA5] mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-slate-700 m-0 leading-relaxed">
+                Por la cuantía corresponde <span className="font-bold">{sugerencia.nombre}</span>.
+                Es una sugerencia: puedes elegir otra si la causal lo justifica.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-500 mt-2 mb-0 leading-relaxed">
+              Define qué actividades recorre el proceso: no todas aplican a todas las modalidades.
+              Se ratifica al definir la modalidad en la actividad 3.5.
+            </p>
+          )}
+        </div>
       </Modal>
 
-      {error && (
-        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5">
-          <p className="text-xs font-bold text-red-700 m-0">{error}</p>
-        </div>
-      )}
-
-      {/* Buscador — solo aparece cuando hay suficientes procesos para justificarlo */}
-      {procesos.length > 5 && (
-        <div className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 flex items-center gap-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+      {/* Barra de herramientas: buscar a la izquierda, elegir vista a la derecha. */}
+      {!cargando && !fallo && procesos.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 flex items-center gap-3 flex-wrap shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search
+              className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              aria-hidden="true"
+            />
             <input
               type="search"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por radicado u objeto…"
-              className="w-full pl-9 pr-3 py-1.5 text-[13px] rounded-lg border border-slate-300 focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+              placeholder="Buscar por radicado, objeto o modalidad…"
+              aria-label="Buscar procesos"
+              className="w-full pl-9 pr-3 py-2 text-[13px] rounded-lg border border-slate-200 bg-slate-50
+                placeholder:text-slate-400 transition-colors
+                hover:border-slate-300
+                focus:bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/15"
             />
           </div>
-          <span className="text-[11px] font-semibold text-gray-400 tabular-nums">
-            {filtrados.length} de {procesos.length}
-          </span>
+
+          {/* La modalidad decide qué actividades recorre el proceso, así que es
+              el corte natural del listado: "muéstrame las licitaciones". */}
+          {modalidadesPresentes.length > 1 && (
+            <select
+              value={filtroModalidad}
+              onChange={(e) => setFiltroModalidad(e.target.value)}
+              aria-label="Filtrar por modalidad"
+              className={`px-2.5 py-2 text-[12.5px] rounded-lg border bg-white transition-colors
+                focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/15 ${
+                  filtroModalidad
+                    ? 'border-[#003DA5] text-[#003DA5] font-bold'
+                    : 'border-slate-200 text-slate-600'
+                }`}
+            >
+              <option value="">Todas las modalidades</option>
+              {modalidadesPresentes.map((m) => (
+                <option key={m.codigo} value={m.codigo}>
+                  {m.nombre} ({m.n})
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* El contador solo aparece cuando filtra: sin filtro repetiría el
+              total que ya está en el pie de la tabla. */}
+          {(busqueda.trim() || filtroModalidad) && (
+            <span className="text-[11px] font-bold text-slate-500 tabular-nums" aria-live="polite">
+              {filtrados.length} de {procesos.length}
+            </span>
+          )}
+
+          <div className="ml-auto flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5" role="group" aria-label="Vista">
+            {(
+              [
+                { id: 'lista', etiqueta: 'Lista', icono: <ListIcon className="w-3.5 h-3.5" /> },
+                { id: 'tablero', etiqueta: 'Tablero', icono: <Columns3 className="w-3.5 h-3.5" /> },
+              ] as const
+            ).map((opcion) => (
+              <button
+                key={opcion.id}
+                type="button"
+                onClick={() => cambiarVista(opcion.id)}
+                aria-pressed={vista === opcion.id}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                  vista === opcion.id
+                    ? 'bg-white text-[#003DA5] shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {opcion.icono}
+                {opcion.etiqueta}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {cargando ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
-          <p className="text-sm text-slate-500 m-0">Cargando procesos…</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <SkeletonTable rows={5} columns={4} />
+        </div>
+      ) : fallo ? (
+        <div className="bg-white border border-gray-200 rounded-xl">
+          <EmptyState
+            variant="error"
+            icon={AlertTriangle}
+            title="No se pudieron cargar los procesos"
+            description="Revisa tu conexión e inténtalo de nuevo."
+            action={{ label: 'Reintentar', onClick: cargar }}
+          />
         </div>
       ) : filtrados.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
-          <FolderOpen className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-          <p className="text-sm font-bold text-gray-600 m-0">
-            {busqueda ? 'Sin resultados' : 'Aún no hay procesos'}
-          </p>
-          <p className="text-xs text-gray-400 m-0 mt-1">
-            {busqueda
-              ? 'Prueba con otro radicado u objeto.'
-              : 'Crea el primero para elaborar su estudio previo.'}
-          </p>
+        <div className="bg-white border border-gray-200 rounded-xl">
+          <EmptyState
+            variant={busqueda || filtroModalidad ? 'search' : 'default'}
+            icon={busqueda || filtroModalidad ? Search : FolderOpen}
+            title={busqueda || filtroModalidad ? 'Sin resultados' : 'Aún no hay procesos'}
+            description={
+              // Se distingue el filtro de la búsqueda: si el vacío lo causa la
+              // modalidad, decir "prueba con otro radicado" no ayuda en nada.
+              filtroModalidad && !busqueda.trim()
+                ? 'No hay procesos con esa modalidad.'
+                : busqueda
+                  ? 'Prueba con otro radicado, objeto o modalidad.'
+                  : 'Crea el primero para elaborar su estudio previo.'
+            }
+            action={
+              filtroModalidad
+                ? { label: 'Quitar filtro', onClick: () => setFiltroModalidad('') }
+                : busqueda
+                  ? undefined
+                  : { label: 'Nuevo proceso', onClick: () => setCreando(true), icon: Plus }
+            }
+          />
         </div>
+      ) : vista === 'tablero' ? (
+        <TableroProcesos procesos={filtrados} estadoDe={estadoDe} onAbrir={onAbrir} />
       ) : (
         <div
-          className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col"
+          className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col
+            shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
           style={{ maxHeight: 'calc(100vh - 260px)' }}
         >
+          {/* Encabezados solo donde hay columnas: por debajo de 1280px la fila
+              se apila y unos rótulos fijos no corresponderían a nada. */}
+          <div
+            className="encabezado-procesos px-4 py-2 border-b border-gray-200 bg-slate-50"
+            aria-hidden="true"
+          >
+            <span />
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Proceso
+            </span>
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Etapa
+            </span>
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Estado
+            </span>
+            <span />
+          </div>
+
           <div className="overflow-y-auto">
-            {filtrados.map((p) => {
+            {visibles.map((p) => {
               const estado = estadoDe(p);
               return (
                 <div
                   key={p.id}
-                  className="group flex items-start gap-3 px-4 py-3.5 border-b border-gray-100
+                  /* La rejilla vive en layout.css: apilada en pantallas
+                     estrechas, en columnas desde 1280px. */
+                  className="fila-proceso group px-4 py-3.5 border-b border-gray-100
                     last:border-b-0 hover:bg-slate-50 transition-colors"
                 >
                   <div className="w-9 h-9 rounded-lg bg-[#E0EDFF] flex items-center justify-center flex-shrink-0">
                     <FileText className="w-[18px] h-[18px] text-[#003DA5]" strokeWidth={2} />
                   </div>
 
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[13px] font-black text-[#003DA5] tabular-nums">
                         {p.radicado}
                       </span>
+                      {/* Con columnas, el estado tiene la suya. */}
                       <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${estado.clase}`}
+                        className={`solo-apilado inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${estado.clase}`}
                       >
                         {estado.icono}
                         {estado.texto}
@@ -301,34 +574,64 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                       {p.objeto}
                     </p>
 
-                    {/* Avance del proceso en las 10 etapas */}
-                    <div className="flex items-center gap-2.5 mt-2 flex-wrap">
-                      <StepperCompacto etapaActual={p.etapa} />
-                      <span className="text-[11px] font-bold text-gray-500 tabular-nums">
-                        Etapa {p.etapa} de 10
-                      </span>
-                      <span className="text-gray-300 text-[11px]">·</span>
-                      <span className={`text-[11px] font-semibold ${estado.colorDetalle}`}>
-                        {estado.detalle}
-                      </span>
-                    </div>
+                    {/* Sin columna de estado, el detalle acompaña al objeto. */}
+                    <span
+                      className={`solo-apilado text-[11px] font-semibold mt-1 ${estado.colorDetalle}`}
+                    >
+                      {estado.detalle}
+                    </span>
 
+                    {/* La modalidad decide qué actividades recorre el proceso;
+                        sin verla, dos procesos distintos parecen el mismo. */}
                     <p className="text-[11px] text-gray-400 m-0 mt-1.5 tabular-nums">
+                      {p.modalidadNombre || p.modalidad ? (
+                        <span className="font-bold text-[#003DA5]">
+                          {p.modalidadNombre ?? p.modalidad}
+                        </span>
+                      ) : null}
+                      {(p.modalidadNombre || p.modalidad) && ' · '}
+                      {typeof p.valorEstimado === 'number'
+                        ? `${formatoPesos.format(p.valorEstimado)} · `
+                        : ''}
                       Radicado {new Date(p.fechaRadicacion).toLocaleDateString('es-CO')}
                       {p.expediente ? ` · ${p.expediente.numeroExpediente}` : ''}
                     </p>
                   </div>
 
+                  {/* Etapa */}
+                  <div className="celda-apilada min-w-0">
+                    <StepperCompacto etapaActual={p.etapa} />
+                    <span className="block text-[11px] font-bold text-gray-500 tabular-nums mt-1">
+                      Etapa {p.etapa} de 10
+                    </span>
+                  </div>
+
+                  {/* Estado: columna propia solo cuando hay ancho para ella. */}
+                  <div className="solo-columnas min-w-0">
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${estado.clase}`}
+                    >
+                      {estado.icono}
+                      {estado.texto}
+                    </span>
+                    <span
+                      className={`block text-[11px] font-semibold mt-1 ${estado.colorDetalle}`}
+                    >
+                      {estado.detalle}
+                    </span>
+                  </div>
+
                   {/* Acción principal directa al formulario; el detalle de la
                       etapa queda como enlace secundario. */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+                  <div className="celda-apilada flex items-center gap-1.5 flex-shrink-0 justify-end">
                     {onVerEtapa && (
                       <button
                         type="button"
                         onClick={() => onVerEtapa(p.id)}
                         className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-slate-500
                           hover:text-[#003DA5] hover:bg-white border border-transparent
-                          hover:border-slate-200 transition-all"
+                          hover:border-slate-200 transition-all
+                          focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5]/40"
                       >
                         Ver etapa
                       </button>
@@ -338,7 +641,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                       onClick={() => onAbrir(p.id)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold
                         rounded-lg text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm
-                        active:scale-95 transition-all"
+                        active:scale-95 transition-all
+                        focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5]/40
+                        focus-visible:ring-offset-1"
                     >
                       {enviadoOEnCurso(p)} <ArrowRight className="w-3.5 h-3.5" />
                     </button>
@@ -347,6 +652,21 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
               );
             })}
           </div>
+
+          {/* Con pocos procesos el pie estorba más de lo que ayuda; el selector
+              de tamaño solo aparece cuando hay algo que paginar. */}
+          {filtrados.length > porPagina && (
+            <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex-shrink-0">
+              <PaginationPremium
+                currentPage={pagina}
+                totalPages={totalPaginas}
+                onPageChange={setPagina}
+                itemsPerPage={porPagina}
+                totalItems={filtrados.length}
+                onItemsPerPageChange={setPorPagina}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,13 +1,26 @@
 import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
+  ActividadProceso,
   CamposFaltantesError,
+  Cdp,
+  CondicionesMipymeConfig,
   ConflictoError,
+  EstadoMipyme,
+  EstadoObservaciones,
+  EstadoPublicacion,
+  EstadoRespaldo,
   EstudioPrevio,
   Expediente,
   Modalidad,
   Persona,
+  PlazosPublicacion,
   ProcesoResumen,
   RevisionEstudioPrevio,
+  SmmlvAnual,
+  SugerenciaModalidad,
+  UmbralesVigentes,
+  UmbralVigente,
+  UnidadUmbral,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -65,10 +78,279 @@ export const contratacionService = {
   /** Personas para los selectores; el termino filtra por nombre. */
   personas: (q = '') => pedir<Persona[]>(`/personas?q=${encodeURIComponent(q)}`),
 
-  crearProceso: (objeto: string, modalidad: string) =>
+  /**
+   * Modalidad que corresponde a una cuantía. Se consulta mientras se digita el
+   * valor, antes de que el proceso exista.
+   */
+  sugerenciaModalidad: (valorEstimado: number, signal?: AbortSignal) =>
+    pedir<SugerenciaModalidad>(`/umbrales/sugerencia?valorEstimado=${valorEstimado}`, { signal }),
+
+  // ------------------------------------------------------ etapa 4 · CDP ----
+
+  /** Actividades de una etapa con su estado; alimenta el riel. */
+  actividades: (procesoId: string, etapa?: number) =>
+    pedir<ActividadProceso[]>(
+      `/procesos/${procesoId}/actividades${etapa ? `?etapa=${etapa}` : ''}`,
+    ),
+
+  respaldoCdp: (procesoId: string) => pedir<EstadoRespaldo>(`/procesos/${procesoId}/cdp`),
+
+  solicitarCdp: (
+    procesoId: string,
+    datos: { rubro: string; valor: number; vigenciaFiscal?: number; observaciones?: string },
+  ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
+
+  verificarCdp: (procesoId: string) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, { method: 'POST' }),
+
+  expedirCdp: (
+    procesoId: string,
+    datos: { numero: string; valor: number; fechaExpedicion: string; vigenciaFiscal?: number },
+  ) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/expedir`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  rechazarCdp: (procesoId: string, observaciones: string) =>
+    pedir<Cdp>(`/procesos/${procesoId}/cdp/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  adjuntarCdp: (procesoId: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
+  },
+
+  abrirProceso: (procesoId: string) =>
+    pedir<{ id: string; radicado: string; etapa: number }>(`/procesos/${procesoId}/abrir`, {
+      method: 'POST',
+    }),
+
+  // ---------------------------- etapa 5 · publicación del proyecto de pliego -
+
+  /** Publicación vigente y estado del plazo de publicidad. */
+  publicacionPliego: (procesoId: string) =>
+    pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego`),
+
+  /**
+   * Registra la publicación con su evidencia en una sola petición.
+   *
+   * La evidencia va aquí y no en un paso posterior porque sin ella no hay
+   * registro: es lo único que prueba que la publicación existió, y el registro
+   * arranca un plazo legal. Admite imágenes además de documentos, que la prueba
+   * suele ser una captura de SECOP II.
+   *
+   * La fecha es la de la publicación real, no la del registro: es la que
+   * arranca el plazo, y el backend calcula el vencimiento con ella.
+   */
+  registrarPublicacion: (
+    procesoId: string,
+    datos: { fechaPublicacion: string; secopNumero?: string; secopUrl?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('fechaPublicacion', datos.fechaPublicacion);
+    if (datos.secopNumero) cuerpo.append('secopNumero', datos.secopNumero);
+    if (datos.secopUrl) cuerpo.append('secopUrl', datos.secopUrl);
+
+    return pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto la publicación registrada para poder corregirla. */
+  anularPublicacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------------- etapa 5 · observaciones al pliego (5.3) ---
+
+  /** Observaciones del proceso con el resumen que decide si la actividad cumple. */
+  observaciones: (procesoId: string) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`),
+
+  /**
+   * Registra una observación recibida, con su soporte si lo hubo.
+   *
+   * El soporte es opcional, a diferencia de la evidencia de la publicación: una
+   * observación pudo llegar por un canal que no deja documento, y exigirlo
+   * obligaría a inventarse un archivo o a no registrarla.
+   *
+   * La fecha es la de presentación, no la del registro: es la que decide si
+   * llegó dentro del plazo de publicidad.
+   */
+  registrarObservacion: (
+    procesoId: string,
+    datos: {
+      presentadoPor: string;
+      identificacion?: string;
+      fechaPresentacion: string;
+      asunto: string;
+      contenido: string;
+    },
+    soporte: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('presentadoPor', datos.presentadoPor);
+    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+    cuerpo.append('asunto', datos.asunto);
+    cuerpo.append('contenido', datos.contenido);
+
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** La respuesta cierra la observación; no se reescribe después. */
+  responderObservacion: (
+    procesoId: string,
+    observacionId: string,
+    datos: { respuesta: string; modificoPliego: boolean },
+  ) =>
+    pedir<EstadoObservaciones>(
+      `/procesos/${procesoId}/observaciones/${observacionId}/responder`,
+      { method: 'POST', body: JSON.stringify(datos) },
+    ),
+
+  /** Da por cumplida la actividad cuando venció el plazo y no llegó ninguna. */
+  cerrarSinObservaciones: (procesoId: string) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/cerrar`, {
+      method: 'POST',
+      body: '{}',
+    }),
+
+  // ---------------------------------- etapa 5 · limitación a MIPYME (5.4) ---
+
+  /** Manifestaciones, condiciones evaluadas y decisión, si ya se tomó. */
+  mipyme: (procesoId: string) => pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme`),
+
+  /** Una MIPYME manifestó interés. De cuántas lo hagan depende la decisión. */
+  registrarManifestacionMipyme: (
+    procesoId: string,
+    datos: { nombre: string; identificacion: string; fechaPresentacion: string },
+    soporte: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('nombre', datos.nombre);
+    cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+
+    return pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme/manifestaciones`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Registra la decisión sobre la limitación.
+   *
+   * El motivo lo exige el backend cuando la decisión se aparta del cálculo, y
+   * el acto administrativo cuando se limita: limitar restringe quién puede
+   * presentarse a un proceso público.
+   */
+  decidirMipyme: (
+    procesoId: string,
+    datos: { limitado: boolean; motivo?: string },
+    acto: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (acto) cuerpo.append('file', acto);
+    cuerpo.append('limitado', String(datos.limitado));
+    if (datos.motivo) cuerpo.append('motivo', datos.motivo);
+
+    return pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme/decision`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ------------------------ administración de las condiciones de MIPYME -----
+
+  /** Tope de valor y mínimo de manifestaciones, con su marca de confirmado. */
+  condicionesMipyme: () => pedir<CondicionesMipymeConfig>('/condiciones-mipyme'),
+
+  /**
+   * Cambia una de las dos condiciones.
+   *
+   * No afecta a las decisiones ya tomadas: cada una congeló los parámetros con
+   * los que se evaluó.
+   */
+  guardarCondicionMipyme: (
+    clave: string,
+    datos: {
+      valor: number;
+      unidad?: 'SMMLV' | 'PESOS';
+      fundamento?: string;
+      confirmado?: boolean;
+    },
+  ) =>
+    pedir<CondicionesMipymeConfig>(`/condiciones-mipyme/${clave}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  // -------------------------------- administración de plazos de publicidad ---
+
+  /** Las once modalidades con su plazo, tengan fila o no. */
+  plazosPublicacion: () => pedir<PlazosPublicacion>('/plazos-publicacion'),
+
+  /**
+   * Fija el plazo de una modalidad, creándolo si no lo tenía.
+   *
+   * No afecta a lo ya publicado: cada publicación congeló el plazo que le
+   * aplicó el día de su registro.
+   */
+  guardarPlazoPublicacion: (
+    modalidad: string,
+    datos: { diasHabiles: number; fundamento?: string; confirmado?: boolean },
+  ) =>
+    pedir<PlazosPublicacion>(`/plazos-publicacion/${modalidad}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  // ------------------------------------------- administración de umbrales ---
+
+  umbrales: () => pedir<UmbralesVigentes>('/umbrales'),
+
+  smmlv: () => pedir<SmmlvAnual[]>('/umbrales/smmlv'),
+
+  guardarSmmlv: (anio: number, valor: number) =>
+    pedir<SmmlvAnual>('/umbrales/smmlv', {
+      method: 'PUT',
+      body: JSON.stringify({ anio, valor }),
+    }),
+
+  /** Cierra el umbral vigente de la modalidad y abre el nuevo. */
+  guardarUmbral: (
+    modalidad: string,
+    cambio: {
+      limiteInferior: number | null;
+      limiteSuperior: number | null;
+      unidad: UnidadUmbral;
+      vigenciaDesde?: string;
+    },
+  ) =>
+    pedir<UmbralVigente>(`/umbrales/${modalidad}`, {
+      method: 'PUT',
+      body: JSON.stringify(cambio),
+    }),
+
+  crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
     pedir<ProcesoResumen>('/procesos', {
       method: 'POST',
-      body: JSON.stringify({ objeto, modalidad }),
+      body: JSON.stringify({ objeto, modalidad, valorEstimado }),
     }),
 
   obtenerEstudioPrevio: (procesoId: string) =>

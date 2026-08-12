@@ -1,47 +1,76 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstudioPrevio } from '../../types';
-import { StepperEtapas, ETAPAS } from './StepperEtapas';
+import { ActividadProceso, EstudioPrevio } from '../../types';
+import { StepperEtapas } from './StepperEtapas';
 import { ActividadEtapa } from './ListaActividades';
-import { AcordeonEtapas } from './AcordeonEtapas';
+import { RielActividades } from './RielActividades';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
+import { PanelCdp } from '../cdp/PanelCdp';
+import { PanelPublicacionPliego } from '../publicacion/PanelPublicacionPliego';
+import { PanelObservaciones } from '../observaciones/PanelObservaciones';
+import { PanelMipyme } from '../mipyme/PanelMipyme';
+
+/** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
+const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
+
+/** Publicación del proyecto de pliego, primera actividad viva de la etapa 5. */
+const NUMERAL_PUBLICACION = '5.2';
+/** Observaciones al pliego (EFDS-1151), sobre la publicación ya registrada. */
+const NUMERAL_OBSERVACIONES = '5.3';
+/** Limitación de la convocatoria a MIPYME (EFDS-1151). */
+const NUMERAL_MIPYME = '5.4';
+
+/** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
+const NUMERALES_ETAPA_5 = [NUMERAL_PUBLICACION, NUMERAL_OBSERVACIONES, NUMERAL_MIPYME];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.1',
+    etapa: 3,
     nombre: 'Elaboración de estudios previos',
     descripcion: 'Descripción de la necesidad, fundamento jurídico y modalidad propuesta',
   },
   {
     numeral: '3.2',
+    etapa: 3,
     nombre: 'Análisis del sector y estudio de mercado',
     descripcion: 'Consulta de proveedores y precios para estimar el valor',
   },
   {
     numeral: '3.3',
+    etapa: 3,
     nombre: 'Radicación en la Dirección de Contratación',
     descripcion: 'Genera consecutivo en el aplicativo de gestión documental',
   },
   {
     numeral: '3.4',
+    etapa: 3,
     nombre: 'Revisión y reparto',
     descripcion: 'Revisiones, mesas de trabajo y observaciones al estudio previo',
   },
   {
     numeral: '3.5',
+    etapa: 3,
     nombre: 'Definir modalidad de contratación',
     descripcion: 'Según cuantía y umbral vigente (Decreto 1082/2015)',
   },
   {
     numeral: '3.6',
+    etapa: 3,
     nombre: 'Comité de contratación',
     descripcion: 'Revisa, observa o aprueba los documentos del proceso',
   },
 ];
+
+const formatoPesos = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 0,
+});
 
 interface Props {
   procesoId: string;
@@ -55,6 +84,9 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
+  const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
+  const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
   /** Documentos por numeral, para mostrar el contador en cada actividad. */
   const [adjuntosPorNumeral, setAdjuntosPorNumeral] = useState<Record<string, number>>({});
@@ -70,6 +102,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         setAdjuntosPorNumeral(conteo);
       })
       .catch(() => undefined);
+  }, [procesoId, tokenExpediente]);
+
+  useEffect(() => {
+    // Si falla se sigue con la lista de la etapa 3 que había antes: el riel no
+    // puede quedarse vacío por una consulta caída.
+    contratacionService
+      .actividades(procesoId)
+      .then(setCatalogo)
+      .catch(() => setCatalogo([]));
   }, [procesoId, tokenExpediente]);
 
   useEffect(() => {
@@ -120,29 +161,62 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     return 'Listo para enviar a revisión';
   };
 
-  // Solo el 3.1 tiene HU entregada; el resto se muestra como estructura.
-  const actividades: ActividadEtapa[] = ACTIVIDADES_ETAPA_3.map((act) => {
-    const adjuntos = adjuntosPorNumeral[act.numeral] ?? 0;
-    if (act.numeral === '3.1') {
-      return {
-        ...act,
-        estado: aprobado ? 'aprobada' : 'en_curso',
-        detalle: detalle31(),
-        disponible: true,
-        adjuntos,
-      };
-    }
-    return { ...act, estado: 'pendiente', disponible: false, adjuntos };
-  });
+  // El catálogo llega del backend desde EFDS-1342: la matriz tiene 63
+  // actividades y corregir el nombre de una no debería exigir un despliegue.
+  // Si la consulta falla se cae a la etapa 3, que es lo único que había antes.
+  const delCatalogo: ActividadEtapa[] = (catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3).map(
+    (act: any) => {
+      const adjuntos = adjuntosPorNumeral[act.numeral] ?? 0;
+      const aplica = act.aplica !== false;
 
-  // Las 10 etapas con sus actividades. Solo la 3 tiene actividades definidas
-  // hoy; las demás se listan vacías hasta que lleguen sus HUs.
-  const etapasConActividades = ETAPAS.map((e) => ({
-    numero: e.numero,
-    nombre: e.nombre,
-    fueraDeAlcance: e.fueraDeAlcance,
-    actividades: e.numero === 3 ? actividades : [],
-  }));
+      if (act.numeral === '3.1') {
+        return {
+          ...act,
+          estado: aprobado ? 'aprobada' : 'en_curso',
+          detalle: detalle31(),
+          disponible: true,
+          adjuntos,
+        };
+      }
+      // Las actividades del CDP se trabajan aquí desde EFDS-1148, la
+      // publicación del pliego desde EFDS-1150 y las observaciones y la
+      // limitación a MIPYME desde EFDS-1151. Se tratan igual: el riel las
+      // habilita cuando la matriz las marca aplicables a la modalidad.
+      if (NUMERALES_CDP.includes(act.numeral) || NUMERALES_ETAPA_5.includes(act.numeral)) {
+        // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
+        // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
+        // se hacía— una actividad que la modalidad excluye se veía igual que
+        // una que está por hacer, y el contador la exigía para llegar al 100%.
+        return {
+          ...act,
+          estado: act.estado === 'APROBADO' ? 'aprobada' : aplica ? 'en_curso' : 'no_aplica',
+          disponible: aplica,
+          detalle: aplica ? undefined : 'No aplica a esta modalidad',
+          adjuntos,
+        };
+      }
+      return { ...act, estado: 'pendiente', disponible: false, adjuntos };
+    },
+  );
+
+  const actividades = delCatalogo;
+
+  const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
+
+  // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
+  // proceso, no del estudio previo, y de ella depende la modalidad aplicable.
+  const ficha = [
+    datos.proceso.expediente ? `Expediente ${datos.proceso.expediente}` : null,
+    typeof datos.proceso.valorEstimado === 'number'
+      ? `Valor estimado ${formatoPesos.format(datos.proceso.valorEstimado)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  // La modalidad manda sobre todo el flujo —determina qué actividades aplican—
+  // así que va destacada y no perdida en la línea de datos menores.
+  const modalidad = datos.proceso.modalidadNombre ?? datos.proceso.modalidad ?? null;
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -170,29 +244,80 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               <h2 className="text-[15px] font-bold text-slate-900 m-0 mt-0.5 leading-snug">
                 {datos.proceso.objeto}
               </h2>
-              {datos.proceso.expediente && (
-                <p className="text-[11px] text-gray-400 m-0 mt-1 tabular-nums">
-                  Expediente {datos.proceso.expediente}
-                </p>
+              {modalidad && (
+                <span className="inline-block mt-1.5 px-2 py-0.5 rounded-md bg-[#E0EDFF] text-[#003DA5] text-[11px] font-bold">
+                  {modalidad}
+                </span>
+              )}
+              {ficha && (
+                <p className="text-[11px] text-gray-400 m-0 mt-1 tabular-nums">{ficha}</p>
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <StepperEtapas etapaActual={datos.proceso.etapa} />
+
+            <button
+              type="button"
+              onClick={() => setExpedienteAbierto((v) => !v)}
+              aria-expanded={expedienteAbierto}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                border transition-colors ${
+                  expedienteAbierto
+                    ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                    : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                }`}
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              Expediente
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Actividades de la etapa + expediente */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3 md:gap-4 items-start">
-        <AcordeonEtapas
-          etapas={etapasConActividades}
+      {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
+      <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
+        <RielActividades
           etapaActual={datos.proceso.etapa}
-          onAbrirActividad={(numeral) => setExpandida((a) => (a === numeral ? null : numeral))}
-          expandida={expandida}
-          contenidoExpandido={
-            expandida === '3.1' ? (
+          actividades={actividades}
+          seleccionada={expandida}
+          onSeleccionar={setExpandida}
+        />
+
+        <div className="min-w-0">
+          {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelCdp
+                numeral={actividadSeleccionada.numeral}
+                procesoId={procesoId}
+                valorEstimado={datos.proceso.valorEstimado}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelPublicacionPliego
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_OBSERVACIONES ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelObservaciones
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_MIPYME ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelMipyme
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === '3.1' ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <ContenidoEstudioPrevio
                 procesoId={procesoId}
                 onCambio={() => {
@@ -203,17 +328,35 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                   setTokenExpediente((t) => t + 1);
                 }}
               />
-            ) : null
-          }
-        />
-
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <PanelExpediente
-            procesoId={procesoId}
-            editable={!aprobado && !enRevision}
-            recargarToken={tokenExpediente}
-          />
+            </div>
+          ) : (
+            /* El riel deja pulsar solo lo disponible, pero al entrar sin
+               actividad elegida hay que decir qué hacer. */
+            <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
+              <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
+              <p className="text-sm font-bold text-gray-600 m-0">
+                {actividadSeleccionada
+                  ? `${actividadSeleccionada.numeral} · ${actividadSeleccionada.nombre}`
+                  : 'Elige una actividad'}
+              </p>
+              <p className="text-xs text-gray-400 m-0 mt-1">
+                {actividadSeleccionada
+                  ? 'Esta actividad aún no está habilitada en la plataforma.'
+                  : 'Selecciona una actividad del panel izquierdo para trabajar en ella.'}
+              </p>
+            </div>
+          )}
         </div>
+
+        {expedienteAbierto && (
+          <div className="panel-expediente bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            <PanelExpediente
+              procesoId={procesoId}
+              editable={!aprobado && !enRevision}
+              recargarToken={tokenExpediente}
+            />
+          </div>
+        )}
       </div>
 
     </div>

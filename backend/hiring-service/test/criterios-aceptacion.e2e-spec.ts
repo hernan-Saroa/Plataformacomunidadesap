@@ -59,7 +59,13 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
 
   const crearProceso = async () =>
     service.crearProceso(
-      { objeto: 'Adquisición de equipos para pruebas', modalidad: 'MINIMA_CUANTIA' },
+      // El valor estimado se pide al crear desde EFDS-1147, y debe caber en la
+      // modalidad: uno de mínima cuantía, que es con la que corren estos casos.
+      {
+        objeto: 'Adquisición de equipos para pruebas',
+        modalidad: 'MINIMA_CUANTIA',
+        valorEstimado: 1_000_000,
+      },
       gestor,
     );
 

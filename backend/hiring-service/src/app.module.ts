@@ -6,6 +6,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { HealthController } from './health/health.controller';
 import { HiringModule } from './modules/hiring/hiring.module';
 import { EstudioPrevioModule } from './modules/estudio-previo/estudio-previo.module';
+import { UmbralesModule } from './modules/umbrales/umbrales.module';
+import { CdpModule } from './modules/cdp/cdp.module';
+import { PublicacionModule } from './modules/publicacion/publicacion.module';
+import { ObservacionesModule } from './modules/observaciones/observaciones.module';
+import { MipymeModule } from './modules/mipyme/mipyme.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -18,6 +23,17 @@ import { Trazabilidad } from './entities/trazabilidad.entity';
 import { Revision } from './entities/revision.entity';
 import { Plantilla } from './entities/plantilla.entity';
 import { Modalidad } from './entities/modalidad.entity';
+import { UmbralModalidad } from './entities/umbral-modalidad.entity';
+import { Smmlv } from './entities/smmlv.entity';
+import { Cdp } from './entities/cdp.entity';
+import { Actividad, ActividadExcluida } from './entities/actividad.entity';
+import { PublicacionPliego } from './entities/publicacion-pliego.entity';
+import { PlazoPublicacion } from './entities/plazo-publicacion.entity';
+import { DiaNoHabil } from './entities/dia-no-habil.entity';
+import { ObservacionPliego } from './entities/observacion-pliego.entity';
+import { ManifestacionMipyme } from './entities/manifestacion-mipyme.entity';
+import { LimitacionMipyme } from './entities/limitacion-mipyme.entity';
+import { ParametroMipyme } from './entities/parametro-mipyme.entity';
 
 @Module({
   imports: [
@@ -35,7 +51,7 @@ import { Modalidad } from './entities/modalidad.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -44,6 +60,11 @@ import { Modalidad } from './entities/modalidad.entity';
     AuthModule,
     HiringModule,
     EstudioPrevioModule,
+    UmbralesModule,
+    CdpModule,
+    PublicacionModule,
+    ObservacionesModule,
+    MipymeModule,
   ],
   controllers: [HealthController],
   providers: [
