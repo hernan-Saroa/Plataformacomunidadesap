@@ -6,6 +6,7 @@ import {
   Gavel,
   HelpCircle,
   Paperclip,
+  RefreshCw,
   Users,
   X,
 } from 'lucide-react';
@@ -47,6 +48,7 @@ const pesos = new Intl.NumberFormat('es-CO', {
 export function PanelMipyme({ procesoId, onCambio }: Props) {
   const [estado, setEstado] = useState<EstadoMipyme | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
   const [registrando, setRegistrando] = useState(false);
   const [rectificando, setRectificando] = useState(false);
@@ -55,11 +57,13 @@ export function PanelMipyme({ procesoId, onCambio }: Props) {
     setCargando(true);
     try {
       setEstado(await contratacionService.mipyme(procesoId));
+      setError(null);
     } catch (err: any) {
-      toast.error('No se pudo cargar la limitación a MIPYME', {
-        id: 'mipyme-carga',
-        description: err.message,
-      });
+      // El motivo se guarda en el panel y no solo en un toast: el toast se va
+      // en tres segundos y deja al usuario delante de un "no se pudo cargar"
+      // que no dice nada. Aquí lo que falló sigue a la vista para poder
+      // reportarlo.
+      setError(err.message);
     } finally {
       setCargando(false);
     }
@@ -86,13 +90,24 @@ export function PanelMipyme({ procesoId, onCambio }: Props) {
   };
 
   if (cargando) {
-    return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
+    return (
+      <Marco>
+        <p className="text-[11.5px] text-slate-400 m-0">Cargando la limitación a MIPYME…</p>
+      </Marco>
+    );
   }
+
   if (!estado) {
     return (
-      <p className="text-xs text-red-600 m-0 px-4 py-3">
-        No se pudo cargar la limitación a MIPYME
-      </p>
+      <Marco>
+        <Titulo>Limitación de la convocatoria a MIPYME</Titulo>
+        <Aviso tono="error" titulo="No se pudo cargar la actividad">
+          {error ?? 'Inténtalo de nuevo en un momento.'}
+        </Aviso>
+        <Boton icono={<RefreshCw className="w-3.5 h-3.5" />} onClick={cargar}>
+          Reintentar
+        </Boton>
+      </Marco>
     );
   }
 
