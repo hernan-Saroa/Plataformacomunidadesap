@@ -71,7 +71,7 @@ CREATE TABLE academic_registration.certificate_template_config (
 -- Name: TABLE certificate_template_config; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON TABLE academic_registration.certificate_template_config IS 'Configuración de plantillas de certificados';
+COMMENT ON TABLE academic_registration.certificate_template_config IS 'Certificate template configuration';
 
 
 --
@@ -115,7 +115,7 @@ CREATE TABLE academic_registration.certificate_validations (
 -- Name: TABLE certificate_validations; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON TABLE academic_registration.certificate_validations IS 'Historial de validaciones públicas de certificados';
+COMMENT ON TABLE academic_registration.certificate_validations IS 'Public certificate validation history';
 
 
 --
@@ -137,7 +137,7 @@ CREATE TABLE academic_registration.graduates (
     ceremony_date date,
     degree_title character varying(255) NOT NULL,
     diploma_number character varying(100),
-    acta_number character varying(100),
+    registry_reference character varying(100),
     resolution_number character varying(100),
     status character varying(50) DEFAULT 'ACTIVE'::character varying,
     is_verified boolean DEFAULT true,
@@ -147,7 +147,7 @@ CREATE TABLE academic_registration.graduates (
     created_by character varying(255),
     updated_by character varying(255),
     id_issue_date date,
-    seccional_name character varying(255),
+    regional_office_name character varying(255),
     first_name character varying(255),
     last_name character varying(255),
     CONSTRAINT chk_graduate_status CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'REVOKED'::character varying, 'SUSPENDED'::character varying])::text[])))
@@ -158,21 +158,21 @@ CREATE TABLE academic_registration.graduates (
 -- Name: TABLE graduates; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON TABLE academic_registration.graduates IS 'Graduados de prueba con diferentes tipos de programas';
+COMMENT ON TABLE academic_registration.graduates IS 'Graduates from the supported academic program types';
 
 
 --
 -- Name: COLUMN graduates.id_issue_date; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON COLUMN academic_registration.graduates.id_issue_date IS 'Fecha de expedición de la cédula de ciudadanía';
+COMMENT ON COLUMN academic_registration.graduates.id_issue_date IS 'Identity document issue date';
 
 
 --
--- Name: COLUMN graduates.seccional_name; Type: COMMENT; Schema: academic_registration; Owner: -
+-- Name: COLUMN graduates.regional_office_name; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON COLUMN academic_registration.graduates.seccional_name IS 'Seccional/territorial asignada al graduado';
+COMMENT ON COLUMN academic_registration.graduates.regional_office_name IS 'Regional office assigned to the graduate';
 
 
 --
@@ -224,7 +224,7 @@ CREATE TABLE academic_registration.graduation_certificate_requests (
 -- Name: TABLE graduation_certificate_requests; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON TABLE academic_registration.graduation_certificate_requests IS 'Solicitudes en diferentes estados del flujo';
+COMMENT ON TABLE academic_registration.graduation_certificate_requests IS 'Graduation certificate requests across workflow states';
 
 
 --
@@ -244,7 +244,7 @@ CREATE TABLE academic_registration.graduation_certificates (
     degree_title character varying(255) NOT NULL,
     graduation_date date NOT NULL,
     diploma_number character varying(100),
-    acta_number character varying(100),
+    registry_reference character varying(100),
     campus character varying(100),
     signer_name character varying(255) NOT NULL,
     signer_position character varying(255) NOT NULL,
@@ -258,7 +258,7 @@ CREATE TABLE academic_registration.graduation_certificates (
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     created_by character varying(255),
-    seccional_name character varying(150),
+    regional_office_name character varying(150),
     CONSTRAINT chk_certificate_status CHECK (((status)::text = ANY ((ARRAY['VALID'::character varying, 'REVOKED'::character varying, 'EXPIRED'::character varying])::text[])))
 );
 
@@ -267,21 +267,21 @@ CREATE TABLE academic_registration.graduation_certificates (
 -- Name: TABLE graduation_certificates; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON TABLE academic_registration.graduation_certificates IS 'Certificados emitidos con códigos QR válidos';
+COMMENT ON TABLE academic_registration.graduation_certificates IS 'Issued graduation certificates with valid QR codes';
 
 
 --
 -- Name: COLUMN graduation_certificates.template_snapshot; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON COLUMN academic_registration.graduation_certificates.template_snapshot IS 'Snapshot JSON de la plantilla usada al emitir el certificado';
+COMMENT ON COLUMN academic_registration.graduation_certificates.template_snapshot IS 'JSON snapshot of the template used when the certificate was issued';
 
 
 --
--- Name: COLUMN graduation_certificates.seccional_name; Type: COMMENT; Schema: academic_registration; Owner: -
+-- Name: COLUMN graduation_certificates.regional_office_name; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON COLUMN academic_registration.graduation_certificates.seccional_name IS 'Seccional asociada al certificado (persistida desde aprobaciones manuales)';
+COMMENT ON COLUMN academic_registration.graduation_certificates.regional_office_name IS 'Regional office associated with the certificate and persisted from manual approvals';
 
 
 --
@@ -305,7 +305,7 @@ CREATE TABLE academic_registration.signers (
 -- Name: TABLE signers; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON TABLE academic_registration.signers IS 'Firmantes autorizados para certificados';
+COMMENT ON TABLE academic_registration.signers IS 'Authorized certificate signers';
 
 
 --
@@ -329,7 +329,7 @@ CREATE TABLE academic_registration.template_config_changes (
 -- Name: TABLE template_config_changes; Type: COMMENT; Schema: academic_registration; Owner: -
 --
 
-COMMENT ON TABLE academic_registration.template_config_changes IS 'Historial de cambios en plantillas';
+COMMENT ON TABLE academic_registration.template_config_changes IS 'Certificate template change history';
 
 
 --

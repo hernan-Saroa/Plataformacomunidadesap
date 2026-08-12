@@ -24,6 +24,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
     <div className="min-w-0">
       <Suspense fallback={<div className="p-6 text-sm text-gray-500">Cargando PTA...</div>}>
         <PTAModuleRemote
+          key={userPersonId}
           onBack={onBack}
           userPersonId={userPersonId}
           userName={userName}
