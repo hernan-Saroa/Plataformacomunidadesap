@@ -2925,7 +2925,10 @@ export class PtaService {
         const EXT_KEYS = ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'];
         let total = 0;
         let aprobados = 0;
-        const componentesEstado: Array<{ key: string; label: string; estado: string }> = [];
+        const componentesEstado: Array<{
+          key: string; label: string; estado: string;
+          horas: number; horas_aprobadas: number; horas_pendientes: number;
+        }> = [];
 
         // Docencia colapsada: cuenta como 1 si tiene horas en pregrado y/o posgrado;
         // aprobada solo si TODOS sus sub-componentes con horas lo están. El rótulo de
@@ -2944,7 +2947,21 @@ export class PtaService {
           else if (docEstados.includes('devuelto')) docEstado = 'devuelto';
           else if (docEnRevision) docEstado = 'en_revision';
           else docEstado = 'pendiente';
-          componentesEstado.push({ key: 'academica', label: 'Docencia', estado: docEstado });
+          // Horas aprobadas/pendientes se calculan sub-componente por sub-componente
+          // (Pregrado/Posgrado/Territorial pueden aprobarse por separado) en vez de
+          // usar el booleano colapsado `docAprobada`, que solo es true si TODOS lo están.
+          const docHorasTotales = DOCENCIA_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
+          const docHorasAprobadas = esBorrador ? 0 : DOCENCIA_KEYS.reduce(
+            (s, k) => s + (estaAprobado(k) ? (horasPorComp[k] || 0) : 0), 0,
+          );
+          componentesEstado.push({
+            key: 'academica',
+            label: 'Docencia',
+            estado: docEstado,
+            horas: docHorasTotales,
+            horas_aprobadas: docHorasAprobadas,
+            horas_pendientes: docHorasTotales - docHorasAprobadas,
+          });
         }
 
         for (const c of BASE_KEYS) {
@@ -2957,10 +2974,15 @@ export class PtaService {
           else if (recs.get(c) === 'devuelto') estado = 'devuelto';
           else if (!revisionCompleta(c)) estado = 'en_revision';
           else estado = recs.get(c) || 'pendiente';
+          const horasTotales = horasPorComp[c] || 0;
+          const horasAprobadas = aprobado ? horasTotales : 0;
           componentesEstado.push({
             key: c,
             label: 'Investigacion',
             estado,
+            horas: horasTotales,
+            horas_aprobadas: horasAprobadas,
+            horas_pendientes: horasTotales - horasAprobadas,
           });
         }
 
@@ -2981,7 +3003,20 @@ export class PtaService {
           else if (compEstados.includes('devuelto')) compEstado = 'devuelto';
           else if (compEnRevision) compEstado = 'en_revision';
           else compEstado = 'pendiente';
-          componentesEstado.push({ key: 'complementarias', label: 'Complementarias', estado: compEstado });
+          // Igual que Docencia: horas aprobadas por sub-componente propio (sin
+          // programa / pregrado / posgrado), no por el booleano colapsado.
+          const compHorasTotales = COMPLEMENTARIAS_KEYS_LOTE.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
+          const compHorasAprobadas = esBorrador ? 0 : COMPLEMENTARIAS_KEYS_LOTE.reduce(
+            (s, k) => s + (estaAprobado(k) ? (horasPorComp[k] || 0) : 0), 0,
+          );
+          componentesEstado.push({
+            key: 'complementarias',
+            label: 'Complementarias',
+            estado: compEstado,
+            horas: compHorasTotales,
+            horas_aprobadas: compHorasAprobadas,
+            horas_pendientes: compHorasTotales - compHorasAprobadas,
+          });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
         const extTieneHoras = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
@@ -2997,10 +3032,19 @@ export class PtaService {
           else if (extEstados.includes('devuelto')) extEstado = 'devuelto';
           else if (extEnRevision) extEstado = 'en_revision';
           else extEstado = 'pendiente';
+          // Igual patrón: cada sección de Extensión (capacitación, procesos,
+          // fortalecimiento, alto gobierno) se aprueba de forma independiente.
+          const extHorasTotales = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
+          const extHorasAprobadas = esBorrador ? 0 : EXT_KEYS.reduce(
+            (s, k) => s + (estaAprobado(k) ? (horasPorComp[k] || 0) : 0), 0,
+          );
           componentesEstado.push({
             key: 'extension',
             label: 'Extension',
             estado: extEstado,
+            horas: extHorasTotales,
+            horas_aprobadas: extHorasAprobadas,
+            horas_pendientes: extHorasTotales - extHorasAprobadas,
           });
         }
 
