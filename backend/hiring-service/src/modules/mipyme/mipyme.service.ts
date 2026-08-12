@@ -8,7 +8,11 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { ManifestacionMipyme } from '../../entities/manifestacion-mipyme.entity';
 import { LimitacionMipyme } from '../../entities/limitacion-mipyme.entity';
-import { ParametroMipyme, UnidadTope } from '../../entities/parametro-mipyme.entity';
+import {
+  ClaveParametroMipyme,
+  ParametroMipyme,
+  UnidadTope,
+} from '../../entities/parametro-mipyme.entity';
 import { Smmlv } from '../../entities/smmlv.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -16,9 +20,17 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { HiringAccess, ROLES_PARTICIPACION } from '../../auth/hiring-access';
+import {
+  HiringAccess,
+  ROLES_ADMIN_MIPYME,
+  ROLES_PARTICIPACION,
+} from '../../auth/hiring-access';
 import { evaluarCondiciones } from './condiciones';
-import { DecidirLimitacionDto, RegistrarManifestacionDto } from './dto/mipyme.dto';
+import {
+  DecidirLimitacionDto,
+  GuardarCondicionMipymeDto,
+  RegistrarManifestacionDto,
+} from './dto/mipyme.dto';
 
 /** Actividad 5.4 de la matriz: la limitación de la convocatoria a MIPYME. */
 export const NUMERAL_MIPYME = '5.4';
@@ -55,6 +67,130 @@ export class MipymeService {
       );
     }
     return { tope, minimo };
+  }
+
+  // ------------------------------------------------- condiciones (admin) ---
+
+  /**
+   * Las dos condiciones configuradas, para administrarlas (EFDS-1393).
+   *
+   * Devuelve también el tope llevado a pesos: la cifra se guarda en SMMLV y
+   * nadie que la valide piensa en salarios mínimos. Ver el equivalente al lado
+   * es lo que permite darse cuenta de que un número está mal.
+   */
+  async condiciones(acceso?: HiringAccess, em?: EntityManager) {
+    const manager = em ?? this.dataSource.manager;
+    const { tope, minimo } = await this.parametros(em);
+    const smmlv = await this.salarioDelAnio(manager);
+    const anio = Number(this.hoy().slice(0, 4));
+
+    const salario = await manager.getRepository(Smmlv).findOne({ where: { anio } });
+
+    return {
+      // Lo decide el backend, que ya tiene los roles del token: replicar la
+      // matriz de permisos en el cliente la dejaría desactualizada en cuanto
+      // cambie aquí.
+      puedeEditar: ROLES_ADMIN_MIPYME.some((r) => acceso?.roles.includes(r) ?? false),
+      // Orden explícito y no el que devuelva Postgres: primero el tope, que es
+      // la condición que más discusión genera.
+      parametros: [tope, minimo].map((p) => ({
+        clave: p.clave,
+        valor: p.valor,
+        unidad: p.unidad,
+        descripcion: p.descripcion,
+        fundamento: p.fundamento,
+        confirmado: p.confirmado,
+        actualizadoEn: p.updatedAt,
+      })),
+      smmlvAplicado: salario
+        ? { anio: salario.anio, valor: salario.valor, confirmado: salario.confirmado }
+        : null,
+      topeEnPesos:
+        tope.unidad === 'PESOS' ? tope.valor : smmlv === null ? null : tope.valor * smmlv,
+      advertencia: this.advertencia(tope, minimo, smmlv),
+    };
+  }
+
+  /**
+   * Cambia una de las dos condiciones.
+   *
+   * No toca las decisiones ya registradas: cada una congeló los parámetros con
+   * los que se evaluó, así que corregir una cifra hoy no reescribe lo que se
+   * resolvió ayer. Es la misma garantía que dan los plazos de publicidad.
+   */
+  async guardarCondicion(
+    clave: string,
+    dto: GuardarCondicionMipymeDto,
+    acceso: HiringAccess,
+  ) {
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ParametroMipyme);
+      const parametro = await repo.findOne({
+        where: { clave: clave as ClaveParametroMipyme },
+      });
+      if (!parametro) {
+        throw new NotFoundException(`La condición ${clave} no existe`);
+      }
+
+      // El mínimo es un conteo de empresas: media manifestación no significa
+      // nada, y una unidad lo haría parecer convertible a pesos.
+      if (parametro.clave === 'MINIMO_MANIFESTACIONES') {
+        if (!Number.isInteger(dto.valor)) {
+          throw new BadRequestException(
+            'El mínimo de manifestaciones debe ser un número entero de empresas',
+          );
+        }
+        if (dto.unidad) {
+          throw new BadRequestException(
+            'El mínimo de manifestaciones es un conteo y no lleva unidad',
+          );
+        }
+      } else if (!dto.unidad && !parametro.unidad) {
+        throw new BadRequestException('Indica si el tope está en SMMLV o en pesos');
+      }
+
+      const antes = {
+        valor: parametro.valor,
+        unidad: parametro.unidad,
+        confirmado: parametro.confirmado,
+      };
+
+      parametro.valor = dto.valor;
+      if (dto.unidad !== undefined) parametro.unidad = dto.unidad;
+      if (dto.fundamento !== undefined) parametro.fundamento = dto.fundamento;
+      // Sin decir nada, una cifra que alguien acaba de tocar deja de estar
+      // confirmada: la confirmación es sobre un valor concreto, no sobre la
+      // fila. Se marca explícitamente o no se marca.
+      parametro.confirmado = dto.confirmado ?? false;
+      parametro.updatedAt = new Date();
+
+      await repo.save(parametro);
+
+      // De estas dos cifras depende si una convocatoria se limita, es decir, a
+      // quién se le deja participar en un proceso público. Quién las movió y
+      // cuándo tiene que quedar registrado.
+      await em.save(Trazabilidad, {
+        procesoId: null,
+        entidad: 'parametro_mipyme',
+        entidadId: null,
+        accion: 'GUARDAR' as AccionTraza,
+        detalle: {
+          clave: parametro.clave,
+          antes,
+          ahora: {
+            valor: parametro.valor,
+            unidad: parametro.unidad,
+            confirmado: parametro.confirmado,
+          },
+        },
+        usuarioId: acceso.userId,
+        usuarioNombre: acceso.userName,
+      } as Partial<Trazabilidad>);
+
+      // Se lee dentro de la transacción: por fuera devolvería el estado
+      // anterior y el acuse de recibo contradiría lo que se acaba de guardar.
+      return this.condiciones(acceso, em);
+    });
   }
 
   // ------------------------------------------------------------- consulta --

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { MipymeService } from './mipyme.service';
 import { MipymeController } from './mipyme.controller';
+import { CondicionesMipymeController } from './condiciones.controller';
 
 import { ManifestacionMipyme } from '../../entities/manifestacion-mipyme.entity';
 import { LimitacionMipyme } from '../../entities/limitacion-mipyme.entity';
@@ -32,7 +33,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
-  controllers: [MipymeController],
+  controllers: [MipymeController, CondicionesMipymeController],
   providers: [MipymeService],
   exports: [MipymeService],
 })

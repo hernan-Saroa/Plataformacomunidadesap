@@ -248,6 +248,31 @@ export interface DecisionMipyme {
   decididoAt: string;
 }
 
+/** Una de las dos condiciones configuradas de la limitación (EFDS-1393). */
+export interface ParametroMipyme {
+  clave: 'TOPE_VALOR' | 'MINIMO_MANIFESTACIONES';
+  valor: number;
+  /** Null en el mínimo de manifestaciones, que es un conteo sin unidad. */
+  unidad: 'SMMLV' | 'PESOS' | null;
+  descripcion: string;
+  /** De dónde sale la cifra: norma o acta que la respalda. */
+  fundamento: string | null;
+  /** False mientras la Dirección de Contratación no valide el número. */
+  confirmado: boolean;
+  actualizadoEn: string;
+}
+
+export interface CondicionesMipymeConfig {
+  /** Lo decide el backend según los roles del token, no el cliente. */
+  puedeEditar: boolean;
+  /** Tope primero, mínimo después: el orden lo fija el backend. */
+  parametros: ParametroMipyme[];
+  smmlvAplicado: { anio: number; valor: number; confirmado: boolean } | null;
+  /** El tope llevado a pesos; null si está en SMMLV y falta el salario. */
+  topeEnPesos: number | null;
+  advertencia: string | null;
+}
+
 export interface EstadoMipyme {
   /** False en las modalidades que no admiten limitar la convocatoria. */
   aplica: boolean;

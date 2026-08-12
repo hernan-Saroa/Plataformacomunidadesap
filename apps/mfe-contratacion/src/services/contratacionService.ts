@@ -3,6 +3,7 @@ import {
   ActividadProceso,
   CamposFaltantesError,
   Cdp,
+  CondicionesMipymeConfig,
   ConflictoError,
   EstadoMipyme,
   EstadoObservaciones,
@@ -269,6 +270,31 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+  // ------------------------ administración de las condiciones de MIPYME -----
+
+  /** Tope de valor y mínimo de manifestaciones, con su marca de confirmado. */
+  condicionesMipyme: () => pedir<CondicionesMipymeConfig>('/condiciones-mipyme'),
+
+  /**
+   * Cambia una de las dos condiciones.
+   *
+   * No afecta a las decisiones ya tomadas: cada una congeló los parámetros con
+   * los que se evaluó.
+   */
+  guardarCondicionMipyme: (
+    clave: string,
+    datos: {
+      valor: number;
+      unidad?: 'SMMLV' | 'PESOS';
+      fundamento?: string;
+      confirmado?: boolean;
+    },
+  ) =>
+    pedir<CondicionesMipymeConfig>(`/condiciones-mipyme/${clave}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
 
   // -------------------------------- administración de plazos de publicidad ---
 

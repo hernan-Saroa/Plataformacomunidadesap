@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { Briefcase, CalendarClock, FileSignature, ClipboardCheck, Scale } from 'lucide-react';
+import {
+  Briefcase,
+  Building2,
+  CalendarClock,
+  FileSignature,
+  ClipboardCheck,
+  Scale,
+} from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 // Maquetación propia del módulo. Va aquí, en el componente expuesto por Module
@@ -13,8 +20,9 @@ import { VistaProcesos } from './procesos/VistaProcesos';
 import { DetalleProceso } from './proceso/DetalleProceso';
 import { VistaUmbrales } from './umbrales/VistaUmbrales';
 import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
+import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 
-type Seccion = 'estudios-previos' | 'revision' | 'umbrales' | 'plazos';
+type Seccion = 'estudios-previos' | 'revision' | 'umbrales' | 'plazos' | 'mipyme';
 
 /**
  * Módulo de Gestión de Contratación — HU EFDS-1146.
@@ -71,6 +79,13 @@ export default function ContratacionModulePremium() {
           icon: <CalendarClock className="w-5 h-5" />,
           color: '#7C3AED',
         },
+        {
+          id: 'mipyme',
+          label: 'MIPYME',
+          subtitle: 'Condiciones de limitación',
+          icon: <Building2 className="w-5 h-5" />,
+          color: '#7C3AED',
+        },
       ],
     },
   ];
@@ -80,6 +95,7 @@ export default function ContratacionModulePremium() {
   const contenido = () => {
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;
+    if (seccion === 'mipyme') return <VistaCondicionesMipyme />;
     if (procesoId) {
       return (
         <DetalleProceso

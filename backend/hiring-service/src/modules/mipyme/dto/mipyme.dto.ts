@@ -2,9 +2,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsISO8601,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   MaxLength,
 } from 'class-validator';
@@ -34,6 +37,51 @@ export class RegistrarManifestacionDto {
   @ApiProperty({ description: 'Fecha de presentación (YYYY-MM-DD)', example: '2026-08-12' })
   @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
   fechaPresentacion: string;
+}
+
+/**
+ * Cambio de una de las dos condiciones (EFDS-1393).
+ *
+ * Va por JSON y no por multipart: aquí no hay soporte que adjuntar, el
+ * fundamento es texto. Por eso tampoco lleva `aBooleano`.
+ */
+export class GuardarCondicionMipymeDto {
+  @ApiProperty({ description: 'Valor de la condición', example: 300 })
+  @IsNumber({}, { message: 'El valor debe ser un número' })
+  @IsPositive({ message: 'El valor debe ser mayor que cero' })
+  valor: number;
+
+  /**
+   * Solo la lleva el tope. El mínimo de manifestaciones es un conteo, y darle
+   * unidad sugeriría que se puede expresar en salarios mínimos.
+   */
+  @ApiPropertyOptional({
+    description: 'Unidad del tope: SMMLV o PESOS. No aplica al mínimo de manifestaciones',
+    enum: ['SMMLV', 'PESOS'],
+  })
+  @IsOptional()
+  @IsIn(['SMMLV', 'PESOS'], { message: 'La unidad debe ser SMMLV o PESOS' })
+  unidad?: 'SMMLV' | 'PESOS';
+
+  /**
+   * De dónde sale la cifra. Importa especialmente en el tope: el decreto lo
+   * expresa en dólares y cualquier equivalente aquí es una derivación.
+   */
+  @ApiPropertyOptional({
+    description: 'Norma o acta que respalda la cifra',
+    example: 'Decreto 1082 de 2015, art. 2.2.1.2.4.2.2',
+  })
+  @IsOptional()
+  @IsString()
+  fundamento?: string;
+
+  @ApiPropertyOptional({
+    description: 'Marca la cifra como validada por la Dirección de Contratación',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirmado?: boolean;
 }
 
 export class DecidirLimitacionDto {
