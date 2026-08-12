@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, Check, ChevronDown } from 'lucide-react';
 
-type HourLimitType = 'fija' | 'hasta' | 'intervalo' | 'porcentaje';
+export type HourLimitType = 'sin_horas' | 'fija' | 'hasta' | 'intervalo' | 'porcentaje';
 
 interface HourLimitControlProps {
   type: string;
@@ -15,6 +15,7 @@ interface HourLimitControlProps {
 }
 
 const toneByType: Record<HourLimitType, string> = {
+  sin_horas: 'border-slate-200 bg-slate-50 text-slate-600',
   fija: 'border-emerald-200 bg-emerald-50 text-emerald-800',
   hasta: 'border-amber-200 bg-amber-50 text-amber-800',
   intervalo: 'border-blue-200 bg-blue-50 text-blue-800',
@@ -31,6 +32,14 @@ type LimitTypeOption = {
 };
 
 const limitTypeOptions: LimitTypeOption[] = [
+  {
+    value: 'sin_horas',
+    label: 'Sin horas',
+    description: 'Opción informativa: se puede elegir y suma 0h',
+    icon: '—',
+    iconClassName: 'border-slate-200 bg-slate-50 text-slate-500',
+    activeClassName: 'border-slate-300 bg-slate-50',
+  },
   {
     value: 'fija',
     label: 'Fija (exacta)',
@@ -76,14 +85,14 @@ function LimitTypeSelect({
   const [position, setPosition] = useState({ top: 0, left: 0, width: 224 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const selected = limitTypeOptions.find(option => option.value === value) || limitTypeOptions[1];
+  const selected = limitTypeOptions.find(option => option.value === value) || limitTypeOptions[0];
 
   const updatePosition = () => {
     const trigger = triggerRef.current;
     if (!trigger || typeof window === 'undefined') return;
     const rect = trigger.getBoundingClientRect();
     const width = Math.max(224, rect.width);
-    const estimatedMenuHeight = 236;
+    const estimatedMenuHeight = 292;
     const viewportGap = 8;
     const showAbove = window.innerHeight - rect.bottom < estimatedMenuHeight && rect.top > estimatedMenuHeight;
     setPosition({
@@ -204,18 +213,25 @@ export function HourLimitControl({
   onMinHoursChange,
   compact = false,
 }: HourLimitControlProps) {
-  const normalizedType: HourLimitType = type === 'fija' || type === 'intervalo' || type === 'porcentaje' ? type : 'hasta';
+  const normalizedType: HourLimitType = type === 'sin_horas' || type === 'fija' || type === 'hasta' || type === 'intervalo' || type === 'porcentaje'
+    ? type
+    : 'hasta';
+  const hasHours = normalizedType !== 'sin_horas';
   const isInterval = normalizedType === 'intervalo';
   const isPercentage = normalizedType === 'porcentaje';
 
   return (
-    <div className={`hour-limit-control flex shrink-0 items-center gap-2 rounded-xl border p-1.5 shadow-sm ${toneByType[normalizedType]}`}>
+    <div className={`hour-limit-control flex max-w-full shrink-0 flex-wrap items-center gap-2 rounded-xl border p-1.5 shadow-sm ${compact ? 'w-full sm:w-auto' : ''} ${toneByType[normalizedType]}`}>
       <div className="relative">
         {!compact && <span className="mb-1 block px-1 text-[8px] font-black uppercase tracking-wider opacity-65">Tipo de límite</span>}
         <LimitTypeSelect value={normalizedType} onChange={onTypeChange} />
       </div>
 
-      {isInterval ? (
+      {!hasHours && !compact ? (
+        <div className="flex h-[42px] min-w-[92px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-center shadow-sm">
+          <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">No suma horas</span>
+        </div>
+      ) : hasHours && isInterval ? (
         <div className="flex items-center gap-1">
           <label className="rounded-lg border border-blue-200 bg-white px-1.5 py-1 text-center shadow-sm">
             <span className="block text-[8px] font-black uppercase text-blue-500">Mín.</span>
@@ -239,7 +255,7 @@ export function HourLimitControl({
             />
           </label>
         </div>
-      ) : (
+      ) : hasHours ? (
         <label className="rounded-lg border border-current/20 bg-white px-2 py-1 text-center shadow-sm">
           <span className="block text-[8px] font-black uppercase opacity-60">
             {normalizedType === 'fija' ? 'Horas exactas' : isPercentage ? '% del PTA' : 'Máximo'}
@@ -256,7 +272,7 @@ export function HourLimitControl({
             <span className="text-[9px] font-black opacity-60">{isPercentage ? '%' : 'h'}</span>
           </span>
         </label>
-      )}
+      ) : null}
     </div>
   );
 }
