@@ -4640,7 +4640,7 @@ function Paso2({
                                         
                                         {!soloLectura && seleccionada && (
                                           <button 
-                                            className="absolute top-0 right-0 p-1.5 text-gray-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-transparent hover:border-blue-200"
+                                            className="absolute top-0 right-0 p-1.5 text-blue-600 hover:text-blue-800 bg-gray-100 hover:bg-blue-200 rounded-md transition-all shadow-sm border border-gray-200 hover:border-blue-200"
                                             title="Editar texto de actividad"
                                             onClick={(e) => { 
                                               e.stopPropagation(); 
@@ -4976,12 +4976,18 @@ function Paso2({
                                                                   <Check className="w-2.5 h-2.5 text-green-600" />
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
-                                                                    {!soloLectura ? (
+                                                                  {!soloLectura ? (
                                                                       <input
+                                                                        id={`input-tarea-${tarea.id}`}
                                                                         type="text"
                                                                         value={tarea.descripcion}
                                                                         onChange={(e) => updateTareaCorte({ descripcion: e.target.value })}
-                                                                        className="w-full text-xs font-medium text-gray-900 leading-snug bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
+                                                                        onKeyDown={(e) => {
+                                                                          if (e.key === 'Enter') {
+                                                                            (e.target as HTMLInputElement).blur();
+                                                                          }
+                                                                        }}
+                                                                        className="w-full text-xs font-medium text-gray-900 leading-snug bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:px-1.5 focus:py-0.5 focus:rounded-md transition-all"
                                                                       />
                                                                     ) : (
                                                                       <p className="text-xs font-medium text-gray-900 leading-snug">{tarea.descripcion}</p>
@@ -4995,29 +5001,44 @@ function Paso2({
                                                                     onQuitar={() => updateTareaCorte({ responsables: [] })}
                                                                   />
                                                                 </div>
-                                                                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                <div className="flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                  <button 
+                                                                    className="pr-1 w-5 h-5 flex items-center justify-center rounded hover:bg-blue-200 text-blue-600 hover:text-blue-800"
+                                                                    title="Editar nombre de la tarea"
+                                                                    onClick={(e) => {
+                                                                      e.stopPropagation();
+                                                                      const el = document.getElementById(`input-tarea-${tarea.id}`) as HTMLInputElement | null;
+                                                                      if (el) {
+                                                                        el.focus();
+                                                                        const len = el.value.length;
+                                                                         el.setSelectionRange(len, len);
+                                                                      }
+                                                                    }}
+                                                                  >
+                                                                    <Edit3 className="w-4 h-4" />
+                                                                  </button>
                                                                   <button
                                                                     onClick={() => {
                                                                       const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }));
                                                                       onRolesChange(nuevaConfig);
                                                                     }}
-                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-red-600 hover:text-red-800"
                                                                     title="Eliminar tarea"
                                                                   >
-                                                                    <Trash2 className="w-3 h-3" />
+                                                                    <Trash2 className="w-4 h-4" />
                                                                   </button>
                                                                 </div>
                                                               </div>
                                                               <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
                                                                 <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
                                                                   <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorte({ requiereObservaciones: !tarea.requiereObservaciones })}>
-                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} style={{top: "2px"}} />
                                                                   </div>
                                                                   <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
                                                                 </label>
                                                                 <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
                                                                   <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorte({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
-                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`}  style={{top: "2px"}} />
                                                                   </div>
                                                                   <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
                                                                 </label>
@@ -5188,7 +5209,7 @@ function Paso2({
                                         
                                         {!soloLectura && (
                                           <button 
-                                            className="absolute top-0 right-0 p-1.5 text-gray-400 hover:text-green-600 bg-green-50 hover:bg-green-100 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-transparent hover:border-green-200"
+                                            className="absolute top-0 right-0 p-1.5 text-green-700 hover:text-green-800 hover:bg-green-200 rounded-md transition-all"
                                             title="Editar texto de actividad personalizada"
                                             onClick={(e) => { 
                                               e.stopPropagation(); 
@@ -5271,7 +5292,7 @@ function Paso2({
                                         actividad,
                                       });
                                     }}
-                                    className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-50 transition-colors"
+                                    className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-100"
                                     title="Eliminar actividad personalizada"
                                   >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5504,34 +5525,55 @@ function Paso2({
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
                                                                   {!soloLectura ? (
-                                                                    <input
-                                                                      type="text"
-                                                                      value={tarea.descripcion}
-                                                                      onChange={(e) => updateTareaCorteCustom({ descripcion: e.target.value })}
-                                                                      className="w-full text-[11px] font-medium text-gray-900 leading-tight bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
-                                                                    />
-                                                                  ) : (
-                                                                    <p className="text-[11px] font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
-                                                                  )}
-                                                                  <ResponsableTareaPicker
-                                                                    soloLectura={soloLectura}
-                                                                    responsablesNombres={tarea.responsables}
-                                                                    auditores={auditores}
-                                                                    rolColor={rol.color}
-                                                                    onAsignar={(aud) => updateTareaCorteCustom({ responsables: [aud.nombre] })}
-                                                                    onQuitar={() => updateTareaCorteCustom({ responsables: [] })}
-                                                                  />
-                                                                </div>
-                                                                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                     <input
+                                                                       id={`input-tarea-custom-${tarea.id}`}
+                                                                       type="text"
+                                                                       value={tarea.descripcion}
+                                                                       onChange={(e) => updateTareaCorteCustom({ descripcion: e.target.value })}
+                                                                       onKeyDown={(e) => {
+                                                                         if (e.key === 'Enter') {
+                                                                           (e.target as HTMLInputElement).blur();
+                                                                         }
+                                                                       }}
+                                                                       className="w-full text-[11px] font-medium text-gray-900 leading-tight bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:px-1.5 focus:py-0.5 focus:rounded-md transition-all"
+                                                                     />
+                                                                   ) : (
+                                                                     <p className="text-[11px] font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                                                   )}
+                                                                   <ResponsableTareaPicker
+                                                                     soloLectura={soloLectura}
+                                                                     responsablesNombres={tarea.responsables}
+                                                                     auditores={auditores}
+                                                                     rolColor={rol.color}
+                                                                     onAsignar={(aud) => updateTareaCorteCustom({ responsables: [aud.nombre] })}
+                                                                     onQuitar={() => updateTareaCorteCustom({ responsables: [] })}
+                                                                   />
+                                                                 </div>
+                                                                 <div className="flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                   <button 
+                                                                     className="pr-1 w-5 h-5 flex items-center justify-center rounded hover:bg-blue-200 text-blue-600 hover:text-blue-800"
+                                                                     title="Editar nombre de la tarea"
+                                                                     onClick={(e) => {
+                                                                       e.stopPropagation();
+                                                                       const el = document.getElementById(`input-tarea-custom-${tarea.id}`) as HTMLInputElement | null;
+                                                                       if (el) {
+                                                                         el.focus();
+                                                                         const len = el.value.length;
+                                                                         el.setSelectionRange(len, len);
+                                                                       }
+                                                                     }}
+                                                                   >
+                                                                    <Edit3 className="w-4 h-4" />
+                                                                  </button>
                                                                   <button
                                                                     onClick={() => {
                                                                       const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }; });
                                                                       onRolesChange(nuevaConfig);
                                                                     }}
-                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-red-600 hover:text-red-800"
                                                                     title="Eliminar tarea"
                                                                   >
-                                                                    <Trash2 className="w-3 h-3" />
+                                                                    <Trash2 className="w-4 h-4" />
                                                                   </button>
                                                                 </div>
                                                               </div>
@@ -5708,13 +5750,13 @@ function Paso2({
                                           <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
                                             <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
                                               <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereObservaciones: !tarea.requiereObservaciones })}>
-                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} style={{top: "2px"}}/>
                                               </div>
                                               <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
                                             </label>
                                             <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
                                               <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
-                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} style={{top: "2px"}} />
                                               </div>
                                               <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
                                             </label>
