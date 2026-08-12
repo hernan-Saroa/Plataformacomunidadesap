@@ -161,6 +161,12 @@ interface AsignaturaItem {
   pensum: string;
   asignatura_id: string;
   asignatura_nombre: string;
+  // Identidad estable de la asignatura en catálogo. Debe mantenerse sincronizada
+  // con asignatura_id en cada cambio de selección: si queda con el código de una
+  // asignatura anterior (p.ej. la devuelta por un revisor), la reconciliación de
+  // catálogo legacy (reconcileLegacyAssignment / syncAsignaturasPensum) puede
+  // encontrarla por código y revertir la fila a esa selección vieja.
+  asignatura_codigo?: string;
   nucleo_tematico: string;
   creditos: number;
   semestre: number;
@@ -3603,6 +3609,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         updated.pensum = '';
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
+        updated.asignatura_codigo = '';
       }
       // Reset downstream on CETAP change + cargar programas filtrados por CETAP
       if (field === 'cetap_id') {
@@ -3610,6 +3617,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         updated.pensum = '';
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
+        updated.asignatura_codigo = '';
         if (value && !programasPorCetap[value]) {
           // Cargar programas del CETAP desde Programas Académicos
           getCatalogoProgramasCascada(value, periodo).then(result => {
@@ -3629,6 +3637,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         updated.pensum = '';
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
+        updated.asignatura_codigo = '';
         // La cantidad de estudiantes NO es editable en el PTA: se rellena
         // automáticamente con los cupos configurados en "Programas Académicos"
         // para la combinación (CETAP, Programa). Es la fuente única y dinámica.
@@ -3656,10 +3665,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       if (field === 'pensum') {
         updated.asignatura_id = '';
         updated.asignatura_nombre = '';
+        updated.asignatura_codigo = '';
         updated.nucleo_tematico = '';
         updated.horas_base = 0;
         updated.total_horas = 0;
         updated.porcentaje_pta = 0;
+      }
+      // Selección de asignatura limpiada manualmente: evitar que el código
+      // de la selección anterior siga colgado sin una asignatura_id que lo respalde.
+      if (field === 'asignatura_id' && !value) {
+        updated.asignatura_codigo = '';
       }
       // On asignatura selection - auto-fill fields + calculate hours
       if (field === 'asignatura_id' && value) {
@@ -3667,6 +3682,11 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         if (asigCat) {
           updated.pensum = asigCat.pensumKey || asigCat.pensum || SIN_PENSUM_KEY;
           updated.asignatura_nombre = formatPtaAssignmentName(asigCat);
+          // Mantener el código sincronizado con la asignatura recién elegida: si
+          // se deja el código de una selección anterior, la reconciliación de
+          // catálogo legacy puede volver a resolver esta fila hacia esa asignatura
+          // vieja (p.ej. la que un revisor devolvió) en vez de la nueva.
+          updated.asignatura_codigo = asigCat.codigo || '';
           updated.nucleo_tematico = asigCat.nucleo || '';
           updated.creditos = asigCat.creditos || 3;
           updated.semestre = asigCat.semestre || 1;
