@@ -45,11 +45,24 @@ function normalizeEstado(value: unknown) {
     .replace(/\s+/g, '_');
 }
 
+// EFDS-1408: espejo de ESTADOS_PTA_RESTAURABLES_EDICION (pta.service.ts) — la
+// solicitud de edición reabre componentes YA aprobados, así que solo aplica
+// una vez el PTA completó su aprobación. Mientras está en creación (Borrador)
+// o en medio del proceso de aprobación, se corrige directamente vía
+// devolución de componente, no con esta solicitud.
+const ESTADOS_PTA_APROBADO_TOTAL = new Set([
+  'APROBADO',
+  'APROBADO_DEF',
+  'EN_FIRME',
+  'RADICADO',
+  'EN_EJECUCION',
+  'FINALIZADO',
+  'TERMINADO',
+]);
+
 function admiteSolicitudEdicion(pta: any) {
   const estado = normalizeEstado(pta?.estado);
-  // El borrador ya es editable sin permiso. Desde el primer envío, el docente
-  // puede solicitar una corrección aunque la aprobación todavía esté en curso.
-  return Boolean(pta?.id && estado && estado !== 'BORRADOR');
+  return Boolean(pta?.id) && ESTADOS_PTA_APROBADO_TOTAL.has(estado);
 }
 
 export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas = [], onClose, onSuccess }: SolicitudPTAModalProps) {
@@ -227,7 +240,7 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
                         <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#111827' }}>{c.label}</div>
                         <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2 }}>
                           {disabled
-                            ? 'No tienes un PTA enviado disponible. Los borradores se editan directamente.'
+                            ? 'Disponible solo cuando tu PTA esté aprobado en su totalidad. Mientras esté en creación o en proceso de aprobación, corrige directamente en el formulario.'
                             : c.desc}
                         </div>
                       </div>
