@@ -134,6 +134,66 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
           </select>
         );
 
+      // Los cuatro siguientes los agrega la configuración de etapas: son las
+      // formas en que se cierran las actividades del resto del proceso.
+
+      case 'fecha':
+        return (
+          <input
+            id={id}
+            type="date"
+            className={clase}
+            value={valor ?? ''}
+            disabled={disabled}
+            aria-invalid={!!error}
+            aria-describedby={describedBy || undefined}
+            onChange={(e) => onChange(e.target.value || undefined)}
+          />
+        );
+
+      case 'casilla':
+        // La etiqueta va al lado y no encima: una casilla suelta bajo su
+        // título no dice qué se está confirmando.
+        return (
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              id={id}
+              type="checkbox"
+              className="mt-0.5 w-4 h-4 rounded border-gray-300 text-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20 disabled:opacity-50"
+              checked={valor === true}
+              disabled={disabled}
+              aria-invalid={!!error}
+              aria-describedby={describedBy || undefined}
+              onChange={(e) => onChange(e.target.checked)}
+            />
+            <span className="text-[12.5px] leading-snug text-slate-700">{campo.etiqueta}</span>
+          </label>
+        );
+
+      case 'responsable':
+        // Del directorio y no escrito a mano: con texto libre la misma persona
+        // queda registrada de varias formas y el expediente deja de servir
+        // para filtrar por quién aprobó.
+        return (
+          <SelectorPersona
+            id={id}
+            value={valor ?? ''}
+            disabled={disabled}
+            invalido={!!error}
+            onChange={onChange}
+          />
+        );
+
+      case 'archivo':
+        // El adjunto no se sube desde aquí: los documentos del expediente
+        // pasan por su propio flujo, que calcula el hash y los versiona. Este
+        // campo solo deja constancia de que la actividad lo exige.
+        return (
+          <p className="text-[12px] text-slate-500 m-0 rounded-md border border-dashed border-gray-300 bg-slate-50 px-3 py-2">
+            Adjunta el documento desde la pestaña <strong>Documento</strong>.
+          </p>
+        );
+
       default:
         return (
           <input
