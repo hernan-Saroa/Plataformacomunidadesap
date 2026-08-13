@@ -226,10 +226,13 @@ const ESTADOS_SOLICITUD_EDICION_ACTIVA = ['pendiente', 'aprobado', 'en_aprobacio
 
 function ptaAdmiteSolicitudEdicion(value: unknown): boolean {
   const estado = normalizeEstadoFilter(value);
-  // Una vez enviado, el PTA puede requerir una corrección en cualquier punto
-  // de su ciclo. El Borrador no necesita autorización porque todavía es
-  // editable directamente por su propietario.
-  return Boolean(estado) && estado !== 'BORRADOR';
+  // EFDS-1408: esta solicitud reabre componentes YA aprobados, por lo que
+  // solo tiene sentido una vez el PTA completó su aprobación (mismos estados
+  // "cerrados" que ESTADOS_PTA_RESTAURABLES_EDICION usa para la reapertura
+  // post-cierre). Mientras el PTA está en Borrador o en medio del proceso de
+  // aprobación, el docente corrige directamente vía devolución de
+  // componente, no con esta solicitud.
+  return ESTADOS_PTA_RESTAURABLES_EDICION.has(estado);
 }
 
 function normalizeSolicitudComponentes(value: unknown): string[] {
@@ -5587,23 +5590,22 @@ export class PtaService {
         const currentApprovals = await txApprovalRepo.find({
           where: { ptaId: txPta.id, componente: In([...COMPONENT_APPROVAL_KEYS]) },
         });
-        // Los PTA históricos aprobados antes de existir la matriz granular
-        // pueden traer filas residuales pendientes; solo en esos estados se
-        // consolidan los componentes no elegidos. Si el PTA sigue en su
-        // aprobación inicial, cada pendiente debe conservarse exactamente para
-        // no conceder avales implícitos al autorizar una corrección.
-        if (ESTADOS_PTA_RESTAURABLES_EDICION.has(normalizeEstadoFilter(estadoAnterior))) {
-          for (const current of currentApprovals) {
-            if (approvalKeys.includes(current.componente) || current.estado === 'aprobado') continue;
-            current.estado = 'aprobado';
-            current.aprobadorId = current.aprobadorId || 'sistema';
-            current.aprobadorNombre = current.aprobadorNombre || 'Sistema';
-            current.aprobadorRol = current.aprobadorRol || 'Consolidación histórica';
-            current.comentarios = current.comentarios
-              || 'Aprobación conservada al iniciar una edición parcial.';
-            current.fechaAprobacion = current.fechaAprobacion || new Date();
-            await txApprovalRepo.save(current);
-          }
+        // Los PTA históricos aprobados antes de existir la matriz granular pueden
+        // traer filas residuales pendientes. El guard de ptaAdmiteSolicitudEdicion
+        // (arriba) ya exige que estadoAnterior esté entre los estados "cerrados"
+        // (EFDS-1408: la solicitud de edición solo aplica sobre un PTA aprobado en
+        // su totalidad), así que cualquier componente no elegido que siga
+        // 'pendiente' aquí es residual y se consolida como aprobado.
+        for (const current of currentApprovals) {
+          if (approvalKeys.includes(current.componente) || current.estado === 'aprobado') continue;
+          current.estado = 'aprobado';
+          current.aprobadorId = current.aprobadorId || 'sistema';
+          current.aprobadorNombre = current.aprobadorNombre || 'Sistema';
+          current.aprobadorRol = current.aprobadorRol || 'Consolidación histórica';
+          current.comentarios = current.comentarios
+            || 'Aprobación conservada al iniciar una edición parcial.';
+          current.fechaAprobacion = current.fechaAprobacion || new Date();
+          await txApprovalRepo.save(current);
         }
 
         for (const componente of approvalKeys) {
