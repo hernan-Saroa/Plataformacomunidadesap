@@ -51,6 +51,59 @@ describe('compatibilidad Pensum para borradores PTA', () => {
     });
   });
 
+  it('no revierte una asignatura recién elegida por el docente al corregir una devolución', () => {
+    // Reproduce el bug reportado: un PTA devuelto trae `asignatura_codigo` de la
+    // asignatura ORIGINAL (id '10'). Si el docente elige otra asignatura del MISMO
+    // programa (id '11') y handleAsigChange sincroniza correctamente el nuevo
+    // código, la reconciliación no debe "recuperar" la asignatura vieja.
+    const original = {
+      asignatura_id: '10',
+      asignatura_codigo: 'ASIG-10',
+      asignatura_nombre: 'Derecho Público',
+      programa_id: '1',
+      pensum: 'AP_35',
+    };
+
+    // Antes del fix: handleAsigChange no actualizaba asignatura_codigo, así que
+    // seguía apuntando a la asignatura devuelta y el docente quedaba bloqueado.
+    const sinSincronizar = { ...original, asignatura_id: '11', asignatura_nombre: 'Economía Pública', pensum: 'AP_36' };
+    expect(reconcileLegacyAssignment(sinSincronizar, catalog)).toMatchObject({
+      asignatura_id: '10',
+      asignatura_nombre: 'Derecho Público',
+    });
+
+    // Con el fix: handleAsigChange también actualiza asignatura_codigo al elegir
+    // la nueva asignatura, por lo que la reconciliación conserva la selección.
+    const sincronizado = { ...sinSincronizar, asignatura_codigo: 'ASIG-11' };
+    expect(reconcileLegacyAssignment(sincronizado, catalog)).toBe(sincronizado);
+  });
+
+  it('tampoco se queda pegado si el docente cambia programa, Pensum y asignatura a la vez', () => {
+    // Mismo escenario de devolución, pero el docente elige una asignatura de OTRO
+    // programa (id '20', programa '2', sin Pensum). El código es único en toda la
+    // BD, así que el match por código nunca puede "alcanzar" la asignatura
+    // original ('ASIG-10', programa '1') una vez que el Programa filtra el
+    // catálogo — se resuelve por nombre y ya coincide con la nueva selección.
+    const cambioTotal = {
+      asignatura_id: '20',
+      asignatura_codigo: 'ASIG-20',
+      asignatura_nombre: 'Seminario',
+      programa_id: '2',
+      pensum: SIN_PENSUM_KEY,
+    };
+    expect(reconcileLegacyAssignment(cambioTotal, catalog)).toBe(cambioTotal);
+
+    // Incluso si por alguna razón asignatura_codigo quedara desactualizado (el
+    // caso que este fix ya no permite, pero se verifica como red de seguridad),
+    // un Programa distinto excluye a la asignatura original del catálogo filtrado
+    // y la reconciliación cae al nombre correcto en vez de revertir.
+    const cambioTotalConCodigoViejo = { ...cambioTotal, asignatura_codigo: 'ASIG-10' };
+    expect(reconcileLegacyAssignment(cambioTotalConCodigoViejo, catalog)).toMatchObject({
+      asignatura_id: '20',
+      asignatura_nombre: 'Seminario',
+    });
+  });
+
   it('integra una carga específica de programa sin perder el catálogo global', () => {
     const merged = mergeAssignmentCatalog(
       [catalog[0]],
