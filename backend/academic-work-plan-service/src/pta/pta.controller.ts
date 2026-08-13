@@ -915,6 +915,16 @@ export class PtaController {
     return { success: true, data };
   }
 
+  // Desagregado por (territorial, nivel) de la etapa de Revisión del componente
+  // "academica_territorial": mismo criterio que getAprobacionTerritorial, pero
+  // para la revisión (preaprobación). Devuelve [] cuando el PTA no tiene
+  // asignaturas territoriales.
+  @Get(':ptaId/revision-territorial')
+  async getRevisionTerritorial(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getTerritorialReviewStatus(ptaId);
+    return { success: true, data };
+  }
+
   @Post(':ptaId/revisar-componente')
   @UseGuards(PtaAuthGuard)
   async revisarComponente(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {

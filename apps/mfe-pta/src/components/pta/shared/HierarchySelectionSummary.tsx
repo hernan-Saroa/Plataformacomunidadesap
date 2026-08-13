@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   CheckCircle2,
   ChevronDown,
@@ -7,11 +8,13 @@ import {
 } from 'lucide-react';
 import {
   buildHierarchyBranchTree,
+  formatHierarchyBranchPath,
   getHierarchyBranchDisplayLevels,
   getHierarchySelectionInfo,
   type HierarchySelectionBranch,
   type HierarchyBranchTreeNode,
 } from './extensionSelection';
+import { formatConfiguredHourRecognition } from './configuredHours';
 
 interface HierarchySelectionSummaryProps {
   activity: any;
@@ -27,6 +30,7 @@ export function HierarchyBranchTree({
   selectedKeys,
   disabled = false,
   onToggle,
+  renderSelectionControl,
 }: {
   branches: HierarchySelectionBranch[];
   accent?: string;
@@ -38,6 +42,11 @@ export function HierarchyBranchTree({
     conflictingKeys?: string[],
     clearOnly?: boolean,
   ) => void;
+  renderSelectionControl?: (
+    selectionKey: string,
+    recognition: Record<string, any> | undefined,
+    selected: boolean,
+  ) => ReactNode;
 }) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
   const tree = buildHierarchyBranchTree(branches);
@@ -70,12 +79,11 @@ export function HierarchyBranchTree({
     branch: HierarchySelectionBranch,
     endpointIndex: number,
     hideColumn: boolean,
-    ancestorSelectionKeys: string[],
-    selectionAllowed: boolean,
   ) => {
     const checked = selectedKeys?.has(branch.clave) || false;
     const content = (
-      <span className="min-w-0 flex-1">
+      <span className="flex min-w-0 flex-1 flex-wrap items-start gap-2">
+        <span className="min-w-0 flex-1">
         {node.columna && !hideColumn && (
           <span
             className="mb-0.5 inline-flex rounded-full border px-1.5 font-bold tracking-wide"
@@ -96,6 +104,12 @@ export function HierarchyBranchTree({
         >
           {node.valor}
         </span>
+        </span>
+        {renderSelectionControl?.(
+          branch.clave,
+          getHierarchyBranchDisplayLevels(branch).slice(-1)[0]?.reconocimiento,
+          checked,
+        )}
       </span>
     );
 
@@ -104,9 +118,9 @@ export function HierarchyBranchTree({
         .map(level => level.valor)
         .join(', ');
       return (
-        <label
+        <div
           key={`${branch.clave}:${endpointIndex}`}
-          className={`flex cursor-pointer items-start gap-2 rounded-md border px-2 py-1.5 transition-colors ${
+          className={`flex flex-wrap items-start gap-2 rounded-md border px-2 py-1.5 transition-colors ${
             checked
               ? 'border-violet-200 bg-violet-50 shadow-sm'
               : 'border-slate-200 bg-slate-50/70 hover:border-violet-200 hover:bg-violet-50/50'
@@ -115,14 +129,14 @@ export function HierarchyBranchTree({
           <input
             type="checkbox"
             checked={checked}
-            disabled={disabled || !selectionAllowed}
-            onChange={() => onToggle?.(branch.clave, ancestorSelectionKeys)}
-            className="mt-0.5 h-4 w-4 shrink-0 disabled:cursor-not-allowed"
+            disabled={disabled}
+            onChange={() => onToggle?.(branch.clave)}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed"
             style={{ accentColor: accent, width: 16, height: 16 }}
             aria-label={`Seleccionar ${ariaPath || branch.nombre || 'ramificación'}`}
           />
           {content}
-        </label>
+        </div>
       );
     }
 
@@ -142,8 +156,6 @@ export function HierarchyBranchTree({
     node: HierarchyBranchTreeNode,
     depth: number,
     hideColumn = false,
-    ancestorSelectionKeys: string[] = [],
-    ancestorPathActive = true,
   ) => {
     const hasChildren = node.children.length > 0;
     const grouped = hasChildren;
@@ -153,7 +165,7 @@ export function HierarchyBranchTree({
     const nestedSelectedCount = descendantSelectionKeys
       .filter(key => selectedKeys?.has(key))
       .length;
-    const selectedCount = nodeSelected ? 1 : nestedSelectedCount;
+    const selectedCount = Number(nodeSelected) + nestedSelectedCount;
     const nodeActive = nodeSelected || nestedSelectedCount > 0;
     const isExpanded = !interactive || expandedKeys.has(node.selectionKey);
     const sharedChildColumn = node.children.length > 0
@@ -161,11 +173,10 @@ export function HierarchyBranchTree({
       && node.children.every(child => child.columna === node.children[0].columna)
       ? node.children[0].columna
       : '';
-    const endpointAncestorKeys = hasChildren
-      ? [...ancestorSelectionKeys, node.selectionKey]
-      : ancestorSelectionKeys;
-    const statusLabel = nodeSelected
-      ? 'Actividad completa'
+    const statusLabel = nodeSelected && nestedSelectedCount > 0
+      ? `Este nivel + ${nestedSelectedCount} ${nestedSelectedCount === 1 ? 'subopción' : 'subopciones'}`
+      : nodeSelected
+      ? 'Este nivel seleccionado'
       : selectedCount > 0
         ? `${selectedCount} ${selectedCount === 1 ? 'seleccionada' : 'seleccionadas'}`
         : `${optionCount} ${optionCount === 1 ? 'opción' : 'opciones'}`;
@@ -220,33 +231,20 @@ export function HierarchyBranchTree({
           : ''}
       >
         {grouped && (
-          <div className={`${compact ? 'px-2.5 py-2' : 'px-3 py-2.5'} flex min-w-0 items-start gap-2`}>
+          <div className={`${compact ? 'px-2.5 py-2' : 'px-3 py-2.5'} flex min-w-0 flex-wrap items-start gap-2`}>
             {interactive ? (
               <>
                 <input
                   type="checkbox"
-                  checked={nodeActive}
-                  disabled={disabled || !ancestorPathActive}
-                  onChange={() => {
-                    onToggle?.(
-                      node.selectionKey,
-                      [...ancestorSelectionKeys, ...descendantSelectionKeys],
-                      nodeActive,
-                    );
-                    if (!nodeActive) {
-                      setExpandedKeys(current => {
-                        const next = new Set(current);
-                        next.delete(node.selectionKey);
-                        return next;
-                      });
-                    }
-                  }}
+                  checked={nodeSelected}
+                  disabled={disabled}
+                  onChange={() => onToggle?.(node.selectionKey)}
                   className="mt-1 h-4 w-4 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                   style={{ accentColor: accent, width: 16, height: 16 }}
-                  title={nodeActive
-                    ? 'Desmarcar la actividad y sus subopciones'
-                    : 'Seleccionar la actividad completa sin exigir sus subopciones'}
-                  aria-label={`${nodeActive ? 'Desmarcar' : 'Seleccionar'} actividad: ${node.valor}`}
+                  title={nodeSelected
+                    ? 'Desmarcar solamente este nivel'
+                    : 'Seleccionar este nivel sin modificar sus subopciones'}
+                  aria-label={`${nodeSelected ? 'Desmarcar' : 'Seleccionar'} este nivel: ${node.valor}`}
                 />
                 <button
                   type="button"
@@ -264,6 +262,11 @@ export function HierarchyBranchTree({
                     aria-hidden="true"
                   />
                 </button>
+                {renderSelectionControl?.(
+                  node.selectionKey,
+                  node.ruta.slice(-1)[0]?.reconocimiento,
+                  nodeSelected,
+                )}
               </>
             ) : (
               <>
@@ -275,6 +278,11 @@ export function HierarchyBranchTree({
                 <div className="flex min-w-0 flex-1 items-start gap-2">
                   {headerContent}
                 </div>
+                {renderSelectionControl?.(
+                  node.selectionKey,
+                  node.ruta.slice(-1)[0]?.reconocimiento,
+                  nodeActive,
+                )}
               </>
             )}
           </div>
@@ -292,8 +300,6 @@ export function HierarchyBranchTree({
                 branch,
                 index,
                 hideColumn,
-                endpointAncestorKeys,
-                ancestorPathActive && (!hasChildren || nodeActive),
               ))}
             {sharedChildColumn && (
               <div className="flex min-w-0 items-center gap-1.5 pb-0.5">
@@ -321,8 +327,6 @@ export function HierarchyBranchTree({
                 child,
                 depth + 1,
                 Boolean(sharedChildColumn),
-                endpointAncestorKeys,
-                ancestorPathActive && nodeActive,
               ))}
           </div>
         )}
@@ -371,20 +375,74 @@ export function HierarchySelectionSummary({
                   {selection.nombre}
                 </div>
               </div>
-              <span
-                className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold"
-                style={{ color: accent, borderColor: `${accent}45`, backgroundColor: `${accent}0D` }}
-              >
-                {selection.horas}h
-              </span>
+              {selection.horas > 0 ? (
+                <span
+                  className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold"
+                  style={{ color: accent, borderColor: `${accent}45`, backgroundColor: `${accent}0D` }}
+                >
+                  Total {selection.horas}h
+                </span>
+              ) : (
+                <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+                  Total 0h · informativo
+                </span>
+              )}
             </div>
+            {selection.reconocimiento && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-100 bg-slate-50/80 px-2 py-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Reconocimiento base
+                </span>
+                <span
+                  className="rounded-full border px-2 py-0.5 text-[10px] font-bold"
+                  style={{ color: accent, borderColor: `${accent}35`, backgroundColor: '#FFFFFF' }}
+                >
+                  {formatConfiguredHourRecognition(
+                    selection.reconocimiento,
+                    selection.horas_base,
+                  )}
+                </span>
+              </div>
+            )}
             {selection.ramificaciones.length > 0 && (
-              <div className="mt-2 border-t border-slate-100 pt-1.5">
-                <HierarchyBranchTree
-                  branches={selection.ramificaciones}
-                  accent={accent}
-                  compact
-                />
+              <div className="mt-2 border-t border-slate-100 pt-2">
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Opciones elegidas ({selection.ramificaciones.length})
+                </div>
+                <div className="grid gap-1.5">
+                  {selection.ramificaciones.map((branch, branchIndex) => {
+                    const levels = getHierarchyBranchDisplayLevels(branch);
+                    const selectedLevel = levels[levels.length - 1];
+                    const recognition = selectedLevel?.reconocimiento;
+                    const recognitionLabel = recognition
+                      ? formatConfiguredHourRecognition(recognition, branch.horas)
+                      : branch.horas !== undefined
+                        ? `${branch.horas}h`
+                        : 'Detalle seleccionado';
+                    return (
+                      <div
+                        key={`${branch.clave}:${branchIndex}`}
+                        className="flex min-w-0 flex-wrap items-start gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5"
+                      >
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
+                        <div className="min-w-0 flex-1">
+                          <div className="break-words text-[11px] font-semibold leading-snug text-slate-700">
+                            {selectedLevel?.valor || branch.nombre}
+                          </div>
+                          <div className="mt-0.5 break-words text-[9px] leading-snug text-slate-400">
+                            {formatHierarchyBranchPath(branch)}
+                          </div>
+                        </div>
+                        <span
+                          className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold"
+                          style={{ color: accent, borderColor: `${accent}35`, backgroundColor: `${accent}08` }}
+                        >
+                          {recognitionLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>

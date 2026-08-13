@@ -31,7 +31,7 @@ import {
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
@@ -56,6 +56,11 @@ import {
   REVIEW_SUBSECCION_LABEL,
   REVIEW_SUBSECCIONES_BY_COMPONENT,
   type PTAReviewSubseccionKey,
+  hasComponentPermission,
+  hasReviewPermission,
+  PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
+  PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
 
@@ -657,9 +662,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
   const [componentesAprobacion, setComponentesAprobacion] = useState<any[]>([]);
   const [loadingComponentesAprobacion, setLoadingComponentesAprobacion] = useState(false);
-  // Aprobación parcial por territorial de "academica_territorial" (ver assertAlcanceTerritorial
-  // en el backend). Vacío cuando el PTA no tiene 2+ territoriales distintas en ese componente.
+  // Aprobación parcial por (territorial, nivel) de "academica_territorial" (ver
+  // assertAlcanceTerritorial en el backend). Vacío cuando el PTA no tiene 2+ pares
+  // distintos en ese componente.
   const [aprobacionTerritorial, setAprobacionTerritorial] = useState<TerritorialApprovalRow[]>([]);
+  // Igual que aprobacionTerritorial, pero para la etapa de Revisión (preaprobación).
+  const [revisionTerritorial, setRevisionTerritorial] = useState<TerritorialReviewRow[]>([]);
   const [comentariosComponente, setComentariosComponente] = useState<Record<string, string>>({});
   const [procesandoAprobacionComponente, setProcesandoAprobacionComponente] = useState<Record<string, boolean>>({});
   const [evaluandoComponente, setEvaluandoComponente] = useState<Record<string, boolean>>({});
@@ -690,7 +698,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   );
   const visibleComponentKeys = useMemo<PTAComponentKey[]>(() => {
     if (apruebaTodo) return [...PTA_COMPONENT_KEYS];
-    const granularKeys = PTA_COMPONENT_KEYS.filter(key => puedePerm(COMPONENT_PERMISSION[key]));
+    const granularKeys = PTA_COMPONENT_KEYS.filter(key => hasComponentPermission(puedePerm, key));
     if (granularKeys.length > 0) return granularKeys;
     const configuredKeys = (permisosPta.componentesAprobables || [])
       .filter((key): key is PTAComponentKey => PTA_COMPONENT_KEYS.includes(key as PTAComponentKey));
@@ -701,10 +709,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const isComponentAuthorized = useCallback((key: string): boolean => {
     if (apruebaTodo) return true;
     if (visibleComponentKeySet.size > 0) return visibleComponentKeySet.has(key);
-    const perm = COMPONENT_PERMISSION[key];
     if (tieneAlgunPermisoComponente) {
       // El usuario opera bajo el esquema granular: solo aprueba el componente de su permiso.
-      return !!perm && puedePerm(perm);
+      return hasComponentPermission(puedePerm, key as PTAComponentKey);
     }
     // Fallback legacy por nivel (compatibilidad con roles sin permisos granulares).
     return nivelAprobacion === COMPONENT_LEVELS[key];
@@ -726,9 +733,27 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   );
   const isSubseccionAuthorizedToReview = useCallback((key: string, subseccion: string): boolean => {
     if (revisaTodo) return true;
-    const perm = PTA_COMPONENT_REVIEW_PERMISSION[`${key}:${subseccion}`];
-    return !!perm && puedePerm(perm);
+    return hasReviewPermission(puedePerm, key, subseccion);
   }, [revisaTodo, puedePerm]);
+
+  /**
+   * ¿El usuario puede aprobar/revisar el nivel (pregrado/posgrado) dado de
+   * 'academica_territorial'? Cada una de las dos cards territoriales
+   * (Territorial - Pregrado / Territorial - Posgrado) se habilita de forma
+   * independiente según el permiso granular por nivel (migración 397) — un
+   * aprobador de solo pregrado no debe ver habilitados los botones de la card
+   * de posgrado de la misma territorial.
+   */
+  const puedeActuarSobreNivelTerritorial = useCallback((nivel: PTANivelDocencia, etapa: 'aprobar' | 'revisar'): boolean => {
+    if (apruebaTodo || (etapa === 'revisar' && revisaTodo)) return true;
+    const perm = etapa === 'aprobar'
+      ? PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION[nivel]
+      : PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION[nivel];
+    if (tieneAlgunPermisoComponente || tieneAlgunPermisoRevision) return puedePerm(perm);
+    // Fallback legacy: sin permisos granulares, se conserva el comportamiento
+    // previo (autorización a nivel de componente completo, sin distinguir nivel).
+    return isComponentAuthorized('academica_territorial');
+  }, [apruebaTodo, revisaTodo, tieneAlgunPermisoComponente, tieneAlgunPermisoRevision, puedePerm, isComponentAuthorized]);
 
   /** Filas de revisión requeridas para un componente (ya vienen filtradas por el backend). */
   const subseccionesRevision = useCallback(
@@ -771,6 +796,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       }).catch(() => setLoadingComponentesAprobacion(false));
       getAprobacionTerritorial(pta.id).then(res => {
         if (res.success) setAprobacionTerritorial(res.data || []);
+      }).catch(() => {});
+      getRevisionTerritorial(pta.id).then(res => {
+        if (res.success) setRevisionTerritorial(res.data || []);
       }).catch(() => {});
     }
   }, [pta?.id]);
@@ -1718,12 +1746,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           </div>
         </div>
 
-        {/* Aprobación parcial por territorial: el PTA tiene asignaturas de 2+
-            Direcciones Territoriales distintas en este componente, así que el badge
-            de arriba (estado consolidado) solo llega a "Aprobado" cuando TODAS estén
-            aprobadas. Cada aprobador solo puede actuar sobre la(s) suya(s) — el botón
-            Aprobar/Devolver de abajo sigue siendo uno solo y el backend decide sobre
-            qué territorial(es) aplica según quién esté autenticado. */}
+        {/* Aprobación parcial por (territorial, nivel): el PTA mezcla 2+ combinaciones
+            distintas en este componente (2+ territoriales, o pregrado y posgrado de la
+            misma territorial), así que el badge de arriba (estado consolidado) solo
+            llega a "Aprobado" cuando TODAS queden aprobadas. Cada aprobador solo puede
+            actuar sobre la(s) suya(s) — el botón Aprobar/Devolver de abajo sigue siendo
+            uno solo y el backend decide sobre qué par(es) aplica según quién esté
+            autenticado (territorial vía seccional, nivel vía permiso pregrado/posgrado). */}
         {key === 'academica_territorial' && aprobacionTerritorial.length >= 2 && (
           <div style={{
             display: 'flex',
@@ -1739,9 +1768,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   ? { bg: 'rgba(239, 68, 68, 0.08)', color: '#991B1B', border: '1px solid rgba(239, 68, 68, 0.2)' }
                   : { bg: 'rgba(148, 163, 184, 0.12)', color: '#475569', border: '1px solid rgba(148, 163, 184, 0.25)' };
               const estadoLabel = t.estado === 'aprobado' ? 'Aprobada' : t.estado === 'devuelto' ? 'Devuelta' : 'Pendiente';
+              const nivelLabel = t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado';
+              const esSuyo = !isSuperUser && !apruebaTodo && puedeActuarSobreNivelTerritorial(t.nivel, 'aprobar');
               return (
                 <span
-                  key={t.territorialId}
+                  key={`${t.territorialId}:${t.nivel}`}
                   title={t.actorNombre ? `${estadoLabel} por ${t.actorNombre}` : estadoLabel}
                   style={{
                     display: 'inline-flex',
@@ -1752,9 +1783,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     fontSize: '0.66rem',
                     fontWeight: 700,
                     ...pillColors,
+                    outline: esSuyo ? `1px solid ${pillColors.color}` : undefined,
                   }}
                 >
-                  {t.territorialNombre}: {estadoLabel}
+                  {t.territorialNombre} · {nivelLabel}: {estadoLabel}
                 </span>
               );
             })}
@@ -2008,6 +2040,31 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {visual.label}
                     </span>
                   </div>
+                  {/* Revisión parcial por (territorial, nivel): espejo del badge de
+                      aprobación, para la etapa de Revisión — antes de esto no había
+                      ninguna señal visual de que la revisión también se resuelve por
+                      par y no de una sola vez para todo el componente. */}
+                  {key === 'academica_territorial' && revisionTerritorial.length >= 2 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {revisionTerritorial.map((t) => {
+                        const visualT = getReviewStatusVisual(t.estado);
+                        const nivelLabel = t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado';
+                        return (
+                          <span
+                            key={`${t.territorialId}:${t.nivel}`}
+                            title={t.revisorNombre ? `${visualT.label} por ${t.revisorNombre}` : visualT.label}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 5,
+                              padding: '2px 9px', borderRadius: 999, fontSize: '0.64rem', fontWeight: 700,
+                              color: visualT.color, background: visualT.bg, border: `1px solid ${visualT.border}`,
+                            }}
+                          >
+                            {t.territorialNombre} · {nivelLabel}: {visualT.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   {estaResuelta && r.revisorNombre && (
                     <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
                       Revisado por {r.revisorNombre}
@@ -2110,8 +2167,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             </div>
             {key === 'academica_territorial' && aprobacionTerritorial.length >= 2 && (
               <div style={{ fontSize: '0.68rem', color: '#64748B', fontStyle: 'italic', marginTop: -6 }}>
-                Este PTA tiene asignaturas de varias territoriales. Su decisión solo aplica a la(s) suya(s)
-                {' '}({aprobacionTerritorial.map(t => t.territorialNombre).join(', ')}); las demás quedan intactas.
+                Este PTA mezcla varias combinaciones de territorial y nivel (pregrado/posgrado). Su decisión
+                solo aplica a la(s) suya(s); las demás quedan intactas.
               </div>
             )}
             <textarea
