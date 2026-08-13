@@ -595,6 +595,12 @@ export class CorreosJuridicosService {
         return this.graphService.getMailboxes();
     }
 
+    /** Sugerencias de destinatarios (contactos, personas frecuentes y directorio) para el autocompletado. */
+    async buscarDestinatarios(query: string, buzon?: string) {
+        const account = this.graphService.resolveAccount(buzon);
+        return this.graphService.searchRecipients(query, account);
+    }
+
     /**
      * Get all emails with filters
      */
@@ -998,13 +1004,18 @@ export class CorreosJuridicosService {
      */
     async forwardEmail(
         correoId: string,
-        to: string,
+        to: string | string[],
         comment: string,
         additionalAttachments?: { name: string; contentBytes: string; contentType: string }[],
         req?: any,
+        cc?: string[],
+        bcc?: string[],
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         const original = await this.correoRepo.findOne({ where: { id: correoId }, relations: ['adjuntos'] });
         if (!original) throw new NotFoundException('Correo original no encontrado');
+
+        const toList = Array.isArray(to) ? to : [to];
+        const destinatariosTo = toList.join(', ');
 
         // El reenvío sale desde la cuenta del BUZÓN del correo original (depende del tab).
         const fromAccount = this.graphService.resolveAccount(original.buzon);
@@ -1038,13 +1049,14 @@ export class CorreosJuridicosService {
         const forwardText = this.buildForwardComment(comment, original);
 
         const sent = await this.graphService.sendEmail(
-            to,
+            toList,
             forwardSubject,
             forwardHtml,
-            [],
+            cc,
             allAttachments.length > 0 ? allAttachments : undefined,
             undefined,
             fromAccount,
+            bcc,
         );
         if (!sent) return { success: false };
 
@@ -1055,7 +1067,9 @@ export class CorreosJuridicosService {
                 asunto: forwardSubject,
                 remitenteEmail: fromAccount,
                 remitenteNombre: 'Oficina Jurídica ESAP',
-                destinatariosTo: to,
+                destinatariosTo,
+                destinatarios: cc?.length ? JSON.stringify(cc) : undefined,
+                destinatariosCco: bcc?.length ? JSON.stringify(bcc) : undefined,
                 fechaRecepcion: new Date(),
                 cuerpoHtml: forwardHtml,
                 cuerpoTexto: forwardText,
@@ -1132,12 +1146,12 @@ export class CorreosJuridicosService {
             await this.correoRepo.save(original);
 
             const adjuntosDesc = allAttachments.length > 0
-                ? `Correo reenviado a ${to} (con ${allAttachments.length} adjunto(s))`
-                : `Correo reenviado a ${to}`;
+                ? `Correo reenviado a ${destinatariosTo} (con ${allAttachments.length} adjunto(s))`
+                : `Correo reenviado a ${destinatariosTo}`;
             await this.registrarAccion(original.id, 'REENVIADO', adjuntosDesc);
             // ── Trazabilidad: Registrar ENVIADO en el reenvío ──
-            await this.registrarAccion(savedForward.id, 'ENVIADO', `Reenvío enviado a ${to}`, 'Sistema');
-            await this.injectTrackingIntoEmail(savedForward, to, req);
+            await this.registrarAccion(savedForward.id, 'ENVIADO', `Reenvío enviado a ${destinatariosTo}`, 'Sistema');
+            await this.injectTrackingIntoEmail(savedForward, destinatariosTo, req);
 
             this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id} (${allAttachments.length} adjunto(s))`);
             return { success: true, correo: savedForward };

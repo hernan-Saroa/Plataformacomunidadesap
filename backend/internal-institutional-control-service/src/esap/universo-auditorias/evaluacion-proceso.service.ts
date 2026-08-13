@@ -232,7 +232,7 @@ export class EvaluacionProcesoService implements OnModuleInit {
       prioridadRegla: dto.prioridadRegla,
       creadoPor: dto.creadoPor,
       activo: true,
-      auditableCalculado: calcularAuditableDesdeCiclo(dto.cicloRotacionDafp),
+      auditableCalculado: calcularAuditableDesdeCiclo(dto.cicloRotacionDafp, (dto as any).priorizacionAnos),
       auditableManual: dto.auditableManual ?? null,
     });
 
@@ -317,7 +317,7 @@ export class EvaluacionProcesoService implements OnModuleInit {
     if (dto.auditableManual !== undefined) evaluacion.auditableManual = dto.auditableManual;
 
     if (dto.cicloRotacionDafp !== undefined) {
-      evaluacion.auditableCalculado = calcularAuditableDesdeCiclo(dto.cicloRotacionDafp);
+      evaluacion.auditableCalculado = calcularAuditableDesdeCiclo(dto.cicloRotacionDafp, (dto as any).priorizacionAnos);
     } else if (dto.auditableCalculado !== undefined) {
       evaluacion.auditableCalculado = dto.auditableCalculado;
     }

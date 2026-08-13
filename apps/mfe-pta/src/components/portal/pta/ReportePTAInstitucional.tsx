@@ -16,6 +16,7 @@ import {
 import { IsotipoESAP } from '../../../../../shell/src/components/assets/ESAPLogoSVG';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface ReportePTAInstitucionalProps {
   pta: any;
@@ -543,10 +544,11 @@ export function ReportePTAInstitucional({
 
   // ── Estado real de aprobación por componente (del DTO enriquecido del backend) ──
   const compEstados: any[] = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+  const infoDe = (key: string): any => compEstados.find((c: any) => c?.key === key);
   const estadoDe = (key: string): string => {
     if (!isParcial) return 'aprobado';
     if (['Borrador', 'BORRADOR'].includes(String(pta?.estado))) return 'borrador';
-    return compEstados.find((c: any) => c?.key === key)?.estado || 'pendiente';
+    return infoDe(key)?.estado || 'pendiente';
   };
 
   const componentes = [
@@ -556,7 +558,15 @@ export function ReportePTAInstitucional({
     { key: 'complementarias', label: 'ACT. COMPLEMENTARIAS', horas: horasComplementarias, color: PTA_COLORS.COMPLEMENTARIAS, tieneDetalle: compActs.length > 0 },
   ].filter(c => c.horas > 0 || c.tieneDetalle).map(c => {
     const estado = estadoDe(c.key);
-    const aprobadas = estado === 'aprobado' ? c.horas : 0;
+    // Docencia/Extensión/Complementarias se aprueban por sub-componente (p.ej.
+    // Posgrado sin Pregrado): `horas_aprobadas` ya viene sumado así desde el
+    // backend (attachComponentApprovalProgress). Si el DTO no lo trae (datos
+    // legacy/mocks) se conserva el criterio anterior de todo-o-nada por `estado`.
+    const aprobadas = estado === 'aprobado'
+      ? c.horas
+      : estado === 'borrador'
+        ? 0
+        : Math.min(numero(infoDe(c.key)?.horas_aprobadas), c.horas);
     return { ...c, estado, aprobadas, pendientes: Math.max(c.horas - aprobadas, 0), pctAprob: c.horas > 0 ? Math.round((aprobadas / c.horas) * 100) : 0 };
   });
 
@@ -1364,13 +1374,14 @@ export function ReportePTAInstitucional({
                             {asignaturas.map((a: any, index: number) => (
                               <tr key={a.id || a.asignatura_id || index}>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
-                                  <div style={{ fontWeight: 800 }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                                  <div style={{ fontWeight: 800 }}>{formatPtaAssignmentName(a) || 'Asignatura'}</div>
                                   <InfoSecundaria>{a.nucleo_tematico || null}</InfoSecundaria>
                                   <InfoSecundaria>{a.observaciones ? `Observaciones: ${a.observaciones}` : null}</InfoSecundaria>
                                   <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1" />
                                 </td>
                                 <td style={{ ...celdaTd, textAlign: 'left', verticalAlign: 'top' }}>
                                   <div>{a.programa_nombre || a.programa || '—'}</div>
+                                  <InfoSecundaria>{`Pensum: ${formatPtaPensum(a.pensum)}`}</InfoSecundaria>
                                   <InfoSecundaria>{textoConSeparador([
                                     a.cetap_nombre && `CETAP ${a.cetap_nombre}`,
                                     a.territorial_nombre || null,

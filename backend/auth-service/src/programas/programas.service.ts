@@ -233,7 +233,7 @@ export class ProgramasService {
 
     const facultadRows = data.length > 0
       ? await this.programaRepo.query(
-          `SELECT id, nombre
+          `SELECT id, codigo, nombre
            FROM academic_work_plan.facultad
            WHERE id = ANY($1::bigint[])`,
           [data.map((programa) => programa.idFacultad)],
@@ -241,6 +241,9 @@ export class ProgramasService {
       : [];
     const facultadesPorId = new Map(
       facultadRows.map((facultad: any) => [String(facultad.id), facultad.nombre]),
+    );
+    const codigosFacultadPorId = new Map(
+      facultadRows.map((facultad: any) => [String(facultad.id), facultad.codigo]),
     );
 
     // Enrich data with calculated plan de estudios stats and compatibility fields
@@ -312,6 +315,8 @@ export class ProgramasService {
           creditos: parseInt(asignaturasStats?.creditos_plan || '0'),
           sede: sedeLabel,
           facultad: facultadesPorId.get(String(programa.idFacultad)) || 'Sin facultad',
+          codigo_facultad: codigosFacultadPorId.get(String(programa.idFacultad)) || null,
+          nombre_facultad: facultadesPorId.get(String(programa.idFacultad)) || 'Sin facultad',
           totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
           creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
           estudiantesActivos: cetapsList.reduce((acc: number, c: any) => acc + (c.estudiantes || 0), 0),
@@ -321,8 +326,12 @@ export class ProgramasService {
           // Campos Circular 003/2025 — calculados en runtime
           nombre_corto: programa.nombreCorto,
           tipo_programa: programa.tipo,
-          categoria_horas_circular003: this.inferCategoriaCircular003(programa.tipo, programa.horasPregradoCentral),
-          descripcion_categoria_circular003: this.inferDescripcionCircular003(programa.tipo, programa.horasPregradoCentral),
+          categoria_horas_circular003: programa.categoriaHorasCircular003
+            || this.inferCategoriaCircular003(programa.tipo, programa.horasPregradoCentral),
+          descripcion_categoria_circular003: programa.descripcionCategoriaCircular003
+            || this.inferDescripcionCircular003(programa.tipo, programa.horasPregradoCentral),
+          horas_pta_referencia_circular003: programa.horasPtaReferenciaCircular003,
+          formula_calculo_horas: programa.formulaCalculoHoras,
           horas_base_por_credito: programa.horasBasePorCredito,
           horas_pregrado_central: programa.horasPregradoCentral,
         };
@@ -388,7 +397,7 @@ export class ProgramasService {
     }
 
     const facultadRows = await this.programaRepo.query(
-      'SELECT nombre FROM academic_work_plan.facultad WHERE id = $1 LIMIT 1',
+      'SELECT codigo, nombre FROM academic_work_plan.facultad WHERE id = $1 LIMIT 1',
       [programa.idFacultad],
     );
 
@@ -401,6 +410,8 @@ export class ProgramasService {
       creditos: parseInt(asignaturasStats?.creditos_plan || '0'),
       sede: sedeLabel,
       facultad: facultadRows[0]?.nombre || 'Sin facultad',
+      codigo_facultad: facultadRows[0]?.codigo || null,
+      nombre_facultad: facultadRows[0]?.nombre || 'Sin facultad',
       totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
       creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
       estudiantesActivos: cetapsRes ? cetapsRes.reduce((acc: number, c: any) => acc + (parseInt(c.cupos_estimados) || 0), 0) : 0,
@@ -410,8 +421,12 @@ export class ProgramasService {
       // Campos Circular 003/2025 — calculados en runtime
       nombre_corto: programa.nombreCorto,
       tipo_programa: programa.tipo,
-      categoria_horas_circular003: this.inferCategoriaCircular003(programa.tipo, programa.horasPregradoCentral),
-      descripcion_categoria_circular003: this.inferDescripcionCircular003(programa.tipo, programa.horasPregradoCentral),
+      categoria_horas_circular003: programa.categoriaHorasCircular003
+        || this.inferCategoriaCircular003(programa.tipo, programa.horasPregradoCentral),
+      descripcion_categoria_circular003: programa.descripcionCategoriaCircular003
+        || this.inferDescripcionCircular003(programa.tipo, programa.horasPregradoCentral),
+      horas_pta_referencia_circular003: programa.horasPtaReferenciaCircular003,
+      formula_calculo_horas: programa.formulaCalculoHoras,
       horas_base_por_credito: programa.horasBasePorCredito,
       horas_pregrado_central: programa.horasPregradoCentral,
     } as any;
@@ -813,17 +828,23 @@ export class ProgramasService {
       id: a.id,
       nombre: a.nombre,
       codigo: a.codigo,
+      pensum: a.pensum,
+      nombreBase: a.nombre_base,
       creditos: a.creditos,
       semestreId: a.id_ubicacion_semestral,
       nucleoTematicoId: a.id_nucleo_tematico,
       facultadId: a.id_facultad,
       modalidad: a.modalidad || 'sin_definir',
+      modalidadSufijo: a.modalidad_sufijo,
+      requiereRevisionModalidad: a.requiere_revision_modalidad,
       horasFijasPta: a.horas_fijas_pta,
+      horasClase: a.horas_clase,
+      horasPta: a.horas_pta,
       tipoExcepcion: a.tipo_excepcion,
       activa: a.activa,
       programaId: a.id_programa,
       semestre: String(a.id_ubicacion_semestral || 1),
-      horas: (a.creditos || 3) * 48,
+      horas: a.horas_clase ?? (a.creditos || 3) * 48,
       tipo: a.tipo_asignatura || 'teorica',
       nucleoTematico: a.nucleo_nombre || 'Sin definir',
     }));
@@ -859,6 +880,15 @@ export class ProgramasService {
             || this.crearCodigoAsignatura();
           const creditos = Number(data.creditos);
           const semestre = Number(data.semestre || data.semestreId || 1);
+          const pensum = String(data.pensum || '').trim() || null;
+          const horasClaseRaw = data.horasClase ?? data.horas_clase ?? data.horas;
+          const horasPtaRaw = data.horasPta ?? data.horas_pta ?? data.horasFijasPta;
+          const horasClase = horasClaseRaw === null || horasClaseRaw === undefined || horasClaseRaw === ''
+            ? null
+            : Number(horasClaseRaw);
+          const horasPta = horasPtaRaw === null || horasPtaRaw === undefined || horasPtaRaw === ''
+            ? null
+            : Number(horasPtaRaw);
 
           if (!nombre) {
             throw new BadRequestException(
@@ -873,6 +903,21 @@ export class ProgramasService {
           if (codigo.length > 20) {
             throw new BadRequestException(
               `El código "${codigo}" supera los 20 caracteres permitidos.`,
+            );
+          }
+          if (pensum && pensum.length > 50) {
+            throw new BadRequestException(
+              `El pensum "${pensum}" supera los 50 caracteres permitidos.`,
+            );
+          }
+          if (horasClase !== null && (!Number.isInteger(horasClase) || horasClase < 0)) {
+            throw new BadRequestException(
+              `Las horas de clase de "${nombre}" deben ser un entero mayor o igual a cero.`,
+            );
+          }
+          if (horasPta !== null && (!Number.isInteger(horasPta) || horasPta < 0)) {
+            throw new BadRequestException(
+              `Las horas PTA de "${nombre}" deben ser un entero mayor o igual a cero.`,
             );
           }
           if (!Number.isInteger(creditos) || creditos < 1 || creditos > 20) {
@@ -925,15 +970,21 @@ export class ProgramasService {
           const asignaturaData = {
             programaId,
             nombre,
+            nombreBase: String(data.nombreBase || data.nombre_base || nombre).trim(),
             codigo,
+            pensum,
             creditos,
             semestreId: semestre,
             nucleoTematicoId,
             facultadId: programa.idFacultad,
             modalidad: this.mapearModalidadAsignatura(data.modalidad),
+            modalidadSufijo: String(data.modalidadSufijo || data.modalidad || '').trim() || null,
+            requiereRevisionModalidad: Boolean(data.requiereRevisionModalidad ?? data.requiere_revision_modalidad),
             tipoAsignatura: this.mapearTipoAsignatura(data.tipo),
             tipoExcepcion,
             horasFijasPta: this.horasFijasPorExcepcion(tipoExcepcion),
+            horasClase,
+            horasPta,
             activa: data.activa !== false,
           };
 
@@ -1052,8 +1103,8 @@ export class ProgramasService {
 
   private mapearModalidadAsignatura(value?: string): string {
     const modalidad = this.normalizarTexto(value);
-    if (modalidad.includes('noche')) return 'presencial_noche';
-    if (modalidad.includes('dia') || modalidad.includes('diurna')) return 'presencial_dia';
+    if (modalidad.includes('noche') || modalidad.includes('nocturn')) return 'presencial_noche';
+    if (modalidad.includes('dia') || modalidad.includes('diurn')) return 'presencial_dia';
     if (modalidad.includes('presencial')) return 'presencial';
     if (modalidad.includes('virtual')) return 'virtual';
     if (modalidad.includes('distancia')) return 'distancia';

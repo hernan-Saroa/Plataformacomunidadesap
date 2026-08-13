@@ -18,8 +18,12 @@ export interface AsignaturaDTO {
   programaId: string;
   nombre: string;
   codigo?: string;
+  pensum?: string | null;
+  nombreBase?: string | null;
   creditos: number;
   horas: number;
+  horasClase?: number | null;
+  horasPta?: number | null;
   nucleoTematico?: string;
   semestre?: string;
   createdAt: string;
@@ -30,6 +34,8 @@ export interface ProgramaAcademicoDTO {
   id: string;
   codigo: string;
   nombre: string;
+  nombreExcel?: string;
+  nombreCorto?: string;
   descripcion?: string;
   nivelFormacion?: string;
   facultad?: string;
@@ -50,9 +56,13 @@ export interface ProgramaAcademicoDTO {
 
   // ─── Campos Clave Circular 003/2025 (Catálogo CARGA_2) ───
   nombre_corto?: string;                     // Código operativo (AP_Diurno, APT, etc.)
+  codigo_facultad?: string | null;
+  nombre_facultad?: string | null;
   tipo_programa?: string;                    // pregrado | especializacion | maestria
   categoria_horas_circular003?: string;       // CLAVE: pregrado_sede_central | pregrado_territorial | especializacion | maestria
   descripcion_categoria_circular003?: string; // Nombre oficial Tabla 1 Circular
+  horas_pta_referencia_circular003?: string | null;
+  formula_calculo_horas?: string | null;
   horas_base_por_credito?: number | null;     // 16 (APT/Esp), 12 (Maestría), NULL (Sede Central)
   horas_pregrado_central?: number | null;     // 64 (solo Sede Central, bloque fijo)
   // Campos calculados derivados

@@ -37,7 +37,8 @@ import {
   Layout,
   Building2,
   BarChart3,
-  Gavel
+  Gavel,
+  Rows4
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { ESAPLogo } from '../assets/ESAPLogo';
@@ -45,7 +46,13 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion';
+
+export interface ActiveModuleItem {
+  code: string;
+  name: string;
+  description?: string;
+}
 
 interface SidebarProps {
   isOpen: boolean;
@@ -56,11 +63,13 @@ interface SidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   forceCollapse?: boolean; // Auto-colapsar cuando modal de perfil esté abierto
-  userRole?: string; // Rol del usuario para permisos
+  userRole?: string[]; // Rol del usuario para permisos
   userEmail?: string; // Email del usuario para restricciones específicas
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
   restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
   assignedModules?: string[]; // Códigos de módulos asignados al rol/usuario (puede incluir 'all')
+  activeModules?: ActiveModuleItem[]; // Módulos activos con name y description desde BD
+  activeModuleCodes?: string[]; // Códigos de módulos activos en la base de datos (is_active = true)
   userPermissions?: string[]; // Permisos del usuario
 }
 
@@ -80,7 +89,75 @@ const contentTransition = {
   ease: [0.4, 0, 0.2, 1] // easing personalizado
 };
 
-export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [], userPermissions = [] }: SidebarProps) {
+function getModuleAliases(module: string): string[] {
+  const map: Record<string, string[]> = {
+    'executive': ['executive', 'dashboard', 'principal'],
+    'dashboard': ['executive', 'dashboard', 'principal'],
+    'reports': ['reports', 'reportes'],
+    'reportes': ['reports', 'reportes'],
+    'audit': ['audit', 'auditoria'],
+    'auditoria': ['audit', 'auditoria'],
+    'contratacion': ['contratacion', 'hiring'],
+    'hiring': ['contratacion', 'hiring'],
+    'users-management': ['users-management', 'users'],
+    'roles-administration': ['roles-administration', 'roles'],
+    'graduates': ['graduates'],
+    'graduates-verification': ['graduates-verification', 'graduates'],
+    'graduates-certificates': ['graduates-certificates'],
+    'verification-certificates': ['verification-certificates'],
+    'banco-docentes-pta': ['banco-docentes-pta', 'gestion-profesoral', 'rund'],
+    // 'gestion-profesoral': ['gestion-profesoral', 'banco-docentes-pta', 'rund'],
+  };
+  return map[module] || [module];
+}
+
+const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string }> = {
+  'executive': { name: 'Dashboard Ejecutivo', description: 'Nivel gerencial' },
+  'users-management': { name: 'Personas', description: 'Gestión de usuarios' },
+  'banco-docentes-pta': { name: 'Registro Único Nacional Docente (RUND)', description: 'Gestión y carga masiva' },
+  'carpeta-digital': { name: 'Carpeta Digital', description: 'Documentos del usuario' },
+  'estructura-organizacional': { name: 'Estructura Organizacional', description: 'Sedes y territoriales' },
+  'programas-academicos': { name: 'Programas Académicos', description: 'Gestión de programas' },
+  'roles-administration': { name: 'Roles y Permisos', description: 'Gestión de roles del sistema y generación de QR' },
+  'audit': { name: 'Auditoría', description: 'Auditoría de cambios' },
+  'reports': { name: 'Reportes', description: 'Analytics avanzado' },
+  'graduates': { name: 'Verificación de títulos', description: '2 submódulos' },
+  'graduates-verification': { name: 'Graduados', description: 'Lista de graduados' },
+  'graduates-certificates': { name: 'Verificación de títulos', description: 'Verificación y solicitudes' },
+  'pta': { name: 'Plan de Trabajo Académico', description: 'Gestión y aprobación de PTAs' },
+  'certificados-laborales': { name: 'Certificados Laborales', description: 'Certificación laboral' },
+  'firma-electronica': { name: 'Firma Electrónica', description: 'Firma de documentos' },
+  'control-interno': { name: 'Control Interno Gestión', description: 'Auditorías y hallazgos' },
+  'control-disciplinario': { name: 'Control Interno Disciplinario', description: 'Procesos disciplinarios' },
+  'gestion-legal': { name: 'Gestión Legal (SIGL)', description: 'Sistema Integrado Legal' },
+  'contratacion': { name: 'Contratación', description: 'Licitaciones y Contratos' },
+};
+
+export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [], activeModules = [], activeModuleCodes: propsActiveModuleCodes, userPermissions = [] }: SidebarProps) {
+  const activeModuleCodes = (propsActiveModuleCodes && propsActiveModuleCodes.length > 0)
+    ? propsActiveModuleCodes
+    : activeModules.map((m) => m.code);
+
+  const getModuleMetadata = (module: ModuleType, overrideTitle?: string, overrideSubtitle?: string) => {
+    const aliases = getModuleAliases(module);
+    if (activeModules && activeModules.length > 0) {
+      const dbModule = activeModules.find((m) => aliases.includes(m.code));
+      if (dbModule && dbModule.name && dbModule.name.trim() !== '') {
+        return {
+          title: dbModule.name,
+          subtitle: (dbModule.description && dbModule.description.trim() !== '')
+            ? dbModule.description
+            : (overrideSubtitle || DEFAULT_MODULE_CONFIG[module]?.description),
+        };
+      }
+    }
+
+    return {
+      title: '...',
+      subtitle: '...',
+    };
+  };
+
   const hasAllModules = assignedModules.includes('all');
   const graduates = assignedModules.includes('graduates');
   if (graduates && !assignedModules.includes('graduates-verification')) {
@@ -88,18 +165,41 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   }
   restrictedMode = undefined; // Nuevo: No restringir módulos en modo de desarrollo
   const canShowModule = (module: ModuleType): boolean => {
-    if (hasAllModules) return true;
-    // En desarrollo, si no viene la lista de módulos (por ejemplo, sesión mock),
-    // mostramos el menú completo para no bloquear navegación.
-    if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) return true;
+    // console.log('module', module);
+    if (module === 'executive' || module === 'dashboard') {
+      // Mantener compatibilidad con sesiones antiguas sin modules, pero respetar
+      // la asignación explícita cuando el backend sí la entrega.
+      if (!assignedModules || assignedModules.length === 0) return true;
+      const aliases = getModuleAliases(module);
+      return hasAllModules || aliases.some((alias) => assignedModules.includes(alias));
+    }
+    if (userRole?.includes('SUPER_ADMIN') && module === 'modules') return true;
 
-    // Segmentación del RUND según nuevos permisos
-    if (module === 'banco-docentes-pta') {
-      return userPermissions.some(p => p.startsWith('banco-docentes.rund.'));
+    // 1. Si la API devolvió los módulos activos de la DB (is_active = true),
+    // verificar que el módulo no esté desactivado globalmente en auth.module.
+    if (activeModuleCodes && activeModuleCodes.length > 0) {
+      const aliases = getModuleAliases(module);
+      const isSystemActive = aliases.some(alias => activeModuleCodes.includes(alias));
+      if (!isSystemActive) {
+        return false; // Desactivado globalmente en DB (is_active = false)
+      }
     }
 
+    // 2. Segmentación del RUND según permisos de usuario o si no se especifican permisos
+    if (module === 'banco-docentes-pta') {
+      if (userPermissions && userPermissions.length > 0) {
+        const hasRundPerm = userPermissions.some(p => p.startsWith('banco-docentes.rund.'));
+        if (hasRundPerm) return true;
+      }
+    }
+
+    // 3. Verificación por permisos de usuario (assignedModules)
+    if (hasAllModules) return true;
+    if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) return true;
     if (!assignedModules || assignedModules.length === 0) return false;
-    return assignedModules.includes(module);
+
+    const aliases = getModuleAliases(module);
+    return aliases.some(alias => assignedModules.includes(alias) || assignedModules.includes(module));
   };
 
   // Secciones y visibilidad basada en módulos asignados
@@ -283,12 +383,15 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   const renderMenuItem = (
     module: ModuleType,
     icon: React.ReactNode,
-    label: string,
+    label?: string,
     subtitle?: string,
     badge?: string
   ) => {
     if (!canShowModule(module)) return null;
     const isActive = currentModule === module;
+    const meta = module !== 'modules' ? getModuleMetadata(module, label, subtitle) : { title: 'Gestión módulos', subtitle: 'Administración de módulos' };
+    const displayLabel = meta.title;
+    const displaySubtitle = meta.subtitle;
 
     const buttonContent = (
       <motion.button
@@ -298,14 +401,17 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             : 'text-white/80 hover:text-white'
           } ${effectiveCollapsed ? 'justify-center px-2' : ''}`}
         style={isActive ? {
-          backgroundColor: 'rgba(255, 255, 255, 0.12)',
+          backgroundColor: 'rgba(255, 255, 255, 0.22)',
           backdropFilter: 'blur(10px)'
-        } : {}}
-        whileHover={!isActive ? {
-          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        } : {
+          backgroundColor: 'rgba(0, 0, 0, 0)',
+          backdropFilter: 'blur(10px)'
+        }}
+        whileHover={{
+          backgroundColor: 'rgba(255, 255, 255, 0.3)',
           x: effectiveCollapsed ? 0 : 2,
           scale: 1.01
-        } : {}}
+        }}
         whileTap={{ scale: 0.98 }}
         transition={springTransition}
       >
@@ -319,7 +425,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 boxShadow: '0 0 12px rgba(96, 165, 250, 0.6)'
               }}
               initial={{ height: 0, y: '-50%', opacity: 0 }}
-              animate={{ height: '70%', y: '-50%', opacity: 1 }}
+              animate={{ height: '100%', y: '-50%', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={springTransition}
             />
@@ -367,9 +473,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               className="flex-1 text-left min-w-0 flex items-center gap-2"
             >
               <div className="flex-1 min-w-0">
-                <span className="text-[10px] font-medium block truncate leading-tight">{label}</span>
-                {subtitle && (
-                  <span className="text-[9px] text-white/60 block truncate mt-0.5">{subtitle}</span>
+                <span className="text-[10px] font-medium block leading-tight">{displayLabel}</span>
+                {displaySubtitle && (
+                  <span className="text-[9px] text-white/60 block mt-0.5">{displaySubtitle}</span>
                 )}
               </div>
               {badge && (
@@ -406,8 +512,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             sideOffset={12}
           >
             <div>
-              <div className="font-semibold text-white">{label}</div>
-              {subtitle && <div className="text-white/70 mt-0.5">{subtitle}</div>}
+              <div className="font-semibold text-white">{displayLabel}</div>
+              {displaySubtitle && <div className="text-white/70 mt-0.5">{displaySubtitle}</div>}
               {badge && (
                 <div className="mt-1.5 pt-1.5 border-t border-white/10">
                   <span className="text-red-400 font-semibold">{badge} pendientes</span>
@@ -427,16 +533,20 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     menuId: string,
     module: ModuleType,
     icon: React.ReactNode,
-    label: string,
+    label?: string,
     subtitle?: string,
     submenuItems?: Array<{
       module: ModuleType,
       icon: React.ReactNode,
-      label: string,
+      label?: string,
       subtitle?: string,
       badge?: string
     }>
   ) => {
+    const parentMeta = getModuleMetadata(module, label, subtitle);
+    const displayParentLabel = parentMeta.title;
+    const displayParentSubtitle = parentMeta.subtitle;
+
     const visibleSubmenu = submenuItems?.filter(item => canShowModule(item.module)) || [];
     const isActive = currentModule === module || visibleSubmenu.some(item => currentModule === item.module || currentSidebarModule === item.module);
     const isExpanded = expandedMenus[menuId];
@@ -482,33 +592,20 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             className="p-0 bg-white backdrop-blur-xl border-2 border-gray-200 shadow-2xl"
             sideOffset={16}
           >
-            <div className="min-w-[280px] max-w-[320px]">
-              {/* Header del menú */}
-              <div 
-                className="px-4 py-3 border-b border-blue-200"
-                style={{
-                  background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)'
-                }}
-              >
-                <div className="flex items-center gap-2 text-white">
-                  <div className="flex-shrink-0">
-                    {icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate">{label}</div>
-                    {subtitle && <div className="text-xs text-white/80 truncate mt-0.5">{subtitle}</div>}
-                  </div>
-                </div>
+            <div className="p-3 min-w-[200px]">
+              <div className="font-semibold text-gray-900 border-b border-gray-200 pb-2 mb-2">
+                {displayParentLabel}
               </div>
-
-              {/* Submenús clickeables */}
-              {submenuItems && submenuItems.length > 0 && (
-                <div className="py-2">
-                  {submenuItems.map((item, idx) => {
+              {hasSubmenu && (
+                <div className="space-y-1">
+                  {visibleSubmenu.map((item) => {
                     const isSubmenuActive = currentSidebarModule === item.module || currentModule === item.module;
+                    const subMeta = getModuleMetadata(item.module, item.label, item.subtitle);
+                    const subLabel = subMeta.title;
+                    const subSubtitle = subMeta.subtitle;
                     return (
                       <button
-                        key={idx}
+                        key={item.module}
                         onClick={() => handleModuleClick(item.module)}
                         className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all duration-200 ${
                           isSubmenuActive
@@ -520,9 +617,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                           {item.icon}
                         </div>
                         <div className="flex-1 text-left min-w-0">
-                          <div className="text-sm font-medium truncate">{item.label}</div>
-                          {item.subtitle && (
-                            <div className="text-xs text-gray-500 truncate mt-0.5">{item.subtitle}</div>
+                          <div className="text-sm font-medium truncate">{subLabel}</div>
+                          {subSubtitle && (
+                            <div className="text-xs text-gray-500 truncate mt-0.5">{subSubtitle}</div>
                           )}
                         </div>
                         {item.badge && (
@@ -576,8 +673,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               {icon}
             </div>
             <div className="flex-1 text-left min-w-0">
-              <span className="text-sm font-medium block truncate leading-tight">{label}</span>
-              {subtitle && <span className="text-[11px] text-white/60 block truncate mt-0.5">{subtitle}</span>}
+              <span className="text-sm font-medium block truncate leading-tight">{displayParentLabel}</span>
+              {displayParentSubtitle && <span className="text-[11px] text-white/60 block truncate mt-0.5">{displayParentSubtitle}</span>}
             </div>
             {visibleSubmenu.some(item => item.badge) && (
               <motion.div
@@ -630,6 +727,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 {visibleSubmenu.map((item, idx) => {
                   // Comparar con currentSidebarModule para subitems SIGL
                   const isSubmenuActive = currentSidebarModule === item.module || currentModule === item.module;
+                  const subMeta = getModuleMetadata(item.module, item.label, item.subtitle);
+                  const subLabel = subMeta.title;
+                  const subSubtitle = subMeta.subtitle;
                   return (
                     <motion.button
                       key={idx}
@@ -654,8 +754,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         {item.icon}
                       </div>
                       <div className="flex-1 text-left min-w-0">
-                        <span className="text-sm font-medium block truncate">{item.label}</span>
-                        {item.subtitle && <span className="text-[11px] text-white/50 block truncate mt-0.5">{item.subtitle}</span>}
+                        <span className="text-sm font-medium block truncate">{subLabel}</span>
+                        {subSubtitle && <span className="text-[11px] text-white/50 block truncate mt-0.5">{subSubtitle}</span>}
                       </div>
                       {item.badge && (
                         <motion.span
@@ -827,62 +927,19 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   className="overflow-hidden"
                 >
                       {/* Gestión de usuarios */}
-                      {renderMenuItem(
-                        'users-management',
-                        <Users className="w-4 h-4" />,
-                        'Personas',
-                        'Gestión de usuarios'
-                      )}
+                      {renderMenuItem('users-management', <Users className="w-4 h-4" />)}
                       {/* Banco de Docentes PTA */}
-                      {renderMenuItem(
-                        'banco-docentes-pta',
-                        <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Registro Único Nacional Docente (RUND)',
-                        'Gestión y carga masiva'
-                      )}
+                      {renderMenuItem('banco-docentes-pta', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                       {/* Documentos del usuario */}
-                      {renderMenuItem(
-                        'carpeta-digital',
-                        <FolderOpen className="w-4 h-4" />,
-                        'Carpeta Digital',
-                        'Documentos del usuario'
-                      )}
-                      {/* Estructura Organizacional - NUEVO MÓDULO */}
-                      {renderMenuItem(
-                        'estructura-organizacional',
-                        <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Estructura Organizacional',
-                        'Sedes y territoriales'
-                      )}
-
-                      {/* Programas Académicos - NUEVO MÓDULO */}
-                      {renderMenuItem(
-                        'programas-academicos',
-                        <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Programas Académicos',
-                        'Gestión de programas'
-                      )}
-
-                      {/* Roles y Permisos - Administración completa con QR */}
-                      {renderMenuItem(
-                        'roles-administration',
-                        <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Roles y Permisos',
-                        'Gestión de roles del sistema y generación de QR'
-                      )}
-
-                      {renderMenuItem(
-                        'audit',
-                        <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Auditoría'
-                      )}
-
-                      {renderMenuItem(
-                        'reports',
-                        <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                        'Reportes',
-                        'Analytics avanzado'
-                      )}
+                      {renderMenuItem('carpeta-digital', <FolderOpen className="w-4 h-4" />)}
+                      {/* Estructura Organizacional */}
+                      {renderMenuItem('estructura-organizacional', <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                      {/* Programas Académicos */}
+                      {renderMenuItem('programas-academicos', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                      {/* Roles y Permisos */}
+                      {renderMenuItem('roles-administration', <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                      {renderMenuItem('audit', <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                      {renderMenuItem('reports', <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1067,12 +1124,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   )}
                 </AnimatePresence>
                 
-                {renderMenuItem(
-                  'executive',
-                  <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                  'Dashboard Ejecutivo',
-                  'Nivel gerencial'
-                )}
+                {renderMenuItem('executive', <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
               </div>
 
               {/* Módulos Administrativos (GESTIÓN PERSONAS) */}
@@ -1093,63 +1146,20 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   className="overflow-hidden"
                 >
                   {/* Gestión de usuarios */}
-                  {renderMenuItem(
-                    'users-management',
-                    <Users className="w-4 h-4" />,
-                    'Personas',
-                    'Gestión de usuarios'
-                  )}
+                  {renderMenuItem('users-management', <Users className="w-4 h-4" />)}
                   {/* Banco de Docentes PTA */}
-                  {renderMenuItem(
-                    'banco-docentes-pta',
-                    <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Registro Único Nacional Docente (RUND)',
-                    'Gestión y carga masiva'
-                  )}
+                  {renderMenuItem('banco-docentes-pta', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                   {/* Documentos del usuario */}
-                  {renderMenuItem(
-                    'carpeta-digital',
-                    <FolderOpen className="w-4 h-4" />,
-                    'Carpeta Digital',
-                    'Documentos del usuario'
-                  )}
-
-                  {/* Estructura Organizacional - NUEVO MÓDULO */}
-                  {renderMenuItem(
-                    'estructura-organizacional',
-                    <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Estructura Organizacional',
-                    'Sedes y territoriales'
-                  )}
-
-                  {/* Programas Académicos - NUEVO MÓDULO */}
-                  {renderMenuItem(
-                    'programas-academicos',
-                    <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Programas Académicos',
-                    'Gestión de programas'
-                  )}
-
-                  {/* Roles y Permisos - Administración completa con QR */}
-                  {renderMenuItem(
-                    'roles-administration',
-                    <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Roles y Permisos',
-                    'Gestión de roles del sistema y generación de QR'
-                  )}
-
-                  {renderMenuItem(
-                    'audit',
-                    <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Auditoría'
-                  )}
-
-                  {renderMenuItem(
-                    'reports',
-                    <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Reportes',
-                    'Analytics avanzado'
-                  )}
+                  {renderMenuItem('carpeta-digital', <FolderOpen className="w-4 h-4" />)}
+                  {/* Estructura Organizacional */}
+                  {renderMenuItem('estructura-organizacional', <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                  {/* Programas Académicos */}
+                  {renderMenuItem('programas-academicos', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                  {/* Roles y Permisos */}
+                  {renderMenuItem('roles-administration', <Shield className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                  {renderMenuItem('audit', <Activity className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                  {renderMenuItem('reports', <BarChart3 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                  {renderMenuItem('firma-electronica', <PenTool className="w-5 h-5" strokeWidth={2} />)}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1174,28 +1184,24 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   className="overflow-hidden"
                 >
                   {/* Graduados - Con Submenús */}
-                  {renderMenuWithSubmenu(
+                  {/* {renderMenuWithSubmenu(
                     'graduates',
-                    'graduates-verification',
+                    'graduates',
                     <GraduationCap className="w-5 h-5" strokeWidth={2} />,
-                    'Verificación de títulos',
-                    '2 submódulos',
+                    undefined,
+                    undefined,
                     [
                       {
                         module: 'graduates-verification',
                         icon: <CheckCircle className="w-4 h-4" />,
-                        label: 'Graduados',
-                        subtitle: 'Lista de graduados'
                       },
                       {
                         module: 'graduates-certificates',
                         icon: <Award className="w-4 h-4" />,
-                        label: 'Verificación de títulos',
-                        subtitle: 'Verificación y solicitudes',
                         badge: certificatesPendingCount > 0 ? certificatesPendingCount.toString() : undefined
                       }
                     ]
-                  )}
+                  )} */}
 
                   {/* Gestión Profesoral - PTA */}
                   {/* {renderMenuItem(
@@ -1204,30 +1210,15 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     'Gestión Profesoral',
                     'PTAs y docentes'
                   )} */}
+                  {renderMenuItem('graduates-verification', <CheckCircle className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('graduates-certificates', <Award className="w-5 h-5" strokeWidth={2} />)}
 
-                  {renderMenuItem(
-                    'pta',
-                    <Briefcase className="w-5 h-5" strokeWidth={2} />,
-                    'Plan de Trabajo Académico',
-                    'Gestión y aprobación de PTAs'
-                  )}
-
-                  {renderMenuItem(
-                    'certificados-laborales',
-                    <FileCheck className="w-5 h-5" strokeWidth={2} />,
-                    'Certificados Laborales',
-                    'Certificación laboral'
-                  )}
-
-                  {renderMenuItem(
-                    'firma-electronica',
-                    <PenTool className="w-5 h-5" strokeWidth={2} />,
-                    'Firma Electrónica',
-                    'Firma de documentos'
-                  )}
+                  {renderMenuItem('pta', <Briefcase className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('certificados-laborales', <FileCheck className="w-5 h-5" strokeWidth={2} />)}
 
                   {/* Separador visual - Módulos de Control y Gestión Legal */}
-                  <AnimatePresence mode="wait">
+                  {( canShowModule('control-interno') || canShowModule('control-disciplinario') || canShowModule('gestion-legal') || canShowModule('contratacion')) && (
+                  <AnimatePresence mode="wait">|
                     {!effectiveCollapsed && (
                       <motion.div
                         initial={{ opacity: 0, scaleX: 0 }}
@@ -1243,28 +1234,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       </motion.div>
                     )}
                   </AnimatePresence>
+                  )}
 
-                  {renderMenuItem(
-                    'control-interno',
-                    <ClipboardList className="w-5 h-5" strokeWidth={2} />,
-                    'Control Interno Gestión',
-                    'Auditorías y hallazgos'
-                  )}
-                  
-                  {renderMenuItem(
-                    'control-disciplinario',
-                    <Gavel className="w-5 h-5" strokeWidth={2} />,
-                    'Control Interno Disciplinario',
-                    'Procesos disciplinarios'
-                  )}
-                  
-                  {/* ✅ NUEVO: Gestión Legal (SIGL) v5.0 */}
-                  {renderMenuItem(
-                    'gestion-legal',
-                    <Scale className="w-5 h-5" strokeWidth={2} />,
-                    'Gestión Legal (SIGL)',
-                    'Sistema Integrado Legal'
-                  )}
+                  {renderMenuItem('control-interno', <ClipboardList className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('control-disciplinario', <Gavel className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('gestion-legal', <Scale className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('contratacion', <FileText className="w-5 h-5" strokeWidth={2} />)}
                 </motion.div>
               )}
             </AnimatePresence>

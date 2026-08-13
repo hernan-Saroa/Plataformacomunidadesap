@@ -23,6 +23,7 @@ import { PTA_COLORS } from './shared/ptaColors';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
 
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
 // 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
@@ -403,6 +404,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                   <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>#</th>
                   <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Asignatura</th>
                   <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Programa</th>
+                  <th style={{ padding: '7px 8px', textAlign: 'left', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Pensum</th>
                   <th style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Cred.</th>
                   <th style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Est.</th>
                   <th style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>Mod.</th>
@@ -417,7 +419,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     <tr key={idx} style={{ borderBottom: asig.observaciones ? 'none' : '1px solid #E5E7EB' }}>
                       <td style={{ padding: '6px 8px', color: '#9CA3AF' }}>{idx + 1}</td>
                       <td style={{ padding: '6px 8px', fontWeight: 600, color: '#111827' }}>
-                        {asig.asignatura_nombre || asig.nombre || asig.asignatura || 'N/A'}
+                        {formatPtaAssignmentName(asig) || 'N/A'}
                         <HierarchySelectionSummary activity={asig} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
                       </td>
                       <td
@@ -428,6 +430,9 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                         }}
                       >
                         {asig.programa_nombre_completo || asig.programa_nombre || asig.programa || asig.programa_id || 'N/A'}
+                      </td>
+                      <td style={{ padding: '6px 8px', color: '#6B7280' }}>
+                        {formatPtaPensum(asig.pensum)}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>{asig.creditos || 3}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>
@@ -457,7 +462,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     {asig.observaciones && (
                       <tr key={`obs-${idx}`} style={{ borderBottom: '1px solid #E5E7EB' }}>
                         <td />
-                        <td colSpan={8} style={{ padding: '2px 8px 6px', fontSize: '0.68rem', color: '#6B7280', fontStyle: 'italic' }}>
+                        <td colSpan={9} style={{ padding: '2px 8px 6px', fontSize: '0.68rem', color: '#6B7280', fontStyle: 'italic' }}>
                           💬 {asig.observaciones}
                         </td>
                       </tr>
@@ -467,7 +472,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
               </tbody>
               <tfoot>
                 <tr style={{ background: `${PTA_COLORS.DOCENCIA}10`, borderTop: `2px solid ${PTA_COLORS.DOCENCIA}40` }}>
-                  <td colSpan={7} style={{ padding: '8px 10px', fontWeight: 800, color: PTA_COLORS.DOCENCIA, textAlign: 'right' }}>
+                  <td colSpan={8} style={{ padding: '8px 10px', fontWeight: 800, color: PTA_COLORS.DOCENCIA, textAlign: 'right' }}>
                     TOTAL HORAS DOCENCIA:
                   </td>
                   <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: PTA_COLORS.DOCENCIA, fontSize: '0.95rem' }}>
@@ -789,28 +794,49 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         {/* Section 7: Firmas y Aprobaciones */}
         <SectionHeader icon={Award} label="7. FIRMAS Y APROBACIONES" color="#003DA5" />
         <div style={{ padding: '16px 32px 28px' }}>
-          {/* Firma del docente (concertación) */}
-          <div style={{
-            padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,
-          }}>
-            <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
-            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
-              {pta.docente_nombre || 'N/A'}
-            </div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '3px 10px', borderRadius: 6,
-              background: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#D1FAE5' : '#FEF3C7',
-              color: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#065F46' : '#92400E',
-              fontSize: '0.72rem', fontWeight: 600,
-            }}>
-              {pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? (
-                <><CheckCircle2 style={{ width: 12, height: 12 }} /> Firma Digital Verificada</>
-              ) : (
-                <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
-              )}
-            </div>
-          </div>
+          {/* Firma del docente (concertación): el docente firma al ENVIAR el PTA para
+              aprobación; lo que ocurre después (revisión y aprobación) es firma del
+              aprobador, no suya. Gatear esto por pta.estado==='Aprobado' hacía que
+              Revisor y Aprobador vieran "Pendiente" mientras revisaban un PTA que el
+              docente ya había enviado y firmado.
+              Fuente de verdad: fecha_envio_revision, que el backend deriva del
+              historial (transición hacia un estado "Pendiente ..."; ver
+              attachPtaReferenceDates). Si no está —snapshots históricos, PTAs sin
+              historial— se cae a la misma regla que usa el backend para saber si un
+              PTA ya salió del borrador. */}
+          {(() => {
+            const fechaFirmaDocente = pta.fecha_envio_revision || null;
+            const estadoNorm = String(pta.estado || '').trim().toLowerCase();
+            const docenteFirmo = Boolean(fechaFirmaDocente) || (estadoNorm !== '' && estadoNorm !== 'borrador');
+            return (
+              <div style={{
+                padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,
+              }}>
+                <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                  {pta.docente_nombre || 'N/A'}
+                </div>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '3px 10px', borderRadius: 6,
+                  background: docenteFirmo ? '#D1FAE5' : '#FEF3C7',
+                  color: docenteFirmo ? '#065F46' : '#92400E',
+                  fontSize: '0.72rem', fontWeight: 600,
+                }}>
+                  {docenteFirmo ? (
+                    <><CheckCircle2 style={{ width: 12, height: 12 }} /> Firma Digital Verificada</>
+                  ) : (
+                    <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
+                  )}
+                </div>
+                {docenteFirmo && fechaFirmaDocente && (
+                  <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 5 }}>
+                    Enviado y firmado el {fmtFecha(fechaFirmaDocente)}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Aprobación por COMPONENTE — flujo paralelo (no lineal). Un slot por
               componente / sección de extensión (7 en total). Al firmarse aparece

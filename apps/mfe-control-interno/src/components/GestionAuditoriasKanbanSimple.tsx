@@ -3507,22 +3507,22 @@ export function GestionAuditoriasKanbanSimple() {
                   {/* Botones de navegación discretos — aparecen sutilmente al costado */}
                   <motion.button
                     onClick={() => navegarColumna('prev')}
-                    className="hidden md:flex absolute left-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-16 rounded-r-lg bg-orange-100/90 text-orange-600 border border-orange-200 opacity-80 hover:opacity-100 hover:bg-orange-200 transition-all shadow-md"
+                    className="hidden md:flex absolute left-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-10 h-14 rounded-xl bg-blue-200 text-blue-600 opacity-80 hover:opacity-100 hover:bg-blue-300 transition-all shadow-md"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     title="Columna anterior"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronLeft className="w-6 h-6" />
                   </motion.button>
 
                   <motion.button
                     onClick={() => navegarColumna('next')}
-                    className="hidden md:flex absolute right-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-16 rounded-l-lg bg-orange-100/90 text-orange-600 border border-orange-200 opacity-80 hover:opacity-100 hover:bg-orange-200 transition-all shadow-md"
+                    className="hidden md:flex absolute right-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-10 h-14 rounded-xl bg-blue-200 text-blue-600 opacity-80 hover:opacity-100 hover:bg-blue-300 transition-all shadow-md"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     title="Columna siguiente"
                   >
-                    <ChevronRight className="w-5 h-5" />
+                    <ChevronRight className="w-6 h-6" />
                   </motion.button>
 
                 </>

@@ -412,11 +412,11 @@ const AUDITORES_DEFAULT: Auditor[] = [
 
 // Roles (debe coincidir con el principal)
 const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
-  { numero: 1, nombre: 'Liderazgo estratégico', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
-  { numero: 2, nombre: 'Enfoque hacia la prevención', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
-  { numero: 3, nombre: 'Evaluación de la gestión del riesgo', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
-  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✔', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
-  { numero: 5, nombre: 'Relación con entes externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
+  { numero: 1, nombre: 'Liderazgo estratégico - Decreto 648 de 2017', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
+  { numero: 2, nombre: 'Enfoque hacia la prevención - Decreto 648 de 2017', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
+  { numero: 3, nombre: 'Evaluación de la gestión del riesgo - Decreto 648 de 2017', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
+  { numero: 4, nombre: 'Evaluación y seguimiento - Decreto 648 de 2017', color: '#AA00FF', icono: '✔', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
+  { numero: 5, nombre: 'Relación con entes externos de control - Decreto 648 de 2017', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
 ];
 
 // Tipo para configuración de roles en el wizard
@@ -942,14 +942,92 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
       };
     }
 
-    const actividadesConfiguradas = rolEdit.actividades.map((act) =>
-      enriquecerActividadDesdeBackend(act, plan.vigencia),
-    );
+    const actividadesConfiguradas = (rolEdit.actividades || [])
+      .filter((act: any) => act.activo !== false)
+      .map((act) => enriquecerActividadDesdeBackend(act, plan.vigencia));
 
     const actividadesTemplate = getActividadesPorRol(rolDef.numero);
-    const nombresTemplate = actividadesTemplate.map((a) => a.nombre);
-    const actividadesSeleccionadas = actividadesConfiguradas.filter((a) => nombresTemplate.includes(a.nombre));
-    const actividadesCustom = actividadesConfiguradas.filter((a) => !nombresTemplate.includes(a.nombre));
+    const actividadesSeleccionadas: any[] = [];
+    const actividadesCustom: any[] = [];
+    const templateUsados = new Set<string>();
+
+    function encontrarTemplateCoincidente(
+      actNombre: string,
+      actividadesTemplateList: ActividadBase[],
+      usedTemplatesSet: Set<string>,
+      actNombreOriginal?: string
+    ): ActividadBase | undefined {
+      const norm = (s: string) => (s || '').toLowerCase().trim();
+      const target = norm(actNombre);
+      const targetOrig = actNombreOriginal ? norm(actNombreOriginal) : '';
+
+      // 1. Coincidencia exacta por nombre o nombreOriginal
+      let match = actividadesTemplateList.find(
+        (t) => (!usedTemplatesSet.has(t.nombre)) && (norm(t.nombre) === target || (targetOrig && norm(t.nombre) === targetOrig))
+      );
+      if (match) return match;
+
+      // 2. Coincidencia por prefijo / subcadena de al menos 15 caracteres
+      let mejorMatch: ActividadBase | undefined = undefined;
+      let maxSimilitud = 0;
+
+      for (const t of actividadesTemplateList) {
+        if (usedTemplatesSet.has(t.nombre)) continue;
+        const tNorm = norm(t.nombre);
+        
+        let commonLength = 0;
+        for (let i = 0; i < Math.min(target.length, tNorm.length); i++) {
+          if (target[i] === tNorm[i]) commonLength++;
+          else break;
+        }
+
+        if (commonLength >= 15 && commonLength > maxSimilitud) {
+          maxSimilitud = commonLength;
+          mejorMatch = t;
+        } else if (target.includes(tNorm.slice(0, 20)) || tNorm.includes(target.slice(0, 20))) {
+          if (20 > maxSimilitud) {
+            maxSimilitud = 20;
+            mejorMatch = t;
+          }
+        }
+      }
+
+      return mejorMatch;
+    }
+
+    for (const act of actividadesConfiguradas) {
+      const orig = act.nombreOriginal || act.nombre_original;
+      let matchTemplate = encontrarTemplateCoincidente(act.nombre, actividadesTemplate, templateUsados, orig);
+
+      if (matchTemplate) {
+        templateUsados.add(matchTemplate.nombre);
+        actividadesSeleccionadas.push({
+          ...act,
+          nombreOriginal: matchTemplate.nombre,
+          esCustom: false,
+        });
+      } else if (act.esCustom === true || act.es_custom === true) {
+        actividadesCustom.push({
+          ...act,
+          esCustom: true,
+        });
+      } else {
+        const primerTemplateLibre = actividadesTemplate.find((t) => !templateUsados.has(t.nombre));
+        if (primerTemplateLibre && actividadesConfiguradas.length <= actividadesTemplate.length) {
+          templateUsados.add(primerTemplateLibre.nombre);
+          actividadesSeleccionadas.push({
+            ...act,
+            nombreOriginal: primerTemplateLibre.nombre,
+            esCustom: false,
+          });
+        } else {
+          actividadesCustom.push({
+            ...act,
+            esCustom: true,
+          });
+        }
+      }
+    }
 
     return {
       ...rolDef,
@@ -964,9 +1042,9 @@ function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
   const customRoles = plan.roles
     .filter((r) => (r.rol_numero ?? r.numero ?? 0) > 5)
     .map((rolEdit) => {
-      const actividadesConfiguradas = rolEdit.actividades.map((act) =>
-        enriquecerActividadDesdeBackend(act, plan.vigencia),
-      );
+      const actividadesConfiguradas = (rolEdit.actividades || [])
+        .filter((act: any) => act.activo !== false)
+        .map((act) => enriquecerActividadDesdeBackend(act, plan.vigencia));
       return {
         numero: rolEdit.rol_numero ?? rolEdit.numero,
         nombre: rolEdit.nombre,
@@ -3724,13 +3802,146 @@ function Paso2({
   const puedeEditarActividadesBase = puedeRealizar('configuraciones', 'edit');
 
   const [editandoActividadBase, setEditandoActividadBase] = useState<{rolNumero: number, actId: string} | null>(null);
+  const [nombreEditando, setNombreEditando] = useState<string>('');
+  const [descripcionEditando, setDescripcionEditando] = useState<string>('');
+  const [guardandoActividadBackend, setGuardandoActividadBackend] = useState<boolean>(false);
+  const [actividadCustomAEliminar, setActividadCustomAEliminar] = useState<{
+    numeroRol: number;
+    index: number;
+    actividad: ActividadBase;
+  } | null>(null);
+  const [eliminandoCustomBackend, setEliminandoCustomBackend] = useState(false);
+
+  const handleGuardarActividadBase = async (
+    numeroRol: number,
+    actId: string,
+    idActividadEnEstado: string,
+    nombreInput: string,
+    descInput: string,
+    actividadBaseObj: ActividadBase,
+    actividadDataObj?: ActividadBase
+  ) => {
+    const nuevoNombre = nombreInput.trim() || actividadBaseObj.nombre;
+    const nuevaDesc = descInput.trim();
+
+    setGuardandoActividadBackend(true);
+    try {
+      const nuevaConfig = rolesConfig.map(r => {
+        if (r.numero !== numeroRol) return r;
+        const existeEnSeleccionadas = r.actividadesSeleccionadas.some(
+          a => a.id === idActividadEnEstado || a.nombre === actividadBaseObj.nombre || (a.nombreOriginal && a.nombreOriginal === actividadBaseObj.nombre)
+        );
+        if (existeEnSeleccionadas) {
+          return {
+            ...r,
+            actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
+              (a.id === idActividadEnEstado || a.nombre === actividadBaseObj.nombre || (a.nombreOriginal && a.nombreOriginal === actividadBaseObj.nombre))
+                ? { ...a, nombre: nuevoNombre, descripcion: nuevaDesc, nombreOriginal: a.nombreOriginal || a.nombre }
+                : a
+            )
+          };
+        } else {
+          const añoVig = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
+          return {
+            ...r,
+            actividadesSeleccionadas: [
+              ...r.actividadesSeleccionadas,
+              {
+                ...actividadBaseObj,
+                id: idActividadEnEstado,
+                nombre: nuevoNombre,
+                descripcion: nuevaDesc,
+                nombreOriginal: actividadBaseObj.nombre,
+                incluidaEnPlan: true,
+                tipoEvidencia: 'SOLO_CHECK' as const,
+                fechaCorte: resolverFechaCorteActividad(actividadBaseObj, añoVig),
+                responsables: [],
+              }
+            ]
+          };
+        }
+      });
+
+      onRolesChange(nuevaConfig);
+
+      const backendId = actividadDataObj?.id || (idActividadEnEstado && !idActividadEnEstado.startsWith('rol-') && !idActividadEnEstado.startsWith('custom-') ? idActividadEnEstado : undefined);
+      if (backendId && typeof backendId === 'string' && !backendId.startsWith('rol-') && !backendId.startsWith('custom-')) {
+        const res = await actividadesApi.update(backendId, {
+          nombre: nuevoNombre,
+          descripcion: nuevaDesc,
+        } as any);
+        if (res && res.success) {
+          toast.success('Actividad actualizada en el servidor');
+        } else {
+          toast.error(res?.error || 'Error al guardar en el servidor');
+        }
+      } else {
+        toast.success('Actividad actualizada');
+      }
+    } catch (err) {
+      console.error('Error al guardar actividad base:', err);
+      toast.error('Error al guardar la actividad');
+    } finally {
+      setGuardandoActividadBackend(false);
+      setEditandoActividadBase(null);
+    }
+  };
+
+  const handleGuardarActividadCustom = async (
+    numeroRol: number,
+    index: number,
+    actividadObj: ActividadBase,
+    nombreInput: string,
+    descInput: string
+  ) => {
+    const nuevoNombre = nombreInput.trim() || actividadObj.nombre;
+    const nuevaDesc = descInput.trim();
+
+    setGuardandoActividadBackend(true);
+    try {
+      const nuevaConfig = rolesConfig.map(r => {
+        if (r.numero !== numeroRol) return r;
+        return {
+          ...r,
+          actividadesCustom: r.actividadesCustom.map((a, i) =>
+            i === index ? { ...a, nombre: nuevoNombre, descripcion: nuevaDesc } : a
+          )
+        };
+      });
+
+      onRolesChange(nuevaConfig);
+
+      const backendId = actividadObj.id;
+      if (backendId && typeof backendId === 'string' && !backendId.startsWith('custom-')) {
+        const res = await actividadesApi.update(backendId, {
+          nombre: nuevoNombre,
+          descripcion: nuevaDesc,
+        } as any);
+        if (res && res.success) {
+          toast.success('Actividad personalizada guardada en el servidor');
+        } else {
+          toast.error(res?.error || 'Error al guardar en el servidor');
+        }
+      } else {
+        toast.success('Actividad personalizada actualizada');
+      }
+    } catch (err) {
+      console.error('Error al guardar actividad personalizada:', err);
+      toast.error('Error al guardar en el servidor');
+    } finally {
+      setGuardandoActividadBackend(false);
+      setEditandoActividadBase(null);
+    }
+  };
 
   const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
     if (soloLectura) return;
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero !== numeroRol) return rol;
 
-      const idx = rol.actividadesSeleccionadas.findIndex(a => a.id === actId || a.nombre === nombreActividad);
+      const idx = rol.actividadesSeleccionadas.findIndex(
+        a => a.id === actId || a.nombre === nombreActividad || (a.nombreOriginal && a.nombreOriginal === nombreActividad)
+      );
       const existente = idx >= 0 ? rol.actividadesSeleccionadas[idx] : undefined;
 
       if (existente) {
@@ -3833,7 +4044,7 @@ function Paso2({
     return rolesConfig.some(rol =>
       rol.actividadesSeleccionadas.some(
         a =>
-          (a.id === actId || (!!nombreActividad && a.nombre === nombreActividad)) &&
+          (a.id === actId || (!!nombreActividad && (a.nombre === nombreActividad || (a.nombreOriginal && a.nombreOriginal === nombreActividad)))) &&
           actividadIncluidaEnPlan(a)
       )
     );
@@ -3907,7 +4118,22 @@ function Paso2({
     setMostrarFormActividad(null);
   };
 
-  const eliminarActividadCustom = (numeroRol: number, index: number) => {
+  const eliminarActividadCustom = async (numeroRol: number, index: number, actividad?: ActividadBase) => {
+    const actId = actividad?.id;
+    if (actId && typeof actId === 'string' && actId.trim() !== '' && !actId.startsWith('custom-')) {
+      try {
+        const res = await actividadesApi.delete(actId);
+        if (res && res.success === false) {
+          toast.error(res.error || 'No se pudo eliminar la actividad en el servidor');
+          return;
+        }
+      } catch (err: any) {
+        console.error('Error al eliminar actividad personalizada en backend:', err);
+        toast.error('Error al eliminar la actividad en el backend');
+        return;
+      }
+    }
+
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         return {
@@ -3918,7 +4144,7 @@ function Paso2({
       return rol;
     });
     onRolesChange(nuevaConfig);
-    toast.success('Actividad eliminada');
+    toast.success('Actividad personalizada eliminada');
   };
 
   const toggleAutorizacionCustom = (numeroRol: number, index: number) => {
@@ -4114,7 +4340,7 @@ function Paso2({
         <p className={soloLectura ? 'text-slate-600' : 'text-gray-600'}>
           {soloLectura
             ? 'Solo consulta: revise actividades, responsables y cortes de seguimiento sin modificar datos.'
-            : 'Selecciona las actividades del Decreto 648/2017 y asigna los responsables para cada rol estratégico'}
+            : 'Selecciona las actividades y asigna los responsables para cada rol estratégico'}
         </p>
       </div>
 
@@ -4161,24 +4387,24 @@ function Paso2({
                 className="flex items-center justify-between p-5 cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setRolExpandido(isExpanded ? null : rol.numero)}
               >
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center justify-center cursor-pointer" onClick={(e) => e.stopPropagation()} title="Habilitar/Deshabilitar Rol">
+                <div className="flex items-center gap-4 flex-1 min-w-0 mr-4">
+                  <label className="flex items-center justify-center cursor-pointer shrink-0" onClick={(e) => e.stopPropagation()} title="Habilitar/Deshabilitar Rol">
                     <div className={`w-10 h-5 rounded-full transition-colors relative ${rol.activo !== false ? 'bg-blue-600' : 'bg-gray-300'}`}
                          onClick={() => {
                            if (soloLectura) return;
                            const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? { ...r, activo: r.activo === false ? true : false } : r);
                            onRolesChange(nuevaConfig);
                          }}>
-                      <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${rol.activo !== false ? 'left-5' : 'left-1'}`} />
+                      <div className={`w-4 h-4 bg-white rounded-full absolute transition-all shadow-sm ${rol.activo !== false ? 'left-5' : 'left-1'}`} style={{ top: '2px' }} />
                     </div>
                   </label>
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: rol.color + '20' }}>
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl shrink-0" style={{ backgroundColor: rol.color + '20' }}>
                     {rol.icono}
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     {!soloLectura ? (
-                      <div className="flex items-center gap-1">
-                        <span className="font-bold text-gray-900 whitespace-nowrap">Rol {rol.numero}:</span>
+                      <div className="flex items-center gap-1 min-w-0 w-full">
+                        <span className="font-bold text-gray-900 whitespace-nowrap shrink-0">Rol {rol.numero}:</span>
                         <input 
                           type="text" 
                           value={rol.nombre}
@@ -4187,12 +4413,12 @@ function Paso2({
                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? { ...r, nombre: e.target.value } : r);
                              onRolesChange(nuevaConfig);
                           }}
-                          className="font-bold text-gray-900 bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-full"
+                          className="font-bold text-gray-900 bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none flex-1 min-w-0 w-full"
                           placeholder="Nombre del rol"
                         />
                       </div>
                     ) : (
-                      <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
+                      <h3 className="font-bold text-gray-900 truncate">Rol {rol.numero}: {rol.nombre}</h3>
                     )}
                     <p className="text-sm text-gray-600">
                       {totalRol} actividades • {(() => {
@@ -4208,7 +4434,7 @@ function Paso2({
                           <div
                             key={responsablePrincipal.id}
                             title={responsablePrincipal.nombre}
-                            className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold"
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold"
                             style={{ backgroundColor: rol.color }}
                           >
                             {responsablePrincipal.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -4323,14 +4549,16 @@ function Paso2({
                       <div>
                         <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                           <Shield className="w-4 h-4" />
-                          Actividades del Decreto 648/2017
+                          Actividades
                         </h4>
                         <div className="space-y-2">
                           {actividadesBase.map((actividad, index) => {
                             // a Generar ID único para esta actividad
                             const actId = `rol-${rol.numero}-act-${index}`;
                             const seleccionada = estaSeleccionada(actId, actividad.nombre);
-                            const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId || a.nombre === actividad.nombre);
+                            const actividadData = rol.actividadesSeleccionadas.find(
+                              a => a.id === actId || a.nombre === actividad.nombre || (a.nombreOriginal && a.nombreOriginal === actividad.nombre)
+                            );
                             /** UUID del backend vs id sintético del template  las mutaciones deben usar el id real en estado */
                             const idActividadEnEstado = actividadData?.id ?? actId;
                             const fechaCorteMostrar = actividadData ? fechaCorteDisplayDesdeActividad(actividadData) : undefined;
@@ -4365,48 +4593,43 @@ function Paso2({
                                         <input 
                                           type="text" 
                                           className="w-full font-semibold text-gray-900 text-sm border-b-2 border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white px-2 py-1 rounded-t transition-colors"
-                                          defaultValue={actividadData?.nombre || actividad.nombre}
+                                          value={nombreEditando}
+                                          onChange={(e) => setNombreEditando(e.target.value)}
                                           placeholder="Nombre de la actividad"
-                                          onBlur={(e) => {
-                                            const nuevoNombre = e.target.value.trim();
-                                            if (nuevoNombre && actividadData) {
-                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                                ...r,
-                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
-                                                  a.id === idActividadEnEstado ? { ...a, nombre: nuevoNombre, nombreOriginal: a.nombreOriginal || a.nombre } : a
-                                                )
-                                              } : r);
-                                              onRolesChange(nuevaConfig);
-                                            }
-                                          }}
                                         />
                                         <textarea 
                                           className="w-full text-xs text-gray-600 border border-gray-300 rounded p-2 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-colors"
-                                          defaultValue={actividadData?.descripcion || actividad.descripcion}
+                                          value={descripcionEditando}
+                                          onChange={(e) => setDescripcionEditando(e.target.value)}
                                           placeholder="Descripción de la actividad"
                                           rows={2}
-                                          onBlur={(e) => {
-                                            const nuevaDesc = e.target.value.trim();
-                                            if (actividadData) {
-                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                                ...r,
-                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
-                                                  a.id === idActividadEnEstado ? { ...a, descripcion: nuevaDesc } : a
-                                                )
-                                              } : r);
-                                              onRolesChange(nuevaConfig);
-                                            }
-                                          }}
                                         />
                                         <div className="flex justify-end mt-2">
                                           <button 
-                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors" 
+                                            type="button"
+                                            disabled={guardandoActividadBackend}
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50" 
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setEditandoActividadBase(null);
+                                              handleGuardarActividadBase(
+                                                rol.numero,
+                                                actId,
+                                                idActividadEnEstado,
+                                                nombreEditando,
+                                                descripcionEditando,
+                                                actividad,
+                                                actividadData
+                                              );
                                             }}
                                           >
-                                            Guardar
+                                            {guardandoActividadBackend ? (
+                                              <>
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                Guardando...
+                                              </>
+                                            ) : (
+                                              'Guardar'
+                                            )}
                                           </button>
                                         </div>
                                       </div>
@@ -4417,10 +4640,14 @@ function Paso2({
                                         
                                         {!soloLectura && seleccionada && (
                                           <button 
-                                            className="absolute top-0 right-0 p-1.5 text-gray-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-transparent hover:border-blue-200"
+                                            className="absolute top-0 right-0 p-1.5 text-blue-600 hover:text-blue-800 bg-gray-100 hover:bg-blue-200 rounded-md transition-all shadow-sm border border-gray-200 hover:border-blue-200"
                                             title="Editar texto de actividad"
                                             onClick={(e) => { 
                                               e.stopPropagation(); 
+                                              const actualNombre = actividadData?.nombre || actividad.nombre;
+                                              const actualDesc = actividadData?.descripcion || actividad.descripcion;
+                                              setNombreEditando(actualNombre);
+                                              setDescripcionEditando(actualDesc);
                                               setEditandoActividadBase({rolNumero: rol.numero, actId: idActividadEnEstado}); 
                                             }}
                                           >
@@ -4749,12 +4976,18 @@ function Paso2({
                                                                   <Check className="w-2.5 h-2.5 text-green-600" />
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
-                                                                    {!soloLectura ? (
+                                                                  {!soloLectura ? (
                                                                       <input
+                                                                        id={`input-tarea-${tarea.id}`}
                                                                         type="text"
                                                                         value={tarea.descripcion}
                                                                         onChange={(e) => updateTareaCorte({ descripcion: e.target.value })}
-                                                                        className="w-full text-xs font-medium text-gray-900 leading-snug bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
+                                                                        onKeyDown={(e) => {
+                                                                          if (e.key === 'Enter') {
+                                                                            (e.target as HTMLInputElement).blur();
+                                                                          }
+                                                                        }}
+                                                                        className="w-full text-xs font-medium text-gray-900 leading-snug bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:px-1.5 focus:py-0.5 focus:rounded-md transition-all"
                                                                       />
                                                                     ) : (
                                                                       <p className="text-xs font-medium text-gray-900 leading-snug">{tarea.descripcion}</p>
@@ -4768,29 +5001,44 @@ function Paso2({
                                                                     onQuitar={() => updateTareaCorte({ responsables: [] })}
                                                                   />
                                                                 </div>
-                                                                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                <div className="flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                  <button 
+                                                                    className="pr-1 w-5 h-5 flex items-center justify-center rounded hover:bg-blue-200 text-blue-600 hover:text-blue-800"
+                                                                    title="Editar nombre de la tarea"
+                                                                    onClick={(e) => {
+                                                                      e.stopPropagation();
+                                                                      const el = document.getElementById(`input-tarea-${tarea.id}`) as HTMLInputElement | null;
+                                                                      if (el) {
+                                                                        el.focus();
+                                                                        const len = el.value.length;
+                                                                         el.setSelectionRange(len, len);
+                                                                      }
+                                                                    }}
+                                                                  >
+                                                                    <Edit3 className="w-4 h-4" />
+                                                                  </button>
                                                                   <button
                                                                     onClick={() => {
                                                                       const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }));
                                                                       onRolesChange(nuevaConfig);
                                                                     }}
-                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-red-600 hover:text-red-800"
                                                                     title="Eliminar tarea"
                                                                   >
-                                                                    <Trash2 className="w-3 h-3" />
+                                                                    <Trash2 className="w-4 h-4" />
                                                                   </button>
                                                                 </div>
                                                               </div>
                                                               <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
                                                                 <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
                                                                   <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorte({ requiereObservaciones: !tarea.requiereObservaciones })}>
-                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} style={{top: "2px"}} />
                                                                   </div>
                                                                   <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
                                                                 </label>
                                                                 <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
                                                                   <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorte({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
-                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`}  style={{top: "2px"}} />
                                                                   </div>
                                                                   <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
                                                                 </label>
@@ -4916,46 +5164,41 @@ function Paso2({
                                         <input 
                                           type="text" 
                                           className="w-full font-semibold text-gray-900 text-sm border-b-2 border-transparent hover:border-gray-300 focus:border-green-500 focus:outline-none bg-green-50 focus:bg-white px-2 py-1 rounded-t transition-colors"
-                                          defaultValue={actividad.nombre}
+                                          value={nombreEditando}
+                                          onChange={(e) => setNombreEditando(e.target.value)}
                                           placeholder="Nombre de la actividad personalizada"
-                                          onBlur={(e) => {
-                                            const nuevoNombre = e.target.value.trim();
-                                            if (nuevoNombre) {
-                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                                ...r,
-                                                actividadesCustom: r.actividadesCustom.map((a, i) => 
-                                                  i === index ? { ...a, nombre: nuevoNombre } : a
-                                                )
-                                              } : r);
-                                              onRolesChange(nuevaConfig);
-                                            }
-                                          }}
                                         />
                                         <textarea 
                                           className="w-full text-xs text-gray-600 border border-gray-300 rounded p-2 focus:border-green-500 focus:outline-none bg-green-50 focus:bg-white transition-colors"
-                                          defaultValue={actividad.descripcion}
+                                          value={descripcionEditando}
+                                          onChange={(e) => setDescripcionEditando(e.target.value)}
                                           placeholder="Descripción de la actividad personalizada"
                                           rows={2}
-                                          onBlur={(e) => {
-                                            const nuevaDesc = e.target.value.trim();
-                                            const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
-                                              ...r,
-                                              actividadesCustom: r.actividadesCustom.map((a, i) => 
-                                                i === index ? { ...a, descripcion: nuevaDesc } : a
-                                              )
-                                            } : r);
-                                            onRolesChange(nuevaConfig);
-                                          }}
                                         />
                                         <div className="flex justify-end mt-2">
                                           <button 
-                                            className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors" 
+                                            type="button"
+                                            disabled={guardandoActividadBackend}
+                                            className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50" 
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setEditandoActividadBase(null);
+                                              handleGuardarActividadCustom(
+                                                rol.numero,
+                                                index,
+                                                actividad,
+                                                nombreEditando,
+                                                descripcionEditando
+                                              );
                                             }}
                                           >
-                                            Guardar
+                                            {guardandoActividadBackend ? (
+                                              <>
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                Guardando...
+                                              </>
+                                            ) : (
+                                              'Guardar'
+                                            )}
                                           </button>
                                         </div>
                                       </div>
@@ -4966,10 +5209,12 @@ function Paso2({
                                         
                                         {!soloLectura && (
                                           <button 
-                                            className="absolute top-0 right-0 p-1.5 text-gray-400 hover:text-green-600 bg-green-50 hover:bg-green-100 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-transparent hover:border-green-200"
+                                            className="absolute top-0 right-0 p-1.5 text-green-700 hover:text-green-800 hover:bg-green-200 rounded-md transition-all"
                                             title="Editar texto de actividad personalizada"
                                             onClick={(e) => { 
                                               e.stopPropagation(); 
+                                              setNombreEditando(actividad.nombre);
+                                              setDescripcionEditando(actividad.descripcion || '');
                                               setEditandoActividadBase({rolNumero: rol.numero, actId: `custom-${index}`}); 
                                             }}
                                           >
@@ -5036,14 +5281,19 @@ function Paso2({
                                       />
                                     </div>
                                   </div>
+                                  {/* Boton para eliminar una actividad personalizada */}
                                   <button
+                                    type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (confirm('¿Eliminar esta actividad personalizada?')) {
-                                        eliminarActividadCustom(rol.numero, index);
-                                      }
+                                      setActividadCustomAEliminar({
+                                        numeroRol: rol.numero,
+                                        index,
+                                        actividad,
+                                      });
                                     }}
-                                    className="text-red-600 hover:text-red-800 p-1"
+                                    className="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-100"
+                                    title="Eliminar actividad personalizada"
                                   >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -5275,34 +5525,55 @@ function Paso2({
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
                                                                   {!soloLectura ? (
-                                                                    <input
-                                                                      type="text"
-                                                                      value={tarea.descripcion}
-                                                                      onChange={(e) => updateTareaCorteCustom({ descripcion: e.target.value })}
-                                                                      className="w-full text-[11px] font-medium text-gray-900 leading-tight bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
-                                                                    />
-                                                                  ) : (
-                                                                    <p className="text-[11px] font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
-                                                                  )}
-                                                                  <ResponsableTareaPicker
-                                                                    soloLectura={soloLectura}
-                                                                    responsablesNombres={tarea.responsables}
-                                                                    auditores={auditores}
-                                                                    rolColor={rol.color}
-                                                                    onAsignar={(aud) => updateTareaCorteCustom({ responsables: [aud.nombre] })}
-                                                                    onQuitar={() => updateTareaCorteCustom({ responsables: [] })}
-                                                                  />
-                                                                </div>
-                                                                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                     <input
+                                                                       id={`input-tarea-custom-${tarea.id}`}
+                                                                       type="text"
+                                                                       value={tarea.descripcion}
+                                                                       onChange={(e) => updateTareaCorteCustom({ descripcion: e.target.value })}
+                                                                       onKeyDown={(e) => {
+                                                                         if (e.key === 'Enter') {
+                                                                           (e.target as HTMLInputElement).blur();
+                                                                         }
+                                                                       }}
+                                                                       className="w-full text-[11px] font-medium text-gray-900 leading-tight bg-transparent border-b border-dashed border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:px-1.5 focus:py-0.5 focus:rounded-md transition-all"
+                                                                     />
+                                                                   ) : (
+                                                                     <p className="text-[11px] font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                                                   )}
+                                                                   <ResponsableTareaPicker
+                                                                     soloLectura={soloLectura}
+                                                                     responsablesNombres={tarea.responsables}
+                                                                     auditores={auditores}
+                                                                     rolColor={rol.color}
+                                                                     onAsignar={(aud) => updateTareaCorteCustom({ responsables: [aud.nombre] })}
+                                                                     onQuitar={() => updateTareaCorteCustom({ responsables: [] })}
+                                                                   />
+                                                                 </div>
+                                                                 <div className="flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                   <button 
+                                                                     className="pr-1 w-5 h-5 flex items-center justify-center rounded hover:bg-blue-200 text-blue-600 hover:text-blue-800"
+                                                                     title="Editar nombre de la tarea"
+                                                                     onClick={(e) => {
+                                                                       e.stopPropagation();
+                                                                       const el = document.getElementById(`input-tarea-custom-${tarea.id}`) as HTMLInputElement | null;
+                                                                       if (el) {
+                                                                         el.focus();
+                                                                         const len = el.value.length;
+                                                                         el.setSelectionRange(len, len);
+                                                                       }
+                                                                     }}
+                                                                   >
+                                                                    <Edit3 className="w-4 h-4" />
+                                                                  </button>
                                                                   <button
                                                                     onClick={() => {
                                                                       const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }; });
                                                                       onRolesChange(nuevaConfig);
                                                                     }}
-                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-100 text-red-600 hover:text-red-800"
                                                                     title="Eliminar tarea"
                                                                   >
-                                                                    <Trash2 className="w-3 h-3" />
+                                                                    <Trash2 className="w-4 h-4" />
                                                                   </button>
                                                                 </div>
                                                               </div>
@@ -5479,13 +5750,13 @@ function Paso2({
                                           <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
                                             <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
                                               <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereObservaciones: !tarea.requiereObservaciones })}>
-                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} style={{top: "2px"}}/>
                                               </div>
                                               <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
                                             </label>
                                             <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
                                               <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
-                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} style={{top: "2px"}} />
                                               </div>
                                               <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
                                             </label>
@@ -5721,12 +5992,89 @@ function Paso2({
                 const actividad = rol.actividadesSeleccionadas.find(
                   a => a.nombre === actividadConfigurando.nombreActividad
                 );
-                return actividad?.frecuenciaPuntosControl;
               }
             })()
           }
           onGuardar={guardarPuntosControl}
         />
+      )}
+
+      {/* Modal de confirmación para eliminar actividad personalizada */}
+      {actividadCustomAEliminar && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => !eliminandoCustomBackend && setActividadCustomAEliminar(null)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md flex flex-col z-10 overflow-hidden"
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-slate-900">
+                    ¿Eliminar actividad personalizada?
+                  </h3>
+                  <p className="text-sm text-slate-600 mt-2">
+                    ¿Está seguro de que desea eliminar la actividad personalizada{' '}
+                    <strong className="font-semibold text-slate-900">
+                      "{actividadCustomAEliminar.actividad.nombre}"
+                    </strong>
+                    ? Esta acción la eliminará de este plan y del servidor si ya ha sido guardada.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={eliminandoCustomBackend}
+                onClick={() => setActividadCustomAEliminar(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={eliminandoCustomBackend}
+                onClick={async () => {
+                  setEliminandoCustomBackend(true);
+                  try {
+                    await eliminarActividadCustom(
+                      actividadCustomAEliminar.numeroRol,
+                      actividadCustomAEliminar.index,
+                      actividadCustomAEliminar.actividad
+                    );
+                  } finally {
+                    setEliminandoCustomBackend(false);
+                    setActividadCustomAEliminar(null);
+                  }
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 active:bg-red-800 rounded-lg transition-colors shadow-sm shadow-red-100 flex items-center gap-2 disabled:opacity-50"
+              >
+                {eliminandoCustomBackend ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    Eliminando...
+                  </>
+                ) : (
+                  'Confirmar eliminación'
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
       )}
     </motion.div>
   );

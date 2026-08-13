@@ -1279,6 +1279,12 @@ export interface CorreoFilters {
     search?: string;
 }
 
+export interface DestinatarioSugerido {
+    name: string;
+    email: string;
+    source: 'contacto' | 'frecuente' | 'directorio';
+}
+
 export interface SendCorreoDto {
     to: string | string[];
     cc?: string[];
@@ -1314,6 +1320,16 @@ export class CorreosJuridicosService {
     /** Buzones de correo configurados en el backend (para saber cuáles sincronizar). */
     async getMailboxes(): Promise<Array<{ buzon: string; address: string }>> {
         return apiClient.get(`${SERVICE_PREFIX}/correos/mailboxes`);
+    }
+
+    /** Sugerencias de destinatarios (contactos, personas frecuentes y directorio institucional) para autocompletar. */
+    async buscarDestinatarios(query: string, buzon?: string): Promise<DestinatarioSugerido[]> {
+        if (query.trim().length < 2) return [];
+        try {
+            return await apiClient.get(`${SERVICE_PREFIX}/correos/destinatarios/buscar`, { q: query, buzon });
+        } catch {
+            return [];
+        }
     }
 
     /**
@@ -1379,11 +1395,13 @@ export class CorreosJuridicosService {
      */
     async forwardEmail(
         correoId: string,
-        to: string,
+        to: string | string[],
         comment: string,
         attachments?: { name: string; contentBytes: string; contentType: string }[],
+        cc?: string[],
+        bcc?: string[],
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment, attachments });
+        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment, attachments, cc, bcc });
     }
 
     /**

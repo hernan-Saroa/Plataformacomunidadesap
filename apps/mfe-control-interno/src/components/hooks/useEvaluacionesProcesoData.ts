@@ -160,7 +160,7 @@ function mapUIToBackend(ui: Partial<EvaluacionProcesoUI>): Partial<CreateEvaluac
     prioridadRegla: ui.prioridadRegla,
     auditableCalculado:
       ui.auditableCalculado ??
-      calcularAuditableDesdeCiclo(ui.cicloRotacionDafp),
+      calcularAuditableDesdeCiclo(ui.cicloRotacionDafp, ui.priorizacionAnos),
   };
   // Incluir procesoId si existe y tiene formato válido
   if (ui.procesoId) {
