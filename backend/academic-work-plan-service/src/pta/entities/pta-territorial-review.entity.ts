@@ -9,21 +9,22 @@ import {
 } from 'typeorm';
 
 /**
- * Aprobación del componente `academica_territorial` desagregada por territorial
- * Y por nivel (pregrado/posgrado): cuando un PTA tiene asignaturas dictadas en
- * 2+ Direcciones Territoriales distintas (ej. Antioquia y Bolívar), o mezcla
- * pregrado y posgrado dentro de la misma territorial, cada combinación
- * (territorial, nivel) se aprueba/devuelve de forma independiente. Ver
- * assertAlcanceTerritorial y aprobarComponenteTerritorialParcial en pta.service.ts.
+ * Revisión (preaprobación) del componente `academica_territorial` desagregada
+ * por territorial y por nivel (pregrado/posgrado): espejo de
+ * PtaTerritorialApprovalEntity para la etapa de Revisión. Antes de esta tabla,
+ * revisarComponente exigía que el revisor tuviera alcance sobre TODAS las
+ * territoriales/niveles del PTA antes de poder marcar "revisado" — bloqueo
+ * total en vez de partición. Ver revisarComponenteTerritorialParcial en
+ * pta.service.ts.
  *
- * La fila única por componente en PtaComponentApproval sigue existiendo y se
- * consolida (aprobado) solo cuando TODAS las filas (territorial, nivel) de esta
- * tabla quedan en 'aprobado'.
+ * La fila única por componente en PtaComponentReview sigue existiendo y solo se
+ * considera "revisado" en su totalidad cuando TODAS las filas (territorial,
+ * nivel) de esta tabla quedan en 'revisado'.
  */
 @Unique(['ptaId', 'territorialId', 'nivel'])
 @Index(['ptaId'])
-@Entity({ schema: 'academic_work_plan', name: 'PtaTerritorialApproval' })
-export class PtaTerritorialApprovalEntity {
+@Entity({ schema: 'academic_work_plan', name: 'PtaTerritorialReview' })
+export class PtaTerritorialReviewEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -42,24 +43,24 @@ export class PtaTerritorialApprovalEntity {
   @Column({ name: 'nivel', type: 'varchar', length: 20, default: 'pregrado' })
   nivel: string;
 
-  // pendiente | aprobado | devuelto
+  // pendiente | revisado | devuelto
   @Column({ name: 'estado', type: 'varchar', length: 50, default: 'pendiente' })
   estado: string;
 
-  @Column({ name: 'actor_id', type: 'varchar', length: 100, nullable: true })
-  actorId: string | null;
+  @Column({ name: 'revisor_id', type: 'varchar', length: 100, nullable: true })
+  revisorId: string | null;
 
-  @Column({ name: 'actor_nombre', type: 'varchar', length: 200, nullable: true })
-  actorNombre: string | null;
+  @Column({ name: 'revisor_nombre', type: 'varchar', length: 200, nullable: true })
+  revisorNombre: string | null;
 
-  @Column({ name: 'actor_rol', type: 'varchar', length: 100, nullable: true })
-  actorRol: string | null;
+  @Column({ name: 'revisor_rol', type: 'varchar', length: 100, nullable: true })
+  revisorRol: string | null;
 
   @Column({ name: 'comentarios', type: 'text', nullable: true })
   comentarios: string | null;
 
-  @Column({ name: 'fecha_decision', type: 'timestamp', nullable: true })
-  fechaDecision: Date | null;
+  @Column({ name: 'fecha_revision', type: 'timestamp', nullable: true })
+  fechaRevision: Date | null;
 
   @Column({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

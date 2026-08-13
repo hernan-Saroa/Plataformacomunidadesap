@@ -71,6 +71,7 @@ import {
   hasAnyComponentApprovalData,
   componentKeyForEvidencia,
   isEvidenciaAuthorized,
+  hasComponentPermission,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import '../../styles/pta-world-class.css';
@@ -757,7 +758,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   // devolverían todos los componentes, ignorando los permisos reales del rol.
   const { puede } = usePermisosPTAGranulares();
   const apruebaTodo = puede(PTA_APPROVE_ALL_PERMISSION);
-  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || puede(PTA_COMPONENT_PERMISSION[key]);
+  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || hasComponentPermission(puede, key);
   const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
   // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
   const isSegComponentAuthorized = (compKey: string) => {

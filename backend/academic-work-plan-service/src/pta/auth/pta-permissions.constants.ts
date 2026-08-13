@@ -70,10 +70,33 @@ export const DOCENCIA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_territorial',
 ];
 
+export type PTANivelDocencia = 'pregrado' | 'posgrado';
+
+/**
+ * `academica_territorial` no tiene un único permiso de aprobación/revisión: se
+ * divide por nivel (pregrado/posgrado), igual que Sede Central, para que cada
+ * combinación (territorial, nivel) sea una unidad independiente (migración 397).
+ * `COMPONENT_PERMISSION`/`COMPONENT_REVIEW_PERMISSION` no pueden expresar esto
+ * (mapean 1 componente → 1 permiso), por eso viven aparte y `academica_territorial`
+ * se trata como caso especial en `hasComponentPermission`/`hasReviewPermission`.
+ */
+export const TERRITORIAL_NIVEL_APPROVE_PERMISSION: Record<PTANivelDocencia, string> = {
+  pregrado: 'pta.approve.academica.territorial.pregrado',
+  posgrado: 'pta.approve.academica.territorial.posgrado',
+};
+
+export const TERRITORIAL_NIVEL_REVIEW_PERMISSION: Record<PTANivelDocencia, string> = {
+  pregrado: 'pta.review.academica.territorial.pregrado',
+  posgrado: 'pta.review.academica.territorial.posgrado',
+};
+
 /** Componente → permiso granular que habilita su aprobación. */
 export const COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
   academica_posgrado: 'pta.approve.academica.posgrado',
+  // Deprecado (migración 397): se conserva solo como referencia informativa en
+  // mensajes de error. La autorización real usa TERRITORIAL_NIVEL_APPROVE_PERMISSION
+  // vía hasComponentPermission.
   academica_territorial: 'pta.approve.academica.territorial',
   complementarias: 'pta.approve.complementarias',
   // Sin permiso propio: reutilizan el permiso de aprobación de Docencia por nivel
@@ -114,9 +137,24 @@ export const PTA_APPROVE_ALL = 'pta.approve.all';
 /** Códigos de rol que otorgan acceso total (superusuario) al flujo PTA. */
 export const SUPER_ADMIN_ROLE_CODES = ['SUPER_ADMIN', 'super_admin'];
 
+/**
+ * ¿El conjunto de permisos habilita la aprobación del componente dado? Caso
+ * especial: `academica_territorial` está habilitado si el usuario tiene
+ * CUALQUIERA de los dos permisos por nivel (pregrado/posgrado) — cuál nivel
+ * exacto puede aprobar se resuelve aparte, fila por fila (ver
+ * assertAlcanceTerritorial en pta.service.ts).
+ */
+export function hasComponentPermission(permissions: Set<string>, key: PTAComponentKey): boolean {
+  if (key === 'academica_territorial') {
+    return permissions.has(TERRITORIAL_NIVEL_APPROVE_PERMISSION.pregrado)
+      || permissions.has(TERRITORIAL_NIVEL_APPROVE_PERMISSION.posgrado);
+  }
+  return permissions.has(COMPONENT_PERMISSION[key]);
+}
+
 /** Devuelve las claves de componente cuyo permiso está presente en el set dado. */
 export function componentsFromPermissions(permissions: Set<string>): PTAComponentKey[] {
-  return PTA_COMPONENT_KEYS.filter((key) => permissions.has(COMPONENT_PERMISSION[key]));
+  return PTA_COMPONENT_KEYS.filter((key) => hasComponentPermission(permissions, key));
 }
 
 /**
@@ -170,6 +208,9 @@ function reviewKey(componente: PTAComponentKey, subseccion: PTAReviewSubseccionK
 export const COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   [reviewKey('academica_pregrado', 'general')]: 'pta.review.academica.pregrado',
   [reviewKey('academica_posgrado', 'general')]: 'pta.review.academica.posgrado',
+  // Deprecado (migración 397): se conserva solo como referencia informativa. La
+  // autorización real de 'academica_territorial:general' usa
+  // TERRITORIAL_NIVEL_REVIEW_PERMISSION vía hasReviewPermission.
   [reviewKey('academica_territorial', 'general')]: 'pta.review.academica.territorial',
   [reviewKey('complementarias', 'docencia')]: 'pta.review.complementarias.docencia',
   [reviewKey('complementarias', 'academico_administrativas')]: 'pta.review.complementarias.academico_administrativas',
@@ -189,7 +230,24 @@ export const COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
 /** Permiso "revisa todo": análogo a PTA_APPROVE_ALL pero para la etapa de revisión. */
 export const PTA_REVIEW_ALL = 'pta.review.all';
 
+/**
+ * ¿El conjunto de permisos habilita la revisión de esta subsección? Mismo caso
+ * especial que hasComponentPermission: 'academica_territorial:general' se
+ * habilita con cualquiera de los dos permisos por nivel.
+ */
+export function hasReviewPermission(permissions: Set<string>, componente: string, subseccion: string): boolean {
+  if (componente === 'academica_territorial' && subseccion === 'general') {
+    return permissions.has(TERRITORIAL_NIVEL_REVIEW_PERMISSION.pregrado)
+      || permissions.has(TERRITORIAL_NIVEL_REVIEW_PERMISSION.posgrado);
+  }
+  const permission = COMPONENT_REVIEW_PERMISSION[`${componente}:${subseccion}`];
+  return !!permission && permissions.has(permission);
+}
+
 /** Permiso granular requerido para revisar una subsección de un componente dado. */
 export function reviewPermissionFor(componente: string, subseccion: string): string | undefined {
+  if (componente === 'academica_territorial' && subseccion === 'general') {
+    return `${TERRITORIAL_NIVEL_REVIEW_PERMISSION.pregrado} o ${TERRITORIAL_NIVEL_REVIEW_PERMISSION.posgrado}`;
+  }
   return COMPONENT_REVIEW_PERMISSION[`${componente}:${subseccion}`];
 }

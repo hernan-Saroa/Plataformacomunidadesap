@@ -40,6 +40,45 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
 
 export const PTA_COMPONENT_KEYS = Object.keys(PTA_COMPONENT_PERMISSION) as PTAComponentKey[];
 
+export type PTANivelDocencia = 'pregrado' | 'posgrado';
+
+/**
+ * 'academica_territorial' no tiene un único permiso de aprobación/revisión: se
+ * divide por nivel (pregrado/posgrado), igual que Sede Central, para que cada
+ * combinación (territorial, nivel) sea una unidad de decisión independiente
+ * (backend: migración 397, pta-permissions.constants.ts).
+ * PTA_COMPONENT_PERMISSION/PTA_COMPONENT_REVIEW_PERMISSION no pueden expresar
+ * esto (mapean 1 componente → 1 permiso); por eso viven aparte y
+ * 'academica_territorial' se trata como caso especial en
+ * hasComponentPermission/hasReviewPermission.
+ */
+export const PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION: Record<PTANivelDocencia, string> = {
+  pregrado: 'pta.approve.academica.territorial.pregrado',
+  posgrado: 'pta.approve.academica.territorial.posgrado',
+};
+
+export const PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION: Record<PTANivelDocencia, string> = {
+  pregrado: 'pta.review.academica.territorial.pregrado',
+  posgrado: 'pta.review.academica.territorial.posgrado',
+};
+
+/**
+ * ¿El predicado de permisos habilita la aprobación del componente dado? Caso
+ * especial: 'academica_territorial' está habilitado si el usuario tiene
+ * CUALQUIERA de los dos permisos por nivel — cuál nivel exacto puede tocar se
+ * resuelve aparte, por asignatura (ver PTADetallePanelBackoffice). Espejo de
+ * hasComponentPermission en el backend.
+ */
+export function hasComponentPermission(
+  can: (permission: string) => boolean,
+  key: PTAComponentKey,
+): boolean {
+  if (key === 'academica_territorial') {
+    return can(PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION.pregrado) || can(PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION.posgrado);
+  }
+  return can(PTA_COMPONENT_PERMISSION[key]);
+}
+
 /** Componentes que en conjunto forman el rótulo visible "Docencia". */
 export const PTA_DOCENCIA_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_pregrado',
@@ -247,6 +286,9 @@ export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReview
 export const PTA_COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   'academica_pregrado:general': 'pta.review.academica.pregrado',
   'academica_posgrado:general': 'pta.review.academica.posgrado',
+  // Deprecado (migración 397): se conserva solo como referencia informativa. La
+  // autorización real de 'academica_territorial:general' usa
+  // PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION vía hasReviewPermission.
   'academica_territorial:general': 'pta.review.academica.territorial',
   'complementarias:docencia': 'pta.review.complementarias.docencia',
   'complementarias:academico_administrativas': 'pta.review.complementarias.academico_administrativas',
@@ -271,6 +313,23 @@ export function reviewPermissionFor(componente: string, subseccion: string): str
   return PTA_COMPONENT_REVIEW_PERMISSION[`${componente}:${subseccion}`];
 }
 
+/**
+ * ¿El predicado de permisos habilita la revisión de esta subsección? Mismo
+ * caso especial que hasComponentPermission: 'academica_territorial:general' se
+ * habilita con cualquiera de los dos permisos por nivel.
+ */
+export function hasReviewPermission(
+  can: (permission: string) => boolean,
+  componente: string,
+  subseccion: string,
+): boolean {
+  if (componente === 'academica_territorial' && subseccion === 'general') {
+    return can(PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION.pregrado) || can(PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION.posgrado);
+  }
+  const permission = PTA_COMPONENT_REVIEW_PERMISSION[`${componente}:${subseccion}`];
+  return !!permission && can(permission);
+}
+
 /** Etiquetas legibles para las subsecciones de revisión, usadas en la UI. */
 export const REVIEW_SUBSECCION_LABEL: Record<PTAReviewSubseccionKey, string> = {
   general: 'General',
@@ -281,7 +340,7 @@ export const REVIEW_SUBSECCION_LABEL: Record<PTAReviewSubseccionKey, string> = {
 export function componentKeysFromPermissionChecker(
   can: (permission: string) => boolean,
 ): PTAComponentKey[] {
-  return PTA_COMPONENT_KEYS.filter(key => can(PTA_COMPONENT_PERMISSION[key]));
+  return PTA_COMPONENT_KEYS.filter(key => hasComponentPermission(can, key));
 }
 
 export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolean {

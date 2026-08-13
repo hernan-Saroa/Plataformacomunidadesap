@@ -13,7 +13,13 @@ import {
   COMPONENT_REVIEW_PERMISSION,
   PTA_REVIEW_ALL,
   reviewPermissionFor,
+  hasReviewPermission,
+  PTANivelDocencia,
+  TERRITORIAL_NIVEL_APPROVE_PERMISSION,
+  TERRITORIAL_NIVEL_REVIEW_PERMISSION,
 } from './pta-permissions.constants';
+
+const NIVELES_DOCENCIA: PTANivelDocencia[] = ['pregrado', 'posgrado'];
 
 export interface PtaAuthContext {
   /** Superusuario del sistema (rol SUPER_ADMIN): aprueba todo. */
@@ -41,6 +47,15 @@ export interface PtaAuthContext {
   reviewsAll: boolean;
   /** Claves "componente:subseccion" que el usuario está autorizado a revisar. */
   allowedReviewSubsecciones: string[];
+  /**
+   * Niveles de Docencia Territorial (pregrado/posgrado) que el usuario puede
+   * APROBAR, derivados de TERRITORIAL_NIVEL_APPROVE_PERMISSION. Junto con
+   * territorialIds (poblado por el guard), acota qué filas de
+   * PtaTerritorialApproval puede resolver (ver assertAlcanceTerritorial).
+   */
+  allowedNivelesTerritorialAprobar: PTANivelDocencia[];
+  /** Igual que allowedNivelesTerritorialAprobar, pero para la etapa de Revisión. */
+  allowedNivelesTerritorialRevisar: PTANivelDocencia[];
 }
 
 /**
@@ -77,9 +92,17 @@ export class PtaPermissionsService {
     const reviewsAll = isSuperUser || permissions.has(PTA_REVIEW_ALL);
     const allowedReviewSubsecciones = reviewsAll
       ? Object.keys(COMPONENT_REVIEW_PERMISSION)
-      : Object.entries(COMPONENT_REVIEW_PERMISSION)
-          .filter(([, permission]) => permissions.has(permission))
-          .map(([key]) => key);
+      : Object.keys(COMPONENT_REVIEW_PERMISSION).filter((key) => {
+          const [componente, subseccion] = key.split(':');
+          return hasReviewPermission(permissions, componente, subseccion);
+        });
+
+    const allowedNivelesTerritorialAprobar = approvesAll
+      ? [...NIVELES_DOCENCIA]
+      : NIVELES_DOCENCIA.filter((nivel) => permissions.has(TERRITORIAL_NIVEL_APPROVE_PERMISSION[nivel]));
+    const allowedNivelesTerritorialRevisar = reviewsAll
+      ? [...NIVELES_DOCENCIA]
+      : NIVELES_DOCENCIA.filter((nivel) => permissions.has(TERRITORIAL_NIVEL_REVIEW_PERMISSION[nivel]));
 
     return {
       isSuperUser,
@@ -89,6 +112,8 @@ export class PtaPermissionsService {
       approvalLevels,
       reviewsAll,
       allowedReviewSubsecciones,
+      allowedNivelesTerritorialAprobar,
+      allowedNivelesTerritorialRevisar,
     };
   }
 
@@ -153,6 +178,9 @@ export class PtaPermissionsService {
 
   /** Permiso granular asociado a un componente (para mensajes de error claros). */
   permissionForComponent(componente: string): string | undefined {
+    if (componente === 'academica_territorial') {
+      return `${TERRITORIAL_NIVEL_APPROVE_PERMISSION.pregrado} o ${TERRITORIAL_NIVEL_APPROVE_PERMISSION.posgrado}`;
+    }
     return COMPONENT_PERMISSION[componente as PTAComponentKey];
   }
 
