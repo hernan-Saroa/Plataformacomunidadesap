@@ -22,11 +22,6 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   const [dragOverActIdx, setDragOverActIdx] = useState<number | null>(null);
   const [draggedSecKey, setDraggedSecKey] = useState<string | null>(null);
 
-  // ── Drag & Drop columnas ──
-  const [dragColIdx, setDragColIdx] = useState<number | null>(null);
-  const [dragOverColIdx, setDragOverColIdx] = useState<number | null>(null);
-  const [dragColSecKey, setDragColSecKey] = useState<string | null>(null);
-
   // ── Drag & Drop ítems ──
   const [dragItemIdx, setDragItemIdx] = useState<number | null>(null);
   const [dragOverItemIdx, setDragOverItemIdx] = useState<number | null>(null);
@@ -134,7 +129,9 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const currentActs = actsDeSeccion(secKey);
     const act: any = currentActs[idx];
     let patch: any;
-    if (tipo === 'intervalo') {
+    if (tipo === 'sin_horas') {
+      patch = { tipo };
+    } else if (tipo === 'intervalo') {
       const currentMin = Number(act?.min_horas);
       const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
       const currentMax = Number(act?.max_horas);
@@ -167,9 +164,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
       sectionItemCount: actsDeSeccion(secKey).length,
     });
     const newId = generated.id;
-    // Con estructura de solo columna raíz el bloque nace con horas válidas
-    // (nunca vacío ni en 0): Hasta 1h por defecto.
-    const rootOnlyDefaults = getSeccionColumnas(secKey).length === 0 ? { tipo: 'hasta', max_horas: 1 } : {};
+    // Los bloques nuevos nacen informativos; el administrador activa horas si aplican.
+    const rootOnlyDefaults = getSeccionColumnas(secKey).length === 0 ? { tipo: 'sin_horas' } : {};
     // El bloque nuevo se agrega al final, debajo de los ya configurados.
     const next = [...actsDeSeccion(secKey), { id: newId, nombre: 'Nueva etapa', items: [], ...rootOnlyDefaults }];
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
@@ -184,7 +180,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
   const addItem = (secKey: string, actIdx: number, insertAt?: number, parentColIdx?: number) => {
     const acts = actsDeSeccion(secKey);
     const act = acts[actIdx];
-    const newItem: ExtItem = { nombre: '', tipo: 'fija', horas: 1, parent_col_idx: parentColIdx };
+    const newItem: ExtItem = { nombre: '', tipo: 'sin_horas', horas: 0, parent_col_idx: parentColIdx };
     const items = [...(act.items || [])];
     if (insertAt !== undefined && insertAt >= 0 && insertAt <= items.length) {
       items.splice(insertAt, 0, newItem);
@@ -202,6 +198,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
       if (ii !== itemIdx) return it;
       if (field === 'tipo') {
         const nextType = val as ExtItem['tipo'];
+        if (nextType === 'sin_horas') return { ...it, tipo: nextType };
         if (nextType === 'intervalo') {
           const currentMin = Number(it.horas_min);
           const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
@@ -290,27 +287,6 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     if (!Array.isArray(raw)) return [ITEMS_KEY];
     return cols;
   };
-  const seccionTieneDatos = (secKey: string): boolean => actsDeSeccion(secKey).some(activity =>
-    (activity.items || []).length > 0
-    || Object.values(activity.columnas_valores || {}).some((values: any) => Array.isArray(values) && values.length > 0)
-    || Object.values(activity.columnas_meta || {}).some((values: any) => Array.isArray(values) && values.length > 0),
-  );
-  // Reordenar columnas arrastrando
-  const reorderColumnas = (secKey: string, fromIdx: number, toIdx: number) => {
-    if (fromIdx === toIdx) return;
-    const cols = [...getSeccionColumnas(secKey)];
-    if (seccionTieneDatos(secKey)) {
-      toast.error('No se puede cambiar la jerarquía mientras tenga datos', {
-        description: 'Elimina primero los valores y actividades que usan estas columnas. Así se evita asociar información al nivel equivocado.',
-      });
-      return;
-    }
-    const [moved] = cols.splice(fromIdx, 1);
-    cols.splice(toIdx, 0, moved);
-    const newSecs = secciones.map(s => s.key === secKey ? { ...s, columnas: cols } : s);
-    handleChange('ext_secciones', newSecs);
-  };
-
   // Agregar columna a la sección
   const addColumnaSeccion = (secKey: string, nombre: string) => {
     const labels = getStructureLabels(secKey);
@@ -339,7 +315,9 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const isUsed = actsDeSeccion(secKey).some(activity =>
       (activity.columnas_valores?.[colName] || []).some(value => String(value || '').trim())
       || (activity.columnas_meta?.[colName] || []).length > 0
-      || (activity.items || []).some(item => (item.col_valores?.[colName] || []).some(value => String(value || '').trim())),
+      || (activity.items || []).some(item =>
+        (item.col_valores?.[colName] || []).some(value => String(value || '').trim())
+        || (item.col_meta?.[colName] || []).length > 0),
     );
     if (isUsed) {
       toast.error(`La columna “${colName}” está siendo utilizada`, {
@@ -371,7 +349,9 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
         const itemParents = { ...(item.col_parents || {}) };
         delete itemParents[colName];
         if (nextChainCol) delete itemParents[nextChainCol];
-        return { ...item, col_valores: itemValues, col_parents: itemParents };
+        const itemMeta = { ...(item.col_meta || {}) };
+        delete itemMeta[colName];
+        return { ...item, col_valores: itemValues, col_parents: itemParents, col_meta: itemMeta };
       }) : undefined;
       return {
         ...a,
@@ -397,9 +377,9 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     ));
   };
   const restoreItemsColumn = (secKey: string) => {
-    const columns = getSeccionColumnas(secKey);
+    const detailColumns = getSeccionColumnas(secKey).filter(column => column !== ITEMS_KEY);
     handleChange('ext_secciones', secciones.map(section =>
-      section.key === secKey ? { ...section, columnas: [...columns, ITEMS_KEY] } : section,
+      section.key === secKey ? { ...section, columnas: [ITEMS_KEY, ...detailColumns] } : section,
     ));
   };
   const removeRootColumn = (secKey: string) => {
@@ -449,7 +429,12 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
           itemParents[newName] = itemParents[oldName];
           delete itemParents[oldName];
         }
-        return { ...item, col_valores: itemValues, col_parents: itemParents };
+        const itemMeta = { ...(item.col_meta || {}) };
+        if (Object.prototype.hasOwnProperty.call(itemMeta, oldName)) {
+          itemMeta[newName] = itemMeta[oldName];
+          delete itemMeta[oldName];
+        }
+        return { ...item, col_valores: itemValues, col_parents: itemParents, col_meta: itemMeta };
       }) : undefined;
       return {
         ...a,
@@ -488,7 +473,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const updated = {
       ...act,
       columnas_valores: { ...(act.columnas_valores || {}), [colName]: [...vals, ''] },
-      columnas_meta: { ...(act.columnas_meta || {}), [colName]: [...meta, { tipo: 'hasta', horas: 1 }] },
+      columnas_meta: { ...(act.columnas_meta || {}), [colName]: [...meta, { tipo: 'sin_horas' }] },
     };
     const next = acts.map((a, i) => i === actIdx ? updated : a);
     handleChange('ext_actividades', { ...actividades, [secKey]: next });
@@ -506,10 +491,12 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
     const act = acts[actIdx];
     const meta = [...(act.columnas_meta?.[colName] || [])];
     // Ensure meta array is long enough
-    while (meta.length <= valIdx) meta.push({ tipo: 'hasta', horas: 1 });
+    while (meta.length <= valIdx) meta.push({ tipo: 'sin_horas' });
     const isNumeric = field === 'horas' || field === 'horas_min' || field === 'porcentaje_pta';
-    const currentMeta = meta[valIdx] || { tipo: 'hasta', horas: 1 };
-    if (field === 'tipo' && val === 'intervalo') {
+    const currentMeta = meta[valIdx] || { tipo: 'sin_horas' };
+    if (field === 'tipo' && val === 'sin_horas') {
+      meta[valIdx] = { ...currentMeta, tipo: 'sin_horas' };
+    } else if (field === 'tipo' && val === 'intervalo') {
       const currentMin = Number((currentMeta as any).horas_min);
       const nextMin = Number.isFinite(currentMin) && currentMin > 0 ? currentMin : 1;
       const currentMax = Number(currentMeta.horas);
@@ -643,7 +630,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-slate-500">
                   <div className="flex items-start gap-1.5">
                     <span className="text-amber-500 font-bold mt-0.5">⚡</span>
-                    <span><b className="text-slate-600">Orden de columnas:</b> La primera columna define la jerarquía y controla la asignación de horas. Arrastre para reordenar.</span>
+                    <span><b className="text-slate-600">Orden de columnas:</b> Se conserva el orden de creación para proteger la jerarquía. Cada columna nueva se agrega al final como detalle y no puede reordenarse.</span>
                   </div>
                   <div className="flex items-start gap-1.5">
                     <span className="text-blue-500 font-bold mt-0.5">📋</span>
@@ -747,7 +734,6 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                     {/* ── Columnas de la sección (configuración compartida) ── */}
                     {(() => {
                       const secCols = getSeccionColumnas(sec.key);
-                      const hasConfiguredData = seccionTieneDatos(sec.key);
                       const firstCol = secCols.find(c => !!c) || '';
                       const firstIsItems = firstCol === ITEMS_KEY;
                       const structureLabels = getStructureLabels(sec.key);
@@ -757,17 +743,17 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                         <div className="mb-3 px-1 space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
                             {secCols.length > 0 && (
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Estructura editable:</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Estructura de orden fijo:</span>
                             )}
                             {/* Help badge: which column controls hours */}
                             {secCols.length > 1 && (
                               <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
-                                ⚡ El primer nivel editable ({firstIsItems ? structureLabels.items : firstCol}) controla las horas
+                                ⚡ Todos los niveles admiten configuración de horas; el primero ({firstIsItems ? structureLabels.items : firstCol}) organiza la jerarquía
                               </span>
                             )}
-                            {hasConfiguredData && (
+                            {secCols.length > 0 && (
                               <span className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-blue-700">
-                                <Lock className="h-2.5 w-2.5" /> Jerarquía protegida · detalles arrastrables
+                                <Lock className="h-2.5 w-2.5" /> Orden protegido · columnas no reordenables
                               </span>
                             )}
                           </div>
@@ -800,39 +786,17 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                           </div>}
                           {secCols.map((colName, ci) => {
                             const isItemsChip = colName === ITEMS_KEY;
-                            const isLocked = hasConfiguredData;
                             const itemsPosition = secCols.indexOf(ITEMS_KEY);
                             const columnRole = itemsPosition < 0 || ci < itemsPosition ? 'Agrupa' : 'Detalle';
                             return (
                             <div key={`col-chip-${ci}`}
-                              title="Arrastra para cambiar la posición de esta columna"
-                              draggable
-                              onDragStart={e => {
-                                if (isLocked) {
-                                  e.preventDefault();
-                                  toast.error('Esta columna está en uso', { description: 'Vacía los valores de la jerarquía antes de cambiar su posición.' });
-                                  return;
-                                }
-                                setDragColIdx(ci); setDragColSecKey(sec.key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', colName);
-                              }}
-                              onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragColSecKey === sec.key) setDragOverColIdx(ci); }}
-                              onDrop={e => { e.preventDefault(); if (dragColIdx !== null && dragColSecKey === sec.key) { reorderColumnas(sec.key, dragColIdx, ci); } setDragColIdx(null); setDragOverColIdx(null); setDragColSecKey(null); }}
-                              onDragEnd={() => { setDragColIdx(null); setDragOverColIdx(null); setDragColSecKey(null); }}
-                              className={`flex items-center gap-1 rounded-lg pl-1.5 pr-1 py-1 group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'} select-none transition-all ${
-                                dragColIdx === ci && dragColSecKey === sec.key
-                                  ? `opacity-40 scale-95 ${isItemsChip ? 'bg-violet-100 border border-violet-300' : 'bg-blue-100 border border-blue-300'}`
-                                  : dragOverColIdx === ci && dragColSecKey === sec.key && dragColIdx !== ci
-                                    ? `${isItemsChip ? 'bg-violet-100 border-2 border-violet-400' : 'bg-blue-100 border-2 border-blue-400'} shadow-md ring-2 ${isItemsChip ? 'ring-violet-300/50' : 'ring-blue-300/50'}`
-                                    : isItemsChip
-                                      ? 'bg-violet-50 border border-violet-200 hover:border-violet-300 hover:shadow-sm'
-                                      : 'bg-blue-50 border border-blue-200 hover:border-blue-300 hover:shadow-sm'
+                              title={`Posición fija ${ci + (structureLabels.rootEnabled ? 2 : 1)} de la jerarquía`}
+                              className={`flex cursor-default select-none items-center gap-1 rounded-lg border py-1 pl-1.5 pr-1 transition-colors ${isItemsChip
+                                ? 'border-violet-200 bg-violet-50'
+                                : 'border-blue-200 bg-blue-50'
                               }`}>
                               <span className={`flex w-4 h-4 items-center justify-center rounded-full bg-white/80 text-[9px] font-black ${isItemsChip ? 'text-violet-600' : 'text-blue-600'}`}>{ci + (structureLabels.rootEnabled ? 2 : 1)}</span>
-                              {isLocked ? (
-                                <Lock className={`w-3 h-3 ${isItemsChip ? 'text-violet-300' : 'text-blue-300'} shrink-0`} />
-                              ) : (
-                                <GripVertical className={`w-3.5 h-3.5 ${isItemsChip ? 'text-violet-300 hover:text-violet-500' : 'text-blue-300 hover:text-blue-500'} shrink-0 cursor-grab transition-colors`} />
-                              )}
+                              <Lock className={`h-3 w-3 shrink-0 ${isItemsChip ? 'text-violet-300' : 'text-blue-300'}`} aria-hidden="true" />
                               {isItemsChip ? (
                                 <>
                                   <Globe className="w-3 h-3 text-violet-400 shrink-0" />
@@ -923,7 +887,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                               {' '}Las columnas posteriores a {structureLabels.items} se anidan en cascada dentro de cada actividad: cada columna vive dentro de los valores de la anterior.
                               {secCols.length > 1 && !firstIsItems && ' Puede elegir si las horas van en la Línea o en cada Actividad.'}
                               {firstIsItems && ' Cada actividad tiene su propio tipo y horas.'}
-                              {' '} • <b>Tipos:</b> 🟢 Fija (exacta), 🕒 Hasta (máximo), 📊 Intervalo (min—máx).
+                              {' '} • <b>Tipos:</b> Sin horas, 🟢 Fija, 🕒 Hasta, 📊 Intervalo y % del PTA.
                             </div>
                           )}
                         </div>
@@ -1056,39 +1020,41 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                   const fc = secCols.find(c => !!c) || '';
                                   let total = 0;
                                   let totalPercentage = 0;
+                                  const addRecognition = (source: any) => {
+                                    if (!source || source.tipo === 'sin_horas') return;
+                                    if (source.tipo === 'porcentaje') {
+                                      totalPercentage += Math.min(100, Math.max(1, Number(source.porcentaje_pta) || 1));
+                                    } else {
+                                      total += Number(source.horas ?? source.max_horas) || 0;
+                                    }
+                                  };
                                   if (fc === ITEMS_KEY) {
-                                    total = (act.items || []).reduce((sum: number, item: any) => {
-                                      if (item.tipo === 'porcentaje') {
-                                        totalPercentage += Math.min(100, Math.max(1, Number(item.porcentaje_pta) || 1));
-                                        return sum;
-                                      }
-                                      return sum + (Number(item.horas) || 0);
-                                    }, 0);
+                                    (act.items || []).forEach((item: any) => addRecognition(item));
                                   } else if (fc) {
                                     const metaArr2 = act.columnas_meta?.[fc] || [];
                                     const allItems2 = act.items || [];
                                     metaArr2.forEach((m2: any, vIdx2: number) => {
                                       const horasEn2 = m2?.horas_en || 'linea';
                                       if (horasEn2 === 'linea') {
-                                        if (m2?.tipo === 'porcentaje') {
-                                          totalPercentage += Math.min(100, Math.max(1, Number(m2?.porcentaje_pta) || 1));
-                                        } else {
-                                          total += Number(m2?.horas) || 0;
-                                        }
+                                        addRecognition(m2);
                                       } else {
                                         // Sum horas from items belonging to this first-col value
-                                        total += allItems2
+                                        allItems2
                                           .filter((it2: any) => it2.parent_col_idx === vIdx2 || (it2.parent_col_idx === undefined && vIdx2 === 0))
-                                          .reduce((s: number, it2: any) => {
-                                            if (it2.tipo === 'porcentaje') {
-                                              totalPercentage += Math.min(100, Math.max(1, Number(it2.porcentaje_pta) || 1));
-                                              return s;
-                                            }
-                                            return s + (Number(it2.horas) || 0);
-                                          }, 0);
+                                          .forEach((it2: any) => addRecognition(it2));
                                       }
                                     });
                                   }
+                                  const itemsPosition = secCols.indexOf(ITEMS_KEY);
+                                  secCols.filter(col => col !== ITEMS_KEY && col !== fc).forEach(col => {
+                                    const columnPosition = secCols.indexOf(col);
+                                    if (itemsPosition >= 0 && columnPosition > itemsPosition) {
+                                      (act.items || []).forEach((item: any) =>
+                                        (item.col_meta?.[col] || []).forEach(addRecognition));
+                                    } else {
+                                      (act.columnas_meta?.[col] || []).forEach(addRecognition);
+                                    }
+                                  });
                                   return total > 0 || totalPercentage > 0 || isEtapa ? (
                                     <div className="shrink-0">
                                       <span className="text-[10px] font-bold text-[#003DA5] uppercase block mb-1">Total Horas</span>
@@ -1161,7 +1127,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                   onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; if (dragItemKey === itemDragKey) setDragOverItemIdx(iIdx); }}
                                                   onDrop={e => { e.preventDefault(); e.stopPropagation(); if (dragItemIdx !== null && dragItemKey === itemDragKey) { reorderItems(sec.key, aIdx, dragItemIdx, iIdx); } setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
                                                   onDragEnd={() => { setDragItemIdx(null); setDragOverItemIdx(null); setDragItemKey(null); }}
-                                                  className={`config-activity-main-row flex flex-row items-center gap-2 p-2 rounded-lg border transition-all select-none ${
+                                                  className={`config-activity-main-row flex flex-wrap items-center gap-2 p-2 rounded-lg border transition-all select-none ${
                                                     dragItemIdx === iIdx && dragItemKey === itemDragKey
                                                       ? 'opacity-40 scale-[0.98] bg-violet-50 border-violet-200'
                                                       : dragOverItemIdx === iIdx && dragItemKey === itemDragKey && dragItemIdx !== iIdx
@@ -1239,9 +1205,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                         <div className="flex flex-row items-center gap-2 px-3 py-1 bg-slate-50/80 border-b border-slate-100">
                                           <Tag className="w-3 h-3 text-blue-400 shrink-0" />
                                           <span className="flex-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">{colName}</span>
-                                          {isPrivileged && (
-                                            <span className="text-[9px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">HORAS</span>
-                                          )}
+                                          <span className="text-[9px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">HORAS</span>
                                           <button onClick={() => addValorColumna(sec.key, aIdx, colName)}
                                             className="text-[10px] text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-0.5 shrink-0 transition-colors">
                                             <Plus className="w-3 h-3" /> Agregar
@@ -1269,7 +1233,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                   return (
                                                     <div key={`${colName}-${valIdx}`} className="border border-blue-100 rounded-lg overflow-hidden bg-blue-50/20">
                                                       {/* ── Value header row ── */}
-                                                      <div className="flex flex-row items-center gap-2 px-3 py-2 bg-blue-50/40 border-b border-blue-100">
+                                                      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-blue-50/40 border-b border-blue-100">
                                                         <div className="flex-1 min-w-0">
                                                           <span className="text-[9px] font-bold text-slate-400 uppercase block mb-0.5">Nombre</span>
                                                           <input type="text" value={val}
@@ -1333,7 +1297,7 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                               const globalIdx = myItemIndices[localIdx];
                                                               return (
                                                                 <div key={globalIdx} className="config-activity-entry space-y-2">
-                                                                  <div className="config-activity-main-row flex items-center gap-2 p-1.5 rounded-md border transition-all">
+                                                                  <div className="config-activity-main-row flex flex-wrap items-center gap-2 p-1.5 rounded-md border transition-all">
                                                                     <GripVertical className="w-3 h-3 text-slate-300 shrink-0 cursor-grab" />
                                                                     <input type="text" value={item.nombre}
                                                                       onChange={e => updateItem(sec.key, aIdx, globalIdx, 'nombre', e.target.value)}
@@ -1395,14 +1359,27 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                               </>
                                             ) : (
                                               /* ── Other cols: simple text values ── */
-                                              vals.map((val, valIdx) => (
-                                                <div key={`${colName}-${valIdx}`} className="flex flex-row items-center gap-2">
+                                              vals.map((val, valIdx) => {
+                                                const m = metaArr[valIdx] || { tipo: 'sin_horas' };
+                                                return (
+                                                <div key={`${colName}-${valIdx}`} className="flex flex-wrap items-center gap-2">
                                                   <div className="flex-1 min-w-0">
                                                     <input type="text" value={val}
                                                       onChange={e => updateValorColumna(sec.key, aIdx, colName, valIdx, e.target.value)}
                                                       placeholder={`Valor de ${colName}...`}
                                                       className="w-full bg-white border border-slate-200 text-slate-700 text-[12px] rounded-md px-2 py-1.5 focus:ring-2 focus:ring-blue-500/20 outline-none" />
                                                   </div>
+                                                  <HourLimitControl
+                                                    type={m.tipo || 'sin_horas'}
+                                                    hours={m.tipo === 'porcentaje' ? ((m as any).porcentaje_pta ?? 1) : m.horas}
+                                                    minHours={(m as any).horas_min}
+                                                    onTypeChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'tipo', value)}
+                                                    onHoursChange={value => m.tipo === 'porcentaje'
+                                                      ? updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'porcentaje_pta', value)
+                                                      : updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas', value)}
+                                                    onMinHoursChange={value => updateValorColumnaMeta(sec.key, aIdx, colName, valIdx, 'horas_min', value)}
+                                                    compact
+                                                  />
                                                   <button onClick={() => removeValorColumna(sec.key, aIdx, colName, valIdx)}
                                                     className="config-inline-delete"
                                                     title={`Eliminar valor de ${colName}`}
@@ -1410,7 +1387,8 @@ export function TabExtension({ draft, handleChange }: { draft: PTARules; handleC
                                                     <Trash2 className="w-3 h-3" />
                                                   </button>
                                                 </div>
-                                              ))
+                                                );
+                                              })
                                             )}
                                           </div>
                                         ) : (

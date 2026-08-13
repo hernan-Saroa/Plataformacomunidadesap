@@ -1,6 +1,9 @@
+import { formatConfiguredHourRecognition } from './configuredHours';
+
 export interface ExtensionSelectionValue {
   columna: string;
   valor: string;
+  reconocimiento?: Record<string, any>;
 }
 
 export interface ExtensionSelectionGroup {
@@ -18,6 +21,7 @@ export interface HierarchySelectionBranch {
   clave: string;
   nombre: string;
   ruta: ExtensionSelectionValue[];
+  horas?: number;
 }
 
 export interface HierarchySelectionInfo {
@@ -25,6 +29,8 @@ export interface HierarchySelectionInfo {
   etiqueta: string;
   nombre: string;
   horas: number;
+  horas_base?: number;
+  reconocimiento?: Record<string, any>;
   ramificaciones: HierarchySelectionBranch[];
 }
 
@@ -77,6 +83,9 @@ export function getHierarchyBranchDisplayLevels(
     .map(value => ({
       columna: String(value?.columna || '').trim(),
       valor: String(value?.valor || '').trim(),
+      ...(value?.reconocimiento && typeof value.reconocimiento === 'object'
+        ? { reconocimiento: { ...value.reconocimiento } }
+        : {}),
     }))
     .filter(value => value.valor);
   const branchName = String(branch?.nombre || '').trim();
@@ -153,8 +162,8 @@ export function getHierarchySelectableKeys(
 
 /**
  * Convierte claves seleccionadas en la instantánea legible que viaja con el
- * PTA. Un grupo intermedio se conserva como su propia ruta y no expande ni
- * duplica sus descendientes.
+ * PTA. Cada clave expresa una elección independiente: seleccionar un padre no
+ * oculta ni sustituye a los hijos elegidos de forma explícita.
  */
 export function resolveHierarchySelectionBranches(
   branches: HierarchySelectionBranch[],
@@ -168,7 +177,6 @@ export function resolveHierarchySelectionBranches(
         nombre: node.valor,
         ruta: node.ruta.map(value => ({ ...value })),
       });
-      return;
     }
     node.branches.forEach(branch => {
       if (selectedKeys.has(branch.clave)) selected.push(branch);
@@ -194,14 +202,26 @@ export function getHierarchySelectionInfo(activity: any): HierarchySelectionInfo
       etiqueta: String(selection?.etiqueta || 'Opción seleccionada').trim(),
       nombre: String(selection?.nombre || '').trim(),
       horas: Math.max(0, Number(selection?.horas) || 0),
+      ...(selection?.horas_base !== undefined && selection?.horas_base !== null
+        ? { horas_base: Math.max(0, Number(selection.horas_base) || 0) }
+        : {}),
+      ...(selection?.reconocimiento && typeof selection.reconocimiento === 'object'
+        ? { reconocimiento: { ...selection.reconocimiento } }
+        : {}),
       ramificaciones: (Array.isArray(selection?.ramificaciones) ? selection.ramificaciones : [])
         .map((branch: any, branchIndex: number) => ({
           clave: String(branch?.clave || `ramificacion-${branchIndex + 1}`),
           nombre: String(branch?.nombre || '').trim(),
+          ...(branch?.horas !== undefined && branch?.horas !== null
+            ? { horas: Math.max(0, Number(branch.horas) || 0) }
+            : {}),
           ruta: (Array.isArray(branch?.ruta) ? branch.ruta : [])
             .map((value: any) => ({
               columna: String(value?.columna || value?.column || '').trim(),
               valor: String(value?.valor || value?.value || '').trim(),
+              ...(value?.reconocimiento && typeof value.reconocimiento === 'object'
+                ? { reconocimiento: { ...value.reconocimiento } }
+                : {}),
             }))
             .filter((value: ExtensionSelectionValue) => value.valor),
         }))
@@ -217,6 +237,7 @@ export function getHierarchySelectionInfo(activity: any): HierarchySelectionInfo
     etiqueta: legacy.etiqueta,
     nombre: legacy.nombre,
     horas: Math.max(0, Number(activity?.horas) || 0),
+    horas_base: Math.max(0, Number(activity?.horas) || 0),
     ramificaciones: legacy.detalles.map((detail, index) => ({
       clave: `legacy-detail-${index + 1}`,
       nombre: detail.nombre,
@@ -238,18 +259,25 @@ export function formatHierarchyBranchPath(branch: HierarchySelectionBranch): str
  */
 export function formatHierarchySelectionText(activity: any): string {
   const selections = getHierarchySelectionInfo(activity);
-  const formatNodes = (nodes: HierarchyBranchTreeNode[]): string =>
-    nodes.map(node => {
-      const label = node.columna ? `${node.columna}: ${node.valor}` : node.valor;
-      const children = formatNodes(node.children);
-      return children ? `${label} → ${children}` : label;
-    }).filter(Boolean).join('; ');
-
   return selections.map(selection => {
-    const branches = formatNodes(buildHierarchyBranchTree(selection.ramificaciones));
+    const rowRecognition = selection.reconocimiento
+      ? ` [${formatConfiguredHourRecognition(selection.reconocimiento, selection.horas_base)}]`
+      : selection.horas > 0
+        ? ` [${selection.horas}h]`
+        : '';
+    const branches = selection.ramificaciones.map(branch => {
+      const path = formatHierarchyBranchPath(branch);
+      const recognition = getHierarchyBranchDisplayLevels(branch).slice(-1)[0]?.reconocimiento;
+      const recognitionLabel = recognition
+        ? ` [${formatConfiguredHourRecognition(recognition, branch.horas)}]`
+        : branch.horas
+          ? ` [${branch.horas}h]`
+          : '';
+      return `${path}${recognitionLabel}`;
+    }).filter(Boolean).join('; ');
     return branches
-      ? `${selection.etiqueta}: ${selection.nombre} → ${branches}`
-      : `${selection.etiqueta}: ${selection.nombre}`;
+      ? `${selection.etiqueta}: ${selection.nombre}${rowRecognition} → ${branches}`
+      : `${selection.etiqueta}: ${selection.nombre}${rowRecognition}`;
   }).join(' | ');
 }
 

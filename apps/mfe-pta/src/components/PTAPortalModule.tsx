@@ -43,6 +43,7 @@ export function PTAPortalModule({
 
   return (
     <AuthProvider
+      key={`pta-portal-${userPersonId}`}
       userPersonId={userPersonId}
       userEmail={userEmail}
       userName={userName}
@@ -66,6 +67,7 @@ export function PTAPortalModule({
 
             <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
               <PortalDocentePTA
+                key={userPersonId}
                 onBack={onBack}
                 userPersonId={userPersonId}
                 userName={userName}

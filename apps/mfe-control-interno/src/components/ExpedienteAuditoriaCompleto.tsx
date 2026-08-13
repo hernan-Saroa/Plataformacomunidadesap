@@ -67,9 +67,10 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { renderAsync } from 'docx-preview';
 import { notificationsService } from '../../services/api/notificationsService';
 
 // UI Components
@@ -3554,6 +3555,363 @@ function TabSeguimiento({
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FUNCIONES AUXILIARES Y MODAL DE VISTA PREVIA MULTI-FORMATO (PDF, IMG, WORD, EXCEL, PPT)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const getDocExtensionFromName = (documento: { nombre?: string; tipoMime?: string }): string => {
+  const filename = documento.nombre || '';
+  if (filename.includes('.')) {
+    return String(filename.split('.').pop() || '').toLowerCase();
+  }
+  return '';
+};
+
+const isDocExpedienteWord = (documento: { tipoMime?: string; nombre?: string }): boolean => {
+  const mime = String(documento.tipoMime || '').toLowerCase();
+  const ext = getDocExtensionFromName(documento);
+  return mime.includes('word') || mime.includes('wordprocessingml') || ext === 'doc' || ext === 'docx';
+};
+
+const isDocExpedienteDocx = (documento: { tipoMime?: string; nombre?: string }): boolean => {
+  const mime = String(documento.tipoMime || '').toLowerCase();
+  const ext = getDocExtensionFromName(documento);
+  return mime.includes('officedocument.wordprocessingml.document') || ext === 'docx';
+};
+
+const isDocExpedienteExcel = (documento: { tipoMime?: string; nombre?: string }): boolean => {
+  const mime = String(documento.tipoMime || '').toLowerCase();
+  const ext = getDocExtensionFromName(documento);
+  return (
+    mime.includes('excel') ||
+    mime.includes('spreadsheet') ||
+    mime.includes('sheet') ||
+    mime.includes('csv') ||
+    ext === 'xls' ||
+    ext === 'xlsx' ||
+    ext === 'csv'
+  );
+};
+
+const isDocExpedientePowerPoint = (documento: { tipoMime?: string; nombre?: string }): boolean => {
+  const mime = String(documento.tipoMime || '').toLowerCase();
+  const ext = getDocExtensionFromName(documento);
+  return (
+    mime.includes('powerpoint') ||
+    mime.includes('presentation') ||
+    ext === 'ppt' ||
+    ext === 'pptx'
+  );
+};
+
+interface ModalVistaPreviaExpedienteProps {
+  documento: DocumentoExpediente;
+  onClose: () => void;
+}
+
+function ModalVistaPreviaExpediente({ documento, onClose }: ModalVistaPreviaExpedienteProps) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
+  const [excelHtml, setExcelHtml] = useState<string | null>(null);
+  const [docxReady, setDocxReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const docxContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const ext = getDocExtensionFromName(documento);
+  const esImagen = documento.tipoMime?.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+  const esPdf = documento.tipoMime === 'application/pdf' || ext === 'pdf';
+  const esWord = isDocExpedienteWord(documento);
+  const esDocx = isDocExpedienteDocx(documento);
+  const esExcel = isDocExpedienteExcel(documento);
+  const esPowerPoint = isDocExpedientePowerPoint(documento);
+
+  const handleDescargar = useCallback(async () => {
+    const rawUrl = documento.urlDownload || documento.urlPreview;
+    if (!rawUrl) return;
+    try {
+      const url = rawUrl.startsWith('http') ? rawUrl : `${window.location.origin}${rawUrl}`;
+      const res = await fetch(url, { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+      const blob = await res.blob();
+      const u = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = u;
+      link.download = documento.nombre || 'documento';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(u);
+      toast.success('Descarga iniciada');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al descargar');
+    }
+  }, [documento.urlDownload, documento.urlPreview, documento.nombre]);
+
+  useEffect(() => {
+    const sourceUrl = (esWord || esExcel)
+      ? documento.urlDownload || documento.urlPreview
+      : documento.urlPreview || documento.urlDownload;
+
+    if (!sourceUrl) {
+      setError('No hay URL disponible para este documento');
+      setLoading(false);
+      return;
+    }
+
+    const url = sourceUrl.startsWith('http') ? sourceUrl : `${window.location.origin}${sourceUrl}`;
+    let revoked = false;
+    setLoading(true);
+    setError(null);
+    setBlobUrl(null);
+    setDocumentBlob(null);
+    setExcelHtml(null);
+    setDocxReady(false);
+
+    fetch(url, { headers: getDefaultHeaders() })
+      .then(res => {
+        if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
+        return res.blob();
+      })
+      .then(async (blob) => {
+        if (revoked) return;
+
+        if (esExcel) {
+          try {
+            const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            if (!firstSheetName) throw new Error('El archivo Excel no contiene hojas');
+            const worksheet = workbook.Sheets[firstSheetName];
+            const html = XLSX.utils.sheet_to_html(worksheet, { id: 'excel-preview-table' });
+            if (!revoked) setExcelHtml(html);
+          } catch (err) {
+            if (!revoked) setError(err instanceof Error ? err.message : 'Error al procesar archivo Excel');
+          }
+          return;
+        }
+
+        if (esWord) {
+          if (!esDocx) {
+            throw new Error('La vista previa de Word solo soporta archivos .docx. Descargue el archivo para verlo.');
+          }
+          setDocumentBlob(blob);
+          return;
+        }
+
+        setBlobUrl(URL.createObjectURL(blob));
+      })
+      .catch(e => {
+        if (!revoked) setError(e instanceof Error ? e.message : 'Error al cargar el documento');
+      })
+      .finally(() => {
+        if (!revoked) setLoading(false);
+      });
+
+    return () => {
+      revoked = true;
+      setBlobUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [documento.urlPreview, documento.urlDownload, esWord, esExcel, esDocx]);
+
+  useEffect(() => {
+    if (!documentBlob || !esDocx || !docxContainerRef.current) return;
+
+    let cancelled = false;
+    const container = docxContainerRef.current;
+    container.innerHTML = '';
+    setDocxReady(false);
+
+    renderAsync(documentBlob, container, undefined, {
+      inWrapper: true,
+      ignoreWidth: true,
+      ignoreHeight: true,
+      breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+    })
+      .then(() => {
+        if (!cancelled) setDocxReady(true);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Error al renderizar documento Word');
+      });
+
+    return () => {
+      cancelled = true;
+      container.innerHTML = '';
+    };
+  }, [documentBlob, esDocx]);
+
+  const srcParaPreview = esImagen || esPdf ? blobUrl : null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-5xl flex flex-col overflow-hidden"
+        style={{ height: '92vh', maxHeight: '92vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#2962FF] to-[#003DA5] text-white p-5 rounded-t-xl flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+              <FileText className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-bold truncate text-white">{documento.nombre}</h2>
+              <div className="flex items-center gap-2 text-xs text-blue-100 mt-0.5 flex-wrap">
+                <span>Tipo: {documento.tipo}</span>
+                <span>•</span>
+                <span>Fase: {documento.fase === 'planeacion' ? 'Planeación' : documento.fase === 'ejecucion' ? 'Ejecución' : 'Comunicación'}</span>
+                {documento.size && (
+                  <>
+                    <span>•</span>
+                    <span>{documento.size}</span>
+                  </>
+                )}
+                {documento.cargadoPor && (
+                  <>
+                    <span>•</span>
+                    <span>Por: {documento.cargadoPor}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleDescargar}
+              className="p-2 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors flex items-center gap-1.5 text-xs font-semibold"
+              title="Descargar archivo"
+            >
+              <Download className="w-4 h-4" />
+              <span>Descargar</span>
+            </button>
+            {blobUrl && (
+              <button
+                onClick={() => window.open(blobUrl, '_blank')}
+                className="p-2 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors"
+                title="Abrir en nueva pestaña"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white"
+              title="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 bg-gray-100 overflow-hidden p-4 flex flex-col">
+          <div className="flex-1 bg-white rounded-lg border border-gray-200 p-2 flex flex-col w-full h-full overflow-hidden relative">
+            {loading ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
+                <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm font-semibold">Cargando vista previa...</p>
+              </div>
+            ) : error ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center text-center py-8 px-4">
+                <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+                <p className="text-gray-700 font-semibold mb-2">{error}</p>
+                <p className="text-sm text-gray-500 mb-6">No fue posible renderizar la vista previa de este documento.</p>
+                <button
+                  onClick={handleDescargar}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar archivo
+                </button>
+              </div>
+            ) : esImagen && srcParaPreview ? (
+              <div className="w-full h-full flex-1 flex items-center justify-center overflow-auto p-2">
+                <img
+                  src={srcParaPreview}
+                  alt={documento.nombre}
+                  className="max-w-full max-h-full object-contain rounded shadow"
+                />
+              </div>
+            ) : esPdf && srcParaPreview ? (
+              <div className="w-full h-full flex-1 flex flex-col overflow-hidden">
+                <iframe
+                  src={srcParaPreview}
+                  className="w-full h-full flex-1 border-0 rounded-lg"
+                  title={`Vista previa de ${documento.nombre}`}
+                />
+              </div>
+            ) : esDocx ? (
+              <div className="relative w-full h-full flex-1 overflow-auto rounded-lg bg-white p-4 flex flex-col justify-start items-stretch">
+                {!docxReady && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/80 text-gray-500">
+                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-semibold">Renderizando documento Word...</p>
+                  </div>
+                )}
+                <div ref={docxContainerRef} className="docx-preview-content min-h-[300px] w-full flex-1" />
+              </div>
+            ) : esExcel && excelHtml ? (
+              <div className="w-full h-full flex-1 overflow-auto rounded-lg bg-white p-3 flex flex-col justify-start items-stretch">
+                <div
+                  className="w-full flex-1 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-gray-200 [&_td]:px-3 [&_td]:py-1.5 [&_td]:text-sm [&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-100 [&_th]:px-3 [&_th]:py-2 [&_th]:text-sm [&_th]:font-bold text-gray-800"
+                  dangerouslySetInnerHTML={{ __html: excelHtml }}
+                />
+              </div>
+            ) : esWord || esExcel || esPowerPoint ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center text-center py-12 px-4">
+                <FileText className="w-20 h-20 text-blue-500 mx-auto mb-4" />
+                <h4 className="text-lg font-bold text-gray-900 mb-2">
+                  {esPowerPoint ? 'Presentación de PowerPoint' : 'Documento de Office'}
+                </h4>
+                <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
+                  Este formato de archivo no permite visualización directa en el navegador. Descárguelo para abrirlo en su aplicación local.
+                </p>
+                <button
+                  onClick={handleDescargar}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold shadow-lg shadow-blue-500/25 transition-all"
+                >
+                  <Download className="w-5 h-5" />
+                  Descargar para ver
+                </button>
+              </div>
+            ) : (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center text-center py-12 px-4">
+                <FileText className="w-20 h-20 text-gray-400 mx-auto mb-4" />
+                <h4 className="text-lg font-bold text-gray-900 mb-2">Vista previa no disponible</h4>
+                <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
+                  Descargue el archivo para abrirlo en su equipo.
+                </p>
+                <button
+                  onClick={handleDescargar}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold shadow-lg transition-all"
+                >
+                  <Download className="w-5 h-5" />
+                  Descargar archivo
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function TabDocumentacion({
   documentos,
   filtro,
@@ -3575,14 +3933,14 @@ function TabDocumentacion({
 }) {
   const [modalCargar, setModalCargar] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
-  // Estado para preview inline
-  const [previewDoc, setPreviewDoc] = useState<{ url: string; nombre: string; tipoMime: string } | null>(null);
-  const [cargandoPreview, setCargandoPreview] = useState(false);
+  // Estado para modal de previsualización multi-formato
+  const [previewDoc, setPreviewDoc] = useState<DocumentoExpediente | null>(null);
 
   const handleDescargarDoc = async (doc: DocumentoExpediente) => {
-    if (!doc.urlDownload) return;
+    if (!doc.urlDownload && !doc.urlPreview) return;
+    const targetUrl = doc.urlDownload || doc.urlPreview || '';
     try {
-      const url = doc.urlDownload.startsWith('http') ? doc.urlDownload : `${window.location.origin}${doc.urlDownload}`;
+      const url = targetUrl.startsWith('http') ? targetUrl : `${window.location.origin}${targetUrl}`;
       const res = await fetch(url, { headers: getDefaultHeaders() });
       if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
       const blob = await res.blob();
@@ -3600,32 +3958,8 @@ function TabDocumentacion({
     }
   };
 
-  const handleVerDoc = async (doc: DocumentoExpediente) => {
-    if (!doc.urlPreview) return;
-    setCargandoPreview(true);
-    try {
-      const url = doc.urlPreview.startsWith('http') ? doc.urlPreview : `${window.location.origin}${doc.urlPreview}`;
-      const res = await fetch(url, { headers: getDefaultHeaders() });
-      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status}`);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      setPreviewDoc({
-        url: blobUrl,
-        nombre: doc.nombre || 'Documento',
-        tipoMime: doc.tipoMime || 'application/pdf'
-      });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al abrir documento');
-    } finally {
-      setCargandoPreview(false);
-    }
-  };
-
-  const cerrarPreview = () => {
-    if (previewDoc) {
-      URL.revokeObjectURL(previewDoc.url);
-    }
-    setPreviewDoc(null);
+  const handleVerDoc = (doc: DocumentoExpediente) => {
+    setPreviewDoc(doc);
   };
 
   // ✅ Manejar subida de documento conectada al backend
@@ -3765,28 +4099,27 @@ function TabDocumentacion({
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    {/* Botón Ver - solo para PDFs e imágenes */}
-                    {doc.tipoMime && (doc.tipoMime.startsWith('application/pdf') || doc.tipoMime.startsWith('image/')) && (
+                    {/* Botón Ver - Habilitado para TODOS los documentos que tengan URL de vista previa o descarga */}
+                    {(doc.urlPreview || doc.urlDownload || doc.tipoMime) && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 hover:bg-blue-50"
                         onClick={() => handleVerDoc(doc)}
-                        title="Ver documento"
-                        disabled={cargandoPreview}
+                        title="Ver / Previsualizar documento"
                       >
-                        <Eye className={`w-3 h-3 ${cargandoPreview ? 'animate-pulse' : ''}`} />
+                        <Eye className="w-3.5 h-3.5 text-blue-600" />
                       </Button>
                     )}
                     {/* Botón Descargar - siempre disponible */}
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 w-7 p-0"
+                      className="h-7 w-7 p-0 hover:bg-gray-100"
                       onClick={() => handleDescargarDoc(doc)}
                       title="Descargar"
                     >
-                      <Download className="w-3 h-3" />
+                      <Download className="w-3 h-3 text-gray-600" />
                     </Button>
                   </div>
                 </div>
@@ -3804,87 +4137,12 @@ function TabDocumentacion({
         />
       )}
 
-      {/* ═══ Modal de Previsualización de Documento ═══ */}
+      {/* ═══ Modal de Previsualización de Documento Multi-formato ═══ */}
       {previewDoc && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center"
-          onClick={cerrarPreview}
-        >
-          {/* Overlay */}
-          <div className="absolute inset-0 bg-black/60" />
-
-          {/* Contenido */}
-          <div
-            className="relative bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col z-10 border border-gray-200"
-            style={{ width: '92vw', maxWidth: '1320px', height: '95vh', maxHeight: '95vh' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-[#2962FF] to-[#003DA5] text-white shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                  <FileText className="w-4 h-4 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold truncate">{previewDoc.nombre}</h3>
-                  <p className="text-[10px] text-blue-200">Vista previa del documento</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {/* Botón abrir en nueva pestaña */}
-                <button
-                  onClick={() => window.open(previewDoc.url, '_blank')}
-                  className="p-1.5 rounded-lg bg-white/15 hover:bg-white/25 transition-colors"
-                  title="Abrir en nueva pestaña"
-                >
-                  <ExternalLink className="w-4 h-4 text-white" />
-                </button>
-                {/* Botón cerrar */}
-                <button
-                  onClick={cerrarPreview}
-                  className="p-1.5 rounded-lg bg-white/15 hover:bg-red-500/80 transition-colors"
-                  title="Cerrar"
-                >
-                  <X className="w-4 h-4 text-white" />
-                </button>
-              </div>
-            </div>
-
-            {/* Contenido del documento */}
-            <div className="flex-1 bg-gray-100 overflow-hidden">
-              {previewDoc.tipoMime.startsWith('application/pdf') ? (
-                <iframe
-                  src={previewDoc.url}
-                  className="w-full h-full border-0"
-                  title={previewDoc.nombre}
-                />
-              ) : previewDoc.tipoMime.startsWith('image/') ? (
-                <div className="w-full h-full flex items-center justify-center p-4 overflow-auto">
-                  <img
-                    src={previewDoc.url}
-                    alt={previewDoc.nombre}
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
-                  />
-                </div>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <FileText className="w-16 h-16 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm font-bold text-gray-500">
-                      Vista previa no disponible para este tipo de archivo
-                    </p>
-                    <button
-                      onClick={() => window.open(previewDoc.url, '_blank')}
-                      className="mt-3 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Abrir en nueva pestaña
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <ModalVistaPreviaExpediente
+          documento={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
       )}
     </>
   );

@@ -771,7 +771,9 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
       let tipoEvidenciaConfig: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO' | undefined;
       
       if (configuracionRol) {
-        const actividadConfig = configuracionRol.actividadesSeleccionadas?.find((a: any) => a.nombre === act.nombre);
+        const actividadConfig = configuracionRol.actividadesSeleccionadas?.find(
+          (a: any) => a.nombre === act.nombre || (a.nombreOriginal && a.nombreOriginal === act.nombre) || (a.nombre && a.nombre.toLowerCase().startsWith(act.nombre.toLowerCase().slice(0, 20)))
+        );
         requiereAutorizacionJefeOCI = !!(
           actividadConfig?.requiereAutorizacionJefeOCI
           || actividadConfig?.requiereVerificacionDirector
@@ -780,7 +782,9 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
       }
 
       // ✅ Responsables específicos de la actividad (del wizard) o del rol como fallback
-      const actividadConfig2 = configuracionRol?.actividadesSeleccionadas?.find((a: any) => a.nombre === act.nombre);
+      const actividadConfig2 = configuracionRol?.actividadesSeleccionadas?.find(
+        (a: any) => a.nombre === act.nombre || (a.nombreOriginal && a.nombreOriginal === act.nombre) || (a.nombre && a.nombre.toLowerCase().startsWith(act.nombre.toLowerCase().slice(0, 20)))
+      );
       const responsablesActividad: any[] = actividadConfig2?.responsables?.length
         ? actividadConfig2.responsables
         : [];
@@ -2002,7 +2006,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               color: rol.color || '#3B82F6',
               icono: obtenerIconoRol(rol.rol_numero ?? rol.numero ?? 0),
               descripcion: rol.descripcion || '',
-              actividades: (rol.actividades || []).map((act: any) => ({
+              actividades: (rol.actividades || [])
+                .filter((act: any) => act.activo !== false)
+                .map((act: any) => ({
                 id: act.id,
                 nombre: act.nombre || '',
                 descripcion: act.descripcion || '',
@@ -2426,7 +2432,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           responsable: rol.responsable,
           responsable_id: rol.responsable_id,
           responsables: mapResponsablesRolDesdeBackend(rol),
-          actividades: (rol.actividades || []).map((act: any) => {
+          actividades: (rol.actividades || [])
+            .filter((act: any) => act.activo !== false)
+            .map((act: any) => {
             const pcsWizard = mapPuntosControlFechasVigencia(
               act.puntos_control || act.puntosControl,
               vigenciaPlan,
