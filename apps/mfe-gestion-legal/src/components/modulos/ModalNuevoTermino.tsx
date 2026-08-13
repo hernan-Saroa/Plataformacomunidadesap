@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
@@ -9,7 +9,15 @@ import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase } from 'lucide-react';
+import { ModalProgramacionVencimientos } from './ModalProgramacionVencimientos';
+import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X } from 'lucide-react';
+import {
+    NOMBRES_MESES,
+    ProgramacionVencimientos,
+    generarOcurrencias,
+    ocurrenciasFuturas,
+    resumenProgramacion,
+} from '../utils/programacionVencimientos';
 
 interface ModalNuevoTerminoProps {
     open: boolean;
@@ -36,6 +44,8 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
     const [profesionales, setProfesionales] = useState<any[]>([]);
     const [procesosModulo, setProcesosModulo] = useState<any[]>([]);
     const [loadingProcesos, setLoadingProcesos] = useState(false);
+    const [programacion, setProgramacion] = useState<ProgramacionVencimientos | null>(null);
+    const [modalProgramacionOpen, setModalProgramacionOpen] = useState(false);
     const [formData, setFormData] = useState({
         nombreActuacion: '',
         fechaVencimiento: '',
@@ -45,6 +55,24 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         responsableId: '',
         origenModulo: ''
     });
+
+    const resetForm = () => {
+        setFormData({
+            nombreActuacion: '',
+            fechaVencimiento: '',
+            prioridad: 'MEDIA',
+            observaciones: '',
+            numeroRadicado: '',
+            responsableId: '',
+            origenModulo: ''
+        });
+        setProgramacion(null);
+    };
+
+    const vencimientosProgramados = useMemo(() => {
+        if (!programacion) return 0;
+        return ocurrenciasFuturas(generarOcurrencias(programacion)).length;
+    }, [programacion]);
 
     // Cargar profesionales
     useEffect(() => {
@@ -91,12 +119,58 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.nombreActuacion.trim() || !formData.fechaVencimiento) {
+        if (!formData.nombreActuacion.trim() || (!formData.fechaVencimiento && !programacion)) {
             toast.error('Complete los campos obligatorios');
             return;
         }
-        setLoading(true);
 
+        if (programacion) {
+            const ocurrencias = ocurrenciasFuturas(generarOcurrencias(programacion));
+            if (ocurrencias.length === 0) {
+                toast.error('Todos los vencimientos de la programación ya vencieron. Ajuste el plazo o la periodicidad.');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const resultados = await Promise.allSettled(
+                    ocurrencias.map((o) =>
+                        legalService.createTerminoManual({
+                            ...formData,
+                            nombreActuacion: `${formData.nombreActuacion} — ${NOMBRES_MESES[o.mes - 1]} ${o.anio}`,
+                            fechaBase: o.fechaInicio.toISOString(),
+                            fechaVencimiento: o.fechaVencimiento.toISOString(),
+                            diasTermino: Math.max(1, programacion.plazoHasta - programacion.plazoDesde + 1),
+                            tipoDias: programacion.tipoDias,
+                            observaciones: [formData.observaciones, `Programación: ${resumenProgramacion(programacion)}`].filter(Boolean).join(' · '),
+                            responsableId: formData.responsableId || null
+                        })
+                    )
+                );
+
+                const exitosos = resultados.filter((r) => r.status === 'fulfilled').length;
+                const fallidos = resultados.length - exitosos;
+
+                if (exitosos > 0) {
+                    toast.success(`Programación creada: ${exitosos} vencimiento${exitosos === 1 ? '' : 's'} generado${exitosos === 1 ? '' : 's'}`, {
+                        description: fallidos > 0 ? `${fallidos} no se pudieron crear` : undefined
+                    });
+                    onSuccess();
+                    onOpenChange(false);
+                    resetForm();
+                } else {
+                    toast.error('No se pudo crear la programación de vencimientos');
+                }
+            } catch (error) {
+                console.error('Error creando programación de términos:', error);
+                toast.error('Error al crear la programación de vencimientos');
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        setLoading(true);
         try {
             await legalService.createTerminoManual({
                 ...formData,
@@ -107,15 +181,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             });
             onSuccess();
             onOpenChange(false);
-            setFormData({
-                nombreActuacion: '',
-                fechaVencimiento: '',
-                prioridad: 'MEDIA',
-                observaciones: '',
-                numeroRadicado: '',
-                responsableId: '',
-                origenModulo: ''
-            });
+            resetForm();
         } catch (error) {
             console.error('Error creando término:', error);
             toast.error('Error al crear el término');
@@ -204,18 +270,43 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                     {/* Fecha y Prioridad en grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-                                <Calendar className="w-4 h-4" />
-                                Fecha de Vencimiento *
-                            </Label>
-                            <Input
-                                type="date"
-                                value={formData.fechaVencimiento}
-                                onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
-                                className="border-2 border-gray-300 focus:border-blue-500"
-                                min={new Date().toISOString().split('T')[0]}
-                                required
-                            />
+                            <div className="flex items-center justify-between">
+                                <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                                    <Calendar className="w-4 h-4" />
+                                    Fecha de Vencimiento *
+                                </Label>
+                                <button
+                                    type="button"
+                                    onClick={() => setModalProgramacionOpen(true)}
+                                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                >
+                                    <Repeat className="w-3.5 h-3.5" />
+                                    {programacion ? 'Editar' : 'Programar periodicidad'}
+                                </button>
+                            </div>
+
+                            {programacion ? (
+                                <div className="flex items-center justify-between gap-2 border-2 border-blue-200 bg-blue-50 rounded-lg px-3 py-2">
+                                    <span className="text-xs font-semibold text-blue-700">{resumenProgramacion(programacion)}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setProgramacion(null)}
+                                        className="text-blue-400 hover:text-blue-600"
+                                        title="Quitar programación"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <Input
+                                    type="date"
+                                    value={formData.fechaVencimiento}
+                                    onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
+                                    className="border-2 border-gray-300 focus:border-blue-500"
+                                    min={new Date().toISOString().split('T')[0]}
+                                    required
+                                />
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -297,18 +388,29 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                     <button
                         type="button"
                         onClick={(e) => handleSubmit(e as any)}
-                        disabled={loading || !formData.nombreActuacion.trim() || !formData.fechaVencimiento}
+                        disabled={loading || !formData.nombreActuacion.trim() || (programacion ? vencimientosProgramados === 0 : !formData.fechaVencimiento)}
                         className={`flex items-center gap-2 px-5 py-2 text-sm font-bold text-white rounded-lg transition-all ${
-                            loading || !formData.nombreActuacion.trim() || !formData.fechaVencimiento
+                            loading || !formData.nombreActuacion.trim() || (programacion ? vencimientosProgramados === 0 : !formData.fechaVencimiento)
                                 ? 'opacity-50 cursor-not-allowed'
                                 : 'hover:shadow-lg'
                         }`}
-                        style={{ background: (loading || !formData.nombreActuacion.trim() || !formData.fechaVencimiento) ? '#9CA3AF' : '#003DA5' }}
+                        style={{ background: (loading || !formData.nombreActuacion.trim() || (programacion ? vencimientosProgramados === 0 : !formData.fechaVencimiento)) ? '#9CA3AF' : '#003DA5' }}
                     >
-                        {loading ? 'Guardando...' : 'Crear Solicitud'}
+                        {loading
+                            ? 'Guardando...'
+                            : programacion
+                                ? `Crear Programación (${vencimientosProgramados} vencimiento${vencimientosProgramados === 1 ? '' : 's'})`
+                                : 'Crear Solicitud'}
                     </button>
                 </div>
             </DialogContent>
+
+            <ModalProgramacionVencimientos
+                open={modalProgramacionOpen}
+                onOpenChange={setModalProgramacionOpen}
+                initialValue={programacion}
+                onSave={(config) => setProgramacion(config)}
+            />
         </Dialog>
     );
 }
