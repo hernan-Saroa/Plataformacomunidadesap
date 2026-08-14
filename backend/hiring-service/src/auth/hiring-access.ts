@@ -126,6 +126,20 @@ export const ROLES_AUDIENCIA_RIESGOS = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién emite y publica las adendas del proceso (actividad 5.6, EFDS-1154).
+ *
+ * Una adenda modifica un pliego ya público y puede mover el plazo del proceso,
+ * así que es la misma Dirección de Contratación que lo publicó. Constante
+ * propia por el mismo motivo que las anteriores: coincide hoy, pero es otra
+ * actuación.
+ */
+export const ROLES_ADENDAS = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

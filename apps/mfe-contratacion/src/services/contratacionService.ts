@@ -2,6 +2,7 @@ import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
   CamposFaltantesError,
+  EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
   Cdp,
@@ -126,6 +127,53 @@ export const contratacionService = {
     cuerpo.append('file', archivo);
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
+
+  // -------------------------------- etapa 5 · adendas del proceso (5.6) -----
+
+  /** Adendas del proceso, con su estado y si se pueden emitir nuevas. */
+  adendas: (procesoId: string) => pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`),
+
+  /**
+   * Emite una adenda con su documento firmado.
+   *
+   * Emitir no publica: la adenda queda registrada con su consecutivo, pero no
+   * produce efectos —ni mueve el cronograma— hasta que se publique.
+   */
+  emitirAdenda: (
+    procesoId: string,
+    datos: { tipo: 'FONDO' | 'CRONOGRAMA'; objeto: string; vencimientoNuevo?: string },
+    documento: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', documento);
+    cuerpo.append('tipo', datos.tipo);
+    cuerpo.append('objeto', datos.objeto);
+    if (datos.vencimientoNuevo) cuerpo.append('vencimientoNuevo', datos.vencimientoNuevo);
+
+    return pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Publica una adenda emitida; si es de cronograma, aquí se mueve el plazo. */
+  publicarAdenda: (procesoId: string, adendaId: string, fechaPublicacion: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('fechaPublicacion', fechaPublicacion);
+
+    return pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas/${adendaId}/publicar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula una adenda emitida por error; una publicada ya no se puede anular. */
+  anularAdenda: (procesoId: string, adendaId: string, motivo: string) =>
+    pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas/${adendaId}/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
 

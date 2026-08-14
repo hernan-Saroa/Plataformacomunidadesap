@@ -16,6 +16,7 @@ import { PanelMipyme } from '../mipyme/PanelMipyme';
 import { PanelDocumentosProceso } from '../documentos/PanelDocumentosProceso';
 import { PanelApertura } from '../apertura/PanelApertura';
 import { PanelAudienciaRiesgos } from '../riesgos/PanelAudienciaRiesgos';
+import { PanelAdendas } from '../adendas/PanelAdendas';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -30,6 +31,8 @@ const NUMERAL_OBSERVACIONES = '5.3';
 const NUMERAL_MIPYME = '5.4';
 /** Audiencia de asignación de riesgos (EFDS-1153). */
 const NUMERAL_RIESGOS = '5.5';
+/** Adendas al pliego publicado (EFDS-1154). */
+const NUMERAL_ADENDAS = '5.6';
 /** Apertura formal del proceso, que cierra la etapa (EFDS-1152). */
 const NUMERAL_APERTURA = '5.7';
 
@@ -40,6 +43,7 @@ const NUMERALES_ETAPA_5 = [
   NUMERAL_OBSERVACIONES,
   NUMERAL_MIPYME,
   NUMERAL_RIESGOS,
+  NUMERAL_ADENDAS,
   NUMERAL_APERTURA,
 ];
 
@@ -312,6 +316,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 numeral={actividadSeleccionada.numeral}
                 procesoId={procesoId}
                 valorEstimado={datos.proceso.valorEstimado}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_ADENDAS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelAdendas
+                procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>

@@ -14,6 +14,7 @@ import { MipymeModule } from './modules/mipyme/mipyme.module';
 import { DocumentosModule } from './modules/documentos/documentos.module';
 import { AperturaModule } from './modules/apertura/apertura.module';
 import { RiesgosModule } from './modules/riesgos/riesgos.module';
+import { AdendasModule } from './modules/adendas/adendas.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -41,6 +42,7 @@ import { DocumentoRequerido } from './entities/documento-requerido.entity';
 import { DocumentoProceso } from './entities/documento-proceso.entity';
 import { AperturaProceso } from './entities/apertura-proceso.entity';
 import { AudienciaRiesgos, AudienciaRiesgosConfig } from './entities/audiencia-riesgos.entity';
+import { Adenda } from './entities/adenda.entity';
 
 @Module({
   imports: [
@@ -58,7 +60,7 @@ import { AudienciaRiesgos, AudienciaRiesgosConfig } from './entities/audiencia-r
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -78,6 +80,7 @@ import { AudienciaRiesgos, AudienciaRiesgosConfig } from './entities/audiencia-r
     DocumentosModule,
     AperturaModule,
     RiesgosModule,
+    AdendasModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -437,6 +437,43 @@ export interface DocumentoRequerido {
   } | null;
 }
 
+/** Una adenda del proceso (actividad 5.6, EFDS-1154). */
+export interface Adenda {
+  id: string;
+  /** Consecutivo dentro del proceso: las adendas se citan por su número. */
+  numero: number;
+  tipo: 'FONDO' | 'CRONOGRAMA';
+  objeto: string;
+  estado: 'EMITIDA' | 'PUBLICADA' | 'ANULADA';
+  emitidaPor: string | null;
+  emitidaAt: string;
+  fechaPublicacion: string | null;
+  publicadaPor: string | null;
+  /** Solo en las de cronograma publicadas: de qué fecha a qué fecha se movió. */
+  vencimientoAnterior: string | null;
+  vencimientoNuevo: string | null;
+  motivoAnulacion: string | null;
+  documento: ArchivoApertura | null;
+  evidencia: ArchivoApertura | null;
+}
+
+/** Estado de las adendas del proceso. */
+export interface EstadoAdendas {
+  /** False donde la modalidad no publica pliego que modificar. */
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  /** Sin pliego publicado no hay nada que adendar. */
+  publicado: boolean;
+  /** Con el proceso abierto rige el pliego definitivo. */
+  abierto: boolean;
+  puedeEmitir: boolean;
+  /** Vencimiento del plazo hoy; es lo que mueve una adenda de cronograma. */
+  vencimientoVigente: string | null;
+  adendas: Adenda[];
+}
+
 /** Audiencia de asignación de riesgos celebrada (actividad 5.5, EFDS-1153). */
 export interface AudienciaRiesgos {
   id: string;
