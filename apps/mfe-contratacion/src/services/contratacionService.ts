@@ -345,6 +345,19 @@ export const contratacionService = {
     pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`),
 
   /**
+   * Formatos del SIG aplicables a una actividad, filtrados por modalidad.
+   *
+   * Es la cara del gestor de la biblioteca: los administra Configuración por
+   * /configuracion/plantillas, y aquí solo se consultan para descargarlos.
+   */
+  plantillasDeActividad: (numeral: string, modalidad?: string) =>
+    pedir<PlantillaFormato[]>(
+      `/procesos/plantillas/${encodeURIComponent(numeral)}${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
+
+  /**
    * Carga uno de los documentos que la actividad exige.
    *
    * El código viaja en el cuerpo junto al archivo: la petición ya es multipart,

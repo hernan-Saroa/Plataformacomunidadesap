@@ -395,12 +395,15 @@ export class EstudioPrevioService {
 
     if (!modalidad) return todas;
 
-    const aplicables = todas.filter(
+    // La misma regla que aplica el cliente: alcance vacío significa todas, y
+    // si el formato declara modalidades, la de este proceso tiene que estar.
+    // El antiguo «si ninguna casa se devuelven todas» existía porque la
+    // siembra escribía nombres donde el filtro esperaba códigos y nada casaba
+    // nunca; la migración 034 unificó la convención y el parche sobra — y
+    // ofrecería el pliego de licitación en una contratación directa.
+    return todas.filter(
       (p) => p.modalidades.length === 0 || p.modalidades.includes(modalidad),
     );
-    // Si ninguna declara la modalidad se devuelven todas, para no dejar al
-    // usuario sin formato por un dato aún no parametrizado.
-    return aplicables.length > 0 ? aplicables : todas;
   }
 
   // ------------------------------------------------------------- revisión ---

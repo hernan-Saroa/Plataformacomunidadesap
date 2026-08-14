@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, FileText, Info, Paperclip, Undo2 } from 'lucide-react';
+import { Check, Download, FileText, Info, Paperclip, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DocumentoRequerido, EstadoDocumentos } from '../../types';
+import { DocumentoRequerido, EstadoDocumentos, PlantillaFormato } from '../../types';
 import { Aviso, Ayuda, Marco, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga } from '../shared/fechas';
 
@@ -27,6 +27,8 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
   const [error, setError] = useState<string | null>(null);
   /** Qué requisito está subiendo, para bloquear solo esa fila. */
   const [subiendo, setSubiendo] = useState<string | null>(null);
+  /** Formatos del SIG asignados a la 5.1 para esta modalidad, si los hay. */
+  const [formatos, setFormatos] = useState<PlantillaFormato[]>([]);
 
   const leer = () =>
     contratacionService
@@ -42,6 +44,17 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
     setCargando(true);
     leer();
   }, [procesoId]);
+
+  // Los formatos vienen de la biblioteca (EFDS-1419): si Configuración asignó
+  // alguno a la 5.1, el gestor lo descarga aquí mismo en vez de pedirlo al SIG
+  // por correo. Que no haya no es un error — la biblioteca puede estar vacía.
+  useEffect(() => {
+    if (!estado?.aplica) return;
+    contratacionService
+      .plantillasDeActividad('5.1', estado.modalidad ?? undefined)
+      .then((lista) => setFormatos(lista.filter((f) => f.archivoUrl)))
+      .catch(() => setFormatos([]));
+  }, [procesoId, estado?.aplica, estado?.modalidad]);
 
   const cargar = async (codigo: string, archivo: File) => {
     setSubiendo(codigo);
@@ -112,15 +125,39 @@ export function PanelDocumentosProceso({ procesoId, onCambio }: Props) {
         después que no se alteró.
       </Ayuda>
 
-      {/* Se dice que hoy no se generan: sin esta línea, un usuario que espera
-          el documento hecho creería que la plataforma falló. */}
-      <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 flex items-start gap-2.5">
-        <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" aria-hidden="true" />
-        <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
-          Los documentos se redactan por fuera y se cargan aquí. La generación automática desde los
-          formatos oficiales llegará cuando Contratación entregue las plantillas.
-        </p>
-      </div>
+      {/* Con formatos en la biblioteca se ofrecen aquí; sin ellos se dice que
+          hoy no se generan — sin esa línea, un usuario que espera el documento
+          hecho creería que la plataforma falló. */}
+      {formatos.length > 0 ? (
+        <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-2">
+          <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+            Descarga el formato oficial, diligéncialo y carga aquí el documento firmado.
+          </p>
+          <ul className="m-0 p-0 list-none space-y-1">
+            {formatos.map((f) => (
+              <li key={f.id}>
+                <a
+                  href={contratacionService.urlDescarga(f.archivoUrl!)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline"
+                >
+                  <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                  {f.codigo} · {f.nombre}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 flex items-start gap-2.5">
+          <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+            Los documentos se redactan por fuera y se cargan aquí. Cuando Contratación suba los
+            formatos oficiales a la biblioteca de plantillas, podrás descargarlos desde este panel.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         {estado.documentos.map((doc) => (
