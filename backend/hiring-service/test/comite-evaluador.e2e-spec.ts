@@ -191,7 +191,7 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
 
       await expect(designar(proceso.id)).rejects.toThrow(/no se ha cerrado/i);
 
-      const estado = await comite.estado(proceso.id);
+      const estado = await comite.estado(proceso.id, ordenador);
       expect(estado.puedeDesignar).toBe(false);
       expect(estado.recepcionCerrada).toBe(false);
     });
@@ -205,7 +205,7 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
       // Cerrada sí, pero no hay nada que evaluar.
       await expect(designar(proceso.id)).rejects.toThrow(/sin ofertas/i);
 
-      const estado = await comite.estado(proceso.id);
+      const estado = await comite.estado(proceso.id, ordenador);
       expect(estado.recepcionCerrada).toBe(true);
       expect(estado.totalOferentes).toBe(0);
       expect(estado.puedeDesignar).toBe(false);
@@ -287,13 +287,99 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
     });
   });
 
+  // ------------------------------------------------------------ criterio 2 --
+
+  describe('Criterio 2 · quién puede evaluar', () => {
+    it('impide iniciar la evaluación sin comité designado', async () => {
+      const proceso = await cerrarConOferta();
+
+      await expect(comite.exigirComiteParaEvaluar(proceso.id)).rejects.toThrow(
+        /no tiene comité evaluador designado/i,
+      );
+
+      await designar(proceso.id);
+
+      // Designado, deja de bloquear.
+      await expect(comite.exigirComiteParaEvaluar(proceso.id)).resolves.toBeDefined();
+    });
+
+    it('vuelve a impedirla si el comité se revoca', async () => {
+      const proceso = await cerrarConOferta();
+      await designar(proceso.id);
+      await comite.revocar(proceso.id, { motivo: 'Se rehace la designación por error formal' }, ordenador);
+
+      await expect(comite.exigirComiteParaEvaluar(proceso.id)).rejects.toThrow(
+        /no tiene comité evaluador designado/i,
+      );
+    });
+
+    it('reconoce como evaluador a la cuenta enlazada con la persona designada', async () => {
+      // Se toma un usuario real del directorio en vez de inventar filas en
+      // auth: el enlace cuenta-persona es de otro equipo y la prueba tiene que
+      // medir el que existe, no uno fabricado para que pase.
+      const [usuario] = await dataSource.query(
+        `SELECT id_user, id_person FROM auth."user" WHERE id_person IS NOT NULL LIMIT 1`,
+      );
+      expect(usuario).toBeDefined();
+
+      const proceso = await cerrarConOferta();
+      await designar(proceso.id, [
+        { personaId: usuario.id_person, nombre: 'Evaluadora designada', rol: 'FINANCIERO' },
+        TECNICO,
+      ]);
+
+      const suAcceso: HiringAccess = {
+        userId: usuario.id_user,
+        userName: 'prueba.evaluadora',
+        roles: ['EVALUADOR_FINANCIERO'],
+        puedeEditar: false,
+      };
+
+      expect(await comite.dimensionesDe(proceso.id, suAcceso)).toEqual(['FINANCIERO']);
+
+      const estado = await comite.estado(proceso.id, suAcceso);
+      expect(estado.soyEvaluador).toBe(true);
+      expect(estado.misDimensiones).toEqual(['FINANCIERO']);
+    });
+
+    it('no reconoce a quien no fue designado, aunque lleve el rol', async () => {
+      const [usuario] = await dataSource.query(
+        `SELECT id_user FROM auth."user" WHERE id_person IS NOT NULL LIMIT 1`,
+      );
+
+      const proceso = await cerrarConOferta();
+      await designar(proceso.id, [TECNICO]);
+
+      // Tiene el rol global de evaluador, pero no está en el memorando de este
+      // proceso: evaluar es una condición de la persona en el proceso, no una
+      // credencial que se lleve encima.
+      const intruso: HiringAccess = {
+        userId: usuario.id_user,
+        userName: 'prueba.intruso',
+        roles: ['EVALUADOR_JURIDICO'],
+        puedeEditar: false,
+      };
+
+      expect(await comite.dimensionesDe(proceso.id, intruso)).toEqual([]);
+      expect((await comite.estado(proceso.id, intruso)).soyEvaluador).toBe(false);
+    });
+
+    it('no reconoce a una cuenta sin persona enlazada', async () => {
+      const proceso = await cerrarConOferta();
+      await designar(proceso.id);
+
+      // El gestor de las pruebas no existe en auth.user.
+      expect(await comite.dimensionesDe(proceso.id, gestor)).toEqual([]);
+    });
+  });
+
   // ------------------------------------------------------- aplicabilidad --
 
   describe('Modalidades sin comité evaluador', () => {
     it('no aplica en contratación directa', async () => {
       const proceso = await crear('CONTRATACION_DIRECTA');
 
-      const estado = await comite.estado(proceso.id);
+      const estado = await comite.estado(proceso.id, ordenador);
 
       expect(estado.aplica).toBe(false);
       expect(estado.motivoNoAplica).toMatch(/no evalúa ofertas en competencia/i);

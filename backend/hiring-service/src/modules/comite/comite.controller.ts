@@ -45,10 +45,10 @@ export class ComiteController {
   @ApiOperation({
     summary: 'Comité evaluador del proceso',
     description:
-      'Si la modalidad lo exige, si el proceso ya cerró con oferentes, y quiénes lo integran con su dimensión de evaluación.',
+      'Si la modalidad lo exige, si el proceso ya cerró con oferentes, quiénes lo integran y en qué dimensiones evalúa quien consulta.',
   })
-  estado(@Param('id', ParseUUIDPipe) procesoId: string) {
-    return this.service.estado(procesoId);
+  estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.estado(procesoId, getHiringAccess(req));
   }
 
   @Post()

@@ -36,7 +36,7 @@ export class ComiteService {
 
   // ------------------------------------------------------------- consulta --
 
-  async estado(procesoId: string) {
+  async estado(procesoId: string, acceso: HiringAccess) {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
 
     const excluida = await this.dataSource.getRepository(ActividadExcluida).findOne({
@@ -62,11 +62,19 @@ export class ComiteService {
           .findOne({ where: { id: comite.memorandoDocumentoId } })
       : null;
 
+    // En qué dimensiones evalúa quien está consultando. Va en el estado y no en
+    // un endpoint aparte porque la pantalla lo necesita en la misma carga.
+    const misDimensiones = comite
+      ? await this.dimensionesEnElComite(comite.id, acceso)
+      : [];
+
     return {
       aplica: !excluida,
       motivoNoAplica: excluida?.motivo ?? null,
       modalidad: proceso.modalidad,
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
+      soyEvaluador: misDimensiones.length > 0,
+      misDimensiones,
       // Las dos condiciones del criterio 1, por separado: la pantalla necesita
       // decir cuál de las dos falta, no solo que no se puede.
       recepcionCerrada,
@@ -178,7 +186,7 @@ export class ComiteService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
   }
 
   /**
@@ -206,7 +214,79 @@ export class ComiteService {
       });
     });
 
-    return this.estado(procesoId);
+    return this.estado(procesoId, acceso);
+  }
+
+  // ------------------------------------------------- quién puede evaluar --
+
+  /**
+   * En qué dimensiones evalúa este usuario dentro del proceso.
+   *
+   * Es la pregunta que hará la evaluación (EFDS-1157) en cada petición, y la
+   * respuesta se deriva de la membresía del comité vigente: **no se escriben
+   * roles en `auth.user_roles`**. Dos razones. La primera es de propiedad: ese
+   * esquema es de otro equipo y repartir permisos globales desde contratación
+   * sería pisarlo. La segunda es de fondo: ser evaluador no es una condición de
+   * la persona sino de la persona *en este proceso*, y un rol global no sabría
+   * distinguir en cuál puede evaluar y en cuál no.
+   *
+   * Lista vacía significa que no evalúa aquí, sea porque no está designado o
+   * porque su cuenta no está enlazada a ninguna persona del directorio.
+   */
+  async dimensionesDe(procesoId: string, acceso: HiringAccess) {
+    const comite = await this.comiteVigente(procesoId);
+    if (!comite) return [];
+
+    return this.dimensionesEnElComite(comite.id, acceso);
+  }
+
+  /**
+   * Exige que haya comité designado antes de evaluar.
+   *
+   * Segundo criterio de la historia. La evaluación es EFDS-1157 y todavía no
+   * existe, así que esto queda expuesto y probado a la espera de que la
+   * consuma, en vez de duplicar la regla cuando llegue.
+   */
+  async exigirComiteParaEvaluar(procesoId: string, em?: EntityManager) {
+    const comite = await this.comiteVigente(procesoId, em);
+
+    if (!comite) {
+      throw new ConflictException(
+        'El proceso no tiene comité evaluador designado: la evaluación no puede iniciarse sin él',
+      );
+    }
+
+    return comite;
+  }
+
+  private async dimensionesEnElComite(comiteId: string, acceso: HiringAccess) {
+    const personaId = await this.personaDelUsuario(acceso.userId);
+    if (!personaId) return [];
+
+    const miembros = await this.dataSource
+      .getRepository(MiembroComite)
+      .find({ where: { comiteId, personaId } });
+
+    return miembros.map((m) => m.rol);
+  }
+
+  /**
+   * La persona del directorio detrás de la cuenta que consulta.
+   *
+   * `auth.user.id_person` es lo que enlaza la cuenta con la persona a la que el
+   * memorando designó. Se consulta en crudo y no por una entidad porque
+   * `auth.user` es de otro equipo: mapearla aquí la volvería nuestra, y
+   * cualquier cambio suyo de esquema rompería este servicio al arrancar.
+   */
+  private async personaDelUsuario(userId: string): Promise<string | null> {
+    if (!userId) return null;
+
+    const [fila] = await this.dataSource.query(
+      `SELECT id_person FROM auth."user" WHERE id_user = $1`,
+      [userId],
+    );
+
+    return fila?.id_person ?? null;
   }
 
   // ----------------------------------------------------------- auxiliares --
