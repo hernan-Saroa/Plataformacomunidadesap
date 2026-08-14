@@ -1,5 +1,5 @@
 import { PtaService } from './pta.service';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 
 // Cubre el modelo matriz (pregrado|posgrado) × territorial de Docencia
 // (migraciones 397/398/399): cada combinación (territorial, nivel) debe
@@ -221,6 +221,108 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
       const row = service.ptaTerritorialApprovalRepo.rows.find((r: any) => r.territorialId === 'ter-A' && r.nivel === 'pregrado');
       expect(row.estado).toBe('devuelto');
     });
+
+    it('bloquea re-decidir el MISMO par (A, pregrado) ya devuelto, tanto para aprobar como para devolver de nuevo', async () => {
+      const service = createService();
+      const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
+      const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
+      const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
+
+      // (A, pregrado) ya quedó devuelto de una decisión anterior.
+      service.ptaTerritorialApprovalRepo.rows.push({
+        ptaId: 'pta-1', territorialId: 'ter-A', nivel: 'pregrado', estado: 'devuelto',
+      });
+
+      await expect(service.aprobarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', existingPta, auth, 'aprobado', {}, alcance,
+      )).rejects.toBeInstanceOf(BadRequestException);
+
+      await expect(service.aprobarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', existingPta, auth, 'devuelto', { comentarios: 'Otra vez' }, alcance,
+      )).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('NO bloquea un par independiente (B, pregrado) aunque (A, pregrado) ya esté devuelto — cada combinación territorial×nivel es autónoma', async () => {
+      const service = createService();
+      const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
+
+      // (A, pregrado) ya devuelto por su propio aprobador.
+      service.ptaTerritorialApprovalRepo.rows.push({
+        ptaId: 'pta-1', territorialId: 'ter-A', nivel: 'pregrado', estado: 'devuelto',
+      });
+
+      // El aprobador de (B, pregrado) es una persona distinta, sin alcance sobre A.
+      const authB = authCon({ territorialIds: ['ter-B'], allowedNivelesTerritorialAprobar: ['pregrado'] });
+      const alcanceB = await service.assertAlcanceTerritorial('academica_territorial', existingPta, authB, 'aprobar');
+
+      const resultado = await service.aprobarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', existingPta, authB, 'aprobado', {}, alcanceB,
+      );
+
+      // Sigue pendiente (A,posgrado) y (A,pregrado) está devuelto, no aprobado: no consolida.
+      expect(resultado).toBeDefined();
+      const rowB = service.ptaTerritorialApprovalRepo.rows.find((r: any) => r.territorialId === 'ter-B' && r.nivel === 'pregrado');
+      expect(rowB.estado).toBe('aprobado');
+      // (A, pregrado) sigue devuelto, sin que lo haya tocado la decisión de B.
+      const rowA = service.ptaTerritorialApprovalRepo.rows.find((r: any) => r.territorialId === 'ter-A' && r.nivel === 'pregrado');
+      expect(rowA.estado).toBe('devuelto');
+    });
+
+    it('bloquea volver a APROBAR un par (A, pregrado) que ya fue aprobado', async () => {
+      const service = createService();
+      const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
+      const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
+      const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
+
+      // (A, pregrado) ya está aprobado.
+      service.ptaTerritorialApprovalRepo.rows.push({
+        ptaId: 'pta-1', territorialId: 'ter-A', nivel: 'pregrado', estado: 'aprobado',
+      });
+
+      await expect(service.aprobarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', existingPta, auth, 'aprobado', {}, alcance,
+      )).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('sí permite DEVOLVER un par (A, pregrado) que ya estaba aprobado (el aprobador se puede arrepentir)', async () => {
+      const service = createService();
+      const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
+      const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
+      const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
+
+      service.ptaTerritorialApprovalRepo.rows.push({
+        ptaId: 'pta-1', territorialId: 'ter-A', nivel: 'pregrado', estado: 'aprobado',
+      });
+
+      const resultado = await service.aprobarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', existingPta, auth, 'devuelto', { comentarios: 'Me equivoqué' }, alcance,
+      );
+
+      expect(resultado).toBeUndefined(); // devolver siempre se propaga
+      const row = service.ptaTerritorialApprovalRepo.rows.find((r: any) => r.territorialId === 'ter-A' && r.nivel === 'pregrado');
+      expect(row.estado).toBe('devuelto');
+    });
+
+    it('en un pedido con varios pares propios, excluye en silencio los ya aprobados y aprueba solo los que faltan', async () => {
+      const service = createService();
+      const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
+      // Este actor cubre (A, pregrado) Y (A, posgrado).
+      const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado', 'posgrado'] });
+      const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
+
+      // (A, pregrado) ya aprobado; (A, posgrado) sigue pendiente.
+      service.ptaTerritorialApprovalRepo.rows.push({
+        ptaId: 'pta-1', territorialId: 'ter-A', nivel: 'pregrado', estado: 'aprobado',
+      });
+
+      const resultado = await service.aprobarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', existingPta, auth, 'aprobado', {}, alcance,
+      );
+
+      expect(resultado).toBeDefined(); // sigue pendiente (B, pregrado): no consolida
+      const rowPosgrado = service.ptaTerritorialApprovalRepo.rows.find((r: any) => r.territorialId === 'ter-A' && r.nivel === 'posgrado');
+      expect(rowPosgrado.estado).toBe('aprobado');
+    });
   });
 
   describe('revisarComponenteTerritorialParcial (fix del bug reportado)', () => {
@@ -275,6 +377,40 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
 
       expect(resultado).toBeUndefined();
       expect(service.ptaTerritorialReviewRepo.rows).toHaveLength(0);
+    });
+
+    it('bloquea volver a REVISAR un par (A, pregrado) que ya fue revisado', async () => {
+      const service = createService();
+      const existingPta = { datosEstructurados: makePtaConTresPares().datosEstructurados };
+      const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialRevisar: ['pregrado'] });
+      const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'revisar');
+
+      service.ptaTerritorialReviewRepo.rows.push({
+        ptaId: 'pta-1', territorialId: 'ter-A', nivel: 'pregrado', estado: 'revisado',
+      });
+
+      await expect(service.revisarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', auth, 'revisado', {}, alcance,
+      )).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('en un pedido con varios pares propios, excluye en silencio los ya revisados y revisa solo los que faltan', async () => {
+      const service = createService();
+      const existingPta = { datosEstructurados: makePtaConTresPares().datosEstructurados };
+      const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialRevisar: ['pregrado', 'posgrado'] });
+      const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'revisar');
+
+      service.ptaTerritorialReviewRepo.rows.push({
+        ptaId: 'pta-1', territorialId: 'ter-A', nivel: 'pregrado', estado: 'revisado',
+      });
+
+      const resultado = await service.revisarComponenteTerritorialParcial(
+        'pta-1', 'academica_territorial', auth, 'revisado', {}, alcance,
+      );
+
+      expect(resultado).toBeDefined(); // sigue pendiente (B, pregrado): no consolida
+      const rowPosgrado = service.ptaTerritorialReviewRepo.rows.find((r: any) => r.territorialId === 'ter-A' && r.nivel === 'posgrado');
+      expect(rowPosgrado.estado).toBe('revisado');
     });
   });
 });

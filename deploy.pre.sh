@@ -71,6 +71,7 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-gestion-legal
     frontend-mfe-pta
     frontend-mfe-contratacion
+    frontend-mfe-viaticos
 )
 FRONTEND_MFE_APP_SERVICES=(
     frontend-shell
@@ -88,6 +89,7 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-gestion-legal
     frontend-mfe-pta
     frontend-mfe-contratacion
+    frontend-mfe-viaticos
 )
 BACKEND_ENV_SERVICES=(
     api-gateway
@@ -380,6 +382,10 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-contratacion"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-viaticos/*)
+                service_name="frontend-mfe-viaticos"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/shell/*)
                 service_name="frontend-shell"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -456,6 +462,7 @@ resolve_mfe_service() {
         gestion-legal|mfe-gestion-legal|frontend-mfe-gestion-legal) echo "frontend-mfe-gestion-legal" ;;
         pta|mfe-pta|frontend-mfe-pta) echo "frontend-mfe-pta" ;;
         contratacion|mfe-contratacion|frontend-mfe-contratacion) echo "frontend-mfe-contratacion" ;;
+        viaticos|mfe-viaticos|frontend-mfe-viaticos) echo "frontend-mfe-viaticos" ;;
         *) return 1 ;;
     esac
 }
@@ -690,27 +697,27 @@ cmd_up_mfe() {
         exit 1
     fi
     echo -e "${GREEN}Iniciando frontend desacoplado PRE...${NC}"
-    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
+    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE PRE iniciado exitosamente${NC}"
 }
 
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado PRE...${NC}"
-    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
+    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     echo -e "${GREEN}Frontend MFE PRE detenido${NC}"
 }
 
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado PRE...${NC}"
-    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
+    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE PRE reiniciado${NC}"
 }
 
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado PRE:${NC}"
-    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
+    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
 }
 
 cmd_logs_mfe() {
@@ -768,6 +775,7 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-gestion-legal"
         "frontend-mfe-pta"
         "frontend-mfe-contratacion"
+        "frontend-mfe-viaticos"
     )
     echo -e "${GREEN}Selecciona un servicio frontend MFE PRE para rebuild:${NC}"
     PS3="Ingresa el número (o Ctrl+C para cancelar): "

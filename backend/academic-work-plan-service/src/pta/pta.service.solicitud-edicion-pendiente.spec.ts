@@ -1,6 +1,6 @@
 import { PtaService } from './pta.service';
 
-describe('PtaService - solicitud de edicion durante aprobacion', () => {
+describe('PtaService - solicitud de edicion bloqueada durante creacion/aprobacion (EFDS-1408)', () => {
   const authAdmin = {
     userId: 'admin-1',
     name: 'Administrador PTA',
@@ -13,12 +13,12 @@ describe('PtaService - solicitud de edicion durante aprobacion', () => {
     approvalLevels: [1, 2, 3],
   };
 
-  it('permite solicitar edicion desde Pendiente Jefatura y la rechaza en Borrador', async () => {
+  it('rechaza la solicitud de edicion en Borrador y en medio de la aprobacion; la admite una vez Aprobado', async () => {
     const service = Object.create(PtaService.prototype) as any;
     const pta = {
       id: 'pta-1',
       docenteId: 'docente-1',
-      estado: 'Pendiente Jefatura',
+      estado: 'Borrador',
       periodo: '2026-2',
       version: 2,
       datosEstructurados: { docente_nombre: 'Docente Prueba' },
@@ -47,19 +47,27 @@ describe('PtaService - solicitud de edicion durante aprobacion', () => {
       justificacion: 'Necesito corregir un dato antes de que finalice la aprobacion.',
     };
 
-    await expect(service.crearSolicitudPTA(payload)).resolves.toMatchObject({
-      ptaId: 'pta-1',
-      estado: 'pendiente',
-      estadoPtaAnterior: 'Pendiente Jefatura',
-    });
-
-    pta.estado = 'Borrador';
+    // En creacion (Borrador): bloqueada.
     await expect(service.crearSolicitudPTA(payload)).rejects.toThrow(
       /no admite una solicitud/i,
     );
+
+    // A mitad del proceso de aprobacion (aun no aprobado en su totalidad): bloqueada.
+    pta.estado = 'Pendiente Jefatura';
+    await expect(service.crearSolicitudPTA(payload)).rejects.toThrow(
+      /no admite una solicitud/i,
+    );
+
+    // Una vez aprobado en su totalidad: habilitada.
+    pta.estado = 'Aprobado';
+    await expect(service.crearSolicitudPTA(payload)).resolves.toMatchObject({
+      ptaId: 'pta-1',
+      estado: 'pendiente',
+      estadoPtaAnterior: 'Aprobado',
+    });
   });
 
-  it('al autorizar la correccion conserva pendientes los componentes no seleccionados', async () => {
+  it('al autorizar la correccion sobre un PTA ya aprobado consolida como aprobados los componentes residuales no seleccionados', async () => {
     const service = Object.create(PtaService.prototype) as any;
     const solicitud = {
       id: 'sol-1',
@@ -68,13 +76,13 @@ describe('PtaService - solicitud de edicion durante aprobacion', () => {
       tipoSolicitud: 'edicion_componentes',
       ptaId: 'pta-1',
       componentes: ['investigacion'],
-      justificacion: 'Corregir el componente antes de la aprobacion.',
+      justificacion: 'Corregir el componente ya aprobado.',
       estado: 'pendiente',
     };
     const pta = {
       id: 'pta-1',
       docenteId: 'docente-1',
-      estado: 'Pendiente Jefatura',
+      estado: 'Aprobado',
       version: 2,
       datosEstructurados: { docente_nombre: 'Docente Prueba' },
     };
@@ -143,22 +151,31 @@ describe('PtaService - solicitud de edicion durante aprobacion', () => {
       estado: 'devuelto',
       scope: 'solicitud_edicion',
     }));
-    expect(approvalSave).not.toHaveBeenCalledWith(expect.objectContaining({
+    // 'academica' seguía 'pendiente' con el PTA ya Aprobado: es un residuo
+    // histórico de antes de la matriz granular y se consolida como aprobado
+    // al reabrir otro componente (EFDS-1408: la solicitud de edición solo
+    // procede sobre un PTA ya cerrado, así que cualquier pendiente restante
+    // aquí no puede ser un componente en aprobación inicial real).
+    expect(approvalSave).toHaveBeenCalledWith(expect.objectContaining({
       componente: 'academica',
       estado: 'aprobado',
+      aprobadorRol: 'Consolidación histórica',
     }));
-    expect(approvals.find(row => row.componente === 'academica')?.estado).toBe('pendiente');
+    // 'complementarias' ya estaba aprobado explícitamente: no se re-guarda.
+    expect(approvalSave).not.toHaveBeenCalledWith(expect.objectContaining({
+      componente: 'complementarias',
+    }));
     expect(ptaSave).toHaveBeenCalledWith(expect.objectContaining({
       estado: 'REVISION_DOCENTE_N2',
     }));
   });
 
-  it('finaliza en Aprobado cuando termina la correccion solicitada durante la aprobacion inicial', async () => {
+  it('finaliza en Aprobado cuando termina la correccion solicitada sobre un PTA ya aprobado', async () => {
     const service = Object.create(PtaService.prototype) as any;
     const pta = {
       id: 'pta-1',
       docenteId: 'docente-1',
-      estado: 'Pendiente Jefatura',
+      estado: 'REVISION_DOCENTE_N2',
       version: 5,
       datosEstructurados: { docente_nombre: 'Docente Prueba' },
     };
@@ -174,7 +191,7 @@ describe('PtaService - solicitud de edicion durante aprobacion', () => {
       ptaId: 'pta-1',
       tipoSolicitud: 'edicion_componentes',
       estado: 'en_aprobacion',
-      estadoPtaAnterior: 'Pendiente Jefatura',
+      estadoPtaAnterior: 'Aprobado',
       componentes: ['investigacion'],
     };
     const allApproved = [

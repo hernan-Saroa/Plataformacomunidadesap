@@ -226,10 +226,13 @@ const ESTADOS_SOLICITUD_EDICION_ACTIVA = ['pendiente', 'aprobado', 'en_aprobacio
 
 function ptaAdmiteSolicitudEdicion(value: unknown): boolean {
   const estado = normalizeEstadoFilter(value);
-  // Una vez enviado, el PTA puede requerir una corrección en cualquier punto
-  // de su ciclo. El Borrador no necesita autorización porque todavía es
-  // editable directamente por su propietario.
-  return Boolean(estado) && estado !== 'BORRADOR';
+  // EFDS-1408: esta solicitud reabre componentes YA aprobados, por lo que
+  // solo tiene sentido una vez el PTA completó su aprobación (mismos estados
+  // "cerrados" que ESTADOS_PTA_RESTAURABLES_EDICION usa para la reapertura
+  // post-cierre). Mientras el PTA está en Borrador o en medio del proceso de
+  // aprobación, el docente corrige directamente vía devolución de
+  // componente, no con esta solicitud.
+  return ESTADOS_PTA_RESTAURABLES_EDICION.has(estado);
 }
 
 function normalizeSolicitudComponentes(value: unknown): string[] {
@@ -5587,23 +5590,22 @@ export class PtaService {
         const currentApprovals = await txApprovalRepo.find({
           where: { ptaId: txPta.id, componente: In([...COMPONENT_APPROVAL_KEYS]) },
         });
-        // Los PTA históricos aprobados antes de existir la matriz granular
-        // pueden traer filas residuales pendientes; solo en esos estados se
-        // consolidan los componentes no elegidos. Si el PTA sigue en su
-        // aprobación inicial, cada pendiente debe conservarse exactamente para
-        // no conceder avales implícitos al autorizar una corrección.
-        if (ESTADOS_PTA_RESTAURABLES_EDICION.has(normalizeEstadoFilter(estadoAnterior))) {
-          for (const current of currentApprovals) {
-            if (approvalKeys.includes(current.componente) || current.estado === 'aprobado') continue;
-            current.estado = 'aprobado';
-            current.aprobadorId = current.aprobadorId || 'sistema';
-            current.aprobadorNombre = current.aprobadorNombre || 'Sistema';
-            current.aprobadorRol = current.aprobadorRol || 'Consolidación histórica';
-            current.comentarios = current.comentarios
-              || 'Aprobación conservada al iniciar una edición parcial.';
-            current.fechaAprobacion = current.fechaAprobacion || new Date();
-            await txApprovalRepo.save(current);
-          }
+        // Los PTA históricos aprobados antes de existir la matriz granular pueden
+        // traer filas residuales pendientes. El guard de ptaAdmiteSolicitudEdicion
+        // (arriba) ya exige que estadoAnterior esté entre los estados "cerrados"
+        // (EFDS-1408: la solicitud de edición solo aplica sobre un PTA aprobado en
+        // su totalidad), así que cualquier componente no elegido que siga
+        // 'pendiente' aquí es residual y se consolida como aprobado.
+        for (const current of currentApprovals) {
+          if (approvalKeys.includes(current.componente) || current.estado === 'aprobado') continue;
+          current.estado = 'aprobado';
+          current.aprobadorId = current.aprobadorId || 'sistema';
+          current.aprobadorNombre = current.aprobadorNombre || 'Sistema';
+          current.aprobadorRol = current.aprobadorRol || 'Consolidación histórica';
+          current.comentarios = current.comentarios
+            || 'Aprobación conservada al iniciar una edición parcial.';
+          current.fechaAprobacion = current.fechaAprobacion || new Date();
+          await txApprovalRepo.save(current);
         }
 
         for (const componente of approvalKeys) {
@@ -8203,6 +8205,59 @@ export class PtaService {
     const actorRol = coalesceString(body?.aprobadorRol, body?.aprobador_rol) || (auth.roles || []).join(', ') || null;
     const comentarios = coalesceString(body?.comentarios, body?.observaciones);
 
+    // Bloqueo de re-decisión, acotado al PAR (territorial, nivel) — no al
+    // componente completo. Cada una de las 2N combinaciones (pregrado|posgrado ×
+    // territorial) es independiente: que Territorial 1/Pregrado ya esté
+    // devuelto o aprobado no puede impedir que Territorial 2/Pregrado (u otro
+    // par cualquiera) se decida. El candado equivalente sobre la fila
+    // consolidada (arriba, antes de aprobarComponenteTerritorialParcial) se
+    // salta deliberadamente cuando hay 2+ pares para dejar que este chequeo,
+    // más fino, sea el que decide.
+    //
+    // Un par ya NO admite la decisión pedida cuando:
+    // - ya está 'devuelto' (sin importar qué se pida ahora: sigue pendiente de
+    //   corrección del docente, ni se aprueba ni se vuelve a devolver), o
+    // - ya está exactamente en el estado que se está pidiendo ahora (reintento
+    //   de la misma decisión — p.ej. volver a aprobar algo ya aprobado). Sí se
+    //   permite devolver un par ya aprobado (el aprobador puede arrepentirse).
+    //
+    // El frontend hoy no manda territorialId/nivel explícitos (siempre pide
+    // "decide sobre TODOS mis pares propios"), así que no se puede distinguir
+    // "reintento deliberado sobre un par puntual" de "lote sobre varios pares"
+    // por la forma del pedido. En su lugar: si TODOS los pares que le tocan al
+    // actor ya quedan bloqueados por lo anterior, no hay nada nuevo que hacer →
+    // se rechaza (cubre el caso normal: un aprobador de una sola territorial
+    // que reintenta sobre la que ya resolvió). Si es una MEZCLA (p.ej. un actor
+    // con varias territoriales propias, o el superusuario) esos pares se
+    // excluyen en silencio y se sigue con los que faltan, sin bloquearlos.
+    const yaResueltos = targets.filter((t) => {
+      const estadoActual = rowByKey.get(keyOf(t.territorialId, t.nivel))?.estado;
+      return estadoActual === 'devuelto' || estadoActual === estado;
+    });
+    if (yaResueltos.length === targets.length) {
+      const yaDevueltos = yaResueltos.filter((t) => rowByKey.get(keyOf(t.territorialId, t.nivel))?.estado === 'devuelto');
+      const nombresDevueltos = await this.resolveNombresSeccionales(Array.from(new Set(yaDevueltos.map((t) => t.territorialId))));
+      const yaEnEseEstado = yaResueltos.filter((t) => !yaDevueltos.includes(t));
+      const nombresEnEseEstado = await this.resolveNombresSeccionales(Array.from(new Set(yaEnEseEstado.map((t) => t.territorialId))));
+      const partes: string[] = [];
+      if (nombresDevueltos.length > 0) {
+        partes.push(
+          `${nombresDevueltos.join(', ')} ya fue(ron) devuelta(s) y está(n) pendiente(s) de corrección por el docente`,
+        );
+      }
+      if (nombresEnEseEstado.length > 0) {
+        partes.push(
+          estado === 'aprobado'
+            ? `${nombresEnEseEstado.join(', ')} ya fue(ron) aprobada(s)`
+            : `${nombresEnEseEstado.join(', ')} ya fue(ron) devuelta(s)`,
+        );
+      }
+      throw new BadRequestException(`${partes.join('; ')}. No se puede volver a ${estado === 'aprobado' ? 'aprobar' : 'devolver'}.`);
+    }
+    if (yaResueltos.length > 0) {
+      targets = targets.filter((t) => !yaResueltos.some((y) => y.territorialId === t.territorialId && y.nivel === t.nivel));
+    }
+
     for (const { territorialId, nivel } of targets) {
       const key = keyOf(territorialId, nivel);
       let row = rowByKey.get(key);
@@ -8321,6 +8376,19 @@ export class PtaService {
     const revisorNombre = auth.name || coalesceString(body?.revisorNombre, body?.revisor_nombre);
     const revisorRol = coalesceString(body?.revisorRol, body?.revisor_rol) || (auth.roles || []).join(', ') || null;
     const comentarios = coalesceString(body?.comentarios, body?.observaciones);
+
+    // Bloqueo de re-revisión, acotado al PAR — espejo del mismo candado en
+    // aprobarComponenteTerritorialParcial. Si TODOS los pares que le tocan al
+    // actor ya están revisados, no hay nada nuevo → se rechaza. Si es una
+    // mezcla, los ya revisados se excluyen en silencio, sin bloquear el resto.
+    const yaRevisados = targets.filter((t) => rowByKey.get(keyOf(t.territorialId, t.nivel))?.estado === 'revisado');
+    if (yaRevisados.length === targets.length) {
+      const nombres = await this.resolveNombresSeccionales(Array.from(new Set(yaRevisados.map((t) => t.territorialId))));
+      throw new BadRequestException(`La(s) territorial(es) ${nombres.join(', ')} ya fue(ron) revisada(s). No se puede volver a revisar.`);
+    }
+    if (yaRevisados.length > 0) {
+      targets = targets.filter((t) => !yaRevisados.some((y) => y.territorialId === t.territorialId && y.nivel === t.nivel));
+    }
 
     for (const { territorialId, nivel } of targets) {
       const key = keyOf(territorialId, nivel);
@@ -8826,7 +8894,16 @@ export class PtaService {
     // resolver) o generar una segunda devolución duplicada sobre el mismo
     // registro. Se libera automáticamente cuando el docente corrige y reenvía
     // (resetComponentApprovalWorkflow vuelve el estado a 'pendiente').
-    if (approval.estado === 'devuelto') {
+    //
+    // Excepción: "academica_territorial" con 2+ territoriales distintas en este
+    // PTA. Ahí la fila consolidada (`approval`) es compartida por las 2N
+    // combinaciones (pregrado|posgrado × territorial), así que este candado por
+    // fila única bloquearía a Territorial 2 solo porque Territorial 1 devolvió
+    // su parte. En ese caso el candado correcto (por par, no por componente) lo
+    // aplica aprobarComponenteTerritorialParcial más abajo.
+    const esTerritorialConVariosPares = componente === 'academica_territorial'
+      && (alcanceTerritorial?.pares?.length ?? 0) >= 2;
+    if (approval.estado === 'devuelto' && !esTerritorialConVariosPares) {
       throw new BadRequestException(
         `El componente "${componente}" ya fue devuelto y está pendiente de corrección por el docente. ` +
           'No se puede aprobar ni volver a devolver hasta que el docente corrija y reenvíe el componente.',
@@ -9101,6 +9178,12 @@ export class PtaService {
       throw new ForbiddenException('No autenticado para aprobar componentes del PTA.');
     }
 
+    const decisionRaw = coalesceString(body?.estado);
+    if (decisionRaw && !['aprobado', 'devuelto'].includes(decisionRaw)) {
+      throw new BadRequestException('El estado de la decisión masiva debe ser "aprobado" o "devuelto".');
+    }
+    const decision: 'aprobado' | 'devuelto' = decisionRaw === 'devuelto' ? 'devuelto' : 'aprobado';
+
     const ptaIds: string[] = Array.isArray(body?.ptaIds)
       ? Array.from(new Set<string>(
           (body.ptaIds as unknown[])
@@ -9130,7 +9213,7 @@ export class PtaService {
     type ResultadoLote = {
       ptaId: string;
       componente: string;
-      estado: 'aprobado' | 'omitido' | 'fallido';
+      estado: 'aprobado' | 'devuelto' | 'omitido' | 'fallido';
       motivo?: string;
     };
     const resultados: ResultadoLote[] = [];
@@ -9167,8 +9250,13 @@ export class PtaService {
           resultados.push({ ptaId, componente, estado: 'omitido', motivo: 'No aplica a este PTA' });
           continue;
         }
-        if (estadoActual === 'aprobado') {
-          resultados.push({ ptaId, componente, estado: 'omitido', motivo: 'Ya estaba aprobado' });
+        if (estadoActual === decision) {
+          resultados.push({
+            ptaId,
+            componente,
+            estado: 'omitido',
+            motivo: decision === 'aprobado' ? 'Ya estaba aprobado' : 'Ya estaba devuelto',
+          });
           continue;
         }
         if (estadoActual === 'devuelto') {
@@ -9181,22 +9269,22 @@ export class PtaService {
           continue;
         }
         try {
-          // Mismo body que enviaría la aprobación individual (ver
+          // Mismo body que enviaría la aprobación/devolución individual (ver
           // ejecutarAprobacionComponente en PTADetallePanelBackoffice.tsx): la
           // identidad real (aprobadorId/aprobadorNombre) la impone auth server-side
           // igual que allá, pero aprobadorRol sí se respeta desde el body — sin
-          // pasarlo, la trazabilidad de un componente aprobado en lote mostraría el
-          // rol crudo del token en vez del mismo rótulo que dejaría la aprobación
-          // individual.
+          // pasarlo, la trazabilidad de un componente aprobado/devuelto en lote
+          // mostraría el rol crudo del token en vez del mismo rótulo que dejaría
+          // la acción individual.
           await this.aprobarComponente(ptaId, {
             componente,
-            estado: 'aprobado',
+            estado: decision,
             comentarios: body?.comentarios,
             aprobadorId: body?.aprobadorId,
             aprobadorNombre: body?.aprobadorNombre,
             aprobadorRol: body?.aprobadorRol,
           }, auth);
-          resultados.push({ ptaId, componente, estado: 'aprobado' });
+          resultados.push({ ptaId, componente, estado: decision });
         } catch (error) {
           resultados.push({
             ptaId,
@@ -9212,11 +9300,12 @@ export class PtaService {
       (acc, r) => {
         acc.total += 1;
         if (r.estado === 'aprobado') acc.aprobados += 1;
+        else if (r.estado === 'devuelto') acc.devueltos += 1;
         else if (r.estado === 'omitido') acc.omitidos += 1;
         else acc.fallidos += 1;
         return acc;
       },
-      { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 },
+      { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 },
     );
 
     return { resumen, resultados };

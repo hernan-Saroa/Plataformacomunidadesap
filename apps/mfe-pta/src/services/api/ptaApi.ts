@@ -577,13 +577,17 @@ export async function aprobarComponente(ptaId: string, data: {
 export type AprobarComponentesLoteResultado = {
   ptaId: string;
   componente: string;
-  estado: 'aprobado' | 'omitido' | 'fallido';
+  estado: 'aprobado' | 'devuelto' | 'omitido' | 'fallido';
   motivo?: string;
 };
 
 export async function aprobarComponentesLote(data: {
   ptaIds: string[];
   componentes: string[];
+  // Decisión a aplicar en lote sobre cada (ptaId, componente): por defecto 'aprobado'.
+  // 'devuelto' reutiliza la misma autorización/validación por componente que la
+  // devolución individual (ejecutarAprobacionComponente en PTADetallePanelBackoffice.tsx).
+  estado?: 'aprobado' | 'devuelto';
   comentarios?: string;
   // Mismos campos que aprobarComponente(): el backend prioriza la identidad del
   // token (auth.userId/name) para aprobadorId/aprobadorNombre, pero aprobadorRol
@@ -597,15 +601,15 @@ export async function aprobarComponentesLote(data: {
   try {
     const raw = await apiClient.post<any>(`${PTA_BASE}/aprobar-componentes-lote`, data);
     const normalized = normalizeResult<{
-      resumen: { total: number; aprobados: number; omitidos: number; fallidos: number };
+      resumen: { total: number; aprobados: number; devueltos: number; omitidos: number; fallidos: number };
       resultados: AprobarComponentesLoteResultado[];
-    }>(raw, { resumen: { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
+    }>(raw, { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][aprobarComponentesLote] Error:', error);
     return {
       success: false,
-      data: { resumen: { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
+      data: { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
       message: (error as any)?.message || 'Error al aprobar los componentes seleccionados',
     };
   }
