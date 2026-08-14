@@ -140,6 +140,20 @@ export const ROLES_ADENDAS = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién registra las ofertas recibidas y cierra la recepción (actividad 6.1,
+ * EFDS-1155).
+ *
+ * Primera actividad de la etapa 6 y sigue siendo el gestor del proceso quien la
+ * lleva: recibe las ofertas en ventanilla y cierra al vencimiento. La
+ * evaluación, que es otra cosa, tendrá sus propios roles cuando llegue.
+ */
+export const ROLES_OFERTAS = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

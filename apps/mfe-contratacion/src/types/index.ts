@@ -555,6 +555,60 @@ export interface EstadoDocumentos {
   completa: boolean;
 }
 
+// ------------------- etapa 6 · recepción de ofertas (6.1, EFDS-1155) --------
+
+/** Una oferta recibida dentro del plazo, con su soporte. */
+export interface Oferente {
+  id: string;
+  /** Consecutivo por orden de llegada dentro del proceso. */
+  numero: number;
+  nombre: string;
+  identificacion: string;
+  /** Instante ISO: la hora de radicación importa tanto como el día. */
+  fechaRadicacion: string;
+  registradoPor: string | null;
+  soporte: ArchivoApertura | null;
+}
+
+/** El plazo de ofertas del proceso y su cierre. */
+export interface RecepcionOfertas {
+  id: string;
+  estado: 'ABIERTA' | 'CERRADA';
+  /** Instante ISO hasta el que se reciben ofertas. */
+  vencimiento: string;
+  /** El mismo vencimiento como día en Bogotá, para mostrarlo sin recalcularlo. */
+  vencimientoDia: string;
+  /** Nulo cuando el vencimiento se fijó a mano en vez de calcularse. */
+  plazoDiasHabiles: number | null;
+  vencido: boolean;
+  diasHabilesRestantes: number;
+  estadoPlazo: 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' | 'SIN_PLAZO';
+  cerradaAt: string | null;
+  cerradaPor: string | null;
+}
+
+/** Estado de la recepción de ofertas del proceso. */
+export interface EstadoOfertas {
+  /** False donde la modalidad no adelanta recepción de ofertas. */
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  etapa: number;
+  /** Sin resolución de apertura no hay convocatoria a la que presentarse. */
+  abierto: boolean;
+  /** False cuando la modalidad no tiene plazo de ofertas parametrizado. */
+  plazoParametrizado: boolean;
+  /** Los plazos entraron como supuesto del equipo, sin ratificar. */
+  plazoConfirmado: boolean;
+  recepcion: RecepcionOfertas | null;
+  puedeRegistrar: boolean;
+  puedeCerrar: boolean;
+  /** Lo que vuelve pública la lista es el cierre. */
+  listaPublicada: boolean;
+  oferentes: Oferente[];
+}
+
 /** Error 422 del envío: trae la lista de campos que faltan. */
 export class CamposFaltantesError extends Error {
   constructor(

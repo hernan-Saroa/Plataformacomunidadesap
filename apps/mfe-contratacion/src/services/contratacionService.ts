@@ -11,6 +11,7 @@ import {
   EstadoDocumentos,
   EstadoMipyme,
   EstadoObservaciones,
+  EstadoOfertas,
   EstadoPublicacion,
   EstadoRespaldo,
   EstudioPrevio,
@@ -174,6 +175,50 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
+
+  // ------------------------ etapa 6 · recepción de ofertas (6.1) ------------
+
+  /** Estado de la recepción: el plazo, si sigue abierta y qué ofertas van. */
+  ofertas: (procesoId: string) => pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas`),
+
+  /**
+   * Fija o corrige el vencimiento del plazo.
+   *
+   * Hace falta cuando la modalidad no tiene plazo parametrizado, y cuando el
+   * cronograma cierra a una hora distinta del final del día que calcula la
+   * plataforma. Se manda en ISO con zona para que no dependa del navegador.
+   */
+  fijarPlazoOfertas: (procesoId: string, vencimiento: string) =>
+    pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas/plazo`, {
+      method: 'PUT',
+      body: JSON.stringify({ vencimiento }),
+    }),
+
+  /** Registra una oferta recibida en ventanilla, con su soporte. */
+  registrarOferente: (
+    procesoId: string,
+    datos: { nombre: string; identificacion: string; fechaRadicacion: string },
+    soporte: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+    cuerpo.append('nombre', datos.nombre);
+    cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaRadicacion', datos.fechaRadicacion);
+
+    return pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Retira una oferta registrada por error; solo antes del cierre. */
+  retirarOferente: (procesoId: string, oferenteId: string) =>
+    pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas/${oferenteId}`, { method: 'DELETE' }),
+
+  /** Cierra la recepción al vencimiento y con ello publica la lista. */
+  cerrarRecepcion: (procesoId: string) =>
+    pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas/cerrar`, { method: 'POST' }),
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
 

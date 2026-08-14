@@ -15,6 +15,7 @@ import { DocumentosModule } from './modules/documentos/documentos.module';
 import { AperturaModule } from './modules/apertura/apertura.module';
 import { RiesgosModule } from './modules/riesgos/riesgos.module';
 import { AdendasModule } from './modules/adendas/adendas.module';
+import { OfertasModule } from './modules/ofertas/ofertas.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -43,6 +44,9 @@ import { DocumentoProceso } from './entities/documento-proceso.entity';
 import { AperturaProceso } from './entities/apertura-proceso.entity';
 import { AudienciaRiesgos, AudienciaRiesgosConfig } from './entities/audiencia-riesgos.entity';
 import { Adenda } from './entities/adenda.entity';
+import { RecepcionOfertas } from './entities/recepcion-ofertas.entity';
+import { Oferente } from './entities/oferente.entity';
+import { PlazoOfertas } from './entities/plazo-ofertas.entity';
 
 @Module({
   imports: [
@@ -60,7 +64,7 @@ import { Adenda } from './entities/adenda.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -81,6 +85,7 @@ import { Adenda } from './entities/adenda.entity';
     AperturaModule,
     RiesgosModule,
     AdendasModule,
+    OfertasModule,
   ],
   controllers: [HealthController],
   providers: [
