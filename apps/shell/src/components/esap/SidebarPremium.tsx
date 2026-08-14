@@ -38,7 +38,8 @@ import {
   Building2,
   BarChart3,
   Gavel,
-  Rows4
+  Rows4,
+  Plane
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { ESAPLogo } from '../assets/ESAPLogo';
@@ -46,7 +47,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos';
 
 export interface ActiveModuleItem {
   code: string;
@@ -99,6 +100,7 @@ function getModuleAliases(module: string): string[] {
     'auditoria': ['audit', 'auditoria'],
     'contratacion': ['contratacion', 'hiring'],
     'hiring': ['contratacion', 'hiring'],
+    'viaticos': ['viaticos', 'travel-expenses'],
     'users-management': ['users-management', 'users'],
     'roles-administration': ['roles-administration', 'roles'],
     'graduates': ['graduates'],
@@ -131,6 +133,7 @@ const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string
   'control-disciplinario': { name: 'Control Interno Disciplinario', description: 'Procesos disciplinarios' },
   'gestion-legal': { name: 'Gestión Legal (SIGL)', description: 'Sistema Integrado Legal' },
   'contratacion': { name: 'Contratación', description: 'Licitaciones y Contratos' },
+  'viaticos': { name: 'Viáticos y Gastos de Viaje', description: 'Comisiones de Servicios y Tiquetes' },
 };
 
 export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [], activeModules = [], activeModuleCodes: propsActiveModuleCodes, userPermissions = [] }: SidebarProps) {
@@ -1240,6 +1243,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   {renderMenuItem('control-disciplinario', <Gavel className="w-5 h-5" strokeWidth={2} />)}
                   {renderMenuItem('gestion-legal', <Scale className="w-5 h-5" strokeWidth={2} />)}
                   {renderMenuItem('contratacion', <FileText className="w-5 h-5" strokeWidth={2} />)}
+                  {renderMenuItem('viaticos', <Plane className="w-5 h-5" strokeWidth={2} />)}
                 </motion.div>
               )}
             </AnimatePresence>
