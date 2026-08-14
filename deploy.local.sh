@@ -112,6 +112,7 @@ resolve_mfe_service() {
     gestion-legal|mfe-gestion-legal|frontend-mfe-gestion-legal) echo "frontend-mfe-gestion-legal" ;;
     pta|mfe-pta|frontend-mfe-pta) echo "frontend-mfe-pta" ;;
     contratacion|mfe-contratacion|frontend-mfe-contratacion) echo "frontend-mfe-contratacion" ;;
+    viaticos|mfe-viaticos|frontend-mfe-viaticos) echo "frontend-mfe-viaticos" ;;
     *) return 1 ;;
   esac
 }
@@ -162,7 +163,7 @@ cmd_up_backend() {
 
 cmd_up_frontend() {
   echo -e "${GREEN}Levantando frontend MFE local...${NC}"
-  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
+  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
 }
 
 cmd_logs() {

@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "types": ["vite/client"],
+    "paths": {
+      "@/*": ["src/*"],
+      "@esap-mfe/shared-ui": ["../../packages/shared-ui/src"],
+      "@esap-mfe/shared-hooks": ["../../packages/shared-hooks/src"],
+      "@esap-mfe/shared-types": ["../../packages/shared-types/src"]
+    }
+  },
+  "include": ["src", "config"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
