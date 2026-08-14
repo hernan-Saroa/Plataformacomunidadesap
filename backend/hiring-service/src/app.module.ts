@@ -16,6 +16,7 @@ import { AperturaModule } from './modules/apertura/apertura.module';
 import { RiesgosModule } from './modules/riesgos/riesgos.module';
 import { AdendasModule } from './modules/adendas/adendas.module';
 import { OfertasModule } from './modules/ofertas/ofertas.module';
+import { ComiteModule } from './modules/comite/comite.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -88,6 +89,7 @@ import { MiembroComite } from './entities/miembro-comite.entity';
     RiesgosModule,
     AdendasModule,
     OfertasModule,
+    ComiteModule,
   ],
   controllers: [HealthController],
   providers: [

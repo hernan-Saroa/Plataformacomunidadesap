@@ -154,6 +154,23 @@ export const ROLES_OFERTAS = [
   ROL_SUPER_ADMIN,
 ];
 
+/** Ordenador del Gasto: designa el comité evaluador (actividad 6.2). */
+export const ROL_ORDENADOR_GASTO = 'ORDENADOR_GASTO';
+
+/** Las tres dimensiones del comité evaluador (RF-SIS-02). */
+export const ROL_EVALUADOR_JURIDICO = 'EVALUADOR_JURIDICO';
+export const ROL_EVALUADOR_FINANCIERO = 'EVALUADOR_FINANCIERO';
+export const ROL_EVALUADOR_TECNICO = 'EVALUADOR_TECNICO';
+
+/**
+ * Quién designa el comité evaluador (actividad 6.2, EFDS-1156).
+ *
+ * Más estrecho que el resto de la etapa a propósito: la historia dice que la
+ * designación es del Ordenador del Gasto, y es él quien responde por a quién
+ * nombra. El gestor lleva el proceso, pero no elige a los evaluadores.
+ */
+export const ROLES_DESIGNAR_COMITE = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
