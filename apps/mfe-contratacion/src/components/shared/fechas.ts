@@ -37,6 +37,24 @@ export function momento(iso: string): string {
   });
 }
 
+/**
+ * Instante con hora, en Bogotá.
+ *
+ * En la etapa 6 la hora no es un detalle: la recepción de ofertas cierra a una
+ * hora concreta, y de ella depende si la oferta radicada esa misma mañana entró
+ * en término. `momento` se queda en el día porque en la etapa 5 basta.
+ */
+export function momentoConHora(iso: string): string {
+  return new Date(iso).toLocaleString('es-CO', {
+    timeZone: 'America/Bogota',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 /** Hoy en Bogotá, en `YYYY-MM-DD`: el valor por defecto de los campos de fecha. */
 export function hoyEnBogota(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
