@@ -609,6 +609,55 @@ export interface EstadoOfertas {
   oferentes: Oferente[];
 }
 
+// -------------------- etapa 6 · comité evaluador (6.2, EFDS-1156) -----------
+
+/** Las tres dimensiones de la evaluación (RF-SIS-02). */
+export type RolEvaluador = 'JURIDICO' | 'FINANCIERO' | 'TECNICO';
+
+/** Un integrante del comité, con la dimensión que evalúa. */
+export interface MiembroComite {
+  id: string;
+  /** `id_person` del directorio; es lo que enlaza al evaluador con su cuenta. */
+  personaId: string;
+  nombre: string;
+  rol: RolEvaluador;
+}
+
+/** La designación vigente, con el memorando que la soporta. */
+export interface ComiteDesignado {
+  id: string;
+  fechaDesignacion: string;
+  designadoPor: string | null;
+  designadoAt: string;
+  memorando: ArchivoApertura | null;
+}
+
+/** Estado del comité evaluador del proceso. */
+export interface EstadoComite {
+  /** False donde la modalidad no evalúa por comité. */
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  /** Si quien consulta evalúa en este proceso, y en qué dimensiones. */
+  soyEvaluador: boolean;
+  misDimensiones: RolEvaluador[];
+  /** Las dos condiciones para designar, por separado, para poder decir cuál falta. */
+  recepcionCerrada: boolean;
+  totalOferentes: number;
+  designado: boolean;
+  puedeDesignar: boolean;
+  comite: ComiteDesignado | null;
+  miembros: MiembroComite[];
+}
+
+/** Un miembro todavía sin designar, mientras se arma la lista en pantalla. */
+export interface MiembroPropuesto {
+  personaId: string;
+  nombre: string;
+  rol: RolEvaluador;
+}
+
 /** Error 422 del envío: trae la lista de campos que faltan. */
 export class CamposFaltantesError extends Error {
   constructor(
