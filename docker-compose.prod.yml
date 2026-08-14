@@ -1,4 +1,3 @@
-version: "3.9"
 
 # Docker Compose para entorno PROD (Producción)
 # Servidor: https://comunidadesap.esap.edu.co
