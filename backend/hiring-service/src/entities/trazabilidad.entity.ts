@@ -18,7 +18,10 @@ export type AccionTraza =
   | 'ANULAR'
   // Recepción de ofertas (etapa 6).
   | 'CERRAR'
-  | 'RETIRAR';
+  | 'RETIRAR'
+  // Designación del comité evaluador (etapa 6).
+  | 'DESIGNAR'
+  | 'REVOCAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

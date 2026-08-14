@@ -10,8 +10,10 @@ import {
   ConflictoError,
   EstadoDocumentos,
   EstadoMipyme,
+  EstadoComite,
   EstadoObservaciones,
   EstadoOfertas,
+  MiembroPropuesto,
   EstadoPublicacion,
   EstadoRespaldo,
   EstudioPrevio,
@@ -219,6 +221,40 @@ export const contratacionService = {
   /** Cierra la recepción al vencimiento y con ello publica la lista. */
   cerrarRecepcion: (procesoId: string) =>
     pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas/cerrar`, { method: 'POST' }),
+
+  // -------------------------- etapa 6 · comité evaluador (6.2) --------------
+
+  /** Comité del proceso, sus miembros y si quien consulta evalúa en él. */
+  comite: (procesoId: string) => pedir<EstadoComite>(`/procesos/${procesoId}/comite`),
+
+  /**
+   * Designa el comité con su memorando.
+   *
+   * Los miembros van como JSON dentro del multipart: la petición lleva también
+   * el memorando, y `FormData` no transporta arreglos de objetos.
+   */
+  designarComite: (
+    procesoId: string,
+    datos: { fechaDesignacion: string; miembros: MiembroPropuesto[] },
+    memorando: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', memorando);
+    cuerpo.append('fechaDesignacion', datos.fechaDesignacion);
+    cuerpo.append('miembros', JSON.stringify(datos.miembros));
+
+    return pedir<EstadoComite>(`/procesos/${procesoId}/comite`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Revoca la designación vigente; la anterior se conserva en el expediente. */
+  revocarComite: (procesoId: string, motivo: string) =>
+    pedir<EstadoComite>(`/procesos/${procesoId}/comite/revocar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
 

@@ -18,6 +18,7 @@ import { PanelApertura } from '../apertura/PanelApertura';
 import { PanelAudienciaRiesgos } from '../riesgos/PanelAudienciaRiesgos';
 import { PanelAdendas } from '../adendas/PanelAdendas';
 import { PanelOfertas } from '../ofertas/PanelOfertas';
+import { PanelComite } from '../comite/PanelComite';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -38,6 +39,8 @@ const NUMERAL_ADENDAS = '5.6';
 const NUMERAL_APERTURA = '5.7';
 /** Recepción de ofertas y cierre, primera actividad de la etapa 6 (EFDS-1155). */
 const NUMERAL_OFERTAS = '6.1';
+/** Designación del comité que evaluará las ofertas (EFDS-1156). */
+const NUMERAL_COMITE = '6.2';
 
 /** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
 const NUMERALES_ETAPA_5 = [
@@ -56,7 +59,7 @@ const NUMERALES_ETAPA_5 = [
  * Lista aparte y no añadida a la de la etapa 5: son etapas distintas, y meterlas
  * en la misma constante haría que el nombre dejara de decir la verdad.
  */
-const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS];
+const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -344,6 +347,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_OFERTAS ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelOfertas
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelComite
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
