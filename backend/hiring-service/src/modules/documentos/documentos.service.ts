@@ -137,7 +137,11 @@ export class DocumentosService {
       iniciada: !!actividad,
       estado: actividad?.estado ?? 'PENDIENTE',
       documentos: items,
-      completa: items.every((i) => !i.obligatorio || i.cargado),
+      // Misma cautela que en sincronizarActividad: una lista vacía de
+      // requisitos no es una actividad completa.
+      completa:
+        items.some((i) => i.obligatorio) &&
+        items.every((i) => !i.obligatorio || i.cargado),
     };
   }
 
@@ -223,7 +227,7 @@ export class DocumentosService {
         archivo: archivo.originalname,
       });
 
-      await this.sincronizarActividad(em, procesoId, proceso.modalidad, acceso);
+      await this.sincronizarActividad(em, procesoId, proceso.modalidad);
     });
 
     // Fuera de la transacción: `estado` lee por el manager propio del
@@ -258,7 +262,7 @@ export class DocumentosService {
         documento: cargado.codigo,
       });
 
-      await this.sincronizarActividad(em, procesoId, proceso.modalidad, acceso);
+      await this.sincronizarActividad(em, procesoId, proceso.modalidad);
     });
 
     return this.estado(procesoId);
@@ -277,16 +281,21 @@ export class DocumentosService {
     em: EntityManager,
     procesoId: string,
     modalidad: string | null,
-    acceso: HiringAccess,
   ) {
     const requeridos = await this.requeridosDe(modalidad, em);
     const cargados = await em.getRepository(DocumentoProceso).find({
       where: { procesoId, numeral: NUMERAL_DOCUMENTOS, anuladoAt: IsNull() },
     });
 
-    const completa = requeridos
-      .filter((r) => r.obligatorio)
-      .every((r) => cargados.some((c) => c.codigo === r.codigo));
+    const obligatorios = requeridos.filter((r) => r.obligatorio);
+
+    // Sin un solo requisito la actividad NO está completa. `every` sobre una
+    // lista vacía devuelve true, así que un proceso cuya modalidad no esté en
+    // el catálogo —o que aún no la tenga— se daría por aprobado sin haber
+    // cargado nada, y con el nombre de quien pasó por ahí como revisor.
+    const completa =
+      obligatorios.length > 0 &&
+      obligatorios.every((r) => cargados.some((c) => c.codigo === r.codigo));
 
     const estado = completa ? 'APROBADO' : 'BORRADOR';
 
@@ -294,6 +303,10 @@ export class DocumentosService {
       where: { procesoId, numeral: NUMERAL_DOCUMENTOS },
     });
 
+    // No se toca revisadoPor: cargar el último documento no es revisarlo, y
+    // firmar el expediente con el nombre de quien solo adjuntó atribuiría una
+    // revisión que nadie hizo. La actividad queda completa; quién la aprueba
+    // es el acto de revisión, que vive en su propio flujo.
     if (!actividad) {
       await em.save(
         em.create(ProcesoActividad, {
@@ -301,15 +314,12 @@ export class DocumentosService {
           numeral: NUMERAL_DOCUMENTOS,
           estado: estado as any,
           datos: {},
-          ...(completa ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
       return;
     }
 
     actividad.estado = estado as any;
-    actividad.revisadoPor = completa ? acceso.userName : null;
-    actividad.revisadoAt = completa ? new Date() : null;
     await em.save(actividad);
   }
 

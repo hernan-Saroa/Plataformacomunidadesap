@@ -20,6 +20,7 @@ import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { Modal } from '../shared/Modal';
 import { BloqueDocumento } from './BloqueDocumento';
+import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
 
 interface Props {
   procesoId: string;
@@ -35,6 +36,9 @@ const MIME_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
  * revisor no cambie de contexto: ve el contenido, sus soportes y decide sin
  * salir de la lista de actividades.
  */
+/** La actividad que este panel resuelve. */
+const NUMERAL = '3.1';
+
 export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   const {
     datos,
@@ -246,12 +250,26 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
 
       {/* El estudio previo firmado: entregable real de esta actividad */}
       {seccion === 'documentos' && (
-        <BloqueDocumento
-          procesoId={procesoId}
-          documentos={documentos}
-          bloqueado={bloqueado}
-          onAdjuntado={refrescar}
-        />
+        <div className="space-y-3">
+          {/* Sin filtrar por modalidad: la 3.1 tiene un formato por tipo de
+              contratación —BS-FO-046 para prestación de servicios, 047 para las
+              competitivas, 048 para directa con persona natural, 061 para
+              TVEC— y el gestor elige el que corresponde a su caso. Filtrar
+              exigiría que la modalidad esté definida, y en la 3.1 todavía no
+              lo está: se ratifica en la 3.5. */}
+          <FormatosDeLaActividad
+            numeral={NUMERAL}
+            instruccion="Descarga el formato oficial del SIG, diligéncialo, fírmalo y adjúntalo aquí."
+            sinFormatos="El estudio previo se diligencia en el formato institucional. Cuando Contratación suba los formatos a la biblioteca de plantillas, podrás descargarlos desde aquí."
+          />
+
+          <BloqueDocumento
+            procesoId={procesoId}
+            documentos={documentos}
+            bloqueado={bloqueado}
+            onAdjuntado={refrescar}
+          />
+        </div>
       )}
 
       {/* Historial de revisión */}
