@@ -97,6 +97,17 @@ export class OfertasService {
         ? { ...this.verRecepcion(recepcion), ...(await this.plazoConDias(recepcion)) }
         : null,
       puedeRegistrar: !excluida && !!recepcion && recepcion.estado === 'ABIERTA',
+      // El cierre solo puede intentarse con el plazo vencido; la pantalla usa
+      // esto para decir por qué el botón no está disponible, en vez de dejarlo
+      // apagado sin explicación.
+      puedeCerrar:
+        !excluida &&
+        !!recepcion &&
+        recepcion.estado === 'ABIERTA' &&
+        Date.now() > recepcion.vencimiento.getTime(),
+      // Lo que vuelve pública la lista es el cierre: a partir de ahí ya no
+      // admite cambios.
+      listaPublicada: recepcion?.estado === 'CERRADA',
       oferentes: oferentes.map((o) => ({
         id: o.id,
         numero: o.numero,
@@ -338,6 +349,68 @@ export class OfertasService {
         actividad: NUMERAL_OFERTAS,
         oferente: oferente.numero,
         identificacion: oferente.identificacion,
+      });
+    });
+
+    return this.estado(procesoId);
+  }
+
+  // -------------------------------------------------------------- cierre --
+
+  /**
+   * Cierra la recepción al vencimiento y con ello publica la lista de
+   * oferentes.
+   *
+   * Es el criterio 1 de la historia. Publicar no es copiar la lista a otra
+   * tabla: lo que la vuelve pública es el cierre, porque a partir de ahí ya no
+   * admite cambios. Antes del cierre la lista es provisional —pueden entrar
+   * ofertas, pueden retirarse— y después es el registro formal de lo que se
+   * recibió.
+   */
+  async cerrar(procesoId: string, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      await this.exigirQueAplique(em, proceso);
+
+      const recepcion = await this.recepcionDe(procesoId, em);
+      if (!recepcion) {
+        throw new ConflictException(
+          'La recepción de ofertas no está abierta: falta fijar el plazo del proceso',
+        );
+      }
+
+      // Cerrar dos veces no es un error: el segundo clic pide lo que ya está
+      // hecho. Se devuelve la lista tal cual quedó, sin tocar la fecha del
+      // cierre, que es la que prueba cuándo dejó de recibirse.
+      if (recepcion.estado === 'CERRADA') return;
+
+      if (Date.now() <= recepcion.vencimiento.getTime()) {
+        const { diasHabilesRestantes: faltan } = await this.plazoConDias(recepcion);
+        throw new ConflictException(
+          `El plazo sigue vigente hasta el ${this.enBogota(recepcion.vencimiento)}` +
+            (faltan > 0 ? ` (faltan ${faltan} días hábiles)` : ' (vence hoy)') +
+            ': cerrar antes dejaría fuera ofertas que todavía pueden presentarse',
+        );
+      }
+
+      recepcion.estado = 'CERRADA';
+      recepcion.cerradaAt = new Date();
+      recepcion.cerradaPor = acceso.userName;
+      await em.save(recepcion);
+
+      const oferentes = await em.getRepository(Oferente).count({
+        where: { recepcionId: recepcion.id },
+      });
+
+      await this.marcarActividad(em, procesoId, acceso);
+
+      await this.traza(em, procesoId, recepcion.id, 'CERRAR', acceso, {
+        actividad: NUMERAL_OFERTAS,
+        vencimiento: recepcion.vencimiento,
+        // Cero es un resultado, no un fallo: que no llegara ninguna oferta es
+        // justo el hecho que hay que dejar registrado. Declarar desierto el
+        // proceso es otra historia.
+        oferentes,
       });
     });
 

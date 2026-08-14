@@ -245,6 +245,99 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
     });
   });
 
+  // -------------------------------------------------------- criterio 1 y 2 --
+
+  describe('Cierre de la recepción y publicación de la lista', () => {
+    /** Deja el proceso abierto y con el plazo ya vencido, listo para cerrar. */
+    const abrirYVencer = async () => {
+      const proceso = await crear();
+      await abrir(proceso.id);
+      await ofertas.fijarPlazo(proceso.id, { vencimiento: haceHoras(3) }, gestor);
+      return proceso;
+    };
+
+    it('vencido el plazo, el cierre publica la lista de oferentes', async () => {
+      const proceso = await abrirYVencer();
+      await registrar(proceso.id, '900555555-5', 'Oferente En Plazo SAS', haceHoras(4));
+
+      const estado = await ofertas.cerrar(proceso.id, gestor);
+
+      expect(estado.recepcion!.estado).toBe('CERRADA');
+      expect(estado.recepcion!.cerradaAt).not.toBeNull();
+      expect(estado.recepcion!.cerradaPor).toBe('prueba.gestor');
+      expect(estado.listaPublicada).toBe(true);
+      expect(estado.oferentes).toHaveLength(1);
+    });
+
+    it('da la actividad 6.1 por cumplida al cerrar', async () => {
+      const proceso = await abrirYVencer();
+      await ofertas.cerrar(proceso.id, gestor);
+
+      const [fila] = await dataSource.query(
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '6.1'`,
+        [proceso.id],
+      );
+
+      expect(fila.estado).toBe('APROBADO');
+    });
+
+    it('rechaza el cierre mientras el plazo siga vigente', async () => {
+      const proceso = await crear();
+      await abrir(proceso.id);
+
+      // Recién abierto, el plazo de mínima cuantía todavía corre.
+      await expect(ofertas.cerrar(proceso.id, gestor)).rejects.toThrow(/sigue vigente/i);
+
+      const estado = await ofertas.estado(proceso.id);
+      expect(estado.puedeCerrar).toBe(false);
+      expect(estado.recepcion!.estado).toBe('ABIERTA');
+    });
+
+    it('cerrar dos veces no altera la lista ni la fecha del cierre', async () => {
+      const proceso = await abrirYVencer();
+      await registrar(proceso.id, '900666666-6', 'Única SAS', haceHoras(4));
+
+      const primero = await ofertas.cerrar(proceso.id, gestor);
+      const segundo = await ofertas.cerrar(proceso.id, gestor);
+
+      expect(segundo.recepcion!.cerradaAt).toEqual(primero.recepcion!.cerradaAt);
+      expect(segundo.oferentes).toHaveLength(1);
+    });
+
+    it('cierra también una recepción sin ofertas', async () => {
+      const proceso = await abrirYVencer();
+
+      const estado = await ofertas.cerrar(proceso.id, gestor);
+
+      // Que no llegara ninguna oferta es el hecho que hay que registrar;
+      // declarar desierto el proceso es otra historia.
+      expect(estado.listaPublicada).toBe(true);
+      expect(estado.oferentes).toHaveLength(0);
+    });
+
+    it('con la lista publicada no admite nuevas ofertas ni retiros', async () => {
+      const proceso = await abrirYVencer();
+      const conUna = await registrar(proceso.id, '900777777-7', 'Primera SAS', haceHoras(4));
+      const oferenteId = conUna.oferentes[0].id;
+
+      await ofertas.cerrar(proceso.id, gestor);
+
+      await expect(
+        registrar(proceso.id, '900888888-8', 'Tardía SAS', haceHoras(4)),
+      ).rejects.toThrow(/ya se cerró/i);
+      await expect(ofertas.retirar(proceso.id, oferenteId, gestor)).rejects.toThrow(/ya se cerró/i);
+    });
+
+    it('no deja mover el plazo de una recepción cerrada', async () => {
+      const proceso = await abrirYVencer();
+      await ofertas.cerrar(proceso.id, gestor);
+
+      await expect(
+        ofertas.fijarPlazo(proceso.id, { vencimiento: `${hoy()}T23:00:00-05:00` }, gestor),
+      ).rejects.toThrow(/ya se cerró/i);
+    });
+  });
+
   // ------------------------------------------------------- aplicabilidad --
 
   describe('Modalidades sin recepción de ofertas', () => {

@@ -108,6 +108,18 @@ export class OfertasController {
     }
   }
 
+  @Post('cerrar')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_OFERTAS)
+  @ApiOperation({
+    summary: 'Actividad 6.1 · Cerrar la recepción y publicar la lista',
+    description:
+      'Solo con el plazo vencido. El cierre congela la lista de oferentes y la publica; una recepción sin ofertas también se cierra.',
+  })
+  cerrar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.cerrar(procesoId, getHiringAccess(req));
+  }
+
   @Delete(':oferenteId')
   @UseGuards(RolesGuard)
   @Roles(...ROLES_OFERTAS)
