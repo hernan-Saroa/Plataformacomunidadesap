@@ -8,6 +8,7 @@ import { DataSource, EntityManager, In } from 'typeorm';
 
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
+import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -52,8 +53,13 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  * actividades sembradas —5.1 y 5.7— aparecen en el riel sin panel propio
  * todavía, que es la verdad de lo entregado: existen en la matriz y aún no se
  * trabajan desde aquí.
+ *
+ * La 6 entra con EFDS-1155 (recepción de ofertas) y EFDS-1156 (comité
+ * evaluador). Esta lista es el filtro real del riel: sembrar la actividad en
+ * `hiring.actividades` no basta, porque lo que no esté en estas etapas no se
+ * devuelve y la pantalla no tiene cómo llegar a ella.
  */
-export const ETAPAS_ENTREGADAS = [3, ETAPA_CDP, ETAPA_APERTURA];
+export const ETAPAS_ENTREGADAS = [3, ETAPA_CDP, ETAPA_APERTURA, ETAPA_RECEPCION];
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {

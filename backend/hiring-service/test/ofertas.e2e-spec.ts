@@ -338,6 +338,28 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
     });
   });
 
+  // --------------------------------------------------- llegada al riel --
+
+  describe('La etapa 6 llega al riel del proceso', () => {
+    it('lista las actividades de la etapa 6 junto a las anteriores', async () => {
+      const proceso = await crear();
+
+      // Sembrar la actividad en hiring.actividades no basta: el riel solo
+      // recibe las etapas de ETAPAS_ENTREGADAS, y una etapa nueva que no se
+      // añada ahí queda invisible aunque su panel esté construido. Pasó con la
+      // 6 y no lo vio ninguna prueba, porque todas medían el servicio de la
+      // actividad y ninguna el camino por el que el usuario llega a ella.
+      const actividades = await cdp.actividadesDelProceso(proceso.id);
+      const numerales = actividades.map((a) => a.numeral);
+
+      expect(numerales).toContain('6.1');
+      expect(numerales).toContain('6.2');
+      // Y sin perder las que ya estaban.
+      expect(numerales).toContain('5.7');
+      expect(numerales).toContain('3.1');
+    });
+  });
+
   // ------------------------------------------------------- aplicabilidad --
 
   describe('Modalidades sin recepción de ofertas', () => {
