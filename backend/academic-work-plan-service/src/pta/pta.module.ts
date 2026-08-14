@@ -24,6 +24,7 @@ import { PtaEventoEntity } from './entities/pta-evento.entity';
 import { PtaComponentApprovalEntity } from './entities/pta-component-approval.entity';
 import { PtaComponentReviewEntity } from './entities/pta-component-review.entity';
 import { PtaTerritorialApprovalEntity } from './entities/pta-territorial-approval.entity';
+import { PtaTerritorialReviewEntity } from './entities/pta-territorial-review.entity';
 
 // New entities
 import { FacultadEntity } from './entities/facultad.entity';
@@ -76,6 +77,7 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
       PtaComponentApprovalEntity,
       PtaComponentReviewEntity,
       PtaTerritorialApprovalEntity,
+      PtaTerritorialReviewEntity,
       RundCampoEstadoEntity,
       RundSoporteCampoEntity,
     ]),

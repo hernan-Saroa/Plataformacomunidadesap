@@ -794,28 +794,49 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         {/* Section 7: Firmas y Aprobaciones */}
         <SectionHeader icon={Award} label="7. FIRMAS Y APROBACIONES" color="#003DA5" />
         <div style={{ padding: '16px 32px 28px' }}>
-          {/* Firma del docente (concertación) */}
-          <div style={{
-            padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,
-          }}>
-            <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
-            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
-              {pta.docente_nombre || 'N/A'}
-            </div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '3px 10px', borderRadius: 6,
-              background: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#D1FAE5' : '#FEF3C7',
-              color: pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? '#065F46' : '#92400E',
-              fontSize: '0.72rem', fontWeight: 600,
-            }}>
-              {pta.estado === 'Aprobado' || pta.estado === 'CONCERTADO' ? (
-                <><CheckCircle2 style={{ width: 12, height: 12 }} /> Firma Digital Verificada</>
-              ) : (
-                <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
-              )}
-            </div>
-          </div>
+          {/* Firma del docente (concertación): el docente firma al ENVIAR el PTA para
+              aprobación; lo que ocurre después (revisión y aprobación) es firma del
+              aprobador, no suya. Gatear esto por pta.estado==='Aprobado' hacía que
+              Revisor y Aprobador vieran "Pendiente" mientras revisaban un PTA que el
+              docente ya había enviado y firmado.
+              Fuente de verdad: fecha_envio_revision, que el backend deriva del
+              historial (transición hacia un estado "Pendiente ..."; ver
+              attachPtaReferenceDates). Si no está —snapshots históricos, PTAs sin
+              historial— se cae a la misma regla que usa el backend para saber si un
+              PTA ya salió del borrador. */}
+          {(() => {
+            const fechaFirmaDocente = pta.fecha_envio_revision || null;
+            const estadoNorm = String(pta.estado || '').trim().toLowerCase();
+            const docenteFirmo = Boolean(fechaFirmaDocente) || (estadoNorm !== '' && estadoNorm !== 'borrador');
+            return (
+              <div style={{
+                padding: 14, borderRadius: 10, border: '1px solid #E5E7EB', textAlign: 'center', marginBottom: 18,
+              }}>
+                <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                  {pta.docente_nombre || 'N/A'}
+                </div>
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '3px 10px', borderRadius: 6,
+                  background: docenteFirmo ? '#D1FAE5' : '#FEF3C7',
+                  color: docenteFirmo ? '#065F46' : '#92400E',
+                  fontSize: '0.72rem', fontWeight: 600,
+                }}>
+                  {docenteFirmo ? (
+                    <><CheckCircle2 style={{ width: 12, height: 12 }} /> Firma Digital Verificada</>
+                  ) : (
+                    <><Clock style={{ width: 12, height: 12 }} /> Pendiente</>
+                  )}
+                </div>
+                {docenteFirmo && fechaFirmaDocente && (
+                  <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 5 }}>
+                    Enviado y firmado el {fmtFecha(fechaFirmaDocente)}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Aprobación por COMPONENTE — flujo paralelo (no lineal). Un slot por
               componente / sección de extensión (7 en total). Al firmarse aparece

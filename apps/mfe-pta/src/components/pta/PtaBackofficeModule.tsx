@@ -71,6 +71,7 @@ import {
   hasAnyComponentApprovalData,
   componentKeyForEvidencia,
   isEvidenciaAuthorized,
+  hasComponentPermission,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import '../../styles/pta-world-class.css';
@@ -757,7 +758,7 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   // devolverían todos los componentes, ignorando los permisos reales del rol.
   const { puede } = usePermisosPTAGranulares();
   const apruebaTodo = puede(PTA_APPROVE_ALL_PERMISSION);
-  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || puede(PTA_COMPONENT_PERMISSION[key]);
+  const isComponentAuthorized = (key: PTAComponentKey) => apruebaTodo || hasComponentPermission(puede, key);
   const evsAutorizadas = (p: any) => (p.evidencias || []).filter((e: any) => isEvidenciaAuthorized(e, isComponentAuthorized));
   // ¿Autorizado para el componente de nivel superior del Seguimiento (COMPONENTES_SEG)?
   const isSegComponentAuthorized = (compKey: string) => {
@@ -1418,6 +1419,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     return PTA_BULK_APPROVAL_GROUPS.filter(g => g.componentKeys.some(k => visibleComponentKeySet.has(k)));
   }, [isSuperUserEffective, visibleComponentKeySet]);
 
+  // Unión de todos los componentes que le corresponden al usuario actual según su
+  // rol/permisos (los mismos que alimentan los botones de "Aprobar componentes de
+  // N PTAs" de abajo). "Aprobar Lote"/"Devolver Lote" usan este conjunto para
+  // decidir por componente, en vez del viejo modelo de niveles (Jefatura/
+  // Decanatura/Gestión Profesoral) que nunca completaba la aprobación real.
+  const misComponentesAprobables = useMemo(
+    () => Array.from(new Set(bulkApprovalGroups.flatMap(g => g.componentKeys))),
+    [bulkApprovalGroups],
+  );
+
   /**
    * ¿Este PTA tiene algún componente pendiente que le toque a MÍ?
    *
@@ -1658,7 +1669,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [bulkComponentComentarios, setBulkComponentComentarios] = useState('');
   const [bulkComponentResult, setBulkComponentResult] = useState<{
     groupLabel: string;
-    resumen: { total: number; aprobados: number; omitidos: number; fallidos: number };
+    decision: 'aprobado' | 'devuelto';
+    resumen: { total: number; aprobados: number; devueltos: number; omitidos: number; fallidos: number };
     resultados: AprobarComponentesLoteResultado[];
   } | null>(null);
 
@@ -3971,7 +3983,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       backdropFilter: 'blur(4px)', transition: 'all 0.15s',
                     }}
                   >
-                    <Send style={{ width: 12, height: 12 }} /> Aprobar Lote
+                    <Send style={{ width: 12, height: 12 }} /> Aprobar
                   </button>
                   <button
                     onClick={() => setShowBatchDevolucion(true)}
@@ -3982,7 +3994,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       backdropFilter: 'blur(4px)', transition: 'all 0.15s',
                     }}
                   >
-                    <RotateCcw style={{ width: 12, height: 12 }} /> Devolver Lote
+                    <RotateCcw style={{ width: 12, height: 12 }} /> Devolver
                   </button>
                   {/* Feature 30: Bulk Notification */}
                   <button
@@ -5416,43 +5428,40 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 </button>
                 <button
                   onClick={async () => {
+                    if (misComponentesAprobables.length === 0) {
+                      toast.error('No tiene componentes de PTA habilitados para aprobar');
+                      return;
+                    }
                     setProcesando(true);
                     const ids = Array.from(selectedIds);
-                    let successCount = 0;
-                    for (const id of ids) {
-                      const pta = ptas.find((p: any) => p.id === id);
-                      if (!pta) continue;
-                      // Validar nivel antes de aprobar cada PTA en lote
-                      if (!puedeAprobarPorNivel(pta.estado, permisos.nivelAprobacion, isSuperUserEffective)) {
-                        console.warn(`[Batch] Nivel insuficiente para PTA ${id} en estado ${pta.estado}`);
-                        continue;
-                      }
-                      const res = await updatePTAStatus(id, {
-                        accion: 'aprobar',
-                        observaciones: batchObs || `Aprobado en lote por ${aprobadorNombre} (${rolLabel})`,
-                        actorId: aprobadorId,
-                        actorRol: rolLabel,
-                        nivelAprobacion: permisos.nivelAprobacion,
-                        actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
-                        isSuperUser: isSuperUserEffective,
-                        aprobarTodas: isSuperUserEffective,
-                      });
-                      if (res.success) successCount++;
-                    }
+                    // "Aprobar Lote" aprueba, por cada PTA seleccionado, los componentes
+                    // que le correspondan al rol/permisos de quien lo acciona (Jefatura,
+                    // Decanatura, etc.) — no un nivel jerárquico global del PTA, que es
+                    // el modelo viejo y ya no refleja cómo se aprueba un PTA hoy.
+                    const res = await aprobarComponentesLote({
+                      ptaIds: ids,
+                      componentes: misComponentesAprobables,
+                      comentarios: batchObs || undefined,
+                      aprobadorId,
+                      aprobadorNombre,
+                      aprobadorRol: rolLabel,
+                    });
                     setProcesando(false);
                     setShowBatchApproval(false);
-                    setSelectedIds(new Set());
                     setBatchObs('');
-                    if (successCount > 0) {
-                      toast.success(`${successCount} de ${ids.length} PTAs aprobados en lote`);
-                      addNotification({
-                        title: 'Aprobación en Lote',
-                        message: `${successCount} PTAs aprobados exitosamente`,
-                        type: 'success',
-                      });
-                      loadData();
+                    setSelectedIds(new Set());
+                    if (res.success) {
+                      setBulkComponentResult({ groupLabel: 'Aprobar', decision: 'aprobado', resumen: res.data.resumen, resultados: res.data.resultados });
+                      if (res.data.resumen.aprobados > 0) {
+                        addNotification({
+                          title: 'Aprobación en Lote',
+                          message: `${res.data.resumen.aprobados} componente(s) aprobado(s) en ${ids.length} PTA(s) seleccionados`,
+                          type: 'success',
+                        });
+                        loadData();
+                      }
                     } else {
-                      toast.error('Error al procesar la aprobación en lote');
+                      toast.error(res.message || 'Error al procesar la aprobación en lote');
                     }
                   }}
                   disabled={procesando}
@@ -5538,7 +5547,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       setBulkComponentGroupKey(null);
                       setBulkComponentComentarios('');
                       if (res.success) {
-                        setBulkComponentResult({ groupLabel: group.label, resumen: res.data.resumen, resultados: res.data.resultados });
+                        setBulkComponentResult({ groupLabel: group.label, decision: 'aprobado', resumen: res.data.resumen, resultados: res.data.resultados });
                         setSelectedIds(new Set());
                         if (res.data.resumen.aprobados > 0) {
                           addNotification({
@@ -5581,12 +5590,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Resultado — {bulkComponentResult.groupLabel}
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                  {bulkComponentResult.resumen.aprobados} aprobado(s) · {bulkComponentResult.resumen.omitidos} omitido(s) · {bulkComponentResult.resumen.fallidos} fallido(s)
+                  {bulkComponentResult.resumen.aprobados} aprobado(s) · {bulkComponentResult.resumen.devueltos} devuelto(s) · {bulkComponentResult.resumen.omitidos} omitido(s) · {bulkComponentResult.resumen.fallidos} fallido(s)
                 </p>
               </div>
               <div style={{ padding: '12px 24px', overflowY: 'auto', flex: 1 }}>
                 {bulkComponentResult.resultados
-                  .filter(r => r.estado !== 'aprobado')
+                  .filter(r => r.estado !== bulkComponentResult.decision)
                   .map((r, idx) => {
                     const pta = ptas.find((p: any) => p.id === r.ptaId);
                     const isFallido = r.estado === 'fallido';
@@ -5597,7 +5606,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       }}>
                         <div>
                           <div style={{ fontWeight: 600, color: '#111827' }}>{pta?.docente_nombre || r.ptaId}</div>
-                          <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>{r.motivo || (isFallido ? 'No se pudo aprobar' : 'Omitido')}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#6B7280' }}>{r.motivo || (isFallido ? 'No se pudo procesar' : 'Omitido')}</div>
                         </div>
                         <span style={{
                           padding: '1px 8px', borderRadius: 4, fontSize: '0.62rem', fontWeight: 700, whiteSpace: 'nowrap',
@@ -5609,9 +5618,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       </div>
                     );
                   })}
-                {bulkComponentResult.resultados.every(r => r.estado === 'aprobado') && (
+                {bulkComponentResult.resultados.every(r => r.estado === bulkComponentResult.decision) && (
                   <p style={{ fontSize: '0.82rem', color: '#059669', textAlign: 'center', padding: '16px 0' }}>
-                    Todos los componentes seleccionados se aprobaron correctamente.
+                    {bulkComponentResult.decision === 'aprobado'
+                      ? 'Todos los componentes seleccionados se aprobaron correctamente.'
+                      : 'Todos los componentes seleccionados se devolvieron correctamente.'}
                   </p>
                 )}
               </div>
@@ -5734,38 +5745,40 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 <button
                   onClick={async () => {
                     if (!batchDevMotivo.trim()) { toast.error('Debe ingresar un motivo de devolución'); return; }
+                    if (misComponentesAprobables.length === 0) {
+                      toast.error('No tiene componentes de PTA habilitados para devolver');
+                      return;
+                    }
                     setProcesando(true);
                     const ids = Array.from(selectedIds);
-                    let successCount = 0;
-                    for (const id of ids) {
-                      const pta = ptas.find((p: any) => p.id === id);
-                      if (!pta) continue;
-                      const res = await updatePTAStatus(id, {
-                        accion: 'devolver',
-                        observaciones: batchDevMotivo,
-                        motivo_devolucion: batchDevMotivo,
-                        actorId: aprobadorId,
-                        actorRol: rolLabel,
-                        nivelAprobacion: permisos.nivelAprobacion,
-                        actorTerritorialId: permisos.nivelAprobacion === 1 ? permisos.filtroTerritorial?.[0] : undefined,
-                        isSuperUser: isSuperUserEffective,
-                      });
-                      if (res.success) successCount++;
-                    }
+                    // "Devolver Lote" devuelve, por cada PTA seleccionado, los componentes
+                    // que le correspondan al rol/permisos de quien lo acciona — mismo
+                    // criterio que "Aprobar Lote", en vez del viejo modelo de niveles.
+                    const res = await aprobarComponentesLote({
+                      ptaIds: ids,
+                      componentes: misComponentesAprobables,
+                      estado: 'devuelto',
+                      comentarios: batchDevMotivo,
+                      aprobadorId,
+                      aprobadorNombre,
+                      aprobadorRol: rolLabel,
+                    });
                     setProcesando(false);
                     setShowBatchDevolucion(false);
                     setSelectedIds(new Set());
                     setBatchDevMotivo('');
-                    if (successCount > 0) {
-                      toast.success(`${successCount} de ${ids.length} PTAs devueltos`);
-                      addNotification({
-                        title: 'Devolución en Lote',
-                        message: `${successCount} PTAs devueltos: ${batchDevMotivo.substring(0, 60)}...`,
-                        type: 'warning',
-                      });
-                      loadData();
+                    if (res.success) {
+                      setBulkComponentResult({ groupLabel: 'Devolver', decision: 'devuelto', resumen: res.data.resumen, resultados: res.data.resultados });
+                      if (res.data.resumen.devueltos > 0) {
+                        addNotification({
+                          title: 'Devolución en Lote',
+                          message: `${res.data.resumen.devueltos} componente(s) devuelto(s) en ${ids.length} PTA(s): ${batchDevMotivo.substring(0, 60)}...`,
+                          type: 'warning',
+                        });
+                        loadData();
+                      }
                     } else {
-                      toast.error('Error al procesar la devolución en lote');
+                      toast.error(res.message || 'Error al procesar la devolución en lote');
                     }
                   }}
                   disabled={procesando || !batchDevMotivo.trim()}
