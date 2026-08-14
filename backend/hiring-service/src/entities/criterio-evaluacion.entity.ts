@@ -16,8 +16,12 @@ export type TipoCriterio = 'HABILITANTE' | 'PONDERABLE';
  * La matriz de roles nombra evaluador jurídico, financiero y técnico, y ninguno
  * económico, porque el precio se califica con una fórmula sobre el valor
  * ofertado. Está aquí para que quien lea el catálogo no lo busque.
+ *
+ * Se declara como literal y no como `DimensionEvaluacion` a propósito: así,
+ * descartarla en una comparación deja las tres que sí evalúa una persona, que
+ * es exactamente el conjunto de roles del comité.
  */
-export const DIMENSION_CALCULADA: DimensionEvaluacion = 'ECONOMICO';
+export const DIMENSION_CALCULADA = 'ECONOMICO' as const;
 
 @Entity('criterios_evaluacion', { schema: 'hiring' })
 export class CriterioEvaluacion {

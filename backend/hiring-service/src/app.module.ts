@@ -17,6 +17,7 @@ import { RiesgosModule } from './modules/riesgos/riesgos.module';
 import { AdendasModule } from './modules/adendas/adendas.module';
 import { OfertasModule } from './modules/ofertas/ofertas.module';
 import { ComiteModule } from './modules/comite/comite.module';
+import { EvaluacionModule } from './modules/evaluacion/evaluacion.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -93,6 +94,7 @@ import { EvaluacionCriterio } from './entities/evaluacion-criterio.entity';
     AdendasModule,
     OfertasModule,
     ComiteModule,
+    EvaluacionModule,
   ],
   controllers: [HealthController],
   providers: [
