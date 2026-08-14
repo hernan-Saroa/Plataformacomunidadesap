@@ -1,4 +1,3 @@
-version: "3.9"
 
 # Docker Compose para entorno QA (Quality Assurance)
 # Servidor: http://135.237.81.133

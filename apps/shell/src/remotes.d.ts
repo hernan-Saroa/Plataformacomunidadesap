@@ -104,3 +104,9 @@ declare module 'contratacion/Module' {
   export { Module as ContratacionModulePremium };
   export default Module;
 }
+
+declare module 'viaticos/Module' {
+  const Module: React.ComponentType;
+  export { Module as ViaticosModulePremium };
+  export default Module;
+}
