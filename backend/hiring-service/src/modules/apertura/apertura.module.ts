@@ -14,6 +14,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { CdpModule } from '../cdp/cdp.module';
 import { DocumentosModule } from '../documentos/documentos.module';
 import { RiesgosModule } from '../riesgos/riesgos.module';
+import { OfertasModule } from '../ofertas/ofertas.module';
 
 @Module({
   imports: [
@@ -32,6 +33,8 @@ import { RiesgosModule } from '../riesgos/riesgos.module';
     DocumentosModule,
     // La audiencia de riesgos obligatoria condiciona la apertura (EFDS-1153).
     RiesgosModule,
+    // Abrir el proceso arranca el plazo de ofertas de la etapa 6 (EFDS-1155).
+    OfertasModule,
   ],
   controllers: [AperturaProcesoController],
   providers: [AperturaService],

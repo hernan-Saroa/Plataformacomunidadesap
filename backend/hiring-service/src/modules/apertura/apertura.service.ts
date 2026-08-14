@@ -17,6 +17,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { CdpService } from '../cdp/cdp.service';
 import { DocumentosService } from '../documentos/documentos.service';
 import { RiesgosService } from '../riesgos/riesgos.service';
+import { OfertasService } from '../ofertas/ofertas.service';
 import { RegistrarAperturaDto } from './dto/apertura.dto';
 
 /** Actividad 5.7 de la matriz: la apertura formal del proceso. */
@@ -37,6 +38,7 @@ export class AperturaService {
     private readonly cdp: CdpService,
     private readonly documentos: DocumentosService,
     private readonly riesgos: RiesgosService,
+    private readonly ofertas: OfertasService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -216,6 +218,13 @@ export class AperturaService {
       // el respaldo presupuestal, mueve la etapa y da la actividad por
       // cumplida. Se le pasa el manager para que todo sea una sola transacción.
       await this.cdp.abrirProceso(procesoId, acceso, em);
+
+      // Abrir el proceso arranca el plazo de ofertas (EFDS-1155): la etapa 6
+      // empieza donde termina la 5, y el término se cuenta desde la fecha de
+      // esta resolución. Va en la misma transacción porque un proceso abierto
+      // sin plazo corriendo dejaría el expediente diciendo que se convocó sin
+      // decir hasta cuándo.
+      await this.ofertas.abrirRecepcion(procesoId, acceso, em);
 
       await this.traza(em, procesoId, apertura.id, 'PUBLICAR', acceso, {
         actividad: NUMERAL_APERTURA,
