@@ -90,10 +90,11 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
     identificacion: string,
     nombre = 'Constructora de prueba SAS',
     fechaRadicacion = haceHoras(1),
+    valorOfertado?: number,
   ) =>
     ofertas.registrar(
       procesoId,
-      { nombre, identificacion, fechaRadicacion },
+      { nombre, identificacion, fechaRadicacion, valorOfertado },
       archivo('oferta.pdf'),
       'o'.repeat(64),
       gestor,
@@ -194,6 +195,22 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
       expect(estado.oferentes.map((o) => o.numero)).toEqual([1, 2]);
       expect(estado.oferentes[0].nombre).toBe('Primera Oferente SAS');
       expect(estado.oferentes[0].soporte).not.toBeNull();
+    });
+
+    it('guarda el valor ofertado, y admite que falte', async () => {
+      const proceso = await crear();
+      await abrir(proceso.id);
+
+      await registrar(proceso.id, '901111111-1', 'Con Valor SAS', haceHoras(1), 45_000_000);
+      const estado = await registrar(proceso.id, '902222222-2', 'Sin Valor SAS');
+
+      const conValor = estado.oferentes.find((o) => o.identificacion === '901111111-1');
+      const sinValor = estado.oferentes.find((o) => o.identificacion === '902222222-2');
+
+      expect(conValor!.valorOfertado).toBe(45_000_000);
+      // Nulo y no cero: una oferta sin valor registrado no es una oferta de
+      // cero pesos, que entraría al cálculo económico como la más barata.
+      expect(sinValor!.valorOfertado).toBeNull();
     });
 
     it('rechaza la oferta radicada después del vencimiento', async () => {

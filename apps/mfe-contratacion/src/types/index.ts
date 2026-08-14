@@ -566,6 +566,8 @@ export interface Oferente {
   identificacion: string;
   /** Instante ISO: la hora de radicación importa tanto como el día. */
   fechaRadicacion: string;
+  /** Base de la evaluación económica; nulo en las ofertas anteriores a EFDS-1157. */
+  valorOfertado: number | null;
   registradoPor: string | null;
   soporte: ArchivoApertura | null;
 }

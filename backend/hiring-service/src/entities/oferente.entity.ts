@@ -39,6 +39,16 @@ export class Oferente {
   @Column({ name: 'soporte_documento_id' })
   soporteDocumentoId: string;
 
+  /**
+   * Valor de la oferta presentada.
+   *
+   * Nulo en las registradas antes de EFDS-1157, que no lo pedía: exigirlo hacia
+   * atrás falsearía el expediente. Es la base del cálculo de la evaluación
+   * económica, así que sin él esa dimensión no se puede calificar.
+   */
+  @Column({ name: 'valor_ofertado', type: 'numeric', precision: 18, scale: 2, nullable: true })
+  valorOfertado: string | null;
+
   @Column({ name: 'registrado_por', length: 200, nullable: true })
   registradoPor: string | null;
 

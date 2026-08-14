@@ -199,7 +199,12 @@ export const contratacionService = {
   /** Registra una oferta recibida en ventanilla, con su soporte. */
   registrarOferente: (
     procesoId: string,
-    datos: { nombre: string; identificacion: string; fechaRadicacion: string },
+    datos: {
+      nombre: string;
+      identificacion: string;
+      fechaRadicacion: string;
+      valorOfertado?: number;
+    },
     soporte: File,
   ) => {
     const cuerpo = new FormData();
@@ -207,6 +212,9 @@ export const contratacionService = {
     cuerpo.append('nombre', datos.nombre);
     cuerpo.append('identificacion', datos.identificacion);
     cuerpo.append('fechaRadicacion', datos.fechaRadicacion);
+    // Solo si viene: enviarlo vacío haría que el DTO lo leyera como 0, y una
+    // oferta de cero pesos entraría al cálculo económico como la más barata.
+    if (datos.valorOfertado != null) cuerpo.append('valorOfertado', String(datos.valorOfertado));
 
     return pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas`, {
       method: 'POST',
