@@ -195,7 +195,7 @@ export function CabeceraActividad({ actividad, modalidad, modalidades, onCambio 
             }`}
           >
             <span
-              className={`mx-0.5 w-3.5 h-3.5 rounded-full transition-colors ${
+              className={`mx-1 w-3.5 h-3.5 rounded-full transition-colors ${
                 actividad.aplica ? 'bg-white' : 'bg-gray-500'
               }`}
             />
@@ -302,7 +302,7 @@ export function CabeceraActividad({ actividad, modalidad, modalidades, onCambio 
           <div className="flex items-center gap-1.5 mt-2">
             <button
               type="submit"
-              className="rounded-lg bg-[#003DA5] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#00307f]"
+              className="rounded-lg bg-[#003DA5] px-2.5 py-1 text-[11px] font-semibold text-white hover:opacity-90"
             >
               Marcar que no aplica
             </button>

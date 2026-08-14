@@ -19,6 +19,7 @@ import {
   GuardarRegla,
   ReglaActividad,
   Persona,
+  PlantillaFormato,
   ProcesoResumen,
   RevisionEstudioPrevio,
   SmmlvAnual,
@@ -273,6 +274,42 @@ export const contratacionService = {
     pedir<CampoConfigurable>(`/configuracion/actividades/${numeral}/campos`, {
       method: 'POST',
       body: JSON.stringify(datos),
+    }),
+
+  /** Formatos del SIG registrados, opcionalmente los de una actividad. */
+  plantillas: (numeral?: string) =>
+    pedir<PlantillaFormato[]>(
+      `/configuracion/plantillas${numeral ? `?numeral=${encodeURIComponent(numeral)}` : ''}`,
+    ),
+
+  /** Registra un formato con su archivo. El multipart lo arma quien llama. */
+  guardarPlantilla: (cuerpo: FormData) =>
+    pedir<PlantillaFormato>('/configuracion/plantillas', {
+      method: 'POST',
+      body: cuerpo,
+    }),
+
+  /**
+   * Corrige un formato, reemplaza su archivo o lo retira de circulación.
+   *
+   * Solo viaja lo que se manda: retirar un formato y corregir su nombre son
+   * gestos distintos, y uno no debe arrastrar al otro. Con `FormData` el
+   * archivo viaja en la misma llamada.
+   */
+  editarPlantilla: (id: string, datos: FormData | { activo: boolean }) =>
+    pedir<PlantillaFormato>(`/configuracion/plantillas/${id}`, {
+      method: 'PUT',
+      body: datos instanceof FormData ? datos : JSON.stringify(datos),
+    }),
+
+  /**
+   * Dónde aplica un formato: en qué actividad se ofrece y a qué modalidades
+   * alcanza. Omitir `modalidades` deja el alcance como estaba.
+   */
+  asignarPlantilla: (id: string, numeral: string | null, modalidades?: string[]) =>
+    pedir<PlantillaFormato>(`/configuracion/plantillas/${id}/actividad`, {
+      method: 'PUT',
+      body: JSON.stringify(modalidades ? { numeral, modalidades } : { numeral }),
     }),
 
   /** Cambia el texto que lee el gestor, o deja de pedir el campo. */

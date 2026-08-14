@@ -202,6 +202,109 @@ export class CrearCampoDto {
   ayuda?: string;
 }
 
+/**
+ * Formato institucional que se ofrece en una actividad.
+ *
+ * El archivo llega aparte, como multipart: aqui viajan los datos que lo
+ * identifican en el Sistema Integrado de Gestion y dicen donde aplica.
+ */
+export class GuardarPlantillaDto {
+  @ApiProperty({ example: 'BS-FO-047', description: 'Codigo del formato en el SIG.' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  codigo: string;
+
+  @ApiProperty({ example: 'Aviso de convocatoria' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(400)
+  nombre: string;
+
+  @ApiPropertyOptional({
+    example: '3.1',
+    description:
+      'Actividad en la que se ofrece. Vacio deja el formato en la biblioteca, ' +
+      'listo para asignarse despues.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  numeral?: string;
+
+  // La version no se recibe: la calcula el servicio a partir de las que ya
+  // existen con ese codigo. Ver guardarPlantilla.
+
+  @ApiPropertyOptional({ description: 'Fecha en que el SIG aprobo esta version.' })
+  @IsOptional()
+  @IsString()
+  fechaAprobacion?: string;
+
+  @ApiPropertyOptional({
+    description: 'Modalidades a las que aplica. Vacio = todas.',
+    example: ['LICITACION_PUBLICA'],
+  })
+  @IsOptional()
+  @IsArray()
+  modalidades?: string[];
+}
+
+/** Retirar un formato de circulacion o volver a ofrecerlo. */
+export class EstadoPlantillaDto {
+  @ApiPropertyOptional({
+    description: 'false retira el formato; los procesos que ya lo usaron lo conservan.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+
+  // Corregir la ficha es el mismo gesto que retirarla: se edita lo que esta
+  // mal escrito sin volver a subir el archivo, que no ha cambiado.
+  @ApiPropertyOptional({ example: 'BS-FO-047' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  codigo?: string;
+
+  @ApiPropertyOptional({ example: 'Aviso de convocatoria' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(400)
+  nombre?: string;
+
+  @ApiPropertyOptional({
+    example: '3.1',
+    description: 'Actividad en la que se ofrece. Vacio lo devuelve a la biblioteca.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  numeral?: string;
+}
+
+/** Donde aplica un formato: en que actividad se ofrece y a que modalidades alcanza. */
+export class AsignarPlantillaDto {
+  @ApiPropertyOptional({
+    example: '3.1',
+    description: 'Actividad donde se ofrecera. Vacio lo devuelve a la biblioteca.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  numeral?: string;
+
+  @ApiPropertyOptional({
+    example: ['MINIMA_CUANTIA'],
+    description: 'Modalidades a las que alcanza. Lista vacia significa todas.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  modalidades?: string[];
+}
+
 /** Datos con los que simular el formulario. */
 export class SimularDto {
   @ApiProperty({ example: 'CONTRATACION_DIRECTA' })

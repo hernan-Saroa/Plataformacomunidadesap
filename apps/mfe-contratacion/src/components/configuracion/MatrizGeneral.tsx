@@ -185,7 +185,7 @@ export function MatrizGeneral({ onAbrir }: Props) {
             mirando: la sigla de la cabecera no dice cuál es, y once
             abreviaturas no se memorizan. Se reserva el sitio siempre para que
             la banda no cambie de alto al recorrer la rejilla. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-gray-100 pt-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-gray-100 pt-2">
           {resumen && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
               <span>
@@ -228,7 +228,7 @@ export function MatrizGeneral({ onAbrir }: Props) {
         </div>
       </div>
 
-      <div className="overflow-auto rounded-xl border border-gray-200 bg-white max-h-[68vh]">
+      <div className="overflow-auto rounded-xl border border-gray-200 bg-white max-h-[600px]">
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-20">
             <tr className="bg-gray-50">
@@ -278,8 +278,8 @@ export function MatrizGeneral({ onAbrir }: Props) {
 
                   {abierta &&
                     lista.map((fila) => (
-                      <tr key={fila.numeral} className="group border-b border-gray-100 transition-colors hover:bg-gray-50/70">
-                        <td className="sticky left-0 z-10 bg-white group-hover:bg-gray-50 border-r border-gray-200 px-3 py-2 transition-colors">
+                      <tr key={fila.numeral} className="group border-b border-gray-100 transition-colors hover:bg-gray-50">
+                        <td className="sticky left-0 z-10 bg-white hover:bg-gray-50 border-r border-gray-200 px-3 py-2 transition-colors">
                           <span className="flex items-baseline gap-2">
                             <span className="text-[11px] font-bold text-gray-400 flex-shrink-0">
                               {fila.numeral}
@@ -346,7 +346,7 @@ function FilaEtapa({
   }
 
   return (
-    <tr className="border-b border-gray-200 bg-gray-50/90">
+    <tr className="border-b border-gray-200 bg-gray-50">
       <th
         scope="rowgroup"
         className="sticky left-0 z-10 bg-gray-50 border-r border-gray-200 p-0 text-left"
@@ -427,12 +427,12 @@ function Celda({
   }`;
 
   return (
-    <td className="p-0 text-center transition-colors group-hover:bg-gray-50">
+    <td className="p-0 text-center transition-colors hover:bg-gray-50">
       <button
         type="button"
         onClick={onAbrir}
         title={titulo}
-        className="w-full h-full px-2 py-2 hover:bg-[#E0EDFF] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-inset"
+        className="w-full h-full px-2 py-2 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5]"
       >
         <SimboloMatriz estado={celda.estado} className="w-4 h-4" />
         {/* La variante se anuncia con un punto: sin él, "aplica igual que

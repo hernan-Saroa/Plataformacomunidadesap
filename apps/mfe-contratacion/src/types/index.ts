@@ -271,6 +271,28 @@ export class ConflictoError extends Error {
 // ------------------------------------ Configuración de etapas (EFDS-1187) --
 
 /** Una de las 63 actividades de la matriz de flujo. */
+/**
+ * Formato institucional del Sistema Integrado de Gestión.
+ *
+ * Los documentos del proceso no se redactan en el sistema: la ESAP tiene
+ * formatos aprobados que se diligencian en Word y se firman. Aquí se registra
+ * cuál corresponde a cada actividad y modalidad.
+ */
+export interface PlantillaFormato {
+  id: string;
+  /** Código del SIG, p. ej. BS-FO-047. */
+  codigo: string;
+  nombre: string;
+  numeral: string;
+  version: string;
+  fechaAprobacion?: string | null;
+  /** Modalidades a las que aplica; vacío = todas. */
+  modalidades: string[];
+  /** Ruta de descarga; null mientras no se haya subido el archivo. */
+  archivoUrl?: string | null;
+  activo: boolean;
+}
+
 export interface ActividadCatalogo {
   numeral: string;
   etapa: number;

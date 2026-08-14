@@ -9,6 +9,7 @@ import {
 } from '../../entities/actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
+import { Plantilla } from '../../entities/plantilla.entity';
 import { Documento } from '../../entities/documento.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -18,6 +19,8 @@ import {
   GuardarReglaDto,
   ActualizarCampoDto,
   CrearCampoDto,
+  EstadoPlantillaDto,
+  GuardarPlantillaDto,
   SimularDto,
 } from './dto/configuracion.dto';
 import {
@@ -692,6 +695,123 @@ export class ConfiguracionService {
     campo.activo = true;
     campo.soloLectura = false;
     return repo.save(campo);
+  }
+
+  // ---------------------------------------------------------- formatos ----
+  // Los documentos del proceso no se redactan en el sistema: la ESAP tiene
+  // formatos aprobados en el SIG que se diligencian en Word y se firman. Aqui
+  // se administra cual corresponde a cada actividad y modalidad.
+
+  /** Formatos de una actividad, o toda la biblioteca si no se indica numeral. */
+  async plantillas(numeral?: string) {
+    const repo = this.dataSource.getRepository(Plantilla);
+    return repo.find({
+      where: numeral ? { numeral } : {},
+      order: { numeral: 'ASC', codigo: 'ASC', version: 'DESC' },
+    });
+  }
+
+  /**
+   * Mueve un formato de la biblioteca a otra actividad.
+   *
+   * Se sube una vez y se asigna donde corresponda: obligar a subir el mismo
+   * archivo en cada actividad multiplicaria copias del mismo documento y las
+   * dejaria desincronizadas cuando el SIG publique una version nueva.
+   *
+   * `numeral` vacio lo devuelve a la biblioteca sin actividad asignada.
+   */
+  async asignarPlantilla(
+    id: string,
+    numeral: string | null,
+    modalidades?: string[],
+  ) {
+    const repo = this.dataSource.getRepository(Plantilla);
+    const plantilla = await repo.findOne({ where: { id } });
+    if (!plantilla) throw new NotFoundException('El formato no existe');
+
+    if (numeral) {
+      const actividad = await this.dataSource.getRepository(Actividad).findOne({
+        where: { numeral },
+      });
+      if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe`);
+    }
+
+    plantilla.numeral = numeral ?? '';
+    // Solo se tocan si vienen: asignar actividad y cambiar el alcance son dos
+    // gestos distintos, y mover un formato de actividad no debe borrar en
+    // silencio las modalidades que ya tenia marcadas.
+    if (modalidades) plantilla.modalidades = modalidades;
+    return repo.save(plantilla);
+  }
+
+  /**
+   * Registra un formato con su archivo.
+   *
+   * Subir el mismo codigo con otra version no reemplaza al anterior: el SIG
+   * versiona sus formatos y un proceso antiguo debe poder mostrar el que
+   * estaba vigente cuando se diligencio.
+   */
+  async guardarPlantilla(dto: GuardarPlantillaDto, archivoUrl: string | null) {
+    const repo = this.dataSource.getRepository(Plantilla);
+
+    const codigo = dto.codigo.trim();
+
+    // La version la lleva el sistema. Volver a subir BS-FO-047 significa que
+    // el SIG publico una revision: se guarda como la siguiente y la anterior
+    // se retira, que es lo que pasa de verdad cuando sale una version nueva.
+    // Escribirla a mano solo abria la puerta a repetir un numero o a saltarse
+    // uno, y a que dos formatos vigentes dijeran ser el mismo documento.
+    const previas = await repo.find({ where: { codigo } });
+    const version = String(
+      previas.reduce((mayor, p) => Math.max(mayor, Number(p.version) || 0), 0) + 1,
+    );
+
+    for (const previa of previas.filter((p) => p.activo)) {
+      previa.activo = false;
+      await repo.save(previa);
+    }
+
+    const plantilla = repo.create();
+    plantilla.codigo = codigo;
+    plantilla.nombre = dto.nombre.trim();
+    // Una revision hereda donde se ofrecia la anterior: el documento sigue
+    // siendo el mismo, y volver a asignarlo seria repetir un trabajo hecho.
+    const anterior = previas.at(-1);
+    plantilla.numeral = dto.numeral?.trim() || anterior?.numeral || '';
+    plantilla.version = version;
+    plantilla.fechaAprobacion = dto.fechaAprobacion || null;
+    plantilla.modalidades = dto.modalidades ?? anterior?.modalidades ?? [];
+    plantilla.archivoUrl = archivoUrl;
+    plantilla.activo = true;
+    return repo.save(plantilla);
+  }
+
+  /**
+   * Retira un formato de circulacion, o lo vuelve a ofrecer.
+   *
+   * No se borra: los procesos que ya lo descargaron y adjuntaron conservan la
+   * referencia, y borrarlo dejaria el expediente apuntando a nada.
+   */
+  async cambiarEstadoPlantilla(
+    id: string,
+    dto: EstadoPlantillaDto,
+    archivoUrl?: string,
+  ) {
+    const repo = this.dataSource.getRepository(Plantilla);
+    const plantilla = await repo.findOne({ where: { id } });
+    if (!plantilla) throw new NotFoundException('El formato no existe');
+
+    // Solo lo que venga: retirar un formato y corregir su nombre son gestos
+    // distintos, y uno no debe arrastrar al otro.
+    if (dto.activo !== undefined) plantilla.activo = dto.activo;
+    if (dto.codigo !== undefined) plantilla.codigo = dto.codigo.trim();
+    if (dto.nombre !== undefined) plantilla.nombre = dto.nombre.trim();
+    if (dto.numeral !== undefined) plantilla.numeral = dto.numeral.trim();
+    // Reemplazar el archivo corrige el documento subido por equivocacion, y no
+    // crea version: la version la publica el SIG, no el que se equivoco al
+    // elegir el fichero.
+    if (archivoUrl) plantilla.archivoUrl = archivoUrl;
+    return repo.save(plantilla);
   }
 
   /**

@@ -4,11 +4,19 @@ import { AlertTriangle } from 'lucide-react';
 import { ActividadAplicable, CampoConfigurable, Modalidad } from '../../types';
 
 import { CabeceraActividad } from './CabeceraActividad';
+import { FormatosActividad } from './FormatosActividad';
 import { QueSePide } from './QueSePide';
 import { VistaPrevia } from './VistaPrevia';
 import { Peticion } from './peticiones';
 
-type Pestana = 'configurar' | 'previa';
+type Pestana = 'configurar' | 'formatos' | 'previa';
+
+/**
+ * Nota sobre los formatos: aquí solo se ven los que ya están asignados a la
+ * actividad. Subirlos se hace en la biblioteca, porque un mismo formato sirve
+ * en varias actividades y subirlo en cada una multiplicaría copias del mismo
+ * archivo.
+ */
 
 interface Props {
   actividad: ActividadAplicable;
@@ -78,6 +86,7 @@ export function DetalleActividad({
             {(
               [
                 ['configurar', 'Qué se pide'],
+                ['formatos', 'Formatos'],
                 ['previa', 'Cómo lo verá el gestor'],
               ] as [Pestana, string][]
             ).map(([id, texto]) => (
@@ -97,7 +106,7 @@ export function DetalleActividad({
             ))}
           </div>
 
-          {pestana === 'configurar' ? (
+          {pestana === 'configurar' && (
             <QueSePide
               campos={campos}
               cargando={cargandoCampos}
@@ -106,9 +115,17 @@ export function DetalleActividad({
               onExigir={onExigirCampo}
               onQuitar={onQuitarCampo}
             />
-          ) : (
-            <VistaPrevia actividad={actividad} campos={campos} />
           )}
+
+          {pestana === 'formatos' && (
+            <FormatosActividad
+              numeral={actividad.numeral}
+              modalidad={modalidad}
+              modalidades={modalidades}
+            />
+          )}
+
+          {pestana === 'previa' && <VistaPrevia actividad={actividad} campos={campos} />}
         </>
       )}
     </div>

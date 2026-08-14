@@ -70,7 +70,7 @@ export function VistaPrevia({ actividad, campos }: Props) {
           <button
             type="button"
             disabled
-            className="rounded-lg bg-[#003DA5]/50 px-3 py-1.5 text-xs font-semibold text-white cursor-default"
+            className="rounded-lg bg-[#003DA5] px-3 py-1.5 text-xs font-semibold text-white cursor-default"
           >
             Terminar actividad
           </button>
@@ -97,7 +97,7 @@ function Campo({ campo }: { campo: CampoConfigurable }) {
     <div>
       <p className="text-xs font-semibold text-gray-800 m-0 mb-1">
         {campo.etiqueta}
-        {campo.obligatorio && <span className="text-red-500 ml-0.5">*</span>}
+        {campo.obligatorio && <span className="text-red-500 ml-1">*</span>}
       </p>
       {campo.ayuda && <p className="text-[11px] text-gray-500 m-0 mb-1">{campo.ayuda}</p>}
 

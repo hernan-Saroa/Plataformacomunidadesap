@@ -24,6 +24,7 @@ import { PETICIONES, Peticion } from './peticiones';
  * mantenerlas también en una pantalla obligaba a que dos sitios dijeran lo
  * mismo sin nada que los mantuviera de acuerdo.
  */
+
 export function VistaConfiguracion() {
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
   const [modalidad, setModalidad] = useState('');

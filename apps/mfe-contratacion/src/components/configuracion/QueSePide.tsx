@@ -118,8 +118,8 @@ export function QueSePide({
       {agregando ? (
         /* Elegir ocurre en la misma lista donde se ve el resultado: un modal
            aparte obligaba a decidir a ciegas, sin ver lo que ya se pide. */
-        <div className="rounded-xl border border-[#003DA5]/30 bg-[#E0EDFF]/30 p-3.5">
-          <div className="flex items-start justify-between gap-3 mb-2.5">
+        <div className="rounded-xl border border-[#003DA5] bg-[#E0EDFF] p-3">
+          <div className="flex items-start justify-between gap-3 mb-2">
             <p className="text-xs font-bold text-gray-800 m-0">¿Qué debe hacer el gestor?</p>
             <button
               type="button"
@@ -141,7 +141,7 @@ export function QueSePide({
                   type="button"
                   disabled={guardando}
                   onClick={() => elegir(p)}
-                  className="flex items-start gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:border-[#003DA5] hover:bg-[#E0EDFF]/40 disabled:opacity-60"
+                  className="flex items-start gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:border-[#003DA5] hover:bg-gray-100 disabled:opacity-60"
                 >
                   <span className="mt-0.5 flex-shrink-0 text-[#003DA5]">
                     <Icono className="w-4 h-4" />
@@ -254,7 +254,7 @@ function Fila({
         }
         className={`flex-shrink-0 rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wide transition-colors ${
           campo.obligatorio
-            ? 'border-[#003DA5]/30 bg-[#E0EDFF] text-[#003DA5]'
+            ? 'border-[#003DA5] bg-[#E0EDFF] text-[#003DA5]'
             : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
         }`}
       >
@@ -265,7 +265,7 @@ function Fila({
         type="button"
         onClick={() => onQuitar(campo)}
         title="Dejar de pedirlo"
-        className="flex-shrink-0 rounded-md p-1.5 text-gray-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus:opacity-100"
+        className="flex-shrink-0 rounded-md p-1.5 text-gray-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>

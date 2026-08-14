@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, FileSignature, ClipboardCheck, Scale, Settings } from 'lucide-react';
+import { Briefcase, FileSignature, ClipboardCheck, FileText, Scale, Settings } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 // Maquetación propia del módulo. Va aquí, en el componente expuesto por Module
@@ -13,8 +13,9 @@ import { VistaProcesos } from './procesos/VistaProcesos';
 import { DetalleProceso } from './proceso/DetalleProceso';
 import { VistaUmbrales } from './umbrales/VistaUmbrales';
 import { VistaConfiguracion } from './configuracion/VistaConfiguracion';
+import { VistaPlantillas } from './plantillas/VistaPlantillas';
 
-type Seccion = 'estudios-previos' | 'revision' | 'umbrales' | 'configuracion';
+type Seccion = 'estudios-previos' | 'revision' | 'umbrales' | 'plantillas' | 'configuracion';
 
 /**
  * Módulo de Gestión de Contratación — HU EFDS-1146.
@@ -65,6 +66,15 @@ export default function ContratacionModulePremium() {
           color: '#7C3AED',
         },
         {
+          // Los formatos del SIG son un catálogo propio: un mismo formato
+          // sirve en varias actividades, así que no cuelga de ninguna.
+          id: 'plantillas',
+          label: 'Plantillas',
+          subtitle: 'Formatos del SIG',
+          icon: <FileText className="w-5 h-5" />,
+          color: '#0891B2',
+        },
+        {
           id: 'configuracion',
           label: 'Configuración',
           subtitle: 'Etapas y reglas',
@@ -79,6 +89,7 @@ export default function ContratacionModulePremium() {
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
     if (seccion === 'umbrales') return <VistaUmbrales />;
+    if (seccion === 'plantillas') return <VistaPlantillas />;
     if (seccion === 'configuracion') return <VistaConfiguracion />;
     if (procesoId) {
       return (
