@@ -34,11 +34,20 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     puedeEditar: true,
   };
 
-  /** Datos completos según los campos obligatorios vigentes en base. */
+  /**
+   * Datos completos según los campos obligatorios vigentes en base.
+   *
+   * Se excluyen los de solo lectura: desde EFDS-1147 el valor estimado se pide
+   * al crear el proceso y el backend lo inyecta al releer, así que enviarlo
+   * desde el formulario haría esperar de vuelta un valor que el proceso ya
+   * sustituyó por el suyo.
+   */
   const datosCompletos = async (): Promise<Record<string, any>> => {
-    const obligatorios = await dataSource.getRepository(CampoFormulario).find({
-      where: { numeral: '3.1', obligatorio: true, activo: true },
-    });
+    const obligatorios = (
+      await dataSource.getRepository(CampoFormulario).find({
+        where: { numeral: '3.1', obligatorio: true, activo: true },
+      })
+    ).filter((campo) => !campo.soloLectura);
 
     const valores: Record<string, any> = {};
     for (const campo of obligatorios) {
@@ -59,7 +68,13 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
 
   const crearProceso = async () =>
     service.crearProceso(
-      { objeto: 'Adquisición de equipos para pruebas', modalidad: 'MINIMA_CUANTIA', valorEstimado: 1000000 },
+      // El valor estimado se pide al crear desde EFDS-1147, y debe caber en la
+      // modalidad: uno de mínima cuantía, que es con la que corren estos casos.
+      {
+        objeto: 'Adquisición de equipos para pruebas',
+        modalidad: 'MINIMA_CUANTIA',
+        valorEstimado: 1_000_000,
+      },
       gestor,
     );
 
@@ -102,12 +117,9 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
       const datos = await datosCompletos();
 
       await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);
-      const leido: any = await service.obtener(proceso.id);
+      const leido = await service.obtener(proceso.id);
 
-      // valor_estimado vive en el proceso desde EFDS-1147 y obtener() lo inyecta
-      // desde ahi, asi que no se compara contra lo que se envio en el formulario.
-      const { valor_estimado: _ve, ...esperado } = datos;
-      expect(leido.datos).toMatchObject(esperado);
+      expect(leido.datos).toMatchObject(datos);
     });
 
     it('registra la referencia normativa junto a los datos', async () => {
@@ -117,7 +129,7 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
       const datos = await datosCompletos();
 
       await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);
-      const leido: any = await service.obtener(proceso.id);
+      const leido = await service.obtener(proceso.id);
 
       expect(leido.datos.fundamento_juridico).toBeDefined();
       expect(String(leido.datos.fundamento_juridico)).not.toHaveLength(0);
@@ -263,13 +275,10 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
         { datos: { ...datos, modalidad_propuesta: 'Minima Cuantia' }, version: 1 },
         gestor,
       );
-      const leido: any = await service.obtener(proceso.id);
+      const leido = await service.obtener(proceso.id);
 
       expect(leido.datos.modalidad_propuesta).toBeUndefined();
-      // valor_estimado vive en el proceso desde EFDS-1147 y obtener() lo inyecta
-      // desde ahi, asi que no se compara contra lo que se envio en el formulario.
-      const { valor_estimado: _ve, ...esperado } = datos;
-      expect(leido.datos).toMatchObject(esperado);
+      expect(leido.datos).toMatchObject(datos);
     });
 
     it('rechaza una clave que nunca existio', async () => {

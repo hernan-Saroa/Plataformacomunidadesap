@@ -55,6 +55,122 @@ export const ROLES_SOLICITUD_CDP = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién registra la publicación del proyecto de pliego (actividad 5.2).
+ *
+ * La publicación en SECOP II la hace el gestor del proceso, no la Dirección
+ * Financiera: no hay presupuesto de por medio, es un trámite de publicidad.
+ */
+export const ROLES_PUBLICACION_PLIEGO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién mueve los plazos de publicidad (EFDS-1387).
+ *
+ * Mismo criterio que los umbrales y por la misma razón: cambiar un plazo no
+ * afecta a un proceso sino a todos los que se publiquen después, así que queda
+ * en la Dirección de Contratación. El gestor publica; no reescribe el término.
+ *
+ * Constante propia y no un alias de ROLES_ADMIN_UMBRALES: hoy coinciden, pero
+ * son dos parámetros distintos y nada obliga a que sigan coincidiendo.
+ */
+export const ROLES_ADMIN_PLAZOS = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
+/**
+ * Quién gestiona las observaciones al pliego y la limitación a MIPYME
+ * (actividades 5.3 y 5.4, EFDS-1151).
+ *
+ * Mismos roles que la publicación porque es el mismo gestor llevando la etapa
+ * 5. Constante aparte y no reutilizada: un lector que viera
+ * `ROLES_PUBLICACION_PLIEGO` en un endpoint de observaciones tendría que
+ * adivinar si es intencional o un copiar y pegar.
+ */
+export const ROLES_PARTICIPACION = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/** Quién ajusta las condiciones de la limitación a MIPYME (EFDS-1393). */
+export const ROLES_ADMIN_MIPYME = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
+/**
+ * Quién elabora y carga los documentos del proceso (actividad 5.1, EFDS-1149).
+ *
+ * La matriz asigna la elaboración a la Dirección de Contratación, así que son
+ * los mismos roles que llevan la etapa. El estructurador financiero queda
+ * fuera: interviene en el CDP, que condiciona esta actividad en contratación
+ * directa, pero no redacta el pliego.
+ */
+export const ROLES_DOCUMENTOS_PROCESO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién registra la audiencia de asignación de riesgos (actividad 5.5,
+ * EFDS-1153).
+ *
+ * La audiencia la preside la Dirección de Contratación y su resultado es la
+ * matriz de riesgos del proceso. Constante propia y no reutilizada: coincide
+ * hoy con quien lleva la etapa, pero es una actuación distinta y nada obliga a
+ * que siga coincidiendo.
+ */
+export const ROLES_AUDIENCIA_RIESGOS = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién emite y publica las adendas del proceso (actividad 5.6, EFDS-1154).
+ *
+ * Una adenda modifica un pliego ya público y puede mover el plazo del proceso,
+ * así que es la misma Dirección de Contratación que lo publicó. Constante
+ * propia por el mismo motivo que las anteriores: coincide hoy, pero es otra
+ * actuación.
+ */
+export const ROLES_ADENDAS = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién registra las ofertas recibidas y cierra la recepción (actividad 6.1,
+ * EFDS-1155).
+ *
+ * Primera actividad de la etapa 6 y sigue siendo el gestor del proceso quien la
+ * lleva: recibe las ofertas en ventanilla y cierra al vencimiento. La
+ * evaluación, que es otra cosa, tendrá sus propios roles cuando llegue.
+ */
+export const ROLES_OFERTAS = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/** Ordenador del Gasto: designa el comité evaluador (actividad 6.2). */
+export const ROL_ORDENADOR_GASTO = 'ORDENADOR_GASTO';
+
+/** Las tres dimensiones del comité evaluador (RF-SIS-02). */
+export const ROL_EVALUADOR_JURIDICO = 'EVALUADOR_JURIDICO';
+export const ROL_EVALUADOR_FINANCIERO = 'EVALUADOR_FINANCIERO';
+export const ROL_EVALUADOR_TECNICO = 'EVALUADOR_TECNICO';
+
+/**
+ * Quién designa el comité evaluador (actividad 6.2, EFDS-1156).
+ *
+ * Más estrecho que el resto de la etapa a propósito: la historia dice que la
+ * designación es del Ordenador del Gasto, y es él quien responde por a quién
+ * nombra. El gestor lleva el proceso, pero no elige a los evaluadores.
+ */
+export const ROLES_DESIGNAR_COMITE = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

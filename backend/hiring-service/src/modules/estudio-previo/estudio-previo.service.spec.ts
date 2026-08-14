@@ -1,4 +1,4 @@
-import { esFaltante, esVacio } from './estudio-previo.service';
+import { esFaltante, esVacio, jsonCanonico } from './estudio-previo.service';
 
 /**
  * El criterio 2 del HU depende por completo de esta función: si decide mal qué
@@ -86,6 +86,64 @@ describe('esVacio', () => {
     // Un objeto suelto en `datos` es un error de cliente, no un valor.
     expect(esVacio('texto', {})).toBe(true);
     expect(esVacio('numero', {})).toBe(true);
+  });
+});
+
+/**
+ * El snapshot que se guarda al enviar lleva un hash SHA-256 de su contenido:
+ * es lo que le da valor probatorio al expediente, porque permite detectar si
+ * el documento registrado se alteró después.
+ *
+ * Ese hash se calcula sobre este JSON. Si el mismo contenido produjera dos
+ * cadenas distintas —por ejemplo al reordenarse las claves entre un guardado y
+ * otro— el hash cambiaría sin que nadie hubiera modificado nada, y el
+ * mecanismo entero dejaría de significar algo.
+ */
+describe('jsonCanonico', () => {
+  it('da el mismo resultado con las claves en otro orden', () => {
+    const a = { objeto: 'Equipos', valor: 100, area: 'TI' };
+    const b = { area: 'TI', valor: 100, objeto: 'Equipos' };
+
+    expect(jsonCanonico(a)).toBe(jsonCanonico(b));
+  });
+
+  it('ordena las claves alfabéticamente', () => {
+    expect(jsonCanonico({ z: 1, a: 2 })).toBe('{"a":2,"z":1}');
+  });
+
+  it('ordena también las claves anidadas', () => {
+    // Los datos del formulario llegan agrupados, así que el desorden puede
+    // estar en cualquier nivel.
+    const a = { datos: { z: 1, a: 2 } };
+    const b = { datos: { a: 2, z: 1 } };
+
+    expect(jsonCanonico(a)).toBe(jsonCanonico(b));
+  });
+
+  it('respeta el orden de los arreglos', () => {
+    // A diferencia de las claves, el orden de un arreglo es información: dos
+    // listas de supervisores en distinto orden no son el mismo dato.
+    expect(jsonCanonico(['a', 'b'])).not.toBe(jsonCanonico(['b', 'a']));
+  });
+
+  it('distingue el 0 de la cadena vacía y del null', () => {
+    // Tres formas de "sin valor" que deben producir hashes distintos.
+    expect(jsonCanonico({ v: 0 })).not.toBe(jsonCanonico({ v: '' }));
+    expect(jsonCanonico({ v: 0 })).not.toBe(jsonCanonico({ v: null }));
+  });
+
+  it('conserva null', () => {
+    expect(jsonCanonico({ v: null })).toBe('{"v":null}');
+  });
+
+  it('serializa un formulario vacío de forma estable', () => {
+    expect(jsonCanonico({})).toBe('{}');
+  });
+
+  it('detecta un cambio de valor', () => {
+    // Lo contrario de los casos anteriores: si el contenido cambia, el hash
+    // tiene que cambiar. Es lo que hace verificable el expediente.
+    expect(jsonCanonico({ valor: 100 })).not.toBe(jsonCanonico({ valor: 200 }));
   });
 });
 

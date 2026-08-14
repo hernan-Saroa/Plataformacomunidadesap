@@ -11,6 +11,9 @@ vi.mock('../../services/contratacionService', () => ({
     listarProcesos: vi.fn(),
     modalidades: vi.fn(),
     crearProceso: vi.fn(),
+    // Desde EFDS-1147 el formulario consulta la modalidad que corresponde a la
+    // cuantía mientras se digita el valor.
+    sugerenciaModalidad: vi.fn(),
   },
 }));
 
@@ -18,6 +21,7 @@ const servicio = contratacionService as unknown as {
   listarProcesos: ReturnType<typeof vi.fn>;
   modalidades: ReturnType<typeof vi.fn>;
   crearProceso: ReturnType<typeof vi.fn>;
+  sugerenciaModalidad: ReturnType<typeof vi.fn>;
 };
 
 const MODALIDADES = [
@@ -35,6 +39,7 @@ describe('VistaProcesos · selector de modalidad', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     servicio.listarProcesos.mockResolvedValue([]);
+    servicio.sugerenciaModalidad.mockResolvedValue({ modalidad: null, forzosa: false });
   });
 
   const abrirModal = async () => {
@@ -85,17 +90,24 @@ describe('VistaProcesos · selector de modalidad', () => {
     expect(screen.getByRole('button', { name: /Crear y abrir/ })).toBeDisabled();
   });
 
-  it('envía la modalidad elegida junto al objeto', async () => {
+  it('envía la modalidad elegida junto al objeto y la cuantía', async () => {
     servicio.modalidades.mockResolvedValue(MODALIDADES);
     servicio.crearProceso.mockResolvedValue({ id: 'proc-1' });
     await abrirModal();
 
     await userEvent.type(screen.getByLabelText(/Objeto a contratar/), 'Adquisición de equipos');
+    // El valor estimado se pide al crear desde EFDS-1147: de él depende la
+    // modalidad aplicable, así que el proceso no puede nacer sin él.
+    await userEvent.type(screen.getByLabelText(/Valor estimado/), '1000000');
     await userEvent.selectOptions(screen.getByLabelText(/Modalidad/), 'MINIMA_CUANTIA');
     await userEvent.click(screen.getByRole('button', { name: /Crear y abrir/ }));
 
     await waitFor(() =>
-      expect(servicio.crearProceso).toHaveBeenCalledWith('Adquisición de equipos', 'MINIMA_CUANTIA'),
+      expect(servicio.crearProceso).toHaveBeenCalledWith(
+        'Adquisición de equipos',
+        'MINIMA_CUANTIA',
+        1000000,
+      ),
     );
   });
 });

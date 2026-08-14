@@ -2,8 +2,19 @@ import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
   CamposFaltantesError,
+  EstadoAdendas,
+  EstadoApertura,
+  EstadoAudienciaRiesgos,
   Cdp,
+  CondicionesMipymeConfig,
   ConflictoError,
+  EstadoDocumentos,
+  EstadoMipyme,
+  EstadoComite,
+  EstadoObservaciones,
+  EstadoOfertas,
+  MiembroPropuesto,
+  EstadoPublicacion,
   EstadoRespaldo,
   EstudioPrevio,
   Expediente,
@@ -20,6 +31,7 @@ import {
   ReglaActividad,
   Persona,
   PlantillaFormato,
+  PlazosPublicacion,
   ProcesoResumen,
   RevisionEstudioPrevio,
   SmmlvAnual,
@@ -130,9 +142,421 @@ export const contratacionService = {
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 
-  abrirProceso: (procesoId: string) =>
-    pedir<{ id: string; radicado: string; etapa: number }>(`/procesos/${procesoId}/abrir`, {
+  // -------------------------------- etapa 5 · adendas del proceso (5.6) -----
+
+  /** Adendas del proceso, con su estado y si se pueden emitir nuevas. */
+  adendas: (procesoId: string) => pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`),
+
+  /**
+   * Emite una adenda con su documento firmado.
+   *
+   * Emitir no publica: la adenda queda registrada con su consecutivo, pero no
+   * produce efectos —ni mueve el cronograma— hasta que se publique.
+   */
+  emitirAdenda: (
+    procesoId: string,
+    datos: { tipo: 'FONDO' | 'CRONOGRAMA'; objeto: string; vencimientoNuevo?: string },
+    documento: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', documento);
+    cuerpo.append('tipo', datos.tipo);
+    cuerpo.append('objeto', datos.objeto);
+    if (datos.vencimientoNuevo) cuerpo.append('vencimientoNuevo', datos.vencimientoNuevo);
+
+    return pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`, {
       method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Publica una adenda emitida; si es de cronograma, aquí se mueve el plazo. */
+  publicarAdenda: (procesoId: string, adendaId: string, fechaPublicacion: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('fechaPublicacion', fechaPublicacion);
+
+    return pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas/${adendaId}/publicar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula una adenda emitida por error; una publicada ya no se puede anular. */
+  anularAdenda: (procesoId: string, adendaId: string, motivo: string) =>
+    pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas/${adendaId}/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------ etapa 6 · recepción de ofertas (6.1) ------------
+
+  /** Estado de la recepción: el plazo, si sigue abierta y qué ofertas van. */
+  ofertas: (procesoId: string) => pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas`),
+
+  /**
+   * Fija o corrige el vencimiento del plazo.
+   *
+   * Hace falta cuando la modalidad no tiene plazo parametrizado, y cuando el
+   * cronograma cierra a una hora distinta del final del día que calcula la
+   * plataforma. Se manda en ISO con zona para que no dependa del navegador.
+   */
+  fijarPlazoOfertas: (procesoId: string, vencimiento: string) =>
+    pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas/plazo`, {
+      method: 'PUT',
+      body: JSON.stringify({ vencimiento }),
+    }),
+
+  /** Registra una oferta recibida en ventanilla, con su soporte. */
+  registrarOferente: (
+    procesoId: string,
+    datos: { nombre: string; identificacion: string; fechaRadicacion: string },
+    soporte: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+    cuerpo.append('nombre', datos.nombre);
+    cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaRadicacion', datos.fechaRadicacion);
+
+    return pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Retira una oferta registrada por error; solo antes del cierre. */
+  retirarOferente: (procesoId: string, oferenteId: string) =>
+    pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas/${oferenteId}`, { method: 'DELETE' }),
+
+  /** Cierra la recepción al vencimiento y con ello publica la lista. */
+  cerrarRecepcion: (procesoId: string) =>
+    pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas/cerrar`, { method: 'POST' }),
+
+  // -------------------------- etapa 6 · comité evaluador (6.2) --------------
+
+  /** Comité del proceso, sus miembros y si quien consulta evalúa en él. */
+  comite: (procesoId: string) => pedir<EstadoComite>(`/procesos/${procesoId}/comite`),
+
+  /**
+   * Designa el comité con su memorando.
+   *
+   * Los miembros van como JSON dentro del multipart: la petición lleva también
+   * el memorando, y `FormData` no transporta arreglos de objetos.
+   */
+  designarComite: (
+    procesoId: string,
+    datos: { fechaDesignacion: string; miembros: MiembroPropuesto[] },
+    memorando: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', memorando);
+    cuerpo.append('fechaDesignacion', datos.fechaDesignacion);
+    cuerpo.append('miembros', JSON.stringify(datos.miembros));
+
+    return pedir<EstadoComite>(`/procesos/${procesoId}/comite`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Revoca la designación vigente; la anterior se conserva en el expediente. */
+  revocarComite: (procesoId: string, motivo: string) =>
+    pedir<EstadoComite>(`/procesos/${procesoId}/comite/revocar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
+
+  /** Estado de la audiencia: si aplica, si es obligatoria y si ya se celebró. */
+  audienciaRiesgos: (procesoId: string) =>
+    pedir<EstadoAudienciaRiesgos>(`/procesos/${procesoId}/audiencia-riesgos`),
+
+  /**
+   * Registra la audiencia celebrada con su acta y su matriz consolidada.
+   *
+   * Los dos documentos van juntos porque la actividad exige la audiencia y la
+   * consolidación de su resultado: un acta sin matriz la dejaría a medias.
+   */
+  registrarAudienciaRiesgos: (
+    procesoId: string,
+    datos: { fechaCelebracion: string; observaciones?: string },
+    acta: File,
+    matriz: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('acta', acta);
+    cuerpo.append('matriz', matriz);
+    cuerpo.append('fechaCelebracion', datos.fechaCelebracion);
+    if (datos.observaciones) cuerpo.append('observaciones', datos.observaciones);
+
+    return pedir<EstadoAudienciaRiesgos>(`/procesos/${procesoId}/audiencia-riesgos`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula la audiencia para corregirla; donde es obligatoria vuelve a bloquear. */
+  anularAudienciaRiesgos: (procesoId: string, motivo: string) =>
+    pedir<EstadoAudienciaRiesgos>(`/procesos/${procesoId}/audiencia-riesgos/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------------ etapa 5 · apertura del proceso (5.7) ------
+
+  /** Estado de la apertura y qué falta para poder abrir. */
+  apertura: (procesoId: string) => pedir<EstadoApertura>(`/procesos/${procesoId}/apertura`),
+
+  /**
+   * Registra la resolución de apertura con el pliego definitivo y abre el proceso.
+   *
+   * Los tres documentos viajan con los datos en la misma petición: el proceso
+   * se abre con todos o no se abre, y dejarlo en dos pasos permitiría un
+   * proceso abierto sin el acto que lo respalda. La evidencia prueba que el
+   * pliego definitivo se publicó, igual que en la actividad 5.2.
+   */
+  registrarApertura: (
+    procesoId: string,
+    datos: { resolucionNumero: string; resolucionFecha: string; secopUrl?: string },
+    resolucion: File,
+    pliegoDefinitivo: File,
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('resolucion', resolucion);
+    cuerpo.append('pliegoDefinitivo', pliegoDefinitivo);
+    cuerpo.append('evidencia', evidencia);
+    cuerpo.append('resolucionNumero', datos.resolucionNumero);
+    cuerpo.append('resolucionFecha', datos.resolucionFecha);
+    if (datos.secopUrl) cuerpo.append('secopUrl', datos.secopUrl);
+
+    return pedir<EstadoApertura>(`/procesos/${procesoId}/apertura`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ------------------------- etapa 5 · documentos del proceso (5.1) ---------
+
+  /** Qué documentos exige la modalidad y cuáles ya están cargados. */
+  documentosProceso: (procesoId: string) =>
+    pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`),
+
+  /**
+   * Carga uno de los documentos que la actividad exige.
+   *
+   * El código viaja en el cuerpo junto al archivo: la petición ya es multipart,
+   * y ponerlo en la ruta chocaría con `/documentos/iniciar`.
+   */
+  cargarDocumentoProceso: (procesoId: string, codigo: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('codigo', codigo);
+
+    return pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto un documento cargado para sustituirlo por otro. */
+  anularDocumentoProceso: (procesoId: string, documentoId: string) =>
+    pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos/${documentoId}/anular`, {
+      method: 'POST',
+      body: '{}',
+    }),
+
+  // ---------------------------- etapa 5 · publicación del proyecto de pliego -
+
+  /** Publicación vigente y estado del plazo de publicidad. */
+  publicacionPliego: (procesoId: string) =>
+    pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego`),
+
+  /**
+   * Registra la publicación con su evidencia en una sola petición.
+   *
+   * La evidencia va aquí y no en un paso posterior porque sin ella no hay
+   * registro: es lo único que prueba que la publicación existió, y el registro
+   * arranca un plazo legal. Admite imágenes además de documentos, que la prueba
+   * suele ser una captura de SECOP II.
+   *
+   * La fecha es la de la publicación real, no la del registro: es la que
+   * arranca el plazo, y el backend calcula el vencimiento con ella.
+   */
+  registrarPublicacion: (
+    procesoId: string,
+    datos: { fechaPublicacion: string; secopNumero?: string; secopUrl?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('fechaPublicacion', datos.fechaPublicacion);
+    if (datos.secopNumero) cuerpo.append('secopNumero', datos.secopNumero);
+    if (datos.secopUrl) cuerpo.append('secopUrl', datos.secopUrl);
+
+    return pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto la publicación registrada para poder corregirla. */
+  anularPublicacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoPublicacion>(`/procesos/${procesoId}/publicacion-pliego/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------------- etapa 5 · observaciones al pliego (5.3) ---
+
+  /** Observaciones del proceso con el resumen que decide si la actividad cumple. */
+  observaciones: (procesoId: string) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`),
+
+  /**
+   * Registra una observación recibida, con su soporte si lo hubo.
+   *
+   * El soporte es opcional, a diferencia de la evidencia de la publicación: una
+   * observación pudo llegar por un canal que no deja documento, y exigirlo
+   * obligaría a inventarse un archivo o a no registrarla.
+   *
+   * La fecha es la de presentación, no la del registro: es la que decide si
+   * llegó dentro del plazo de publicidad.
+   */
+  registrarObservacion: (
+    procesoId: string,
+    datos: {
+      presentadoPor: string;
+      identificacion?: string;
+      fechaPresentacion: string;
+      asunto: string;
+      contenido: string;
+    },
+    soporte: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('presentadoPor', datos.presentadoPor);
+    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+    cuerpo.append('asunto', datos.asunto);
+    cuerpo.append('contenido', datos.contenido);
+
+    return pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** La respuesta cierra la observación; no se reescribe después. */
+  responderObservacion: (
+    procesoId: string,
+    observacionId: string,
+    datos: { respuesta: string; modificoPliego: boolean },
+  ) =>
+    pedir<EstadoObservaciones>(
+      `/procesos/${procesoId}/observaciones/${observacionId}/responder`,
+      { method: 'POST', body: JSON.stringify(datos) },
+    ),
+
+  /** Da por cumplida la actividad cuando venció el plazo y no llegó ninguna. */
+  cerrarSinObservaciones: (procesoId: string) =>
+    pedir<EstadoObservaciones>(`/procesos/${procesoId}/observaciones/cerrar`, {
+      method: 'POST',
+      body: '{}',
+    }),
+
+  // ---------------------------------- etapa 5 · limitación a MIPYME (5.4) ---
+
+  /** Manifestaciones, condiciones evaluadas y decisión, si ya se tomó. */
+  mipyme: (procesoId: string) => pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme`),
+
+  /** Una MIPYME manifestó interés. De cuántas lo hagan depende la decisión. */
+  registrarManifestacionMipyme: (
+    procesoId: string,
+    datos: { nombre: string; identificacion: string; fechaPresentacion: string },
+    soporte: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('nombre', datos.nombre);
+    cuerpo.append('identificacion', datos.identificacion);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+
+    return pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme/manifestaciones`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Registra la decisión sobre la limitación.
+   *
+   * El motivo lo exige el backend cuando la decisión se aparta del cálculo, y
+   * el acto administrativo cuando se limita: limitar restringe quién puede
+   * presentarse a un proceso público.
+   */
+  decidirMipyme: (
+    procesoId: string,
+    datos: { limitado: boolean; motivo?: string },
+    acto: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (acto) cuerpo.append('file', acto);
+    cuerpo.append('limitado', String(datos.limitado));
+    if (datos.motivo) cuerpo.append('motivo', datos.motivo);
+
+    return pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme/decision`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ------------------------ administración de las condiciones de MIPYME -----
+
+  /** Tope de valor y mínimo de manifestaciones, con su marca de confirmado. */
+  condicionesMipyme: () => pedir<CondicionesMipymeConfig>('/condiciones-mipyme'),
+
+  /**
+   * Cambia una de las dos condiciones.
+   *
+   * No afecta a las decisiones ya tomadas: cada una congeló los parámetros con
+   * los que se evaluó.
+   */
+  guardarCondicionMipyme: (
+    clave: string,
+    datos: {
+      valor: number;
+      unidad?: 'SMMLV' | 'PESOS';
+      fundamento?: string;
+      confirmado?: boolean;
+    },
+  ) =>
+    pedir<CondicionesMipymeConfig>(`/condiciones-mipyme/${clave}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  // -------------------------------- administración de plazos de publicidad ---
+
+  /** Las once modalidades con su plazo, tengan fila o no. */
+  plazosPublicacion: () => pedir<PlazosPublicacion>('/plazos-publicacion'),
+
+  /**
+   * Fija el plazo de una modalidad, creándolo si no lo tenía.
+   *
+   * No afecta a lo ya publicado: cada publicación congeló el plazo que le
+   * aplicó el día de su registro.
+   */
+  guardarPlazoPublicacion: (
+    modalidad: string,
+    datos: { diasHabiles: number; fundamento?: string; confirmado?: boolean },
+  ) =>
+    pedir<PlazosPublicacion>(`/plazos-publicacion/${modalidad}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
     }),
 
   // ------------------------------------------- administración de umbrales ---

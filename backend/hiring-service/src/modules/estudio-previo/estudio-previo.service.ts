@@ -262,7 +262,7 @@ export class EstudioPrevioService {
       // El valor estimado vive en el proceso desde EFDS-1147. Se inyecta aquí
       // para que el estudio previo lo siga mostrando en su sitio sin duplicar
       // el dato en el JSON de la actividad.
-      datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado },
+      datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado } as Record<string, any>,
       definicionCampos: campos,
       editable: actividad.estado === 'BORRADOR',
     };

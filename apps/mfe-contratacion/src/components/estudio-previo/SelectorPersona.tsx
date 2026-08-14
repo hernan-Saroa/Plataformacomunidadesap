@@ -8,6 +8,15 @@ interface Props {
   id: string;
   value: string;
   onChange: (nombre: string) => void;
+  /**
+   * La persona completa, para quien necesite además su identificador.
+   *
+   * El estudio previo guarda solo el nombre —es un documento y conserva a quién
+   * se nombró—, pero el comité evaluador (EFDS-1156) necesita el `id_person`
+   * para saber después qué cuenta corresponde a cada evaluador designado.
+   * Opcional para no obligar a los usos que no lo necesitan.
+   */
+  onSeleccionar?: (persona: Persona) => void;
   placeholder?: string;
   disabled?: boolean;
   invalido?: boolean;
@@ -38,6 +47,7 @@ export function SelectorPersona({
   id,
   value,
   onChange,
+  onSeleccionar,
   placeholder = 'Busca por nombre…',
   disabled,
   invalido,
@@ -86,6 +96,7 @@ export function SelectorPersona({
 
   const elegir = (persona: Persona) => {
     onChange(persona.nombre);
+    onSeleccionar?.(persona);
     setAbierto(false);
     setTermino('');
   };

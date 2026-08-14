@@ -8,6 +8,7 @@ import { DataSource, EntityManager, In } from 'typeorm';
 
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
+import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -46,10 +47,19 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  * Etapas con actividades ya construidas.
  *
  * El riel muestra estas y no solo la etapa en curso: si únicamente listara la
- * actual, un proceso en la etapa 3 no tendría por dónde llegar al CDP. Al
- * entregar la etapa 5 se agrega aquí.
+ * actual, un proceso en la etapa 3 no tendría por dónde llegar al CDP.
+ *
+ * La 5 entra con EFDS-1150 (publicación del proyecto de pliego). Sus otras
+ * actividades sembradas —5.1 y 5.7— aparecen en el riel sin panel propio
+ * todavía, que es la verdad de lo entregado: existen en la matriz y aún no se
+ * trabajan desde aquí.
+ *
+ * La 6 entra con EFDS-1155 (recepción de ofertas) y EFDS-1156 (comité
+ * evaluador). Esta lista es el filtro real del riel: sembrar la actividad en
+ * `hiring.actividades` no basta, porque lo que no esté en estas etapas no se
+ * devuelve y la pantalla no tiene cómo llegar a ella.
  */
-export const ETAPAS_ENTREGADAS = [3, ETAPA_CDP];
+export const ETAPAS_ENTREGADAS = [3, ETAPA_CDP, ETAPA_APERTURA, ETAPA_RECEPCION];
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
@@ -493,25 +503,31 @@ export class CdpService {
   /**
    * Actividad 5.7: se abre el proceso.
    *
-   * Solo cubre el control presupuestal. Los demás requisitos de la etapa 5
-   * —pliego definitivo, publicación en SECOP, respuesta a observaciones— son de
-   * historias posteriores y aquí no se validan.
+   * Cubre el control presupuestal y el cambio de etapa. Desde EFDS-1152 el
+   * registro de la resolución de apertura y del pliego definitivo lo lleva
+   * AperturaService, que invoca este método dentro de su propia transacción:
+   * la mecánica de abrir es una sola, y duplicarla dejaría dos sitios donde
+   * corregir la regla del CDP.
+   *
+   * Por eso acepta un EntityManager: sin él, la transacción de quien llama y la
+   * de aquí serían dos, y un fallo posterior al registro dejaría el proceso
+   * abierto sin resolución.
    */
-  async abrirProceso(procesoId: string, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const proceso = await this.exigirProceso(em, procesoId);
+  async abrirProceso(procesoId: string, acceso: HiringAccess, em?: EntityManager) {
+    const ejecutar = async (manager: EntityManager) => {
+      const proceso = await this.exigirProceso(manager, procesoId);
 
       if (proceso.etapa >= ETAPA_APERTURA) {
         throw new ConflictException('El proceso ya fue abierto');
       }
 
-      await this.exigirCdpParaApertura(procesoId, em);
+      await this.exigirCdpParaApertura(procesoId, manager);
 
       proceso.etapa = ETAPA_APERTURA;
-      await em.save(proceso);
+      await manager.save(proceso);
 
-      await em.save(
-        em.create(ProcesoActividad, {
+      await manager.save(
+        manager.create(ProcesoActividad, {
           procesoId,
           numeral: NUMERAL_APERTURA,
           estado: 'APROBADO' as const,
@@ -521,13 +537,15 @@ export class CdpService {
         }),
       );
 
-      await this.traza(em, procesoId, procesoId, 'APROBAR', acceso, {
+      await this.traza(manager, procesoId, procesoId, 'APROBAR', acceso, {
         actividad: NUMERAL_APERTURA,
         etapa: ETAPA_APERTURA,
       });
 
       return { id: proceso.id, radicado: proceso.radicado, etapa: proceso.etapa };
-    });
+    };
+
+    return em ? ejecutar(em) : this.dataSource.transaction(ejecutar);
   }
 
   // ---------------------------------------- documentos del proceso (5.1) ---

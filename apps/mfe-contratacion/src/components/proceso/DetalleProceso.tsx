@@ -3,45 +3,99 @@ import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
-import { StepperEtapas, ETAPAS } from './StepperEtapas';
+import { StepperEtapas } from './StepperEtapas';
 import { ActividadEtapa } from './ListaActividades';
+import { estadoDeActividad } from './estadoActividad';
 import { RielActividades } from './RielActividades';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
 import { PanelCdp } from '../cdp/PanelCdp';
+import { PanelPublicacionPliego } from '../publicacion/PanelPublicacionPliego';
+import { PanelObservaciones } from '../observaciones/PanelObservaciones';
+import { PanelMipyme } from '../mipyme/PanelMipyme';
+import { PanelDocumentosProceso } from '../documentos/PanelDocumentosProceso';
+import { PanelApertura } from '../apertura/PanelApertura';
+import { PanelAudienciaRiesgos } from '../riesgos/PanelAudienciaRiesgos';
+import { PanelAdendas } from '../adendas/PanelAdendas';
+import { PanelOfertas } from '../ofertas/PanelOfertas';
+import { PanelComite } from '../comite/PanelComite';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
+
+/** Elaboración de los documentos del proceso (EFDS-1149). */
+const NUMERAL_DOCUMENTOS = '5.1';
+/** Publicación del proyecto de pliego, primera actividad publicada de la etapa 5. */
+const NUMERAL_PUBLICACION = '5.2';
+/** Observaciones al pliego (EFDS-1151), sobre la publicación ya registrada. */
+const NUMERAL_OBSERVACIONES = '5.3';
+/** Limitación de la convocatoria a MIPYME (EFDS-1151). */
+const NUMERAL_MIPYME = '5.4';
+/** Audiencia de asignación de riesgos (EFDS-1153). */
+const NUMERAL_RIESGOS = '5.5';
+/** Adendas al pliego publicado (EFDS-1154). */
+const NUMERAL_ADENDAS = '5.6';
+/** Apertura formal del proceso, que cierra la etapa (EFDS-1152). */
+const NUMERAL_APERTURA = '5.7';
+/** Recepción de ofertas y cierre, primera actividad de la etapa 6 (EFDS-1155). */
+const NUMERAL_OFERTAS = '6.1';
+/** Designación del comité que evaluará las ofertas (EFDS-1156). */
+const NUMERAL_COMITE = '6.2';
+
+/** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
+const NUMERALES_ETAPA_5 = [
+  NUMERAL_DOCUMENTOS,
+  NUMERAL_PUBLICACION,
+  NUMERAL_OBSERVACIONES,
+  NUMERAL_MIPYME,
+  NUMERAL_RIESGOS,
+  NUMERAL_ADENDAS,
+  NUMERAL_APERTURA,
+];
+
+/**
+ * Las de la etapa 6 que ya tienen panel.
+ *
+ * Lista aparte y no añadida a la de la etapa 5: son etapas distintas, y meterlas
+ * en la misma constante haría que el nombre dejara de decir la verdad.
+ */
+const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.1',
+    etapa: 3,
     nombre: 'Elaboración de estudios previos',
     descripcion: 'Descripción de la necesidad, fundamento jurídico y modalidad propuesta',
   },
   {
     numeral: '3.2',
+    etapa: 3,
     nombre: 'Análisis del sector y estudio de mercado',
     descripcion: 'Consulta de proveedores y precios para estimar el valor',
   },
   {
     numeral: '3.3',
+    etapa: 3,
     nombre: 'Radicación en la Dirección de Contratación',
     descripcion: 'Genera consecutivo en el aplicativo de gestión documental',
   },
   {
     numeral: '3.4',
+    etapa: 3,
     nombre: 'Revisión y reparto',
     descripcion: 'Revisiones, mesas de trabajo y observaciones al estudio previo',
   },
   {
     numeral: '3.5',
+    etapa: 3,
     nombre: 'Definir modalidad de contratación',
     descripcion: 'Según cuantía y umbral vigente (Decreto 1082/2015)',
   },
   {
     numeral: '3.6',
+    etapa: 3,
     nombre: 'Comité de contratación',
     descripcion: 'Revisa, observa o aprueba los documentos del proceso',
   },
@@ -159,11 +213,25 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           adjuntos,
         };
       }
-      // Las actividades del CDP se trabajan aquí desde EFDS-1148.
-      if (NUMERALES_CDP.includes(act.numeral)) {
+      // Las actividades del CDP se trabajan aquí desde EFDS-1148, la
+      // publicación del pliego desde EFDS-1150 y las observaciones y la
+      // limitación a MIPYME desde EFDS-1151. Se tratan igual: el riel las
+      // habilita cuando la matriz las marca aplicables a la modalidad.
+      if (
+        NUMERALES_CDP.includes(act.numeral) ||
+        NUMERALES_ETAPA_5.includes(act.numeral) ||
+        NUMERALES_ETAPA_6.includes(act.numeral)
+      ) {
+        // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
+        // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
+        // se hacía— una actividad que la modalidad excluye se veía igual que
+        // una que está por hacer, y el contador la exigía para llegar al 100%.
         return {
           ...act,
-          estado: act.estado === 'APROBADO' ? 'aprobada' : aplica ? 'en_curso' : 'pendiente',
+          // Antes se daba por en curso todo lo aplicable, así que el riel
+          // encendía en azul las nueve actividades de las etapas 4 y 5 desde el
+          // minuto uno y el color dejaba de informar.
+          estado: estadoDeActividad(aplica, act.estado),
           disponible: aplica,
           detalle: aplica ? undefined : 'No aplica a esta modalidad',
           adjuntos,
@@ -174,9 +242,6 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   );
 
   const actividades = delCatalogo;
-
-  const nombreEtapa =
-    ETAPAS.find((e) => e.numero === datos.proceso.etapa)?.nombre ?? `Etapa ${datos.proceso.etapa}`;
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
@@ -256,8 +321,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
       <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
         <RielActividades
-          etapa={datos.proceso.etapa}
-          nombreEtapa={nombreEtapa}
+          etapaActual={datos.proceso.etapa}
           actividades={actividades}
           seleccionada={expandida}
           onSeleccionar={setExpandida}
@@ -270,6 +334,69 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 numeral={actividadSeleccionada.numeral}
                 procesoId={procesoId}
                 valorEstimado={datos.proceso.valorEstimado}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_ADENDAS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelAdendas
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_OFERTAS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelOfertas
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelComite
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_RIESGOS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelAudienciaRiesgos
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_APERTURA ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelApertura
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_DOCUMENTOS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelDocumentosProceso
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelPublicacionPliego
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_OBSERVACIONES ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelObservaciones
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_MIPYME ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelMipyme
+                procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
