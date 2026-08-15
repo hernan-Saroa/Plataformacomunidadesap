@@ -21,7 +21,11 @@ export type AccionTraza =
   | 'RETIRAR'
   // Designación del comité evaluador (etapa 6).
   | 'DESIGNAR'
-  | 'REVOCAR';
+  | 'REVOCAR'
+  // Contrato electrónico y legalización (etapa 8).
+  | 'ACEPTAR'
+  | 'FIRMAR'
+  | 'LEGALIZAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

@@ -19,6 +19,7 @@ import { PanelAudienciaRiesgos } from '../riesgos/PanelAudienciaRiesgos';
 import { PanelAdendas } from '../adendas/PanelAdendas';
 import { PanelOfertas } from '../ofertas/PanelOfertas';
 import { PanelComite } from '../comite/PanelComite';
+import { PanelContrato } from '../contrato/PanelContrato';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -60,6 +61,12 @@ const NUMERALES_ETAPA_5 = [
  * en la misma constante haría que el nombre dejara de decir la verdad.
  */
 const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE];
+
+/** Elaboración del contrato y aceptación del proponente (EFDS-1161). */
+const NUMERAL_CONTRATO = '8.1';
+
+/** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
+const NUMERALES_ETAPA_8 = [NUMERAL_CONTRATO];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -220,7 +227,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       if (
         NUMERALES_CDP.includes(act.numeral) ||
         NUMERALES_ETAPA_5.includes(act.numeral) ||
-        NUMERALES_ETAPA_6.includes(act.numeral)
+        NUMERALES_ETAPA_6.includes(act.numeral) ||
+        NUMERALES_ETAPA_8.includes(act.numeral)
       ) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
@@ -354,6 +362,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelComite
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_CONTRATO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelContrato
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

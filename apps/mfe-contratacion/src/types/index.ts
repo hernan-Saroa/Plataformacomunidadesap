@@ -948,3 +948,71 @@ export interface SimulacionFormulario {
   campos: CampoSimulado[];
   reglasEvaluadas: number;
 }
+
+// ---------------------------- etapa 8 · contrato electronico (8.1) ---------
+
+/** Determina si la legalizacion exigira ARL (EFDS-1164, criterio 2). */
+export type TipoPersonaContratista = 'NATURAL' | 'JURIDICA';
+
+export type EstadoContrato = 'GENERADO' | 'ACEPTADO' | 'RECHAZADO';
+
+export interface TipologiaContrato {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  exigeGarantias: boolean;
+}
+
+/** Formato del SIG del que sale la minuta, ofrecido para descarga. */
+export interface FormatoContrato {
+  id: string;
+  codigo: string;
+  nombre: string;
+  version: string;
+  archivoUrl: string | null;
+}
+
+export interface ContratoDelProceso {
+  id: string;
+  tipologia: string;
+  tipologiaNombre: string;
+  numero: string;
+  objeto: string;
+  valor: number;
+  plazoDias: number | null;
+  contratista: {
+    documento: string;
+    nombre: string;
+    tipo: TipoPersonaContratista;
+  };
+  estado: EstadoContrato;
+  generadoPor: string | null;
+  generadoAt: string;
+  aceptadoPor: string | null;
+  aceptadoAt: string | null;
+  aceptadoObservacion: string | null;
+  minuta: { nombre: string; url: string | null } | null;
+}
+
+export interface EstadoContratoProceso {
+  /** Las dos condiciones por separado, para poder decir cual falta. */
+  adjudicado: boolean;
+  motivoNoAdjudicado: string | null;
+  puedeGenerar: boolean;
+  tipologias: TipologiaContrato[];
+  formatos: FormatoContrato[];
+  contrato: ContratoDelProceso | null;
+}
+
+/** Lo que la pantalla envia para generar el contrato. */
+export interface DatosContrato {
+  tipologia: string;
+  numero: string;
+  objeto: string;
+  valor: number;
+  plazoDias?: number;
+  contratistaDocumento: string;
+  contratistaNombre: string;
+  contratistaTipo: TipoPersonaContratista;
+  plantillaId?: string;
+}

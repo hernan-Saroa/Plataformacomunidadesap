@@ -11,6 +11,8 @@ import {
   EstadoDocumentos,
   EstadoMipyme,
   EstadoComite,
+  EstadoContratoProceso,
+  DatosContrato,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -265,6 +267,48 @@ export const contratacionService = {
     pedir<EstadoComite>(`/procesos/${procesoId}/comite/revocar`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
+    }),
+
+  // -------------------------- etapa 8 · contrato electrónico (8.1) ----------
+
+  /** Contrato del proceso, las tipologías y los formatos del SIG. */
+  contrato: (procesoId: string) =>
+    pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato`),
+
+  /**
+   * Genera el contrato con la minuta ya diligenciada.
+   *
+   * Los datos van sueltos en el multipart y no como JSON: son campos planos, y
+   * `FormData` los transporta sin necesidad de serializarlos.
+   */
+  generarContrato: (procesoId: string, datos: DatosContrato, minuta: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', minuta);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Registra la aceptación del proponente, con su nombre. */
+  aceptarContrato: (procesoId: string, aceptadoPor: string, observacion?: string) =>
+    pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/aceptar`, {
+      method: 'POST',
+      body: JSON.stringify({ aceptadoPor, observacion }),
+    }),
+
+  /** Registra que el proponente no acepta; la minuta queda en el expediente. */
+  rechazarContrato: (procesoId: string, rechazadoPor: string, motivo: string) =>
+    pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ rechazadoPor, motivo }),
     }),
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------

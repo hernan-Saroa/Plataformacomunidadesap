@@ -171,6 +171,21 @@ export const ROL_EVALUADOR_TECNICO = 'EVALUADOR_TECNICO';
  */
 export const ROLES_DESIGNAR_COMITE = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
 
+/**
+ * Quién elabora el contrato y registra la aceptación del proponente
+ * (actividad 8.1, EFDS-1161).
+ *
+ * Es el gestor que lleva el proceso quien redacta la minuta y quien deja
+ * constancia de la respuesta del proponente. El Ordenador del Gasto entra
+ * después, al firmar (EFDS-1162): una cosa es elaborar el contrato y otra
+ * comprometer a la entidad con él.
+ */
+export const ROLES_CONTRATO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

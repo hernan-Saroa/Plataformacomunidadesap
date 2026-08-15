@@ -18,6 +18,7 @@ import { RiesgosModule } from './modules/riesgos/riesgos.module';
 import { AdendasModule } from './modules/adendas/adendas.module';
 import { OfertasModule } from './modules/ofertas/ofertas.module';
 import { ComiteModule } from './modules/comite/comite.module';
+import { ContratosModule } from './modules/contratos/contratos.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -52,6 +53,8 @@ import { Oferente } from './entities/oferente.entity';
 import { PlazoOfertas } from './entities/plazo-ofertas.entity';
 import { ComiteEvaluador } from './entities/comite-evaluador.entity';
 import { MiembroComite } from './entities/miembro-comite.entity';
+import { Contrato } from './entities/contrato.entity';
+import { TipologiaContrato } from './entities/tipologia-contrato.entity';
 
 @Module({
   imports: [
@@ -69,7 +72,7 @@ import { MiembroComite } from './entities/miembro-comite.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, Contrato, TipologiaContrato],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -93,6 +96,7 @@ import { MiembroComite } from './entities/miembro-comite.entity';
     AdendasModule,
     OfertasModule,
     ComiteModule,
+    ContratosModule,
   ],
   controllers: [HealthController],
   providers: [
