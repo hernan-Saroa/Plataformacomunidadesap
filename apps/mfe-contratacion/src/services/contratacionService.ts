@@ -13,6 +13,7 @@ import {
   EstadoComite,
   EstadoContratoProceso,
   DatosContrato,
+  DatosFirma,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -303,6 +304,28 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ aceptadoPor, observacion }),
     }),
+
+  /**
+   * Registra la firma de una de las partes, con su evidencia (EFDS-1162).
+   *
+   * Con la segunda firma el contrato queda perfeccionado; eso lo decide el
+   * servidor al comprobar que ya están las dos, no la pantalla.
+   */
+  firmarContrato: (procesoId: string, datos: DatosFirma, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/firmar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
 
   /** Registra que el proponente no acepta; la minuta queda en el expediente. */
   rechazarContrato: (procesoId: string, rechazadoPor: string, motivo: string) =>

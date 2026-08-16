@@ -186,6 +186,22 @@ export const ROLES_CONTRATO = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién registra las firmas que suscriben el contrato (actividad 8.1,
+ * EFDS-1162).
+ *
+ * Se suma el Ordenador del Gasto a los que elaboran: la historia dice que es él
+ * quien firma por la entidad, y firmar es comprometerla. La del contratista la
+ * registra el gestor con su evidencia, porque el contratista no tiene cuenta en
+ * el sistema; por eso quien firma y quien registra se guardan por separado.
+ */
+export const ROLES_SUSCRIBIR_CONTRATO = [
+  ROL_ORDENADOR_GASTO,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Download, FileSignature, Paperclip, Undo2 } from 'lucide-react';
+import { Check, Download, FileSignature, Paperclip, PenLine, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import {
   DatosContrato,
+  DatosFirma,
   EstadoContratoProceso,
+  ParteFirmante,
   TipoPersonaContratista,
 } from '../../types';
 import {
@@ -18,7 +20,7 @@ import {
   Pendiente,
   Titulo,
 } from '../shared/PiezasPanel';
-import { fechaLarga } from '../shared/fechas';
+import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 
 interface Props {
   procesoId: string;
@@ -30,6 +32,21 @@ const pesos = new Intl.NumberFormat('es-CO', {
   currency: 'COP',
   maximumFractionDigits: 0,
 });
+
+/**
+ * La parte arranca en la del ordenador, pero el `select` solo ofrece las que
+ * siguen pendientes: el servidor dice cuáles son y la pantalla no las adivina.
+ */
+const FIRMA_VACIA = {
+  parte: 'ORDENADOR' as ParteFirmante,
+  firmanteNombre: '',
+  fechaFirma: hoyEnBogota(),
+};
+
+const ETIQUETA_PARTE: Record<ParteFirmante, string> = {
+  ORDENADOR: 'Ordenador del gasto',
+  CONTRATISTA: 'Contratista',
+};
 
 /** Estado inicial del formulario; también sirve para limpiarlo al terminar. */
 const VACIO = {
@@ -60,6 +77,10 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
   const [datos, setDatos] = useState(VACIO);
   const [minuta, setMinuta] = useState<File | null>(null);
   const [aceptante, setAceptante] = useState('');
+
+  const [firmando, setFirmando] = useState(false);
+  const [firma, setFirma] = useState(FIRMA_VACIA);
+  const [evidencia, setEvidencia] = useState<File | null>(null);
 
   const leer = () =>
     contratacionService
@@ -124,6 +145,42 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
       setEstado(await contratacionService.aceptarContrato(procesoId, nombre));
       setAceptante('');
       toast.success('Aceptación registrada; el contrato queda formalizado');
+      onCambio?.();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const limpiarFirma = () => {
+    setFirma(FIRMA_VACIA);
+    setEvidencia(null);
+    setFirmando(false);
+  };
+
+  const cambiarFirma = (clave: keyof typeof FIRMA_VACIA, valor: string) =>
+    setFirma((previo) => ({ ...previo, [clave]: valor }));
+
+  const registrarFirma = async () => {
+    if (!evidencia) return;
+
+    const cuerpo: DatosFirma = {
+      parte: firma.parte,
+      firmanteNombre: firma.firmanteNombre.trim(),
+      fechaFirma: firma.fechaFirma,
+    };
+
+    setGuardando(true);
+    try {
+      const respuesta = await contratacionService.firmarContrato(procesoId, cuerpo, evidencia);
+      setEstado(respuesta);
+      limpiarFirma();
+      toast.success(
+        respuesta.perfeccionado
+          ? 'Contrato perfeccionado: firmaron las dos partes'
+          : 'Firma registrada; falta la de la otra parte',
+      );
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -314,6 +371,158 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
             </div>
           )}
         </>
+      ) : null}
+
+      {/* Suscripción: las dos firmas y el sello de perfeccionamiento (EFDS-1162).
+          Va dentro del mismo panel y no en uno aparte porque es el mismo
+          contrato en otro momento; separarlo obligaría a saltar de pantalla
+          para un solo trámite. */}
+      {contrato && contrato.estado !== 'RECHAZADO' && contrato.estado !== 'GENERADO' ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Suscripción del contrato</p>
+          <Ayuda>
+            Firman el ordenador del gasto y el contratista. Con las dos firmas el contrato queda
+            perfeccionado.
+          </Ayuda>
+
+          {estado.firmas.map((firma) => (
+            <div
+              key={firma.parte}
+              className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 flex items-start gap-2.5"
+            >
+              <Check className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-900" strokeWidth={3} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] font-bold text-emerald-900 m-0 break-words">
+                  {ETIQUETA_PARTE[firma.parte]} · {firma.firmanteNombre}
+                </p>
+                <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
+                  Firmó el {fechaLarga(firma.fechaFirma)}
+                  {firma.registradaPor ? ` · registró ${firma.registradaPor}` : ''}
+                </p>
+              </div>
+            </div>
+          ))}
+
+          {estado.perfeccionado ? (
+            <Aviso tono="ok" titulo="Contrato perfeccionado">
+              Las dos partes firmaron
+              {contrato.perfeccionadoAt ? ` el ${fechaLarga(contrato.perfeccionadoAt)}` : ''}. Con
+              esto el contrato queda suscrito y puede legalizarse.
+            </Aviso>
+          ) : null}
+
+          {/* Qué falta, dicho por el servidor: la pantalla no conoce la lista
+              de partes ni cómo se compara. */}
+          {estado.puedeFirmar && estado.partesPendientes.length > 0 && !firmando ? (
+            <Boton
+              icono={<PenLine className="w-3.5 h-3.5" />}
+              onClick={() => {
+                // Se abre en la primera parte que falta, no en una fija: si el
+                // contratista ya firmó, ofrecer «ordenador» por defecto sería
+                // proponer la única opción que no queda.
+                setFirma({ ...FIRMA_VACIA, parte: estado.partesPendientes[0] });
+                setFirmando(true);
+              }}
+            >
+              Registrar la firma de {ETIQUETA_PARTE[estado.partesPendientes[0]].toLowerCase()}
+            </Boton>
+          ) : null}
+
+          {estado.puedeFirmar && firmando ? (
+            <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-3">
+              <div>
+                <label
+                  htmlFor="firma-parte"
+                  className="block text-xs font-bold text-gray-600 mb-1.5"
+                >
+                  Quién firma <span className="text-red-600">*</span>
+                </label>
+                <select
+                  id="firma-parte"
+                  value={firma.parte}
+                  onChange={(e) => cambiarFirma('parte', e.target.value)}
+                  className={campo}
+                >
+                  {estado.partesPendientes.map((parte) => (
+                    <option key={parte} value={parte}>
+                      {ETIQUETA_PARTE[parte]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label
+                    htmlFor="firma-nombre"
+                    className="block text-xs font-bold text-gray-600 mb-1.5"
+                  >
+                    Nombre del firmante <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    id="firma-nombre"
+                    type="text"
+                    value={firma.firmanteNombre}
+                    onChange={(e) => cambiarFirma('firmanteNombre', e.target.value)}
+                    className={campo}
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="firma-fecha"
+                    className="block text-xs font-bold text-gray-600 mb-1.5"
+                  >
+                    Fecha de la firma <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    id="firma-fecha"
+                    type="date"
+                    value={firma.fechaFirma}
+                    onChange={(e) => cambiarFirma('fechaFirma', e.target.value)}
+                    className={campo}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="firma-evidencia"
+                  className="block text-xs font-bold text-gray-600 mb-1.5"
+                >
+                  Evidencia de la firma <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="firma-evidencia"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => setEvidencia(e.target.files?.[0] ?? null)}
+                  className="block w-full text-[11.5px] text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[11.5px] file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                />
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  El documento firmado o el soporte del acto. Sin respaldo el registro no sirve de
+                  prueba.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Boton
+                  icono={<PenLine className="w-3.5 h-3.5" />}
+                  disabled={guardando || !firma.firmanteNombre.trim() || !evidencia}
+                  onClick={registrarFirma}
+                >
+                  Registrar la firma
+                </Boton>
+                <BotonSecundario
+                  icono={<Undo2 className="w-3.5 h-3.5" />}
+                  disabled={guardando}
+                  onClick={limpiarFirma}
+                >
+                  Cancelar
+                </BotonSecundario>
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {estado.puedeGenerar && !generando ? (

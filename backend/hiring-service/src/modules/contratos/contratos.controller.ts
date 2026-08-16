@@ -19,6 +19,7 @@ import { unlink } from 'fs/promises';
 import { ContratosService } from './contratos.service';
 import {
   AceptarContratoDto,
+  FirmarContratoDto,
   GenerarContratoDto,
   RechazarContratoDto,
 } from './dto/contrato.dto';
@@ -28,6 +29,7 @@ import {
   getHiringAccess,
   ROLES_CONTRATO,
   ROLES_LECTURA_CONTRATACION,
+  ROLES_SUSCRIBIR_CONTRATO,
 } from '../../auth/hiring-access';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
@@ -112,6 +114,48 @@ export class ContratosController {
     @Req() req: any,
   ) {
     return this.service.aceptar(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('firmar')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_SUSCRIBIR_CONTRATO)
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'La evidencia de la firma se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Actividad 8.1 · Registrar la firma de una de las partes',
+    description:
+      'Con la evidencia del acto. Cuando firman las dos partes el contrato queda perfeccionado.',
+  })
+  async firmar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: FirmarContratoDto,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException(
+        'Adjunta la evidencia de la firma: sin respaldo el registro no sirve de prueba',
+      );
+    }
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.firmar(
+        procesoId,
+        dto,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
   }
 
   @Post('rechazar')

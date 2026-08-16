@@ -7,13 +7,17 @@ import {
 } from 'typeorm';
 
 /**
- * Generado, aceptado y rechazado.
+ * El ciclo del contrato: se genera, el proponente lo acepta y las dos partes lo
+ * firman.
  *
  * Rechazar no borra: si el proponente no acepta la minuta, la entidad corrige y
  * genera otra, y las dos quedan en el expediente. Un contrato rechazado existió
  * y es lo que explica que un proceso tenga dos minutas.
+ *
+ * `PERFECCIONADO` lo deriva el servicio al comprobar que ya están las dos
+ * firmas (EFDS-1162); no lo declara quien firma.
  */
-export type EstadoContrato = 'GENERADO' | 'ACEPTADO' | 'RECHAZADO';
+export type EstadoContrato = 'GENERADO' | 'ACEPTADO' | 'RECHAZADO' | 'PERFECCIONADO';
 
 /** Determina si la legalización exigirá ARL (EFDS-1164, criterio 2). */
 export type TipoPersona = 'NATURAL' | 'JURIDICA';
@@ -103,6 +107,19 @@ export class Contrato {
 
   @Column({ name: 'motivo_rechazo', type: 'text', nullable: true })
   motivoRechazo: string | null;
+
+  /** Cuándo entró la segunda firma y el contrato quedó suscrito (EFDS-1162). */
+  @Column({ name: 'perfeccionado_at', type: 'timestamptz', nullable: true })
+  perfeccionadoAt: Date | null;
+
+  /**
+   * El contrato ya suscrito, con las dos firmas incorporadas.
+   *
+   * Distinto de la minuta: aquella es el texto que se presentó al proponente,
+   * este es el documento firmado por ambas partes.
+   */
+  @Column({ name: 'contrato_firmado_documento_id', type: 'uuid', nullable: true })
+  contratoFirmadoDocumentoId: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

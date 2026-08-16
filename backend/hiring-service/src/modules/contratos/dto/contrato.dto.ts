@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsDateString,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -99,6 +100,37 @@ export class AceptarContratoDto {
   @IsString()
   @MaxLength(1000)
   observacion?: string;
+}
+
+/**
+ * Registro de la firma de una de las partes (EFDS-1162).
+ *
+ * Viaja como multipart porque lleva la evidencia adjunta: el documento firmado
+ * o el acuse que la entidad conserve.
+ */
+export class FirmarContratoDto {
+  @ApiProperty({ description: 'Parte que firma', enum: ['ORDENADOR', 'CONTRATISTA'] })
+  @IsIn(['ORDENADOR', 'CONTRATISTA'], {
+    message: 'La parte que firma es ORDENADOR o CONTRATISTA',
+  })
+  parte: 'ORDENADOR' | 'CONTRATISTA';
+
+  @ApiProperty({ description: 'Nombre de quien firma' })
+  @IsString()
+  @IsNotEmpty({ message: 'Registra el nombre de quien firma' })
+  @MaxLength(300)
+  firmanteNombre: string;
+
+  @ApiPropertyOptional({ description: 'Documento de identidad de quien firma' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  firmanteDocumento?: string;
+
+  /** La del acto, no la del registro: es cuando la parte firmó. */
+  @ApiProperty({ description: 'Fecha de la firma (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La fecha de la firma debe tener el formato YYYY-MM-DD' })
+  fechaFirma: string;
 }
 
 export class RechazarContratoDto {

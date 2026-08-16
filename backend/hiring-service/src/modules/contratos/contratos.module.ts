@@ -5,6 +5,7 @@ import { ContratosService } from './contratos.service';
 import { ContratosController } from './contratos.controller';
 
 import { Contrato } from '../../entities/contrato.entity';
+import { FirmaContrato } from '../../entities/firma-contrato.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 // El contrato se genera sobre un proceso adjudicado. Mientras la etapa 7 no
@@ -23,6 +24,7 @@ import { Expediente } from '../../entities/expediente.entity';
   imports: [
     TypeOrmModule.forFeature([
       Contrato,
+      FirmaContrato,
       TipologiaContrato,
       Plantilla,
       RecepcionOfertas,

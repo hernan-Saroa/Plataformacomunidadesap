@@ -954,7 +954,26 @@ export interface SimulacionFormulario {
 /** Determina si la legalizacion exigira ARL (EFDS-1164, criterio 2). */
 export type TipoPersonaContratista = 'NATURAL' | 'JURIDICA';
 
-export type EstadoContrato = 'GENERADO' | 'ACEPTADO' | 'RECHAZADO';
+export type EstadoContrato = 'GENERADO' | 'ACEPTADO' | 'RECHAZADO' | 'PERFECCIONADO';
+
+/** Las dos partes que suscriben el contrato (EFDS-1162). */
+export type ParteFirmante = 'ORDENADOR' | 'CONTRATISTA';
+
+export interface FirmaContrato {
+  parte: ParteFirmante;
+  firmanteNombre: string;
+  firmanteDocumento: string | null;
+  fechaFirma: string;
+  registradaPor: string | null;
+}
+
+/** Lo que la pantalla envia para registrar una firma. */
+export interface DatosFirma {
+  parte: ParteFirmante;
+  firmanteNombre: string;
+  firmanteDocumento?: string;
+  fechaFirma: string;
+}
 
 export interface TipologiaContrato {
   codigo: string;
@@ -991,6 +1010,7 @@ export interface ContratoDelProceso {
   aceptadoPor: string | null;
   aceptadoAt: string | null;
   aceptadoObservacion: string | null;
+  perfeccionadoAt: string | null;
   minuta: { nombre: string; url: string | null } | null;
 }
 
@@ -1002,6 +1022,11 @@ export interface EstadoContratoProceso {
   tipologias: TipologiaContrato[];
   formatos: FormatoContrato[];
   contrato: ContratoDelProceso | null;
+  /** La suscripcion: quien firmo y cual parte falta (EFDS-1162). */
+  puedeFirmar: boolean;
+  perfeccionado: boolean;
+  firmas: FirmaContrato[];
+  partesPendientes: ParteFirmante[];
 }
 
 /** Lo que la pantalla envia para generar el contrato. */

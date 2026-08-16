@@ -1,4 +1,10 @@
-import { actividadCumplida, evaluarAdjudicacion, puedeResponder } from './contratos.service';
+import {
+  actividadCumplida,
+  estaSuscrito,
+  evaluarAdjudicacion,
+  puedeFirmarse,
+  puedeResponder,
+} from './contratos.service';
 import { EstadoContrato } from '../../entities/contrato.entity';
 
 /**
@@ -102,6 +108,12 @@ describe('actividadCumplida', () => {
     expect(actividadCumplida('ACEPTADO')).toBe(true);
   });
 
+  it('firmar no la reabre', () => {
+    // Perfeccionado se alcanza desde aceptado: si dejara de contar como
+    // cumplida, el riel retrocedería justo cuando el contrato se suscribe.
+    expect(actividadCumplida('PERFECCIONADO')).toBe(true);
+  });
+
   it('generar la minuta deja la actividad en curso', () => {
     expect(actividadCumplida('GENERADO')).toBe(false);
   });
@@ -116,5 +128,65 @@ describe('actividadCumplida', () => {
     for (const vacio of [null, undefined] as (EstadoContrato | null | undefined)[]) {
       expect(actividadCumplida(vacio)).toBe(false);
     }
+  });
+});
+
+/**
+ * Criterio de EFDS-1162: firman el ordenador del gasto y el contratista, y con
+ * eso el contrato queda perfeccionado.
+ *
+ * El orden importa. Firmar es comprometer a la entidad, y hacerlo sobre una
+ * minuta que el proponente todavía no ha aceptado sería vincularla a un texto
+ * que la otra parte no ha hecho suyo.
+ */
+describe('puedeFirmarse', () => {
+  it('un contrato aceptado admite firmas', () => {
+    expect(puedeFirmarse('ACEPTADO')).toBe(true);
+  });
+
+  it('no se firma antes de que el proponente acepte', () => {
+    expect(puedeFirmarse('GENERADO')).toBe(false);
+  });
+
+  it('no se firma una minuta rechazada', () => {
+    expect(puedeFirmarse('RECHAZADO')).toBe(false);
+  });
+
+  it('un contrato ya perfeccionado no admite más firmas', () => {
+    // Las dos partes ya firmaron: una tercera firma sería un acto sin sitio.
+    expect(puedeFirmarse('PERFECCIONADO')).toBe(false);
+  });
+});
+
+/**
+ * El perfeccionamiento se deriva de que estén las dos firmas.
+ *
+ * No lo declara quien firma de último: dejarlo en sus manos permitiría marcar
+ * como suscrito un contrato al que le falta una parte.
+ */
+describe('estaSuscrito', () => {
+  it('con las dos partes el contrato queda perfeccionado', () => {
+    expect(estaSuscrito(['ORDENADOR', 'CONTRATISTA'])).toBe(true);
+  });
+
+  it('no depende del orden en que hayan firmado', () => {
+    // El ordenador puede firmar primero o después; el contrato se perfecciona
+    // igual. Si dependiera del orden, media entidad quedaría bloqueada.
+    expect(estaSuscrito(['CONTRATISTA', 'ORDENADOR'])).toBe(true);
+  });
+
+  it('con una sola firma todavía no está suscrito', () => {
+    expect(estaSuscrito(['ORDENADOR'])).toBe(false);
+    expect(estaSuscrito(['CONTRATISTA'])).toBe(false);
+  });
+
+  it('sin firmas no está suscrito', () => {
+    expect(estaSuscrito([])).toBe(false);
+  });
+
+  it('no se perfecciona repitiendo la firma de una misma parte', () => {
+    // La base lo impide con una restricción única, pero la regla también tiene
+    // que sostenerse sola: dos firmas no son dos partes.
+    expect(estaSuscrito(['ORDENADOR', 'ORDENADOR'])).toBe(false);
   });
 });

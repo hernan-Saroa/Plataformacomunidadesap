@@ -7,6 +7,7 @@ import {
 import { DataSource, EntityManager } from 'typeorm';
 
 import { Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { FirmaContrato } from '../../entities/firma-contrato.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -19,6 +20,7 @@ import { Oferente } from '../../entities/oferente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
   AceptarContratoDto,
+  FirmarContratoDto,
   GenerarContratoDto,
   RechazarContratoDto,
 } from './dto/contrato.dto';
@@ -38,10 +40,35 @@ export function puedeResponder(
   estado: EstadoContrato,
   respuesta: 'ACEPTAR' | 'RECHAZAR',
 ): boolean {
-  // Solo un contrato recién generado admite respuesta. Aceptado y rechazado
-  // son finales: cambiar la respuesta ya registrada borraría lo que el
-  // proponente contestó, que es justo lo que el expediente tiene que probar.
+  // Solo un contrato recién generado admite respuesta. Aceptado, rechazado y
+  // perfeccionado son finales: cambiar la respuesta ya registrada borraría lo
+  // que el proponente contestó, que es justo lo que el expediente debe probar.
   return estado === 'GENERADO' && (respuesta === 'ACEPTAR' || respuesta === 'RECHAZAR');
+}
+
+/** Las dos partes que suscriben (EFDS-1162). */
+export const PARTES_FIRMANTES = ['ORDENADOR', 'CONTRATISTA'] as const;
+
+/**
+ * Si el contrato admite firmas.
+ *
+ * El orden es generar, aceptar y después firmar. Firmar una minuta que el
+ * proponente no ha aceptado sería comprometer a la entidad con un texto que la
+ * otra parte todavía no ha hecho suyo.
+ */
+export function puedeFirmarse(estado: EstadoContrato): boolean {
+  return estado === 'ACEPTADO';
+}
+
+/**
+ * Si con estas firmas el contrato queda perfeccionado.
+ *
+ * El perfeccionamiento no lo declara quien firma: se deriva de que estén las
+ * dos partes. Dejarlo en manos del último que firme permitiría marcar como
+ * suscrito un contrato al que le falta una firma.
+ */
+export function estaSuscrito(partesFirmadas: readonly string[]): boolean {
+  return PARTES_FIRMANTES.every((parte) => partesFirmadas.includes(parte));
 }
 
 /**
@@ -52,7 +79,9 @@ export function puedeResponder(
  * haría que el riel mintiera.
  */
 export function actividadCumplida(estado: EstadoContrato | null | undefined): boolean {
-  return estado === 'ACEPTADO';
+  // Perfeccionado también la cumple: es el estado al que se llega desde
+  // aceptado, y volver a marcarla en curso al firmar sería retroceder.
+  return estado === 'ACEPTADO' || estado === 'PERFECCIONADO';
 }
 
 /**
@@ -126,6 +155,16 @@ export class ContratosService {
           .findOne({ where: { id: contrato.minutaDocumentoId } })
       : null;
 
+    // Las firmas van en el mismo estado y no en un endpoint aparte: la pantalla
+    // muestra el contrato y su suscripción en un solo bloque, y pedirlas por
+    // separado obligaría a dos peticiones para pintar una sola tarjeta.
+    const firmas = contrato
+      ? await this.dataSource.getRepository(FirmaContrato).find({
+          where: { contratoId: contrato.id },
+          order: { fechaFirma: 'ASC' },
+        })
+      : [];
+
     // Los formatos de la actividad, para que la pantalla ofrezca la descarga
     // sin tener que pedirlos por separado.
     const formatos = await this.dataSource.getRepository(Plantilla).find({
@@ -174,6 +213,7 @@ export class ContratosService {
             aceptadoPor: contrato.aceptadoPor,
             aceptadoAt: contrato.aceptadoAt,
             aceptadoObservacion: contrato.aceptadoObservacion,
+            perfeccionadoAt: contrato.perfeccionadoAt,
             minuta: minuta
               ? {
                   nombre: minuta.archivoNombreOriginal ?? minuta.nombre,
@@ -182,6 +222,21 @@ export class ContratosService {
               : null,
           }
         : null,
+      // La suscripción: qué partes firmaron y cuál falta (EFDS-1162).
+      puedeFirmar: !!contrato && puedeFirmarse(contrato.estado),
+      perfeccionado: contrato?.estado === 'PERFECCIONADO',
+      firmas: firmas.map((f) => ({
+        parte: f.parte,
+        firmanteNombre: f.firmanteNombre,
+        firmanteDocumento: f.firmanteDocumento,
+        fechaFirma: f.fechaFirma,
+        registradaPor: f.registradaPor,
+      })),
+      // Cuáles faltan, dicho por el servidor: la pantalla no tiene por qué
+      // conocer la lista de partes ni cómo se compara.
+      partesPendientes: contrato
+        ? PARTES_FIRMANTES.filter((parte) => !firmas.some((f) => f.parte === parte))
+        : [],
     };
   }
 
@@ -357,6 +412,107 @@ export class ContratosService {
     return this.estado(procesoId, acceso);
   }
 
+  // ----------------------------------------------------------- suscripción --
+
+  /**
+   * Registra la firma de una de las partes (EFDS-1162).
+   *
+   * Con la segunda firma el contrato queda perfeccionado en la misma
+   * transacción: el perfeccionamiento se deriva de que estén las dos, no lo
+   * declara quien firma de último.
+   *
+   * Firma registrada, no criptográfica. La entidad todavía no ha elegido
+   * proveedor de firma electrónica, así que lo que se guarda es quién firmó,
+   * cuándo y con qué evidencia. Cuando haya proveedor, la verificación se
+   * enchufa aquí sin tocar el resto del flujo.
+   */
+  async firmar(
+    procesoId: string,
+    dto: FirmarContratoDto,
+    evidencia: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const contrato = await this.exigirContrato(procesoId, em);
+
+      if (!puedeFirmarse(contrato.estado)) {
+        throw new ConflictException(
+          contrato.estado === 'PERFECCIONADO'
+            ? 'El contrato ya está suscrito por las dos partes'
+            : 'El contrato todavía no lo ha aceptado el proponente: primero se acepta y después se firma',
+        );
+      }
+
+      const yaFirmadas = await em
+        .getRepository(FirmaContrato)
+        .find({ where: { contratoId: contrato.id } });
+
+      if (yaFirmadas.some((f) => f.parte === dto.parte)) {
+        throw new ConflictException(
+          dto.parte === 'ORDENADOR'
+            ? 'El ordenador del gasto ya firmó este contrato'
+            : 'El contratista ya firmó este contrato',
+        );
+      }
+
+      this.validarFecha(dto.fechaFirma);
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · firma de ${
+          dto.parte === 'ORDENADOR' ? 'el ordenador del gasto' : 'el contratista'
+        }`,
+        evidencia,
+        hash,
+        acceso,
+      );
+
+      await em.save(
+        em.create(FirmaContrato, {
+          contratoId: contrato.id,
+          parte: dto.parte,
+          firmanteNombre: dto.firmanteNombre,
+          firmanteDocumento: dto.firmanteDocumento ?? null,
+          // Quién firmó y quién lo anotó son dos datos distintos: el gestor
+          // registra la firma del contratista con su evidencia.
+          registradaPor: acceso.userName,
+          fechaFirma: dto.fechaFirma,
+          evidenciaDocumentoId: doc.id,
+          hashDocumento: hash,
+        } as Partial<FirmaContrato>),
+      );
+
+      const partes = [...yaFirmadas.map((f) => f.parte), dto.parte];
+
+      if (estaSuscrito(partes)) {
+        contrato.estado = 'PERFECCIONADO';
+        contrato.perfeccionadoAt = new Date();
+        // La evidencia de la última firma es el contrato con las dos firmas
+        // incorporadas, así que es la que queda como documento suscrito.
+        contrato.contratoFirmadoDocumentoId = doc.id;
+        await em.save(contrato);
+      }
+
+      await this.marcarActividad(em, procesoId, acceso);
+
+      await this.traza(em, procesoId, contrato.id, 'FIRMAR', acceso, {
+        actividad: NUMERAL_CONTRATO,
+        numero: contrato.numero,
+        parte: dto.parte,
+        firmante: dto.firmanteNombre,
+        fechaFirma: dto.fechaFirma,
+        perfeccionado: estaSuscrito(partes),
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
   // ----------------------------------------------- lo que consumen otras --
 
   /**
@@ -386,6 +542,17 @@ export class ContratosService {
   }
 
   // ----------------------------------------------------------- auxiliares --
+
+  /** El acto ya ocurrió; no se firma hacia el futuro. */
+  private validarFecha(fecha: string) {
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+
+    if (fecha > hoy) {
+      throw new BadRequestException(
+        'La fecha de la firma no puede ser posterior a hoy: es la del acto ya realizado',
+      );
+    }
+  }
 
   /**
    * Lee la recepción de ofertas y le pasa los datos a `evaluarAdjudicacion`.
