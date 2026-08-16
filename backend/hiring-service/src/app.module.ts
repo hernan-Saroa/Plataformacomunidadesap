@@ -19,6 +19,7 @@ import { AdendasModule } from './modules/adendas/adendas.module';
 import { OfertasModule } from './modules/ofertas/ofertas.module';
 import { ComiteModule } from './modules/comite/comite.module';
 import { ContratosModule } from './modules/contratos/contratos.module';
+import { LegalizacionModule } from './modules/legalizacion/legalizacion.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -55,6 +56,9 @@ import { ComiteEvaluador } from './entities/comite-evaluador.entity';
 import { MiembroComite } from './entities/miembro-comite.entity';
 import { Contrato } from './entities/contrato.entity';
 import { FirmaContrato } from './entities/firma-contrato.entity';
+import { Garantia } from './entities/garantia.entity';
+import { Amparo, TipoAmparo } from './entities/amparo.entity';
+import { AfiliacionArl } from './entities/afiliacion-arl.entity';
 import { TipologiaContrato } from './entities/tipologia-contrato.entity';
 
 @Module({
@@ -73,7 +77,7 @@ import { TipologiaContrato } from './entities/tipologia-contrato.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, Contrato, TipologiaContrato, FirmaContrato],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -98,6 +102,7 @@ import { TipologiaContrato } from './entities/tipologia-contrato.entity';
     OfertasModule,
     ComiteModule,
     ContratosModule,
+    LegalizacionModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -17,7 +17,12 @@ import {
  * `PERFECCIONADO` lo deriva el servicio al comprobar que ya están las dos
  * firmas (EFDS-1162); no lo declara quien firma.
  */
-export type EstadoContrato = 'GENERADO' | 'ACEPTADO' | 'RECHAZADO' | 'PERFECCIONADO';
+export type EstadoContrato =
+  | 'GENERADO'
+  | 'ACEPTADO'
+  | 'RECHAZADO'
+  | 'PERFECCIONADO'
+  | 'LEGALIZADO';
 
 /** Determina si la legalización exigirá ARL (EFDS-1164, criterio 2). */
 export type TipoPersona = 'NATURAL' | 'JURIDICA';
@@ -120,6 +125,15 @@ export class Contrato {
    */
   @Column({ name: 'contrato_firmado_documento_id', type: 'uuid', nullable: true })
   contratoFirmadoDocumentoId: string | null;
+
+  /**
+   * Cuándo quedó legalizado (EFDS-1164).
+   *
+   * Se alcanza con todas las garantías aprobadas y, si el contratista es
+   * persona natural, la ARL registrada. Lo deriva el servicio.
+   */
+  @Column({ name: 'legalizado_at', type: 'timestamptz', nullable: true })
+  legalizadoAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

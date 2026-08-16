@@ -20,6 +20,7 @@ import { PanelAdendas } from '../adendas/PanelAdendas';
 import { PanelOfertas } from '../ofertas/PanelOfertas';
 import { PanelComite } from '../comite/PanelComite';
 import { PanelContrato } from '../contrato/PanelContrato';
+import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -65,8 +66,13 @@ const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE];
 /** Elaboración del contrato y aceptación del proponente (EFDS-1161). */
 const NUMERAL_CONTRATO = '8.1';
 
+/** Constitución de garantías con sus amparos (EFDS-1164). */
+const NUMERAL_GARANTIAS = '8.4';
+/** Registro de la ARL para contratistas persona natural (EFDS-1164). */
+const NUMERAL_ARL = '8.5';
+
 /** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
-const NUMERALES_ETAPA_8 = [NUMERAL_CONTRATO];
+const NUMERALES_ETAPA_8 = [NUMERAL_CONTRATO, NUMERAL_GARANTIAS, NUMERAL_ARL];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -363,6 +369,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelComite
                 procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
+            actividadSeleccionada?.numeral === NUMERAL_ARL ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelLegalizacion
+                procesoId={procesoId}
+                numeral={actividadSeleccionada.numeral as '8.4' | '8.5'}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>

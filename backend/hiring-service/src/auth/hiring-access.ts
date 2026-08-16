@@ -202,6 +202,34 @@ export const ROLES_SUSCRIBIR_CONTRATO = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién carga las pólizas y registra la ARL (actividades 8.4 y 8.5,
+ * EFDS-1164).
+ *
+ * Las constituye el contratista, pero él no tiene cuenta en el sistema: quien
+ * las sube es el gestor que lleva el contrato, igual que registra la firma de
+ * la otra parte.
+ */
+export const ROLES_LEGALIZACION = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién aprueba o devuelve una garantía (actividad 8.4).
+ *
+ * Más estrecho que quien las carga, y a propósito: si el mismo que sube la
+ * póliza pudiera aprobarla, la revisión que pide el criterio 1 no sería una
+ * revisión. La verificación de las coberturas es de la Dirección de
+ * Contratación, que es quien responde por que el contrato quede amparado.
+ */
+export const ROLES_APROBAR_GARANTIAS = [
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_REVISOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

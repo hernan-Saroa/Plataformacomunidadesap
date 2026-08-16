@@ -1029,6 +1029,71 @@ export interface EstadoContratoProceso {
   partesPendientes: ParteFirmante[];
 }
 
+// ------------------------ etapa 8 · polizas, garantias y ARL (8.4/8.5) ----
+
+export type EstadoGarantia = 'CARGADA' | 'APROBADA' | 'RECHAZADA';
+
+export interface TipoAmparoCatalogo {
+  codigo: string;
+  nombre: string;
+}
+
+export interface AmparoDeGarantia {
+  tipo: string;
+  valorAsegurado: number;
+  vigenciaDesde: string;
+  vigenciaHasta: string;
+}
+
+export interface GarantiaDelContrato {
+  id: string;
+  aseguradora: string;
+  numeroPoliza: string;
+  estado: EstadoGarantia;
+  cargadaPor: string | null;
+  revisadaPor: string | null;
+  revisadaAt: string | null;
+  motivoRechazo: string | null;
+  /** Ordenados por vencimiento: el primero es el que hay que vigilar. */
+  amparos: AmparoDeGarantia[];
+}
+
+export interface AfiliacionArlRegistro {
+  afiliadoPor: 'ENTIDAD' | 'CONTRATISTA';
+  administradora: string;
+  numeroAfiliacion: string | null;
+  fechaAfiliacion: string;
+  registradaPor: string | null;
+}
+
+export interface EstadoLegalizacion {
+  suscrito: boolean;
+  motivoNoSuscrito: string | null;
+  contratista?: { nombre: string; tipo: TipoPersonaContratista };
+  requiereArl: boolean;
+  tiposAmparo: TipoAmparoCatalogo[];
+  garantias: GarantiaDelContrato[];
+  arl: AfiliacionArlRegistro | null;
+  legalizado: boolean;
+  /** Que falta, dicho por el servidor en palabras. */
+  pendientes: string[];
+}
+
+/** Lo que la pantalla envia al cargar una garantia. */
+export interface DatosGarantia {
+  aseguradora: string;
+  numeroPoliza: string;
+  amparos: AmparoDeGarantia[];
+}
+
+/** Lo que la pantalla envia al registrar la ARL. */
+export interface DatosArl {
+  afiliadoPor: 'ENTIDAD' | 'CONTRATISTA';
+  administradora: string;
+  numeroAfiliacion?: string;
+  fechaAfiliacion: string;
+}
+
 /** Lo que la pantalla envia para generar el contrato. */
 export interface DatosContrato {
   tipologia: string;

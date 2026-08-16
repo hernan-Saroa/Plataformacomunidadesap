@@ -14,6 +14,9 @@ import {
   EstadoContratoProceso,
   DatosContrato,
   DatosFirma,
+  DatosGarantia,
+  DatosArl,
+  EstadoLegalizacion,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -333,6 +336,62 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ rechazadoPor, motivo }),
     }),
+
+  // -------------------- etapa 8 · pólizas, garantías y ARL (8.4/8.5) --------
+
+  /** Garantías con sus amparos, la ARL y qué falta para legalizar. */
+  legalizacion: (procesoId: string) =>
+    pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion`),
+
+  /**
+   * Carga una póliza con sus amparos desglosados.
+   *
+   * Los amparos van como JSON dentro del multipart: la petición lleva también
+   * la póliza, y `FormData` no transporta arreglos de objetos.
+   */
+  cargarGarantia: (procesoId: string, datos: DatosGarantia, poliza: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', poliza);
+    cuerpo.append('aseguradora', datos.aseguradora);
+    cuerpo.append('numeroPoliza', datos.numeroPoliza);
+    cuerpo.append('amparos', JSON.stringify(datos.amparos));
+
+    return pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion/garantias`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Aprueba una póliza; con todas aprobadas el contrato queda legalizado. */
+  aprobarGarantia: (procesoId: string, garantiaId: string) =>
+    pedir<EstadoLegalizacion>(
+      `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/aprobar`,
+      { method: 'POST' },
+    ),
+
+  /** Devuelve una póliza con el motivo; después se carga la corregida. */
+  rechazarGarantia: (procesoId: string, garantiaId: string, motivo: string) =>
+    pedir<EstadoLegalizacion>(
+      `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/rechazar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Registra la afiliación a la ARL, obligatoria para persona natural. */
+  registrarArl: (procesoId: string, datos: DatosArl, soporte: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion/arl`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
 
