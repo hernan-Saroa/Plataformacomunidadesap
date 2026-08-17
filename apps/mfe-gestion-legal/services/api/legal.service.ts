@@ -1456,10 +1456,19 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Reply to an email (maintains thread)
+     * Reply to an email (maintains thread).
+     * `to` defaults server-side to the original sender when omitted; pass it explicitly
+     * to support replying to multiple recipients, same as forwardEmail.
      */
-    async replyEmail(id: string, body: string, attachments?: { name: string; contentBytes: string; contentType: string }[]): Promise<{ success: boolean }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/${id}/reply`, { body, attachments });
+    async replyEmail(
+        id: string,
+        body: string,
+        attachments?: { name: string; contentBytes: string; contentType: string }[],
+        to?: string | string[],
+        cc?: string[],
+        bcc?: string[],
+    ): Promise<{ success: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/${id}/reply`, { body, attachments, to, cc, bcc });
     }
 
     /**
