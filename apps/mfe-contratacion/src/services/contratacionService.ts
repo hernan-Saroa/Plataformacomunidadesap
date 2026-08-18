@@ -2,6 +2,7 @@ import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
   CamposFaltantesError,
+  CatalogoCriterios,
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
@@ -22,6 +23,7 @@ import {
   Cobertura,
   Matriz,
   FlujoModalidad,
+  GuardarCriterio,
   CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
@@ -765,6 +767,36 @@ export const contratacionService = {
     pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
       method: 'PUT',
       body: JSON.stringify(datos),
+    }),
+
+  // --------------------------- administración de criterios de evaluación ---
+
+  /** El catálogo entero, activos e inactivos, con el total de cada modalidad. */
+  criteriosEvaluacion: () => pedir<CatalogoCriterios>('/criterios-evaluacion'),
+
+  crearCriterio: (datos: GuardarCriterio) =>
+    pedir<CatalogoCriterios>('/criterios-evaluacion', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /**
+   * Corrige un criterio, o lo marca confirmado.
+   *
+   * Sin `confirmado`, la edición lo deja sin confirmar: la ratificación es
+   * sobre un texto y una cifra concretos, no sobre la fila.
+   */
+  actualizarCriterio: (id: string, datos: GuardarCriterio) =>
+    pedir<CatalogoCriterios>(`/criterios-evaluacion/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** No hay borrado: un criterio ya usado se retira, y lo evaluado se conserva. */
+  cambiarActivoCriterio: (id: string, activo: boolean) =>
+    pedir<CatalogoCriterios>(`/criterios-evaluacion/${id}/activo`, {
+      method: 'PUT',
+      body: JSON.stringify({ activo }),
     }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,

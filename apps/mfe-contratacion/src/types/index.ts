@@ -950,3 +950,52 @@ export interface SimulacionFormulario {
   campos: CampoSimulado[];
   reglasEvaluadas: number;
 }
+
+// --------------------------------------------- criterios de evaluación (6.3)
+
+export type DimensionEvaluacion = 'JURIDICO' | 'FINANCIERO' | 'TECNICO' | 'ECONOMICO';
+
+/** Habilitante deja pasar; ponderable suma. No son dos etiquetas del mismo dato. */
+export type TipoCriterio = 'HABILITANTE' | 'PONDERABLE';
+
+export interface CriterioCatalogo {
+  id: string;
+  /** Nula: aplica a todas las modalidades. */
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  dimension: DimensionEvaluacion;
+  tipo: TipoCriterio;
+  nombre: string;
+  descripcion: string | null;
+  /** Solo en los ponderables. */
+  puntajeMaximo: number | null;
+  orden: number;
+  activo: boolean;
+  fundamento: string | null;
+  confirmado: boolean;
+  actualizadoEn: string;
+  /** Por qué un criterio ya usado se desactiva en vez de borrarse. */
+  evaluacionesQueLoUsan: number;
+}
+
+export interface CatalogoCriterios {
+  puedeEditar: boolean;
+  dimensiones: { codigo: DimensionEvaluacion; nombre: string; calculada: boolean }[];
+  modalidades: { codigo: string; nombre: string }[];
+  haySinConfirmar: boolean;
+  criterios: CriterioCatalogo[];
+  /** Cuánto suma el máximo ponderable de cada modalidad. */
+  totales: { modalidad: string; nombre: string; total: number; propios: number }[];
+}
+
+export interface GuardarCriterio {
+  modalidad?: string | null;
+  dimension?: DimensionEvaluacion;
+  tipo?: TipoCriterio;
+  nombre?: string;
+  descripcion?: string | null;
+  puntajeMaximo?: number | null;
+  orden?: number;
+  fundamento?: string | null;
+  confirmado?: boolean;
+}

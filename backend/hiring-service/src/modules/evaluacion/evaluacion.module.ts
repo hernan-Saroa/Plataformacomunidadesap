@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EvaluacionService } from './evaluacion.service';
 import { EvaluacionController } from './evaluacion.controller';
+import { CriteriosService } from './criterios.service';
+import { CriteriosController } from './criterios.controller';
 
 import { CriterioEvaluacion } from '../../entities/criterio-evaluacion.entity';
 import { EvaluacionOferta } from '../../entities/evaluacion-oferta.entity';
@@ -34,8 +36,8 @@ import { ComiteModule } from '../comite/comite.module';
     ]),
     ComiteModule,
   ],
-  controllers: [EvaluacionController],
-  providers: [EvaluacionService],
+  controllers: [EvaluacionController, CriteriosController],
+  providers: [EvaluacionService, CriteriosService],
   exports: [EvaluacionService],
 })
 export class EvaluacionModule {}
