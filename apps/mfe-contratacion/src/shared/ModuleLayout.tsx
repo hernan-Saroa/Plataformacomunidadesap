@@ -93,7 +93,7 @@ export function ModuleLayout({
         type="button"
         onClick={() => !item.disabled && navegar(item.id)}
         disabled={item.disabled}
-        title={compacto ? `${item.label}${item.subtitle ? ` — ${item.subtitle}` : ''}` : undefined}
+        title={item.subtitle ? `${item.label} — ${item.subtitle}` : item.label}
         aria-current={activo ? 'page' : undefined}
         className={`w-full rounded-xl relative text-left transition-colors
           ${compacto ? 'p-2.5 flex justify-center' : 'px-3 py-2.5'}
@@ -107,21 +107,14 @@ export function ModuleLayout({
         {compacto ? (
           <span className="flex-shrink-0">{item.icon}</span>
         ) : (
+          // Una línea por opción: el subtítulo repetía el nombre con otras
+          // palabras —«Procesos» / «Procesos contractuales»— y doblaba el alto
+          // de cada entrada para no añadir nada. Queda en el `title`, para
+          // quien no reconozca la opción por el nombre.
           <div className="flex items-center gap-3">
             <span className="flex-shrink-0">{item.icon}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-bold text-[13px] leading-tight truncate">
-                {item.label}
-              </span>
-              {item.subtitle && (
-                <span
-                  className="block text-[10.5px] leading-snug mt-0.5"
-                  style={{ color: activo ? `${color}99` : '#9CA3AF' }}
-                  title={item.subtitle}
-                >
-                  {item.subtitle}
-                </span>
-              )}
+            <span className="min-w-0 flex-1 font-semibold text-[13px] leading-tight truncate">
+              {item.label}
             </span>
             {item.tag && (
               <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wide text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
@@ -150,7 +143,7 @@ export function ModuleLayout({
   };
 
   const navegacion = (compacto: boolean) => (
-    <nav className="flex-1 overflow-y-auto p-3">
+    <nav className="flex-1 overflow-y-auto px-2 py-2.5">
       {groups.map((grupo, idx) => {
         const visibles = grupo.items.filter((i) => i.visible !== false);
         if (visibles.length === 0) return null;
@@ -255,7 +248,7 @@ export function ModuleLayout({
 
       {/* Sidebar escritorio */}
       <aside
-        className="hidden lg:flex flex-shrink-0 border-r-2 border-gray-200 bg-white flex-col relative"
+        className="hidden lg:flex flex-shrink-0 border-r border-gray-200 bg-white flex-col relative"
         style={{
           // 230px: el shell ya ocupa una columna a la izquierda; más ancho
           // deja poco espacio al contenido en pantallas de 1366px.
@@ -263,34 +256,31 @@ export function ModuleLayout({
           transition: 'width .2s cubic-bezier(.4,0,.2,1)',
         }}
       >
-        <div className="p-4 border-b-2 border-gray-200 relative">
+        {/* Borde de una línea y menos alto: el de dos líneas con el nombre y
+            la descripción del módulo empujaba las opciones hacia abajo y
+            repetía lo que el shell ya dice en su propio menú. */}
+        <div className="px-3 py-3 border-b border-gray-200 relative">
           {collapsed ? (
             <div className="w-full flex items-center justify-center">
-              <div className="p-2.5 rounded-xl" style={{ background: `${moduleColor}15` }}>
+              <div className="p-2 rounded-lg" style={{ background: `${moduleColor}15` }}>
                 <span style={{ color: moduleColor }}>{moduleIcon}</span>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <div
-                className="p-2 rounded-xl flex-shrink-0"
+                className="p-1.5 rounded-lg flex-shrink-0"
                 style={{ background: `${moduleColor}15` }}
               >
                 <span style={{ color: moduleColor }}>{moduleIcon}</span>
               </div>
-              <div className="min-w-0">
-                <h2
-                  className="font-black text-sm leading-tight m-0 truncate"
-                  style={{ color: moduleColor }}
-                >
-                  {moduleName}
-                </h2>
-                {moduleDescription && (
-                  <p className="text-[11px] text-gray-400 m-0 leading-tight mt-0.5">
-                    {moduleDescription}
-                  </p>
-                )}
-              </div>
+              <h2
+                className="font-bold text-[13px] leading-tight m-0 truncate min-w-0"
+                style={{ color: moduleColor }}
+                title={moduleDescription}
+              >
+                {moduleName}
+              </h2>
             </div>
           )}
 

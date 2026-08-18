@@ -1,5 +1,5 @@
 -- ============================================================================
--- 026 · Criterios de evaluación de las ofertas (actividad 6.3)
+-- 035 · Criterios de evaluación de las ofertas (actividad 6.3)
 --
 -- EFDS-1157 (RF-PUB-07): el comité evalúa las ofertas en cuatro dimensiones
 -- —jurídica, financiera, técnica y económica— con criterios habilitantes y

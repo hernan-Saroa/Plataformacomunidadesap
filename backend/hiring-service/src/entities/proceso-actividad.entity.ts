@@ -3,8 +3,12 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, Updat
 /**
  * BORRADOR → EN_REVISION → APROBADO
  *                        ↘ DEVUELTO → BORRADOR (el gestor corrige y reenvía)
+ *
+ * NO_APLICA es aparte: la actividad no aplica a la modalidad del proceso y no
+ * recorre el ciclo anterior. Se instancia igual, en vez de omitirse, para que
+ * el expediente deje constancia de por qué el proceso tuvo menos pasos.
  */
-export type EstadoActividad = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+export type EstadoActividad = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO' | 'NO_APLICA';
 
 /** Numeral 3.1 de la matriz: elaboración del estudio previo. */
 export const NUMERAL_ESTUDIO_PREVIO = '3.1';

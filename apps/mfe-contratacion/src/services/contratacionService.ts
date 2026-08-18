@@ -18,8 +18,19 @@ import {
   EstadoRespaldo,
   EstudioPrevio,
   Expediente,
+  SimulacionFormulario,
+  Cobertura,
+  Matriz,
+  FlujoModalidad,
+  CampoConfigurable,
+  ActividadCatalogo,
+  ActividadAplicable,
+  EtapaConActividades,
   Modalidad,
+  GuardarRegla,
+  ReglaActividad,
   Persona,
+  PlantillaFormato,
   PlazosPublicacion,
   ProcesoResumen,
   RevisionEstudioPrevio,
@@ -342,6 +353,19 @@ export const contratacionService = {
     pedir<EstadoDocumentos>(`/procesos/${procesoId}/documentos`),
 
   /**
+   * Formatos del SIG aplicables a una actividad, filtrados por modalidad.
+   *
+   * Es la cara del gestor de la biblioteca: los administra Configuración por
+   * /configuracion/plantillas, y aquí solo se consultan para descargarlos.
+   */
+  plantillasDeActividad: (numeral: string, modalidad?: string) =>
+    pedir<PlantillaFormato[]>(
+      `/procesos/plantillas/${encodeURIComponent(numeral)}${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
+
+  /**
    * Carga uno de los documentos que la actividad exige.
    *
    * El código viaja en el cuerpo junto al archivo: la petición ya es multipart,
@@ -584,6 +608,7 @@ export const contratacionService = {
     }),
 
   crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
+
     pedir<ProcesoResumen>('/procesos', {
       method: 'POST',
       body: JSON.stringify({ objeto, modalidad, valorEstimado }),
@@ -637,6 +662,110 @@ export const contratacionService = {
       { method: 'POST', body: form },
     );
   },
+
+  // ------------------------------------------ configuración de etapas ---
+
+  /** Las 63 actividades de la matriz, agrupadas por etapa. */
+  catalogoActividades: () => pedir<EtapaConActividades[]>('/configuracion/actividades'),
+
+  /** Actividades marcadas según apliquen o no a la modalidad. */
+  actividadesDeModalidad: (modalidad: string) =>
+    pedir<ActividadAplicable[]>(`/configuracion/actividades/modalidad/${modalidad}`),
+
+  // ---------------------------------------- configuracion · escritura ----
+
+  /** Corrige el texto de una actividad y sus parametros de tramite. */
+  actualizarActividad: (
+    numeral: string,
+    datos: {
+      nombre: string;
+      descripcion?: string;
+      activa?: boolean;
+      // Ausente conserva lo guardado; null lo borra. Enviar siempre todos
+      // haria que corregir una errata en el nombre vaciara el plazo.
+      plazoDias?: number | null;
+      responsableCargo?: string | null;
+      alertaDiasAntes?: number | null;
+    },
+  ) =>
+    pedir<ActividadCatalogo>(`/configuracion/actividades/${numeral}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Marca si la actividad aplica a una modalidad. */
+  cambiarAplicabilidad: (
+    numeral: string,
+    datos: { modalidad: string; aplica: boolean; motivo?: string },
+  ) =>
+    pedir<ActividadAplicable>(`/configuracion/actividades/${numeral}/aplicabilidad`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /**
+   * La rejilla completa: cada actividad contra cada modalidad.
+   *
+   * Una sola peticion para toda la tabla: pedirla actividad por actividad
+   * costaba 63 llamadas para dibujar una pantalla.
+   */
+  matriz: () => pedir<Matriz>('/configuracion/matriz'),
+
+  /** Lo que la actividad le pide al gestor. */
+  campos: (numeral: string) =>
+    pedir<CampoConfigurable[]>(`/configuracion/actividades/${numeral}/campos`),
+
+  crearCampo: (numeral: string, datos: { tipo: string; etiqueta: string }) =>
+    pedir<CampoConfigurable>(`/configuracion/actividades/${numeral}/campos`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Formatos del SIG registrados, opcionalmente los de una actividad. */
+  plantillas: (numeral?: string) =>
+    pedir<PlantillaFormato[]>(
+      `/configuracion/plantillas${numeral ? `?numeral=${encodeURIComponent(numeral)}` : ''}`,
+    ),
+
+  /** Registra un formato con su archivo. El multipart lo arma quien llama. */
+  guardarPlantilla: (cuerpo: FormData) =>
+    pedir<PlantillaFormato>('/configuracion/plantillas', {
+      method: 'POST',
+      body: cuerpo,
+    }),
+
+  /**
+   * Corrige un formato, reemplaza su archivo o lo retira de circulación.
+   *
+   * Solo viaja lo que se manda: retirar un formato y corregir su nombre son
+   * gestos distintos, y uno no debe arrastrar al otro. Con `FormData` el
+   * archivo viaja en la misma llamada.
+   */
+  editarPlantilla: (id: string, datos: FormData | { activo: boolean }) =>
+    pedir<PlantillaFormato>(`/configuracion/plantillas/${id}`, {
+      method: 'PUT',
+      body: datos instanceof FormData ? datos : JSON.stringify(datos),
+    }),
+
+  /**
+   * Dónde aplica un formato: en qué actividad se ofrece y a qué modalidades
+   * alcanza. Omitir `modalidades` deja el alcance como estaba.
+   */
+  asignarPlantilla: (id: string, numeral: string | null, modalidades?: string[]) =>
+    pedir<PlantillaFormato>(`/configuracion/plantillas/${id}/actividad`, {
+      method: 'PUT',
+      body: JSON.stringify(modalidades ? { numeral, modalidades } : { numeral }),
+    }),
+
+  /** Cambia el texto que lee el gestor, o deja de pedir el campo. */
+  actualizarCampo: (
+    id: string,
+    datos: { etiqueta: string; ayuda?: string; obligatorio?: boolean; activo?: boolean },
+  ) =>
+    pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

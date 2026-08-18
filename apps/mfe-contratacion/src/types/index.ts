@@ -1,6 +1,24 @@
 /** Tipos del módulo de Contratación — HU EFDS-1146 (estudio previo, numeral 3.1). */
 
-export type TipoCampo = 'texto' | 'texto_largo' | 'numero' | 'moneda' | 'seleccion';
+/**
+ * Cómo se diligencia un campo.
+ *
+ * Los cinco primeros vienen del estudio previo. Los cuatro últimos los agrega
+ * la configuración de etapas: son las formas en que se cierran las actividades
+ * del resto del proceso —se adjunta algo, se fecha, se confirma, o alguien da
+ * su visto bueno—. `responsable` declara que hace falta una aprobación; a quién
+ * se le pide lo elige el gestor al diligenciar, porque cambia en cada proceso.
+ */
+export type TipoCampo =
+  | 'texto'
+  | 'texto_largo'
+  | 'numero'
+  | 'moneda'
+  | 'seleccion'
+  | 'archivo'
+  | 'fecha'
+  | 'casilla'
+  | 'responsable';
 
 /**
  * BORRADOR → EN_REVISION → APROBADO
@@ -679,4 +697,256 @@ export class ConflictoError extends Error {
     super(message);
     this.name = 'ConflictoError';
   }
+}
+
+// ------------------------------------ Configuración de etapas (EFDS-1187) --
+
+/** Una de las 63 actividades de la matriz de flujo. */
+/**
+ * Formato institucional del Sistema Integrado de Gestión.
+ *
+ * Los documentos del proceso no se redactan en el sistema: la ESAP tiene
+ * formatos aprobados que se diligencian en Word y se firman. Aquí se registra
+ * cuál corresponde a cada actividad y modalidad.
+ */
+export interface PlantillaFormato {
+  id: string;
+  /** Código del SIG, p. ej. BS-FO-047. */
+  codigo: string;
+  nombre: string;
+  numeral: string;
+  version: string;
+  fechaAprobacion?: string | null;
+  /** Modalidades a las que aplica; vacío = todas. */
+  modalidades: string[];
+  /** Ruta de descarga; null mientras no se haya subido el archivo. */
+  archivoUrl?: string | null;
+  activo: boolean;
+}
+
+export interface ActividadCatalogo {
+  numeral: string;
+  etapa: number;
+  nombre: string;
+  descripcion?: string | null;
+  orden: number;
+  activa: boolean;
+  /** Días hábiles previstos para completarla. Nulo = sin plazo definido. */
+  plazoDias?: number | null;
+  /** Cargo que responde por ella, no la persona que hoy lo ocupa. */
+  responsableCargo?: string | null;
+  /** Cuántos días antes del vencimiento avisar. Nulo = sin aviso. */
+  alertaDiasAntes?: number | null;
+}
+
+/** La misma actividad, ya resuelta contra una modalidad. */
+export interface ActividadAplicable extends ActividadCatalogo {
+  aplica: boolean;
+  /** Por qué la actividad no aplica a esta modalidad. */
+  motivo?: string | null;
+  /** La actividad aplica, pero la matriz le pone una condición ("si*"). */
+  salvedad?: string | null;
+  /** Lo que la matriz escribió en la celda: "TVEC", "Comunicación de aceptación". */
+  variante?: string | null;
+  /** Reglas vigentes que le aplican a esta modalidad. */
+  reglas?: number;
+  /** De esas, cuantas son propias de la modalidad. */
+  reglasPropias?: number;
+  /** Campos del formulario; 0 = la actividad no tiene formulario todavia. */
+  campos?: number;
+}
+
+export interface EtapaConActividades {
+  etapa: number;
+  actividades: ActividadCatalogo[];
+}
+
+export type TipoRegla =
+  | 'CAMPO_OBLIGATORIO'
+  | 'DOCUMENTO_REQUERIDO'
+  | 'RANGO_VALOR'
+  | 'PLAZO_MINIMO'
+  | 'BLOQUEA_AVANCE'
+  | 'REGLA_DERIVADA';
+
+/** Condición que debe cumplirse para dar por terminada una actividad. */
+export interface ReglaActividad {
+  id: string;
+  numeral: string;
+  /** null = aplica a todas las modalidades. */
+  modalidad: string | null;
+  tipo: TipoRegla;
+  config: Record<string, any>;
+  mensaje?: string | null;
+  orden: number;
+  vigenteDesde: string;
+  vigenteHasta?: string | null;
+  condiciones?: Condicion[];
+  acciones?: Accion[];
+  conector?: 'AND' | 'OR';
+  /** Frase legible que arma el backend. */
+  descripcion?: string;
+}
+
+/** Lo que se envia al crear o reemplazar una regla. */
+export interface GuardarRegla {
+  /** Vacio = aplica a todas las modalidades. */
+  modalidad?: string | null;
+  tipo: TipoRegla;
+  config: Record<string, any>;
+  mensaje?: string;
+  orden?: number;
+  condiciones?: Condicion[];
+  acciones?: Accion[];
+  conector?: 'AND' | 'OR';
+}
+
+/** Estado de una celda de la matriz de cobertura. */
+export type EstadoCelda = 'GLOBAL' | 'ESPECIFICA' | 'SIN_REGLA' | 'NO_APLICA';
+
+export interface CeldaCobertura {
+  modalidad: string;
+  estado: EstadoCelda;
+  reglaId?: string;
+}
+
+export interface FilaCobertura {
+  clave: string;
+  tipo: TipoRegla;
+  /** El campo, el documento o el tipo: lo que identifica la condicion. */
+  etiqueta: string;
+  /** Codigo interno, solo como referencia. */
+  codigo?: string;
+  alcance: 'GLOBAL' | 'ESPECIFICA';
+  reglaGlobalId: string | null;
+  mensaje: string | null;
+  celdas: CeldaCobertura[];
+}
+
+export interface Cobertura {
+  numeral: string;
+  nombre: string;
+  modalidades: { codigo: string; nombre: string; aplica: boolean; motivo: string | null }[];
+  filas: FilaCobertura[];
+}
+
+/**
+ * Estado de una celda de la matriz general.
+ *
+ * Distingue lo que la matriz del Excel distingue y la pantalla no distinguía:
+ * `CON_SALVEDAD` son las celdas que decían "si*" o traían texto propio.
+ */
+export type EstadoMatriz =
+  | 'APLICA'
+  | 'CON_EXCEPCION'
+  | 'CON_SALVEDAD'
+  | 'SIN_REGLAS'
+  | 'SIN_FORMULARIO'
+  | 'NO_APLICA';
+
+export interface CeldaMatriz {
+  modalidad: string;
+  estado: EstadoMatriz;
+  /** Por qué no aplica, o la condición que la matriz marca sin redactar. */
+  motivo: string | null;
+  /** El texto de la celda cuando la matriz no dice SI a secas. */
+  variante: string | null;
+  reglas: number;
+  reglasPropias: number;
+}
+
+export interface FilaMatriz {
+  numeral: string;
+  etapa: number;
+  nombre: string;
+  descripcion: string | null;
+  campos: number;
+  celdas: CeldaMatriz[];
+}
+
+export interface Matriz {
+  modalidades: Modalidad[];
+  filas: FilaMatriz[];
+}
+
+export interface ActividadDeFlujo {
+  numeral: string;
+  nombre: string;
+  descripcion: string | null;
+  aplica: boolean;
+  motivo: string | null;
+  campos: number;
+  reglas: number;
+  reglasPropias: number;
+  salvedad: string | null;
+  variante: string | null;
+}
+
+export interface EtapaDeFlujo {
+  etapa: number;
+  /** Ninguna de sus actividades aplica: el proceso pasa de largo. */
+  seSalta: boolean;
+  total: number;
+  aplican: number;
+  actividades: ActividadDeFlujo[];
+}
+
+export interface FlujoModalidad {
+  modalidad: string;
+  etapas: EtapaDeFlujo[];
+}
+
+export interface CampoConfigurable {
+  id: string;
+  numeral: string;
+  codigo: string;
+  etiqueta: string;
+  ayuda?: string | null;
+  tipo: string;
+  obligatorio: boolean;
+  grupo?: string | null;
+  orden: number;
+  activo: boolean;
+  soloLectura: boolean;
+}
+
+export type Operador = 'ES' | 'NO_ES' | 'MAYOR_QUE' | 'MENOR_QUE' | 'ESTA_VACIO' | 'TIENE_VALOR';
+
+export type TipoAccion =
+  | 'EXIGIR_CAMPO'
+  | 'MOSTRAR_CAMPO'
+  | 'OCULTAR_CAMPO'
+  | 'EXIGIR_DOCUMENTO'
+  | 'BLOQUEAR_AVANCE';
+
+export interface Condicion {
+  /** Codigo del campo, o `modalidad` para condicionar por la del proceso. */
+  campo: string;
+  operador: Operador;
+  valor?: any;
+}
+
+export interface Accion {
+  accion: TipoAccion;
+  objetivo: string;
+  valor?: any;
+}
+
+/** Un campo tal como queda tras aplicar las reglas. */
+export interface CampoSimulado {
+  codigo: string;
+  etiqueta: string;
+  tipo: string;
+  ayuda?: string | null;
+  visible: boolean;
+  obligatorio: boolean;
+  /** Que reglas lo dejaron asi. */
+  porque: string[];
+}
+
+export interface SimulacionFormulario {
+  numeral: string;
+  modalidad: string;
+  campos: CampoSimulado[];
+  reglasEvaluadas: number;
 }

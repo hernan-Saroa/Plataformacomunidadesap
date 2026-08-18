@@ -8,6 +8,7 @@ import { HiringModule } from './modules/hiring/hiring.module';
 import { EstudioPrevioModule } from './modules/estudio-previo/estudio-previo.module';
 import { UmbralesModule } from './modules/umbrales/umbrales.module';
 import { CdpModule } from './modules/cdp/cdp.module';
+import { ConfiguracionModule } from './modules/configuracion/configuracion.module';
 import { PublicacionModule } from './modules/publicacion/publicacion.module';
 import { ObservacionesModule } from './modules/observaciones/observaciones.module';
 import { MipymeModule } from './modules/mipyme/mipyme.module';
@@ -33,7 +34,8 @@ import { Modalidad } from './entities/modalidad.entity';
 import { UmbralModalidad } from './entities/umbral-modalidad.entity';
 import { Smmlv } from './entities/smmlv.entity';
 import { Cdp } from './entities/cdp.entity';
-import { Actividad, ActividadExcluida } from './entities/actividad.entity';
+import { Actividad, ActividadExcluida, ActividadSalvedad } from './entities/actividad.entity';
+import { ReglaActividad } from './entities/regla-actividad.entity';
 import { PublicacionPliego } from './entities/publicacion-pliego.entity';
 import { PlazoPublicacion } from './entities/plazo-publicacion.entity';
 import { DiaNoHabil } from './entities/dia-no-habil.entity';
@@ -71,7 +73,7 @@ import { EvaluacionCriterio } from './entities/evaluacion-criterio.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, CriterioEvaluacion, EvaluacionOferta, EvaluacionCriterio],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, CriterioEvaluacion, EvaluacionOferta, EvaluacionCriterio],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -82,6 +84,7 @@ import { EvaluacionCriterio } from './entities/evaluacion-criterio.entity';
     EstudioPrevioModule,
     UmbralesModule,
     CdpModule,
+    ConfiguracionModule,
     PublicacionModule,
     ObservacionesModule,
     MipymeModule,

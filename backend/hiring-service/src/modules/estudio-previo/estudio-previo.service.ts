@@ -21,6 +21,7 @@ import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
+import { ConfiguracionService } from '../configuracion/configuracion.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -77,6 +78,7 @@ export class EstudioPrevioService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
+    private readonly configuracionService: ConfiguracionService,
   ) {}
 
   // ------------------------------------------------------------- proceso ---
@@ -127,13 +129,15 @@ export class EstudioPrevioService {
         numeroExpediente: `EXP-${anio}-${String(nExp).padStart(4, '0')}`,
       } as Partial<Expediente>);
 
-      // El estudio previo nace como borrador vacío junto con el proceso.
-      const actividad = await em.save(ProcesoActividad, {
-        procesoId: proceso.id,
-        numeral: NUMERAL_ESTUDIO_PREVIO,
-        estado: 'BORRADOR',
-        datos: {},
-      } as Partial<ProcesoActividad>);
+      // Instancia las 63 actividades de la matriz según la modalidad: las que
+      // no aplican quedan en NO_APLICA en vez de omitirse, para que el
+      // expediente deje constancia de por qué el proceso tuvo menos pasos.
+      await this.configuracionService.instanciarActividades(em, proceso.id, modalidad.codigo);
+
+      // El estudio previo (3.1) es la primera con la que trabaja el gestor.
+      const actividad = await em.findOneOrFail(ProcesoActividad, {
+        where: { procesoId: proceso.id, numeral: NUMERAL_ESTUDIO_PREVIO },
+      });
 
       // La modalidad queda en la traza: si el catálogo cambia, el expediente
       // sigue mostrando con cuál nació el proceso.
@@ -391,12 +395,15 @@ export class EstudioPrevioService {
 
     if (!modalidad) return todas;
 
-    const aplicables = todas.filter(
+    // La misma regla que aplica el cliente: alcance vacío significa todas, y
+    // si el formato declara modalidades, la de este proceso tiene que estar.
+    // El antiguo «si ninguna casa se devuelven todas» existía porque la
+    // siembra escribía nombres donde el filtro esperaba códigos y nada casaba
+    // nunca; la migración 034 unificó la convención y el parche sobra — y
+    // ofrecería el pliego de licitación en una contratación directa.
+    return todas.filter(
       (p) => p.modalidades.length === 0 || p.modalidades.includes(modalidad),
     );
-    // Si ninguna declara la modalidad se devuelven todas, para no dejar al
-    // usuario sin formato por un dato aún no parametrizado.
-    return aplicables.length > 0 ? aplicables : todas;
   }
 
   // ------------------------------------------------------------- revisión ---

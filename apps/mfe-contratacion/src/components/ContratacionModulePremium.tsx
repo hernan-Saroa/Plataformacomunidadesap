@@ -5,7 +5,9 @@ import {
   CalendarClock,
   FileSignature,
   ClipboardCheck,
+  FileText,
   Scale,
+  Settings,
 } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
@@ -19,10 +21,19 @@ import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { VistaProcesos } from './procesos/VistaProcesos';
 import { DetalleProceso } from './proceso/DetalleProceso';
 import { VistaUmbrales } from './umbrales/VistaUmbrales';
+import { VistaConfiguracion } from './configuracion/VistaConfiguracion';
+import { VistaPlantillas } from './plantillas/VistaPlantillas';
 import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 
-type Seccion = 'estudios-previos' | 'revision' | 'umbrales' | 'plazos' | 'mipyme';
+type Seccion =
+  | 'estudios-previos'
+  | 'revision'
+  | 'umbrales'
+  | 'plazos'
+  | 'mipyme'
+  | 'plantillas'
+  | 'configuracion';
 
 /**
  * Módulo de Gestión de Contratación — HU EFDS-1146.
@@ -86,6 +97,22 @@ export default function ContratacionModulePremium() {
           icon: <Building2 className="w-5 h-5" />,
           color: '#7C3AED',
         },
+        {
+          // Los formatos del SIG son un catálogo propio: un mismo formato
+          // sirve en varias actividades, así que no cuelga de ninguna.
+          id: 'plantillas',
+          label: 'Plantillas',
+          subtitle: 'Formatos del SIG',
+          icon: <FileText className="w-5 h-5" />,
+          color: '#0891B2',
+        },
+        {
+          id: 'configuracion',
+          label: 'Configuración',
+          subtitle: 'Etapas y reglas',
+          icon: <Settings className="w-5 h-5" />,
+          color: '#64748B',
+        },
       ],
     },
   ];
@@ -96,6 +123,8 @@ export default function ContratacionModulePremium() {
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;
     if (seccion === 'mipyme') return <VistaCondicionesMipyme />;
+    if (seccion === 'plantillas') return <VistaPlantillas />;
+    if (seccion === 'configuracion') return <VistaConfiguracion />;
     if (procesoId) {
       return (
         <DetalleProceso

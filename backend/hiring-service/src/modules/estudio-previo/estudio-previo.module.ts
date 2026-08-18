@@ -6,6 +6,7 @@ import { EstudioPrevioService } from './estudio-previo.service';
 import { FilesController } from './files.controller';
 import { ModalidadesController } from './modalidades.controller';
 import { PersonasController } from './personas.controller';
+import { ConfiguracionModule } from '../configuracion/configuracion.module';
 
 import { Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -28,6 +29,7 @@ import { UmbralesModule } from '../umbrales/umbrales.module';
       ProcesoActividad,
       CampoFormulario,
       Documento, Trazabilidad, Revision, Plantilla, Modalidad]),
+    ConfiguracionModule,
   ],
   controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],

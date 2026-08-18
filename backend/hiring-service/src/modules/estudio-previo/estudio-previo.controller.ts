@@ -27,6 +27,7 @@ import { Roles } from '../../auth/roles.decorator';
 import {
   getHiringAccess,
   ROLES_ESCRITURA_ESTUDIO_PREVIO,
+  ROLES_LECTURA_CONTRATACION,
   ROLES_REVISION_ESTUDIO_PREVIO,
 } from '../../auth/hiring-access';
 
@@ -142,6 +143,10 @@ export class EstudioPrevioController {
   }
 
   @Get('plantillas/:numeral')
+  // Con guard como todos sus gemelos: era el único endpoint de plantillas
+  // que quedó sin control de roles.
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION)
   @ApiOperation({ summary: 'Formatos oficiales aplicables a la actividad' })
   plantillas(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
     return this.service.plantillas(numeral, modalidad);
