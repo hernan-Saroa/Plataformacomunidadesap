@@ -405,7 +405,7 @@ export function ModuloTerminosInformesV3() {
         }}
         buttons={canModifyTerminos ? [
           {
-            label: 'Nueva Solicitud',
+            label: 'Nuevo Informe',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
             onClick: () => setModalNuevaSolicitudOpen(true),
@@ -519,7 +519,7 @@ export function ModuloTerminosInformesV3() {
         />
       )}
 
-      {/* Modal Nueva Solicitud */}
+      {/* Modal Nuevo Informe */}
       <ModalNuevoTermino
         open={modalNuevaSolicitudOpen}
         onOpenChange={setModalNuevaSolicitudOpen}
