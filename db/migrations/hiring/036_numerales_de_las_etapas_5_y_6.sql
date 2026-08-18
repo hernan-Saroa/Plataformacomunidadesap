@@ -39,10 +39,11 @@
 -- esos numerales se quedan sin uno propio —el cronograma, la publicación en
 -- página web, el informe de evaluación preliminar—. Realinear de verdad
 -- —correr la numeración, mover el comité a salida del cierre— cambia historias
--- ya cerradas, sus constantes y el frontend, así que se decide aparte y con la
--- Dirección de Contratación; ver EFDS-1445. Mientras tanto las etapas 5 y 6
--- llevan la numeración del equipo hasta la 5.7 y la 6.3, y la de la matriz de
--- la 5.8 y la 6.4 en adelante.
+-- ya cerradas (EFDS-1149 a EFDS-1157), sus constantes y el frontend, así que
+-- no se hace aquí: necesita decisión de la Dirección de Contratación y
+-- subtarea propia, que a la fecha de esta migración no existe. Mientras tanto
+-- las etapas 5 y 6 llevan la numeración del equipo hasta la 5.7 y la 6.3, y la
+-- de la matriz de la 5.8 y la 6.4 en adelante.
 --
 -- El orden pasa a 1..7 y 1..3: la matriz numeró de uno en uno y con los
 -- 10/20/30 originales estas actividades se iban al final del riel, detrás de
