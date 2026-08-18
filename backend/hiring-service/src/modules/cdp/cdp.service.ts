@@ -58,8 +58,25 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  * evaluador). Esta lista es el filtro real del riel: sembrar la actividad en
  * `hiring.actividades` no basta, porque lo que no esté en estas etapas no se
  * devuelve y la pantalla no tiene cómo llegar a ella.
+ *
+ * La 8 entra con EFDS-1161 (contrato electrónico), EFDS-1162 (suscripción) y
+ * EFDS-1164 (garantías y ARL). La 7 se suma con ella y no después: la
+ * adjudicación es el paso que antecede al contrato, y dejarla fuera haría que
+ * el riel saltara de la etapa 6 a la 8 sin explicar qué pasó en medio. Sus
+ * actividades aparecen sin panel propio mientras EFDS-1159 y EFDS-1160 estén
+ * en curso, que es la verdad de lo entregado.
  */
-export const ETAPAS_ENTREGADAS = [3, ETAPA_CDP, ETAPA_APERTURA, ETAPA_RECEPCION];
+export const ETAPA_ADJUDICACION = 7;
+export const ETAPA_LEGALIZACION = 8;
+
+export const ETAPAS_ENTREGADAS = [
+  3,
+  ETAPA_CDP,
+  ETAPA_APERTURA,
+  ETAPA_RECEPCION,
+  ETAPA_ADJUDICACION,
+  ETAPA_LEGALIZACION,
+];
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
