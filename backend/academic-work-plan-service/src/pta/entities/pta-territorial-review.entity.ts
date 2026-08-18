@@ -21,7 +21,7 @@ import {
  * considera "revisado" en su totalidad cuando TODAS las filas (territorial,
  * nivel) de esta tabla quedan en 'revisado'.
  */
-@Unique(['ptaId', 'territorialId', 'nivel'])
+@Unique(['ptaId', 'componente', 'territorialId', 'nivel'])
 @Index(['ptaId'])
 @Entity({ schema: 'academic_work_plan', name: 'PtaTerritorialReview' })
 export class PtaTerritorialReviewEntity {
@@ -31,6 +31,12 @@ export class PtaTerritorialReviewEntity {
   // PlanTrabajoAcademico.id es TEXT (gen_random_uuid()::text), no uuid.
   @Column({ name: 'pta_id', type: 'text' })
   ptaId: string;
+
+  // EFDS-1353: espejo de PtaTerritorialApproval.componente — distingue la
+  // revisión de Docencia territorial de la de Complementarias territoriales
+  // (migración 401).
+  @Column({ name: 'componente', type: 'varchar', length: 60, default: 'academica_territorial' })
+  componente: string;
 
   @Column({ name: 'territorial_id', type: 'text' })
   territorialId: string;
