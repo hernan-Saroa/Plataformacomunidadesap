@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -53,6 +53,11 @@ export class CargarGarantiaDto {
   /**
    * Los amparos llegan como texto JSON dentro del multipart, porque la petición
    * lleva también la póliza y `FormData` no transporta arreglos de objetos.
+   *
+   * `plainToInstance` y no `JSON.parse` a secas: el resultado del Transform es
+   * el valor final, `@Type` ya no lo convierte, y sin instancias reales el
+   * `whitelist` del ValidationPipe despoja cada amparo de todos sus campos —
+   * llegarían a la base como nulos.
    */
   @ApiProperty({
     description: 'Amparos de la póliza, como JSON',
@@ -62,7 +67,7 @@ export class CargarGarantiaDto {
   @Transform(({ value }) => {
     if (typeof value !== 'string') return value;
     try {
-      return JSON.parse(value);
+      return plainToInstance(AmparoDto, JSON.parse(value));
     } catch {
       // Se devuelve el string para que la validación lo rechace con un mensaje
       // de negocio, en vez de reventar aquí con un error de sintaxis.

@@ -77,10 +77,17 @@ CREATE TABLE IF NOT EXISTS hiring.garantias (
   ),
   CONSTRAINT ck_garantia_rechazada CHECK (
     estado <> 'RECHAZADA' OR motivo_rechazo IS NOT NULL
-  ),
-  -- Dos pólizas con el mismo número en el mismo contrato serían la misma.
-  CONSTRAINT uq_garantia_poliza UNIQUE (contrato_id, numero_poliza)
+  )
 );
+
+-- Dos pólizas VIGENTES con el mismo número serían la misma; pero la corrección
+-- de una devuelta llega con el mismo número, así que la rechazada no bloquea.
+-- Índice parcial y no UNIQUE a secas por el mismo criterio que uq_contrato_vigente.
+-- El DROP cubre las bases donde alcanzó a existir la restricción total.
+ALTER TABLE hiring.garantias DROP CONSTRAINT IF EXISTS uq_garantia_poliza;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_garantia_poliza_vigente
+  ON hiring.garantias (contrato_id, numero_poliza)
+  WHERE estado <> 'RECHAZADA';
 
 CREATE INDEX IF NOT EXISTS ix_garantias_contrato ON hiring.garantias (contrato_id);
 
@@ -154,9 +161,20 @@ COMMENT ON TABLE hiring.afiliaciones_arl IS
 ALTER TABLE hiring.contratos
   ADD COLUMN IF NOT EXISTS legalizado_at timestamptz;
 
-ALTER TABLE hiring.contratos DROP CONSTRAINT IF EXISTS ck_contrato_estado;
-ALTER TABLE hiring.contratos ADD CONSTRAINT ck_contrato_estado
-  CHECK (estado IN ('GENERADO', 'ACEPTADO', 'RECHAZADO', 'PERFECCIONADO', 'LEGALIZADO'));
+-- En un DO por la misma razón que en la 036: sin tabla de control, la
+-- reaplicación tiene que converger en vez de fallar o retroceder.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_contrato_estado'
+      AND pg_get_constraintdef(oid) LIKE '%LEGALIZADO%'
+  ) THEN
+    ALTER TABLE hiring.contratos DROP CONSTRAINT IF EXISTS ck_contrato_estado;
+    ALTER TABLE hiring.contratos ADD CONSTRAINT ck_contrato_estado
+      CHECK (estado IN ('GENERADO', 'ACEPTADO', 'RECHAZADO', 'PERFECCIONADO', 'LEGALIZADO'));
+  END IF;
+END $$;
 
 ALTER TABLE hiring.contratos DROP CONSTRAINT IF EXISTS ck_contrato_legalizado;
 ALTER TABLE hiring.contratos ADD CONSTRAINT ck_contrato_legalizado

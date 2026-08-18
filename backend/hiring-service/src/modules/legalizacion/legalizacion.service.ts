@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,6 +22,10 @@ import {
   RechazarGarantiaDto,
   RegistrarArlDto,
 } from './dto/legalizacion.dto';
+import {
+  ROLES_APROBAR_GARANTIAS,
+  ROLES_LEGALIZACION,
+} from '../../auth/hiring-access';
 
 /** Constitución de garantías (8.4) y registro de la ARL (8.5). */
 export const NUMERAL_GARANTIAS = '8.4';
@@ -51,8 +56,13 @@ export function exigeArl(tipoPersona: TipoPersona): boolean {
 /**
  * Si con este panorama el contrato queda legalizado.
  *
- * Hacen falta garantías —al menos una— y que todas estén aprobadas: una sola
- * cargada sin revisar deja la legalización incompleta, porque nadie ha
+ * Los conteos son de garantías VIGENTES: las rechazadas no entran. Una póliza
+ * devuelta es historia del expediente, no una obligación pendiente — si
+ * contara, un solo rechazo bloquearía la legalización para siempre, porque el
+ * estado RECHAZADA es final y la corrección llega como una póliza nueva.
+ *
+ * Hacen falta garantías vigentes —al menos una— y que todas estén aprobadas:
+ * una cargada sin revisar deja la legalización incompleta, porque nadie ha
  * verificado que cubra lo que debe. Y la ARL cuando aplica.
  *
  * `every` sobre una lista vacía devuelve true, así que la comprobación de que
@@ -69,6 +79,11 @@ export function estaLegalizado(panorama: {
     panorama.totalGarantias > 0 && panorama.garantiasAprobadas === panorama.totalGarantias;
 
   return garantiasListas && (!panorama.requiereArl || panorama.arlRegistrada);
+}
+
+/** Las que cuentan para legalizar: las rechazadas son historia, no pendiente. */
+export function garantiasVigentes<T extends { estado: string }>(garantias: T[]): T[] {
+  return garantias.filter((g) => g.estado !== 'RECHAZADA');
 }
 
 /** Qué falta para legalizar, en palabras que la pantalla pueda mostrar. */
@@ -118,13 +133,18 @@ export class LegalizacionService {
 
   // ------------------------------------------------------------- consulta --
 
-  async estado(procesoId: string, _acceso: HiringAccess) {
+  async estado(procesoId: string, acceso: HiringAccess) {
     const contrato = await this.contratoDelProceso(this.dataSource.manager, procesoId);
 
     const tipos = await this.dataSource.getRepository(TipoAmparo).find({
       where: { activo: true },
       order: { orden: 'ASC', nombre: 'ASC' },
     });
+
+    // Qué puede hacer quien consulta, dicho por el servidor: la pantalla no
+    // debe ofrecer un botón que va a responder 403.
+    const puedeCargar = ROLES_LEGALIZACION.some((r) => acceso.roles.includes(r));
+    const puedeAprobar = ROLES_APROBAR_GARANTIAS.some((r) => acceso.roles.includes(r));
 
     if (!contrato) {
       return {
@@ -136,6 +156,8 @@ export class LegalizacionService {
         arl: null,
         legalizado: false,
         pendientes: [] as string[],
+        puedeCargar,
+        puedeAprobar,
       };
     }
 
@@ -146,9 +168,10 @@ export class LegalizacionService {
       .findOne({ where: { contratoId: contrato.id } });
 
     const requiereArl = exigeArl(contrato.contratistaTipo);
+    const vigentes = garantiasVigentes(garantias);
     const panorama = {
-      totalGarantias: garantias.length,
-      garantiasAprobadas: garantias.filter((g) => g.estado === 'APROBADA').length,
+      totalGarantias: vigentes.length,
+      garantiasAprobadas: vigentes.filter((g) => g.estado === 'APROBADA').length,
       requiereArl,
       arlRegistrada: !!arl,
     };
@@ -180,6 +203,8 @@ export class LegalizacionService {
         : null,
       legalizado: contrato.estado === 'LEGALIZADO',
       pendientes: suscrito ? pendientesDeLegalizacion(panorama) : [],
+      puedeCargar,
+      puedeAprobar,
     };
   }
 
@@ -196,9 +221,15 @@ export class LegalizacionService {
     await this.dataSource.transaction(async (em) => {
       const contrato = await this.exigirContratoSuscrito(em, procesoId);
 
-      const repetida = await em.getRepository(Garantia).findOne({
-        where: { contratoId: contrato.id, numeroPoliza: dto.numeroPoliza },
-      });
+      // Solo choca contra las vigentes: la corrección de una póliza devuelta
+      // llega con el mismo número, y bloquearla dejaría el rechazo sin salida.
+      const repetida = await em
+        .getRepository(Garantia)
+        .createQueryBuilder('g')
+        .where('g.contrato_id = :contratoId', { contratoId: contrato.id })
+        .andWhere('g.numero_poliza = :numero', { numero: dto.numeroPoliza })
+        .andWhere("g.estado <> 'RECHAZADA'")
+        .getOne();
       if (repetida) {
         throw new ConflictException(
           `Este contrato ya tiene registrada la póliza ${dto.numeroPoliza}`,
@@ -269,6 +300,19 @@ export class LegalizacionService {
 
       if (garantia.estado === 'APROBADA') {
         throw new ConflictException('Esta póliza ya fue aprobada');
+      }
+      if (garantia.estado === 'RECHAZADA') {
+        throw new ConflictException(
+          'Esta póliza fue devuelta: la corrección se carga como una póliza nueva, no se revive la devuelta',
+        );
+      }
+
+      // Quien cargó la póliza no la aprueba: si la misma cuenta hiciera las dos
+      // cosas, la revisión que pide el criterio 1 no sería una revisión.
+      if (garantia.cargadaPor && garantia.cargadaPor === acceso.userName) {
+        throw new ForbiddenException(
+          'La póliza la aprueba alguien distinto de quien la cargó: es lo que hace que la revisión exista',
+        );
       }
 
       garantia.estado = 'APROBADA';
@@ -440,9 +484,10 @@ export class LegalizacionService {
       .findOne({ where: { contratoId: contrato.id } });
 
     const requiereArl = exigeArl(contrato.contratistaTipo);
+    const vigentes = garantiasVigentes(garantias);
     const legalizado = estaLegalizado({
-      totalGarantias: garantias.length,
-      garantiasAprobadas: garantias.filter((g) => g.estado === 'APROBADA').length,
+      totalGarantias: vigentes.length,
+      garantiasAprobadas: vigentes.filter((g) => g.estado === 'APROBADA').length,
       requiereArl,
       arlRegistrada: !!arl,
     });
@@ -460,7 +505,7 @@ export class LegalizacionService {
     }
 
     const garantiasListas =
-      garantias.length > 0 && garantias.every((g) => g.estado === 'APROBADA');
+      vigentes.length > 0 && vigentes.every((g) => g.estado === 'APROBADA');
 
     await this.marcarActividad(em, procesoId, NUMERAL_GARANTIAS, garantiasListas, acceso);
     // La 8.5 solo se marca cuando aplica: darla por cumplida en un contrato con
@@ -538,20 +583,26 @@ export class LegalizacionService {
     return salida;
   }
 
-  private async contratoDelProceso(em: EntityManager, procesoId: string) {
+  private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
     if (!proceso) throw new NotFoundException('El proceso no existe');
 
-    return em
+    const consulta = em
       .getRepository(Contrato)
       .createQueryBuilder('c')
       .where('c.proceso_id = :procesoId', { procesoId })
-      .andWhere("c.estado <> 'RECHAZADO'")
-      .getOne();
+      .andWhere("c.estado <> 'RECHAZADO'");
+
+    // Dentro de una transacción que va a recalcular el estado se bloquea la
+    // fila: dos aprobaciones simultáneas derivarían cada una el estado con una
+    // foto vieja de la otra y el LEGALIZADO podría perderse o duplicarse.
+    if (bloquear) consulta.setLock('pessimistic_write');
+
+    return consulta.getOne();
   }
 
   private async exigirContratoSuscrito(em: EntityManager, procesoId: string) {
-    const contrato = await this.contratoDelProceso(em, procesoId);
+    const contrato = await this.contratoDelProceso(em, procesoId, true);
     if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
 
     if (!admiteLegalizacion(contrato.estado)) {

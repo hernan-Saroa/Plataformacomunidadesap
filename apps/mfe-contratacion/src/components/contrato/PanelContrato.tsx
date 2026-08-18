@@ -18,6 +18,7 @@ import {
   campo,
   Marco,
   Pendiente,
+  SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
@@ -227,14 +228,29 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
   }
 
   const contrato = estado.contrato;
-  const completo =
-    datos.tipologia &&
-    datos.numero.trim() &&
-    datos.objeto.trim().length >= 10 &&
-    Number(datos.valor) > 0 &&
-    datos.contratistaDocumento.trim() &&
-    datos.contratistaNombre.trim() &&
-    minuta;
+  /**
+   * Qué falta para poder registrar, en el mismo orden del formulario.
+   *
+   * Se dice y no solo se apaga el botón: con todos los campos visiblemente
+   * llenos, un botón gris sin explicación deja al usuario sin saber qué
+   * corregir. El objeto es el caso claro —el servidor exige diez caracteres y
+   * eso no se adivina mirando la pantalla.
+   */
+  const faltantes: string[] = [];
+  if (!datos.tipologia) faltantes.push('elige la tipología del contrato');
+  if (!datos.numero.trim()) faltantes.push('escribe el número del contrato');
+  if (datos.objeto.trim().length < 10) {
+    faltantes.push('describe el objeto del contrato con al menos 10 caracteres');
+  }
+  if (!(Number(datos.valor) > 0)) faltantes.push('registra un valor mayor que cero');
+  if (datos.plazoDias && !(Number(datos.plazoDias) > 0)) {
+    faltantes.push('el plazo debe ser mayor que cero');
+  }
+  if (!datos.contratistaDocumento.trim()) faltantes.push('escribe el documento del contratista');
+  if (!datos.contratistaNombre.trim()) faltantes.push('escribe el nombre del contratista');
+  if (!minuta) faltantes.push('adjunta la minuta diligenciada');
+
+  const completo = faltantes.length === 0;
 
   return (
     <Marco>
@@ -258,18 +274,20 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
       {estado.formatos.length > 0 && !contrato ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2">
           <p className="text-[12.5px] font-bold text-slate-800 m-0">Formatos de la actividad</p>
-          {estado.formatos.map((formato) => (
-            <a
-              key={formato.id}
-              href={formato.archivoUrl ?? '#'}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline"
-            >
-              <Download className="w-3.5 h-3.5" />
-              {formato.nombre} ({formato.codigo} v{formato.version})
-            </a>
-          ))}
+          {estado.formatos
+            .filter((formato) => formato.archivoUrl)
+            .map((formato) => (
+              <a
+                key={formato.id}
+                href={contratacionService.urlDescarga(formato.archivoUrl!)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {formato.nombre} ({formato.codigo} v{formato.version})
+              </a>
+            ))}
         </div>
       ) : null}
 
@@ -304,9 +322,9 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
                 <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
                   {contrato.objeto}
                 </p>
-                {contrato.minuta ? (
+                {contrato.minuta?.url ? (
                   <a
-                    href={contrato.minuta.url ?? '#'}
+                    href={contratacionService.urlDescarga(contrato.minuta.url)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 mt-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline"
@@ -319,7 +337,9 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
             </div>
           </div>
 
-          {contrato.estado === 'ACEPTADO' ? (
+          {contrato.estado !== 'GENERADO' ? (
+            // Aceptado, perfeccionado o legalizado: la respuesta ya está dada y
+            // el formulario no vuelve. Reabrirla contradiría el expediente.
             <Aviso tono="ok" titulo="El proponente aceptó el contrato">
               Aceptado por {contrato.aceptadoPor}
               {contrato.aceptadoAt ? ` el ${fechaLarga(contrato.aceptadoAt)}` : ''}. Con esto el
@@ -484,30 +504,20 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
                 </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="firma-evidencia"
-                  className="block text-xs font-bold text-gray-600 mb-1.5"
-                >
-                  Evidencia de la firma <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="firma-evidencia"
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx"
-                  onChange={(e) => setEvidencia(e.target.files?.[0] ?? null)}
-                  className="block w-full text-[11.5px] text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[11.5px] file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
-                />
-                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
-                  El documento firmado o el soporte del acto. Sin respaldo el registro no sirve de
-                  prueba.
-                </p>
-              </div>
+              <SelectorArchivo
+                id="firma-evidencia"
+                etiqueta="Evidencia de la firma"
+                ayuda="El documento firmado o el soporte del acto. Sin respaldo el registro no sirve de prueba."
+                archivo={evidencia}
+                onElegir={setEvidencia}
+              />
 
               <div className="flex flex-wrap gap-2">
                 <Boton
                   icono={<PenLine className="w-3.5 h-3.5" />}
-                  disabled={guardando || !firma.firmanteNombre.trim() || !evidencia}
+                  disabled={
+                    guardando || !firma.firmanteNombre.trim() || !firma.fechaFirma || !evidencia
+                  }
                   onClick={registrarFirma}
                 >
                   Registrar la firma
@@ -684,21 +694,20 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
             </p>
           </div>
 
-          <div>
-            <label
-              htmlFor="contrato-minuta"
-              className="block text-xs font-bold text-gray-600 mb-1.5"
-            >
-              Minuta diligenciada <span className="text-red-600">*</span>
-            </label>
-            <input
-              id="contrato-minuta"
-              type="file"
-              accept=".pdf,.doc,.docx,.xls,.xlsx"
-              onChange={(e) => setMinuta(e.target.files?.[0] ?? null)}
-              className="block w-full text-[11.5px] text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[11.5px] file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
-            />
-          </div>
+          <SelectorArchivo
+            id="contrato-minuta"
+            etiqueta="Minuta diligenciada"
+            ayuda="Descarga el formato de la tipología, diligéncialo y súbelo aquí."
+            archivo={minuta}
+            onElegir={setMinuta}
+          />
+
+          {/* Qué falta, en vez de un botón gris que no explica nada. */}
+          {faltantes.length > 0 ? (
+            <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+              Para registrar el contrato, {faltantes.join('; ')}.
+            </p>
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             <Boton

@@ -25,6 +25,8 @@ import {
   campo,
   Marco,
   Pendiente,
+  SelectorArchivo,
+  SinPermiso,
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
@@ -363,7 +365,9 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                     ))}
                   </div>
 
-                  {g.estado === 'CARGADA' ? (
+                  {/* Aprobar es de la revisión, no de quien carga: sin el rol
+                      se dice quién puede, en vez de un botón que dará 403. */}
+                  {g.estado === 'CARGADA' && estado.puedeAprobar ? (
                     <div className="flex flex-wrap gap-2">
                       <Boton
                         icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
@@ -380,15 +384,17 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                         Devolver con motivo
                       </BotonSecundario>
                     </div>
+                  ) : g.estado === 'CARGADA' ? (
+                    <SinPermiso quien="la Dirección de Contratación, que revisa las coberturas" />
                   ) : null}
                 </div>
               ))}
 
-              {!creando ? (
+              {!creando && estado.puedeCargar ? (
                 <Boton icono={<Plus className="w-3.5 h-3.5" />} onClick={() => setCreando(true)}>
                   Cargar una garantía
                 </Boton>
-              ) : (
+              ) : !creando ? null : (
                 <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
                   <p className="text-[12.5px] font-bold text-slate-800 m-0">Nueva garantía</p>
 
@@ -516,18 +522,13 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                     </BotonSecundario>
                   </div>
 
-                  <div>
-                    <label htmlFor="gar-poliza" className="block text-xs font-bold text-gray-600 mb-1.5">
-                      Póliza expedida <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      id="gar-poliza"
-                      type="file"
-                      accept=".pdf,.doc,.docx,.xls,.xlsx"
-                      onChange={(e) => setPoliza(e.target.files?.[0] ?? null)}
-                      className="block w-full text-[11.5px] text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[11.5px] file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
-                    />
-                  </div>
+                  <SelectorArchivo
+                    id="gar-poliza"
+                    etiqueta="Póliza expedida"
+                    ayuda="El documento que expide la aseguradora."
+                    archivo={poliza}
+                    onElegir={setPoliza}
+                  />
 
                   <div className="flex flex-wrap gap-2">
                     <Boton
@@ -572,10 +573,12 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                   </p>
                 </div>
               </div>
-            ) : !registrandoArl ? (
+            ) : !registrandoArl && estado.puedeCargar ? (
               <Boton icono={<HeartPulse className="w-3.5 h-3.5" />} onClick={() => setRegistrandoArl(true)}>
                 Registrar la afiliación
               </Boton>
+            ) : !registrandoArl ? (
+              <SinPermiso quien="el gestor que lleva el contrato" />
             ) : (
               <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
                 <p className="text-[12.5px] font-bold text-slate-800 m-0">Afiliación a la ARL</p>
@@ -639,23 +642,20 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                   </div>
                 </div>
 
-                <div>
-                  <label htmlFor="arl-soporte" className="block text-xs font-bold text-gray-600 mb-1.5">
-                    Soporte de la afiliación <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    id="arl-soporte"
-                    type="file"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx"
-                    onChange={(e) => setSoporteArl(e.target.files?.[0] ?? null)}
-                    className="block w-full text-[11.5px] text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[11.5px] file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
-                  />
-                </div>
+                <SelectorArchivo
+                  id="arl-soporte"
+                  etiqueta="Soporte de la afiliación"
+                  ayuda="El certificado o la constancia que expide la administradora."
+                  archivo={soporteArl}
+                  onElegir={setSoporteArl}
+                />
 
                 <div className="flex flex-wrap gap-2">
                   <Boton
                     icono={<HeartPulse className="w-3.5 h-3.5" />}
-                    disabled={guardando || !arl.administradora.trim() || !soporteArl}
+                    disabled={
+                      guardando || !arl.administradora.trim() || !arl.fechaAfiliacion || !soporteArl
+                    }
                     onClick={registrarArl}
                   >
                     Registrar la afiliación

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -17,7 +18,11 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { Oferente } from '../../entities/oferente.entity';
-import { HiringAccess } from '../../auth/hiring-access';
+import {
+  HiringAccess,
+  ROL_ORDENADOR_GASTO,
+  ROL_SUPER_ADMIN,
+} from '../../auth/hiring-access';
 import {
   AceptarContratoDto,
   FirmarContratoDto,
@@ -50,6 +55,17 @@ export function puedeResponder(
 export const PARTES_FIRMANTES = ['ORDENADOR', 'CONTRATISTA'] as const;
 
 /**
+ * Si el contrato ya quedó suscrito por las dos partes.
+ *
+ * LEGALIZADO cuenta: se alcanza desde PERFECCIONADO (EFDS-1164) y un contrato
+ * legalizado sigue estando suscrito. Tratarlo como «no perfeccionado» haría
+ * que la pantalla se contradijera justo al aprobar la última garantía.
+ */
+export function yaSuscrito(estado: EstadoContrato): boolean {
+  return estado === 'PERFECCIONADO' || estado === 'LEGALIZADO';
+}
+
+/**
  * Si el contrato admite firmas.
  *
  * El orden es generar, aceptar y después firmar. Firmar una minuta que el
@@ -79,9 +95,9 @@ export function estaSuscrito(partesFirmadas: readonly string[]): boolean {
  * haría que el riel mintiera.
  */
 export function actividadCumplida(estado: EstadoContrato | null | undefined): boolean {
-  // Perfeccionado también la cumple: es el estado al que se llega desde
-  // aceptado, y volver a marcarla en curso al firmar sería retroceder.
-  return estado === 'ACEPTADO' || estado === 'PERFECCIONADO';
+  // Perfeccionado y legalizado también la cumplen: son los estados a los que
+  // se llega desde aceptado, y marcarla en curso al avanzar sería retroceder.
+  return estado === 'ACEPTADO' || (!!estado && yaSuscrito(estado));
 }
 
 /**
@@ -224,7 +240,7 @@ export class ContratosService {
         : null,
       // La suscripción: qué partes firmaron y cuál falta (EFDS-1162).
       puedeFirmar: !!contrato && puedeFirmarse(contrato.estado),
-      perfeccionado: contrato?.estado === 'PERFECCIONADO',
+      perfeccionado: !!contrato && yaSuscrito(contrato.estado),
       firmas: firmas.map((f) => ({
         parte: f.parte,
         firmanteNombre: f.firmanteNombre,
@@ -438,9 +454,22 @@ export class ContratosService {
 
       if (!puedeFirmarse(contrato.estado)) {
         throw new ConflictException(
-          contrato.estado === 'PERFECCIONADO'
+          yaSuscrito(contrato.estado)
             ? 'El contrato ya está suscrito por las dos partes'
             : 'El contrato todavía no lo ha aceptado el proponente: primero se acepta y después se firma',
+        );
+      }
+
+      // La firma del ordenador la registra el propio Ordenador del Gasto: es
+      // él quien compromete a la entidad. El gestor registra la del
+      // contratista, que no tiene cuenta, pero no puede firmar por la entidad.
+      if (
+        dto.parte === 'ORDENADOR' &&
+        !acceso.roles.includes(ROL_ORDENADOR_GASTO) &&
+        !acceso.roles.includes(ROL_SUPER_ADMIN)
+      ) {
+        throw new ForbiddenException(
+          'La firma del ordenador del gasto la registra él mismo: tu rol no puede comprometer a la entidad',
         );
       }
 
@@ -464,8 +493,8 @@ export class ContratosService {
       const doc = await this.guardarDocumento(
         em,
         expediente.id,
-        `Contrato ${contrato.numero} · firma de ${
-          dto.parte === 'ORDENADOR' ? 'el ordenador del gasto' : 'el contratista'
+        `Contrato ${contrato.numero} · firma ${
+          dto.parte === 'ORDENADOR' ? 'del ordenador del gasto' : 'del contratista'
         }`,
         evidencia,
         hash,
@@ -524,12 +553,20 @@ export class ContratosService {
    */
   contratoVigente(procesoId: string, em?: EntityManager) {
     const manager = em ?? this.dataSource.manager;
-    return manager
+    const consulta = manager
       .getRepository(Contrato)
       .createQueryBuilder('c')
       .where('c.proceso_id = :procesoId', { procesoId })
-      .andWhere("c.estado <> 'RECHAZADO'")
-      .getOne();
+      .andWhere("c.estado <> 'RECHAZADO'");
+
+    // Dentro de una transacción se bloquea la fila. Sin esto, dos firmas
+    // simultáneas leerían ambas «falta la otra parte» y el contrato quedaría
+    // con las dos firmas pero sin perfeccionar, sin endpoint que lo repare; y
+    // un aceptar y un rechazar concurrentes pasarían los dos la guarda y el
+    // expediente registraría ambas respuestas a la vez.
+    if (em) consulta.setLock('pessimistic_write');
+
+    return consulta.getOne();
   }
 
   /** Exige que haya contrato vigente; lo usan las etapas siguientes. */

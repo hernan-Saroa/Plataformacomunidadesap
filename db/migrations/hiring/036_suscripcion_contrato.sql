@@ -72,9 +72,22 @@ ALTER TABLE hiring.contratos
 
 -- Se amplía el estado con PERFECCIONADO. Al ser un CHECK hay que reemplazarlo:
 -- añadir un valor a la lista no es una operación incremental en Postgres.
-ALTER TABLE hiring.contratos DROP CONSTRAINT IF EXISTS ck_contrato_estado;
-ALTER TABLE hiring.contratos ADD CONSTRAINT ck_contrato_estado
-  CHECK (estado IN ('GENERADO', 'ACEPTADO', 'RECHAZADO', 'PERFECCIONADO'));
+--
+-- Guardado en un DO: estas migraciones no tienen tabla de control y se
+-- reaplicán. Si la 037 ya amplió el CHECK con LEGALIZADO, reponer aquí la
+-- lista corta fallaría contra los contratos ya legalizados.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ck_contrato_estado'
+      AND pg_get_constraintdef(oid) LIKE '%PERFECCIONADO%'
+  ) THEN
+    ALTER TABLE hiring.contratos DROP CONSTRAINT IF EXISTS ck_contrato_estado;
+    ALTER TABLE hiring.contratos ADD CONSTRAINT ck_contrato_estado
+      CHECK (estado IN ('GENERADO', 'ACEPTADO', 'RECHAZADO', 'PERFECCIONADO'));
+  END IF;
+END $$;
 
 -- Un contrato perfeccionado tiene siempre la fecha en que se perfeccionó, igual
 -- que uno aceptado tiene la de su aceptación.

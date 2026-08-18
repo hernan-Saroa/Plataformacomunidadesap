@@ -190,3 +190,23 @@ describe('estaSuscrito', () => {
     expect(estaSuscrito(['ORDENADOR', 'ORDENADOR'])).toBe(false);
   });
 });
+
+/**
+ * LEGALIZADO llega desde PERFECCIONADO (EFDS-1164) y sigue siendo un contrato
+ * suscrito: las guardas posteriores tienen que tratarlo como tal.
+ */
+describe('estado LEGALIZADO', () => {
+  it('no admite firmas: ya las tiene', () => {
+    expect(puedeFirmarse('LEGALIZADO')).toBe(false);
+  });
+
+  it('mantiene la actividad 8.1 cumplida', () => {
+    // Aprobar la última garantía no puede hacer retroceder el riel.
+    expect(actividadCumplida('LEGALIZADO')).toBe(true);
+  });
+
+  it('no admite respuestas del proponente', () => {
+    expect(puedeResponder('LEGALIZADO', 'ACEPTAR')).toBe(false);
+    expect(puedeResponder('LEGALIZADO', 'RECHAZAR')).toBe(false);
+  });
+});

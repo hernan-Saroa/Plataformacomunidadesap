@@ -2,6 +2,7 @@ import {
   admiteLegalizacion,
   estaLegalizado,
   exigeArl,
+  garantiasVigentes,
   pendientesDeLegalizacion,
 } from './legalizacion.service';
 
@@ -138,5 +139,47 @@ describe('pendientesDeLegalizacion', () => {
     });
 
     expect(faltan).toEqual([]);
+  });
+});
+
+/**
+ * Una póliza devuelta es historia del expediente, no una obligación pendiente.
+ *
+ * Si contara para el total, un solo rechazo bloquearía la legalización para
+ * siempre: RECHAZADA es final y la corrección llega como póliza nueva.
+ */
+describe('garantiasVigentes', () => {
+  const cargada = { estado: 'CARGADA' };
+  const aprobada = { estado: 'APROBADA' };
+  const rechazada = { estado: 'RECHAZADA' };
+
+  it('excluye las rechazadas del conteo', () => {
+    expect(garantiasVigentes([aprobada, rechazada, cargada])).toEqual([aprobada, cargada]);
+  });
+
+  it('un contrato con la corregida aprobada y la vieja rechazada queda legalizado', () => {
+    const vigentes = garantiasVigentes([aprobada, rechazada]);
+
+    expect(
+      estaLegalizado({
+        totalGarantias: vigentes.length,
+        garantiasAprobadas: vigentes.filter((g) => g.estado === 'APROBADA').length,
+        requiereArl: false,
+        arlRegistrada: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('solo rechazadas equivale a no tener garantías', () => {
+    const vigentes = garantiasVigentes([rechazada]);
+
+    expect(
+      estaLegalizado({
+        totalGarantias: vigentes.length,
+        garantiasAprobadas: 0,
+        requiereArl: false,
+        arlRegistrada: false,
+      }),
+    ).toBe(false);
   });
 });

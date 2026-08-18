@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -54,7 +54,11 @@ export class DesignarComiteDto {
   @Transform(({ value }) => {
     if (typeof value !== 'string') return value;
     try {
-      return JSON.parse(value);
+      // `plainToInstance` y no `JSON.parse` a secas: lo que devuelve el
+      // Transform es el valor final y `@Type` ya no lo convierte. Sin
+      // instancias reales, el `whitelist` del ValidationPipe despoja cada
+      // miembro de todos sus campos y llegarían nulos al servicio.
+      return plainToInstance(MiembroComiteDto, JSON.parse(value));
     } catch {
       // Se devuelve el string para que la validación lo rechace con un mensaje
       // de negocio, en vez de reventar aquí con un error de sintaxis.
