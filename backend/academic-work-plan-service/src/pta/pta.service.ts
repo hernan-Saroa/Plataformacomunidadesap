@@ -2468,6 +2468,11 @@ export class PtaService {
       docente_id: entity.docenteId,
       periodo: entity.periodo,
       estado: entity.estado === 'BORRADOR' ? 'Borrador' : entity.estado,
+      // EFDS-1408: fuente de verdad única de "¿este PTA admite solicitud de
+      // edición?". Se expone derivada del backend (misma función que valida el
+      // endpoint) para que ninguna vista tenga que reimplementar la regla y se
+      // desincronice; el frontend solo consume este flag.
+      admite_solicitud_edicion: ptaAdmiteSolicitudEdicion(entity.estado),
       version: entity.version,
       horas_totales: horasTotal,
       // Aliases usados por la tabla del backoffice
