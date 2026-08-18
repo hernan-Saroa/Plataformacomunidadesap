@@ -23,6 +23,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ComiteService } from '../comite/comite.service';
+import { consolidar, CriterioAplicable, puntajeMaximoDe } from './consolidacion';
 import { EvaluarOfertaDto, ResultadoCriterioDto } from './dto/evaluacion.dto';
 
 /** Actividad 6.3 de la matriz: la evaluación de las ofertas. */
@@ -64,6 +65,36 @@ export class EvaluacionService {
 
     const evaluaciones = await this.evaluacionesDe(oferentes.map((o) => o.id));
 
+    // La consolidación se calcula al consultar y no se guarda: corregir una
+    // evaluación tiene que reflejarse sin rehacer nada, y un resultado
+    // congelado se desincronizaría del juicio que lo sustenta.
+    const aplicables: CriterioAplicable[] = criterios.map((c) => ({
+      id: c.id,
+      dimension: c.dimension,
+      tipo: c.tipo,
+      nombre: c.nombre,
+      puntajeMaximo: c.puntajeMaximo != null ? Number(c.puntajeMaximo) : null,
+    }));
+
+    const consolidado = consolidar(
+      oferentes.map((oferta) => ({
+        id: oferta.id,
+        valorOfertado: oferta.valorOfertado != null ? Number(oferta.valorOfertado) : null,
+        evaluaciones: (evaluaciones.get(oferta.id) ?? []).map((e) => ({
+          dimension: e.evaluacion.dimension,
+          resultados: e.resultados.map((r) => ({
+            criterioId: r.criterioId,
+            cumple: r.cumple,
+            puntaje: r.puntaje != null ? Number(r.puntaje) : null,
+            observacion: r.observacion,
+          })),
+        })),
+      })),
+      aplicables,
+    );
+
+    const porOferta = new Map(consolidado.map((c) => [c.ofertaId, c]));
+
     return {
       aplica: !excluida,
       motivoNoAplica: excluida?.motivo ?? null,
@@ -78,6 +109,7 @@ export class EvaluacionService {
       // Los criterios sin confirmar se marcan para que la pantalla no los
       // presente como regla establecida.
       criteriosSinConfirmar: criterios.some((c) => !c.confirmado),
+      puntajeMaximo: puntajeMaximoDe(aplicables),
       criterios: criterios.map((c) => ({
         id: c.id,
         dimension: c.dimension,
@@ -93,6 +125,9 @@ export class EvaluacionService {
         nombre: oferta.nombre,
         identificacion: oferta.identificacion,
         valorOfertado: oferta.valorOfertado != null ? Number(oferta.valorOfertado) : null,
+        // Habilitada, no habilitada o pendiente, con el criterio que la dejó
+        // fuera y el puntaje por dimensión.
+        consolidado: porOferta.get(oferta.id) ?? null,
         evaluaciones: (evaluaciones.get(oferta.id) ?? []).map((e) => ({
           dimension: e.evaluacion.dimension,
           evaluadaPor: e.evaluacion.evaluadaPor,

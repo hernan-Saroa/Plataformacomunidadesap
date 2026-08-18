@@ -53,6 +53,7 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
   /** Cuentas reales del directorio: el enlace persona-cuenta es de otro equipo. */
   let juridica: { acceso: HiringAccess; personaId: string };
   let tecnico: { acceso: HiringAccess; personaId: string };
+  let financiera: { acceso: HiringAccess; personaId: string };
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
@@ -63,7 +64,12 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
     size: 1024,
   });
 
-  const crear = (modalidad = 'MINIMA_CUANTIA') =>
+  /**
+   * Selección abreviada de menor cuantía: el flujo arranca en la apertura, y
+   * la matriz oficial (030) deja la mínima cuantía fuera de la 5.7 porque se
+   * adjudica por comunicación de aceptación y no expide acto de apertura.
+   */
+  const crear = (modalidad = 'ABREVIADA_MENOR_CUANTIA') =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
 
   /** Proceso abierto, con dos ofertas y la recepción cerrada. */
@@ -104,7 +110,7 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
     return { proceso, estado: await ofertas.cerrar(proceso.id, gestor) };
   };
 
-  /** Designa el comité con las dos cuentas reales del directorio. */
+  /** Designa el comité con las tres cuentas reales del directorio. */
   const designar = (procesoId: string) =>
     comite.designar(
       procesoId,
@@ -113,6 +119,7 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
         miembros: [
           { personaId: juridica.personaId, nombre: 'Evaluadora jurídica', rol: 'JURIDICO' },
           { personaId: tecnico.personaId, nombre: 'Evaluador técnico', rol: 'TECNICO' },
+          { personaId: financiera.personaId, nombre: 'Evaluadora financiera', rol: 'FINANCIERO' },
         ],
       },
       archivo('memorando.pdf'),
@@ -138,9 +145,9 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
     dataSource = app.get(DataSource);
 
     const cuentas = await dataSource.query(
-      `SELECT id_user, id_person FROM auth."user" WHERE id_person IS NOT NULL ORDER BY id_user LIMIT 2`,
+      `SELECT id_user, id_person FROM auth."user" WHERE id_person IS NOT NULL ORDER BY id_user LIMIT 3`,
     );
-    expect(cuentas).toHaveLength(2);
+    expect(cuentas).toHaveLength(3);
 
     juridica = {
       personaId: cuentas[0].id_person,
@@ -157,6 +164,15 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
         userId: cuentas[1].id_user,
         userName: 'prueba.tecnico',
         roles: ['EVALUADOR_TECNICO'],
+        puedeEditar: false,
+      },
+    };
+    financiera = {
+      personaId: cuentas[2].id_person,
+      acceso: {
+        userId: cuentas[2].id_user,
+        userName: 'prueba.financiera',
+        roles: ['EVALUADOR_FINANCIERO'],
         puedeEditar: false,
       },
     };
@@ -250,6 +266,119 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
       ]);
       // El gestor lleva el proceso pero no evalúa.
       expect((await evaluacion.estado(proceso.id, gestor)).misDimensiones).toEqual([]);
+    });
+  });
+
+  // ------------------------------------------------------------ criterio 2 --
+
+  describe('Criterio 2 · consolidación de habilitadas y calificación', () => {
+    /** Evalúa una dimensión entera con el mismo veredicto para todo. */
+    const evaluarTodo = async (
+      procesoId: string,
+      ofertaId: string,
+      dimension: 'JURIDICO' | 'TECNICO' | 'FINANCIERO',
+      quien: HiringAccess,
+      opciones: { cumple?: boolean; puntajePleno?: boolean } = {},
+    ) => {
+      const { cumple = true, puntajePleno = true } = opciones;
+      const criterios = await criteriosDe(procesoId, dimension);
+
+      return evaluacion.evaluar(
+        procesoId,
+        ofertaId,
+        {
+          dimension,
+          resultados: criterios.map((c) =>
+            c.tipo === 'HABILITANTE'
+              ? {
+                  criterioId: c.id,
+                  cumple,
+                  observacion: cumple ? undefined : 'No acreditó lo exigido en el pliego',
+                }
+              : { criterioId: c.id, puntaje: puntajePleno ? c.puntajeMaximo! : 0 },
+          ),
+        },
+        quien,
+      );
+    };
+
+    it('habilita la oferta con todo cumplido y le calcula el puntaje económico', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+
+      const [barata, cara] = estado.oferentes;
+      for (const oferta of [barata, cara]) {
+        await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso);
+        await evaluarTodo(proceso.id, oferta.id, 'TECNICO', tecnico.acceso);
+        await evaluarTodo(proceso.id, oferta.id, 'FINANCIERO', financiera.acceso);
+      }
+
+      const tras = await evaluacion.estado(proceso.id, gestor);
+      const laBarata = tras.ofertas.find((o) => o.id === barata.id)!.consolidado!;
+      const laCara = tras.ofertas.find((o) => o.id === cara.id)!.consolidado!;
+
+      expect(laBarata.estado).toBe('HABILITADA');
+      expect(laCara.estado).toBe('HABILITADA');
+      // 40 y 50 millones: la barata se lleva el máximo económico y la otra
+      // baja en proporción, así que su total tiene que ser menor.
+      expect(laBarata.puntajeTotal).toBeGreaterThan(laCara.puntajeTotal);
+      expect(laBarata.puntajeTotal).toBe(laBarata.puntajeMaximo);
+    });
+
+    it('marca NO HABILITADA a la que incumple un habilitante y dice cuál', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+
+      const oferta = estado.oferentes[0];
+      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso, { cumple: false });
+      await evaluarTodo(proceso.id, oferta.id, 'TECNICO', tecnico.acceso);
+      await evaluarTodo(proceso.id, oferta.id, 'FINANCIERO', financiera.acceso);
+
+      const tras = await evaluacion.estado(proceso.id, gestor);
+      const consolidado = tras.ofertas.find((o) => o.id === oferta.id)!.consolidado!;
+
+      expect(consolidado.estado).toBe('NO_HABILITADA');
+      expect(consolidado.incumplimientos.length).toBeGreaterThan(0);
+      expect(consolidado.incumplimientos[0].motivo).toMatch(/no acreditó/i);
+    });
+
+    it('deja pendiente la oferta a la que le falta una dimensión', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+
+      const oferta = estado.oferentes[0];
+      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso);
+
+      const tras = await evaluacion.estado(proceso.id, gestor);
+      const consolidado = tras.ofertas.find((o) => o.id === oferta.id)!.consolidado!;
+
+      expect(consolidado.estado).toBe('PENDIENTE');
+      expect(consolidado.dimensionesPendientes).toContain('TECNICO');
+    });
+
+    it('la consolidación sigue a la evaluación cuando se corrige', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+
+      const oferta = estado.oferentes[0];
+      await evaluarTodo(proceso.id, oferta.id, 'TECNICO', tecnico.acceso);
+      await evaluarTodo(proceso.id, oferta.id, 'FINANCIERO', financiera.acceso);
+      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso, { cumple: false });
+
+      const fuera = (await evaluacion.estado(proceso.id, gestor)).ofertas.find(
+        (o) => o.id === oferta.id,
+      )!.consolidado!;
+      expect(fuera.estado).toBe('NO_HABILITADA');
+
+      // Se corrige el juicio jurídico: no hay que rehacer nada más, porque el
+      // consolidado se calcula al consultarlo.
+      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso, { cumple: true });
+
+      const dentro = (await evaluacion.estado(proceso.id, gestor)).ofertas.find(
+        (o) => o.id === oferta.id,
+      )!.consolidado!;
+      expect(dentro.estado).toBe('HABILITADA');
+      expect(dentro.incumplimientos).toHaveLength(0);
     });
   });
 
