@@ -30,6 +30,7 @@ import {
   CrearCampoDto,
   EstadoPlantillaDto,
   GuardarPlantillaDto,
+  GuardarTipologiaDto,
 } from './dto/configuracion.dto';
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
@@ -82,6 +83,40 @@ export class ConfiguracionController {
   @ApiOperation({ summary: 'Las 63 actividades de la matriz, agrupadas por etapa' })
   catalogo() {
     return this.service.catalogo();
+  }
+
+  @Get('tipologias')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @ApiOperation({
+    summary: 'Tipologías de contrato',
+    description: 'Las tipologías con las que se elabora un contrato (EFDS-1161).',
+  })
+  tipologias() {
+    return this.service.tipologias();
+  }
+
+  @Post('tipologias')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_ADMIN_UMBRALES)
+  @ApiOperation({
+    summary: 'Crear o ajustar una tipología',
+    description:
+      'La historia habla de 16 tipologías sin enumerarlas: Contratación completa la suya desde aquí en vez de pedir una migración.',
+  })
+  guardarTipologia(@Body() dto: GuardarTipologiaDto) {
+    return this.service.guardarTipologia(dto);
+  }
+
+  @Put('tipologias/:codigo/retirar')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_ADMIN_UMBRALES)
+  @ApiOperation({
+    summary: 'Retirar una tipología de circulación',
+    description: 'Los contratos que ya la usaron la conservan: se desactiva, no se borra.',
+  })
+  retirarTipologia(@Param('codigo') codigo: string) {
+    return this.service.retirarTipologia(codigo);
   }
 
   @Get('actividades/modalidad/:modalidad')

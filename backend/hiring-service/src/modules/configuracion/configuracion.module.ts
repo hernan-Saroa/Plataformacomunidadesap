@@ -14,6 +14,7 @@ import { CampoFormulario } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 
 @Module({
   imports: [
@@ -26,6 +27,9 @@ import { Expediente } from '../../entities/expediente.entity';
       Documento,
       ProcesoActividad,
       Expediente,
+      // Las tipologías del contrato se administran desde la configuración de
+      // etapas: son un parámetro del flujo, como los umbrales o los plazos.
+      TipologiaContrato,
     ]),
   ],
   controllers: [ConfiguracionController],

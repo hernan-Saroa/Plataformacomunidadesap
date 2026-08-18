@@ -32,6 +32,8 @@ import {
   ActividadCatalogo,
   ActividadAplicable,
   EtapaConActividades,
+  TipologiaConfigurable,
+  GuardarTipologia,
   Modalidad,
   GuardarRegla,
   ReglaActividad,
@@ -362,11 +364,15 @@ export const contratacionService = {
     });
   },
 
-  /** Aprueba una póliza; con todas aprobadas el contrato queda legalizado. */
+  /**
+   * Aprueba una póliza; con todas aprobadas el contrato queda legalizado.
+   *
+   * Con cuerpo vacío explícito: el gateway trata mal los POST sin body.
+   */
   aprobarGarantia: (procesoId: string, garantiaId: string) =>
     pedir<EstadoLegalizacion>(
       `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/aprobar`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({}) },
     ),
 
   /** Devuelve una póliza con el motivo; después se carga la corregida. */
@@ -785,6 +791,25 @@ export const contratacionService = {
 
   /** Las 63 actividades de la matriz, agrupadas por etapa. */
   catalogoActividades: () => pedir<EtapaConActividades[]>('/configuracion/actividades'),
+
+  // ---------------- configuración · tipologías de contrato (EFDS-1161) ------
+
+  /** Las tipologías con las que se elabora un contrato. */
+  tipologias: () => pedir<TipologiaConfigurable[]>('/configuracion/tipologias'),
+
+  /** Crea una tipología o ajusta la que ya existe con ese código. */
+  guardarTipologia: (datos: GuardarTipologia) =>
+    pedir<TipologiaConfigurable>('/configuracion/tipologias', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** La retira de circulación; los contratos que la usaron la conservan. */
+  retirarTipologia: (codigo: string) =>
+    pedir<TipologiaConfigurable>(`/configuracion/tipologias/${codigo}/retirar`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
 
   /** Actividades marcadas según apliquen o no a la modalidad. */
   actividadesDeModalidad: (modalidad: string) =>

@@ -9,6 +9,7 @@ import { Modal } from '../shared/Modal';
 
 import { DetalleActividad } from './DetalleActividad';
 import { MatrizGeneral } from './MatrizGeneral';
+import { TipologiasContrato } from './TipologiasContrato';
 import { PETICIONES, Peticion } from './peticiones';
 
 /**
@@ -33,6 +34,8 @@ export function VistaConfiguracion() {
   const [campos, setCampos] = useState<CampoConfigurable[]>([]);
   const [cargandoCampos, setCargandoCampos] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Matriz de actividades o tipologías de contrato: los dos son parámetros del flujo. */
+  const [pestana, setPestana] = useState<'matriz' | 'tipologias'>('matriz');
 
   const actividad = useMemo(
     () => actividades.find((a) => a.numeral === seleccion) ?? null,
@@ -179,7 +182,36 @@ export function VistaConfiguracion() {
         </div>
       )}
 
-      <MatrizGeneral onAbrir={abrirDetalle} />
+      {/* Dos pestañas y no dos secciones del menú: la matriz y las tipologías
+          son parámetros del mismo flujo, y separarlas obligaría a salir de la
+          configuración para volver a entrar en ella. */}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        {(
+          [
+            ['matriz', 'Matriz de actividades'],
+            ['tipologias', 'Tipologías de contrato'],
+          ] as const
+        ).map(([clave, etiqueta]) => (
+          <button
+            key={clave}
+            type="button"
+            onClick={() => setPestana(clave)}
+            className={`px-3.5 py-2 text-[12.5px] font-bold border-b-2 -mb-px transition-colors ${
+              pestana === clave
+                ? 'border-[#003DA5] text-[#003DA5]'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
+
+      {pestana === 'matriz' ? (
+        <MatrizGeneral onAbrir={abrirDetalle} />
+      ) : (
+        <TipologiasContrato />
+      )}
 
       {/* La actividad se ajusta encima de la matriz, no en otra pantalla: al
           cerrar se vuelve a la tabla con la etapa desplegada y el sitio donde

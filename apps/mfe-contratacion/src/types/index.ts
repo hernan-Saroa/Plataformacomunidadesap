@@ -954,7 +954,12 @@ export interface SimulacionFormulario {
 /** Determina si la legalizacion exigira ARL (EFDS-1164, criterio 2). */
 export type TipoPersonaContratista = 'NATURAL' | 'JURIDICA';
 
-export type EstadoContrato = 'GENERADO' | 'ACEPTADO' | 'RECHAZADO' | 'PERFECCIONADO';
+export type EstadoContrato =
+  | 'GENERADO'
+  | 'ACEPTADO'
+  | 'RECHAZADO'
+  | 'PERFECCIONADO'
+  | 'LEGALIZADO';
 
 /** Las dos partes que suscriben el contrato (EFDS-1162). */
 export type ParteFirmante = 'ORDENADOR' | 'CONTRATISTA';
@@ -1077,6 +1082,9 @@ export interface EstadoLegalizacion {
   legalizado: boolean;
   /** Que falta, dicho por el servidor en palabras. */
   pendientes: string[];
+  /** Que puede hacer quien consulta; sin esto la pantalla ofreceria un 403. */
+  puedeCargar: boolean;
+  puedeAprobar: boolean;
 }
 
 /** Lo que la pantalla envia al cargar una garantia. */
@@ -1105,4 +1113,25 @@ export interface DatosContrato {
   contratistaNombre: string;
   contratistaTipo: TipoPersonaContratista;
   plantillaId?: string;
+}
+
+/** Tipologia de contrato configurable (EFDS-1161). */
+export interface TipologiaConfigurable {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  numeralFormato: string;
+  exigeGarantias: boolean;
+  activo: boolean;
+  orden: number;
+}
+
+/** Lo que la pantalla envia al crear o ajustar una tipologia. */
+export interface GuardarTipologia {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  exigeGarantias?: boolean;
+  activo?: boolean;
+  orden?: number;
 }

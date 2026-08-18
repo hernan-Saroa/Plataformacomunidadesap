@@ -31,7 +31,36 @@ const ICONO: Record<Peticion, typeof FileUp> = {
   REGISTRAR_NUMERO: Hash,
 };
 
+/**
+ * Actividades que el gestor trabaja desde un panel propio y no desde el
+ * formulario configurable.
+ *
+ * Su contenido lo fija la historia —qué datos lleva un contrato, qué amparos
+ * cubre una póliza— y no es cosa de configuración: pedirlo aquí crearía un
+ * segundo formulario que el gestor nunca vería. Se listan para poder decirlo,
+ * porque el aviso de «no se le pide nada» sería falso en ellas.
+ */
+const CON_PANEL_PROPIO: Record<string, string> = {
+  '4.1': 'la solicitud del CDP',
+  '4.2': 'la verificación del CDP',
+  '4.3': 'la expedición del CDP',
+  '5.1': 'los documentos del proceso',
+  '5.2': 'la publicación del proyecto de pliego',
+  '5.3': 'las observaciones al pliego',
+  '5.4': 'la limitación a MIPYME',
+  '5.5': 'la audiencia de riesgos',
+  '5.6': 'las adendas',
+  '5.7': 'la apertura del proceso',
+  '6.1': 'la recepción de ofertas',
+  '6.2': 'la designación del comité',
+  '8.1': 'el contrato y su suscripción',
+  '8.4': 'las garantías y sus amparos',
+  '8.5': 'la afiliación a la ARL',
+};
+
 interface Props {
+  /** Para poder decir cuándo la actividad se trabaja desde su propio panel. */
+  numeral?: string;
   campos: CampoConfigurable[];
   cargando?: boolean;
   onAgregar: (peticion: Peticion) => Promise<void>;
@@ -49,6 +78,7 @@ interface Props {
  * aparte para cambiar una palabra desanimaba a corregirlo.
  */
 export function QueSePide({
+  numeral,
   campos,
   cargando,
   onAgregar,
@@ -56,6 +86,7 @@ export function QueSePide({
   onExigir,
   onQuitar,
 }: Props) {
+  const panelPropio = numeral ? CON_PANEL_PROPIO[numeral] : undefined;
   const [agregando, setAgregando] = useState(false);
   const [guardando, setGuardando] = useState(false);
 
@@ -92,15 +123,30 @@ export function QueSePide({
            queda sin constancia de que se hizo. Casi toda actividad de
            contratación deja evidencia documental, así que esto se avisa en
            ámbar: es válido, pero rara vez es lo que se quiere. */
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-semibold text-amber-900 m-0">
-            No se le pide nada todavía
-          </p>
-          <p className="text-xs text-amber-800 mt-1 mb-0 leading-relaxed">
-            El gestor la marcará como terminada sin dejar constancia en el expediente.
-            Si la actividad produce un documento, pídelo aquí.
-          </p>
-        </div>
+        panelPropio ? (
+          /* La actividad sí pide cosas, solo que desde su propio panel: avisar
+             aquí de que "no se le pide nada" sería falso, y llevaría a añadir
+             un campo que el gestor nunca vería. */
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-sm font-semibold text-blue-900 m-0">
+              Esta actividad tiene su propia pantalla
+            </p>
+            <p className="text-xs text-blue-800 mt-1 mb-0 leading-relaxed">
+              El gestor la trabaja desde el panel de {panelPropio}, donde el sistema le pide lo
+              que la actividad necesita. Lo que se agregue aquí no aparecería allí.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-900 m-0">
+              No se le pide nada todavía
+            </p>
+            <p className="text-xs text-amber-800 mt-1 mb-0 leading-relaxed">
+              El gestor la marcará como terminada sin dejar constancia en el expediente.
+              Si la actividad produce un documento, pídelo aquí.
+            </p>
+          </div>
+        )
       ) : (
         <ul className="m-0 p-0 list-none space-y-1.5">
           {activos.map((campo) => (
