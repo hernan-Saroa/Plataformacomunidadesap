@@ -34,6 +34,15 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
   const OBJETO = 'Catálogo de criterios para pruebas';
   /** Todo lo que cree la prueba lleva este prefijo, y por ahí se limpia. */
   const PREFIJO = 'PRUEBA-1443';
+  /**
+   * Los criterios que crea esta prueba van todos en una modalidad que ninguna
+   * otra suite usa.
+   *
+   * Un criterio sin modalidad aplica a todas, así que se colaría en las
+   * evaluaciones de las demás pruebas mientras corren en paralelo: cambiaría lo
+   * que ellas califican, y sus evaluaciones impedirían borrarlo al terminar.
+   */
+  const MODALIDAD_AISLADA = 'CONCURSO_MERITOS_PRECAL';
 
   const director: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000004',
@@ -146,6 +155,12 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
     procesos = app.get(EstudioPrevioService);
     dataSource = app.get(DataSource);
 
+    // Una corrida anterior interrumpida deja criterios con estos nombres, y
+    // buscarlos por nombre encontraría dos.
+    await dataSource.query(`DELETE FROM hiring.criterios_evaluacion WHERE nombre LIKE $1`, [
+      `${PREFIJO}%`,
+    ]);
+
     const cuentas = await dataSource.query(
       `SELECT id_user, id_person FROM auth."user" WHERE id_person IS NOT NULL ORDER BY id_user LIMIT 1`,
     );
@@ -231,7 +246,7 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
     it('agrega un ponderable propio de una modalidad', async () => {
       const catalogo = await criterios.crear(
         {
-          modalidad: 'ABREVIADA_MENOR_CUANTIA',
+          modalidad: MODALIDAD_AISLADA,
           dimension: 'TECNICO',
           tipo: 'PONDERABLE',
           nombre: `${PREFIJO} · Personal ofrecido`,
@@ -255,6 +270,7 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
       await expect(
         criterios.crear(
           {
+            modalidad: MODALIDAD_AISLADA,
             dimension: 'TECNICO',
             tipo: 'PONDERABLE',
             nombre: `${PREFIJO} · Ponderable sin peso`,
@@ -266,6 +282,7 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
       await expect(
         criterios.crear(
           {
+            modalidad: MODALIDAD_AISLADA,
             dimension: 'JURIDICO',
             tipo: 'HABILITANTE',
             nombre: `${PREFIJO} · Habilitante con peso`,
@@ -280,6 +297,7 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
       const creado = (
         await criterios.crear(
           {
+            modalidad: MODALIDAD_AISLADA,
             dimension: 'FINANCIERO',
             tipo: 'PONDERABLE',
             nombre: `${PREFIJO} · Capacidad financiera adicional`,
@@ -304,6 +322,7 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
       const creado = (
         await criterios.crear(
           {
+            modalidad: MODALIDAD_AISLADA,
             dimension: 'JURIDICO',
             tipo: 'HABILITANTE',
             nombre: `${PREFIJO} · Documentos habilitantes del pliego`,
@@ -327,6 +346,7 @@ describe('EFDS-1443 · catálogo de criterios de evaluación', () => {
       const creado = (
         await criterios.crear(
           {
+            modalidad: MODALIDAD_AISLADA,
             dimension: 'TECNICO',
             tipo: 'PONDERABLE',
             nombre: `${PREFIJO} · Criterio que se retira`,
