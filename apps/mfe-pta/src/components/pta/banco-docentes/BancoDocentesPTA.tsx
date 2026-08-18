@@ -677,13 +677,16 @@ export function BancoDocentesPTA() {
 
                         {/* ── Celda DOCUMENTO ── */}
                         <td style={{ padding: '16px', verticalAlign: 'middle' }}>
-                          <p style={{ margin: 0, fontSize: '13px', color: '#374151', fontFamily: 'ui-monospace, monospace' }}>
+                          <p title={d.proteccion_datos?.acceso_completo === false ? 'Cédula enmascarada según su rol' : undefined} style={{ margin: 0, fontSize: '13px', color: '#374151', fontFamily: 'ui-monospace, monospace' }}>
                             {d.documento_identidad}
                           </p>
                           {d.tipo_documento && (
                             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#9CA3AF' }}>
                               {d.tipo_documento}
                             </p>
+                          )}
+                          {d.proteccion_datos?.acceso_completo === false && (
+                            <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#64748B' }}>Dato protegido</p>
                           )}
                         </td>
 

@@ -1027,6 +1027,11 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           <p style={{ margin: 0, fontSize: 13, color: '#64748B', marginTop: 4, fontWeight: 500 }}>
             ID RUND: <span style={{ color: '#0F172A' }}>{tarjetaRund.idRund}</span> · Periodo: <span style={{ color: '#0F172A' }}>{tarjetaRund.periodoCarga || currentPeriodoCarga || 'Sin periodo'}</span>
           </p>
+          {tarjetaRund.proteccion_datos?.acceso_completo === false && (
+            <p style={{ margin: '6px 0 0', fontSize: 11, color: '#9A6700', fontWeight: 700 }}>
+              Cédula enmascarada y puntaje salarial oculto según su rol.
+            </p>
+          )}
         </div>
         <div style={{ textAlign: 'right', minWidth: 220 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Completitud Global</div>

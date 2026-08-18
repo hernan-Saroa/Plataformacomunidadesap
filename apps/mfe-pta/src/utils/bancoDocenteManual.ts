@@ -129,20 +129,21 @@ export function computeManualAgeRange(age: number | null): string {
 export function validateManualBancoDocenteStep(
   form: ManualDocenteForm,
   step: number,
-  options: { isEditing?: boolean; supportFile?: File | null } = {},
+  options: { isEditing?: boolean; supportFile?: File | null; sensitiveDataRestricted?: boolean } = {},
 ): ManualDocenteErrors {
   const errors: ManualDocenteErrors = {};
   for (const [field, message] of REQUIRED_BY_STEP[step] || []) {
+    if (options.isEditing && options.sensitiveDataRestricted && field === 'documento_identidad') continue;
     if (!String(form[field] || '').trim()) errors[field] = message;
   }
 
   if (step === 0) {
     const document = form.documento_identidad || '';
-    if (document && (document.length < 5 || document.length > 20)) {
+    if (!options.sensitiveDataRestricted && document && (document.length < 5 || document.length > 20)) {
       errors.documento_identidad = 'Debe tener entre 5 y 20 caracteres.';
-    } else if (document && form.tipo_identificacion === 'PA' && !/^[A-Z0-9]+$/i.test(document)) {
+    } else if (!options.sensitiveDataRestricted && document && form.tipo_identificacion === 'PA' && !/^[A-Z0-9]+$/i.test(document)) {
       errors.documento_identidad = 'El pasaporte solo admite letras y números.';
-    } else if (document && form.tipo_identificacion !== 'PA' && !/^\d+$/.test(document)) {
+    } else if (!options.sensitiveDataRestricted && document && form.tipo_identificacion !== 'PA' && !/^\d+$/.test(document)) {
       errors.documento_identidad = 'Este tipo de documento solo admite números.';
     }
     const fullName = String(form.nombreCompleto || '').trim();
@@ -160,7 +161,7 @@ export function validateManualBancoDocenteStep(
     if (form.dedicacionHorasSemana && (!Number.isInteger(weeklyHours) || weeklyHours < 0 || weeklyHours > 168)) {
       errors.dedicacionHorasSemana = 'Debe ser un entero entre 0 y 168.';
     }
-    if (form.puntajeSalarial && (!Number.isFinite(Number(form.puntajeSalarial)) || Number(form.puntajeSalarial) < 0)) {
+    if (!options.sensitiveDataRestricted && form.puntajeSalarial && (!Number.isFinite(Number(form.puntajeSalarial)) || Number(form.puntajeSalarial) < 0)) {
       errors.puntajeSalarial = 'Debe ser un número mayor o igual a cero.';
     }
     if (form.fechaInicioVinculacion && form.fechaFinVinculacion
@@ -212,7 +213,7 @@ export function validateManualBancoDocenteStep(
 
 export function validateManualBancoDocenteForm(
   form: ManualDocenteForm,
-  options: { isEditing?: boolean; supportFile?: File | null } = {},
+  options: { isEditing?: boolean; supportFile?: File | null; sensitiveDataRestricted?: boolean } = {},
 ): ManualDocenteErrors {
   return [0, 1, 2, 3].reduce(
     (all, step) => ({ ...all, ...validateManualBancoDocenteStep(form, step, options) }),

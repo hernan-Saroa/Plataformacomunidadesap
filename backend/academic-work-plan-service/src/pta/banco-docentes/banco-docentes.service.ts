@@ -10,6 +10,7 @@ import { BancoDocenteInvitacionEntity } from '../entities/banco-docente-invitaci
 import { RundAprobacionLogEntity } from '../entities/rund-aprobacion-log.entity';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
+import { findRundSensitiveFields, protectRundSensitiveData } from './banco-docentes-sensitive-data';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -2465,20 +2466,55 @@ export class BancoDocentesService implements OnModuleInit {
       }
     }
 
-    return match || null;
+    if (!match) return null;
+    const sensitiveFields = findRundSensitiveFields(match);
+    await this.logSensitiveDataAccess([{
+      docenteId: String(match.docente_id || ''),
+      actorId: `AUTOGESTION:${invitacion.id}`,
+      roles: ['DOCENTE_AUTOGESTION'],
+      fields: sensitiveFields,
+      endpoint: 'AUTOGESTION_MI_PERFIL',
+      fullAccess: false,
+    }]);
+    return protectRundSensitiveData(match, false);
   }
 
   async submitFromToken(token: string, data: any) {
     const invitacion = await this.invitacionRepo.findOne({ where: { tokenAcceso: token } });
     if (!invitacion) throw new NotFoundException('Token invÃ¡lido.');
     
+    const submissionData = { ...(data || {}) };
+    const existingDocente = await this.docenteRepo.findOne({
+      where: [
+        { correoInstitucional: invitacion.correoInstitucional },
+        { correoAlternativo: invitacion.correoInstitucional },
+      ],
+      order: { updatedAt: 'DESC' },
+    });
+    if (existingDocente?.personaId) {
+      const identityRows = await this.dataSource.query(
+        `SELECT num_identificacion AS document_number
+           FROM auth.personas
+          WHERE id_person::text = $1
+          LIMIT 1`,
+        [existingDocente.personaId],
+      );
+      const trustedDocument = String(identityRows[0]?.document_number || '').trim();
+      if (trustedDocument) {
+        submissionData.documentNumber = trustedDocument;
+        submissionData.documento_identidad = trustedDocument;
+      }
+      delete submissionData.puntajeSalarial;
+      delete submissionData.PUNTAJE_SALARIAL;
+    }
+
     // Inyectar el canal de origen para que el payload upsertDocente sepa
-    data.canal_origen = 'AUTOGESTION';
+    submissionData.canal_origen = 'AUTOGESTION';
 
     // rejectExisting:false → un docente ya invitado puede actualizar sus datos vía
     // autogestión (upsert por num_identificacion). relaxValidation:true → validación
     // mínima (Canal 3): el docente aporta datos parciales y GGP completa/valida luego.
-    const result = await this.upsertDocente(data, { rejectExisting: false, relaxValidation: true });
+    const result = await this.upsertDocente(submissionData, { rejectExisting: false, relaxValidation: true });
 
     invitacion.estado = 'Gestionada';
     await this.invitacionRepo.save(invitacion);
@@ -3110,6 +3146,52 @@ export class BancoDocentesService implements OnModuleInit {
     } catch (e) {
       this.logger.warn(`[AUDIT] Failed to write log: ${e.message}`);
     }
+  }
+
+  /**
+   * Registra consultas de datos sensibles antes de entregar la respuesta.
+   * A diferencia del log operativo tolerante a fallos, este método falla cerrado:
+   * si no es posible auditar, el controlador no debe revelar los datos.
+   * Nunca persiste la cédula ni el puntaje; solo identifica los campos consultados.
+   */
+  async logSensitiveDataAccess(entries: Array<{
+    docenteId: string;
+    actorId: string;
+    roles: string[];
+    fields: string[];
+    endpoint: string;
+    fullAccess: boolean;
+    ip?: string;
+  }>): Promise<void> {
+    const uniqueEntries = new Map<string, typeof entries[number]>();
+    for (const entry of entries) {
+      if (!entry.docenteId || entry.fields.length === 0) continue;
+      const key = `${entry.docenteId}:${entry.endpoint}:${entry.fullAccess}:${entry.fields.slice().sort().join(',')}`;
+      uniqueEntries.set(key, entry);
+    }
+    if (uniqueEntries.size === 0) return;
+
+    const logs = Array.from(uniqueEntries.values()).map((entry) => this.auditLogRepo.create({
+      docenteId: entry.docenteId,
+      bloque: 'SEGURIDAD',
+      accion: 'CONSULTAR_DATOS_SENSIBLES',
+      actorId: entry.actorId,
+      canalOrigen: 'API',
+      campoAfectado: entry.fields.join(','),
+      datoPrevio: null,
+      datoNuevo: null,
+      observacion: entry.fullAccess ? 'Consulta autorizada de datos sensibles.' : 'Consulta con datos sensibles enmascarados.',
+      soporteId: null,
+      ip: entry.ip || null,
+      metadata: {
+        endpoint: entry.endpoint,
+        roles: entry.roles,
+        campos: entry.fields,
+        resultado: entry.fullAccess ? 'COMPLETO' : 'ENMASCARADO',
+        valoresIncluidosEnLog: false,
+      },
+    }));
+    await this.auditLogRepo.save(logs);
   }
 
   /**

@@ -187,6 +187,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
   const [supportFile, setSupportFile] = useState<File | null>(null);
   const [touchedSteps, setTouchedSteps] = useState<Set<number>>(new Set([0]));
   const auth = useAuth();
+  const sensitiveDataRestricted = Boolean(docente?.proteccion_datos?.acceso_completo === false);
 
   const [form, setForm] = useState({
     nombreCompleto: '',
@@ -350,7 +351,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
   const isEditing = Boolean(docente?.docente_id || docente?.id);
 
   const validateStep = (step: Step): boolean => {
-    const errors = validateManualBancoDocenteStep(form, step, { isEditing, supportFile });
+    const errors = validateManualBancoDocenteStep(form, step, { isEditing, supportFile, sensitiveDataRestricted });
     setFieldErrors((current) => ({ ...current, ...errors }));
     if (Object.keys(errors).length > 0) {
       setError('Revise los campos marcados antes de continuar.');
@@ -388,7 +389,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
 
   const handleSave = async () => {
     setError(null);
-    const validationErrors = validateManualBancoDocenteForm(form, { isEditing, supportFile });
+    const validationErrors = validateManualBancoDocenteForm(form, { isEditing, supportFile, sensitiveDataRestricted });
     setFieldErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) {
       goToStep(getManualErrorStep(validationErrors) as Step);
@@ -419,7 +420,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
       }
 
       const age = computeManualAge(form.fechaNacimiento);
-      const payload = {
+      const payload: any = {
         documentNumber: form.documento_identidad.trim(),
         documentType: form.tipo_identificacion,
         nombreCompleto: form.nombreCompleto.trim(),
@@ -465,6 +466,10 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         soporteEdicionId,
         justificacionEdicion: isEditing ? form.justificacionEdicion.trim() : null,
       };
+      if (isEditing && sensitiveDataRestricted) {
+        delete payload.documentNumber;
+        delete payload.puntajeSalarial;
+      }
 
       const res = isEditing
         ? await updateBancoDocente(docenteId, payload)
@@ -591,7 +596,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Identificación" description="Datos de identidad del docente" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Documento de Identidad" required error={fieldErrors.documento_identidad} hint={isEditing ? 'Llave única RUND: no se puede modificar.' : 'Solo números; el pasaporte admite letras y números.'}>
+                      <FloatingField label="Documento de Identidad" required error={fieldErrors.documento_identidad} hint={sensitiveDataRestricted ? 'Dato enmascarado por la política RBAC; no se enviará en esta edición.' : (isEditing ? 'Llave única RUND: no se puede modificar.' : 'Solo números; el pasaporte admite letras y números.')}>
                         <input className="wizard-field" style={fieldStyle} value={form.documento_identidad} onChange={(e) => setValue('documento_identidad', sanitizeManualDocument(e.target.value, form.tipo_identificacion))} placeholder="Ej: 12345678" inputMode={form.tipo_identificacion === 'PA' ? 'text' : 'numeric'} maxLength={20} disabled={isEditing} aria-invalid={Boolean(fieldErrors.documento_identidad)} />
                       </FloatingField>
                       <FloatingField label="Tipo de Documento" required error={fieldErrors.tipo_identificacion}>
@@ -647,8 +652,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                       <FloatingField label="Categoría / Escalafón" required error={fieldErrors.escalafon}>
                         <input className="wizard-field" style={fieldStyle} value={form.escalafon} onChange={set('escalafon')} placeholder="Ej: Asociado, Titular" maxLength={100} aria-invalid={Boolean(fieldErrors.escalafon)} />
                       </FloatingField>
-                      <FloatingField label="Puntaje Salarial" error={fieldErrors.puntajeSalarial} hint="Solo números; use punto o coma para decimales.">
-                        <input className="wizard-field" style={fieldStyle} value={form.puntajeSalarial} onChange={(e) => setValue('puntajeSalarial', sanitizeManualDecimal(e.target.value))} inputMode="decimal" placeholder="Ej: 145.5" aria-invalid={Boolean(fieldErrors.puntajeSalarial)} />
+                      <FloatingField label="Puntaje Salarial" error={fieldErrors.puntajeSalarial} hint={sensitiveDataRestricted ? 'Información restringida para su rol.' : 'Solo números; use punto o coma para decimales.'}>
+                        <input className="wizard-field" style={fieldStyle} value={form.puntajeSalarial} onChange={(e) => setValue('puntajeSalarial', sanitizeManualDecimal(e.target.value))} inputMode="decimal" placeholder={sensitiveDataRestricted ? 'Información restringida' : 'Ej: 145.5'} disabled={sensitiveDataRestricted} aria-invalid={Boolean(fieldErrors.puntajeSalarial)} />
                       </FloatingField>
                       <FloatingField label="Origen de Vinculación">
                         <input className="wizard-field" style={fieldStyle} value={form.origenVinculacion} onChange={set('origenVinculacion')} placeholder="Fuente de vinculación" />

@@ -20,7 +20,7 @@ export class RundAprobacionLogEntity {
   @Column({ type: 'text', nullable: true })
   bloque: string | null;
 
-  /** Acción realizada: CREAR | APROBAR | DEVOLVER | EDITAR | VINCULAR_SOPORTE | DESVINCULAR_SOPORTE */
+  /** Acción realizada: CREAR | APROBAR | DEVOLVER | EDITAR | VINCULAR_SOPORTE | DESVINCULAR_SOPORTE | CONSULTAR_DATOS_SENSIBLES */
   @Column({ type: 'text' })
   accion: string;
 
