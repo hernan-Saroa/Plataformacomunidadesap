@@ -37,6 +37,14 @@ import { usePermisos, PERMISOS } from '../config/PermisosContext';
 // Tipos necesarios
 type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Evita mostrar un UUID crudo como "responsable" cuando el backend no pudo resolver el nombre. */
+function nombreLegible(valor?: string | null): string | null {
+  if (!valor || UUID_REGEX.test(valor)) return null;
+  return valor;
+}
+
 
 
 export function ModuloTerminosInformesV3() {
@@ -151,7 +159,7 @@ export function ModuloTerminosInformesV3() {
         asunto: t.nombreActuacion,
         descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
 
-        responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
+        responsable: nombreLegible(t.responsableNombre) || nombreLegible(t.responsableId) || 'Sin asignar',
         responsableId: t.responsableId || null, // Preserve UUID for filtering
         fechaSolicitud: new Date(t.fechaBase),
         fechaVencimiento: new Date(t.fechaVencimiento),
