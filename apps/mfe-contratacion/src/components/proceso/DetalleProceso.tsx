@@ -19,6 +19,7 @@ import { PanelAudienciaRiesgos } from '../riesgos/PanelAudienciaRiesgos';
 import { PanelAdendas } from '../adendas/PanelAdendas';
 import { PanelOfertas } from '../ofertas/PanelOfertas';
 import { PanelComite } from '../comite/PanelComite';
+import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -42,6 +43,9 @@ const NUMERAL_OFERTAS = '6.1';
 /** Designación del comité que evaluará las ofertas (EFDS-1156). */
 const NUMERAL_COMITE = '6.2';
 
+/** Evaluación de las ofertas (EFDS-1157). */
+const NUMERAL_EVALUACION = '6.3';
+
 /** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
 const NUMERALES_ETAPA_5 = [
   NUMERAL_DOCUMENTOS,
@@ -59,7 +63,7 @@ const NUMERALES_ETAPA_5 = [
  * Lista aparte y no añadida a la de la etapa 5: son etapas distintas, y meterlas
  * en la misma constante haría que el nombre dejara de decir la verdad.
  */
-const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE];
+const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE, NUMERAL_EVALUACION];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -354,6 +358,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelComite
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_EVALUACION ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelEvaluacion
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

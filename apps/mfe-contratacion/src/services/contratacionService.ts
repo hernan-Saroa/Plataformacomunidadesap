@@ -12,6 +12,8 @@ import {
   EstadoDocumentos,
   EstadoMipyme,
   EstadoComite,
+  EstadoEvaluacion,
+  EvaluarDimension,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -766,6 +768,22 @@ export const contratacionService = {
   ) =>
     pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
       method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  // ----------------------------------- evaluación de ofertas (actividad 6.3) ---
+
+  /**
+   * Estado de la evaluación: criterios, ofertas, lo que va evaluado de cada
+   * una y en qué dimensiones puede calificar quien consulta.
+   */
+  evaluacion: (procesoId: string) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion`),
+
+  /** El juicio de una dimensión entera. Reevaluar sustituye el anterior. */
+  evaluarOferta: (procesoId: string, oferenteId: string, datos: EvaluarDimension) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/ofertas/${oferenteId}`, {
+      method: 'POST',
       body: JSON.stringify(datos),
     }),
 
