@@ -131,6 +131,14 @@ export interface OrganismoControl {
   activo: boolean;
 }
 
+// Destinatarios configurables para el módulo de Términos e Informes
+export interface DestinatarioInforme {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
+}
+
 // Entes de control dedicados para Planes de Mejoramiento
 export interface EnteControlPM {
   id: string;
@@ -574,6 +582,35 @@ const organismosControlIniciales: OrganismoControl[] = [
   }
 ];
 
+// ============ DESTINATARIOS DE INFORMES INICIALES ============
+
+const destinatariosInformeIniciales: DestinatarioInforme[] = [
+  {
+    id: 'OFICINA_PLANEACION',
+    nombre: 'Oficina de Planeación',
+    descripcion: 'Oficina Asesora de Planeación de la entidad',
+    activo: true
+  },
+  {
+    id: 'CONTRALORIA',
+    nombre: 'Contraloría General de la República',
+    descripcion: 'Máximo órgano de control fiscal del Estado',
+    activo: true
+  },
+  {
+    id: 'PROCURADURIA',
+    nombre: 'Procuraduría General de la Nación',
+    descripcion: 'Entidad encargada de investigar, sancionar, intervenir y prevenir las irregularidades cometidas por los gobernantes, los funcionarios públicos y los particulares que ejercen funciones públicas',
+    activo: true
+  },
+  {
+    id: 'CONTROL_INTERNO',
+    nombre: 'Oficina de Control Interno',
+    descripcion: 'Control interno institucional',
+    activo: true
+  }
+];
+
 const entesControlPMIniciales: EnteControlPM[] = [
   { id: 'CONTRALORIA', nombre: 'Contraloría General', descripcion: 'Máximo órgano de control fiscal del Estado', icono: '🏛️', color: '#DC2626', activo: true },
   { id: 'PROCURADURIA', nombre: 'Procuraduría General', descripcion: 'Órgano de vigilancia de la conducta oficial de servidores públicos', icono: '⚖️', color: '#059669', activo: true },
@@ -605,6 +642,7 @@ interface ConfiguracionesSIGLContextType {
   organismosControl: OrganismoControl[];
   entesControlPM: EnteControlPM[];
   categoriasDocumentos: CategoriaDocumento[];
+  destinatariosInforme: DestinatarioInforme[];
   cambiosPendientes: boolean;
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
@@ -621,6 +659,7 @@ interface ConfiguracionesSIGLContextType {
   getOrganismosControlActivos: () => OrganismoControl[];
   getEntesControlPMActivos: () => EnteControlPM[];
   getCategoriasDocumentosActivas: () => CategoriaDocumento[];
+  getDestinatariosInformeActivos: () => DestinatarioInforme[];
   actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
@@ -628,6 +667,7 @@ interface ConfiguracionesSIGLContextType {
   actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
   actualizarEntesControlPM: (nuevosEntes: EnteControlPM[]) => void;
   actualizarCategoriasDocumentos: (nuevasCategorias: CategoriaDocumento[]) => void;
+  actualizarDestinatariosInforme: (nuevosDestinatarios: DestinatarioInforme[]) => void;
   guardarConfiguraciones: (silencioso?: boolean) => Promise<void>;
   restablecerDefecto: () => void;
   setCambiosPendientes: (value: boolean) => void;
@@ -650,6 +690,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [organismosControl, setOrganismosControl] = useState<OrganismoControl[]>(organismosControlIniciales);
   const [entesControlPM, setEntesControlPM] = useState<EnteControlPM[]>(entesControlPMIniciales);
   const [categoriasDocumentos, setCategoriasDocumentos] = useState<CategoriaDocumento[]>(categoriasDocumentosIniciales);
+  const [destinatariosInforme, setDestinatariosInforme] = useState<DestinatarioInforme[]>(destinatariosInformeIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -794,6 +835,17 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.error('❌ Error al cargar categorías de documentos:', error);
       }
     }
+
+    const destinatariosGuardados = localStorage.getItem('sigl-destinatarios-informe');
+    if (destinatariosGuardados) {
+      try {
+        const parsed = JSON.parse(destinatariosGuardados);
+        setDestinatariosInforme(parsed);
+        console.log('✅ Destinatarios de Informes cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar destinatarios de informes:', error);
+      }
+    }
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -878,6 +930,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return categoriasDocumentos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
   };
 
+  const getDestinatariosInformeActivos = (): DestinatarioInforme[] => {
+    return destinatariosInforme.filter(d => d.activo);
+  };
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
@@ -916,6 +972,11 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
   const actualizarCategoriasDocumentos = (nuevasCategorias: CategoriaDocumento[]) => {
     setCategoriasDocumentos(nuevasCategorias);
+    setCambiosPendientes(true);
+  };
+
+  const actualizarDestinatariosInforme = (nuevosDestinatarios: DestinatarioInforme[]) => {
+    setDestinatariosInforme(nuevosDestinatarios);
     setCambiosPendientes(true);
   };
 
@@ -999,6 +1060,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
       localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
       localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
+      localStorage.setItem('sigl-destinatarios-informe', JSON.stringify(destinatariosInforme));
 
       setCambiosPendientes(false);
       
@@ -1037,7 +1099,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     }, 1500); // 1.5s debounce
 
     return () => clearTimeout(timer);
-  }, [configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM]);
+  }, [configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM, destinatariosInforme]);
 
   // Limpiar estado 'saved' / 'error' de vuelta a 'idle' después de unos segundos
   useEffect(() => {
@@ -1058,6 +1120,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     setOrganismosControl(organismosControlIniciales);
     setEntesControlPM(entesControlPMIniciales);
     setCategoriasDocumentos(categoriasDocumentosIniciales);
+    setDestinatariosInforme(destinatariosInformeIniciales);
 
     localStorage.removeItem('sigl-configuraciones');
     localStorage.removeItem('sigl-ejes-estrategicos');
@@ -1066,6 +1129,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     localStorage.removeItem('sigl-organismos-control');
     localStorage.removeItem('sigl-entes-control-pm');
     localStorage.removeItem('sigl-categorias-documentos');
+    localStorage.removeItem('sigl-destinatarios-informe');
 
     setCambiosPendientes(false);
     toast.success('Configuraciones restablecidas', {
@@ -1082,6 +1146,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     organismosControl,
     entesControlPM,
     categoriasDocumentos,
+    destinatariosInforme,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -1098,6 +1163,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getOrganismosControlActivos,
     getEntesControlPMActivos,
     getCategoriasDocumentosActivas,
+    getDestinatariosInformeActivos,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
@@ -1105,6 +1171,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     actualizarOrganismosControl,
     actualizarEntesControlPM,
     actualizarCategoriasDocumentos,
+    actualizarDestinatariosInforme,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,

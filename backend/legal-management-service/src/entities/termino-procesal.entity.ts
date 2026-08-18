@@ -53,6 +53,9 @@ export class TerminoProcesal {
     @Column({ name: 'responsable_nombre', type: 'varchar', length: 255, nullable: true })
     responsableNombre: string | null;
 
+    @Column({ name: 'destinatario', type: 'varchar', length: 255, nullable: true })
+    destinatario: string | null;
+
     @Column({ type: 'text', nullable: true })
     observaciones: string | null;
 

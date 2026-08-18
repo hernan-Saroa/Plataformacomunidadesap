@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalProgramacionVencimientos } from './ModalProgramacionVencimientos';
-import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X } from 'lucide-react';
+import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send } from 'lucide-react';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 import {
     NOMBRES_MESES,
     ProgramacionVencimientos,
@@ -40,7 +41,11 @@ const PRIORIDADES = [
     { value: 'BAJA', label: 'Baja', color: '#10B981', bg: '#D1FAE5' },
 ];
 
+const DESTINATARIO_OTRO = '__OTRO__';
+
 export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoTerminoProps) {
+    const { getDestinatariosInformeActivos } = useConfiguracionesSIGL();
+    const destinatariosDisponibles = getDestinatariosInformeActivos();
     const [loading, setLoading] = useState(false);
     const [profesionales, setProfesionales] = useState<any[]>([]);
     const [procesosModulo, setProcesosModulo] = useState<any[]>([]);
@@ -54,8 +59,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         observaciones: '',
         numeroRadicado: '',
         responsableId: '',
-        origenModulo: ''
+        origenModulo: '',
+        destinatario: ''
     });
+    const [destinatarioOtro, setDestinatarioOtro] = useState('');
 
     const resetForm = () => {
         setFormData({
@@ -65,8 +72,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             observaciones: '',
             numeroRadicado: '',
             responsableId: '',
-            origenModulo: ''
+            origenModulo: '',
+            destinatario: ''
         });
+        setDestinatarioOtro('');
         setProgramacion(null);
     };
 
@@ -125,6 +134,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             return;
         }
 
+        const destinatarioFinal = formData.destinatario === DESTINATARIO_OTRO
+            ? destinatarioOtro.trim()
+            : formData.destinatario;
+
         if (programacion) {
             const ocurrencias = ocurrenciasFuturas(generarOcurrencias(programacion));
             if (ocurrencias.length === 0) {
@@ -138,6 +151,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                     ocurrencias.map((o) =>
                         legalService.createTerminoManual({
                             ...formData,
+                            destinatario: destinatarioFinal,
                             nombreActuacion: `${formData.nombreActuacion} — ${NOMBRES_MESES[o.mes - 1]} ${o.anio}`,
                             fechaBase: fechaLocalYMD(o.fechaInicio),
                             fechaVencimiento: fechaLocalYMD(o.fechaVencimiento),
@@ -175,6 +189,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         try {
             await legalService.createTerminoManual({
                 ...formData,
+                destinatario: destinatarioFinal,
                 responsableId: formData.responsableId || null
             });
             toast.success('Término creado exitosamente', {
@@ -266,6 +281,36 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                             className="border-2 border-gray-300 focus:border-blue-500"
                             required
                         />
+                    </div>
+
+                    {/* Destinatario del informe */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Send className="w-4 h-4" />
+                            Destinatario del Informe
+                        </Label>
+                        <Select
+                            value={formData.destinatario}
+                            onValueChange={(val: string) => setFormData({ ...formData, destinatario: val })}
+                        >
+                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                <SelectValue placeholder="Seleccione entidad o dependencia receptora..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white max-h-[200px] z-[9999]">
+                                {destinatariosDisponibles.map((d) => (
+                                    <SelectItem key={d.id} value={d.nombre}>{d.nombre}</SelectItem>
+                                ))}
+                                <SelectItem value={DESTINATARIO_OTRO}>Otro (especificar)...</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {formData.destinatario === DESTINATARIO_OTRO && (
+                            <Input
+                                placeholder="Especifique la entidad o dependencia receptora..."
+                                value={destinatarioOtro}
+                                onChange={(e) => setDestinatarioOtro(e.target.value)}
+                                className="border-2 border-gray-300 focus:border-blue-500"
+                            />
+                        )}
                     </div>
 
                     {/* Fecha y Prioridad en grid */}

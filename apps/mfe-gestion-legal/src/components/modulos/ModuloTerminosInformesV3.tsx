@@ -146,6 +146,7 @@ export function ModuloTerminosInformesV3() {
         tipoInforme: t.origenModulo,
         moduloOrigen: t.origenModulo, // Add this for filter compatibility
         enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
+        destinatario: t.destinatario || '',
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
         descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
