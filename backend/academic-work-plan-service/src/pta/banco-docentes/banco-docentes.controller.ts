@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors, UseGuards, Logger } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, UploadedFile, UseInterceptors, UseGuards, Logger } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage, diskStorage } from 'multer';
 import { extname } from 'path';
@@ -23,6 +23,7 @@ export class BancoDocentesController {
   ) { }
 
   @Get()
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   async list(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
@@ -54,6 +55,7 @@ export class BancoDocentesController {
   // ═══════════════════════════════════════════════════════════════════
 
   @Get('stats')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   async stats(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
@@ -143,6 +145,7 @@ export class BancoDocentesController {
   }
 
   @Post('bulk')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async bulkUpload(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -328,25 +331,67 @@ export class BancoDocentesController {
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string, @Query('periodoCarga') periodoCarga?: string) {
-    return { success: true, data: await this.service.getById(id, periodoCarga) };
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async getById(
+    @Param('id') id: string,
+    @Query('periodoCarga') periodoCarga: string | undefined,
+    @Req() req: any,
+  ) {
+    const data = await this.service.getById(id, periodoCarga);
+    const roleCodes = (Array.isArray(req?.user?.roles) ? req.user.roles : [req?.user?.role])
+      .filter(Boolean)
+      .map((role: any) => String(typeof role === 'string' ? role : role?.code || '').toUpperCase());
+    const managementRoles = new Set(['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN']);
+    const isManager = roleCodes.some((role: string) => managementRoles.has(role));
+    if (!isManager && roleCodes.includes('DOCENTE')) {
+      const authenticatedProfile = await this.service.getById(String(req?.user?.userId || ''), periodoCarga);
+      if (!data?.persona_id || data.persona_id !== authenticatedProfile?.persona_id) {
+        throw new ForbiddenException('El docente solo puede consultar su propio perfil RUND.');
+      }
+    }
+    return { success: true, data };
   }
 
   @Post()
-  async create(@Body() body: any) {
-    const result = await this.service.upsertDocente(body, { rejectExisting: true });
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async create(@Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
+    const result = await this.service.upsertDocente(
+      { ...body, actorId, cargadoPor: actorId, canal_origen: 'MODAL' },
+      { rejectExisting: true },
+    );
+    await this.service.logAudit({
+      docenteId: result.docenteId,
+      bloque: 'GENERAL',
+      accion: 'CREAR',
+      actorId,
+      canalOrigen: 'MODAL',
+      metadata: { periodoCarga: body.periodoCarga || body.periodo_carga || null },
+    });
     return { success: true, data: result };
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: any) {
-    const result = await this.service.updateDocente(id, body);
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
+    const result = await this.service.updateDocente(id, { ...body, actorId, cargadoPor: actorId });
+    return { success: true, data: result };
+  }
+
+  @Put(':id/estado')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async cambiarEstado(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
+    const result = await this.service.cambiarEstado(id, { ...body, actorId });
     return { success: true, data: result };
   }
 
   @Delete(':id')
-  async toggleEstado(@Param('id') id: string) {
-    const result = await this.service.toggleEstado(id);
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async toggleEstado(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body?.actorId || body?.cargadoPor || 'SISTEMA';
+    const result = await this.service.cambiarEstado(id, { ...(body || {}), actorId });
     return { success: true, data: result };
   }
 
@@ -417,6 +462,18 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     try {
+      if (['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(body.tipoSoporte)) {
+        const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+        if (!file) {
+          throw new BadRequestException('La gestion del perfil requiere un archivo de soporte.');
+        }
+        if (!allowedMimeTypes.has(file.mimetype) || file.size > 10 * 1024 * 1024) {
+          if ((file as any).path && fs.existsSync((file as any).path)) {
+            fs.unlinkSync((file as any).path);
+          }
+          throw new BadRequestException('El soporte del perfil debe ser PDF, JPG o PNG y pesar maximo 10 MB.');
+        }
+      }
       let validacionTipo: any = undefined;
       if (file) {
         body.nombreArchivo = file.originalname;
