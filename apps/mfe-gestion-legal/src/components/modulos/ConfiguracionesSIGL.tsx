@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
@@ -50,7 +50,8 @@ import {
   TipoExcepcionProcesal,
   CausalEspecifica,
   EnteControlPM,
-  Dependencia
+  Dependencia,
+  DestinatarioInforme
 } from '../config/ConfiguracionesSIGLContext';
 
 // ✅ Importar componente de plantillas
@@ -274,6 +275,8 @@ export function ConfiguracionesSIGL() {
     actualizarOrganismosControl,
     actualizarEntesControlPM,
     entesControlPM,
+    destinatariosInforme,
+    actualizarDestinatariosInforme,
     guardarConfiguraciones,
     restablecerDefecto,
     savingStatus
@@ -1267,6 +1270,24 @@ export function ConfiguracionesSIGL() {
               </button>
 
               <button
+                onClick={() => setModuloActivo('terminos-informes')}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'terminos-informes'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Send className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Términos e Informes</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 ml-6">
+                  <span className="text-xs text-gray-500">
+                    {destinatariosInforme.filter(d => d.activo).length} destinatarios
+                  </span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => setModuloActivo('planes-mejoramiento-config')}
                 className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'planes-mejoramiento-config'
                   ? 'bg-blue-50 text-blue-900 font-semibold'
@@ -1651,6 +1672,125 @@ export function ConfiguracionesSIGL() {
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* 🆕 Panel de Términos e Informes - Destinatarios */}
+          {moduloActivo === 'terminos-informes' && (
+            <div className="w-full space-y-8">
+              <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-100 rounded-md">
+                          <Send className="w-5 h-5 text-blue-700" />
+                        </div>
+                        Destinatarios del Informe
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Gestiona las entidades o dependencias a las que se pueden dirigir los informes y términos (ej. Oficina de Planeación, Contraloría)
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const nuevo: DestinatarioInforme = {
+                          id: `dest-${Date.now()}`,
+                          nombre: 'Nuevo Destinatario',
+                          descripcion: 'Descripción de la entidad o dependencia receptora',
+                          activo: true
+                        };
+                        actualizarDestinatariosInforme([...destinatariosInforme, nuevo]);
+                        toast.success('Destinatario agregado');
+                      }}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Destinatario</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {destinatariosInforme.map((destinatario, index) => (
+                      <div
+                        key={destinatario.id}
+                        className="p-3 sm:p-4 bg-gradient-to-br from-gray-50 to-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center font-bold text-xs text-gray-500 shadow-sm flex-shrink-0">
+                            {index + 1}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={destinatario.nombre}
+                            onChange={(e) => {
+                              const nuevos = destinatariosInforme.map(item =>
+                                item.id === destinatario.id ? { ...item, nombre: e.target.value } : item
+                              );
+                              actualizarDestinatariosInforme(nuevos);
+                            }}
+                            className="flex-1 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            placeholder="Nombre de la entidad o dependencia..."
+                          />
+
+                          <div className="flex items-center gap-2 ml-2">
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={destinatario.activo}
+                                onChange={(e) => {
+                                  const nuevos = destinatariosInforme.map(item =>
+                                    item.id === destinatario.id ? { ...item, activo: e.target.checked } : item
+                                  );
+                                  actualizarDestinatariosInforme(nuevos);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs font-medium text-gray-600 select-none">Activo</span>
+                            </label>
+
+                            <button
+                              onClick={() => {
+                                const nuevos = destinatariosInforme.filter(d => d.id !== destinatario.id);
+                                actualizarDestinatariosInforme(nuevos);
+                                toast.success('Destinatario eliminado');
+                              }}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar destinatario"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <textarea
+                          value={destinatario.descripcion}
+                          onChange={(e) => {
+                            const nuevos = destinatariosInforme.map(item =>
+                              item.id === destinatario.id ? { ...item, descripcion: e.target.value } : item
+                            );
+                            actualizarDestinatariosInforme(nuevos);
+                          }}
+                          className="w-full px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white"
+                          placeholder="Descripción o función de la entidad..."
+                          rows={2}
+                        />
+                      </div>
+                    ))}
+
+                    {destinatariosInforme.length === 0 && (
+                      <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                        <p>No hay destinatarios registrados.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

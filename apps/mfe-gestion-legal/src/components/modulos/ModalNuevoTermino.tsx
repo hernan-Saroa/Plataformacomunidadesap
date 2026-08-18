@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalProgramacionVencimientos } from './ModalProgramacionVencimientos';
-import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X } from 'lucide-react';
+import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send } from 'lucide-react';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 import {
     NOMBRES_MESES,
     ProgramacionVencimientos,
@@ -18,6 +19,7 @@ import {
     ocurrenciasFuturas,
     resumenProgramacion,
 } from '../utils/programacionVencimientos';
+import { fechaLocalYMD } from '../utils/diasHabiles';
 
 interface ModalNuevoTerminoProps {
     open: boolean;
@@ -39,7 +41,11 @@ const PRIORIDADES = [
     { value: 'BAJA', label: 'Baja', color: '#10B981', bg: '#D1FAE5' },
 ];
 
+const DESTINATARIO_OTRO = '__OTRO__';
+
 export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoTerminoProps) {
+    const { getDestinatariosInformeActivos } = useConfiguracionesSIGL();
+    const destinatariosDisponibles = getDestinatariosInformeActivos();
     const [loading, setLoading] = useState(false);
     const [profesionales, setProfesionales] = useState<any[]>([]);
     const [procesosModulo, setProcesosModulo] = useState<any[]>([]);
@@ -53,8 +59,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         observaciones: '',
         numeroRadicado: '',
         responsableId: '',
-        origenModulo: ''
+        origenModulo: '',
+        destinatario: ''
     });
+    const [destinatarioOtro, setDestinatarioOtro] = useState('');
 
     const resetForm = () => {
         setFormData({
@@ -64,8 +72,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             observaciones: '',
             numeroRadicado: '',
             responsableId: '',
-            origenModulo: ''
+            origenModulo: '',
+            destinatario: ''
         });
+        setDestinatarioOtro('');
         setProgramacion(null);
     };
 
@@ -124,6 +134,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             return;
         }
 
+        const destinatarioFinal = formData.destinatario === DESTINATARIO_OTRO
+            ? destinatarioOtro.trim()
+            : formData.destinatario;
+
         if (programacion) {
             const ocurrencias = ocurrenciasFuturas(generarOcurrencias(programacion));
             if (ocurrencias.length === 0) {
@@ -137,9 +151,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                     ocurrencias.map((o) =>
                         legalService.createTerminoManual({
                             ...formData,
+                            destinatario: destinatarioFinal,
                             nombreActuacion: `${formData.nombreActuacion} — ${NOMBRES_MESES[o.mes - 1]} ${o.anio}`,
-                            fechaBase: o.fechaInicio.toISOString(),
-                            fechaVencimiento: o.fechaVencimiento.toISOString(),
+                            fechaBase: fechaLocalYMD(o.fechaInicio),
+                            fechaVencimiento: fechaLocalYMD(o.fechaVencimiento),
                             diasTermino: Math.max(1, programacion.plazoHasta - programacion.plazoDesde + 1),
                             tipoDias: programacion.tipoDias,
                             observaciones: [formData.observaciones, `Programación: ${resumenProgramacion(programacion)}`].filter(Boolean).join(' · '),
@@ -174,6 +189,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         try {
             await legalService.createTerminoManual({
                 ...formData,
+                destinatario: destinatarioFinal,
                 responsableId: formData.responsableId || null
             });
             toast.success('Término creado exitosamente', {
@@ -193,11 +209,11 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent hideCloseButton className="flex flex-col p-0 overflow-hidden" style={{ width: '660px', maxWidth: '90vw', minHeight: '580px', maxHeight: '88vh' }}>
-                <DialogTitle className="sr-only">Nueva Solicitud / Término</DialogTitle>
-                <DialogDescription className="sr-only">Formulario para crear un nuevo término o solicitud de informe</DialogDescription>
+                <DialogTitle className="sr-only">Nuevo Informe</DialogTitle>
+                <DialogDescription className="sr-only">Formulario para registrar un nuevo informe o término</DialogDescription>
 
                 <ModalHeaderClean
-                    titulo="Nueva Solicitud / Término"
+                    titulo="Nuevo Informe"
                     subtitulo="Complete los datos para registrar un nuevo plazo"
                     icono={Plus}
                     colorIcono="blue"
@@ -265,6 +281,36 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                             className="border-2 border-gray-300 focus:border-blue-500"
                             required
                         />
+                    </div>
+
+                    {/* Destinatario del informe */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Send className="w-4 h-4" />
+                            Destinatario del Informe
+                        </Label>
+                        <Select
+                            value={formData.destinatario}
+                            onValueChange={(val: string) => setFormData({ ...formData, destinatario: val })}
+                        >
+                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                <SelectValue placeholder="Seleccione entidad o dependencia receptora..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white max-h-[200px] z-[9999]">
+                                {destinatariosDisponibles.map((d) => (
+                                    <SelectItem key={d.id} value={d.nombre}>{d.nombre}</SelectItem>
+                                ))}
+                                <SelectItem value={DESTINATARIO_OTRO}>Otro (especificar)...</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {formData.destinatario === DESTINATARIO_OTRO && (
+                            <Input
+                                placeholder="Especifique la entidad o dependencia receptora..."
+                                value={destinatarioOtro}
+                                onChange={(e) => setDestinatarioOtro(e.target.value)}
+                                className="border-2 border-gray-300 focus:border-blue-500"
+                            />
+                        )}
                     </div>
 
                     {/* Fecha y Prioridad en grid */}
@@ -400,7 +446,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                             ? 'Guardando...'
                             : programacion
                                 ? `Crear Programación (${vencimientosProgramados} vencimiento${vencimientosProgramados === 1 ? '' : 's'})`
-                                : 'Crear Solicitud'}
+                                : 'Crear Informe'}
                     </button>
                 </div>
             </DialogContent>
