@@ -18,6 +18,7 @@ import {
     ocurrenciasFuturas,
     resumenProgramacion,
 } from '../utils/programacionVencimientos';
+import { fechaLocalYMD } from '../utils/diasHabiles';
 
 interface ModalNuevoTerminoProps {
     open: boolean;
@@ -138,8 +139,8 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                         legalService.createTerminoManual({
                             ...formData,
                             nombreActuacion: `${formData.nombreActuacion} — ${NOMBRES_MESES[o.mes - 1]} ${o.anio}`,
-                            fechaBase: o.fechaInicio.toISOString(),
-                            fechaVencimiento: o.fechaVencimiento.toISOString(),
+                            fechaBase: fechaLocalYMD(o.fechaInicio),
+                            fechaVencimiento: fechaLocalYMD(o.fechaVencimiento),
                             diasTermino: Math.max(1, programacion.plazoHasta - programacion.plazoDesde + 1),
                             tipoDias: programacion.tipoDias,
                             observaciones: [formData.observaciones, `Programación: ${resumenProgramacion(programacion)}`].filter(Boolean).join(' · '),
@@ -400,7 +401,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                             ? 'Guardando...'
                             : programacion
                                 ? `Crear Programación (${vencimientosProgramados} vencimiento${vencimientosProgramados === 1 ? '' : 's'})`
-                                : 'Crear Solicitud'}
+                                : 'Crear Informe'}
                     </button>
                 </div>
             </DialogContent>
