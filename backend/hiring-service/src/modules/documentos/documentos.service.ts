@@ -134,7 +134,11 @@ export class DocumentosService {
       motivoNoAplica: excluida?.motivo ?? null,
       modalidad: proceso.modalidad,
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
-      iniciada: !!actividad,
+      // No basta con que la fila exista: desde EFDS-1187 el proceso nace con
+      // las 63 actividades de la matriz instanciadas. La elaboración empieza
+      // cuando hay un documento cargado o cuando la actividad ya salió de
+      // borrador, no cuando alguien crea el proceso.
+      iniciada: !!actividad && (items.some((i) => i.cargado) || actividad.estado !== 'BORRADOR'),
       estado: actividad?.estado ?? 'PENDIENTE',
       documentos: items,
       // Misma cautela que en sincronizarActividad: una lista vacía de

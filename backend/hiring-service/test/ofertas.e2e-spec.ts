@@ -55,11 +55,13 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
   const haceHoras = (horas: number) => new Date(Date.now() - horas * 3_600_000).toISOString();
 
   /**
-   * Mínima cuantía por defecto: tiene plazo de ofertas parametrizado (1 día
-   * hábil) y no exige audiencia de riesgos, así que la prueba mide la recepción
-   * y no acaba comprobando de refilón el requisito de otra historia.
+   * Selección abreviada de menor cuantía por defecto: tiene plazo de ofertas
+   * parametrizado (5 días hábiles) y no exige audiencia de riesgos, así que la
+   * prueba mide la recepción y no acaba comprobando de refilón el requisito de
+   * otra historia. No mínima cuantía, que la matriz oficial (030) deja sin
+   * apertura formal y por ahí empieza este flujo.
    */
-  const crear = (modalidad = 'MINIMA_CUANTIA') =>
+  const crear = (modalidad = 'ABREVIADA_MENOR_CUANTIA') =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
 
   /** Lleva el proceso hasta abierto, que es cuando arranca el plazo de ofertas. */
@@ -140,8 +142,8 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
       expect(estado.abierto).toBe(true);
       expect(estado.recepcion).not.toBeNull();
       expect(estado.recepcion!.estado).toBe('ABIERTA');
-      // Mínima cuantía: un día hábil después de la resolución, no el mismo día.
-      expect(estado.recepcion!.plazoDiasHabiles).toBe(1);
+      // Menor cuantía: cinco días hábiles después de la resolución, no el mismo día.
+      expect(estado.recepcion!.plazoDiasHabiles).toBe(5);
       expect(estado.recepcion!.vencimientoDia > hoy()).toBe(true);
       expect(estado.puedeRegistrar).toBe(true);
     });
