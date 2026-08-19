@@ -29,7 +29,7 @@ import {
   SinPermiso,
   Titulo,
 } from '../shared/PiezasPanel';
-import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 
 interface Props {
   procesoId: string;
@@ -367,7 +367,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                       {g.estado === 'APROBADA' && g.revisadaPor ? (
                         <p className="text-[11.5px] text-slate-600 m-0 mt-1 leading-relaxed">
                           Aprobada por {g.revisadaPor}
-                          {g.revisadaAt ? ` el ${fechaLarga(g.revisadaAt)}` : ''}
+                          {g.revisadaAt ? ` el ${momento(g.revisadaAt)}` : ''}
                         </p>
                       ) : null}
                     </div>

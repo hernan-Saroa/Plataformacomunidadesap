@@ -15,7 +15,7 @@ import {
   SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
-import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { SelectorPersona } from '../estudio-previo/SelectorPersona';
 
 interface Props {
@@ -218,7 +218,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             <Aviso tono="ok" titulo="El supervisor ya fue notificado">
               Se le comunicó su designación
               {estado.supervisor.alertaEnviadaAt
-                ? ` el ${fechaLarga(estado.supervisor.alertaEnviadaAt)}`
+                ? ` el ${momento(estado.supervisor.alertaEnviadaAt)}`
                 : ''}
               .
             </Aviso>
@@ -246,7 +246,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
               </p>
               <p className="text-[11px] text-slate-500 m-0 mt-0.5 leading-relaxed break-words">
                 Del {fechaLarga(s.fechaDesignacion)}
-                {s.relevadoAt ? ` al ${fechaLarga(s.relevadoAt)}` : ''}
+                {s.relevadoAt ? ` al ${momento(s.relevadoAt)}` : ''}
                 {s.motivoRelevo ? ` · ${s.motivoRelevo}` : ''}
               </p>
             </div>

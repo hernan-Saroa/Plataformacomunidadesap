@@ -21,7 +21,7 @@ import {
   SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
-import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 
 interface Props {
   procesoId: string;
@@ -342,7 +342,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
             // el formulario no vuelve. Reabrirla contradiría el expediente.
             <Aviso tono="ok" titulo="El proponente aceptó el contrato">
               Aceptado por {contrato.aceptadoPor}
-              {contrato.aceptadoAt ? ` el ${fechaLarga(contrato.aceptadoAt)}` : ''}. Con esto el
+              {contrato.aceptadoAt ? ` el ${momento(contrato.aceptadoAt)}` : ''}. Con esto el
               vínculo contractual queda formalizado.
             </Aviso>
           ) : (
@@ -426,7 +426,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
           {estado.perfeccionado ? (
             <Aviso tono="ok" titulo="Contrato perfeccionado">
               Las dos partes firmaron
-              {contrato.perfeccionadoAt ? ` el ${fechaLarga(contrato.perfeccionadoAt)}` : ''}. Con
+              {contrato.perfeccionadoAt ? ` el ${momento(contrato.perfeccionadoAt)}` : ''}. Con
               esto el contrato queda suscrito y puede legalizarse.
             </Aviso>
           ) : null}
