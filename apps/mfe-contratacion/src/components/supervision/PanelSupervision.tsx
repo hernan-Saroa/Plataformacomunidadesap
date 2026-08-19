@@ -150,11 +150,11 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
       </Ayuda>
 
       {/* Por qué no se puede todavía, en vez de un botón apagado sin explicar. */}
-      {!estado.legalizado ? (
+      {!estado.admiteSupervisor ? (
         <Pendiente
-          falta="8.4"
-          texto={`El supervisor se designa sobre un contrato legalizado: ${
-            estado.motivoNoLegalizado ?? 'todavía no lo está'
+          falta="8.1"
+          texto={`El supervisor se designa sobre un contrato ya suscrito: ${
+            estado.motivoNoAdmite ?? 'todavía no lo está'
           }.`}
         />
       ) : null}
