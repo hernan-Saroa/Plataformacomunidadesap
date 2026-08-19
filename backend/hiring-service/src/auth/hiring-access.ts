@@ -172,12 +172,14 @@ export const ROL_EVALUADOR_TECNICO = 'EVALUADOR_TECNICO';
 export const ROLES_DESIGNAR_COMITE = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
 
 /**
- * Quién puede llegar a la pantalla de evaluación (actividad 6.3, EFDS-1157).
+ * Quién registra el resultado de la evaluación (actividad 6.3, EFDS-1157).
  *
- * El rol solo abre la puerta: **quién evalúa de verdad, y en qué dimensión, lo
- * decide la membresía del comité del proceso** (EFDS-1438), no esta lista. Un
- * evaluador jurídico designado en otro proceso llega hasta aquí y no puede
- * calificar nada, que es exactamente lo correcto.
+ * La evaluación se hace por fuera de la plataforma y quien la trae es el mismo
+ * comité que la hizo: la matriz de roles le reconoce "consulta y cargue de
+ * archivos". El gestor queda fuera a propósito —no evaluó— y el rol solo abre
+ * la puerta: **quién puede registrar lo decide la membresía del comité del
+ * proceso** (EFDS-1438), no esta lista. Un evaluador designado en otro proceso
+ * llega hasta aquí y no escribe nada, que es exactamente lo correcto.
  */
 export const ROLES_EVALUACION = [
   ROL_EVALUADOR_JURIDICO,
@@ -185,9 +187,6 @@ export const ROLES_EVALUACION = [
   ROL_EVALUADOR_TECNICO,
   ROL_SUPER_ADMIN,
 ];
-
-/** Quién administra el catálogo de criterios de evaluación (EFDS-1443). */
-export const ROLES_ADMIN_CRITERIOS = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
 
 export interface HiringUser {
   userId?: string;

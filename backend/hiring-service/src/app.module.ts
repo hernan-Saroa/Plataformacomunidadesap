@@ -53,9 +53,8 @@ import { Oferente } from './entities/oferente.entity';
 import { PlazoOfertas } from './entities/plazo-ofertas.entity';
 import { ComiteEvaluador } from './entities/comite-evaluador.entity';
 import { MiembroComite } from './entities/miembro-comite.entity';
-import { CriterioEvaluacion } from './entities/criterio-evaluacion.entity';
-import { EvaluacionOferta } from './entities/evaluacion-oferta.entity';
-import { EvaluacionCriterio } from './entities/evaluacion-criterio.entity';
+import { ResultadoEvaluacion } from './entities/resultado-evaluacion.entity';
+import { EvidenciaEvaluacion } from './entities/evidencia-evaluacion.entity';
 
 @Module({
   imports: [
@@ -73,7 +72,7 @@ import { EvaluacionCriterio } from './entities/evaluacion-criterio.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, CriterioEvaluacion, EvaluacionOferta, EvaluacionCriterio],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
