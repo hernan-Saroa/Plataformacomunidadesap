@@ -334,10 +334,16 @@ export class CorreosJuridicosController {
     @HttpCode(HttpStatus.OK)
     async replyEmail(
         @Param('id') id: string,
-        @Body() body: { body: string; attachments?: { name: string; contentBytes: string; contentType: string }[] },
+        @Body() body: {
+            body: string;
+            attachments?: { name: string; contentBytes: string; contentType: string }[];
+            to?: string | string[];
+            cc?: string[];
+            bcc?: string[];
+        },
         @Req() req: any,
     ): Promise<{ success: boolean }> {
-        const result = await this.correosService.replyEmail(id, body.body, body.attachments, req);
+        const result = await this.correosService.replyEmail(id, body.body, body.attachments, req, body.to, body.cc, body.bcc);
         return { success: result.success };
     }
 

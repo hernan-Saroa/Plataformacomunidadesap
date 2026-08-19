@@ -1,7 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Save, User, Briefcase, GraduationCap, Mail, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
-import { createBancoDocente, updateBancoDocente } from '../../../services/api/ptaApi';
+import { X, Save, User, Briefcase, GraduationCap, Mail, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Sparkles, Upload } from 'lucide-react';
+import { createBancoDocente, updateBancoDocente, vincularRundSoporte } from '../../../services/api/ptaApi';
 import { useAuth } from '../../../contexts/AuthContext';
+import { OFFICIAL_TERRITORIALES_ESAP } from '../../../../shared/territoriales-cetaps-esap';
+import {
+  MANUAL_DEDICACIONES,
+  MANUAL_DOCUMENT_TYPES,
+  MANUAL_VINCULACIONES,
+  computeManualAge,
+  computeManualAgeRange,
+  getManualDefaultPtaHours,
+  getManualErrorStep,
+  getManualRegimen,
+  getManualWeeklyHours,
+  normalizeManualGender,
+  sanitizeManualDecimal,
+  sanitizeManualDocument,
+  sanitizeManualInteger,
+  sanitizeManualPhone,
+  validateManualBancoDocenteForm,
+  validateManualBancoDocenteStep,
+  type ManualDocenteErrors,
+} from '../../../utils/bancoDocenteManual';
 
 interface Props {
   docente: any | null;
@@ -10,12 +30,7 @@ interface Props {
   onSaved: () => void;
 }
 
-const TERRITORIALES = [
-  'Sede Central', 'Antioquia', 'Atlántico', 'Bogotá D.C.', 'Bolívar-Córdoba-Sucre',
-  'Boyacá-Casanare', 'Cauca-Nariño', 'Cesar-La Guajira', 'Chocó',
-  'Cundinamarca-Meta', 'Huila-Caquetá', 'Magdalena', 'Norte de Santander',
-  'Quindío-Risaralda-Caldas', 'Santander', 'Tolima', 'Valle del Cauca-Cauca',
-];
+const TERRITORIALES = OFFICIAL_TERRITORIALES_ESAP.map((territorial) => territorial.nombre);
 
 type Step = 0 | 1 | 2 | 3;
 
@@ -48,8 +63,8 @@ function SectionHeader({ title, description }: { title: string; description?: st
   );
 }
 
-function FloatingField({ label, children, required, hint, fullWidth }: {
-  label: string; children: React.ReactNode; required?: boolean; hint?: string; fullWidth?: boolean;
+function FloatingField({ label, children, required, hint, error, fullWidth }: {
+  label: string; children: React.ReactNode; required?: boolean; hint?: string; error?: string; fullWidth?: boolean;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, gridColumn: fullWidth ? '1 / -1' : undefined }}>
@@ -58,7 +73,9 @@ function FloatingField({ label, children, required, hint, fullWidth }: {
         {required && <span style={{ color: '#ef4444', fontSize: '0.65rem', fontWeight: 700 }}>●</span>}
       </label>
       {children}
-      {hint && <span style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: -2 }}>{hint}</span>}
+      {error
+        ? <span role="alert" style={{ fontSize: '0.67rem', color: '#dc2626', marginTop: -2 }}>{error}</span>
+        : hint && <span style={{ fontSize: '0.65rem', color: '#64748b', marginTop: -2 }}>{hint}</span>}
     </div>
   );
 }
@@ -94,6 +111,11 @@ const fieldFocusStyle = `
   .wizard-field::placeholder {
     color: #94a3b8 !important;
     font-style: italic;
+  }
+  .wizard-field[aria-invalid="true"] {
+    border-color: #ef4444 !important;
+    background: #fff7f7 !important;
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.08) !important;
   }
   .wizard-select {
     cursor: pointer;
@@ -161,45 +183,51 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ManualDocenteErrors>({});
+  const [supportFile, setSupportFile] = useState<File | null>(null);
   const [touchedSteps, setTouchedSteps] = useState<Set<number>>(new Set([0]));
   const auth = useAuth();
+  const sensitiveDataRestricted = Boolean(docente?.proteccion_datos?.acceso_completo === false);
 
   const [form, setForm] = useState({
     nombreCompleto: '',
     documento_identidad: '',
     tipo_identificacion: 'CC',
+    periodoCarga: periodoSeleccionado || '',
     territorialNombre: '',
-    cetapNombre: '',
     tipoVinculacion: 'OCASIONAL',
     dedicacion: 'TC',
-    horasPta: '',
+    horasPta: '800',
+    dedicacionHorasSemana: '40',
+    regimenNormativo: getManualRegimen('OCASIONAL'),
     escalafon: '',
     origenVinculacion: '',
     actoAdministrativoVinculacion: '',
-    decretoVinculacion: '',
     puntajeSalarial: '',
     situacionAdministrativa: '',
+    situacionCategoria: '',
+    estado: 'ACTIVO',
     ultimaEvaluacion: '',
     fechaInicioVinculacion: '',
     fechaFinVinculacion: '',
     observaciones: '',
     nivelFormacion: '',
-    perfilAcademicoPro: '',
     perfilAcademico: '',
     nucleoTematico: '',
-    programaPrincipal: '',
     pregrado: '',
     especializacion: '',
     maestria: '',
     doctorado: '',
     posDoctorado: '',
     investigacion: '',
-    clasificacionColciencias: '',
     correoInstitucional: '',
     correoAlternativo: '',
     telefono: '',
     genero: '',
+    sexoBiologico: '',
     fechaNacimiento: '',
+    idRund: '',
+    justificacionEdicion: '',
   });
 
   useEffect(() => {
@@ -208,50 +236,100 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         nombreCompleto: docente.nombre_completo || '',
         documento_identidad: docente.documento_identidad || '',
         tipo_identificacion: docente.tipo_documento || 'CC',
+        periodoCarga: docente.periodoCarga || docente.periodo_carga || periodoSeleccionado || '',
         territorialNombre: docente.territorial || '',
-        cetapNombre: docente.cetapNombre || docente.cetap_nombre || '',
-        tipoVinculacion: docente.vinculacion_codigo || 'OCASIONAL',
+        tipoVinculacion: docente.vinculacion_codigo === 'CARRERA' ? 'CARRERA2' : (docente.vinculacion_codigo || 'OCASIONAL'),
         dedicacion: docente.dedicacion_codigo || 'TC',
         horasPta: String(docente.horas_programables ?? docente.horasAsignables ?? ''),
+        dedicacionHorasSemana: String(docente.dedicacion_horas_semana ?? getManualWeeklyHours(docente.dedicacion_codigo || 'TC')),
+        regimenNormativo: docente.regimen_normativo || docente.regimenNormativo || getManualRegimen(docente.vinculacion_codigo || 'OCASIONAL'),
         escalafon: docente.categoria || '',
         origenVinculacion: docente.origen_vinculacion || '',
         actoAdministrativoVinculacion: docente.acto_administrativo_vinculacion || '',
-        decretoVinculacion: docente.decreto_vinculacion || '',
         puntajeSalarial: docente.puntaje_salarial?.toString() || '',
         situacionAdministrativa: docente.situacion_administrativa || '',
+        situacionCategoria: docente.situacion_categoria || '',
+        estado: String(docente.estado || 'ACTIVO').toUpperCase(),
         ultimaEvaluacion: docente.ultima_evaluacion || '',
         fechaInicioVinculacion: docente.inicio_vinculacion ? docente.inicio_vinculacion.split('T')[0] : '',
         fechaFinVinculacion: docente.fin_vinculacion ? docente.fin_vinculacion.split('T')[0] : '',
         observaciones: docente.observaciones || '',
         nivelFormacion: docente.nivel_formacion || '',
-        perfilAcademicoPro: docente.perfil_academico_pro || '',
         perfilAcademico: docente.perfil_academico || '',
         nucleoTematico: docente.nucleo_tematico || '',
-        programaPrincipal: docente.programa_principal || '',
         pregrado: docente.pregrado || '',
         especializacion: docente.especializacion || '',
         maestria: docente.maestria || '',
         doctorado: docente.doctorado || '',
         posDoctorado: docente.posdoctorado || '',
         investigacion: docente.investigacion || '',
-        clasificacionColciencias: docente.clasificacion_colciencias || '',
         correoInstitucional: docente.correo_institucional || '',
         correoAlternativo: docente.correo_personal || '',
         telefono: docente.telefono || '',
-        genero: docente.genero || '',
+        genero: normalizeManualGender(docente.genero),
+        sexoBiologico: docente.sexo_biologico || '',
         fechaNacimiento: docente.nacimiento ? docente.nacimiento.split('T')[0] : '',
+        idRund: docente.id_rund || docente.idRund || '',
+        justificacionEdicion: '',
       });
+    } else {
+      setForm((current) => ({ ...current, periodoCarga: periodoSeleccionado || current.periodoCarga }));
     }
-  }, [docente]);
+    setFieldErrors({});
+    setSupportFile(null);
+  }, [docente, periodoSeleccionado]);
+
+  const setValue = (key: string, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setError(null);
+  };
 
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm((prev) => ({ ...prev, [key]: e.target.value }));
+    setValue(key, e.target.value);
+
+  const handleDocumentType = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const documentType = e.target.value;
+    setForm((prev) => ({
+      ...prev,
+      tipo_identificacion: documentType,
+      documento_identidad: sanitizeManualDocument(prev.documento_identidad, documentType),
+    }));
+    setFieldErrors((current) => ({ ...current, documento_identidad: '', tipo_identificacion: '' }));
+  };
+
+  const handleVinculacion = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const tipoVinculacion = e.target.value;
+    setForm((prev) => ({
+      ...prev,
+      tipoVinculacion,
+      regimenNormativo: getManualRegimen(tipoVinculacion),
+      horasPta: getManualDefaultPtaHours(tipoVinculacion, prev.dedicacion),
+    }));
+    setFieldErrors((current) => ({ ...current, tipoVinculacion: '' }));
+  };
+
+  const handleDedicacion = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const dedicacion = e.target.value;
+    setForm((prev) => ({
+      ...prev,
+      dedicacion,
+      dedicacionHorasSemana: getManualWeeklyHours(dedicacion),
+      horasPta: getManualDefaultPtaHours(prev.tipoVinculacion, dedicacion),
+    }));
+    setFieldErrors((current) => ({ ...current, dedicacion: '' }));
+  };
 
   // Step progress calculation
   const getStepProgress = useCallback((step: number): number => {
     const fieldsByStep: Record<number, string[]> = {
-      0: ['documento_identidad', 'nombreCompleto', 'territorialNombre', 'tipoVinculacion', 'dedicacion'],
-      1: ['nivelFormacion', 'pregrado'],
+      0: ['documento_identidad', 'tipo_identificacion', 'nombreCompleto', 'periodoCarga', 'territorialNombre', 'tipoVinculacion', 'dedicacion', 'horasPta', 'escalafon', 'fechaInicioVinculacion', 'actoAdministrativoVinculacion'],
+      1: ['nivelFormacion', 'pregrado', 'nucleoTematico', 'perfilAcademico'],
       2: ['correoInstitucional'],
       3: ['genero', 'fechaNacimiento'],
     };
@@ -270,82 +348,140 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
     setError(null);
   };
 
+  const isEditing = Boolean(docente?.docente_id || docente?.id);
+
+  const validateStep = (step: Step): boolean => {
+    const errors = validateManualBancoDocenteStep(form, step, { isEditing, supportFile, sensitiveDataRestricted });
+    setFieldErrors((current) => ({ ...current, ...errors }));
+    if (Object.keys(errors).length > 0) {
+      setError('Revise los campos marcados antes de continuar.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (!validateStep(activeStep)) return;
+    goToStep((activeStep + 1) as Step);
+  };
+
+  const handleSupportFile = (file: File | null) => {
+    if (!file) {
+      setSupportFile(null);
+      return;
+    }
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (!allowedTypes.includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setSupportFile(null);
+      setFieldErrors((current) => ({
+        ...current,
+        soporteEdicion: 'Use un archivo PDF, JPG o PNG de máximo 10 MB.',
+      }));
+      return;
+    }
+    setSupportFile(file);
+    setFieldErrors((current) => {
+      const next = { ...current };
+      delete next.soporteEdicion;
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     setError(null);
-    if (!form.documento_identidad) { setError('El número de documento es obligatorio'); goToStep(0); return; }
-    if (!form.nombreCompleto) { setError('El nombre completo es obligatorio'); goToStep(0); return; }
-    if (!form.territorialNombre) { setError('La territorial es obligatoria'); goToStep(0); return; }
-    const horasPta = form.horasPta === '' ? null : Number(form.horasPta);
-    if (horasPta !== null && (!Number.isFinite(horasPta) || horasPta < 0)) {
-      setError('Las horas programables deben ser un número mayor o igual a cero');
-      goToStep(0);
-      return;
-    }
-
-    if (form.correoInstitucional && !form.correoInstitucional.toLowerCase().endsWith('@esap.edu.co')) {
-      setError('El correo institucional debe terminar en @esap.edu.co');
-      goToStep(2);
-      return;
-    }
-    const esVinculacionVisitante = form.tipoVinculacion === 'VISITANTE';
-    const esCategoriaVisitante = form.escalafon?.toLowerCase().trim() === 'visitante';
-    if (esVinculacionVisitante !== esCategoriaVisitante) {
-      setError('Si la vinculación es Visitante, la categoría/escalafón debe ser Visitante (y viceversa).');
-      goToStep(0);
+    const validationErrors = validateManualBancoDocenteForm(form, { isEditing, supportFile, sensitiveDataRestricted });
+    setFieldErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) {
+      goToStep(getManualErrorStep(validationErrors) as Step);
+      setError('No se puede guardar: revise los campos marcados en el formulario.');
       return;
     }
 
     setSaving(true);
-    const payload = {
-      documentNumber: form.documento_identidad,
-      nombreCompleto: form.nombreCompleto,
-      tipo_identificacion: form.tipo_identificacion,
-      territorialNombre: form.territorialNombre,
-      cetapNombre: form.cetapNombre || null,
-      tipoVinculacion: form.tipoVinculacion,
-      dedicacion: form.dedicacion,
-      horasPta,
-      horasAsignables: horasPta,
-      escalafon: form.escalafon || null,
-      origenVinculacion: form.origenVinculacion || null,
-      actoAdministrativoVinculacion: form.actoAdministrativoVinculacion || null,
-      decretoVinculacion: form.decretoVinculacion || null,
-      puntajeSalarial: form.puntajeSalarial ? parseFloat(form.puntajeSalarial) : null,
-      situacionAdministrativa: form.situacionAdministrativa || null,
-      ultimaEvaluacion: form.ultimaEvaluacion || null,
-      fechaInicioVinculacion: form.fechaInicioVinculacion || null,
-      fechaFinVinculacion: form.fechaFinVinculacion || null,
-      observaciones: form.observaciones || null,
-      nivelFormacion: form.nivelFormacion || null,
-      perfilAcademicoPro: form.perfilAcademicoPro || null,
-      perfilAcademico: form.perfilAcademico || null,
-      nucleoTematico: form.nucleoTematico || null,
-      programaPrincipal: form.programaPrincipal || null,
-      pregrado: form.pregrado || null,
-      especializacion: form.especializacion || null,
-      maestria: form.maestria || null,
-      doctorado: form.doctorado || null,
-      posDoctorado: form.posDoctorado || null,
-      investigacion: form.investigacion || null,
-      clasificacionColciencias: form.clasificacionColciencias || null,
-      correoInstitucional: form.correoInstitucional || null,
-      correoAlternativo: form.correoAlternativo || null,
-      telefono: form.telefono || null,
-      genero: form.genero || null,
-      fechaNacimiento: form.fechaNacimiento || null,
-      periodoCarga: docente?.periodoCarga || docente?.periodo_carga || periodoSeleccionado || null,
-      canal_origen: 'MODAL', // §4 / §6 — Auditoría del canal de alta
-    };
+    try {
+      let soporteEdicionId: string | null = null;
+      const docenteId = docente?.docente_id || docente?.id;
+      if (isEditing && supportFile && docenteId) {
+        const uploadResult = await vincularRundSoporte(
+          docenteId,
+          'TRANSVERSAL',
+          {
+            tipoSoporte: 'soporte_edicion_perfil',
+            nombreArchivo: supportFile.name,
+            cargadoPor: auth.userPersonId || auth.userEmail || 'SISTEMA',
+          },
+          supportFile,
+        );
+        soporteEdicionId = (uploadResult.data as any)?.id || null;
+        if (!uploadResult.success || !soporteEdicionId) {
+          setError((uploadResult as any).message || (uploadResult.data as any)?.error || 'No fue posible cargar el soporte documental de la edición.');
+          return;
+        }
+      }
 
-    const res = docente?.id
-      ? await updateBancoDocente(docente.docente_id || docente.id, payload)
-      : await createBancoDocente(payload);
+      const age = computeManualAge(form.fechaNacimiento);
+      const payload: any = {
+        documentNumber: form.documento_identidad.trim(),
+        documentType: form.tipo_identificacion,
+        nombreCompleto: form.nombreCompleto.trim(),
+        territorialNombre: form.territorialNombre,
+        tipoVinculacion: form.tipoVinculacion,
+        dedicacion: form.dedicacion,
+        dedicacionLabel: MANUAL_DEDICACIONES.find((item) => item.value === form.dedicacion)?.label || form.dedicacion,
+        dedicacionHorasSemana: Number(form.dedicacionHorasSemana),
+        regimenNormativo: form.regimenNormativo,
+        horasPta: Number(form.horasPta),
+        horasAsignables: Number(form.horasPta),
+        escalafon: form.escalafon.trim(),
+        origenVinculacion: form.origenVinculacion || null,
+        actoAdministrativoVinculacion: form.actoAdministrativoVinculacion.trim(),
+        puntajeSalarial: form.puntajeSalarial ? parseFloat(form.puntajeSalarial) : null,
+        situacionAdministrativa: form.situacionAdministrativa || null,
+        situacionCategoria: form.situacionCategoria || null,
+        estado: form.estado,
+        ultimaEvaluacion: form.ultimaEvaluacion || null,
+        fechaInicioVinculacion: form.fechaInicioVinculacion,
+        fechaFinVinculacion: form.fechaFinVinculacion || null,
+        observaciones: form.observaciones || null,
+        nivelFormacion: form.nivelFormacion,
+        perfilAcademico: form.perfilAcademico.trim(),
+        nucleoTematico: form.nucleoTematico.trim(),
+        pregrado: form.pregrado.trim(),
+        especializacion: form.especializacion || null,
+        maestria: form.maestria || null,
+        doctorado: form.doctorado || null,
+        posDoctorado: form.posDoctorado || null,
+        investigacion: form.investigacion || null,
+        correoInstitucional: form.correoInstitucional.trim().toLowerCase(),
+        correoAlternativo: form.correoAlternativo || null,
+        telefono: form.telefono || null,
+        genero: form.genero,
+        sexoBiologico: form.sexoBiologico || null,
+        fechaNacimiento: form.fechaNacimiento,
+        edadReferencia: age,
+        rangoEdad: computeManualAgeRange(age),
+        periodoCarga: form.periodoCarga,
+        idRund: form.idRund || null,
+        actorId: auth.userPersonId || auth.userEmail || 'SISTEMA',
+        soporteEdicionId,
+        justificacionEdicion: isEditing ? form.justificacionEdicion.trim() : null,
+      };
+      if (isEditing && sensitiveDataRestricted) {
+        delete payload.documentNumber;
+        delete payload.puntajeSalarial;
+      }
 
-    setSaving(false);
-    if (res.success) {
-      onSaved();
-    } else {
-      setError((res as any).message || 'Error al guardar el docente');
+      const res = isEditing
+        ? await updateBancoDocente(docenteId, payload)
+        : await createBancoDocente(payload);
+
+      if (res.success) {
+        onSaved();
+      } else {
+        setError((res as any).message || (res as any).error || 'Error al guardar el docente');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -404,7 +540,9 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
               return (
                 <button
                   key={step.key}
-                  onClick={() => goToStep(i as Step)}
+                  onClick={() => {
+                    if (i <= activeStep || validateStep(activeStep)) goToStep(i as Step);
+                  }}
                   className={isActive ? 'step-active' : ''}
                   style={{
                     flex: 1,
@@ -458,19 +596,19 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Identificación" description="Datos de identidad del docente" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Documento de Identidad" required>
-                        <input className="wizard-field" style={fieldStyle} value={form.documento_identidad} onChange={set('documento_identidad')} placeholder="Ej: 12345678" disabled={!!docente?.id && !auth.hasPermission('pta.backoffice.editar_docente')} />
+                      <FloatingField label="Documento de Identidad" required error={fieldErrors.documento_identidad} hint={sensitiveDataRestricted ? 'Dato enmascarado por la política RBAC; no se enviará en esta edición.' : (isEditing ? 'Llave única RUND: no se puede modificar.' : 'Solo números; el pasaporte admite letras y números.')}>
+                        <input className="wizard-field" style={fieldStyle} value={form.documento_identidad} onChange={(e) => setValue('documento_identidad', sanitizeManualDocument(e.target.value, form.tipo_identificacion))} placeholder="Ej: 12345678" inputMode={form.tipo_identificacion === 'PA' ? 'text' : 'numeric'} maxLength={20} disabled={isEditing} aria-invalid={Boolean(fieldErrors.documento_identidad)} />
                       </FloatingField>
-                      <FloatingField label="Tipo de Documento">
-                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.tipo_identificacion} onChange={set('tipo_identificacion')}>
-                          <option value="CC">Cédula de Ciudadanía</option>
-                          <option value="CE">Cédula de Extranjería</option>
-                          <option value="PA">Pasaporte</option>
-                          <option value="NIT">NIT</option>
+                      <FloatingField label="Tipo de Documento" required error={fieldErrors.tipo_identificacion}>
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.tipo_identificacion} onChange={handleDocumentType} aria-invalid={Boolean(fieldErrors.tipo_identificacion)}>
+                          {MANUAL_DOCUMENT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                         </select>
                       </FloatingField>
-                      <FloatingField label="Nombre Completo" required fullWidth>
-                        <input className="wizard-field" style={fieldStyle} value={form.nombreCompleto} onChange={set('nombreCompleto')} placeholder="Ej: María Fernanda López García" />
+                      <FloatingField label="Nombre Completo" required fullWidth error={fieldErrors.nombreCompleto} hint="Solo letras; no se admiten números en nombres o apellidos.">
+                        <input className="wizard-field" style={fieldStyle} value={form.nombreCompleto} onChange={set('nombreCompleto')} placeholder="Ej: María Fernanda López García" maxLength={150} aria-invalid={Boolean(fieldErrors.nombreCompleto)} />
+                      </FloatingField>
+                      <FloatingField label="Período Académico" required fullWidth error={fieldErrors.periodoCarga} hint={isEditing ? 'Se conserva para no romper la vinculación del docente con sus PTA.' : 'Formato AAAA-1 o AAAA-2. Este período conserva la relación usada por PTA.'}>
+                        <input className="wizard-field" style={fieldStyle} value={form.periodoCarga} onChange={set('periodoCarga')} placeholder="Ej: 2026-2" maxLength={6} disabled={isEditing} aria-invalid={Boolean(fieldErrors.periodoCarga)} />
                       </FloatingField>
                     </div>
                   </div>
@@ -479,33 +617,30 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Contrato y Adscripción" description="Tipo de vinculación, dedicación y territorial" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Territorial" required>
-                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.territorialNombre} onChange={set('territorialNombre')}>
+                      <FloatingField label="Territorial" required error={fieldErrors.territorialNombre}>
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.territorialNombre} onChange={set('territorialNombre')} aria-invalid={Boolean(fieldErrors.territorialNombre)}>
                           <option value="">Seleccionar...</option>
                           {TERRITORIALES.map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </FloatingField>
-                      <FloatingField label="Tipo de Vinculación" required>
-                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.tipoVinculacion} onChange={set('tipoVinculacion')}>
-                          <option value="OCASIONAL">Ocasional</option>
-                          <option value="CARRERA">Carrera</option>
-                          <option value="CATEDRA">Hora Cátedra</option>
-                          <option value="VISITANTE">Visitante</option>
-                          <option value="ESPECIAL">Especial</option>
+                      <FloatingField label="Tipo de Vinculación" required error={fieldErrors.tipoVinculacion}>
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.tipoVinculacion} onChange={handleVinculacion} aria-invalid={Boolean(fieldErrors.tipoVinculacion)}>
+                          {MANUAL_VINCULACIONES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                         </select>
                       </FloatingField>
-                      <FloatingField label="Dedicación" required>
-                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.dedicacion} onChange={set('dedicacion')}>
-                          <option value="TC">Tiempo Completo</option>
-                          <option value="MT">Medio Tiempo</option>
-                          <option value="HC">Hora Cátedra</option>
+                      <FloatingField label="Dedicación" required error={fieldErrors.dedicacion}>
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.dedicacion} onChange={handleDedicacion} aria-invalid={Boolean(fieldErrors.dedicacion)}>
+                          {MANUAL_DEDICACIONES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                         </select>
                       </FloatingField>
-                      <FloatingField label="Horas programables PTA" hint="Bolsa autoritativa usada por creación, concertación y reportes PTA">
-                        <input className="wizard-field" style={fieldStyle} type="number" min="0" step="1" value={form.horasPta} onChange={set('horasPta')} placeholder="Ej: 720, 800, 900..." />
+                      <FloatingField label="Horas programables PTA" required error={fieldErrors.horasPta} hint="Bolsa autoritativa usada por creación, concertación y reportes PTA.">
+                        <input className="wizard-field" style={fieldStyle} value={form.horasPta} onChange={(e) => setValue('horasPta', sanitizeManualInteger(e.target.value))} inputMode="numeric" placeholder="Ej: 720, 800, 900" maxLength={4} aria-invalid={Boolean(fieldErrors.horasPta)} />
                       </FloatingField>
-                      <FloatingField label="Decreto / Acuerdo" hint="Ej: 2400/1968, 1279/2002, 003/2018">
-                        <input className="wizard-field" style={fieldStyle} value={form.decretoVinculacion} onChange={set('decretoVinculacion')} placeholder="Decreto o acuerdo normativo" />
+                      <FloatingField label="Régimen Normativo" hint="Derivado del tipo de vinculación, igual que en la carga masiva.">
+                        <input className="wizard-field" style={{ ...fieldStyle, background: '#f1f5f9', color: '#475569' }} value={form.regimenNormativo} readOnly />
+                      </FloatingField>
+                      <FloatingField label="Horas de Dedicación Semanal" error={fieldErrors.dedicacionHorasSemana} hint="Valor derivado de la dedicación; puede ajustarse si el acto administrativo lo indica.">
+                        <input className="wizard-field" style={fieldStyle} value={form.dedicacionHorasSemana} onChange={(e) => setValue('dedicacionHorasSemana', sanitizeManualInteger(e.target.value, 3))} inputMode="numeric" maxLength={3} aria-invalid={Boolean(fieldErrors.dedicacionHorasSemana)} />
                       </FloatingField>
                     </div>
                   </div>
@@ -514,17 +649,17 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Clasificación y Remuneración" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Categoría / Escalafón">
-                        <input className="wizard-field" style={fieldStyle} value={form.escalafon} onChange={set('escalafon')} placeholder="Ej: Asociado, Titular..." />
+                      <FloatingField label="Categoría / Escalafón" required error={fieldErrors.escalafon}>
+                        <input className="wizard-field" style={fieldStyle} value={form.escalafon} onChange={set('escalafon')} placeholder="Ej: Asociado, Titular" maxLength={100} aria-invalid={Boolean(fieldErrors.escalafon)} />
                       </FloatingField>
-                      <FloatingField label="Puntaje Salarial">
-                        <input className="wizard-field" style={fieldStyle} type="number" value={form.puntajeSalarial} onChange={set('puntajeSalarial')} placeholder="Ej: 145.5" />
+                      <FloatingField label="Puntaje Salarial" error={fieldErrors.puntajeSalarial} hint={sensitiveDataRestricted ? 'Información restringida para su rol.' : 'Solo números; use punto o coma para decimales.'}>
+                        <input className="wizard-field" style={fieldStyle} value={form.puntajeSalarial} onChange={(e) => setValue('puntajeSalarial', sanitizeManualDecimal(e.target.value))} inputMode="decimal" placeholder={sensitiveDataRestricted ? 'Información restringida' : 'Ej: 145.5'} disabled={sensitiveDataRestricted} aria-invalid={Boolean(fieldErrors.puntajeSalarial)} />
                       </FloatingField>
                       <FloatingField label="Origen de Vinculación">
                         <input className="wizard-field" style={fieldStyle} value={form.origenVinculacion} onChange={set('origenVinculacion')} placeholder="Fuente de vinculación" />
                       </FloatingField>
-                      <FloatingField label="Acto Administrativo">
-                        <input className="wizard-field" style={fieldStyle} value={form.actoAdministrativoVinculacion} onChange={set('actoAdministrativoVinculacion')} placeholder="Resolución o acto" />
+                      <FloatingField label="Acto Administrativo" required error={fieldErrors.actoAdministrativoVinculacion} hint="Referencia del soporte de vinculación del docente.">
+                        <input className="wizard-field" style={fieldStyle} value={form.actoAdministrativoVinculacion} onChange={set('actoAdministrativoVinculacion')} placeholder="Resolución o acto" maxLength={200} aria-invalid={Boolean(fieldErrors.actoAdministrativoVinculacion)} />
                       </FloatingField>
                     </div>
                   </div>
@@ -533,14 +668,33 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Fechas y Situación" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Inicio Vinculación">
-                        <input className="wizard-field" style={fieldStyle} type="date" value={form.fechaInicioVinculacion} onChange={set('fechaInicioVinculacion')} />
+                      <FloatingField label="Inicio Vinculación" required error={fieldErrors.fechaInicioVinculacion}>
+                        <input className="wizard-field" style={fieldStyle} type="date" value={form.fechaInicioVinculacion} onChange={set('fechaInicioVinculacion')} aria-invalid={Boolean(fieldErrors.fechaInicioVinculacion)} />
                       </FloatingField>
-                      <FloatingField label="Fin Vinculación">
-                        <input className="wizard-field" style={fieldStyle} type="date" value={form.fechaFinVinculacion} onChange={set('fechaFinVinculacion')} />
+                      <FloatingField label="Fin Vinculación" error={fieldErrors.fechaFinVinculacion} hint="Déjelo vacío si la vinculación es indefinida.">
+                        <input className="wizard-field" style={fieldStyle} type="date" value={form.fechaFinVinculacion} onChange={set('fechaFinVinculacion')} min={form.fechaInicioVinculacion || undefined} aria-invalid={Boolean(fieldErrors.fechaFinVinculacion)} />
                       </FloatingField>
                       <FloatingField label="Situación Administrativa">
                         <input className="wizard-field" style={fieldStyle} value={form.situacionAdministrativa} onChange={set('situacionAdministrativa')} placeholder="Ej: Activo, Comisión, Licencia..." />
+                      </FloatingField>
+                      <FloatingField label="Situación / Categoría">
+                        <input className="wizard-field" style={fieldStyle} value={form.situacionCategoria} onChange={set('situacionCategoria')} placeholder="Ej: Servicio Activo" maxLength={100} />
+                      </FloatingField>
+                      <FloatingField
+                        label="Estado del Perfil"
+                        required
+                        hint={isEditing ? 'Para cambiarlo use la acción Activar/Inactivar, que exige un soporte específico.' : 'Estado inicial del perfil para este período.'}
+                      >
+                        <select
+                          className="wizard-field wizard-select"
+                          style={isEditing ? { ...fieldStyle, background: '#f1f5f9', color: '#475569', cursor: 'not-allowed' } : fieldStyle}
+                          value={form.estado}
+                          onChange={set('estado')}
+                          disabled={isEditing}
+                        >
+                          <option value="ACTIVO">Activo</option>
+                          <option value="INACTIVO">Inactivo</option>
+                        </select>
                       </FloatingField>
                       <FloatingField label="Última Evaluación">
                         <input className="wizard-field" style={fieldStyle} value={form.ultimaEvaluacion} onChange={set('ultimaEvaluacion')} placeholder="Ej: 2024-1" />
@@ -559,8 +713,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Nivel y Perfil Académico" description="Máximo nivel de formación y área de conocimiento" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Nivel de Formación">
-                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.nivelFormacion} onChange={set('nivelFormacion')}>
+                      <FloatingField label="Nivel de Formación" required error={fieldErrors.nivelFormacion}>
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.nivelFormacion} onChange={set('nivelFormacion')} aria-invalid={Boolean(fieldErrors.nivelFormacion)}>
                           <option value="">Seleccionar...</option>
                           <option value="Pregrado">Pregrado</option>
                           <option value="Especialización">Especialización</option>
@@ -569,17 +723,11 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                           <option value="Posdoctorado">Posdoctorado</option>
                         </select>
                       </FloatingField>
-                      <FloatingField label="Programa Principal" hint="Programa al que está adscrito">
-                        <input className="wizard-field" style={fieldStyle} value={form.programaPrincipal} onChange={set('programaPrincipal')} placeholder="Ej: Administración Pública" />
+                      <FloatingField label="Núcleo Temático" required error={fieldErrors.nucleoTematico} hint="Área temática principal usada por el perfil RUND.">
+                        <input className="wizard-field" style={fieldStyle} value={form.nucleoTematico} onChange={set('nucleoTematico')} placeholder="Ej: Administración Pública" maxLength={300} aria-invalid={Boolean(fieldErrors.nucleoTematico)} />
                       </FloatingField>
-                      <FloatingField label="Núcleo Temático">
-                        <input className="wizard-field" style={fieldStyle} value={form.nucleoTematico} onChange={set('nucleoTematico')} placeholder="Área temática principal" />
-                      </FloatingField>
-                      <FloatingField label="Perfil Académico PRO">
-                        <input className="wizard-field" style={fieldStyle} value={form.perfilAcademicoPro} onChange={set('perfilAcademicoPro')} placeholder="Perfil profesional" />
-                      </FloatingField>
-                      <FloatingField label="Perfil Académico" fullWidth>
-                        <input className="wizard-field" style={fieldStyle} value={form.perfilAcademico} onChange={set('perfilAcademico')} placeholder="Descripción del perfil académico" />
+                      <FloatingField label="Perfil Académico" required fullWidth error={fieldErrors.perfilAcademico}>
+                        <textarea className="wizard-field wizard-textarea" style={fieldStyle} value={form.perfilAcademico} onChange={set('perfilAcademico')} placeholder="Descripción del perfil académico" maxLength={1000} aria-invalid={Boolean(fieldErrors.perfilAcademico)} />
                       </FloatingField>
                     </div>
                   </div>
@@ -587,8 +735,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Títulos Obtenidos" description="Detalle de formación por nivel" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Pregrado">
-                        <input className="wizard-field" style={fieldStyle} value={form.pregrado} onChange={set('pregrado')} placeholder="Título de pregrado" />
+                      <FloatingField label="Pregrado" required error={fieldErrors.pregrado}>
+                        <input className="wizard-field" style={fieldStyle} value={form.pregrado} onChange={set('pregrado')} placeholder="Título de pregrado" maxLength={300} aria-invalid={Boolean(fieldErrors.pregrado)} />
                       </FloatingField>
                       <FloatingField label="Especialización">
                         <input className="wizard-field" style={fieldStyle} value={form.especializacion} onChange={set('especializacion')} placeholder="Título de especialización" />
@@ -606,20 +754,10 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   </div>
 
                   <div>
-                    <SectionHeader title="Investigación" description="Actividad investigativa y clasificación" />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                    <SectionHeader title="Investigación" description="Campo INVESTIGACION_ACTIVA de la plantilla masiva" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
                       <FloatingField label="Grupo / Actividad de Investigación">
-                        <input className="wizard-field" style={fieldStyle} value={form.investigacion} onChange={set('investigacion')} placeholder="Nombre del grupo de investigación" />
-                      </FloatingField>
-                      <FloatingField label="Clasificación Colciencias">
-                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.clasificacionColciencias} onChange={set('clasificacionColciencias')}>
-                          <option value="">Sin clasificación</option>
-                          <option value="A1">A1 — Excelencia</option>
-                          <option value="A">A — Alto nivel</option>
-                          <option value="B">B — Consolidado</option>
-                          <option value="C">C — En formación</option>
-                          <option value="Reconocido">Reconocido</option>
-                        </select>
+                        <textarea className="wizard-field wizard-textarea" style={fieldStyle} value={form.investigacion} onChange={set('investigacion')} placeholder="Nombre del grupo o actividad de investigación" maxLength={1000} />
                       </FloatingField>
                     </div>
                   </div>
@@ -632,11 +770,11 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Correo Electrónico" description="El correo institucional es obligatorio para notificaciones del sistema" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Correo Institucional" required hint="Debe ser @esap.edu.co">
-                        <input className="wizard-field" style={fieldStyle} type="email" value={form.correoInstitucional} onChange={set('correoInstitucional')} placeholder="nombre@esap.edu.co" />
+                      <FloatingField label="Correo Institucional" required error={fieldErrors.correoInstitucional} hint="Debe ser único y terminar en @esap.edu.co.">
+                        <input className="wizard-field" style={fieldStyle} type="email" value={form.correoInstitucional} onChange={set('correoInstitucional')} placeholder="nombre@esap.edu.co" maxLength={150} autoComplete="email" aria-invalid={Boolean(fieldErrors.correoInstitucional)} />
                       </FloatingField>
-                      <FloatingField label="Correo Personal" hint="Correo alternativo (opcional)">
-                        <input className="wizard-field" style={fieldStyle} type="email" value={form.correoAlternativo} onChange={set('correoAlternativo')} placeholder="correo@personal.com" />
+                      <FloatingField label="Correo Personal" error={fieldErrors.correoAlternativo} hint="Opcional y diferente del correo institucional.">
+                        <input className="wizard-field" style={fieldStyle} type="email" value={form.correoAlternativo} onChange={set('correoAlternativo')} placeholder="correo@personal.com" maxLength={150} aria-invalid={Boolean(fieldErrors.correoAlternativo)} />
                       </FloatingField>
                     </div>
                   </div>
@@ -644,8 +782,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Teléfono" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Teléfono / Celular" hint="Número de contacto principal">
-                        <input className="wizard-field" style={fieldStyle} value={form.telefono} onChange={set('telefono')} placeholder="Ej: 3001234567" />
+                      <FloatingField label="Teléfono / Celular" error={fieldErrors.telefono} hint="Entre 7 y 15 dígitos; no admite letras ni símbolos.">
+                        <input className="wizard-field" style={fieldStyle} value={form.telefono} onChange={(e) => setValue('telefono', sanitizeManualPhone(e.target.value))} placeholder="Ej: 3001234567" inputMode="numeric" maxLength={15} aria-invalid={Boolean(fieldErrors.telefono)} />
                       </FloatingField>
                     </div>
                   </div>
@@ -669,8 +807,8 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   <div>
                     <SectionHeader title="Datos Personales" description="Información demográfica del docente" />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                      <FloatingField label="Género">
-                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.genero} onChange={set('genero')}>
+                      <FloatingField label="Género" required error={fieldErrors.genero}>
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.genero} onChange={set('genero')} aria-invalid={Boolean(fieldErrors.genero)}>
                           <option value="">Seleccionar...</option>
                           <option value="Masculino">Masculino</option>
                           <option value="Femenino">Femenino</option>
@@ -678,11 +816,50 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                           <option value="Prefiero no indicar">Prefiero no indicar</option>
                         </select>
                       </FloatingField>
-                      <FloatingField label="Fecha de Nacimiento">
-                        <input className="wizard-field" style={fieldStyle} type="date" value={form.fechaNacimiento} onChange={set('fechaNacimiento')} />
+                      <FloatingField label="Sexo Biológico">
+                        <select className="wizard-field wizard-select" style={fieldStyle} value={form.sexoBiologico} onChange={set('sexoBiologico')}>
+                          <option value="">Seleccionar...</option>
+                          <option value="Hombre">Hombre</option>
+                          <option value="Mujer">Mujer</option>
+                          <option value="Intersexual">Intersexual</option>
+                          <option value="Otro">Otro</option>
+                          <option value="Prefiero no indicar">Prefiero no indicar</option>
+                        </select>
+                      </FloatingField>
+                      <FloatingField label="Fecha de Nacimiento" required error={fieldErrors.fechaNacimiento}>
+                        <input className="wizard-field" style={fieldStyle} type="date" value={form.fechaNacimiento} onChange={set('fechaNacimiento')} max={new Date().toISOString().slice(0, 10)} aria-invalid={Boolean(fieldErrors.fechaNacimiento)} />
+                      </FloatingField>
+                      <FloatingField label="Edad" hint="Calculada automáticamente desde la fecha de nacimiento.">
+                        <input className="wizard-field" style={{ ...fieldStyle, background: '#f1f5f9', color: '#475569' }} value={computeManualAge(form.fechaNacimiento) ?? ''} readOnly />
+                      </FloatingField>
+                      <FloatingField label="Rango de Edad" hint="Calculado automáticamente para mantener consistencia.">
+                        <input className="wizard-field" style={{ ...fieldStyle, background: '#f1f5f9', color: '#475569' }} value={computeManualAgeRange(computeManualAge(form.fechaNacimiento))} readOnly />
+                      </FloatingField>
+                      <FloatingField label="ID RUND" hint={isEditing ? 'Identificador interno generado por el sistema.' : 'Se generará automáticamente al guardar.'}>
+                        <input className="wizard-field" style={{ ...fieldStyle, background: '#f1f5f9', color: '#475569' }} value={form.idRund || 'Pendiente de generación'} readOnly />
                       </FloatingField>
                     </div>
                   </div>
+
+                  {isEditing && (
+                    <div>
+                      <SectionHeader title="Soporte de la Edición" description="Obligatorio para garantizar soporte y trazabilidad del cambio" />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                        <FloatingField label="Soporte Documental" required error={fieldErrors.soporteEdicion} hint="PDF, JPG o PNG; máximo 10 MB.">
+                          <label style={{ ...fieldStyle, minHeight: 42, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', borderColor: fieldErrors.soporteEdicion ? '#ef4444' : '#e2e8f0' }}>
+                            <Upload size={15} color="#64748b" />
+                            <span style={{ color: supportFile ? '#0f172a' : '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {supportFile?.name || 'Seleccionar archivo de soporte'}
+                            </span>
+                            <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => handleSupportFile(e.target.files?.[0] || null)} style={{ display: 'none' }} />
+                          </label>
+                        </FloatingField>
+                        <FloatingField label="Justificación de la Edición" required error={fieldErrors.justificacionEdicion}>
+                          <textarea className="wizard-field wizard-textarea" style={fieldStyle} value={form.justificacionEdicion} onChange={set('justificacionEdicion')} placeholder="Indique por qué se modifica el perfil" maxLength={500} aria-invalid={Boolean(fieldErrors.justificacionEdicion)} />
+                        </FloatingField>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Summary card */}
                   <div style={{ padding: '18px 20px', borderRadius: 14, background: 'linear-gradient(135deg, #f0fdf4, #ecfdf5)', border: '1px solid #bbf7d0' }}>
@@ -755,7 +932,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
               ) : (
                 <button
                   className="wizard-nav-btn"
-                  onClick={() => goToStep((activeStep + 1) as Step)}
+                  onClick={handleNext}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 7, padding: '9px 22px', borderRadius: 10, border: 'none',
                     background: currentStep.gradient,

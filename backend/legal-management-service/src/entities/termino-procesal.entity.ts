@@ -53,6 +53,12 @@ export class TerminoProcesal {
     @Column({ name: 'responsable_nombre', type: 'varchar', length: 255, nullable: true })
     responsableNombre: string | null;
 
+    @Column({ name: 'destinatario', type: 'varchar', length: 255, nullable: true })
+    destinatario: string | null;
+
+    @Column({ name: 'fundamento_normativo', type: 'jsonb', nullable: true })
+    fundamentoNormativo: Array<{ tipo: string; cita: string; actualizacionPeriodica: boolean; mesRecordatorio?: number }> | null;
+
     @Column({ type: 'text', nullable: true })
     observaciones: string | null;
 

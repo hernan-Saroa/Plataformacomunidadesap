@@ -515,9 +515,11 @@ export class MicrosoftGraphService {
         messageId: string,
         body: string,
         attachments?: { name: string; contentBytes: string; contentType: string }[],
-        to?: string,
+        to?: string | string[],
         subject?: string,
         fromAccount?: string,
+        cc?: string[],
+        bcc?: string[],
     ): Promise<boolean> {
         // MOCK FOR DEV
         if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
@@ -525,7 +527,8 @@ export class MicrosoftGraphService {
             return true;
         }
 
-        if (!to || !subject) {
+        const toList = (Array.isArray(to) ? to : to ? [to] : []).map(addr => addr.trim()).filter(Boolean);
+        if (toList.length === 0 || !subject) {
             this.logger.error('replyToEmail: to and subject are required');
             throw new Error('to and subject are required to send a reply');
         }
@@ -542,6 +545,13 @@ export class MicrosoftGraphService {
                 contentType: att.contentType,
             })) || [];
 
+            const ccRecipients = cc?.length
+                ? cc.map(email => ({ emailAddress: { address: email.trim() } }))
+                : [];
+            const bccRecipients = bcc?.length
+                ? bcc.map(email => ({ emailAddress: { address: email.trim() } }))
+                : [];
+
             const message: any = {
                 message: {
                     subject,
@@ -549,7 +559,9 @@ export class MicrosoftGraphService {
                         contentType: 'HTML',
                         content: body,
                     },
-                    toRecipients: [{ emailAddress: { address: to } }],
+                    toRecipients: toList.map(addr => ({ emailAddress: { address: addr } })),
+                    ...(ccRecipients.length > 0 && { ccRecipients }),
+                    ...(bccRecipients.length > 0 && { bccRecipients }),
                     from: { emailAddress: { address: mailbox } },
                     ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                 },
@@ -560,7 +572,7 @@ export class MicrosoftGraphService {
                 .api(`/users/${mailbox}/sendMail`)
                 .post(message);
 
-            this.logger.log(`Reply sent from ${mailbox} to ${to} for original message ${messageId}`);
+            this.logger.log(`Reply sent from ${mailbox} to ${toList.join(', ')}${cc?.length ? ` (CC: ${cc.join(', ')})` : ''}${bcc?.length ? ` (BCC: ${bcc.length} oculto[s])` : ''} for original message ${messageId}`);
             return true;
         } catch (error) {
             this.logger.error(`Error replying to message ${messageId}:`, error);

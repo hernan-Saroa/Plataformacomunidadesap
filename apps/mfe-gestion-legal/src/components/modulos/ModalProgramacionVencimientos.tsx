@@ -57,8 +57,19 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
         );
     };
 
-    const plazoValido = plazoDesde >= 1 && plazoHasta >= plazoDesde && plazoHasta <= 31;
+    const plazoDesdeValido = plazoDesde >= 1;
+    const plazoHastaValido = plazoHasta <= 31;
+    const rangoValido = plazoHasta >= plazoDesde;
+    const plazoValido = plazoDesdeValido && plazoHastaValido && rangoValido;
     const puedeGuardar = plazoValido && mesesActivos.length > 0;
+
+    const plazoError = !plazoDesdeValido
+        ? 'El día inicial debe ser al menos 1.'
+        : !plazoHastaValido
+            ? 'El día final no puede ser mayor a 31.'
+            : !rangoValido
+                ? 'El día final debe ser mayor o igual al inicial.'
+                : '';
 
     const ocurrencias = useMemo(() => {
         if (!plazoValido || mesesActivos.length === 0) return [];
@@ -66,6 +77,9 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
     }, [periodicidad, plazoDesde, plazoHasta, tipoDias, mesesActivos, plazoValido]);
 
     const tipoDiasLabel = tipoDias === 'HABILES' ? 'hábiles' : 'calendario';
+    const anioActual = new Date().getFullYear();
+    const anioGenerado = ocurrencias[0]?.anio ?? anioActual;
+    const esAnioSiguiente = anioGenerado !== anioActual;
 
     const handleGuardar = () => {
         if (!puedeGuardar) return;
@@ -135,8 +149,8 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
                                 </SelectContent>
                             </Select>
                         </div>
-                        {!plazoValido && (
-                            <p className="text-xs text-red-600">El día final debe ser mayor o igual al inicial (1-31).</p>
+                        {plazoError && (
+                            <p className="text-xs text-red-600">{plazoError}</p>
                         )}
                     </div>
 
@@ -188,30 +202,39 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
                                 Seleccione al menos un mes y un plazo válido para previsualizar los vencimientos.
                             </p>
                         ) : (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {ocurrencias.map((o) => (
-                                    <div
-                                        key={o.mes}
-                                        className={`rounded-lg border-2 px-3 py-2 text-xs ${
-                                            o.esProximo
-                                                ? 'border-blue-500 bg-blue-50'
-                                                : o.esPasado
-                                                    ? 'border-gray-100 bg-gray-50 text-gray-400'
-                                                    : 'border-gray-200 bg-white'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between font-bold text-gray-700">
-                                            <span className={o.esPasado ? 'text-gray-400' : ''}>{NOMBRES_MESES_CORTOS[o.mes - 1]}</span>
-                                            {o.esProximo && (
-                                                <span className="text-[10px] font-bold text-blue-600 bg-blue-100 rounded-full px-1.5 py-0.5">Próximo</span>
-                                            )}
+                            <>
+                                {esAnioSiguiente && (
+                                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                        Los vencimientos de {anioActual} ya vencieron para esta configuración. Se muestran y se crearán para {anioGenerado}.
+                                    </p>
+                                )}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {ocurrencias.map((o) => (
+                                        <div
+                                            key={`${o.anio}-${o.mes}`}
+                                            className={`rounded-lg border-2 px-3 py-2 text-xs ${
+                                                o.esProximo
+                                                    ? 'border-blue-500 bg-blue-50'
+                                                    : o.esPasado
+                                                        ? 'border-gray-100 bg-gray-50 text-gray-400'
+                                                        : 'border-gray-200 bg-white'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between font-bold text-gray-700">
+                                                <span className={o.esPasado ? 'text-gray-400' : ''}>
+                                                    {NOMBRES_MESES_CORTOS[o.mes - 1]}{o.anio !== anioActual ? ` ${o.anio}` : ''}
+                                                </span>
+                                                {o.esProximo && (
+                                                    <span className="text-[10px] font-bold text-blue-600 bg-blue-100 rounded-full px-1.5 py-0.5">Próximo</span>
+                                                )}
+                                            </div>
+                                            <div className={o.esPasado ? 'text-gray-400' : 'text-gray-500'}>
+                                                días {String(plazoDesde).padStart(2, '0')}-{String(plazoHasta).padStart(2, '0')} {tipoDiasLabel}
+                                            </div>
                                         </div>
-                                        <div className={o.esPasado ? 'text-gray-400' : 'text-gray-500'}>
-                                            días {String(plazoDesde).padStart(2, '0')}-{String(plazoHasta).padStart(2, '0')} {tipoDiasLabel}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>

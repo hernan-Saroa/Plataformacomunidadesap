@@ -170,9 +170,11 @@ const ESTADOS_REGISTRO_OPTIONS = [
 
 const ESTADOS_REGISTRO_PRINCIPALES = [
   { key: '', label: 'Todos los estados' },
-  { key: 'Borrador', label: 'Borrador' },
+  // Ocultas a pedido: no deben salir para nadie por ahora. No borrar, solo
+  // comentadas por si se necesitan reactivar más adelante.
+  // { key: 'Borrador', label: 'Borrador' },
   { key: 'pendientes', label: 'Pendiente aprobacion' },
-  { key: 'concertacion', label: 'En Concertacion' },
+  // { key: 'concertacion', label: 'En Concertacion' },
   { key: 'Aprobado', label: 'Aprobado' },
   { key: 'Terminado', label: 'Terminado' },
   { key: 'Finalizado', label: 'Finalizado' },

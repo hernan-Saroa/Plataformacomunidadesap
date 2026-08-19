@@ -443,6 +443,15 @@ export function ModalDetalleSolicitudInforme({
               </div>
             </div>
 
+            {/* DESTINATARIO DEL INFORME */}
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 mb-1">
+                <Send className="w-3.5 h-3.5 text-gray-500" />
+                <p className="text-xs text-gray-500">Destinatario del Informe</p>
+              </div>
+              <p className="text-sm font-bold text-gray-900">{solicitud.destinatario || 'No especificado'}</p>
+            </div>
+
             {/* ETAPA ACTUAL Y CAMBIO DE ETAPA */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">

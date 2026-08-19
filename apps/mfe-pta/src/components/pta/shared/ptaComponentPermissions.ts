@@ -14,7 +14,9 @@ export type PTAComponentKey =
   | 'ext_gobierno'
   | 'complementarias'
   | 'complementarias_pregrado'
-  | 'complementarias_posgrado';
+  | 'complementarias_posgrado'
+  | 'complementarias_territorial'
+  | 'complementarias_gestion_profesoral';
 
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
@@ -31,11 +33,16 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   // académico-administrativas (AADM se fusionó como sección de complementarias).
   // Es el catch-all "sin programa asociado" (ver COMPLEMENTARIAS_COMPONENT_KEYS).
   complementarias: 'pta.approve.complementarias',
-  // Sin permiso propio: reutilizan el permiso de aprobación de Docencia por nivel
-  // (mismo aprobador Pregrado/Posgrado ya existente, según el tipo de actividad
-  // configurado en comp_actividades_v2 — ver clasificarComplementarias en el backend).
-  complementarias_pregrado: 'pta.approve.academica.pregrado',
-  complementarias_posgrado: 'pta.approve.academica.posgrado',
+  // EFDS-1353: permiso propio (antes reutilizaban el de Docencia por nivel, lo
+  // que hacía imposible separar quién revisa Complementarias de quién revisa
+  // Docencia). El ámbito lo define el tipo de actividad en comp_actividades_v2
+  // — ver clasificarComplementarias en el backend.
+  complementarias_pregrado: 'pta.approve.complementarias.pregrado',
+  complementarias_posgrado: 'pta.approve.complementarias.posgrado',
+  // Decanatura (Territorial): informativo; la autorización real se resuelve por
+  // nivel, igual que academica_territorial.
+  complementarias_territorial: 'pta.approve.complementarias.territorial',
+  complementarias_gestion_profesoral: 'pta.approve.complementarias.gestion_profesoral',
 };
 
 export const PTA_COMPONENT_KEYS = Object.keys(PTA_COMPONENT_PERMISSION) as PTAComponentKey[];
@@ -62,6 +69,32 @@ export const PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION: Record<PTANivelDocencia, s
   posgrado: 'pta.review.academica.territorial.posgrado',
 };
 
+/** EFDS-1353: mismo esquema por nivel para Complementarias de tipo Decanatura. */
+export const PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_APPROVE_PERMISSION: Record<PTANivelDocencia, string> = {
+  pregrado: 'pta.approve.complementarias.territorial.pregrado',
+  posgrado: 'pta.approve.complementarias.territorial.posgrado',
+};
+
+export const PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_REVIEW_PERMISSION: Record<PTANivelDocencia, string> = {
+  pregrado: 'pta.review.complementarias.territorial.pregrado',
+  posgrado: 'pta.review.complementarias.territorial.posgrado',
+};
+
+/** Componente territorial → permisos por nivel. Espejo del backend. */
+export const PTA_TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT: Record<string, {
+  approve: Record<PTANivelDocencia, string>;
+  review: Record<PTANivelDocencia, string>;
+}> = {
+  academica_territorial: {
+    approve: PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
+    review: PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  },
+  complementarias_territorial: {
+    approve: PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
+    review: PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  },
+};
+
 /**
  * ¿El predicado de permisos habilita la aprobación del componente dado? Caso
  * especial: 'academica_territorial' está habilitado si el usuario tiene
@@ -73,8 +106,9 @@ export function hasComponentPermission(
   can: (permission: string) => boolean,
   key: PTAComponentKey,
 ): boolean {
-  if (key === 'academica_territorial') {
-    return can(PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION.pregrado) || can(PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION.posgrado);
+  const porNivel = PTA_TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[key];
+  if (porNivel) {
+    return can(porNivel.approve.pregrado) || can(porNivel.approve.posgrado);
   }
   return can(PTA_COMPONENT_PERMISSION[key]);
 }
@@ -95,6 +129,8 @@ export const PTA_COMPLEMENTARIAS_COMPONENT_KEYS: PTAComponentKey[] = [
   'complementarias',
   'complementarias_pregrado',
   'complementarias_posgrado',
+  'complementarias_territorial',
+  'complementarias_gestion_profesoral',
 ];
 
 /**
@@ -117,6 +153,8 @@ export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
   complementarias: 1,
   complementarias_pregrado: 1,
   complementarias_posgrado: 1,
+  complementarias_territorial: 2,
+  complementarias_gestion_profesoral: 3,
   investigacion: 2,
   ext_capacitacion: 2,
   ext_procesos: 2,
@@ -271,6 +309,8 @@ export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReview
   complementarias: ['docencia', 'academico_administrativas'],
   complementarias_pregrado: ['docencia', 'academico_administrativas'],
   complementarias_posgrado: ['docencia', 'academico_administrativas'],
+  complementarias_territorial: ['docencia', 'academico_administrativas'],
+  complementarias_gestion_profesoral: ['docencia', 'academico_administrativas'],
   investigacion: ['general'],
   ext_capacitacion: ['general'],
   ext_procesos: ['general'],
@@ -292,12 +332,17 @@ export const PTA_COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   'academica_territorial:general': 'pta.review.academica.territorial',
   'complementarias:docencia': 'pta.review.complementarias.docencia',
   'complementarias:academico_administrativas': 'pta.review.complementarias.academico_administrativas',
-  // Sin permisos propios: mismo revisor de Docencia por nivel (ya existente) revisa
-  // también las dos subsecciones de Complementarias de su nivel.
-  'complementarias_pregrado:docencia': 'pta.review.academica.pregrado',
-  'complementarias_pregrado:academico_administrativas': 'pta.review.academica.pregrado',
-  'complementarias_posgrado:docencia': 'pta.review.academica.posgrado',
-  'complementarias_posgrado:academico_administrativas': 'pta.review.academica.posgrado',
+  // EFDS-1353: permisos de revisión propios (antes reutilizaban los de Docencia).
+  'complementarias_pregrado:docencia': 'pta.review.complementarias.pregrado',
+  'complementarias_pregrado:academico_administrativas': 'pta.review.complementarias.pregrado',
+  'complementarias_posgrado:docencia': 'pta.review.complementarias.posgrado',
+  'complementarias_posgrado:academico_administrativas': 'pta.review.complementarias.posgrado',
+  // Territorial: informativo; la autorización real se resuelve por nivel vía
+  // PTA_TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT.
+  'complementarias_territorial:docencia': 'pta.review.complementarias.territorial',
+  'complementarias_territorial:academico_administrativas': 'pta.review.complementarias.territorial',
+  'complementarias_gestion_profesoral:docencia': 'pta.review.complementarias.gestion_profesoral',
+  'complementarias_gestion_profesoral:academico_administrativas': 'pta.review.complementarias.gestion_profesoral',
   'investigacion:general': 'pta.review.investigacion',
   'ext_capacitacion:general': 'pta.review.extension.capacitacion',
   'ext_procesos:general': 'pta.review.extension.procesos_seleccion',
@@ -315,16 +360,18 @@ export function reviewPermissionFor(componente: string, subseccion: string): str
 
 /**
  * ¿El predicado de permisos habilita la revisión de esta subsección? Mismo
- * caso especial que hasComponentPermission: 'academica_territorial:general' se
- * habilita con cualquiera de los dos permisos por nivel.
+ * caso especial que hasComponentPermission: en los componentes territoriales
+ * (Docencia y, desde EFDS-1353, Complementarias de tipo Decanatura) basta
+ * cualquiera de los dos permisos por nivel.
  */
 export function hasReviewPermission(
   can: (permission: string) => boolean,
   componente: string,
   subseccion: string,
 ): boolean {
-  if (componente === 'academica_territorial' && subseccion === 'general') {
-    return can(PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION.pregrado) || can(PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION.posgrado);
+  const porNivel = PTA_TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[componente];
+  if (porNivel) {
+    return can(porNivel.review.pregrado) || can(porNivel.review.posgrado);
   }
   const permission = PTA_COMPONENT_REVIEW_PERMISSION[`${componente}:${subseccion}`];
   return !!permission && can(permission);
