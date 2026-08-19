@@ -65,8 +65,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
     const tiposFuenteNormativaDisponibles = getTiposFuenteNormativaActivos();
     const [loading, setLoading] = useState(false);
     const [profesionales, setProfesionales] = useState<any[]>([]);
-    const [procesosModulo, setProcesosModulo] = useState<any[]>([]);
-    const [loadingProcesos, setLoadingProcesos] = useState(false);
     const [programacion, setProgramacion] = useState<ProgramacionVencimientos | null>(null);
     const [modalProgramacionOpen, setModalProgramacionOpen] = useState(false);
     const [formData, setFormData] = useState({
@@ -74,7 +72,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         fechaVencimiento: '',
         prioridad: 'MEDIA',
         observaciones: '',
-        numeroRadicado: '',
         responsableId: '',
         origenModulo: '',
         destinatario: ''
@@ -88,7 +85,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             fechaVencimiento: '',
             prioridad: 'MEDIA',
             observaciones: '',
-            numeroRadicado: '',
             responsableId: '',
             origenModulo: '',
             destinatario: ''
@@ -113,38 +109,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             });
         }
     }, [open]);
-
-    // Cargar procesos del módulo seleccionado
-    useEffect(() => {
-        if (!open || !formData.origenModulo) {
-            setProcesosModulo([]);
-            return;
-        }
-        const loadProcesos = async () => {
-            setLoadingProcesos(true);
-            try {
-                let data: any[] = [];
-                if (formData.origenModulo === 'JUZGAMIENTO') {
-                    data = await legalService.getJuzgamientoProcesos();
-                } else if (formData.origenModulo === 'DEFENSA_JUDICIAL') {
-                    const raw = await legalService.getExpedientes({ estado: 'ACTIVO' });
-                    data = Array.isArray(raw) ? raw : [];
-                } else if (formData.origenModulo === 'ASESORIA') {
-                    data = await legalService.getConsultasJuridicas();
-                } else if (formData.origenModulo === 'ORGANOS_CONTROL') {
-                    data = await legalService.getRequerimientosOC();
-                } else if (formData.origenModulo === 'PROCESOS_COACTIVOS') {
-                    data = await legalService.getProcesosCoactivos();
-                }
-                setProcesosModulo(Array.isArray(data) ? data : []);
-            } catch {
-                setProcesosModulo([]);
-            } finally {
-                setLoadingProcesos(false);
-            }
-        };
-        loadProcesos();
-    }, [open, formData.origenModulo]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -271,32 +235,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                             </SelectContent>
                         </Select>
                     </div>
-
-                    {/* Proceso del módulo */}
-                    {formData.origenModulo && (
-                        <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-                                <Briefcase className="w-4 h-4" />
-                                Proceso Vinculado (Opcional)
-                            </Label>
-                            <Select
-                                value={formData.numeroRadicado}
-                                onValueChange={(val: string) => setFormData({ ...formData, numeroRadicado: val === 'ninguno' ? '' : val })}
-                            >
-                                <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
-                                    <SelectValue placeholder={loadingProcesos ? 'Cargando...' : 'Seleccione un proceso...'} />
-                                </SelectTrigger>
-                                <SelectContent className="bg-white max-h-[200px] z-[9999]">
-                                    <SelectItem value="ninguno">Sin vincular</SelectItem>
-                                    {procesosModulo.map((p: any) => (
-                                        <SelectItem key={p.id || p.radicado} value={p.radicado || p.id}>
-                                            {p.radicado || p.id} — {p.investigado || p.demandante || p.disciplinado || p.solicitante || 'N/A'}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
 
                     {/* Nombre de la actuación */}
                     <div className="space-y-2">
