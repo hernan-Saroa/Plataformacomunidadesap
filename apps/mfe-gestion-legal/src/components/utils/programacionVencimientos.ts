@@ -91,14 +91,7 @@ export function fechaPorNumeroDiaDelMes(anio: number, mes: number, numeroDia: nu
     return ultimaFechaHabil;
 }
 
-/**
- * Genera los vencimientos (uno por mes activo) para el año indicado,
- * marcando cuáles ya pasaron y cuál es el próximo a vencer.
- */
-export function generarOcurrencias(config: ProgramacionVencimientos, anio: number = new Date().getFullYear()): OcurrenciaVencimiento[] {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-
+function generarOcurrenciasParaAnio(config: ProgramacionVencimientos, anio: number, hoy: Date): OcurrenciaVencimiento[] {
     const meses = Array.from(new Set(config.mesesActivos)).sort((a, b) => a - b);
 
     const ocurrencias: OcurrenciaVencimiento[] = meses.map((mes) => {
@@ -118,6 +111,29 @@ export function generarOcurrencias(config: ProgramacionVencimientos, anio: numbe
     if (proximo) proximo.esProximo = true;
 
     return ocurrencias;
+}
+
+/**
+ * Genera los vencimientos (uno por mes activo) para el año indicado,
+ * marcando cuáles ya pasaron y cuál es el próximo a vencer.
+ *
+ * Si TODAS las ocurrencias del año de referencia ya vencieron (por ejemplo,
+ * una periodicidad Anual/Semestral cuyo(s) mes(es) configurado(s) ya pasaron
+ * este año), se generan en su lugar las ocurrencias del año siguiente, de modo
+ * que siempre haya al menos un vencimiento futuro disponible para crear.
+ */
+export function generarOcurrencias(config: ProgramacionVencimientos, anio: number = new Date().getFullYear()): OcurrenciaVencimiento[] {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    if (config.mesesActivos.length === 0) return [];
+
+    const ocurrenciasAnioActual = generarOcurrenciasParaAnio(config, anio, hoy);
+    if (ocurrenciasAnioActual.some((o) => !o.esPasado)) {
+        return ocurrenciasAnioActual;
+    }
+
+    return generarOcurrenciasParaAnio(config, anio + 1, hoy);
 }
 
 /** Sólo las ocurrencias que aún no han vencido (las únicas que tiene sentido crear) */

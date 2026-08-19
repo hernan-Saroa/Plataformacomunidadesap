@@ -3821,6 +3821,18 @@ export class PtaService {
       }
     }
 
+    // La inactivación RUND es por período: bloquea nuevos borradores del período
+    // afectado, pero no elimina la cuenta ni impide consultar los PTA históricos.
+    if (!id) {
+      const perfilRundPeriodo = await this.docenteRepo.findOne({ where: { id: docenteId } as any });
+      const mismoPeriodo = String(perfilRundPeriodo?.periodoCarga || '') === String(periodo || '');
+      if (mismoPeriodo && String(perfilRundPeriodo?.estado || '').toUpperCase() === 'INACTIVO') {
+        throw new BadRequestException(
+          `El perfil RUND del docente está inactivo para el período ${periodo}. Debe reactivarse con soporte antes de crear o guardar un nuevo PTA.`,
+        );
+      }
+    }
+
     // Enrich identity if missing
     if (!input.docente_nombre) {
       input.docente_nombre = dbName;

@@ -29,6 +29,8 @@ interface ReportePTAInstitucionalProps {
   periodoAcademico?: any;
   /** Registros reales de aprobación por componente (getComponentesAprobacion). Opcional. */
   componentesAprobacion?: any[];
+  /** Desglose por (territorial, nivel) de Docencia Territorial (getAprobacionTerritorial). Opcional. */
+  aprobacionTerritorial?: any[];
 }
 
 const NAVY = '#203764';
@@ -481,7 +483,7 @@ function GraficoDocenciaUbicacion({ titulo, subtitulo, data, series }: {
 
 export function ReportePTAInstitucional({
   pta, userPerfil, onClose, isParcial = true, certificadoId, signedAt, periodoAcademico,
-  componentesAprobacion = [],
+  componentesAprobacion = [], aprobacionTerritorial = [],
 }: ReportePTAInstitucionalProps) {
   const reporteDocumentoRef = useRef<HTMLDivElement | null>(null);
   const [exportandoPdf, setExportandoPdf] = useState(false);
@@ -573,17 +575,57 @@ export function ReportePTAInstitucional({
   const totalAprobadas = componentes.reduce((s, c) => s + c.aprobadas, 0);
   const pctGlobal = horasProg > 0 ? Math.min(Math.round((totalAprobadas / horasProg) * 100), 100) : 0;
 
-  // ── Última revisión real (registros de aprobación por componente) ──
-  const revisiones = (componentesAprobacion || [])
-    .filter((r: any) => {
-      if (!r || !(r.fecha_aprobacion || r.fechaAprobacion) || !(r.aprobador_nombre || r.aprobadorNombre)) return false;
+  // ── Revisiones reales por sub-componente (registros de aprobación) ──
+  // Docencia/Extensión/Complementarias se aprueban por sub-componente (Pregrado,
+  // Posgrado, Territorial); el pie debe justificar CADA decisión (quién y
+  // cuándo), no solo la más reciente, para que el documento quede respaldado.
+  const coarseKeyDe = (key: string): string => {
+    if (key.startsWith('academica')) return 'academica';
+    if (key.startsWith('ext_')) return 'extension';
+    if (key.startsWith('complementarias')) return 'complementarias';
+    return key;
+  };
+  const SUBCOMP_LABELS: Record<string, string> = {
+    academica_pregrado: 'Docencia (Pregrado)',
+    academica_posgrado: 'Docencia (Posgrado)',
+    academica_territorial: 'Docencia (Territorial)',
+    investigacion: 'Investigación',
+    ext_capacitacion: 'Extensión — Capacitación',
+    ext_procesos: 'Extensión — Procesos de Selección',
+    ext_fortalecimiento: 'Extensión — Fortalecimiento',
+    ext_gobierno: 'Extensión — Alto Gobierno',
+    complementarias: 'Complementarias',
+    complementarias_pregrado: 'Complementarias (Pregrado)',
+    complementarias_posgrado: 'Complementarias (Posgrado)',
+  };
+  const detalleRevisiones = (componentesAprobacion || [])
+    .filter((r: any) => r && (r.componente || r.key))
+    .map((r: any) => {
       const key = String(r.componente || r.key || '');
-      return componentes.some(c => c.key === key || (c.key === 'extension' && key.startsWith('ext_')));
+      const fecha = r.fecha_aprobacion || r.fechaAprobacion;
+      return {
+        key,
+        label: SUBCOMP_LABELS[key] || key,
+        aprobador: r.aprobador_nombre || r.aprobadorNombre || null,
+        fecha: fecha ? fmtFechaReporte(String(fecha)) : null,
+        fechaOrden: fecha ? String(fecha) : '',
+      };
     })
-    .sort((a: any, b: any) => String(b.fecha_aprobacion || b.fechaAprobacion).localeCompare(String(a.fecha_aprobacion || a.fechaAprobacion)));
-  const ultimaRevision = revisiones[0] || null;
-  const fechaRevision = ultimaRevision ? fmtFechaReporte(String(ultimaRevision.fecha_aprobacion || ultimaRevision.fechaAprobacion)) : null;
-  const responsableRevision = ultimaRevision ? (ultimaRevision.aprobador_nombre || ultimaRevision.aprobadorNombre) : null;
+    .filter(r => r.aprobador && r.fecha && componentes.some(c => c.key === coarseKeyDe(r.key)));
+  // Docencia con 2+ Territoriales: cada (territorial, nivel) se aprueba aparte.
+  const detalleTerritorial = componentes.some(c => c.key === 'academica')
+    ? (aprobacionTerritorial || [])
+      .filter((t: any) => t && t.estado === 'aprobado' && t.actorNombre && t.fechaDecision)
+      .map((t: any) => ({
+        key: 'academica_territorial',
+        label: `Docencia Territorial — ${t.territorialNombre || 'Territorial'} (${t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado'})`,
+        aprobador: t.actorNombre,
+        fecha: fmtFechaReporte(String(t.fechaDecision)),
+        fechaOrden: String(t.fechaDecision),
+      }))
+    : [];
+  const detalleCompleto = [...detalleRevisiones, ...detalleTerritorial]
+    .sort((a, b) => b.fechaOrden.localeCompare(a.fechaOrden));
 
   const hayDetalle = asignaturas.length > 0 || proyectosInv.length > 0 || actInv.length > 0 || extActs.length > 0 || compActs.length > 0;
 
@@ -1623,12 +1665,25 @@ export function ReportePTAInstitucional({
               </div>
                   </div>
 
-                  {/* ── Pie: revisión Gestión Profesoral (datos reales o pendiente) ── */}
-                  <div className="reporte-pta-review-footer" style={{ display: 'flex', flexWrap: 'wrap', fontSize: '0.68rem', fontWeight: 700, background: '#111827', color: '#fff', padding: '6px 8px', gap: 8, alignItems: 'center' }}>
-                    <div>REVISIÓN GRUPO DE GESTIÓN PROFESORAL</div>
-                    <div style={{ flex: 1, borderLeft: '1px solid #4B5563', paddingLeft: 12, display: 'flex', flexWrap: 'wrap', gap: 16, minWidth: 200 }}>
-                      <div>FECHA REVISIÓN<br /><span style={{ fontWeight: 400, fontSize: '0.62rem', color: '#D1D5DB' }}>{fechaRevision || 'Pendiente'}</span></div>
-                      <div>RESPONSABLE REVISIÓN<br /><span style={{ fontWeight: 400, fontSize: '0.62rem', color: '#D1D5DB' }}>{responsableRevision || 'Pendiente de revisión'}</span></div>
+                  {/* ── Pie: revisión Gestión Profesoral, detalle por sub-componente/territorial ── */}
+                  <div className="reporte-pta-review-footer" style={{ display: 'flex', flexWrap: 'wrap', fontSize: '0.68rem', fontWeight: 700, background: '#111827', color: '#fff', padding: '6px 8px', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ paddingTop: 2, whiteSpace: 'nowrap' }}>REVISIÓN GRUPO DE GESTIÓN PROFESORAL</div>
+                    <div style={{ flex: 1, borderLeft: '1px solid #4B5563', paddingLeft: 12, minWidth: 200 }}>
+                      {detalleCompleto.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                          {detalleCompleto.map((d, i) => (
+                            <div key={`${d.key}-${i}`} style={{ minWidth: 150 }}>
+                              <div style={{ fontSize: '0.6rem', fontWeight: 800 }}>{d.label}</div>
+                              <div style={{ fontWeight: 400, fontSize: '0.6rem', color: '#D1D5DB' }}>{d.aprobador} · {d.fecha}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                          <div>FECHA REVISIÓN<br /><span style={{ fontWeight: 400, fontSize: '0.62rem', color: '#D1D5DB' }}>Pendiente</span></div>
+                          <div>RESPONSABLE REVISIÓN<br /><span style={{ fontWeight: 400, fontSize: '0.62rem', color: '#D1D5DB' }}>Pendiente de revisión</span></div>
+                        </div>
+                      )}
                     </div>
                     <div style={{ borderLeft: '1px solid #4B5563', paddingLeft: 12, fontSize: '0.62rem', display: 'flex', alignItems: 'center' }}>
                       {pctGlobal >= 100 ? 'APRUEBA' : ['Borrador', 'BORRADOR'].includes(String(pta?.estado)) ? 'BORRADOR' : 'EN REVISIÓN'}
