@@ -45,11 +45,31 @@ function normalizeEstado(value: unknown) {
     .replace(/\s+/g, '_');
 }
 
+// EFDS-1408: la solicitud de edición reabre componentes YA aprobados, así que
+// solo aplica una vez el PTA completó su aprobación (el estado solo pasa a
+// Aprobado cuando TODOS los componentes están aprobados, así que esto también
+// cubre la aprobación parcial). Mientras está en creación o en medio de la
+// aprobación, el docente corrige por la vía de devolución de componente.
+//
+// La regla vive en el backend (ptaAdmiteSolicitudEdicion en pta.service.ts) y
+// llega en el DTO como `admite_solicitud_edicion`: es la MISMA función que
+// valida el endpoint, de modo que UI y servicio no pueden desincronizarse.
+// El espejo de estados de abajo solo actúa como respaldo para payloads que
+// todavía no traigan el flag.
+const ESTADOS_PTA_APROBADO_TOTAL = new Set([
+  'APROBADO',
+  'APROBADO_DEF',
+  'EN_FIRME',
+  'RADICADO',
+  'EN_EJECUCION',
+  'FINALIZADO',
+  'TERMINADO',
+]);
+
 function admiteSolicitudEdicion(pta: any) {
-  const estado = normalizeEstado(pta?.estado);
-  // El borrador ya es editable sin permiso. Desde el primer envío, el docente
-  // puede solicitar una corrección aunque la aprobación todavía esté en curso.
-  return Boolean(pta?.id && estado && estado !== 'BORRADOR');
+  if (!pta?.id) return false;
+  if (typeof pta.admite_solicitud_edicion === 'boolean') return pta.admite_solicitud_edicion;
+  return ESTADOS_PTA_APROBADO_TOTAL.has(normalizeEstado(pta?.estado));
 }
 
 export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas = [], onClose, onSuccess }: SolicitudPTAModalProps) {
@@ -227,7 +247,7 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
                         <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#111827' }}>{c.label}</div>
                         <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2 }}>
                           {disabled
-                            ? 'No tienes un PTA enviado disponible. Los borradores se editan directamente.'
+                            ? 'Disponible solo cuando tu PTA esté aprobado en su totalidad. Mientras esté en creación o en proceso de aprobación, corrige directamente en el formulario.'
                             : c.desc}
                         </div>
                       </div>

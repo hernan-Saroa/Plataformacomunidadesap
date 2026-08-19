@@ -498,6 +498,7 @@ export interface SolicitudInforme {
   etapa: EtapaSolicitudInforme;
   tipoInforme: string;
   enteSolicitante: string;
+  destinatario?: string;
   radicadoExterno: string;
   asunto: string;
   descripcion?: string;

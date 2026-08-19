@@ -941,16 +941,28 @@ export class CorreosJuridicosService {
     /**
      * Reply to an email — maintains thread via Graph API
      */
-    async replyEmail(correoId: string, body: string, attachments?: { name: string; contentBytes: string; contentType: string }[], req?: any): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+    async replyEmail(
+        correoId: string,
+        body: string,
+        attachments?: { name: string; contentBytes: string; contentType: string }[],
+        req?: any,
+        to?: string | string[],
+        cc?: string[],
+        bcc?: string[],
+    ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         const original = await this.correoRepo.findOne({ where: { id: correoId } });
         if (!original) throw new NotFoundException('Correo original no encontrado');
+
+        // Si no se especifica destinatario, se responde al remitente original (comportamiento por defecto).
+        const toList = (Array.isArray(to) ? to : to ? [to] : [original.remitenteEmail]).filter(Boolean);
+        const destinatariosTo = toList.join(', ');
 
         // La respuesta sale desde la cuenta del BUZÓN del correo original (depende del tab).
         const fromAccount = this.graphService.resolveAccount(original.buzon);
 
         // Send reply via Graph API (sendMail — only requires Mail.Send permission)
         const replySubject = original.asunto.startsWith('RE:') ? original.asunto : `RE: ${original.asunto}`;
-        const sent = await this.graphService.replyToEmail(original.graphMessageId, body, attachments, original.remitenteEmail, replySubject, fromAccount);
+        const sent = await this.graphService.replyToEmail(original.graphMessageId, body, attachments, toList, replySubject, fromAccount, cc, bcc);
         if (!sent) return { success: false };
 
         // Save reply record in DB
@@ -960,8 +972,9 @@ export class CorreosJuridicosService {
                 asunto: original.asunto.startsWith('RE:') ? original.asunto : `RE: ${original.asunto}`,
                 remitenteEmail: fromAccount,
                 remitenteNombre: 'Oficina Jurídica ESAP',
-                destinatariosTo: original.remitenteEmail,
-                destinatarios: original.destinatarios,
+                destinatariosTo,
+                destinatarios: cc?.length ? JSON.stringify(cc) : original.destinatarios,
+                destinatariosCco: bcc?.length ? JSON.stringify(bcc) : undefined,
                 fechaRecepcion: new Date(),
                 cuerpoHtml: body,
                 cuerpoTexto: body?.replace(/<[^>]*>/g, '') || '',
@@ -985,8 +998,8 @@ export class CorreosJuridicosService {
             await this.correoRepo.save(original);
             await this.registrarAccion(original.id, 'RESPONDIDO', `Respuesta enviada (${savedReply.id})`);
             // ── Trazabilidad: Registrar ENVIADO en la respuesta ──
-            await this.registrarAccion(savedReply.id, 'ENVIADO', `Respuesta enviada a ${original.remitenteEmail}`, 'Sistema');
-            await this.injectTrackingIntoEmail(savedReply, original.remitenteEmail, req);
+            await this.registrarAccion(savedReply.id, 'ENVIADO', `Respuesta enviada a ${destinatariosTo}`, 'Sistema');
+            await this.injectTrackingIntoEmail(savedReply, destinatariosTo, req);
 
             this.logger.log(`Reply saved: ${savedReply.id} -> parent: ${original.id}`);
             return { success: true, correo: savedReply };
