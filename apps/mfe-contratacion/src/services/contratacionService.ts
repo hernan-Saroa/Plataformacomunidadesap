@@ -2,7 +2,6 @@ import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
   CamposFaltantesError,
-  CatalogoCriterios,
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
@@ -13,7 +12,6 @@ import {
   EstadoMipyme,
   EstadoComite,
   EstadoEvaluacion,
-  EvaluarDimension,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -25,7 +23,7 @@ import {
   Cobertura,
   Matriz,
   FlujoModalidad,
-  GuardarCriterio,
+  RegistrarResultado,
   CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
@@ -774,48 +772,56 @@ export const contratacionService = {
   // ----------------------------------- evaluación de ofertas (actividad 6.3) ---
 
   /**
-   * Estado de la evaluación: criterios, ofertas, lo que va evaluado de cada
-   * una y en qué dimensiones puede calificar quien consulta.
+   * Estado de la evaluación: las ofertas de la lista publicada, el resultado
+   * que registró el comité con su informe y sus evidencias, y si quien consulta
+   * integra ese comité.
    */
   evaluacion: (procesoId: string) =>
     pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion`),
 
-  /** El juicio de una dimensión entera. Reevaluar sustituye el anterior. */
-  evaluarOferta: (procesoId: string, oferenteId: string, datos: EvaluarDimension) =>
-    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/ofertas/${oferenteId}`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
-  // --------------------------- administración de criterios de evaluación ---
-
-  /** El catálogo entero, activos e inactivos, con el total de cada modalidad. */
-  criteriosEvaluacion: () => pedir<CatalogoCriterios>('/criterios-evaluacion'),
-
-  crearCriterio: (datos: GuardarCriterio) =>
-    pedir<CatalogoCriterios>('/criterios-evaluacion', {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
   /**
-   * Corrige un criterio, o lo marca confirmado.
+   * Registra el resultado con el informe del comité.
    *
-   * Sin `confirmado`, la edición lo deja sin confirmar: la ratificación es
-   * sobre un texto y una cifra concretos, no sobre la fila.
+   * Va como multipart porque el informe viaja en la misma petición: sin él el
+   * resultado sería la opinión de quien lo digitó. Los números se envían solo
+   * cuando vienen —`FormData` los convertiría en cadena vacía, y una escala en
+   * blanco no es un cero.
    */
-  actualizarCriterio: (id: string, datos: GuardarCriterio) =>
-    pedir<CatalogoCriterios>(`/criterios-evaluacion/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(datos),
+  registrarResultadoEvaluacion: (procesoId: string, datos: RegistrarResultado, informe: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', informe);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('justificacion', datos.justificacion);
+    if (datos.puntajeObtenido != null) {
+      cuerpo.append('puntajeObtenido', String(datos.puntajeObtenido));
+    }
+    if (datos.puntajeMaximo != null) cuerpo.append('puntajeMaximo', String(datos.puntajeMaximo));
+    if (datos.valorEvaluado != null) cuerpo.append('valorEvaluado', String(datos.valorEvaluado));
+
+    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto el resultado vigente; el anterior queda con su motivo. */
+  rectificarResultadoEvaluacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado/rectificar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
     }),
 
-  /** No hay borrado: un criterio ya usado se retira, y lo evaluado se conserva. */
-  cambiarActivoCriterio: (id: string, activo: boolean) =>
-    pedir<CatalogoCriterios>(`/criterios-evaluacion/${id}/activo`, {
-      method: 'PUT',
-      body: JSON.stringify({ activo }),
-    }),
+  /** Una evidencia a la vez: cada una la sube quien la produjo. */
+  cargarEvidenciaEvaluacion: (procesoId: string, descripcion: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('descripcion', descripcion);
+
+    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado/evidencias`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };
