@@ -22,6 +22,7 @@ import { PanelComite } from '../comite/PanelComite';
 import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
+import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -69,6 +70,8 @@ const NUMERAL_CONTRATO = '8.1';
 
 /** Designación del supervisor del contrato (EFDS-1165). */
 const NUMERAL_SUPERVISOR = '8.2';
+/** Expedición del registro presupuestal del contrato (EFDS-1163). */
+const NUMERAL_RP = '8.3';
 /** Constitución de garantías con sus amparos (EFDS-1164). */
 const NUMERAL_GARANTIAS = '8.4';
 /** Registro de la ARL para contratistas persona natural (EFDS-1164). */
@@ -78,6 +81,7 @@ const NUMERAL_ARL = '8.5';
 const NUMERALES_ETAPA_8 = [
   NUMERAL_CONTRATO,
   NUMERAL_SUPERVISOR,
+  NUMERAL_RP,
   NUMERAL_GARANTIAS,
   NUMERAL_ARL,
 ];
@@ -376,6 +380,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelComite
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_RP ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelRegistroPresupuestal
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

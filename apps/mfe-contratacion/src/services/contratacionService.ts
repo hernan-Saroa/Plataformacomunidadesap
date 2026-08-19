@@ -19,6 +19,9 @@ import {
   EstadoLegalizacion,
   EstadoSupervision,
   DatosSupervisor,
+  EstadoRegistroPresupuestal,
+  DatosSolicitudRp,
+  DatosExpedicionRp,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -400,6 +403,50 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+  // ---------------------- etapa 8 · registro presupuestal (8.3) -------------
+
+  /** En qué punto va el RP del contrato y si el monto alcanza a cubrirlo. */
+  registroPresupuestal: (procesoId: string) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal`),
+
+  /** Radica la solicitud ante la Dirección Financiera. */
+  solicitarRp: (procesoId: string, datos: DatosSolicitudRp) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** La Financiera confirma que hay recursos que comprometer. */
+  verificarRp: (procesoId: string) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/verificar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  /** Expide el RP con su número; el soporte es opcional, como en el CDP. */
+  expedirRp: (procesoId: string, datos: DatosExpedicionRp, soporte: File | null) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoRegistroPresupuestal>(
+      `/procesos/${procesoId}/registro-presupuestal/expedir`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Rechaza la solicitud con su motivo. */
+  rechazarRp: (procesoId: string, observaciones: string) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
 
   // ---------------------- etapa 8 · supervisión del contrato (8.2) ----------
 

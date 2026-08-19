@@ -1179,3 +1179,46 @@ export interface DatosSupervisor {
   email?: string;
   fechaDesignacion: string;
 }
+
+// ---------------------- etapa 8 · registro presupuestal (8.3) --------------
+
+/** Mismo ciclo que el CDP: es el mismo tramite en otro momento. */
+export type EstadoRp = 'SOLICITADO' | 'VERIFICADO' | 'EXPEDIDO' | 'RECHAZADO' | 'ANULADO';
+
+export interface RegistroPresupuestal {
+  id: string;
+  numero: string | null;
+  valor: number | null;
+  rubro: string | null;
+  fechaExpedicion: string | null;
+  vigenciaFiscal: number | null;
+  estado: EstadoRp;
+  observaciones: string | null;
+  solicitadoPor: string | null;
+  expedidoPor: string | null;
+}
+
+export interface EstadoRegistroPresupuestal {
+  suscrito: boolean;
+  motivoNoSuscrito: string | null;
+  contrato?: { numero: string; valor: number };
+  puedeSolicitar?: boolean;
+  rp: RegistroPresupuestal | null;
+  expedido: boolean;
+  /** Avisa si el RP no alcanza a cubrir el valor del contrato. */
+  advertencia: string | null;
+}
+
+export interface DatosSolicitudRp {
+  rubro?: string;
+  valor?: number;
+  vigenciaFiscal?: number;
+}
+
+export interface DatosExpedicionRp {
+  numero: string;
+  valor: number;
+  fechaExpedicion: string;
+  rubro?: string;
+  vigenciaFiscal?: number;
+}
