@@ -27,7 +27,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2, ChevronRight, ChevronLeft, ChevronDown,
@@ -324,6 +324,30 @@ const formatDateLabel = (dateString?: string) => {
   return `${day}/${month}/${year}`;
 };
 
+// Helper para formatear fechas a YYYY-MM-DD requeridas por HTML5 <input type="date">
+const formatDateForInput = (d: any): string => {
+  if (!d) return '';
+  if (typeof d === 'string') {
+    const trimmed = d.trim();
+    // Soporte para formato DD/MM/YYYY
+    if (trimmed.includes('/')) {
+      const parts = trimmed.split('/');
+      if (parts.length === 3) {
+        const [day, month, year] = parts;
+        if (year && year.length === 4) {
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+      }
+    }
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  if (d instanceof Date && !isNaN(d.getTime())) {
+    return d.toISOString().split('T')[0];
+  }
+  return '';
+};
+
 export function FormularioAuditoriaUnificado({
   open,
   onClose,
@@ -333,60 +357,80 @@ export function FormularioAuditoriaUnificado({
 }: FormularioAuditoriaUnificadoProps) {
   const vigenciaPlanCtx = usePlanAnualVigenciaContextOptional();
   const [pasoActual, setPasoActual] = useState(1);
-  const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
-    codigo: initialData?.codigo || '',
-    tipoAuditoria: initialData?.tipoAuditoria || '',
-    titulo: initialData?.titulo || '',
-    descripcion: initialData?.descripcion || '',
-    territorial: initialData?.territorial || '',
-    areaObjetivo: initialData?.areaObjetivo || '',
-    procesoAuditado: initialData?.procesoAuditado || '',
-    alcance: initialData?.alcance || '',
-    responsableArea: initialData?.responsableArea,
-    auditorLider: initialData?.auditorLider || '',
-    auditorAsignado: initialData?.auditorAsignado || '',
-    equipoAuditores: initialData?.equipoAuditores || [],
-    supervisorAsignado: initialData?.supervisorAsignado || '',
-    // Etapas del cronograma
-    fechaInicioPlaneacion: initialData?.fechaInicioPlaneacion || initialData?.fechaInicio || '',
-    fechaFinPlaneacion: initialData?.fechaFinPlaneacion || '',
-    fechaInicioEjecucion: initialData?.fechaInicioEjecucion || '',
-    fechaFinEjecucion: initialData?.fechaFinEjecucion || '',
-    fechaInicioComunicacion: initialData?.fechaInicioComunicacion || '',
-    fechaFinComunicacion: initialData?.fechaFinComunicacion || initialData?.fechaFin || '',
-    // Legacy
-    fechaInicio: initialData?.fechaInicio || '',
-    fechaFin: initialData?.fechaFin || '',
-    hitos: initialData?.hitos || [],
-    objetivos: initialData?.objetivos || [],
-    criteriosAuditoria: initialData?.criteriosAuditoria || [],
-    normatividadAplicable: initialData?.normatividadAplicable || [],
-    metodologia: initialData?.metodologia || '',
-    recursos: initialData?.recursos || [],
-    presupuestoEstimado: initialData?.presupuestoEstimado || '',
-    productosEsperados: initialData?.productosEsperados || [],
-    nivelRiesgo: initialData?.nivelRiesgo || 'Medio',
-    riesgosIdentificados: initialData?.riesgosIdentificados || [],
-    riesgosAsociados: initialData?.riesgosAsociados || [],
-    controlesAplicar: initialData?.controlesAplicar || [],
-    hallazgos: initialData?.hallazgos || [],
-    incluirHallazgosPreliminares: initialData?.incluirHallazgosPreliminares || false,
-    vinculadaPlanAnual: initialData?.vinculadaPlanAnual || false,
-    planAnualId: initialData?.planAnualId || '',
-    planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
-    rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
-    estadoKanban: initialData?.estadoKanban || 'Programa Anual' // Por defecto crear en Plan Anual
-  });
 
+  const buildInitialState = (data?: Partial<AuditoriaUnificadaFormData>): AuditoriaUnificadaFormData => {
+    let inicioP = formatDateForInput(data?.fechaInicioPlaneacion || data?.fechaInicio);
+    let finP = formatDateForInput(data?.fechaFinPlaneacion);
+    let inicioE = formatDateForInput(data?.fechaInicioEjecucion);
+    let finE = formatDateForInput(data?.fechaFinEjecucion);
+    let inicioC = formatDateForInput(data?.fechaInicioComunicacion);
+    let finC = formatDateForInput(data?.fechaFinComunicacion || data?.fechaFin);
+
+    // Auto-calcular etapas restantes si existe inicio de planeación pero no fin de planeación
+    if (inicioP && !finP) {
+      finP = addDaysToDateString(inicioP, 27); // 4 semanas
+      if (!inicioE) inicioE = addDaysToDateString(finP, 1);
+      if (!finE) finE = addDaysToDateString(inicioE, 27); // 4 semanas
+      if (!inicioC) inicioC = addDaysToDateString(finE, 1);
+      if (!finC) finC = addDaysToDateString(inicioC, 34); // 5 semanas
+    }
+
+    return {
+      codigo: data?.codigo || '',
+      tipoAuditoria: data?.tipoAuditoria || '',
+      titulo: data?.titulo || '',
+      descripcion: data?.descripcion || '',
+      territorial: data?.territorial || '',
+      areaObjetivo: data?.areaObjetivo || '',
+      procesoAuditado: data?.procesoAuditado || '',
+      alcance: data?.alcance || '',
+      responsableArea: data?.responsableArea,
+      auditorLider: data?.auditorLider || '',
+      auditorAsignado: data?.auditorAsignado || '',
+      equipoAuditores: data?.equipoAuditores || [],
+      supervisorAsignado: data?.supervisorAsignado || '',
+      // Etapas del cronograma formateadas para input type="date" (YYYY-MM-DD)
+      fechaInicioPlaneacion: inicioP,
+      fechaFinPlaneacion: finP,
+      fechaInicioEjecucion: inicioE,
+      fechaFinEjecucion: finE,
+      fechaInicioComunicacion: inicioC,
+      fechaFinComunicacion: finC,
+      fechaInicio: inicioP || formatDateForInput(data?.fechaInicio),
+      fechaFin: finC || formatDateForInput(data?.fechaFin),
+      hitos: data?.hitos || [],
+      objetivos: data?.objetivos || [],
+      criteriosAuditoria: data?.criteriosAuditoria || [],
+      normatividadAplicable: data?.normatividadAplicable || [],
+      metodologia: data?.metodologia || '',
+      recursos: data?.recursos || [],
+      presupuestoEstimado: data?.presupuestoEstimado || '',
+      productosEsperados: data?.productosEsperados || [],
+      nivelRiesgo: data?.nivelRiesgo || 'Medio',
+      riesgosIdentificados: data?.riesgosIdentificados || [],
+      riesgosAsociados: data?.riesgosAsociados || [],
+      controlesAplicar: data?.controlesAplicar || [],
+      hallazgos: data?.hallazgos || [],
+      focos: data?.focos || [],
+      incluirHallazgosPreliminares: data?.incluirHallazgosPreliminares || false,
+      vinculadaPlanAnual: data?.vinculadaPlanAnual || false,
+      planAnualId: data?.planAnualId || '',
+      planAnualAño: data?.planAnualAño || new Date().getFullYear(),
+      rolDecretoAsociado: data?.rolDecretoAsociado || '',
+      estadoKanban: data?.estadoKanban || 'Programa Anual',
+    };
+  };
+
+  const [formData, setFormData] = useState<AuditoriaUnificadaFormData>(() => buildInitialState(initialData));
+
+  const prevOpenRef = useRef(open);
   useEffect(() => {
-    if (!open || !vigenciaPlanCtx) return;
-    setFormData((prev) => ({
-      ...prev,
-      vinculadaPlanAnual: initialData?.vinculadaPlanAnual ?? true,
-      planAnualId: initialData?.planAnualId ?? vigenciaPlanCtx.planActivoId ?? prev.planAnualId,
-      planAnualAño: initialData?.planAnualAño ?? vigenciaPlanCtx.vigencia,
-    }));
-  }, [open, vigenciaPlanCtx?.planActivoId, vigenciaPlanCtx?.vigencia, initialData?.vinculadaPlanAnual, initialData?.planAnualId, initialData?.planAnualAño]);
+    if (open && !prevOpenRef.current) {
+      setFormData(buildInitialState(initialData));
+      setPasoActual(1);
+    }
+    prevOpenRef.current = open;
+  }, [open, initialData]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');

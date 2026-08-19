@@ -1195,6 +1195,22 @@ function TarjetaAuditoria({
                 )}
               </Button>
               
+              {/* Editar auditoría */}
+              {puedeEditar && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditar(auditoria);
+                  }}
+                  variant="outline"
+                  size="icon"
+                  className="w-10 h-10 flex-shrink-0 text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200"
+                  title="Editar auditoría"
+                >
+                  <Edit className="w-4 h-4" />
+                </Button>
+              )}
+              
               {/* Eliminar - SOLO visible en la etapa de Programa Anual / Plan Anual */}
               {puedeEliminar && (auditoria.estado === 'Programa Anual' || auditoria.estado === 'Plan Anual') && (
                 <Button
@@ -3994,75 +4010,114 @@ export function GestionAuditoriasKanbanSimple() {
           mode="create"
         />
 
-        {/* MODAL DE FORMULARIO - EDITAR - WORLD CLASS */}
+        {/* MODAL DE FORMULARIO UNIFICADO - EDITAR (9 PASOS COMPLETO) */}
         {auditoriaParaEditar && (
-          <ModalFormularioAuditoria
-            isOpen={modalEdicionOpen}
+          <FormularioAuditoriaUnificado
+            open={modalEdicionOpen}
             onClose={() => {
               setModalEdicionOpen(false);
               setAuditoriaParaEditar(null);
             }}
-            auditoria={(() => {
-              return {
-                id: auditoriaParaEditar.id,
-                codigo: auditoriaParaEditar.codigo,
-                nombre: auditoriaParaEditar.titulo,
-                tipo: auditoriaParaEditar.tipo || '',
-                proceso: (auditoriaParaEditar as any).procesoAuditado || auditoriaParaEditar.areaObjetivo || auditoriaParaEditar.descripcion,
-                responsable: auditoriaParaEditar.auditorLider?.nombre || 'Sin asignar',
-                responsableAreaNombre: (auditoriaParaEditar as any).responsableAreaNombre,
-                responsableAreaCargo: (auditoriaParaEditar as any).responsableAreaCargo,
-                responsableAreaEmail: (auditoriaParaEditar as any).responsableAreaEmail,
-                // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
-                // Etapa 1: Planeación
-                fechaInicio: auditoriaParaEditar.fechaInicio,
-                fechaInicioPlaneacion: auditoriaParaEditar.fechaInicio, // alias
-                fechaFinPlaneacion: auditoriaParaEditar.fechaFinPlaneacion,
-                // Etapa 2: Ejecución
-                fechaInicioEjecucion: auditoriaParaEditar.fechaInicioEjecucion,
-                fechaFinEjecucion: auditoriaParaEditar.fechaFinEjecucion,
-                // Etapa 3: Comunicación
-                fechaInicioComunicacion: auditoriaParaEditar.fechaInicioComunicacion,
-                fechaFin: auditoriaParaEditar.fechaFin,
-                fechaFinComunicacion: auditoriaParaEditar.fechaFin, // alias
-                estado: auditoriaParaEditar.estado,
-                progreso: auditoriaParaEditar.progreso || 0,
-                objetivo: auditoriaParaEditar.objetivos?.[0]?.descripcion || '',
-                alcance: auditoriaParaEditar.descripcion || '',
-                // Pasar arrays completos para objetivos y criterios
-                objetivos: auditoriaParaEditar.objetivos || [],
-                criterios: auditoriaParaEditar.criterios || []
-              };
-            })()}
-            onSave={(data) => {
-              // Convertir datos del modal al formato esperado por handleActualizarAuditoria
-              const formData = {
-                titulo: data.nombre,
-                descripcion: data.alcance || '',
-                territorial: auditoriaParaEditar.territorial || 'SEDE CENTRAL',
-                tipo: data.tipo,
-                procesoAuditado: data.proceso,
-                riesgo: auditoriaParaEditar.riesgo || 'Medio',
-                responsableAreaNombre: data.responsableAreaNombre,
-                responsableAreaCargo: data.responsableAreaCargo,
-                responsableAreaEmail: data.responsableAreaEmail,
-                // ✅ CRONOGRAMA 3 ETAPAS COMPLETO
-                // Etapa 1: Planeación - usar fechaInicioPlaneacion o fechaInicio
-                fechaInicio: (data as any).fechaInicioPlaneacion || data.fechaInicio,
+            onSubmit={async (data) => {
+              const datosBackend = {
+                codigo: data.codigo,
+                nombre: data.titulo,
+                descripcion: data.descripcion,
+                territorial: data.territorial,
+                sede: data.territorial,
+                tipo: data.tipoAuditoria,
+                areaObjetivo: data.areaObjetivo || data.procesoAuditado,
+                procesoAuditado: data.procesoAuditado,
+                alcance: data.alcance || data.descripcion,
+                calificacionRiesgo: data.nivelRiesgo,
+                // Cronograma 3 etapas
+                fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio,
                 fechaFinPlaneacion: data.fechaFinPlaneacion,
-                // Etapa 2: Ejecución
                 fechaInicioEjecucion: data.fechaInicioEjecucion,
                 fechaFinEjecucion: data.fechaFinEjecucion,
-                // Etapa 3: Comunicación
                 fechaInicioComunicacion: data.fechaInicioComunicacion,
-                fechaFin: (data as any).fechaFinComunicacion || data.fechaFin,
-                // Pasar arrays completos de objetivos y criterios
-                objetivos: (data as any).objetivos || [],
-                criterios: (data as any).criterios || []
+                fechaFin: data.fechaFinComunicacion || data.fechaFin,
+                // Objetivos y Criterios
+                objetivos: data.objetivos,
+                criterios: data.criteriosAuditoria,
+                // Responsables
+                responsable: data.responsableArea?.nombre || '',
+                responsableAreaNombre: data.responsableArea?.nombre || '',
+                responsableAreaCargo: data.responsableArea?.cargo || '',
+                responsableAreaEmail: data.responsableArea?.email || '',
+                auditorLiderId: data.auditorLider || undefined,
+                auditorAsignadoId: data.auditorAsignado || undefined,
+                equipoAuditores: data.equipoAuditores || [],
+                supervisorAsignadoId: data.supervisorAsignado || undefined,
+                // Metadata del programa anual (focos, recursos, riesgos, controles, normatividad, presupuesto)
+                programaAnualMetadata: {
+                  focos: data.focos,
+                  foco: data.focos?.[0] || '',
+                  recursos: data.recursos,
+                  productosEsperados: data.productosEsperados,
+                  riesgosIdentificados: data.riesgosIdentificados,
+                  controlesAplicar: data.controlesAplicar,
+                  normatividadAplicable: data.normatividadAplicable,
+                  presupuestoEstimado: data.presupuestoEstimado,
+                  rolDecretoAsociado: data.rolDecretoAsociado,
+                },
               };
 
-              handleActualizarAuditoria(formData as any);
+              const exito = await actualizarAuditoriaBackend(auditoriaParaEditar.id, datosBackend as any);
+
+              if (exito) {
+                toast.success('Auditoría actualizada exitosamente');
+                recargarAuditorias();
+                setModalEdicionOpen(false);
+                setAuditoriaParaEditar(null);
+              } else {
+                toast.error('Error al actualizar la auditoría');
+              }
             }}
+            mode="edit"
+            initialData={(() => {
+              const meta: any = typeof (auditoriaParaEditar as any).programaAnualMetadata === 'string'
+                ? (() => { try { return JSON.parse((auditoriaParaEditar as any).programaAnualMetadata); } catch { return {}; } })()
+                : ((auditoriaParaEditar as any).programaAnualMetadata || {});
+
+              return {
+                id: auditoriaParaEditar.id,
+                codigo: auditoriaParaEditar.codigo || '',
+                tipoAuditoria: auditoriaParaEditar.tipo || meta.tipo || '',
+                titulo: auditoriaParaEditar.titulo || meta.nombre || '',
+                descripcion: auditoriaParaEditar.descripcion || meta.descripcion || '',
+                territorial: auditoriaParaEditar.territorial || meta.territorial || 'SEDE CENTRAL',
+                areaObjetivo: auditoriaParaEditar.areaObjetivo || meta.areaObjetivo || '',
+                procesoAuditado: (auditoriaParaEditar as any).procesoAuditado || meta.procesoAuditado || auditoriaParaEditar.areaObjetivo || '',
+                alcance: (auditoriaParaEditar as any).alcance || auditoriaParaEditar.descripcion || meta.alcance || '',
+                responsableArea: {
+                  nombre: auditoriaParaEditar.responsableAreaNombre || '',
+                  cargo: auditoriaParaEditar.responsableAreaCargo || '',
+                  email: auditoriaParaEditar.responsableAreaEmail || '',
+                },
+                auditorLider: auditoriaParaEditar.auditorLider?.id || (auditoriaParaEditar.auditorLider as any)?.nombre || '',
+                fechaInicioPlaneacion: (auditoriaParaEditar as any).fechaInicioPlaneacion || auditoriaParaEditar.fechaInicio || meta.fechaInicioPlaneacion || meta.fechaInicio || '',
+                fechaFinPlaneacion: (auditoriaParaEditar as any).fechaFinPlaneacion || meta.fechaFinPlaneacion || '',
+                fechaInicioEjecucion: (auditoriaParaEditar as any).fechaInicioEjecucion || meta.fechaInicioEjecucion || '',
+                fechaFinEjecucion: (auditoriaParaEditar as any).fechaFinEjecucion || meta.fechaFinEjecucion || '',
+                fechaInicioComunicacion: (auditoriaParaEditar as any).fechaInicioComunicacion || meta.fechaInicioComunicacion || '',
+                fechaFinComunicacion: (auditoriaParaEditar as any).fechaFinComunicacion || auditoriaParaEditar.fechaFin || meta.fechaFinComunicacion || meta.fechaFin || '',
+                fechaInicio: auditoriaParaEditar.fechaInicio || meta.fechaInicio || '',
+                fechaFin: auditoriaParaEditar.fechaFin || meta.fechaFin || '',
+                objetivos: (auditoriaParaEditar.objetivos || []).map((o: any) => typeof o === 'string' ? o : (o.descripcion || o.objetivo || '')).filter(Boolean),
+                criteriosAuditoria: (auditoriaParaEditar.criterios || []).map((c: any) => typeof c === 'string' ? c : (c.criterio || c.descripcion || '')).filter(Boolean),
+                focos: (auditoriaParaEditar as any).focos || meta.focos || ((auditoriaParaEditar as any).foco ? [(auditoriaParaEditar as any).foco] : (meta.foco ? [meta.foco] : [])),
+                normatividadAplicable: (auditoriaParaEditar as any).normatividadAplicable || meta.normatividadAplicable || [],
+                recursos: (auditoriaParaEditar as any).recursos || meta.recursos || [],
+                presupuestoEstimado: (auditoriaParaEditar as any).presupuestoEstimado || meta.presupuestoEstimado || '',
+                productosEsperados: (auditoriaParaEditar as any).productosEsperados || meta.productosEsperados || [],
+                nivelRiesgo: (auditoriaParaEditar.riesgo as any) || meta.calificacionRiesgo || 'Medio',
+                riesgosIdentificados: (auditoriaParaEditar as any).riesgosIdentificados || meta.riesgosIdentificados || [],
+                controlesAplicar: (auditoriaParaEditar as any).controlesAplicar || meta.controlesAplicar || [],
+                rolDecretoAsociado: (auditoriaParaEditar as any).rolDecretoAsociado || meta.rolDecretoAsociado || '',
+                estadoKanban: auditoriaParaEditar.estado || 'Programa Anual',
+              };
+            })()}
           />
         )}
 
