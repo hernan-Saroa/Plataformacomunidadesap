@@ -83,6 +83,8 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
   const [amparos, setAmparos] = useState<AmparoDeGarantia[]>([]);
   const [amparo, setAmparo] = useState(AMPARO_VACIO);
   const [poliza, setPoliza] = useState<File | null>(null);
+  /** Qué campos del amparo se marcan en rojo tras una validación fallida. */
+  const [erroresAmparo, setErroresAmparo] = useState<Record<string, boolean>>({});
 
   const [registrandoArl, setRegistrandoArl] = useState(false);
   const [arl, setArl] = useState(ARL_VACIA);
@@ -106,10 +108,29 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
   const nombreAmparo = (codigo: string) =>
     estado?.tiposAmparo.find((t) => t.codigo === codigo)?.nombre ?? codigo;
 
+  /** La clase del campo, con borde rojo si esa validación falló. */
+  const campoAmparo = (nombre: string) =>
+    erroresAmparo[nombre] ? `${campo} border-red-500 focus:border-red-500 focus:ring-red-500/20` : campo;
+
+  /** Al editar un campo marcado, se le quita la marca: el usuario ya está corrigiendo. */
+  const editarAmparo = (cambio: Partial<typeof AMPARO_VACIO>) => {
+    setAmparo((p) => ({ ...p, ...cambio }));
+    setErroresAmparo((e) => {
+      const limpio = { ...e };
+      for (const k of Object.keys(cambio)) delete limpio[k];
+      // El rango lo marcan las dos fechas: tocar cualquiera limpia ambas.
+      if (cambio.vigenciaDesde !== undefined || cambio.vigenciaHasta !== undefined) {
+        delete limpio.vigenciaHasta;
+      }
+      return limpio;
+    });
+  };
+
   const limpiarGarantia = () => {
     setGarantia(GARANTIA_VACIA);
     setAmparos([]);
     setAmparo(AMPARO_VACIO);
+    setErroresAmparo({});
     setPoliza(null);
     setCreando(false);
   };
@@ -117,20 +138,27 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
   const agregarAmparo = () => {
     if (!amparo.tipo || !amparo.vigenciaDesde || !amparo.vigenciaHasta) return;
 
-    // Las mismas reglas que aplica el servidor, dichas antes de enviar.
+    // Las mismas reglas que aplica el servidor, dichas antes de enviar. Cada
+    // fallo marca en rojo el campo que lo causa, no solo un toast: el toast se
+    // va y el usuario tiene que adivinar cuál de las tres fechas corregir.
     if (amparos.some((a) => a.tipo === amparo.tipo)) {
       toast.error(`La póliza ya incluye el amparo de ${nombreAmparo(amparo.tipo).toLowerCase()}`);
+      setErroresAmparo({ tipo: true });
       return;
     }
     if (amparo.vigenciaHasta <= amparo.vigenciaDesde) {
       toast.error('La vigencia del amparo debe terminar después de empezar');
+      setErroresAmparo({ vigenciaHasta: true });
       return;
     }
     const valor = Number(amparo.valorAsegurado);
     if (!(valor > 0)) {
       toast.error('El valor asegurado debe ser mayor que cero');
+      setErroresAmparo({ valorAsegurado: true });
       return;
     }
+
+    setErroresAmparo({});
 
     setAmparos((lista) => [
       ...lista,
@@ -463,8 +491,8 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                       <select
                         id="amp-tipo"
                         value={amparo.tipo}
-                        onChange={(e) => setAmparo((p) => ({ ...p, tipo: e.target.value }))}
-                        className={campo}
+                        onChange={(e) => editarAmparo({ tipo: e.target.value })}
+                        className={campoAmparo('tipo')}
                       >
                         <option value="">Elige la cobertura</option>
                         {estado.tiposAmparo.map((t) => (
@@ -484,8 +512,8 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                           type="number"
                           min={1}
                           value={amparo.valorAsegurado}
-                          onChange={(e) => setAmparo((p) => ({ ...p, valorAsegurado: e.target.value }))}
-                          className={campo}
+                          onChange={(e) => editarAmparo({ valorAsegurado: e.target.value })}
+                          className={campoAmparo('valorAsegurado')}
                         />
                       </div>
                       <div>
@@ -496,8 +524,8 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                           id="amp-desde"
                           type="date"
                           value={amparo.vigenciaDesde}
-                          onChange={(e) => setAmparo((p) => ({ ...p, vigenciaDesde: e.target.value }))}
-                          className={campo}
+                          onChange={(e) => editarAmparo({ vigenciaDesde: e.target.value })}
+                          className={campoAmparo('vigenciaHasta')}
                         />
                       </div>
                       <div>
@@ -508,8 +536,8 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                           id="amp-hasta"
                           type="date"
                           value={amparo.vigenciaHasta}
-                          onChange={(e) => setAmparo((p) => ({ ...p, vigenciaHasta: e.target.value }))}
-                          className={campo}
+                          onChange={(e) => editarAmparo({ vigenciaHasta: e.target.value })}
+                          className={campoAmparo('vigenciaHasta')}
                         />
                       </div>
                     </div>

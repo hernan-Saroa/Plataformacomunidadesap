@@ -17,6 +17,8 @@ import {
   DatosGarantia,
   DatosArl,
   EstadoLegalizacion,
+  EstadoSupervision,
+  DatosSupervisor,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -398,6 +400,43 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+  // ---------------------- etapa 8 · supervisión del contrato (8.2) ----------
+
+  /** Quién supervisa el contrato, si ya se le avisó y quiénes lo hicieron antes. */
+  supervision: (procesoId: string) =>
+    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`),
+
+  /** Designa al supervisor con el acto administrativo que lo nombra. */
+  designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Releva al supervisor vigente; el anterior se conserva en el expediente. */
+  relevarSupervisor: (procesoId: string, motivo: string) =>
+    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/relevar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** Deja constancia de que se le comunicó la designación (matriz 8.2). */
+  avisarSupervisor: (procesoId: string) =>
+    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
 

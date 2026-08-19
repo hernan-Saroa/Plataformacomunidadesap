@@ -1135,3 +1135,47 @@ export interface GuardarTipologia {
   activo?: boolean;
   orden?: number;
 }
+
+// ---------------------- etapa 8 · supervision del contrato (8.2) -----------
+
+export interface SupervisorContrato {
+  id: string;
+  personaId: string;
+  nombre: string;
+  cargo: string | null;
+  email: string | null;
+  fechaDesignacion: string;
+  designadoPor: string | null;
+  /** Nulo mientras no quede constancia de que se le aviso (matriz 8.2). */
+  alertaEnviadaAt: string | null;
+  acto: { nombre: string; url: string | null } | null;
+}
+
+/** Quien supervisO antes; se conserva porque respondiO por ese periodo. */
+export interface SupervisionRelevada {
+  nombre: string;
+  cargo: string | null;
+  fechaDesignacion: string;
+  relevadoAt: string | null;
+  motivoRelevo: string | null;
+}
+
+export interface EstadoSupervision {
+  legalizado: boolean;
+  motivoNoLegalizado: string | null;
+  contrato?: { numero: string; objeto: string };
+  puedeDesignar?: boolean;
+  supervisor: SupervisorContrato | null;
+  /** El aviso que pide la matriz sigue pendiente. */
+  avisoPendiente: boolean;
+  historial: SupervisionRelevada[];
+}
+
+/** Lo que la pantalla envia al designar. */
+export interface DatosSupervisor {
+  personaId: string;
+  nombre: string;
+  cargo?: string;
+  email?: string;
+  fechaDesignacion: string;
+}

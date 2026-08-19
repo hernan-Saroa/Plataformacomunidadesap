@@ -230,6 +230,18 @@ export const ROLES_APROBAR_GARANTIAS = [
   ROL_SUPER_ADMIN,
 ];
 
+/** Vigila la ejecución del contrato que le asignaron (etapa 9). */
+export const ROL_SUPERVISOR_CONTRATO = 'SUPERVISOR_CONTRATO';
+
+/**
+ * Quién designa al supervisor del contrato (actividad 8.2, EFDS-1165).
+ *
+ * Más estrecho que el resto de la etapa y por la misma razón que el comité: la
+ * historia dice que la designación es del Ordenador del Gasto, y es él quien
+ * responde por a quién encarga la vigilancia de la ejecución.
+ */
+export const ROLES_DESIGNAR_SUPERVISOR = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
