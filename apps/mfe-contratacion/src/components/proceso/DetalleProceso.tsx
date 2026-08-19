@@ -23,6 +23,7 @@ import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
 import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
+import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -78,12 +79,16 @@ const NUMERAL_GARANTIAS = '8.4';
 const NUMERAL_ARL = '8.5';
 
 /** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
+/** Publicación del contrato dentro del plazo legal (EFDS-1166). */
+const NUMERAL_PUBLICACION_CONTRATO = '8.8';
+
 const NUMERALES_ETAPA_8 = [
   NUMERAL_CONTRATO,
   NUMERAL_SUPERVISOR,
   NUMERAL_RP,
   NUMERAL_GARANTIAS,
   NUMERAL_ARL,
+  NUMERAL_PUBLICACION_CONTRATO,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -380,6 +385,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelComite
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION_CONTRATO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelPublicacionContrato
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

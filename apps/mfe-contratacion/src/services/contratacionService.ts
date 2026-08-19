@@ -22,6 +22,8 @@ import {
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
+  EstadoPublicacionContrato,
+  DatosPublicacionContrato,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -399,6 +401,33 @@ export const contratacionService = {
     }
 
     return pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion/arl`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ---------------------- etapa 8 · publicación del contrato (8.8) ----------
+
+  /** Dónde se publicó el contrato, si llegó a tiempo y qué falta. */
+  publicacionContrato: (procesoId: string) =>
+    pedir<EstadoPublicacionContrato>(`/procesos/${procesoId}/publicacion-contrato`),
+
+  /** Registra la publicación con su evidencia. */
+  publicarContrato: (
+    procesoId: string,
+    datos: DatosPublicacionContrato,
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoPublicacionContrato>(`/procesos/${procesoId}/publicacion-contrato`, {
       method: 'POST',
       body: cuerpo,
     });

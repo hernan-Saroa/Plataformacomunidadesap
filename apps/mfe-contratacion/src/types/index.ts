@@ -1222,3 +1222,41 @@ export interface DatosExpedicionRp {
   rubro?: string;
   vigenciaFiscal?: number;
 }
+
+// ---------------------- etapa 8 · publicacion del contrato (8.8) -----------
+
+/** La historia dice SECOP II y la matriz la pagina web: se registra cual. */
+export type DestinoPublicacion = 'SECOP_II' | 'WEB_ESAP';
+
+export interface PublicacionDelContrato {
+  id: string;
+  destino: DestinoPublicacion;
+  fechaPublicacion: string;
+  fechaLimite: string | null;
+  plazoDiasHabiles: number | null;
+  secopNumero: string | null;
+  secopUrl: string | null;
+  publicadoPor: string | null;
+  /** Si llego dentro del plazo; publicar tarde es un hallazgo. */
+  aTiempo: boolean | null;
+  diasHabilesRestantes: number | null;
+  estadoPlazo: EstadoPlazo;
+}
+
+export interface EstadoPublicacionContrato {
+  legalizado: boolean;
+  motivoNoLegalizado: string | null;
+  contrato?: { numero: string; objeto: string };
+  plazo: { diasHabiles: number; fundamento: string | null; confirmado: boolean };
+  publicaciones: PublicacionDelContrato[];
+  /** Que destinos faltan, dicho por el servidor. */
+  pendientes: DestinoPublicacion[];
+}
+
+/** Lo que la pantalla envia al registrar la publicacion. */
+export interface DatosPublicacionContrato {
+  destino: DestinoPublicacion;
+  fechaPublicacion: string;
+  secopNumero?: string;
+  secopUrl?: string;
+}
