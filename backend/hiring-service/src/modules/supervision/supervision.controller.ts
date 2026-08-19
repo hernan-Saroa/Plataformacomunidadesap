@@ -45,7 +45,7 @@ export class SupervisionController {
   @ApiOperation({
     summary: 'Supervisor del contrato',
     description:
-      'Si el contrato está legalizado, quién lo supervisa, si ya se le avisó y quiénes lo supervisaron antes.',
+      'Si el contrato admite supervisor, quién lo supervisa, si ya se le avisó y quiénes lo supervisaron antes.',
   })
   estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.estado(procesoId, getHiringAccess(req));
@@ -65,7 +65,7 @@ export class SupervisionController {
   @ApiOperation({
     summary: 'Actividad 8.2 · Designar el supervisor',
     description:
-      'Con el acto administrativo firmado. Solo sobre un contrato ya legalizado.',
+      'Con el acto administrativo firmado. Sobre un contrato ya perfeccionado por las dos partes.',
   })
   async designar(
     @Param('id', ParseUUIDPipe) procesoId: string,

@@ -1161,8 +1161,13 @@ export interface SupervisionRelevada {
 }
 
 export interface EstadoSupervision {
-  legalizado: boolean;
-  motivoNoLegalizado: string | null;
+  /**
+   * Si el contrato ya admite supervisor. La matriz sitúa la designación en el
+   * puesto 2 de la etapa, así que basta con que esté perfeccionado: no se
+   * espera a las garantías, que van en 8.4.
+   */
+  admiteSupervisor: boolean;
+  motivoNoAdmite: string | null;
   contrato?: { numero: string; objeto: string };
   puedeDesignar?: boolean;
   supervisor: SupervisorContrato | null;

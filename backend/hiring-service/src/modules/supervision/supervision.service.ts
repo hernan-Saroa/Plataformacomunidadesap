@@ -22,12 +22,24 @@ export const NUMERAL_SUPERVISOR = '8.2';
 /**
  * Si el contrato admite que se le designe supervisor.
  *
- * La historia dice «dado un contrato legalizado»: se vigila la ejecución de un
- * contrato con sus coberturas en firme, no de uno al que todavía le faltan
- * garantías. Función pura para poder probar la regla sin base de datos.
+ * Aquí las dos fuentes se contradicen, y manda la matriz:
+ *
+ * - La matriz sitúa la designación en el puesto 2 de la etapa, antes de las
+ *   garantías (8.4) y la ARL (8.5).
+ * - La historia EFDS-1165 dice «dado un contrato legalizado», y legalizado
+ *   significa precisamente que 8.4 y 8.5 ya están aprobadas.
+ *
+ * Exigir la legalización haría inalcanzable el puesto que la matriz le da: no
+ * hay contrato legalizado en el momento 8.2. Se sigue la matriz, que es la
+ * fuente funcional del flujo, y basta con que el contrato esté perfeccionado
+ * —firmado por las dos partes—, que es lo que el puesto 2 supone.
+ *
+ * Queda como desviación consciente del criterio de EFDS-1165, anotada en la
+ * historia para que la Dirección de Contratación resuelva cuál de las dos
+ * fuentes corrige. Función pura para poder probar la regla sin base de datos.
  */
 export function admiteSupervisor(estado: EstadoContrato): boolean {
-  return estado === 'LEGALIZADO';
+  return estado === 'PERFECCIONADO' || estado === 'LEGALIZADO';
 }
 
 interface ArchivoCargado {
@@ -54,15 +66,15 @@ export class SupervisionService {
 
     if (!contrato) {
       return {
-        legalizado: false,
-        motivoNoLegalizado: 'el proceso todavía no tiene contrato generado',
+        admiteSupervisor: false,
+        motivoNoAdmite: 'el proceso todavía no tiene contrato generado',
         supervisor: null,
         historial: [] as any[],
         avisoPendiente: false,
       };
     }
 
-    const legalizado = admiteSupervisor(contrato.estado);
+    const admite = admiteSupervisor(contrato.estado);
     const vigente = await this.supervisorVigente(contrato.id);
 
     // El historial completo: quien vigiló los primeros meses respondió por
@@ -79,14 +91,12 @@ export class SupervisionService {
       : null;
 
     return {
-      legalizado,
-      motivoNoLegalizado: legalizado
+      admiteSupervisor: admite,
+      motivoNoAdmite: admite
         ? null
-        : contrato.estado === 'PERFECCIONADO'
-          ? 'al contrato le faltan las garantías o la ARL'
-          : 'el contrato todavía no lo han firmado las dos partes',
+        : 'el contrato todavía no lo han firmado las dos partes',
       contrato: { numero: contrato.numero, objeto: contrato.objeto },
-      puedeDesignar: legalizado && !vigente,
+      puedeDesignar: admite && !vigente,
       supervisor: vigente
         ? {
             id: vigente.id,
@@ -130,7 +140,7 @@ export class SupervisionService {
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
-      const contrato = await this.exigirContratoLegalizado(em, procesoId);
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
 
       if (await this.supervisorVigente(contrato.id, em)) {
         throw new ConflictException(
@@ -187,7 +197,7 @@ export class SupervisionService {
    */
   async relevar(procesoId: string, dto: RelevarSupervisorDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
-      const contrato = await this.exigirContratoLegalizado(em, procesoId);
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
       const vigente = await this.supervisorVigente(contrato.id, em);
       if (!vigente) throw new NotFoundException('El contrato no tiene supervisor designado');
 
@@ -219,7 +229,7 @@ export class SupervisionService {
    */
   async registrarAviso(procesoId: string, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
-      const contrato = await this.exigirContratoLegalizado(em, procesoId);
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
       const vigente = await this.supervisorVigente(contrato.id, em);
       if (!vigente) throw new NotFoundException('El contrato no tiene supervisor designado');
 
@@ -324,13 +334,13 @@ export class SupervisionService {
     return consulta.getOne();
   }
 
-  private async exigirContratoLegalizado(em: EntityManager, procesoId: string) {
+  private async exigirContratoSuscrito(em: EntityManager, procesoId: string) {
     const contrato = await this.contratoDelProceso(em, procesoId, true);
     if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
 
     if (!admiteSupervisor(contrato.estado)) {
       throw new ConflictException(
-        'El contrato todavía no está legalizado: el supervisor se designa sobre un contrato con sus coberturas en firme',
+        'El contrato todavía no está perfeccionado: el supervisor se designa sobre un contrato que ya firmaron las dos partes',
       );
     }
 
