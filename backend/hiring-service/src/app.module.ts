@@ -56,6 +56,9 @@ import { MiembroComite } from './entities/miembro-comite.entity';
 import { CriterioEvaluacion } from './entities/criterio-evaluacion.entity';
 import { EvaluacionOferta } from './entities/evaluacion-oferta.entity';
 import { EvaluacionCriterio } from './entities/evaluacion-criterio.entity';
+import { InformeEvaluacion } from './entities/informe-evaluacion.entity';
+import { Subsanacion } from './entities/subsanacion.entity';
+import { PlazoTraslado } from './entities/plazo-traslado.entity';
 
 @Module({
   imports: [
@@ -73,7 +76,7 @@ import { EvaluacionCriterio } from './entities/evaluacion-criterio.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, CriterioEvaluacion, EvaluacionOferta, EvaluacionCriterio],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, CriterioEvaluacion, EvaluacionOferta, EvaluacionCriterio, InformeEvaluacion, Subsanacion, PlazoTraslado],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
