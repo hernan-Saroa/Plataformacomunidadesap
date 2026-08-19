@@ -13,6 +13,7 @@ import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
+import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import {
   HiringAccess,
@@ -526,16 +527,18 @@ export class CdpService {
       proceso.etapa = ETAPA_APERTURA;
       await manager.save(proceso);
 
-      await manager.save(
-        manager.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_APERTURA,
-          estado: 'APROBADO' as const,
-          datos: {},
-          revisadoPor: acceso.userName,
-          revisadoAt: new Date(),
-        }),
-      );
+      // Se busca antes de crear: desde EFDS-1187 el proceso nace con las 63
+      // actividades de la matriz instanciadas, así que la fila de la 5.7 ya
+      // existe y crearla otra vez choca contra uq_proceso_numeral.
+      const actividad =
+        (await manager.getRepository(ProcesoActividad).findOne({
+          where: { procesoId, numeral: NUMERAL_APERTURA },
+        })) ?? manager.create(ProcesoActividad, { procesoId, numeral: NUMERAL_APERTURA, datos: {} });
+
+      actividad.estado = 'APROBADO';
+      actividad.revisadoPor = acceso.userName;
+      actividad.revisadoAt = new Date();
+      await manager.save(actividad);
 
       await this.traza(manager, procesoId, procesoId, 'APROBAR', acceso, {
         actividad: NUMERAL_APERTURA,
@@ -589,20 +592,26 @@ export class CdpService {
 
       await this.exigirCdpParaDocumentos(procesoId, em);
 
+      // Que la fila exista ya no significa que la actividad esté iniciada:
+      // desde EFDS-1187 el proceso nace con las 63 actividades de la matriz
+      // instanciadas. Lo que la inicia es el trabajo —un documento cargado— o
+      // que ya haya salido de borrador.
       const existente = await em.getRepository(ProcesoActividad).findOne({
         where: { procesoId, numeral: NUMERAL_DOCUMENTOS },
       });
-      if (existente) {
+      const cargados = await em.getRepository(DocumentoProceso).count({ where: { procesoId } });
+      if (cargados > 0 || (existente && existente.estado !== 'BORRADOR')) {
         throw new ConflictException('La elaboración de documentos ya está iniciada');
       }
 
       const actividad = await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_DOCUMENTOS,
-          estado: 'BORRADOR' as const,
-          datos: {},
-        }),
+        existente ??
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_DOCUMENTOS,
+            estado: 'BORRADOR' as const,
+            datos: {},
+          }),
       );
 
       await this.traza(em, procesoId, actividad.id, 'CREAR', acceso, {

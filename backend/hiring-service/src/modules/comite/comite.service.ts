@@ -259,6 +259,16 @@ export class ComiteService {
     return comite;
   }
 
+  /**
+   * La persona del directorio detrás de una cuenta, para quien la necesite.
+   *
+   * La evaluación (EFDS-1157) la guarda junto a cada juicio, para que el
+   * expediente pueda mostrar que quien calificó era quien estaba designado.
+   */
+  personaDe(acceso: HiringAccess) {
+    return this.personaDelUsuario(acceso.userId);
+  }
+
   private async dimensionesEnElComite(comiteId: string, acceso: HiringAccess) {
     const personaId = await this.personaDelUsuario(acceso.userId);
     if (!personaId) return [];

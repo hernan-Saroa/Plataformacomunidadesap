@@ -584,6 +584,8 @@ export interface Oferente {
   identificacion: string;
   /** Instante ISO: la hora de radicación importa tanto como el día. */
   fechaRadicacion: string;
+  /** Base de la evaluación económica; nulo en las ofertas anteriores a EFDS-1157. */
+  valorOfertado: number | null;
   registradoPor: string | null;
   soporte: ArchivoApertura | null;
 }
@@ -947,4 +949,130 @@ export interface SimulacionFormulario {
   modalidad: string;
   campos: CampoSimulado[];
   reglasEvaluadas: number;
+}
+
+// --------------------------------------------- criterios de evaluación (6.3)
+
+export type DimensionEvaluacion = 'JURIDICO' | 'FINANCIERO' | 'TECNICO' | 'ECONOMICO';
+
+/** Habilitante deja pasar; ponderable suma. No son dos etiquetas del mismo dato. */
+export type TipoCriterio = 'HABILITANTE' | 'PONDERABLE';
+
+export interface CriterioCatalogo {
+  id: string;
+  /** Nula: aplica a todas las modalidades. */
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  dimension: DimensionEvaluacion;
+  tipo: TipoCriterio;
+  nombre: string;
+  descripcion: string | null;
+  /** Solo en los ponderables. */
+  puntajeMaximo: number | null;
+  orden: number;
+  activo: boolean;
+  fundamento: string | null;
+  confirmado: boolean;
+  actualizadoEn: string;
+  /** Por qué un criterio ya usado se desactiva en vez de borrarse. */
+  evaluacionesQueLoUsan: number;
+}
+
+export interface CatalogoCriterios {
+  puedeEditar: boolean;
+  dimensiones: { codigo: DimensionEvaluacion; nombre: string; calculada: boolean }[];
+  modalidades: { codigo: string; nombre: string }[];
+  haySinConfirmar: boolean;
+  criterios: CriterioCatalogo[];
+  /** Cuánto suma el máximo ponderable de cada modalidad. */
+  totales: { modalidad: string; nombre: string; total: number; propios: number }[];
+}
+
+export interface GuardarCriterio {
+  modalidad?: string | null;
+  dimension?: DimensionEvaluacion;
+  tipo?: TipoCriterio;
+  nombre?: string;
+  descripcion?: string | null;
+  puntajeMaximo?: number | null;
+  orden?: number;
+  fundamento?: string | null;
+  confirmado?: boolean;
+}
+
+// ------------------------------------------- evaluación de ofertas (6.3) ---
+
+/** Las tres que califica una persona; la económica la calcula el sistema. */
+export type DimensionManual = 'JURIDICO' | 'FINANCIERO' | 'TECNICO';
+
+export type EstadoOferta = 'HABILITADA' | 'NO_HABILITADA' | 'PENDIENTE';
+
+/** Un criterio tal como lo ve quien evalúa este proceso. */
+export interface CriterioAplicable {
+  id: string;
+  dimension: DimensionEvaluacion;
+  tipo: TipoCriterio;
+  nombre: string;
+  descripcion: string | null;
+  puntajeMaximo: number | null;
+  confirmado: boolean;
+}
+
+export interface ResultadoCriterio {
+  criterioId: string;
+  /** En los habilitantes. */
+  cumple: boolean | null;
+  /** En los ponderables. */
+  puntaje: number | null;
+  observacion: string | null;
+}
+
+export interface EvaluacionDimension {
+  dimension: DimensionEvaluacion;
+  evaluadaPor: string | null;
+  evaluadaAt: string | null;
+  resultados: ResultadoCriterio[];
+}
+
+export interface ConsolidadoOferta {
+  ofertaId: string;
+  estado: EstadoOferta;
+  /** Qué criterio la dejó fuera: es lo que el oferente reclama. */
+  incumplimientos: { criterioId: string; nombre: string; motivo: string | null }[];
+  dimensionesPendientes: DimensionEvaluacion[];
+  puntajePorDimension: Record<string, number>;
+  puntajeTotal: number;
+  puntajeMaximo: number;
+}
+
+export interface OfertaEnEvaluacion {
+  id: string;
+  numero: number;
+  nombre: string;
+  identificacion: string;
+  valorOfertado: number | null;
+  consolidado: ConsolidadoOferta | null;
+  evaluaciones: EvaluacionDimension[];
+}
+
+export interface EstadoEvaluacion {
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  recepcionCerrada: boolean;
+  comiteDesignado: boolean;
+  /** En qué dimensiones puede calificar quien consulta. Vacío: solo mira. */
+  misDimensiones: DimensionManual[];
+  puedeEvaluar: boolean;
+  criteriosSinConfirmar: boolean;
+  puntajeMaximo: number;
+  criterios: CriterioAplicable[];
+  ofertas: OfertaEnEvaluacion[];
+}
+
+/** Una dimensión completa: evaluar es un juicio entero, no un criterio suelto. */
+export interface EvaluarDimension {
+  dimension: DimensionManual;
+  resultados: { criterioId: string; cumple?: boolean; puntaje?: number; observacion?: string }[];
 }

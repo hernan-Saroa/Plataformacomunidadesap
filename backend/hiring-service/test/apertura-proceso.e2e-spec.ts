@@ -56,12 +56,17 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
   };
 
   /**
-   * Mínima cuantía por defecto: es una modalidad con apertura formal, pero sin
-   * audiencia de riesgos obligatoria (EFDS-1153). Así los casos que prueban la
-   * apertura miden la apertura, y no acaban comprobando de refilón el requisito
-   * de otra historia. Los que sí van de eso piden licitación explícitamente.
+   * Selección abreviada de menor cuantía por defecto: es una modalidad con
+   * apertura formal, pero sin audiencia de riesgos obligatoria (EFDS-1153).
+   * Así los casos que prueban la apertura miden la apertura, y no acaban
+   * comprobando de refilón el requisito de otra historia. Los que sí van de
+   * eso piden licitación explícitamente.
+   *
+   * No mínima cuantía, que era lo que había antes: la matriz oficial (030) la
+   * deja fuera de la 5.7 porque se adjudica por comunicación de aceptación y
+   * no expide acto de apertura.
    */
-  const crear = (modalidad = 'MINIMA_CUANTIA') =>
+  const crear = (modalidad = 'ABREVIADA_MENOR_CUANTIA') =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
 
   /** Lleva el CDP hasta expedido, que es lo que la apertura exige. */
@@ -314,9 +319,9 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     });
 
     it('en una modalidad sin audiencia obligatoria no estorba', async () => {
-      // Mínima cuantía puede celebrarla, pero no la exige: pedirla aquí
+      // La menor cuantía puede celebrarla, pero no la exige: pedirla aquí
       // bloquearía procesos que la norma no bloquea.
-      const proceso = await crear('MINIMA_CUANTIA');
+      const proceso = await crear('ABREVIADA_MENOR_CUANTIA');
       await expedirCdp(proceso.id);
 
       const estado = await abrir(proceso.id);

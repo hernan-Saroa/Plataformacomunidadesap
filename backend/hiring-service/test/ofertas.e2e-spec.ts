@@ -55,11 +55,13 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
   const haceHoras = (horas: number) => new Date(Date.now() - horas * 3_600_000).toISOString();
 
   /**
-   * Mínima cuantía por defecto: tiene plazo de ofertas parametrizado (1 día
-   * hábil) y no exige audiencia de riesgos, así que la prueba mide la recepción
-   * y no acaba comprobando de refilón el requisito de otra historia.
+   * Selección abreviada de menor cuantía por defecto: tiene plazo de ofertas
+   * parametrizado (5 días hábiles) y no exige audiencia de riesgos, así que la
+   * prueba mide la recepción y no acaba comprobando de refilón el requisito de
+   * otra historia. No mínima cuantía, que la matriz oficial (030) deja sin
+   * apertura formal y por ahí empieza este flujo.
    */
-  const crear = (modalidad = 'MINIMA_CUANTIA') =>
+  const crear = (modalidad = 'ABREVIADA_MENOR_CUANTIA') =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
 
   /** Lleva el proceso hasta abierto, que es cuando arranca el plazo de ofertas. */
@@ -90,10 +92,11 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
     identificacion: string,
     nombre = 'Constructora de prueba SAS',
     fechaRadicacion = haceHoras(1),
+    valorOfertado?: number,
   ) =>
     ofertas.registrar(
       procesoId,
-      { nombre, identificacion, fechaRadicacion },
+      { nombre, identificacion, fechaRadicacion, valorOfertado },
       archivo('oferta.pdf'),
       'o'.repeat(64),
       gestor,
@@ -139,8 +142,8 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
       expect(estado.abierto).toBe(true);
       expect(estado.recepcion).not.toBeNull();
       expect(estado.recepcion!.estado).toBe('ABIERTA');
-      // Mínima cuantía: un día hábil después de la resolución, no el mismo día.
-      expect(estado.recepcion!.plazoDiasHabiles).toBe(1);
+      // Menor cuantía: cinco días hábiles después de la resolución, no el mismo día.
+      expect(estado.recepcion!.plazoDiasHabiles).toBe(5);
       expect(estado.recepcion!.vencimientoDia > hoy()).toBe(true);
       expect(estado.puedeRegistrar).toBe(true);
     });
@@ -194,6 +197,22 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
       expect(estado.oferentes.map((o) => o.numero)).toEqual([1, 2]);
       expect(estado.oferentes[0].nombre).toBe('Primera Oferente SAS');
       expect(estado.oferentes[0].soporte).not.toBeNull();
+    });
+
+    it('guarda el valor ofertado, y admite que falte', async () => {
+      const proceso = await crear();
+      await abrir(proceso.id);
+
+      await registrar(proceso.id, '901111111-1', 'Con Valor SAS', haceHoras(1), 45_000_000);
+      const estado = await registrar(proceso.id, '902222222-2', 'Sin Valor SAS');
+
+      const conValor = estado.oferentes.find((o) => o.identificacion === '901111111-1');
+      const sinValor = estado.oferentes.find((o) => o.identificacion === '902222222-2');
+
+      expect(conValor!.valorOfertado).toBe(45_000_000);
+      // Nulo y no cero: una oferta sin valor registrado no es una oferta de
+      // cero pesos, que entraría al cálculo económico como la más barata.
+      expect(sinValor!.valorOfertado).toBeNull();
     });
 
     it('rechaza la oferta radicada después del vencimiento', async () => {

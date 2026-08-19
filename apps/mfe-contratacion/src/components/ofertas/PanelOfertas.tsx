@@ -43,6 +43,7 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
   const [nombre, setNombre] = useState('');
   const [identificacion, setIdentificacion] = useState('');
   const [radicacion, setRadicacion] = useState('');
+  const [valor, setValor] = useState('');
   const [soporte, setSoporte] = useState<File | null>(null);
 
   const leer = () =>
@@ -64,6 +65,7 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
     setNombre('');
     setIdentificacion('');
     setRadicacion('');
+    setValor('');
     setSoporte(null);
     setRegistrando(false);
   };
@@ -83,6 +85,7 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
             // que es donde corre el término, en vez de dejar que el servidor
             // la interprete a su manera.
             fechaRadicacion: `${radicacion}:00-05:00`,
+            valorOfertado: valor.trim() ? Number(valor) : undefined,
           },
           soporte,
         ),
@@ -331,6 +334,26 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
             </p>
           </div>
 
+          <div>
+            <label htmlFor="oferta-valor" className="block text-xs font-bold text-gray-600 mb-1.5">
+              Valor de la oferta
+            </label>
+            <input
+              id="oferta-valor"
+              type="number"
+              min="0"
+              step="0.01"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              placeholder="45000000"
+              className={campo}
+            />
+            <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
+              Base de la calificación económica. Sin él, esa dimensión no se puede evaluar; se deja
+              vacío solo si la modalidad no califica precio.
+            </p>
+          </div>
+
           <SelectorArchivo etiqueta="Soporte de la oferta" archivo={soporte} onElegir={setSoporte} />
 
           <div className="flex items-center gap-2">
@@ -403,6 +426,13 @@ function FilaOferente({
           </p>
           <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
             {oferente.identificacion} · radicada el {momentoConHora(oferente.fechaRadicacion)}
+            {oferente.valorOfertado != null
+              ? ` · ${oferente.valorOfertado.toLocaleString('es-CO', {
+                  style: 'currency',
+                  currency: 'COP',
+                  maximumFractionDigits: 0,
+                })}`
+              : ' · sin valor registrado'}
           </p>
           {oferente.soporte ? (
             <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed break-words">

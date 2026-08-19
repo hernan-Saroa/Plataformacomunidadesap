@@ -2,6 +2,7 @@ import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
   CamposFaltantesError,
+  CatalogoCriterios,
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
@@ -11,6 +12,8 @@ import {
   EstadoDocumentos,
   EstadoMipyme,
   EstadoComite,
+  EstadoEvaluacion,
+  EvaluarDimension,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -22,6 +25,7 @@ import {
   Cobertura,
   Matriz,
   FlujoModalidad,
+  GuardarCriterio,
   CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
@@ -210,7 +214,12 @@ export const contratacionService = {
   /** Registra una oferta recibida en ventanilla, con su soporte. */
   registrarOferente: (
     procesoId: string,
-    datos: { nombre: string; identificacion: string; fechaRadicacion: string },
+    datos: {
+      nombre: string;
+      identificacion: string;
+      fechaRadicacion: string;
+      valorOfertado?: number;
+    },
     soporte: File,
   ) => {
     const cuerpo = new FormData();
@@ -218,6 +227,9 @@ export const contratacionService = {
     cuerpo.append('nombre', datos.nombre);
     cuerpo.append('identificacion', datos.identificacion);
     cuerpo.append('fechaRadicacion', datos.fechaRadicacion);
+    // Solo si viene: enviarlo vacío haría que el DTO lo leyera como 0, y una
+    // oferta de cero pesos entraría al cálculo económico como la más barata.
+    if (datos.valorOfertado != null) cuerpo.append('valorOfertado', String(datos.valorOfertado));
 
     return pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas`, {
       method: 'POST',
@@ -757,6 +769,52 @@ export const contratacionService = {
     pedir<CampoConfigurable>(`/configuracion/campos/${id}`, {
       method: 'PUT',
       body: JSON.stringify(datos),
+    }),
+
+  // ----------------------------------- evaluación de ofertas (actividad 6.3) ---
+
+  /**
+   * Estado de la evaluación: criterios, ofertas, lo que va evaluado de cada
+   * una y en qué dimensiones puede calificar quien consulta.
+   */
+  evaluacion: (procesoId: string) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion`),
+
+  /** El juicio de una dimensión entera. Reevaluar sustituye el anterior. */
+  evaluarOferta: (procesoId: string, oferenteId: string, datos: EvaluarDimension) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/ofertas/${oferenteId}`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  // --------------------------- administración de criterios de evaluación ---
+
+  /** El catálogo entero, activos e inactivos, con el total de cada modalidad. */
+  criteriosEvaluacion: () => pedir<CatalogoCriterios>('/criterios-evaluacion'),
+
+  crearCriterio: (datos: GuardarCriterio) =>
+    pedir<CatalogoCriterios>('/criterios-evaluacion', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /**
+   * Corrige un criterio, o lo marca confirmado.
+   *
+   * Sin `confirmado`, la edición lo deja sin confirmar: la ratificación es
+   * sobre un texto y una cifra concretos, no sobre la fila.
+   */
+  actualizarCriterio: (id: string, datos: GuardarCriterio) =>
+    pedir<CatalogoCriterios>(`/criterios-evaluacion/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** No hay borrado: un criterio ya usado se retira, y lo evaluado se conserva. */
+  cambiarActivoCriterio: (id: string, activo: boolean) =>
+    pedir<CatalogoCriterios>(`/criterios-evaluacion/${id}/activo`, {
+      method: 'PUT',
+      body: JSON.stringify({ activo }),
     }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,

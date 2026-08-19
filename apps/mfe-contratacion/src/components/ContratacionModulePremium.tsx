@@ -6,6 +6,7 @@ import {
   FileSignature,
   ClipboardCheck,
   FileText,
+  ListChecks,
   Scale,
   Settings,
 } from 'lucide-react';
@@ -25,6 +26,7 @@ import { VistaConfiguracion } from './configuracion/VistaConfiguracion';
 import { VistaPlantillas } from './plantillas/VistaPlantillas';
 import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
+import { VistaCriterios } from './criterios/VistaCriterios';
 
 type Seccion =
   | 'estudios-previos'
@@ -32,6 +34,7 @@ type Seccion =
   | 'umbrales'
   | 'plazos'
   | 'mipyme'
+  | 'criterios'
   | 'plantillas'
   | 'configuracion';
 
@@ -98,6 +101,13 @@ export default function ContratacionModulePremium() {
           color: '#7C3AED',
         },
         {
+          id: 'criterios',
+          label: 'Criterios',
+          subtitle: 'Evaluación de ofertas',
+          icon: <ListChecks className="w-5 h-5" />,
+          color: '#7C3AED',
+        },
+        {
           // Los formatos del SIG son un catálogo propio: un mismo formato
           // sirve en varias actividades, así que no cuelga de ninguna.
           id: 'plantillas',
@@ -123,6 +133,7 @@ export default function ContratacionModulePremium() {
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;
     if (seccion === 'mipyme') return <VistaCondicionesMipyme />;
+    if (seccion === 'criterios') return <VistaCriterios />;
     if (seccion === 'plantillas') return <VistaPlantillas />;
     if (seccion === 'configuracion') return <VistaConfiguracion />;
     if (procesoId) {

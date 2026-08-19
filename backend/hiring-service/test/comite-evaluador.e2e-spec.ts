@@ -72,7 +72,12 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
     rol: 'TECNICO',
   };
 
-  const crear = (modalidad = 'MINIMA_CUANTIA') =>
+  /**
+   * Selección abreviada de menor cuantía: el flujo arranca en la apertura, y
+   * la matriz oficial (030) deja la mínima cuantía fuera de la 5.7 porque se
+   * adjudica por comunicación de aceptación y no expide acto de apertura.
+   */
+  const crear = (modalidad = 'ABREVIADA_MENOR_CUANTIA') =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
 
   /** Lleva el proceso hasta abierto, que es cuando arranca el plazo de ofertas. */
