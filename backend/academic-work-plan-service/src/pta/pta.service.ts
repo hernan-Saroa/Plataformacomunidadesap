@@ -8349,7 +8349,14 @@ export class PtaService {
             : `${nombresEnEseEstado.join(', ')} ya fue(ron) devuelta(s)`,
         );
       }
-      throw new BadRequestException(`${partes.join('; ')}. No se puede volver a ${estado === 'aprobado' ? 'aprobar' : 'devolver'}.`);
+      // `code` es un extra sobre el `message` de siempre (no lo reemplaza): permite
+      // que el frontend detecte este caso puntual ("ya no le queda nada propio por
+      // decidir en este componente mixto") sin tener que hacer matching de texto en
+      // español sobre el mensaje, que es frágil ante cambios de copy o de idioma.
+      throw new BadRequestException({
+        message: `${partes.join('; ')}. No se puede volver a ${estado === 'aprobado' ? 'aprobar' : 'devolver'}.`,
+        code: 'PTA_TERRITORIAL_SIN_PENDIENTES_PROPIOS',
+      });
     }
     if (yaResueltos.length > 0) {
       targets = targets.filter((t) => !yaResueltos.some((y) => y.territorialId === t.territorialId && y.nivel === t.nivel));

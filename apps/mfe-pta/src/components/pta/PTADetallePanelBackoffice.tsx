@@ -170,6 +170,17 @@ const ESTADO_NIVEL_APROBACION: Record<string, number> = {
   'Pendiente Gestión Profesoral': 3,
 };
 
+// `jefaturaTerritorialId` no tiene formato garantizado (puede llegar como id o
+// como nombre de la seccional), así que toda comparación contra el id/nombre
+// de una territorial se hace normalizando ambos lados (sin acentos, sin
+// separadores, en minúsculas). Reutilizado por el filtro de asignaturas y por
+// la detección de "es mi par (territorial, nivel)" en la aprobación parcial.
+function normalizeTerritorialToken(v: any): string {
+  return String(v ?? '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+}
+
 function puedeAprobarEstadoActual(estado: string, nivelUsuario: number, isSuperUser = false): boolean {
   if (isSuperUser) return true;
   if (['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'PENDIENTE_APROBACION'].includes(estado)) {
@@ -755,6 +766,24 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return isComponentAuthorized('academica_territorial');
   }, [apruebaTodo, revisaTodo, tieneAlgunPermisoComponente, tieneAlgunPermisoRevision, puedePerm, isComponentAuthorized]);
 
+  /**
+   * ¿Este par (territorial, nivel) de 'academica_territorial' es "propio" del
+   * actor autenticado? Espeja lo que decide el backend en
+   * aprobarComponenteTerritorialParcial (alcance.propios): el nivel según el
+   * permiso granular pregrado/posgrado (puedeActuarSobreNivelTerritorial) Y,
+   * cuando se conoce, la territorial según jefaturaTerritorialId. Si no hay
+   * jefaturaTerritorialId (rol sin alcance territorial propio, p.ej. Gestión
+   * Profesoral) no se filtra por territorial — solo por nivel — para no
+   * ocultar/bloquear de más ante datos incompletos.
+   */
+  const esParTerritorialPropio = useCallback((t: { territorialId: string; territorialNombre?: string; nivel: PTANivelDocencia }, etapa: 'aprobar' | 'revisar' = 'aprobar'): boolean => {
+    if (isSuperUser || apruebaTodo || (etapa === 'revisar' && revisaTodo)) return true;
+    if (!puedeActuarSobreNivelTerritorial(t.nivel, etapa)) return false;
+    const propia = normalizeTerritorialToken(jefaturaTerritorialId);
+    if (!propia) return true;
+    return normalizeTerritorialToken(t.territorialId) === propia || normalizeTerritorialToken(t.territorialNombre) === propia;
+  }, [isSuperUser, apruebaTodo, revisaTodo, puedeActuarSobreNivelTerritorial, jefaturaTerritorialId]);
+
   /** Filas de revisión requeridas para un componente (ya vienen filtradas por el backend). */
   const subseccionesRevision = useCallback(
     (key: string) => componentesRevision.filter(r => r.componente === key),
@@ -896,7 +925,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           onUpdated?.({ ...pta, estado: nuevoEstado });
         }
       } else {
-        toast.error(res.message || 'Error al actualizar el estado del componente');
+        // Caso de carrera: el panel seguía mostrando el botón "Aprobar" con datos
+        // ya desactualizados (otro aprobador resolvió el último par propio pendiente
+        // entre que se cargó el panel y que se hizo clic). Se refresca el estado
+        // territorial para que la UI deje de ofrecer una acción que ya no aplica,
+        // en vez de dejar el botón activo esperando a que el usuario reintente.
+        if ((res as any).code === 'PTA_TERRITORIAL_SIN_PENDIENTES_PROPIOS') {
+          toast.error('Ya registraste tu decisión sobre la(s) territorial(es) que te corresponden en este componente; falta la de otra territorial.');
+          if (componente === 'academica_territorial') {
+            const resTerritorial = await getAprobacionTerritorial(pta.id);
+            if (resTerritorial.success) setAprobacionTerritorial(resTerritorial.data || []);
+          }
+        } else {
+          toast.error(res.message || 'Error al actualizar el estado del componente');
+        }
       }
     } catch (err) {
       console.error('[mfe-pta] Error al aprobar componente:', err);
@@ -1142,14 +1184,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       && !visibleComponentKeySet.has('academica_posgrado');
     if (!soloTerritorial || isSuperUser || apruebaTodo || !jefaturaTerritorialId) return todas;
 
-    const norm = (v: any) => String(v ?? '')
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    const propia = norm(jefaturaTerritorialId);
+    const propia = normalizeTerritorialToken(jefaturaTerritorialId);
     if (!propia) return todas;
 
     const esPropia = (a: any) =>
-      norm(a?.territorial_id) === propia || norm(a?.territorial) === propia;
+      normalizeTerritorialToken(a?.territorial_id) === propia || normalizeTerritorialToken(a?.territorial) === propia;
     const propias = todas.filter(esPropia);
     return propias.length > 0 ? propias : todas;
   }, [asignaturas, componenteDeAsignatura, visibleComponentKeySet, isSuperUser, apruebaTodo, jefaturaTerritorialId]);
@@ -1565,8 +1604,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const hayOtroComponenteDevuelto = componentesAprobacion.some(
       c => c.componente !== key && (c.estado || 'pendiente') === 'devuelto'
     );
+    // Aprobación parcial por (territorial, nivel): si este componente mezcla 2+
+    // pares y el actor ya resolvió todos los suyos (p.ej. ya aprobó Chocó pero
+    // Risaralda, ajena a su alcance, sigue pendiente), no queda nada propio por
+    // decidir — mantener el botón "Aprobar" activo llevaba a reintentar la misma
+    // decisión y el backend la rechazaba con un 400 ("ya fue(ron) aprobada(s).
+    // No se puede volver a aprobar."). Se oculta el panel de aprobación en ese
+    // caso y se informa qué falta (ver mensaje más abajo).
+    const paresPropiosTerritorial = key === 'academica_territorial' && aprobacionTerritorial.length >= 2
+      ? aprobacionTerritorial.filter(t => esParTerritorialPropio(t, 'aprobar'))
+      : [];
+    const territorialSinPendientesPropios = paresPropiosTerritorial.length > 0 &&
+      paresPropiosTerritorial.every(t => t.estado !== 'pendiente');
     const canEvaluateComponent = puedeAprobar && puedeActuarSobreComponentes && componentAuthorized && !isAutoAprobado &&
-      revisionCompleta && !hayOtroComponenteDevuelto &&
+      revisionCompleta && !hayOtroComponenteDevuelto && !territorialSinPendientesPropios &&
       (estado === 'pendiente' || !!evaluandoComponente[key]);
 
     const getAssignmentDate = () => {
@@ -1769,7 +1820,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   : { bg: 'rgba(148, 163, 184, 0.12)', color: '#475569', border: '1px solid rgba(148, 163, 184, 0.25)' };
               const estadoLabel = t.estado === 'aprobado' ? 'Aprobada' : t.estado === 'devuelto' ? 'Devuelta' : 'Pendiente';
               const nivelLabel = t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado';
-              const esSuyo = !isSuperUser && !apruebaTodo && puedeActuarSobreNivelTerritorial(t.nivel, 'aprobar');
+              const esSuyo = !isSuperUser && !apruebaTodo && esParTerritorialPropio(t, 'aprobar');
               return (
                 <span
                   key={`${t.territorialId}:${t.nivel}`}
@@ -2296,9 +2347,21 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             fontWeight: 500,
             boxShadow: '0 1px 2px rgba(0,0,0,0.01)',
           }}>
-            <Lock style={{ width: 13, height: 13, color: '#94A3B8' }} />
+            {territorialSinPendientesPropios
+              ? <CheckCircle style={{ width: 13, height: 13, color: '#10B981' }} />
+              : <Lock style={{ width: 13, height: 13, color: '#94A3B8' }} />}
             <span>
-              {!componentAuthorized
+              {territorialSinPendientesPropios
+                ? (() => {
+                    const pendientes = aprobacionTerritorial.filter(t => t.estado !== 'aprobado');
+                    const nombres = Array.from(new Set(
+                      pendientes.map(t => `${t.territorialNombre} (${t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado'})`)
+                    ));
+                    return nombres.length > 0
+                      ? `Ya registraste tu decisión sobre la(s) territorial(es) que te corresponden. Falta la decisión de: ${nombres.join(', ')}.`
+                      : 'Ya registraste tu decisión sobre la(s) territorial(es) que te corresponden.';
+                  })()
+                : !componentAuthorized
                 ? 'No tienes los permisos para aprobar este componente.'
                 : hayOtroComponenteDevuelto
                 ? 'Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede aprobar ni devolver hasta que el PTA sea corregido y reenviado.'
