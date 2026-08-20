@@ -320,11 +320,11 @@ function ResolucionChip({ nombre, url }: { nombre?: string; url?: string }) {
 // V08: Component-based approval tracker (Docencia, Inv, Ext, Comp, AADM)
 // ═══════════════════════════════════════════════════════════════════════
 const COMPONENT_STEPS = [
-  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
+  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4', compKeys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'] },
   { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
   // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
-  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
+  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000', compKeys: ['complementarias', 'complementarias_pregrado', 'complementarias_posgrado'] },
 ];
 
 function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
