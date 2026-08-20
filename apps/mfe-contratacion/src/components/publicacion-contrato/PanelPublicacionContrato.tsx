@@ -133,9 +133,11 @@ export function PanelPublicacionContrato({ procesoId, onCambio }: Props) {
         registra dónde se publicó y con qué evidencia.
       </Ayuda>
 
+      {/* La publicación cierra la etapa, así que espera a las anteriores: la
+          última con implementación es la ARL. */}
       {!estado.legalizado ? (
         <Pendiente
-          falta="8.4"
+          falta="8.5"
           texto={`El contrato se publica cuando está legalizado: ${
             estado.motivoNoLegalizado ?? 'todavía no lo está'
           }.`}

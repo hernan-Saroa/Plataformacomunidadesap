@@ -34,9 +34,22 @@ export const NUMERAL_PUBLICACION_CONTRATO = '8.8';
 /**
  * Si el contrato admite publicarse.
  *
- * La historia dice «dado un contrato perfeccionado y legalizado». Publicar uno
- * al que le faltan garantías anunciaría como firme algo que todavía puede
- * cambiar.
+ * Aquí la matriz y la historia coinciden, al revés de lo que pasa en 8.2.
+ *
+ * La matriz sitúa la publicación en el último puesto de la etapa, así que
+ * leerla como flujo lineal significa exigir cumplidas las anteriores; la
+ * historia lo enuncia como «dado un contrato perfeccionado y legalizado», que
+ * es la misma condición dicha por el estado. Legalizado es precisamente haber
+ * pasado por las garantías (8.4) y la ARL (8.5), las últimas actividades con
+ * implementación antes de esta.
+ *
+ * Publicar antes anunciaría como firme un contrato al que aún pueden faltarle
+ * las coberturas.
+ *
+ * Con una salvedad: la 8.6 —comunicación de inicio— y la 8.7 —acta de inicio—
+ * están entre medias en la matriz y no tienen implementación, la primera
+ * porque no tiene historia asignada y la segunda porque Jira la ubica en la
+ * etapa 9. Cuando existan, esta regla tendrá que mirarlas.
  */
 export function admitePublicacion(estado: EstadoContrato): boolean {
   return estado === 'LEGALIZADO';
