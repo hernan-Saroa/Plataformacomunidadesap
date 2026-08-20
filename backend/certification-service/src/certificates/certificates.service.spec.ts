@@ -97,6 +97,58 @@ describe('CertificatesService', () => {
     expect(selected?.id).toBe('encargo-1');
   });
 
+  it('prioriza FECHA_CREACION sobre FECHA_INGRESO entre encargos activos', () => {
+    const ingresoMasReciente = {
+      id: 'ingreso-mas-reciente',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2026-07-01'),
+      request_date: new Date('2026-07-10'),
+    } as unknown as CertificateRequest;
+    const creacionMasReciente = {
+      id: 'creacion-mas-reciente',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2026-06-01'),
+      request_date: new Date('2026-08-01'),
+    } as unknown as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      ingresoMasReciente,
+      creacionMasReciente,
+    ]);
+
+    expect(selected?.id).toBe('creacion-mas-reciente');
+  });
+
+  it('usa FECHA_INGRESO para desempatar la misma FECHA_CREACION', () => {
+    const ingresoAnterior = {
+      id: 'ingreso-anterior',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2026-06-01'),
+      request_date: new Date('2026-08-01'),
+    } as unknown as CertificateRequest;
+    const ingresoMasReciente = {
+      id: 'ingreso-mas-reciente',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2026-07-01'),
+      request_date: new Date('2026-08-01'),
+    } as unknown as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      ingresoAnterior,
+      ingresoMasReciente,
+    ]);
+
+    expect(selected?.id).toBe('ingreso-mas-reciente');
+  });
+
   it('prioriza carrera administrativa sobre provisional cuando ambos registros estan activos y sin encargo', () => {
     const provisionalRequest = {
       id: 'provisional',

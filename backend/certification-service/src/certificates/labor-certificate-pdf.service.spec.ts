@@ -82,6 +82,54 @@ describe('LaborCertificatePdfService', () => {
     expect(cargo).toBe('Jefe de Oficina Codigo 1371 Grado 18');
   });
 
+  it.each(['docente', 'administrador'] as const)(
+    'usa department para [DEPENDENCIA] en la plantilla %s',
+    (templateType) => {
+      const result = service['buildCertificateContent']({
+        certificate: {
+          department: 'Grupo de Seguridad y Salud en el Trabajo',
+          position_location: 'Subdireccion Nacional de Gestion Corporativa',
+          request: {
+            department: 'Grupo de Seguridad y Salud en el Trabajo',
+            position_location: 'Subdireccion Nacional de Gestion Corporativa',
+          },
+        } as any,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        templateHtml: '<p>[DEPENDENCIA]</p>',
+      });
+
+      expect(result).toContain('Grupo de Seguridad y Salud en el Trabajo');
+      expect(result).not.toContain(
+        'Subdireccion Nacional de Gestion Corporativa',
+      );
+    },
+  );
+
+  it.each(['docente', 'administrador'] as const)(
+    'no usa position_location como respaldo de [DEPENDENCIA] en la plantilla %s',
+    (templateType) => {
+      const result = service['buildCertificateContent']({
+        certificate: {
+          department: null,
+          position_location: 'SEDE CENTRAL',
+          request: {
+            department: null,
+            position_location: 'SEDE CENTRAL',
+          },
+        } as any,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+      });
+
+      expect(result).toContain('InicioFin');
+      expect(result).not.toContain('SEDE CENTRAL');
+    },
+  );
+
   it('renderiza varias primas tecnicas en el orden configurado', () => {
     const certificate = {
       technical_bonuses: [

@@ -299,10 +299,10 @@ export class CertificatesService {
     const qb = this.requestRepo
       .createQueryBuilder('request')
       .orderBy(
-        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'COALESCE(request.request_date, request.hiring_date, request.created_at)',
         'DESC',
       )
-      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.hiring_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC');
 
     if (idNumber) {
@@ -1288,6 +1288,43 @@ export class CertificatesService {
     );
   }
 
+  private sortRequestsBySelectionDate(
+    requests: CertificateRequest[],
+  ): CertificateRequest[] {
+    const toTimestamp = (value?: Date | string | null): number => {
+      if (!value) return Number.NEGATIVE_INFINITY;
+      const timestamp =
+        value instanceof Date ? value.getTime() : new Date(value).getTime();
+      return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+    };
+    const getPrimaryTimestamp = (request: CertificateRequest): number =>
+      toTimestamp(
+        request.request_date || request.hiring_date || request.created_at,
+      );
+
+    return requests
+      .map((request, originalIndex) => ({ request, originalIndex }))
+      .sort((left, right) => {
+        const requestDateDifference =
+          getPrimaryTimestamp(right.request) -
+          getPrimaryTimestamp(left.request);
+        if (requestDateDifference !== 0) return requestDateDifference;
+
+        const hiringDateDifference =
+          toTimestamp(right.request.hiring_date) -
+          toTimestamp(left.request.hiring_date);
+        if (hiringDateDifference !== 0) return hiringDateDifference;
+
+        const createdAtDifference =
+          toTimestamp(right.request.created_at) -
+          toTimestamp(left.request.created_at);
+        if (createdAtDifference !== 0) return createdAtDifference;
+
+        return left.originalIndex - right.originalIndex;
+      })
+      .map(({ request }) => request);
+  }
+
   private selectPreferredRequestForCertificate(
     requests: CertificateRequest[],
   ): CertificateRequest | null {
@@ -1295,8 +1332,10 @@ export class CertificatesService {
       return null;
     }
 
+    const orderedRequests = this.sortRequestsBySelectionDate(requests);
+
     // Prioridad 1: contratos activos.
-    const activeRequests = requests.filter(
+    const activeRequests = orderedRequests.filter(
       (request) =>
         this.resolveEmploymentStatus(
           request.hiring_date,
@@ -1340,7 +1379,7 @@ export class CertificatesService {
     }
 
     // Fallback: mantener comportamiento previo tomando el registro mas reciente.
-    return requests[0];
+    return orderedRequests[0];
   }
 
   private selectSalarySourceForCertificate(
@@ -1365,19 +1404,22 @@ export class CertificatesService {
       return null;
     }
 
-    const activeEncargo = requests.filter((request) => {
-      if (request.id === selectedRequest.id) {
-        return false;
-      }
-      const isActive =
-        this.resolveEmploymentStatus(
-          request.hiring_date,
-          request.request_date,
-          request.status,
-        ) === 'ACTIVO';
-      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
-      return isActive && isEncargo;
-    });
+    const activeEncargo = this.sortRequestsBySelectionDate(requests).filter(
+      (request) => {
+        if (request.id === selectedRequest.id) {
+          return false;
+        }
+        const isActive =
+          this.resolveEmploymentStatus(
+            request.hiring_date,
+            request.request_date,
+            request.status,
+          ) === 'ACTIVO';
+        const isEncargo =
+          this.normalizeEncargoType(request.observations) === 'E';
+        return isActive && isEncargo;
+      },
+    );
 
     if (!activeEncargo.length) {
       return null;
@@ -1390,7 +1432,9 @@ export class CertificatesService {
     selectedRequest: CertificateRequest,
     requests: CertificateRequest[],
   ): CertificateRequest {
-    const activeWithoutEncargo = requests.filter((request) => {
+    const activeWithoutEncargo = this.sortRequestsBySelectionDate(
+      requests,
+    ).filter((request) => {
       const isActive =
         this.resolveEmploymentStatus(
           request.hiring_date,
@@ -1537,10 +1581,10 @@ export class CertificatesService {
         { idNumbers },
       )
       .orderBy(
-        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'COALESCE(request.request_date, request.hiring_date, request.created_at)',
         'DESC',
       )
-      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.hiring_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
       .getMany();
 
@@ -2930,10 +2974,10 @@ export class CertificatesService {
         documento: requestById.id_number,
       })
       .orderBy(
-        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'COALESCE(request.request_date, request.hiring_date, request.created_at)',
         'DESC',
       )
-      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.hiring_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
       .getMany();
 

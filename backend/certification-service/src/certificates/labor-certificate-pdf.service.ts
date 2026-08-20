@@ -690,8 +690,6 @@ export class LaborCertificatePdfService {
     const dato7 =
       requestDepartment ||
       certificate.department ||
-      requestPositionLocation ||
-      certificate.position_location ||
       '';
     const grupoVariable =
       requestPositionLocation ||
