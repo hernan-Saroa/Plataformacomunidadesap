@@ -1,12 +1,15 @@
 import { admitePublicacion } from './publicacion-contrato.service';
 
 /**
- * Criterio de EFDS-1166: «dado un contrato perfeccionado y legalizado, cuando
- * el usuario lo publica, el sistema registra la publicación y controla el
- * plazo».
+ * Actividad 8.8 de la matriz: la publicación del contrato.
  *
- * Publicar un contrato al que le faltan garantías anunciaría como firme algo
- * que todavía puede cambiar.
+ * La matriz la sitúa en el último puesto de la etapa, así que leerla como
+ * flujo lineal exige cumplidas las anteriores. La historia EFDS-1166 dice lo
+ * mismo con otras palabras —«dado un contrato perfeccionado y legalizado»—:
+ * legalizado es haber pasado por las garantías (8.4) y la ARL (8.5).
+ *
+ * Publicar antes anunciaría como firme un contrato al que aún pueden faltarle
+ * las coberturas.
  */
 describe('admitePublicacion', () => {
   it('un contrato legalizado se publica', () => {
