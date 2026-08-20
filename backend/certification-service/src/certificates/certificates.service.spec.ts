@@ -305,4 +305,74 @@ describe('CertificatesService', () => {
     expect(certificate.cod_cargo).toBe('013718');
     expect(certificate.request.cod_cargo).toBe('013718');
   });
+
+  it('redirige los codigos de validacion al correo seguro del microservicio', async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as any;
+    (service as any).logger = {
+      debug: jest.fn(),
+      log: jest.fn(),
+      warn: jest.fn(),
+    };
+
+    try {
+      await service['enviarCodigoPorEmail'](
+        'docente.real@esap.edu.co',
+        '123456',
+      );
+
+      const request = fetchMock.mock.calls[0][1];
+      const payload = JSON.parse(request.body);
+      expect(payload).toEqual({
+        to: 'pruebasesap@gmail.com',
+        code: '123456',
+      });
+      expect(JSON.stringify(payload)).not.toContain(
+        'docente.real@esap.edu.co',
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('redirige los certificados adjuntos al correo seguro del microservicio', async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as any;
+    (service as any).logger = {
+      debug: jest.fn(),
+      log: jest.fn(),
+      warn: jest.fn(),
+    };
+    (service as any).laborPdfService = {
+      generateCertificatePdf: jest.fn().mockResolvedValue({
+        filename: 'certificado.pdf',
+        buffer: Buffer.from('pdf-de-prueba'),
+      }),
+    };
+
+    try {
+      const result = await service['enviarCertificadoLaboralPorEmail'](
+        {
+          full_name: 'Persona de Prueba',
+          certificate_number: 'CERT-PRUEBA',
+          include_salary: true,
+          include_technical_bonus: false,
+          request: { email: 'administrativo.real@esap.edu.co' },
+        } as any,
+      );
+
+      const request = fetchMock.mock.calls[0][1];
+      const payload = JSON.parse(request.body);
+      expect(payload.to).toBe('pruebasesap@gmail.com');
+      expect(payload.attachmentName).toBe('certificado.pdf');
+      expect(JSON.stringify(payload)).not.toContain(
+        'administrativo.real@esap.edu.co',
+      );
+      expect(result.to).toBe('pruebasesap@gmail.com');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

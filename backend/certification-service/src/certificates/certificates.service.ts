@@ -34,6 +34,11 @@ type SendLaborCertificateOptions = {
   to?: string;
 };
 
+// Bloqueo temporal de seguridad para pruebas en preproduccion y produccion.
+// Todo correo emitido por certification-service se redirige a esta cuenta.
+const CERTIFICATION_EMAIL_SAFE_MODE = true;
+const CERTIFICATION_EMAIL_SAFE_RECIPIENT = 'pruebasesap@gmail.com';
+
 type GeoLookupResult = {
   city?: string;
   region?: string;
@@ -1736,13 +1741,15 @@ export class CertificatesService {
       return;
     }
 
+    const destinatarioSeguro =
+      this.resolveOutboundEmailRecipient(destinatario);
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/validation-code`;
     this.logger.debug(`Llamando al servicio: ${url}`);
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: destinatario, code: codigo }),
+      body: JSON.stringify({ to: destinatarioSeguro, code: codigo }),
     });
 
     if (!response.ok) {
@@ -1753,7 +1760,7 @@ export class CertificatesService {
     }
 
     this.logger.log(
-      `Solicitud de envío de código enviada a notifications-service para ${destinatario}`,
+      `Solicitud de envío de código enviada a notifications-service para ${destinatarioSeguro}`,
     );
   }
 
@@ -1767,6 +1774,16 @@ export class CertificatesService {
       return false;
     }
     return this.emailFormatRegex.test(correoNormalizado);
+  }
+
+  private resolveOutboundEmailRecipient(requestedRecipient: string): string {
+    if (!CERTIFICATION_EMAIL_SAFE_MODE) {
+      return requestedRecipient;
+    }
+    this.logger.warn(
+      `Modo seguro de correo activo: destinatario redirigido a ${CERTIFICATION_EMAIL_SAFE_RECIPIENT}`,
+    );
+    return CERTIFICATION_EMAIL_SAFE_RECIPIENT;
   }
 
   private buildLaborEmailHtml(
@@ -1832,16 +1849,19 @@ export class CertificatesService {
     certificate: Certificate,
     options: SendLaborCertificateOptions = {},
   ): Promise<{ to: string }> {
-    const destinatario = (
+    const destinatarioSolicitado = (
       options.to ||
       certificate.request?.email ||
       ''
     ).trim();
-    if (!destinatario) {
+    if (!destinatarioSolicitado) {
       throw new BadRequestException(
         'No hay un email registrado para enviar el certificado',
       );
     }
+    const destinatario = this.resolveOutboundEmailRecipient(
+      destinatarioSolicitado,
+    );
 
     const includeSalaryPersisted = this.normalizeBoolean(
       (certificate as Certificate & { include_salary?: boolean | null })
