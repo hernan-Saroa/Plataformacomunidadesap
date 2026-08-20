@@ -89,16 +89,45 @@ export function useEstudioPrevio(procesoId: string | null) {
         mensaje: { tipo: 'ok', texto: 'Borrador guardado' },
       }));
     } catch (err: any) {
+      if (err instanceof ConflictoError) {
+        // Pedirle al usuario que recargue le costaría lo que acaba de
+        // escribir. Se relee la versión vigente y se reintenta una vez con
+        // los mismos valores: el conflicto casi siempre es contra un cambio
+        // propio —adjuntar un documento, otra pestaña abierta—, no contra
+        // otra persona editando el mismo estudio previo.
+        try {
+          const actual = await contratacionService.obtenerEstudioPrevio(procesoId);
+          const res = await contratacionService.guardarBorrador(
+            procesoId,
+            estado.valores,
+            actual.version,
+          );
+          setEstado((e) => ({
+            ...e,
+            guardando: false,
+            datos: e.datos ? { ...e.datos, version: res.version } : e.datos,
+            mensaje: { tipo: 'ok', texto: 'Borrador guardado' },
+          }));
+          return;
+        } catch (reintento: any) {
+          // Si vuelve a chocar, alguien más está editando de verdad: ahí sí
+          // recargar es lo correcto, y se avisa sin haber pisado su trabajo.
+          setEstado((e) => ({
+            ...e,
+            guardando: false,
+            mensaje: {
+              tipo: 'error',
+              texto: `${reintento.message} Copia lo que escribiste antes de recargar.`,
+            },
+          }));
+          return;
+        }
+      }
+
       setEstado((e) => ({
         ...e,
         guardando: false,
-        mensaje: {
-          tipo: 'error',
-          texto:
-            err instanceof ConflictoError
-              ? `${err.message} Recarga la página para ver los cambios.`
-              : err.message,
-        },
+        mensaje: { tipo: 'error', texto: err.message },
       }));
     }
   }, [procesoId, estado.valores, estado.datos]);

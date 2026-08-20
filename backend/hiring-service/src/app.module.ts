@@ -17,6 +17,7 @@ import { Documento } from './entities/documento.entity';
 import { Trazabilidad } from './entities/trazabilidad.entity';
 import { Revision } from './entities/revision.entity';
 import { Plantilla } from './entities/plantilla.entity';
+import { Modalidad } from './entities/modalidad.entity';
 
 @Module({
   imports: [
@@ -34,7 +35,7 @@ import { Plantilla } from './entities/plantilla.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',

@@ -31,6 +31,13 @@ export interface CampoFormulario {
   opciones?: string[];
 }
 
+/** Funcionario de auth.personas, para los campos que nombran a alguien. */
+export interface Persona {
+  id: string;
+  nombre: string;
+  email?: string;
+}
+
 /**
  * Modalidad de selección: es la columna de la matriz de flujo, así que
  * determina qué actividades aplican al proceso. Se elige al crearlo.
