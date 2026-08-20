@@ -13,6 +13,24 @@ describe('PtaService - solicitud de edicion bloqueada durante creacion/aprobacio
     approvalLevels: [1, 2, 3],
   };
 
+  // El DTO expone la regla ya evaluada para que el frontend no la reimplemente
+  // (fuente de verdad unica: la misma funcion que valida el endpoint).
+  it('expone admite_solicitud_edicion en el DTO segun el estado del PTA', () => {
+    const service = Object.create(PtaService.prototype) as any;
+    const dtoDe = (estado: string) => service.toPtaDto(
+      { id: 'pta-1', docenteId: 'docente-1', estado, version: 1, datosEstructurados: {} },
+      { capacitacion: 2 },
+    );
+
+    expect(dtoDe('Borrador').admite_solicitud_edicion).toBe(false);
+    expect(dtoDe('BORRADOR').admite_solicitud_edicion).toBe(false);
+    expect(dtoDe('Pendiente Jefatura').admite_solicitud_edicion).toBe(false);
+    expect(dtoDe('REVISION_DOCENTE_N2').admite_solicitud_edicion).toBe(false);
+    expect(dtoDe('Aprobado').admite_solicitud_edicion).toBe(true);
+    expect(dtoDe('En Firme').admite_solicitud_edicion).toBe(true);
+    expect(dtoDe('Terminado').admite_solicitud_edicion).toBe(true);
+  });
+
   it('rechaza la solicitud de edicion en Borrador y en medio de la aprobacion; la admite una vez Aprobado', async () => {
     const service = Object.create(PtaService.prototype) as any;
     const pta = {
