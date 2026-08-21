@@ -1129,19 +1129,28 @@ function ModalConfirmarEnvioRevision({
 function formatFechaActuacion(fecha?: string | null, withTime = false): string {
   if (!fecha) return 'Sin fecha';
 
-  // Evita el desfase por zona horaria cuando la fecha viene como YYYY-MM-DD.
+  // Las fechas "solo día" (YYYY-MM-DD) son una fecha civil, no un instante:
+  // anclarlas a mediodía UTC evita que se corran de día al formatear en
+  // America/Bogota. Las fechas con hora (timestamps del backend) se formatean
+  // directamente, pero siempre fijando la zona horaria a America/Bogota (no la
+  // del navegador/servidor donde corre la app, que puede no coincidir con la
+  // hora real de los usuarios y era la causa de que la hora mostrada no
+  // coincidiera con la hora real del registro).
   const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const parsed = soloFecha
-    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]))
+    ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
     : new Date(fecha);
 
   if (Number.isNaN(parsed.getTime())) return fecha;
 
   return parsed.toLocaleString(
     'es-CO',
-    withTime
-      ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
-      : { year: 'numeric', month: 'short', day: '2-digit' }
+    {
+      ...(withTime
+        ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
+        : { year: 'numeric', month: 'short', day: '2-digit' }),
+      timeZone: 'America/Bogota',
+    }
   );
 }
 
