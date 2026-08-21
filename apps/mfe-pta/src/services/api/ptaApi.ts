@@ -19,6 +19,15 @@ function asObject(raw: any): Record<string, any> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
+function getApiErrorMessage(error: any, fallback: string): string {
+  const responseMessage = error?.response?.data?.message;
+  if (Array.isArray(responseMessage)) return responseMessage.join(', ');
+  if (responseMessage && typeof responseMessage === 'object') {
+    return responseMessage.message || fallback;
+  }
+  return responseMessage || error?.message || fallback;
+}
+
 
 export async function getActivePeriodoAcademico() {
   try {
@@ -570,6 +579,7 @@ export async function aprobarComponente(ptaId: string, data: {
       success: false,
       data: null,
       message: (error as any)?.message || 'Error al actualizar el estado del componente',
+      code: (error as any)?.code || (error as any)?.response?.data?.code || null,
     };
   }
 }
@@ -577,13 +587,17 @@ export async function aprobarComponente(ptaId: string, data: {
 export type AprobarComponentesLoteResultado = {
   ptaId: string;
   componente: string;
-  estado: 'aprobado' | 'omitido' | 'fallido';
+  estado: 'aprobado' | 'devuelto' | 'omitido' | 'fallido';
   motivo?: string;
 };
 
 export async function aprobarComponentesLote(data: {
   ptaIds: string[];
   componentes: string[];
+  // Decisión a aplicar en lote sobre cada (ptaId, componente): por defecto 'aprobado'.
+  // 'devuelto' reutiliza la misma autorización/validación por componente que la
+  // devolución individual (ejecutarAprobacionComponente en PTADetallePanelBackoffice.tsx).
+  estado?: 'aprobado' | 'devuelto';
   comentarios?: string;
   // Mismos campos que aprobarComponente(): el backend prioriza la identidad del
   // token (auth.userId/name) para aprobadorId/aprobadorNombre, pero aprobadorRol
@@ -597,15 +611,15 @@ export async function aprobarComponentesLote(data: {
   try {
     const raw = await apiClient.post<any>(`${PTA_BASE}/aprobar-componentes-lote`, data);
     const normalized = normalizeResult<{
-      resumen: { total: number; aprobados: number; omitidos: number; fallidos: number };
+      resumen: { total: number; aprobados: number; devueltos: number; omitidos: number; fallidos: number };
       resultados: AprobarComponentesLoteResultado[];
-    }>(raw, { resumen: { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
+    }>(raw, { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][aprobarComponentesLote] Error:', error);
     return {
       success: false,
-      data: { resumen: { total: 0, aprobados: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
+      data: { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
       message: (error as any)?.message || 'Error al aprobar los componentes seleccionados',
     };
   }
@@ -1925,7 +1939,7 @@ export async function createBancoDocente(body: any) {
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][createBancoDocente] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible crear el docente.') };
   }
 }
 
@@ -1935,17 +1949,23 @@ export async function updateBancoDocente(id: string, body: any) {
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][updateBancoDocente] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible actualizar el docente.') };
   }
 }
 
-export async function toggleBancoDocenteEstado(id: string) {
+export async function toggleBancoDocenteEstado(id: string, body: {
+  estadoObjetivo: 'ACTIVO' | 'INACTIVO';
+  justificacion: string;
+  soporteId: string;
+  actorId?: string;
+  periodoCarga?: string;
+}) {
   try {
-    const raw = await apiClient.delete<any>(`${BD_BASE}/${id}`);
+    const raw = await apiClient.put<any>(`${BD_BASE}/${id}/estado`, body);
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][toggleBancoDocenteEstado] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible cambiar el estado del docente.') };
   }
 }
 
@@ -2056,7 +2076,7 @@ export async function vincularRundSoporte(docenteId: string, bloque: string, dat
     }
   } catch (error) {
     console.error('[mfe-pta][vincularRundSoporte] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible cargar el soporte documental.') };
   }
 }
 

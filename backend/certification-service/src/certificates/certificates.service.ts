@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { readFileSync } from 'fs';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Raw, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
@@ -23,6 +25,11 @@ import {
   DEFAULT_TECHNICAL_BONUS_TEMPLATES,
   type TechnicalBonusTemplateCategory,
 } from './technical-bonus-template.entity';
+import {
+  CertificateCorrectionRequest,
+  type CertificateCorrectionEvidence,
+  type CertificateCorrectionTraceEvent,
+} from './certificate-correction-request.entity';
 
 type TemplateType = 'docente' | 'administrador';
 
@@ -32,7 +39,53 @@ type SendLaborCertificateOptions = {
   templateType?: 'docente' | 'administrador';
   publicBaseUrl?: string;
   to?: string;
+  correctionMessage?: string;
+  correctionRequestNumber?: string;
+  correctionEvidenceCount?: number;
+  additionalAttachments?: OutboundEmailAttachment[];
 };
+
+type OutboundEmailAttachment = {
+  filename: string;
+  contentBase64: string;
+  contentType: string;
+};
+
+type CorrectionReviewer = {
+  id?: string;
+  name?: string;
+  email?: string;
+};
+
+export type CorrectedCertificateData = {
+  full_name?: string;
+  document_type?: string;
+  id_number?: string;
+  career_category?: string;
+  position_category?: string;
+  position_location?: string;
+  department?: string;
+  cod_cargo?: string;
+  cod_grade?: string;
+  encargo_type?: string;
+  campus?: string;
+  hiring_date?: string;
+  monthly_salary?: number | string;
+  salary_text?: string;
+  technical_bonus?: number | string;
+  include_salary?: boolean | string;
+  include_technical_bonus?: boolean | string;
+  resolution_description?: string;
+};
+
+// En desarrollo/QA puede redirigirse todo correo a una cuenta segura. En el
+// ambiente productivo se habilita el destinatario real con
+// CERTIFICATION_EMAIL_SAFE_MODE=false.
+const CERTIFICATION_EMAIL_SAFE_MODE =
+  String(process.env.CERTIFICATION_EMAIL_SAFE_MODE ?? 'true').toLowerCase() !==
+  'false';
+const CERTIFICATION_EMAIL_SAFE_RECIPIENT =
+  process.env.CERTIFICATION_EMAIL_SAFE_RECIPIENT || 'pruebasesap@gmail.com';
 
 type GeoLookupResult = {
   city?: string;
@@ -299,10 +352,10 @@ export class CertificatesService {
     const qb = this.requestRepo
       .createQueryBuilder('request')
       .orderBy(
-        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'COALESCE(request.request_date, request.hiring_date, request.created_at)',
         'DESC',
       )
-      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.hiring_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC');
 
     if (idNumber) {
@@ -1093,6 +1146,17 @@ export class CertificatesService {
     return digits;
   }
 
+  private normalizeRenderedCargoCode(
+    value?: string | number | null,
+    relatedGrade?: string | number | null,
+  ): string | undefined {
+    const normalized = this.normalizePersistedCodeValue(value, relatedGrade);
+    if (!normalized || /^0+$/.test(normalized) || normalized.length <= 4) {
+      return normalized;
+    }
+    return normalized.slice(0, 4);
+  }
+
   private selectPreferredNormalizedCodeValue(
     ...pairs: Array<{
       value?: string | number | null;
@@ -1288,6 +1352,43 @@ export class CertificatesService {
     );
   }
 
+  private sortRequestsBySelectionDate(
+    requests: CertificateRequest[],
+  ): CertificateRequest[] {
+    const toTimestamp = (value?: Date | string | null): number => {
+      if (!value) return Number.NEGATIVE_INFINITY;
+      const timestamp =
+        value instanceof Date ? value.getTime() : new Date(value).getTime();
+      return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+    };
+    const getPrimaryTimestamp = (request: CertificateRequest): number =>
+      toTimestamp(
+        request.request_date || request.hiring_date || request.created_at,
+      );
+
+    return requests
+      .map((request, originalIndex) => ({ request, originalIndex }))
+      .sort((left, right) => {
+        const requestDateDifference =
+          getPrimaryTimestamp(right.request) -
+          getPrimaryTimestamp(left.request);
+        if (requestDateDifference !== 0) return requestDateDifference;
+
+        const hiringDateDifference =
+          toTimestamp(right.request.hiring_date) -
+          toTimestamp(left.request.hiring_date);
+        if (hiringDateDifference !== 0) return hiringDateDifference;
+
+        const createdAtDifference =
+          toTimestamp(right.request.created_at) -
+          toTimestamp(left.request.created_at);
+        if (createdAtDifference !== 0) return createdAtDifference;
+
+        return left.originalIndex - right.originalIndex;
+      })
+      .map(({ request }) => request);
+  }
+
   private selectPreferredRequestForCertificate(
     requests: CertificateRequest[],
   ): CertificateRequest | null {
@@ -1295,8 +1396,10 @@ export class CertificatesService {
       return null;
     }
 
+    const orderedRequests = this.sortRequestsBySelectionDate(requests);
+
     // Prioridad 1: contratos activos.
-    const activeRequests = requests.filter(
+    const activeRequests = orderedRequests.filter(
       (request) =>
         this.resolveEmploymentStatus(
           request.hiring_date,
@@ -1340,7 +1443,7 @@ export class CertificatesService {
     }
 
     // Fallback: mantener comportamiento previo tomando el registro mas reciente.
-    return requests[0];
+    return orderedRequests[0];
   }
 
   private selectSalarySourceForCertificate(
@@ -1365,19 +1468,22 @@ export class CertificatesService {
       return null;
     }
 
-    const activeEncargo = requests.filter((request) => {
-      if (request.id === selectedRequest.id) {
-        return false;
-      }
-      const isActive =
-        this.resolveEmploymentStatus(
-          request.hiring_date,
-          request.request_date,
-          request.status,
-        ) === 'ACTIVO';
-      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
-      return isActive && isEncargo;
-    });
+    const activeEncargo = this.sortRequestsBySelectionDate(requests).filter(
+      (request) => {
+        if (request.id === selectedRequest.id) {
+          return false;
+        }
+        const isActive =
+          this.resolveEmploymentStatus(
+            request.hiring_date,
+            request.request_date,
+            request.status,
+          ) === 'ACTIVO';
+        const isEncargo =
+          this.normalizeEncargoType(request.observations) === 'E';
+        return isActive && isEncargo;
+      },
+    );
 
     if (!activeEncargo.length) {
       return null;
@@ -1390,7 +1496,9 @@ export class CertificatesService {
     selectedRequest: CertificateRequest,
     requests: CertificateRequest[],
   ): CertificateRequest {
-    const activeWithoutEncargo = requests.filter((request) => {
+    const activeWithoutEncargo = this.sortRequestsBySelectionDate(
+      requests,
+    ).filter((request) => {
       const isActive =
         this.resolveEmploymentStatus(
           request.hiring_date,
@@ -1537,10 +1645,10 @@ export class CertificatesService {
         { idNumbers },
       )
       .orderBy(
-        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'COALESCE(request.request_date, request.hiring_date, request.created_at)',
         'DESC',
       )
-      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.hiring_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
       .getMany();
 
@@ -1667,6 +1775,8 @@ export class CertificatesService {
     private technicalBonusRepo: Repository<TechnicalBonusAssignment>,
     @InjectRepository(TechnicalBonusTemplate)
     private technicalBonusTemplateRepo: Repository<TechnicalBonusTemplate>,
+    @InjectRepository(CertificateCorrectionRequest)
+    private correctionRequestRepo: Repository<CertificateCorrectionRequest>,
     private certificateGenerator: CertificateGeneratorService,
     private laborPdfService: LaborCertificatePdfService,
     private templateConfigService: TemplateConfigService,
@@ -1692,13 +1802,15 @@ export class CertificatesService {
       return;
     }
 
+    const destinatarioSeguro =
+      this.resolveOutboundEmailRecipient(destinatario);
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/validation-code`;
     this.logger.debug(`Llamando al servicio: ${url}`);
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: destinatario, code: codigo }),
+      body: JSON.stringify({ to: destinatarioSeguro, code: codigo }),
     });
 
     if (!response.ok) {
@@ -1709,7 +1821,7 @@ export class CertificatesService {
     }
 
     this.logger.log(
-      `Solicitud de envío de código enviada a notifications-service para ${destinatario}`,
+      `Solicitud de envío de código enviada a notifications-service para ${destinatarioSeguro}`,
     );
   }
 
@@ -1725,12 +1837,39 @@ export class CertificatesService {
     return this.emailFormatRegex.test(correoNormalizado);
   }
 
+  private resolveOutboundEmailRecipient(requestedRecipient: string): string {
+    if (!CERTIFICATION_EMAIL_SAFE_MODE) {
+      return requestedRecipient;
+    }
+    this.logger.warn(
+      `Modo seguro de correo activo: destinatario redirigido a ${CERTIFICATION_EMAIL_SAFE_RECIPIENT}`,
+    );
+    return CERTIFICATION_EMAIL_SAFE_RECIPIENT;
+  }
+
   private buildLaborEmailHtml(
     certificate: Certificate,
     recipientName?: string,
+    correctionMessage?: string,
+    correctionRequestNumber?: string,
+    correctionEvidenceCount = 0,
   ): string {
-    const nombre = recipientName || certificate.full_name || 'usuario';
-    const consecutivo = certificate.certificate_number || 'ESAP';
+    const nombre = this.escapeEmailHtml(recipientName || certificate.full_name || 'usuario');
+    const consecutivo = this.escapeEmailHtml(certificate.certificate_number || 'ESAP');
+    const solicitud = this.escapeEmailHtml(correctionRequestNumber || '');
+    const isCorrection = Boolean(correctionRequestNumber || correctionMessage);
+    const evidenceLabel = correctionEvidenceCount === 1 ? '1 evidencia de la decisión' : `${correctionEvidenceCount} evidencias de la decisión`;
+    const correctionMessageBlock = correctionMessage
+      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;margin-bottom:16px;">
+          <tr><td style="padding:14px 16px;font-size:13px;color:#065f46;line-height:1.6;"><strong>Descripción de la decisión</strong><br>${this.escapeEmailHtml(correctionMessage)}</td></tr>
+        </table>`
+      : '';
+    const requestRow = solicitud
+      ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Número de solicitud</span><br><span style="font-size:14px;font-weight:700;color:#003DA5;">${solicitud}</span></td></tr>`
+      : '';
+    const evidenceText = correctionEvidenceCount > 0
+      ? ` También encontrarás adjunta${correctionEvidenceCount === 1 ? '' : 's'} ${evidenceLabel}.`
+      : '';
     return `
       <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
         <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
@@ -1742,7 +1881,7 @@ export class CertificatesService {
                   <tr><td style="padding:22px 28px 18px 28px;">
                     <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
                       <td><div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Certificados Laborales</div></td>
-                      <td align="right"><span style="background-color:rgba(52,211,153,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Documento listo</span></td>
+                      <td align="right"><span style="background-color:rgba(52,211,153,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">${isCorrection ? 'Corrección aprobada' : 'Documento listo'}</span></td>
                     </tr></table>
                   </td></tr>
                 </table>
@@ -1750,12 +1889,14 @@ export class CertificatesService {
             </tr>
             <tr>
               <td style="padding:32px 28px 8px 28px;">
-                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Tu certificado laboral está listo</h1>
-                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${nombre}</strong>, adjuntamos a este correo el certificado laboral que solicitaste a la ESAP.</p>
+                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">${isCorrection ? 'Tu solicitud de corrección fue aprobada' : 'Tu certificado laboral está listo'}</h1>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${nombre}</strong>, ${isCorrection ? 'finalizamos la revisión y adjuntamos el certificado laboral corregido con la plantilla institucional correspondiente.' : 'adjuntamos a este correo el certificado laboral que solicitaste a la ESAP.'}</p>
+                ${correctionMessageBlock}
                 <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
                   <tr><td style="padding:16px 20px;">
                     <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Detalle del documento</p>
                     <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                      ${requestRow}
                       <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">
                         <span style="font-size:12px;color:#6b7280;">Número de certificado</span><br>
                         <span style="font-size:15px;font-weight:700;color:#111827;">${consecutivo}</span>
@@ -1768,7 +1909,7 @@ export class CertificatesService {
                   </td></tr>
                 </table>
                 <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:24px;">
-                  <tr><td style="padding:12px 16px;font-size:13px;color:#15803d;line-height:1.5;">&#10003; El archivo PDF se encuentra adjunto en este correo.</td></tr>
+                   <tr><td style="padding:12px 16px;font-size:13px;color:#15803d;line-height:1.5;">&#10003; ${isCorrection ? 'El certificado PDF corregido' : 'El archivo PDF'} se encuentra adjunto en este correo.${evidenceText}</td></tr>
                 </table>
               </td>
             </tr>
@@ -1788,16 +1929,19 @@ export class CertificatesService {
     certificate: Certificate,
     options: SendLaborCertificateOptions = {},
   ): Promise<{ to: string }> {
-    const destinatario = (
+    const destinatarioSolicitado = (
       options.to ||
       certificate.request?.email ||
       ''
     ).trim();
-    if (!destinatario) {
+    if (!destinatarioSolicitado) {
       throw new BadRequestException(
         'No hay un email registrado para enviar el certificado',
       );
     }
+    const destinatario = this.resolveOutboundEmailRecipient(
+      destinatarioSolicitado,
+    );
 
     const includeSalaryPersisted = this.normalizeBoolean(
       (certificate as Certificate & { include_salary?: boolean | null })
@@ -1847,17 +1991,28 @@ export class CertificatesService {
 
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/send-with-attachment`;
-    const subject = `Certificado Laboral ESAP - ${certificate.certificate_number}`;
-    const text = `Adjuntamos tu certificado laboral ${certificate.certificate_number}.`;
+    const subject = options.correctionRequestNumber
+      ? `Corrección aprobada ${options.correctionRequestNumber} - Certificado Laboral ESAP`
+      : `Certificado Laboral ESAP - ${certificate.certificate_number}`;
+    const text = options.correctionMessage
+      ? `Adjuntamos tu certificado laboral ${certificate.certificate_number}. Resultado de la revisión: ${options.correctionMessage}`
+      : `Adjuntamos tu certificado laboral ${certificate.certificate_number}.`;
 
     const payload = {
       to: destinatario,
       subject,
       text,
-      html: this.buildLaborEmailHtml(certificate, certificate.full_name),
+      html: this.buildLaborEmailHtml(
+        certificate,
+        certificate.full_name,
+        options.correctionMessage,
+        options.correctionRequestNumber,
+        options.correctionEvidenceCount,
+      ),
       attachmentName: attachment.filename,
       attachmentBase64: attachment.buffer.toString('base64'),
       attachmentContentType: 'application/pdf',
+      additionalAttachments: options.additionalAttachments || [],
     };
 
     const response = await fetch(url, {
@@ -1945,6 +2100,779 @@ export class CertificatesService {
       mensaje: `Certificado reenviado a ${result.to}`,
       email: result.to,
     };
+  }
+
+  // ============================================
+  // CORRECCIONES DE CERTIFICADOS LABORALES
+  // ============================================
+
+  private addBusinessDays(start: Date, businessDays: number): Date {
+    const result = new Date(start);
+    result.setHours(12, 0, 0, 0);
+    let added = 0;
+    while (added < businessDays) {
+      result.setDate(result.getDate() + 1);
+      const day = result.getDay();
+      const holidays = this.getColombianHolidays(result.getFullYear());
+      if (day !== 0 && day !== 6 && !holidays.has(this.localDateKey(result))) added += 1;
+    }
+    return result;
+  }
+
+  private localDateKey(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  private nextMonday(date: Date): Date {
+    const result = new Date(date);
+    const daysUntilMonday = (8 - result.getDay()) % 7;
+    result.setDate(result.getDate() + daysUntilMonday);
+    return result;
+  }
+
+  private easterSunday(year: number): Date {
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day, 12, 0, 0);
+  }
+
+  private getColombianHolidays(year: number): Set<string> {
+    const holidays = new Set<string>();
+    const add = (date: Date) => holidays.add(this.localDateKey(date));
+    const fixed = (month: number, day: number) => new Date(year, month - 1, day, 12, 0, 0);
+    const addObservedMonday = (month: number, day: number) => add(this.nextMonday(fixed(month, day)));
+    const addEasterOffset = (offset: number) => {
+      const date = this.easterSunday(year);
+      date.setDate(date.getDate() + offset);
+      add(date);
+    };
+
+    add(fixed(1, 1));
+    addObservedMonday(1, 6);
+    addObservedMonday(3, 19);
+    addEasterOffset(-3); // Jueves Santo
+    addEasterOffset(-2); // Viernes Santo
+    add(fixed(5, 1));
+    addEasterOffset(43); // Ascensión, trasladada al lunes
+    addEasterOffset(64); // Corpus Christi, trasladado al lunes
+    addEasterOffset(71); // Sagrado Corazón, trasladado al lunes
+    addObservedMonday(6, 29);
+    add(fixed(7, 20));
+    add(fixed(8, 7));
+    addObservedMonday(8, 15);
+    addObservedMonday(10, 12);
+    addObservedMonday(11, 1);
+    addObservedMonday(11, 11);
+    add(fixed(12, 8));
+    add(fixed(12, 25));
+    return holidays;
+  }
+
+  private buildCorrectionRequestNumber(): string {
+    const now = new Date();
+    const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+      .toUpperCase()
+      .slice(-9);
+    return `COR-${date}-${unique}`;
+  }
+
+  private correctionEvidenceFromFiles(files: any[] = []): CertificateCorrectionEvidence[] {
+    return files.map((file) => ({
+      originalName: String(file.originalname || 'evidencia'),
+      storedName: String(file.filename || ''),
+      mimeType: String(file.mimetype || 'application/octet-stream'),
+      size: Number(file.size || 0),
+      relativePath: String(file.path || '').replace(/\\/g, '/'),
+    }));
+  }
+
+  private correctionEmailAttachmentsFromFiles(files: any[] = []): OutboundEmailAttachment[] {
+    return files.map((file) => ({
+      filename: String(file.originalname || 'evidencia').replace(/["\r\n]/g, '_').slice(0, 255),
+      contentBase64: readFileSync(String(file.path)).toString('base64'),
+      contentType: String(file.mimetype || 'application/octet-stream'),
+    }));
+  }
+
+  private certificateCorrectionSnapshot(certificate: Certificate) {
+    return {
+      id: certificate.id,
+      certificate_number: certificate.certificate_number,
+      verification_code: certificate.verification_code,
+      full_name: certificate.full_name,
+      document_type: certificate.document_type,
+      id_number: certificate.id_number,
+      career_category: certificate.career_category,
+      hiring_date: certificate.hiring_date,
+      position_category: certificate.position_category,
+      position_location: certificate.position_location,
+      monthly_salary: Number(certificate.monthly_salary || 0),
+      technical_bonus: Number(certificate.technical_bonus || 0),
+      include_salary: certificate.include_salary,
+      include_technical_bonus: certificate.include_technical_bonus,
+      salary_text: certificate.salary_text,
+      department: certificate.department,
+      cod_cargo: certificate.cod_cargo,
+      cod_grade: certificate.cod_grade,
+      encargo_type:
+        certificate.encargo_type ??
+        this.normalizeEncargoType(certificate.request?.observations),
+      campus: certificate.campus,
+      issue_date: certificate.issue_date,
+      signer_name: certificate.signer_name,
+      signer_position: certificate.signer_position,
+      signer_department: certificate.signer_department,
+    };
+  }
+
+  private correctionTraceEvent(
+    event: Omit<CertificateCorrectionTraceEvent, 'id' | 'occurred_at'> & { occurred_at?: Date | string },
+  ): CertificateCorrectionTraceEvent {
+    return {
+      ...event,
+      id: randomUUID(),
+      occurred_at: new Date(event.occurred_at || new Date()).toISOString(),
+    };
+  }
+
+  private appendCorrectionTrace(
+    request: CertificateCorrectionRequest,
+    event: CertificateCorrectionTraceEvent,
+  ) {
+    request.traceability = [
+      ...(Array.isArray(request.traceability) ? request.traceability : []),
+      event,
+    ];
+  }
+
+  private correctionChanges(
+    original: Record<string, unknown>,
+    corrected: Record<string, unknown>,
+  ) {
+    const fields: Array<[string, string]> = [
+      ['full_name', 'Nombre completo'],
+      ['document_type', 'Tipo de documento'],
+      ['id_number', 'Número de documento'],
+      ['career_category', 'Cargo'],
+      ['position_category', 'Tipo de vinculación'],
+      ['hiring_date', 'Fecha de vinculación'],
+      ['cod_cargo', 'Código de cargo'],
+      ['cod_grade', 'Grado'],
+      ['encargo_type', 'Indicador de encargo'],
+      ['department', 'Dependencia'],
+      ['position_location', 'Grupo o ubicación'],
+      ['campus', 'Sede'],
+      ['include_salary', 'Inclusión del salario'],
+      ['monthly_salary', 'Salario mensual'],
+      ['salary_text', 'Salario en letras'],
+      ['include_technical_bonus', 'Inclusión de prima'],
+      ['technical_bonus', 'Prima técnica o de coordinación'],
+    ];
+    const comparable = (value: unknown) => {
+      if (value instanceof Date) return value.toISOString().slice(0, 10);
+      if (typeof value === 'number') return String(value);
+      if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+      const raw = String(value ?? '').trim();
+      return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : raw;
+    };
+    return fields.flatMap(([field, label]) => {
+      const before = comparable(original[field]);
+      const after = comparable(corrected[field]);
+      return before === after ? [] : [{ field, label, before, after }];
+    });
+  }
+
+  private correctionResponse(request: CertificateCorrectionRequest) {
+    const exposeEvidence = (items: CertificateCorrectionEvidence[] = []) =>
+      items.map((item, index) => ({
+        index,
+        originalName: item.originalName,
+        mimeType: item.mimeType,
+        size: item.size,
+      }));
+
+    return {
+      ...request,
+      submitted_evidence: exposeEvidence(request.submitted_evidence),
+      resolution_evidence: exposeEvidence(request.resolution_evidence),
+    };
+  }
+
+  async createCertificateCorrectionRequest(
+    data: {
+      certificateId?: string;
+      verificationCode?: string;
+      description?: string;
+    },
+    files: any[] = [],
+  ) {
+    const certificateId = String(data.certificateId || '').trim();
+    const verificationCode = String(data.verificationCode || '').trim();
+    const description = String(data.description || '').trim();
+
+    if (!certificateId || !verificationCode) {
+      throw new BadRequestException('No fue posible identificar el certificado. Vuelve a generarlo e intenta nuevamente.');
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(certificateId)) {
+      throw new BadRequestException('El identificador del certificado no es válido.');
+    }
+    if (description.length < 20 || description.length > 2000) {
+      throw new BadRequestException('La descripción debe tener entre 20 y 2.000 caracteres.');
+    }
+    if (files.length > 3) {
+      throw new BadRequestException('Puedes adjuntar máximo tres archivos.');
+    }
+
+    const certificate = await this.certificateRepo.findOne({
+      where: { id: certificateId },
+      relations: ['request'],
+    });
+    if (!certificate || certificate.verification_code !== verificationCode) {
+      throw new NotFoundException('El certificado indicado no existe o su código de validación no coincide.');
+    }
+    if (certificate.status !== 'VALID') {
+      throw new BadRequestException('Solo se pueden solicitar correcciones de certificados vigentes.');
+    }
+
+    const existing = await this.correctionRequestRepo.findOne({
+      where: {
+        certificate_id: certificate.id,
+        status: In(['PENDING', 'IN_REVIEW']),
+      },
+      order: { created_at: 'DESC' },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `Ya existe una solicitud de corrección abierta para este certificado (${existing.request_number}).`,
+      );
+    }
+
+    const requesterEmail = this.normalizarCorreo(certificate.request?.email);
+    if (!requesterEmail || !this.tieneFormatoCorreoValido(requesterEmail)) {
+      throw new BadRequestException('El certificado no tiene un correo registrado válido para recibir la respuesta.');
+    }
+
+    const dueDate = this.addBusinessDays(new Date(), 15);
+    const request = this.correctionRequestRepo.create({
+      request_number: this.buildCorrectionRequestNumber(),
+      certificate_id: certificate.id,
+      status: 'PENDING',
+      description,
+      requester_name: certificate.full_name,
+      requester_email: requesterEmail,
+      submitted_evidence: this.correctionEvidenceFromFiles(files),
+      certificate_snapshot: this.certificateCorrectionSnapshot(certificate),
+      due_date: dueDate,
+      reviewed_by_id: null,
+      reviewed_by_name: null,
+      reviewed_by_email: null,
+      review_started_at: null,
+      resolution_description: null,
+      resolution_evidence: [],
+      corrected_data: null,
+      traceability: [
+        this.correctionTraceEvent({
+          type: 'REQUEST_CREATED',
+          title: 'Solicitud de corrección recibida',
+          description,
+          status: 'PENDING',
+          actor_name: certificate.full_name,
+          actor_email: requesterEmail,
+          actor_role: 'SOLICITANTE',
+          metadata: {
+            certificate_id: certificate.id,
+            certificate_number: certificate.certificate_number,
+            due_date: this.localDateKey(dueDate),
+            evidence_count: files.length,
+          },
+        }),
+      ],
+      resolved_at: null,
+    });
+    let saved: CertificateCorrectionRequest;
+    try {
+      saved = await this.correctionRequestRepo.save(request);
+    } catch (error: any) {
+      if (error?.code === '23505' || error?.driverError?.code === '23505') {
+        throw new ConflictException('Ya existe una solicitud de corrección abierta para este certificado.');
+      }
+      throw error;
+    }
+    return {
+      id: saved.id,
+      request_number: saved.request_number,
+      status: saved.status,
+      due_date: saved.due_date,
+      message: 'Tu solicitud de corrección fue enviada exitosamente.',
+      business_days: 15,
+    };
+  }
+
+  async listCertificateCorrectionRequests(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    search?: string;
+  }) {
+    const page = Math.max(1, Number(params.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(params.limit) || 10));
+    const query = this.correctionRequestRepo
+      .createQueryBuilder('correction')
+      .leftJoinAndSelect('correction.certificate', 'certificate')
+      .leftJoinAndSelect('certificate.request', 'certificateRequest')
+      .addSelect(
+        `CASE correction.status WHEN 'PENDING' THEN 0 WHEN 'IN_REVIEW' THEN 1 ELSE 2 END`,
+        'correction_status_priority',
+      );
+
+    const status = String(params.status || '').trim().toUpperCase();
+    if (status && status !== 'ALL') {
+      query.andWhere('correction.status = :status', { status });
+    }
+    const search = String(params.search || '').trim();
+    if (search) {
+      query.andWhere(
+        `(correction.request_number ILIKE :search
+          OR correction.requester_name ILIKE :search
+          OR correction.requester_email ILIKE :search
+          OR certificate.certificate_number ILIKE :search
+          OR certificate.id_number ILIKE :search)`,
+        { search: `%${search}%` },
+      );
+    }
+
+    const [items, total] = await query
+      .orderBy('correction_status_priority', 'ASC')
+      .addOrderBy('correction.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      // `data` is intentionally avoided here: the shared frontend ApiClient
+      // unwraps that key and would discard the pagination metadata.
+      items: items.map((item) => this.correctionResponse(item)),
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  async getCertificateCorrectionStats() {
+    const rows = await this.correctionRequestRepo
+      .createQueryBuilder('correction')
+      .select('correction.status', 'status')
+      .addSelect('COUNT(correction.id)', 'count')
+      .groupBy('correction.status')
+      .getRawMany<{ status: string; count: string }>();
+    const counts = Object.fromEntries(rows.map((row) => [row.status, Number(row.count) || 0]));
+    const overdue = await this.correctionRequestRepo
+      .createQueryBuilder('correction')
+      .where("correction.status IN ('PENDING', 'IN_REVIEW')")
+      .andWhere('correction.due_date < CURRENT_DATE')
+      .getCount();
+    return {
+      total: Object.values(counts).reduce((sum, value) => sum + value, 0),
+      pending: counts.PENDING || 0,
+      in_review: counts.IN_REVIEW || 0,
+      approved: counts.APPROVED || 0,
+      rejected: counts.REJECTED || 0,
+      overdue,
+    };
+  }
+
+  async getCertificateCorrectionRequest(id: string) {
+    const request = await this.correctionRequestRepo.findOne({
+      where: { id },
+      relations: ['certificate', 'certificate.request'],
+    });
+    if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    await this.ensureTemplateSnapshotForCertificate(request.certificate);
+    return this.correctionResponse(request);
+  }
+
+  async previewCertificateCorrectionRequest(
+    id: string,
+    input: CorrectedCertificateData,
+  ) {
+    const request = await this.correctionRequestRepo.findOne({
+      where: { id },
+      relations: ['certificate', 'certificate.request'],
+    });
+    if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    await this.ensureTemplateSnapshotForCertificate(request.certificate);
+    const patch = this.normalizeCorrectedCertificateData(request.certificate, input || {});
+    const previewCertificate = Object.assign(
+      new Certificate(),
+      request.certificate,
+      patch,
+    );
+    return this.laborPdfService.buildCertificatePreview(previewCertificate, {
+      includeSalary: previewCertificate.include_salary,
+      includeTechnicalBonus: previewCertificate.include_technical_bonus,
+    });
+  }
+
+  async startCertificateCorrectionReview(id: string, reviewer: CorrectionReviewer) {
+    const request = await this.correctionRequestRepo.findOne({ where: { id } });
+    if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    if (request.status === 'APPROVED' || request.status === 'REJECTED') {
+      return this.getCertificateCorrectionRequest(id);
+    }
+    if (request.status === 'PENDING') {
+      request.status = 'IN_REVIEW';
+      request.review_started_at = new Date();
+      this.appendCorrectionTrace(
+        request,
+        this.correctionTraceEvent({
+          type: 'REVIEW_STARTED',
+          title: 'Revisión iniciada por el coordinador',
+          description: 'El caso fue abierto y quedó en revisión por el equipo de Certificados Laborales.',
+          status: 'IN_REVIEW',
+          actor_name: reviewer.name || 'Coordinador Certificados Laborales',
+          actor_email: reviewer.email || null,
+          actor_role: 'COORDINADOR',
+          metadata: {},
+        }),
+      );
+    }
+    request.reviewed_by_id = reviewer.id || request.reviewed_by_id;
+    request.reviewed_by_name = reviewer.name || request.reviewed_by_name || 'Coordinador Certificados Laborales';
+    request.reviewed_by_email = reviewer.email || request.reviewed_by_email;
+    await this.correctionRequestRepo.save(request);
+    return this.getCertificateCorrectionRequest(id);
+  }
+
+  private normalizeCorrectedCertificateData(
+    certificate: Certificate,
+    input: CorrectedCertificateData,
+  ): Partial<Certificate> {
+    const text = (value: unknown, field: string, maxLength: number, required = false) => {
+      const normalized = String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (required && !normalized) throw new BadRequestException(`${field} es obligatorio.`);
+      if (normalized.length > maxLength) throw new BadRequestException(`${field} supera el máximo de ${maxLength} caracteres.`);
+      if (/[<>]/.test(normalized)) throw new BadRequestException(`${field} contiene caracteres no permitidos.`);
+      return normalized;
+    };
+    const money = (value: unknown, field: string) => {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 9999999999) {
+        throw new BadRequestException(`${field} debe ser un valor numérico válido.`);
+      }
+      if (!Number.isInteger(parsed)) {
+        throw new BadRequestException(`${field} debe expresarse en pesos enteros, sin decimales.`);
+      }
+      return parsed;
+    };
+    const hiringDate = this.normalizeDateOnly(input.hiring_date || certificate.hiring_date);
+    if (!hiringDate) {
+      throw new BadRequestException('La fecha de vinculación no es válida.');
+    }
+    const includeSalary = this.normalizeBoolean(input.include_salary, certificate.include_salary);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(input.include_technical_bonus, certificate.include_technical_bonus)
+      : false;
+    const currentEncargoType =
+      certificate.encargo_type ??
+      this.normalizeEncargoType(certificate.request?.observations) ??
+      'N';
+    const encargoType = this.normalizeEncargoType(
+      input.encargo_type ?? currentEncargoType,
+    );
+    if ('encargo_type' in input && !encargoType) {
+      throw new BadRequestException('El indicador de encargo debe ser E o N.');
+    }
+    const renderedCargoCode = this.normalizeRenderedCargoCode(
+      input.cod_cargo ?? certificate.cod_cargo,
+      input.cod_grade ?? certificate.cod_grade,
+    );
+
+    return {
+      full_name: text(input.full_name ?? certificate.full_name, 'El nombre', 255, true) as string,
+      document_type: this.normalizeLaborDocumentType(input.document_type ?? certificate.document_type, { strict: true }),
+      id_number: text(input.id_number ?? certificate.id_number, 'El documento', 50, true) as string,
+      career_category: text(input.career_category ?? certificate.career_category, 'El cargo', 100, true) as string,
+      position_category: text(input.position_category ?? certificate.position_category, 'El tipo de vinculación', 100, true) as string,
+      position_location: text(input.position_location ?? certificate.position_location, 'La ubicación del cargo', 150),
+      department: text(input.department ?? certificate.department, 'La dependencia', 255),
+      cod_cargo: text(renderedCargoCode, 'El código del cargo', 255),
+      cod_grade: text(input.cod_grade ?? certificate.cod_grade, 'El grado', 255),
+      encargo_type: encargoType || 'N',
+      campus: text(input.campus ?? certificate.campus, 'La sede', 100),
+      hiring_date: hiringDate,
+      monthly_salary: money(input.monthly_salary ?? certificate.monthly_salary, 'El salario'),
+      // Campo heredado: se conserva por compatibilidad, pero el texto visible se
+      // calcula siempre desde monthly_salary en el renderizador institucional.
+      salary_text: text(certificate.salary_text, 'El salario en letras', 255),
+      technical_bonus: money(input.technical_bonus ?? certificate.technical_bonus ?? 0, 'La prima técnica'),
+      include_salary: includeSalary,
+      include_technical_bonus: includeTechnicalBonus,
+      issue_date: new Date(),
+      issuance_timestamp: new Date(),
+      is_corrected: true,
+      last_corrected_at: new Date(),
+    };
+  }
+
+  async approveCertificateCorrectionRequest(
+    id: string,
+    input: CorrectedCertificateData,
+    reviewer: CorrectionReviewer,
+    files: any[] = [],
+  ) {
+    const request = await this.correctionRequestRepo.findOne({
+      where: { id },
+      relations: ['certificate', 'certificate.request'],
+    });
+    if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    if (!['PENDING', 'IN_REVIEW'].includes(request.status)) {
+      throw new ConflictException('Esta solicitud ya fue resuelta.');
+    }
+
+    const resolutionDescription = String(input?.resolution_description || '').trim();
+    if (resolutionDescription.length < 20 || resolutionDescription.length > 1000) {
+      throw new BadRequestException('La descripción de la aprobación debe tener entre 20 y 1.000 caracteres.');
+    }
+    if (files.length > 2) throw new BadRequestException('Puedes adjuntar máximo dos imágenes.');
+    const immutableOriginalSnapshot = request.certificate_snapshot || {};
+    const originalSnapshot = {
+      ...immutableOriginalSnapshot,
+      cod_cargo: this.normalizeRenderedCargoCode(
+        (immutableOriginalSnapshot.cod_cargo as string | number | null | undefined) ??
+          request.certificate.cod_cargo,
+        (immutableOriginalSnapshot.cod_grade as string | number | null | undefined) ??
+          request.certificate.cod_grade,
+      ),
+      encargo_type:
+        this.normalizeEncargoType(
+          (immutableOriginalSnapshot.encargo_type as string | null | undefined) ??
+            request.certificate.encargo_type ??
+            request.certificate.request?.observations,
+        ) ?? 'N',
+    };
+    const patch = this.normalizeCorrectedCertificateData(request.certificate, input || {});
+    Object.assign(request.certificate, patch);
+    await this.ensureTemplateSnapshotForCertificate(request.certificate);
+    const correctedSnapshot = this.certificateCorrectionSnapshot(request.certificate);
+    request.resolution_evidence = this.correctionEvidenceFromFiles(files);
+    const decisionAttachments = this.correctionEmailAttachmentsFromFiles(files);
+
+    // El envío es obligatorio: el caso solo se resuelve cuando el PDF corregido
+    // fue aceptado por el servicio institucional de notificaciones.
+    const sent = await this.enviarCertificadoLaboralPorEmail(request.certificate, {
+      to: request.requester_email,
+      correctionMessage: resolutionDescription,
+      correctionRequestNumber: request.request_number,
+      correctionEvidenceCount: request.resolution_evidence.length,
+      additionalAttachments: decisionAttachments,
+    });
+
+    await this.certificateRepo.save(request.certificate);
+    if (!request.review_started_at) {
+      request.review_started_at = new Date();
+      this.appendCorrectionTrace(
+        request,
+        this.correctionTraceEvent({
+          type: 'REVIEW_STARTED',
+          title: 'Revisión iniciada por el coordinador',
+          description: 'El caso fue tomado para revisión antes de registrar la decisión.',
+          status: 'IN_REVIEW',
+          actor_name: reviewer.name || 'Coordinador Certificados Laborales',
+          actor_email: reviewer.email || null,
+          actor_role: 'COORDINADOR',
+          metadata: {},
+        }),
+      );
+    }
+    request.status = 'APPROVED';
+    request.reviewed_by_id = reviewer.id || null;
+    request.reviewed_by_name = reviewer.name || 'Coordinador Certificados Laborales';
+    request.reviewed_by_email = reviewer.email || null;
+    request.resolution_description = resolutionDescription;
+    request.corrected_data = correctedSnapshot;
+    request.resolved_at = new Date();
+    this.appendCorrectionTrace(
+      request,
+      this.correctionTraceEvent({
+        type: 'CERTIFICATE_SENT',
+        title: 'Certificado corregido y enviado',
+        description: resolutionDescription,
+        status: 'APPROVED',
+        occurred_at: request.resolved_at,
+        actor_name: request.reviewed_by_name,
+        actor_email: request.reviewed_by_email,
+        actor_role: 'COORDINADOR',
+        metadata: {
+          certificate_number: request.certificate.certificate_number,
+          requested_recipient: request.requester_email,
+          recipient: sent.to,
+          delivery_status: 'SENT',
+           evidence_count: request.resolution_evidence.length,
+           changes: this.correctionChanges(originalSnapshot, correctedSnapshot),
+        },
+      }),
+    );
+    await this.correctionRequestRepo.save(request);
+
+    return {
+      ...this.correctionResponse(request),
+      message: 'El certificado corregido fue enviado exitosamente.',
+      email: sent.to,
+      email_sent: true,
+    };
+  }
+
+  private escapeEmailHtml(value: string): string {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  private buildCorrectionRejectionEmailHtml(
+    request: CertificateCorrectionRequest,
+    evidenceCount: number,
+  ): string {
+    const requestNumber = this.escapeEmailHtml(request.request_number);
+    const certificateNumber = this.escapeEmailHtml(
+      request.certificate?.certificate_number || 'Certificado laboral ESAP',
+    );
+    const requesterName = this.escapeEmailHtml(request.requester_name || 'usuario');
+    const reason = this.escapeEmailHtml(request.resolution_description || '');
+    const evidenceNotice = evidenceCount > 0
+      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-top:16px;"><tr><td style="padding:13px 16px;font-size:13px;color:#475569;line-height:1.5;">Se adjunt${evidenceCount === 1 ? 'ó una evidencia' : `aron ${evidenceCount} evidencias`} que respalda${evidenceCount === 1 ? '' : 'n'} la decisión.</td></tr></table>`
+      : '';
+
+    return `<div style="font-family:Arial,'Helvetica Neue',sans-serif;background:#f0f4f8;padding:32px 16px;margin:0"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center"><table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#fff;border:1px solid #dde3ed;border-radius:10px;overflow:hidden"><tr><td style="height:4px;background:#ef4444;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="background:#003DA5;padding:20px 28px"><table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td><div style="font-size:20px;font-weight:800;color:#fff">ESAP</div><div style="font-size:10px;color:#bfdbfe;margin-top:2px;letter-spacing:.8px;text-transform:uppercase">Certificados Laborales</div></td><td align="right"><span style="background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px">Solicitud no aprobada</span></td></tr></table></td></tr><tr><td style="padding:30px 28px 8px"><h1 style="margin:0 0 8px;font-size:22px;color:#111827">Resultado de tu solicitud de corrección</h1><p style="margin:0 0 22px;font-size:14px;color:#64748b;line-height:1.6">Hola <strong style="color:#334155">${requesterName}</strong>, finalizamos la revisión de la información y las evidencias remitidas.</p><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px"><tr><td style="padding:14px 16px"><span style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase">Solicitud</span><br><strong style="font-size:14px;color:#003DA5">${requestNumber}</strong><br><span style="display:inline-block;margin-top:9px;font-size:12px;color:#64748b">Certificado ${certificateNumber}</span></td></tr></table><table width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#fff1f2;border:1px solid #fecdd3;border-radius:8px"><tr><td style="padding:15px 16px;font-size:13px;color:#9f1239;line-height:1.65"><strong>Descripción de la decisión</strong><br>${reason}</td></tr></table>${evidenceNotice}<p style="margin:22px 0 14px;font-size:13px;color:#64748b;line-height:1.6">Esta respuesta y sus soportes quedan registrados en la trazabilidad de la solicitud.</p></td></tr><tr><td style="padding:14px 28px 18px;background:#f8fafc;border-top:1px solid #e2e8f0"><p style="margin:0;font-size:12px;color:#94a3b8">ESAP — Escuela Superior de Administración Pública</p></td></tr></table></td></tr></table></div>`;
+  }
+
+  private async sendCorrectionRejectionEmail(
+    request: CertificateCorrectionRequest,
+    files: any[] = [],
+  ) {
+    const to = this.resolveOutboundEmailRecipient(request.requester_email);
+    const attachments = this.correctionEmailAttachmentsFromFiles(files);
+    const payload = {
+      to,
+      subject: `Corrección no aprobada ${request.request_number} - Certificados Laborales ESAP`,
+      text: `Tu solicitud de corrección ${request.request_number} fue revisada y no fue aprobada. Descripción: ${request.resolution_description || ''}`,
+      html: this.buildCorrectionRejectionEmailHtml(request, attachments.length),
+      attachments,
+    };
+    const response = await fetch(`${this.resolveNotificationsBaseUrl()}/api/v1/emails/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`Notifications service error (${response.status})`);
+    return { to };
+  }
+
+  async rejectCertificateCorrectionRequest(
+    id: string,
+    description: string,
+    files: any[],
+    reviewer: CorrectionReviewer,
+  ) {
+    const reason = String(description || '').trim();
+    if (reason.length < 20 || reason.length > 2000) {
+      throw new BadRequestException('El motivo del rechazo debe tener entre 20 y 2.000 caracteres.');
+    }
+    if (files.length > 2) throw new BadRequestException('Puedes adjuntar máximo dos imágenes.');
+
+    const request = await this.correctionRequestRepo.findOne({
+      where: { id },
+      relations: ['certificate'],
+    });
+    if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    if (!['PENDING', 'IN_REVIEW'].includes(request.status)) {
+      throw new ConflictException('Esta solicitud ya fue resuelta.');
+    }
+
+    if (!request.review_started_at) {
+      request.review_started_at = new Date();
+      this.appendCorrectionTrace(
+        request,
+        this.correctionTraceEvent({
+          type: 'REVIEW_STARTED',
+          title: 'Revisión iniciada por el coordinador',
+          description: 'El caso fue tomado para revisión antes de registrar la decisión.',
+          status: 'IN_REVIEW',
+          actor_name: reviewer.name || 'Coordinador Certificados Laborales',
+          actor_email: reviewer.email || null,
+          actor_role: 'COORDINADOR',
+          metadata: {},
+        }),
+      );
+    }
+    request.status = 'REJECTED';
+    request.reviewed_by_id = reviewer.id || null;
+    request.reviewed_by_name = reviewer.name || 'Coordinador Certificados Laborales';
+    request.reviewed_by_email = reviewer.email || null;
+    request.resolution_description = reason;
+    request.resolution_evidence = this.correctionEvidenceFromFiles(files);
+    request.resolved_at = new Date();
+
+    // Igual que en la aprobación, la decisión solo queda resuelta cuando el
+    // servicio institucional acepta el correo y todos sus soportes.
+    const notification = await this.sendCorrectionRejectionEmail(request, files);
+    const notifiedRecipient = notification.to;
+
+    this.appendCorrectionTrace(
+      request,
+      this.correctionTraceEvent({
+        type: 'REQUEST_REJECTED',
+        title: 'Solicitud rechazada',
+        description: reason,
+        status: 'REJECTED',
+        occurred_at: request.resolved_at,
+        actor_name: request.reviewed_by_name,
+        actor_email: request.reviewed_by_email,
+        actor_role: 'COORDINADOR',
+        metadata: {
+          requested_recipient: request.requester_email,
+          recipient: notifiedRecipient,
+          delivery_status: 'SENT',
+          evidence_count: request.resolution_evidence.length,
+        },
+      }),
+    );
+    await this.correctionRequestRepo.save(request);
+
+    return {
+      ...this.correctionResponse(request),
+      message: 'La solicitud fue rechazada y quedó registrada.',
+      email_sent: true,
+    };
+  }
+
+  async getCertificateCorrectionEvidence(
+    id: string,
+    kind: 'submitted' | 'resolution',
+    index: number,
+  ) {
+    const request = await this.correctionRequestRepo.findOne({ where: { id } });
+    if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    const evidence = kind === 'submitted' ? request.submitted_evidence : request.resolution_evidence;
+    const file = evidence?.[index];
+    if (!file) throw new NotFoundException('Evidencia no encontrada.');
+    return file;
   }
 
   async findSolicitudById(id: string) {
@@ -2930,10 +3858,10 @@ export class CertificatesService {
         documento: requestById.id_number,
       })
       .orderBy(
-        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'COALESCE(request.request_date, request.hiring_date, request.created_at)',
         'DESC',
       )
-      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.hiring_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
       .getMany();
 
@@ -3035,6 +3963,7 @@ export class CertificatesService {
       department: request.department,
       cod_cargo: request.cod_cargo,
       cod_grade: request.cod_grade || undefined,
+      encargo_type: this.normalizeEncargoType(request.observations),
       campus: request.campus,
       issue_date: new Date(),
       issuance_timestamp: new Date(),

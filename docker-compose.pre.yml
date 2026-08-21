@@ -1,4 +1,3 @@
-version: "3.9"
 
 # Docker Compose para entorno PRE (Pre-producción)
 # Servidor: http://172.16.202.222
@@ -256,6 +255,7 @@ services:
       - "3004:3004"
     volumes:
       - ./backend/certification-service/uploads:/app/uploads
+      - ./backend/certification-service/private-uploads:/app/private-uploads
     depends_on:
       db:
         condition: service_healthy

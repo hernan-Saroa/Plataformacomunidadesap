@@ -26,6 +26,64 @@ type PdfOptions = {
   technicalBonusTemplate?: string;
 };
 
+export type LaborCertificateTemplateVariable = {
+  code: string;
+  label: string;
+  value: string;
+  source_fields: string[];
+};
+
+const TEMPLATE_VARIABLE_META: Record<string, { label: string; sourceFields: string[] }> = {
+  '[DATO1]': { label: 'Nombre del empleado', sourceFields: ['full_name'] },
+  '[DATO2]': { label: 'Número de documento', sourceFields: ['id_number'] },
+  '[DATO3]': { label: 'Tipo de vinculación', sourceFields: ['position_category'] },
+  '[DATO4]': { label: 'Fecha de vinculación', sourceFields: ['hiring_date'] },
+  '[DATO5]': { label: 'Cargo', sourceFields: ['career_category'] },
+  '[DATO6]': { label: 'Dato adicional de ubicación', sourceFields: ['department', 'position_location'] },
+  '[DATO7]': { label: 'Dependencia', sourceFields: ['department'] },
+  '[DATO8]': { label: 'Salario en letras calculado', sourceFields: ['monthly_salary', 'include_salary'] },
+  '[NOMBRE_EMPLEADO]': { label: 'Nombre del empleado', sourceFields: ['full_name'] },
+  '[TIPO_DOCUMENTO]': { label: 'Tipo de documento', sourceFields: ['document_type'] },
+  '[TIPO_DOCUMENTO_CORTO]': { label: 'Código del documento', sourceFields: ['document_type'] },
+  '[DOCUMENTO]': { label: 'Número de documento', sourceFields: ['id_number'] },
+  '[CARGO]': { label: 'Cargo calculado', sourceFields: ['career_category', 'cod_cargo', 'cod_grade', 'encargo_type'] },
+  '[CARGO DATO6]': { label: 'Tipo de vinculación', sourceFields: ['position_category'] },
+  '[TIPO_DATO]': { label: 'Tipo de vinculación', sourceFields: ['position_category'] },
+  '[GRUPO]': { label: 'Grupo o ubicación', sourceFields: ['position_location'] },
+  '[SEDE]': { label: 'Sede', sourceFields: ['campus'] },
+  '[UBICACIÓN]': { label: 'Dependencia', sourceFields: ['department'] },
+  '[UBICACION]': { label: 'Dependencia', sourceFields: ['department'] },
+  '[DEPENDENCIA]': { label: 'Dependencia', sourceFields: ['department'] },
+  '[DEPENDENCIA_PADRE]': { label: 'Dependencia padre', sourceFields: ['cod_cargo'] },
+  '[FECHA_INICIO]': { label: 'Fecha de vinculación', sourceFields: ['hiring_date'] },
+  '[FECHA_FIN]': { label: 'Fecha de finalización', sourceFields: [] },
+  '[SALARIO]': { label: 'Salario mensual', sourceFields: ['monthly_salary', 'include_salary'] },
+  '[SALARIO_LETRAS]': { label: 'Salario en letras calculado', sourceFields: ['monthly_salary', 'include_salary'] },
+  '[PRIMA_TECNICA]': { label: 'Prima técnica calculada', sourceFields: ['technical_bonus', 'include_technical_bonus'] },
+  '[FECHA_EXPEDICION_COMPLETA]': { label: 'Fecha de expedición', sourceFields: [] },
+  '[CIUDAD_EXPEDICION]': { label: 'Ciudad de expedición', sourceFields: [] },
+};
+
+const templateVariableSourceFields = (
+  code: string,
+  templateType: TemplateType,
+): string[] => {
+  if (code === '[CARGO]') {
+    return templateType === 'docente'
+      ? ['career_category', 'cod_cargo', 'encargo_type']
+      : ['career_category', 'cod_cargo', 'cod_grade', 'encargo_type'];
+  }
+  if (code === '[DATO5]' && templateType === 'docente') {
+    return ['career_category', 'position_category', 'position_location', 'department'];
+  }
+  if (code === '[DATO6]') {
+    return templateType === 'docente'
+      ? ['department', 'position_location', 'campus']
+      : [];
+  }
+  return TEMPLATE_VARIABLE_META[code]?.sourceFields || [];
+};
+
 @Injectable()
 export class LaborCertificatePdfService {
   private readonly defaultTypographyFont = 'Arial Narrow, Arial, sans-serif';
@@ -151,6 +209,79 @@ export class LaborCertificatePdfService {
     const filename = `Certificado_Laboral_${safeName}_${certificate.certificate_number}.pdf`;
 
     return { filename, buffer };
+  }
+
+  async buildCertificatePreview(
+    certificate: Certificate,
+    options: PdfOptions = {},
+  ): Promise<{
+    content_html: string;
+    cargo_title: string;
+    typography_font: string;
+    signer_name: string;
+    signer_position: string;
+    template_type: TemplateType;
+    template_version: string | null;
+    certificate_number: string;
+    template_variables: LaborCertificateTemplateVariable[];
+  }> {
+    const certificateWithTemplate = certificate as Certificate & {
+      template_snapshot?: any;
+      template_type?: string;
+    };
+    const snapshot = certificateWithTemplate.template_snapshot;
+    const templateType =
+      snapshot?.templateType ||
+      snapshot?.template_type ||
+      (certificateWithTemplate.template_type as TemplateType) ||
+      options.templateType ||
+      this.resolveTemplateType(certificate);
+    const includeSalary = this.normalizeBoolean(
+      options.includeSalary,
+      this.normalizeBoolean(certificate.include_salary, true),
+    );
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(
+          options.includeTechnicalBonus,
+          this.normalizeBoolean(certificate.include_technical_bonus, false),
+        )
+      : false;
+    const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
+    let templateVariables: LaborCertificateTemplateVariable[] = [];
+    const contentHtml = this.buildCertificateContent({
+      certificate,
+      templateType,
+      includeSalary,
+      includeTechnicalBonus,
+      templateHtml: config?.certificateContentHtml || '',
+      technicalBonusTemplate:
+        options.technicalBonusTemplate || config?.technicalBonusTemplate,
+      highlightVariables: true,
+      collectTemplateVariables: (variables) => {
+        templateVariables = variables;
+      },
+    });
+
+    return {
+      content_html: contentHtml,
+      cargo_title: String(config?.cargoTitle || ''),
+      typography_font: this.sanitizeTypographyFont(
+        config?.typography?.font || config?.typographyFont,
+      ),
+      signer_name: String(
+        config?.firmante?.nombreCompleto ||
+        config?.firmante?.nombre ||
+        certificate.signer_name ||
+        '',
+      ),
+      signer_position: String(
+        config?.firmante?.cargo || certificate.signer_position || '',
+      ),
+      template_type: templateType,
+      template_version: config?.version ? String(config.version) : null,
+      certificate_number: String(certificate.certificate_number || ''),
+      template_variables: templateVariables,
+    };
   }
 
   private resolveTemplateType(certificate: Certificate): TemplateType {
@@ -601,6 +732,8 @@ export class LaborCertificatePdfService {
     includeTechnicalBonus: boolean;
     templateHtml: string;
     technicalBonusTemplate?: string;
+    highlightVariables?: boolean;
+    collectTemplateVariables?: (variables: LaborCertificateTemplateVariable[]) => void;
   }): string {
     const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml, technicalBonusTemplate } = params;
 
@@ -608,14 +741,24 @@ export class LaborCertificatePdfService {
       cod_cargo?: string;
       codCargo?: string;
       observations?: string;
+      encargo_type?: string | null;
+      is_corrected?: boolean;
     };
+    const preferCorrectedCertificate = certificateExtras.is_corrected === true;
     const requestObservations =
+      certificateExtras.encargo_type ??
       (certificate as Certificate & { request?: { observations?: string } }).request
-        ?.observations || certificateExtras.observations || '';
-    const requestDepartment =
+        ?.observations ??
+      certificateExtras.observations ??
+      '';
+    const requestDepartment = preferCorrectedCertificate
+      ? certificate.department || ''
+      :
       (certificate as Certificate & { request?: { department?: string } }).request
         ?.department || '';
-    const requestPositionLocation =
+    const requestPositionLocation = preferCorrectedCertificate
+      ? certificate.position_location || ''
+      :
       (certificate as Certificate & { request?: { position_location?: string } }).request
         ?.position_location || '';
 
@@ -631,24 +774,24 @@ export class LaborCertificatePdfService {
     }).request;
     // Match frontend mapping: tipo vinculacion from position_category, cargo from career_category.
     const tipoVinculacion =
-      requestData?.position_category ||
+      (preferCorrectedCertificate ? certificate.position_category : requestData?.position_category) ||
       certificate.position_category ||
       certificate.career_category ||
       '';
     const cargoTexto =
-      requestData?.career_category ||
+      (preferCorrectedCertificate ? certificate.career_category : requestData?.career_category) ||
       certificate.career_category ||
       certificate.position_category ||
       '';
     const codCargoSource = this.selectPreferredCodeValue(
-      requestData?.cod_cargo,
-      requestData?.['codCargo'],
+      preferCorrectedCertificate ? certificateExtras.cod_cargo : requestData?.cod_cargo,
+      preferCorrectedCertificate ? certificateExtras.codCargo : requestData?.['codCargo'],
       (certificate as Certificate & { cod_cargo?: string }).cod_cargo,
       (certificate as Certificate & { codCargo?: string }).codCargo,
     );
     const codGradeSource = this.selectPreferredCodeValue(
-      requestData?.cod_grade,
-      requestData?.['codGrade'],
+      preferCorrectedCertificate ? (certificate as any).cod_grade : requestData?.cod_grade,
+      preferCorrectedCertificate ? (certificate as any).codGrade : requestData?.['codGrade'],
       (certificate as Certificate & { cod_grade?: string }).cod_grade,
       (certificate as Certificate & { codGrade?: string }).codGrade,
     );
@@ -665,7 +808,7 @@ export class LaborCertificatePdfService {
     const grado = certificate.position_location || '';
     const dependenciaHijo = requestDepartment || certificate.department || '';
     const dependenciaPadre =
-      (certificate as Certificate & { request?: { cod_cargo?: string } }).request?.cod_cargo ||
+      (preferCorrectedCertificate ? certificateExtras.cod_cargo : (certificate as Certificate & { request?: { cod_cargo?: string } }).request?.cod_cargo) ||
       certificateExtras.cod_cargo ||
       certificateExtras.codCargo ||
       '';
@@ -690,8 +833,6 @@ export class LaborCertificatePdfService {
     const dato7 =
       requestDepartment ||
       certificate.department ||
-      requestPositionLocation ||
-      certificate.position_location ||
       '';
     const grupoVariable =
       requestPositionLocation ||
@@ -700,12 +841,13 @@ export class LaborCertificatePdfService {
     const cargoDato6 = tipoVinculacion;
 
     const salarioBase = this.normalizeMoneyValue(certificate.monthly_salary);
-    const salarioTextoBase = certificate.salary_text || '';
     const salarioEnLetras =
       includeSalary && salarioBase ? this.numeroALetras(salarioBase) : '';
 
     const fechaVinculacion = this.formatDate(certificate.hiring_date);
     const fechaExpedicion = this.formatDate(certificate.issue_date || new Date());
+    const documentTypeCode = String(certificate.document_type || 'CC').trim().toUpperCase();
+    const documentTypeLabel = this.formatDocumentType(documentTypeCode);
     const hasGrupoVariable = /\[GRUPO\]/i.test(templateHtml || '');
     const hasDependenciaVariable = /\[DEPENDENCIA\]/i.test(templateHtml || '');
     const shouldHideGrupo =
@@ -722,13 +864,16 @@ export class LaborCertificatePdfService {
       '[DATO5]': cargoPlantilla,
       '[DATO6]': dato6,
       '[DATO7]': dato7,
-      '[DATO8]': includeSalary ? (salarioTextoBase || salarioEnLetras) : '',
+      '[DATO8]': includeSalary ? salarioEnLetras : '',
       '[NOMBRE_EMPLEADO]': fullName,
+      '[TIPO_DOCUMENTO]': documentTypeLabel,
+      '[TIPO_DOCUMENTO_CORTO]': documentTypeCode,
       '[DOCUMENTO]': documentNumber,
       '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
       '[TIPO_DATO]': cargoDato6,
       '[GRUPO]': grupoVariableResolved,
+      '[SEDE]': certificate.campus || '',
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
       '[DEPENDENCIA]': dato7,
@@ -743,8 +888,44 @@ export class LaborCertificatePdfService {
       '[CIUDAD_EXPEDICION]': 'Bogota D.C.',
     };
 
+    const bonusItems = includeTechnicalBonus
+      ? this.resolveTechnicalBonusItems(
+          certificate,
+          salarioBase,
+          technicalBonusTemplate,
+        )
+      : [];
+    const activeTemplateVariables: LaborCertificateTemplateVariable[] = Object.entries(replacements)
+      .filter(([code]) => templateHtml.includes(code))
+      .map(([code, value]) => ({
+        code,
+        label: TEMPLATE_VARIABLE_META[code]?.label || code.slice(1, -1),
+        value: value || '',
+        source_fields: templateVariableSourceFields(code, templateType),
+      }));
+    if (bonusItems.length) {
+      activeTemplateVariables.push({
+        code: '[PRIMA_TECNICA]',
+        label: TEMPLATE_VARIABLE_META['[PRIMA_TECNICA]'].label,
+        value: bonusItems
+          .map((bonus) => `${this.formatPercentage(bonus.percentage)}% · $${this.formatMoney(bonus.value)}`)
+          .join(' + '),
+        source_fields: templateVariableSourceFields('[PRIMA_TECNICA]', templateType),
+      });
+    }
+    params.collectTemplateVariables?.(activeTemplateVariables);
+
+    const replacementsForRender = params.highlightVariables
+      ? Object.fromEntries(
+          Object.entries(replacements).map(([code, value]) => [
+            code,
+            templateHtml.includes(code) && value ? `<mark>${value}</mark>` : value,
+          ]),
+        )
+      : replacements;
+
     let result = this.normalizeTemplateHtml(templateHtml || '');
-    result = this.replaceVariables(result, replacements);
+    result = this.replaceVariables(result, replacementsForRender);
     result = this.normalizeSpacing(result);
     result = this.normalizeParagraphStructure(result);
 
@@ -752,18 +933,22 @@ export class LaborCertificatePdfService {
       result = this.stripSalarySections(result);
     }
 
-    if (includeTechnicalBonus) {
-      const bonusItems = this.resolveTechnicalBonusItems(
-        certificate,
-        salarioBase,
-        technicalBonusTemplate,
+    if (bonusItems.length) {
+      result = this.insertTechnicalBonuses(
+        result,
+        bonusItems,
+        params.highlightVariables === true,
       );
-      if (bonusItems.length) {
-        result = this.insertTechnicalBonuses(result, bonusItems);
-      }
     }
 
     return this.normalizeParagraphStructure(result);
+  }
+
+  private formatDocumentType(value?: string | null): string {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'CE') return 'cédula de extranjería';
+    if (normalized === 'PP') return 'pasaporte';
+    return 'cédula de ciudadanía';
   }
 
   private normalizeTemplateHtml(html: string): string {
@@ -881,9 +1066,12 @@ export class LaborCertificatePdfService {
   private insertTechnicalBonuses(
     html: string,
     bonuses: TechnicalBonusRenderItem[],
+    highlightVariables = false,
   ): string {
     const bonusParagraph = bonuses
-      .map((bonus) => this.renderTechnicalBonusParagraph(bonus))
+      .map((bonus) =>
+        this.renderTechnicalBonusParagraph(bonus, highlightVariables),
+      )
       .filter(Boolean)
       .join('');
 
@@ -919,22 +1107,61 @@ export class LaborCertificatePdfService {
     return `${result}${bonusParagraph}`;
   }
 
-  private renderTechnicalBonusParagraph(bonus: TechnicalBonusRenderItem): string {
+  private repairCommonMojibake(value: string): string {
+    return String(value || '')
+      .replace(/\u00c3\u0081/g, 'Á')
+      .replace(/\u00c3\u0089/g, 'É')
+      .replace(/\u00c3\u008d/g, 'Í')
+      .replace(/\u00c3\u0093/g, 'Ó')
+      .replace(/\u00c3\u009a/g, 'Ú')
+      .replace(/\u00c3\u0091/g, 'Ñ')
+      .replace(/\u00c3\u00a1/g, 'á')
+      .replace(/\u00c3\u00a9/g, 'é')
+      .replace(/\u00c3\u00ad/g, 'í')
+      .replace(/\u00c3\u00b3/g, 'ó')
+      .replace(/\u00c3\u00ba/g, 'ú')
+      .replace(/\u00c3\u00b1/g, 'ñ')
+      .replace(/\u00c2\u00bf/g, '¿')
+      .replace(/\u00c2\u00a1/g, '¡');
+  }
+
+  private normalizeTechnicalBonusAmountOrder(value: string): string {
+    return String(value || '')
+      .replace(
+        /\{valor_letras\}\s*(\(\s*\$?\s*\{valor_numerico\}\s*\))/gi,
+        '$1 {valor_letras}',
+      )
+      .replace(
+        /\{valor_letras\}\s*(\$\s*\{valor_numerico\})/gi,
+        '$1 {valor_letras}',
+      );
+  }
+
+  private renderTechnicalBonusParagraph(
+    bonus: TechnicalBonusRenderItem,
+    highlightVariables = false,
+  ): string {
     const bonusValueText = this.numeroALetras(bonus.value);
     const formattedPercentage = this.formatPercentage(bonus.percentage);
     const formattedMoney = this.formatMoney(bonus.value);
-    const customTemplate = String(bonus.templateText || '').trim();
+    const highlight = (value: string) =>
+      highlightVariables && value ? `<mark>${value}</mark>` : value;
+    const customTemplate = this.normalizeTechnicalBonusAmountOrder(
+      this.repairCommonMojibake(String(bonus.templateText || '').trim()),
+    );
 
     if (customTemplate) {
       const rendered = customTemplate
-        .replace(/\{porcentaje\}/g, formattedPercentage)
-        .replace(/\{valor_letras\}/g, bonusValueText)
-        .replace(/\{valor_numerico\}/g, formattedMoney);
+        .replace(/\{porcentaje\}/g, highlight(formattedPercentage))
+        .replace(/\{valor_letras\}/g, highlight(bonusValueText))
+        .replace(/\{valor_numerico\}/g, highlight(formattedMoney));
       return `<p>${rendered}</p>`;
     }
 
     const bonusConcept = this.resolveTechnicalBonusConcept(bonus.category);
-    return `<p>Percibe una ${bonusConcept} en un porcentaje igual al (${formattedPercentage}%) sobre la asignaciÃ³n bÃ¡sica mensual de ${bonusValueText} ($${formattedMoney}) pesos m/cte.</p>`;
+    return this.repairCommonMojibake(
+      `<p>Percibe una ${bonusConcept} en un porcentaje igual al ${highlight(`(${formattedPercentage}%)`)} sobre la asignación básica mensual de ${highlight(`($${formattedMoney})`)} ${highlight(bonusValueText)} pesos m/cte.</p>`,
+    );
   }
 
   private buildHtml(params: {
@@ -1170,7 +1397,16 @@ export class LaborCertificatePdfService {
       return new Date();
     }
     if (value instanceof Date) {
-      return value;
+      const cloned = new Date(value.getTime());
+      if (
+        cloned.getUTCHours() === 0 &&
+        cloned.getUTCMinutes() === 0 &&
+        cloned.getUTCSeconds() === 0 &&
+        cloned.getUTCMilliseconds() === 0
+      ) {
+        cloned.setUTCHours(12, 0, 0, 0);
+      }
+      return cloned;
     }
     if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const [year, month, day] = value.split('-').map((part) => Number(part));
@@ -1200,12 +1436,13 @@ export class LaborCertificatePdfService {
       'trece',
       'catorce',
       'quince',
-      'dieciseis',
+      'dieciséis',
       'diecisiete',
       'dieciocho',
       'diecinueve',
     ];
     const decenas = ['', '', 'veinte', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+    const veintenas = ['', 'veintiún', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
     const centenas = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
 
     if (num === 0) return 'cero';
@@ -1215,12 +1452,13 @@ export class LaborCertificatePdfService {
       if (n === 0) return '';
       if (n < 10) return unidades[n];
       if (n < 20) return especiales[n - 10];
-      if (n < 30) return n === 20 ? 'veinte' : `veinti${unidades[n - 20]}`;
+      if (n < 30) return n === 20 ? 'veinte' : veintenas[n - 20];
       if (n < 100) {
         const dec = Math.floor(n / 10);
         const uni = n % 10;
         return decenas[dec] + (uni > 0 ? ` y ${unidades[uni]}` : '');
       }
+      if (n === 100) return 'cien';
       if (n < 1000) {
         const cent = Math.floor(n / 100);
         const resto = n % 100;
@@ -1234,7 +1472,7 @@ export class LaborCertificatePdfService {
 
     if (restante >= 1000000) {
       const millones = Math.floor(restante / 1000000);
-      resultado += millones === 1 ? 'un millon' : `${convertirMenorMil(millones)} millones`;
+      resultado += millones === 1 ? 'un millón' : `${convertirMenorMil(millones)} millones`;
       restante %= 1000000;
       if (restante > 0) resultado += ' ';
     }

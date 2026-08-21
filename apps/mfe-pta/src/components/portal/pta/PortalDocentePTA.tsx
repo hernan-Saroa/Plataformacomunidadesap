@@ -30,6 +30,7 @@ import {
   agregarComentarioConcertacion, updatePTAStatus,
   getMisSolicitudesPTA, marcarSolicitudLeida,
   getComponentesAprobacion,
+  getAprobacionTerritorial,
   getActivePeriodoAcademico,
   getBancoDocenteById,
 } from '../../../services/api/ptaApi';
@@ -108,6 +109,38 @@ const getEstadoCfg = (estado: string) => {
   const configured = ESTADO_CONFIG[estado];
   return { ...visual, label: configured?.label || visual.label };
 };
+
+// Etiquetas legibles del componente/sub-componente afectado por un evento del
+// historial (mismo mapa que usa el backoffice en PTADetallePanelBackoffice.tsx,
+// para que el docente vea el mismo detalle que ya ve gestión profesoral).
+const HISTORIAL_COMP_LABELS: Record<string, string> = {
+  docencia: 'Docencia',
+  academica: 'Docencia', // legacy (pre-split)
+  academica_pregrado: 'Docencia (Pregrado)',
+  academica_posgrado: 'Docencia (Posgrado)',
+  academica_territorial: 'Docencia (Territorial)',
+  investigacion: 'Investigación',
+  extension: 'Extensión',
+  ext_capacitacion: 'Ext. Capacitación',
+  ext_procesos: 'Ext. Procesos Selección',
+  ext_fortalecimiento: 'Ext. Fortalecimiento',
+  ext_gobierno: 'Ext. Alto Gobierno',
+  complementarias: 'Complementarias',
+  complementarias_pregrado: 'Complementarias (Pregrado)',
+  complementarias_posgrado: 'Complementarias (Posgrado)',
+  academicas_admin: 'Acad. Admin.',
+};
+
+function parseDetallesTransicion(value: unknown): Record<string, any> {
+  if (value && typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string' || !value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 function timeAgo(d: string): string {
   const now = Date.now();
@@ -287,11 +320,11 @@ function ResolucionChip({ nombre, url }: { nombre?: string; url?: string }) {
 // V08: Component-based approval tracker (Docencia, Inv, Ext, Comp, AADM)
 // ═══════════════════════════════════════════════════════════════════════
 const COMPONENT_STEPS = [
-  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
+  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4', compKeys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'] },
   { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
   // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
-  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
+  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000', compKeys: ['complementarias', 'complementarias_pregrado', 'complementarias_posgrado'] },
 ];
 
 function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
@@ -430,6 +463,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   const [showSolicitudModal, setShowSolicitudModal] = useState(false);
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
   const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
+  const [aprobacionTerritorialReporte, setAprobacionTerritorialReporte] = useState<any[]>([]);
   const loadPtasRequestRef = useRef(0);
   const loadSolicitudesRequestRef = useRef(0);
 
@@ -594,6 +628,21 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   useEffect(() => {
     if (selectedPtaId) loadPtaDetalle(selectedPtaId);
   }, [selectedPtaId, loadPtaDetalle]);
+
+  // El desglose de Docencia por (territorial, nivel) solo se necesita para
+  // justificar el pie de los reportes (institucional e Imprimir/PDF); se trae
+  // bajo demanda al abrir cualquiera de los dos, no en la carga masiva de `loadPtas`.
+  useEffect(() => {
+    if (!(isReporteOpen || vista === 'v09_imprimir') || !selectedPta?.id) {
+      setAprobacionTerritorialReporte([]);
+      return;
+    }
+    let cancelado = false;
+    getAprobacionTerritorial(selectedPta.id).then(res => {
+      if (!cancelado) setAprobacionTerritorialReporte(res.success && Array.isArray(res.data) ? res.data : []);
+    });
+    return () => { cancelado = true; };
+  }, [isReporteOpen, vista, selectedPta?.id]);
 
   useEffect(() => {
     if (
@@ -776,7 +825,16 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
     return <PTAForm onBack={() => { setVista('v01_dashboard'); setEditPtaId(null); loadPtas(); }} userPersonId={userPersonId} ptaId={editPtaId} />;
   }
   if (vista === 'v09_imprimir' && selectedPtaId) {
-    return <PTAResumenPrint pta={selectedPta} onClose={() => setVista('v01_dashboard')} userPersonId={userPersonId} userName={userName} />;
+    return (
+      <PTAResumenPrint
+        pta={selectedPta}
+        onClose={() => setVista('v01_dashboard')}
+        userPersonId={userPersonId}
+        userName={userName}
+        componentesAprobacion={componentApprovalsByPta[selectedPtaId] || []}
+        aprobacionTerritorial={aprobacionTerritorialReporte}
+      />
+    );
   }
 
   const VISTAS_NAV = [
@@ -1634,6 +1692,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       const fecha = h.createdAt || h.created_at || h.fecha;
                       const comentarios = h.comentarios || h.observaciones;
                       const actor = h.actorNombre || h.actor_nombre || h.actor || h.actorId || h.actor_id;
+                      const actorRol = h.actorRol || h.actor_rol;
+                      const detalles = parseDetallesTransicion(h.detallesTransicion || h.detalles_transicion);
+                      const componenteLabel = detalles.componente ? (HISTORIAL_COMP_LABELS[detalles.componente] || detalles.componente) : null;
                       return (
                         <div key={h.id || i} style={{ display: 'flex', gap: 10, marginBottom: 6, position: 'relative' }}>
                           {i < historialPtaSeleccionado.length - 1 && (
@@ -1648,8 +1709,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                               </span>
                             </div>
                             {accion && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>{String(accion).replace(/_/g, ' ')}</div>}
+                            {componenteLabel && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>Componente: {componenteLabel}</div>}
                             {comentarios && <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 1 }}>{comentarios}</div>}
-                            {actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {actor}</div>}
+                            {actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {actor}{actorRol ? ` — ${actorRol}` : ''}</div>}
                           </div>
                         </div>
                       );
@@ -1685,6 +1747,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                   signedAt={selectedPta.signed_at || selectedPta.updated_at}
                   periodoAcademico={activePeriodoData}
                   componentesAprobacion={componentApprovalsByPta[selectedPta.id] || []}
+                  aprobacionTerritorial={aprobacionTerritorialReporte}
                 />,
                 document.body,
               )}
