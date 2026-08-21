@@ -1150,9 +1150,11 @@ function formatFechaBogota(
 ): string {
   if (!fecha) return '—';
 
-  // Las cadenas YYYY-MM-DD representan una fecha civil, no un instante UTC.
-  // Usar mediodía UTC mantiene el mismo día al presentarlo en America/Bogota.
-  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  // Las cadenas de fecha (con o sin componente de hora, p.ej. el timestamp que
+  // devuelve el backend) representan una fecha civil, no un instante preciso.
+  // Usar mediodía UTC del día indicado evita que una medianoche UTC se muestre
+  // como el día anterior al convertir a America/Bogota (UTC-5).
+  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const parsed = soloFecha
     ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
     : new Date(fecha);

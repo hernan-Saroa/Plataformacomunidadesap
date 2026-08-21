@@ -589,9 +589,12 @@ export class ProcessService {
         throw new HttpException('Error al cargar el proceso creado', HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
+      const diasHabilesRestantes = await this.calcularDiasHabilesRestantes(procesoConRelacion.fechaVencimientoEtapa);
+
       const resultado = {
         ...procesoConRelacion,
         abogadoAsignadoNombre: procesoConRelacion.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+        diasHabilesRestantes,
       };
 
       console.log('✅ Proceso creado con abogado:', {
