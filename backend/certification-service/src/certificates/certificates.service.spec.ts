@@ -9,6 +9,95 @@ describe('CertificatesService', () => {
     service = Object.create(CertificatesService.prototype) as CertificatesService;
   });
 
+  it('calcula el plazo de correccion en 15 dias habiles sin contar fines de semana', () => {
+    const start = new Date(2026, 7, 21, 12, 0, 0);
+    const dueDate = service['addBusinessDays'](start, 15);
+
+    expect(dueDate.getFullYear()).toBe(2026);
+    expect(dueDate.getMonth()).toBe(8);
+    expect(dueDate.getDate()).toBe(11);
+    expect(dueDate.getDay()).toBe(5);
+  });
+
+  it('excluye los festivos colombianos del plazo de correccion', () => {
+    const start = new Date(2026, 11, 7, 12, 0, 0);
+    const dueDate = service['addBusinessDays'](start, 1);
+
+    expect(dueDate.getFullYear()).toBe(2026);
+    expect(dueDate.getMonth()).toBe(11);
+    expect(dueDate.getDate()).toBe(9);
+  });
+
+  it('normaliza los campos editables y marca el certificado como corregido', () => {
+    const certificate = {
+      full_name: 'Nombre anterior',
+      document_type: 'CC',
+      id_number: '123',
+      career_category: 'Cargo anterior',
+      position_category: 'Vinculacion anterior',
+      position_location: '',
+      department: 'Dependencia anterior',
+      cod_cargo: '202816',
+      cod_grade: '16',
+      encargo_type: 'E',
+      campus: '',
+      hiring_date: new Date('2024-05-14'),
+      monthly_salary: 1000000,
+      salary_text: '',
+      technical_bonus: 0,
+      include_salary: true,
+      include_technical_bonus: false,
+    } as unknown as Certificate;
+
+    const patch = service['normalizeCorrectedCertificateData'](certificate, {
+      full_name: '  Nombre corregido  ',
+      career_category: 'Cargo corregido',
+      position_category: 'Carrera administrativa',
+      monthly_salary: '2500000',
+      include_salary: false,
+      include_technical_bonus: true,
+      encargo_type: 'N',
+    });
+
+    expect(patch.full_name).toBe('Nombre corregido');
+    expect(patch.monthly_salary).toBe(2500000);
+    expect(patch.include_salary).toBe(false);
+    expect(patch.include_technical_bonus).toBe(false);
+    expect(patch.cod_cargo).toBe('2028');
+    expect(patch.cod_grade).toBe('16');
+    expect(patch.encargo_type).toBe('N');
+    expect(patch.is_corrected).toBe(true);
+    expect(patch.last_corrected_at).toBeInstanceOf(Date);
+  });
+
+  it('rechaza decimales en salario y prima durante una corrección', () => {
+    const certificate = {
+      full_name: 'Nombre empleado',
+      document_type: 'CC',
+      id_number: '123456',
+      career_category: 'Cargo',
+      position_category: 'Vinculación',
+      hiring_date: new Date('2024-05-14'),
+      monthly_salary: 1000000,
+      salary_text: '',
+      technical_bonus: 800000,
+      include_salary: true,
+      include_technical_bonus: true,
+    } as unknown as Certificate;
+
+    expect(() =>
+      service['normalizeCorrectedCertificateData'](certificate, {
+        monthly_salary: '1000000.50',
+      }),
+    ).toThrow('pesos enteros, sin decimales');
+
+    expect(() =>
+      service['normalizeCorrectedCertificateData'](certificate, {
+        technical_bonus: '800000.25',
+      }),
+    ).toThrow('pesos enteros, sin decimales');
+  });
+
   it('prioriza un encargo activo sobre un registro normal activo', () => {
     const normalRequest = {
       id: 'normal',
@@ -374,5 +463,129 @@ describe('CertificatesService', () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  it('construye el correo de aprobación con PDF, descripción y evidencias', async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as any;
+    (service as any).logger = { debug: jest.fn(), log: jest.fn(), warn: jest.fn() };
+    (service as any).laborPdfService = {
+      generateCertificatePdf: jest.fn().mockResolvedValue({
+        filename: 'certificado-corregido.pdf',
+        buffer: Buffer.from('pdf-corregido'),
+      }),
+    };
+
+    try {
+      await service['enviarCertificadoLaboralPorEmail'](
+        {
+          full_name: 'Persona de Prueba',
+          certificate_number: 'CERT-APROBADO',
+          include_salary: true,
+          include_technical_bonus: false,
+        } as any,
+        {
+          to: 'persona@esap.edu.co',
+          correctionMessage: 'Se corrigió la dependencia conforme a la evidencia aportada.',
+          correctionRequestNumber: 'COR-PRUEBA-001',
+          correctionEvidenceCount: 1,
+          additionalAttachments: [{
+            filename: 'soporte.png',
+            contentBase64: Buffer.from('imagen').toString('base64'),
+            contentType: 'image/png',
+          }],
+        },
+      );
+
+      const request = fetchMock.mock.calls[0][1];
+      const payload = JSON.parse(request.body);
+      expect(payload.subject).toContain('Corrección aprobada COR-PRUEBA-001');
+      expect(payload.attachmentName).toBe('certificado-corregido.pdf');
+      expect(payload.additionalAttachments).toHaveLength(1);
+      expect(payload.additionalAttachments[0].filename).toBe('soporte.png');
+      expect(payload.html).toContain('Tu solicitud de corrección fue aprobada');
+      expect(payload.html).toContain('Se corrigió la dependencia');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('construye el correo de rechazo con descripción y evidencias adjuntas', async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    global.fetch = fetchMock as any;
+    (service as any).logger = { debug: jest.fn(), log: jest.fn(), warn: jest.fn() };
+
+    try {
+      await service['sendCorrectionRejectionEmail'](
+        {
+          request_number: 'COR-PRUEBA-002',
+          requester_name: 'Persona de Prueba',
+          requester_email: 'persona@esap.edu.co',
+          resolution_description: 'La información del certificado coincide con los soportes institucionales.',
+          certificate: { certificate_number: 'CERT-RECHAZADO' },
+        } as any,
+        [{
+          originalname: 'respuesta.png',
+          path: __filename,
+          mimetype: 'image/png',
+        }],
+      );
+
+      const request = fetchMock.mock.calls[0][1];
+      const payload = JSON.parse(request.body);
+      expect(payload.subject).toContain('Corrección no aprobada COR-PRUEBA-002');
+      expect(payload.attachments).toHaveLength(1);
+      expect(payload.attachments[0].filename).toBe('respuesta.png');
+      expect(payload.html).toContain('Descripción de la decisión');
+      expect(payload.html).toContain('CERT-RECHAZADO');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('exige una descripción explícita para aprobar y rechazar', async () => {
+    (service as any).correctionRequestRepo = {
+      findOne: jest.fn().mockResolvedValue({ status: 'IN_REVIEW' }),
+    };
+
+    await expect(
+      service.approveCertificateCorrectionRequest('request-id', {}, {}, []),
+    ).rejects.toThrow('descripción de la aprobación');
+    await expect(
+      service.rejectCertificateCorrectionRequest('request-id', '', [], {}),
+    ).rejects.toThrow('motivo del rechazo');
+  });
+
+  it('no guarda el rechazo cuando falla el correo institucional', async () => {
+    const save = jest.fn();
+    const request = {
+      id: 'request-id',
+      request_number: 'COR-PRUEBA-003',
+      status: 'IN_REVIEW',
+      requester_email: 'persona@esap.edu.co',
+      submitted_evidence: [],
+      resolution_evidence: [],
+      traceability: [],
+      certificate: { certificate_number: 'CERT-003' },
+    };
+    (service as any).correctionRequestRepo = {
+      findOne: jest.fn().mockResolvedValue(request),
+      save,
+    };
+    jest
+      .spyOn(service as any, 'sendCorrectionRejectionEmail')
+      .mockRejectedValue(new Error('servicio de correo no disponible'));
+
+    await expect(
+      service.rejectCertificateCorrectionRequest(
+        'request-id',
+        'La solicitud no procede conforme a la evidencia institucional.',
+        [],
+        { name: 'Coordinador' },
+      ),
+    ).rejects.toThrow('servicio de correo no disponible');
+    expect(save).not.toHaveBeenCalled();
   });
 });
