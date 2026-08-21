@@ -25,6 +25,7 @@ import * as mammoth from 'mammoth';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { ModalPliegoCargos } from './ModalPliegoCargos';
+import { ModalCompartirExpediente } from './ModalCompartirExpediente';
 import { authService } from '../../../services/api';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import {
@@ -2126,6 +2127,7 @@ export function ModalDetallesProceso({
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
+  const [mostrarModalCompartir, setMostrarModalCompartir] = useState(false);
   const [mostrarModalPliego, setMostrarModalPliego] = useState(false);
   const [mostrarModalEnvioJuridica, setMostrarModalEnvioJuridica] = useState(false);
   const [enviandoJuridica, setEnviandoJuridica] = useState(false);
@@ -6154,8 +6156,7 @@ export function ModalDetallesProceso({
 
             <div className="flex items-center gap-1.5">
               {[
-                { label: 'Notificar', icon: <Bell   className="w-3.5 h-3.5" />, fn: () => toast.info('Notificar', { description: proceso.numeroProceso }) },
-                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => toast.info('Compartir') },
+                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => setMostrarModalCompartir(true) },
               ].map(({ label, icon, fn }) => (
                 <button key={label} onClick={fn}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-white hover:border-gray-400 transition-all">
@@ -6297,6 +6298,18 @@ export function ModalDetallesProceso({
           />
         )}
       </AnimatePresence>
+
+      {mostrarModalCompartir && (
+        <ModalCompartirExpediente
+          expediente={{
+            id: proceso.id,
+            radicado: proceso.numeroProceso,
+            nombreDisciplinado: getNombre(proceso.denunciado),
+            estado: proceso.estadoActual,
+          }}
+          onClose={() => setMostrarModalCompartir(false)}
+        />
+      )}
 
       <AnimatePresence>
         {/* Modal confirmación envío a jurídica */}
