@@ -881,6 +881,27 @@ export class AutoService {
       observaciones: `Auto: ${auto.tipo} | Enviado por: ${enviadoPorId} | Etapa al cierre: ${datosConsolidados.etapaAlCierre}`,
     });
 
+    // Notificar al Radicador que el proceso fue enviado a la Oficina Jurídica
+    const radicadorId = auto.process?.news?.radicadorId;
+    if (radicadorId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: radicadorId,
+          tipo_notificacion: 'PROCESO_ENVIADO_JURIDICA',
+          titulo: 'Proceso enviado a Jurídica',
+          mensaje: `El proceso ${datosConsolidados.radicado} fue enviado a la Oficina Jurídica y el expediente fue cerrado.`,
+          descripcion_corta: `Proceso enviado a Jurídica - ${datosConsolidados.radicado}`,
+          icono: 'Send',
+          color: '#2563EB',
+          prioridad: 'Media',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: { processId: auto.processId, radicadoProceso: datosConsolidados.radicado, autoId: auto.id },
+        })
+        .catch(() => {});
+    }
+
     // Enviar correo a jurídica vía notifications-service (async, sin bloquear)
     this.juridicaEmailService.enviarCorreoJuridica(auto.processId, datosConsolidados).then((enviado) => {
       if (enviado) {
