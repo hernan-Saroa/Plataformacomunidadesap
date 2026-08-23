@@ -953,7 +953,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
    */
   const decisionJefaturaEfectiva = useCallback((fila: any): string => {
     const decisionLegacy = String(fila?.decision || 'pendiente');
-    if (decisionLegacy !== 'pendiente') return decisionLegacy;
 
     const idFila = normalizeTerritorialToken(fila?.territorialId);
     const nombreFila = normalizeTerritorialToken(fila?.territorialNombre || fila?.territorial_nombre_actual);
@@ -963,19 +962,28 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       return (idFila && id === idFila) || (nombreFila && nombre === nombreFila);
     });
 
+    // La aprobación POR COMPONENTE manda. El bloque mostraba la decisión del flujo
+    // legacy por rol, que se registra sin aprobar ningún componente: por eso podía
+    // leerse "1/3 · Risaralda ✓ Aprobado" con TODOS los componentes en Pendiente.
+    // Cuando existe el detalle por componente, ese es el avance real.
     if (filasTerritoriales.length > 0) {
       if (filasTerritoriales.some(t => t.estado === 'devuelto')) return 'devuelto';
       return filasTerritoriales.every(t => t.estado === 'aprobado') ? 'aprobado' : 'pendiente';
     }
 
-    // Sede Central: su Docencia va a academica_pregrado/posgrado, no al desglose
-    // territorial. Solo se consideran los sub-componentes que existen en el PTA.
+    // Sede Central no aparece en el desglose territorial: su Docencia se enruta a
+    // academica_pregrado/posgrado. Solo cuentan los sub-componentes que existan.
     const docenciaCentral = componentesAprobacion.filter(
       c => c.componente === 'academica_pregrado' || c.componente === 'academica_posgrado',
     );
-    if (docenciaCentral.length === 0) return 'pendiente';
-    if (docenciaCentral.some(c => c.estado === 'devuelto')) return 'devuelto';
-    return docenciaCentral.every(c => c.estado === 'aprobado') ? 'aprobado' : 'pendiente';
+    if (docenciaCentral.length > 0) {
+      if (docenciaCentral.some(c => c.estado === 'devuelto')) return 'devuelto';
+      return docenciaCentral.every(c => c.estado === 'aprobado') ? 'aprobado' : 'pendiente';
+    }
+
+    // Sin ningún dato por componente (PTAs resueltos solo con el flujo legacy) se
+    // conserva su decisión, para no borrar aprobaciones ya registradas.
+    return decisionLegacy;
   }, [aprobacionTerritorial, componentesAprobacion]);
 
   const etiquetaParDe = useCallback((par: ParTerritorial) => {
