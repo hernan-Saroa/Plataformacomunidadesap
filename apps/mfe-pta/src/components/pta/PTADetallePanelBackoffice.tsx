@@ -364,16 +364,31 @@ function ApprovalTracker({
   componentesAprobacion = [],
   isMobile = false,
   visibleComponentKeys,
+  modoRevision = false,
+  componentesRevision = [],
 }: {
   estado: string;
   componentesAprobacion?: any[];
   isMobile?: boolean;
   visibleComponentKeys?: string[];
+  /** Rol Revisor: el seguimiento refleja la etapa de Revisión, no la de Aprobación. */
+  modoRevision?: boolean;
+  componentesRevision?: any[];
 }) {
   const visibleSet = visibleComponentKeys?.length ? new Set(visibleComponentKeys) : null;
   const getStatusForComponent = (compKeys: string[]) => {
     const scopedKeys = visibleSet ? compKeys.filter(key => visibleSet.has(key)) : compKeys;
     if (scopedKeys.length === 0) return 'hidden';
+
+    if (modoRevision) {
+      const revisiones = componentesRevision.filter(r => scopedKeys.includes(r.componente));
+      // Sin filas de revisión el componente no exige revisión: no es "pendiente"
+      // para el revisor, simplemente no le aplica.
+      if (revisiones.length === 0) return 'no_aplica';
+      if (revisiones.some(r => (r.estado || 'pendiente') === 'devuelto')) return 'devuelto';
+      return revisiones.every(r => r.estado === 'revisado') ? 'revisado' : 'pendiente';
+    }
+
     const approvals = componentesAprobacion.filter(c => scopedKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
@@ -445,7 +460,15 @@ function ApprovalTracker({
         let iconBg = '#F3F4F6';
         let iconColor = '#6B7280';
 
-        if (step.status === 'aprobado') {
+        if (step.status === 'revisado') {
+          // Nomenclatura del rol Revisor: su aval es "Revisado", no "Aprobado".
+          bg = '#F0FDFA';
+          borderColor = '#99F6E4';
+          statusColor = '#0F766E';
+          statusLabel = 'Revisado';
+          iconBg = '#CCFBF1';
+          iconColor = '#0D9488';
+        } else if (step.status === 'aprobado') {
           bg = '#F0FDF4';
           borderColor = '#BBF7D0';
           statusColor = '#15803D';
@@ -3167,6 +3190,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               estado={pta.estado}
               componentesAprobacion={componentesAprobacion}
               isMobile={isMobile}
+              /* Rol Revisor: su etapa es la Revisión, así que el seguimiento debe
+                 hablar de "Revisado", no de "Aprobado" (que corresponde a la etapa
+                 del Aprobador). Misma funcionalidad, nomenclatura del rol. */
+              modoRevision={!puedeAprobar && tieneAlgunPermisoRevision}
+              componentesRevision={componentesRevision}
             />
           </div>
         </div>
