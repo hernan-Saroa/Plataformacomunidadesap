@@ -335,7 +335,10 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
             <div style={{ marginBottom: 24 }}>
               <TituloSeccion num={numDe('info')} titulo="Información del Docente" color="#003DA5" />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px 16px', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px' }}>
-                <Dato label="Nombre" value={userName || pta?.docente_nombre} />
+                {/* Mismas variantes de nombre que ReportePTAInstitucional: según el
+                    origen del DTO el campo llega como docente_nombre, nombre_docente
+                    o anidado en `docente`, y con una sola alternativa quedaba vacío. */}
+                <Dato label="Nombre" value={userName || pta?.docente_nombre || pta?.nombre_docente || pta?.docenteNombre || pta?.docente?.nombre_completo || pta?.docente?.nombre} />
                 <Dato label="Identificación (ID)" value={userPersonId} />
                 <Dato label="Dedicación" value={pta?.dedicacion} />
                 <Dato label="Tipo de Vinculación" value={pta?.tipo_vinculacion} />

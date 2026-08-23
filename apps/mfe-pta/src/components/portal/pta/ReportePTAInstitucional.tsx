@@ -648,10 +648,19 @@ export function ReportePTAInstitucional({
     userPerfil?.identificacion,
     pta?.docente_documento,
   ));
+  // El nombre llegaba vacío cuando el perfil aún no había cargado y el PTA no
+  // traía `docente_nombre` con ese nombre exacto: distintos orígenes del DTO lo
+  // exponen como nombre_docente / docente.nombre / nombre_completo. Se agotan
+  // todas las variantes antes de dejar el campo en blanco.
   const nombreDocente = datoNoVacio(
     userPerfil?.nombre_completo,
     userPerfil?.nombre,
     pta?.docente_nombre,
+    pta?.nombre_docente,
+    pta?.docenteNombre,
+    pta?.docente?.nombre_completo,
+    pta?.docente?.nombre,
+    pta?.nombre_completo,
   );
   const perfilAcademico = datoNoVacio(
     userPerfil?.perfil_academico,
