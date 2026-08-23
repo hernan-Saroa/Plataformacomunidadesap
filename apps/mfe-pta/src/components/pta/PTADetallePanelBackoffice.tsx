@@ -27,7 +27,7 @@ import {
   ChevronDown, ChevronRight, ArrowRight, AlertTriangle, Calendar,
   MapPin, Award, Hash, Calculator, TrendingUp, Shield, Printer,
   GraduationCap, Scale, Zap, Target, Building2, Layers, BarChart3, Loader2,
-  Activity, Download, ExternalLink, Lock, ShieldCheck
+  Activity, Download, ExternalLink, Lock, ShieldCheck, Info
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
@@ -3438,7 +3438,22 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 ))}
               </div>
 
-              {/* Info Grid */}
+              {/* Info Grid. Se rotula el origen de los datos (QA #45): el revisor no
+                  podía saber de dónde salía esta información ni por qué no es editable
+                  aquí. Los datos del docente (dedicación, vinculación, escalafón,
+                  prorrateo) provienen del Banco de Docentes, que se alimenta del cargue
+                  del RUND; lo académico (programa, territoriales, asignaturas) sale de
+                  las asignaturas del propio PTA. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+                fontSize: '0.68rem', color: '#64748B',
+              }}>
+                <Info style={{ width: 12, height: 12, color: '#94A3B8' }} />
+                <span>
+                  Datos del docente tomados del <strong>Banco de Docentes (RUND)</strong>;
+                  programa, territoriales y asignaturas, de las asignaturas registradas en este PTA.
+                </span>
+              </div>
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 16,
               }}>
