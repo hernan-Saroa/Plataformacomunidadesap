@@ -414,10 +414,15 @@ export function HierarchySelectionSummary({
                     const levels = getHierarchyBranchDisplayLevels(branch);
                     const selectedLevel = levels[levels.length - 1];
                     const recognition = selectedLevel?.reconocimiento;
+                    const effectiveHours = Number(branch.horas) > 0
+                      ? Number(branch.horas)
+                      : (Number(selection.horas) > 0
+                          ? Number(selection.horas)
+                          : undefined);
                     const recognitionLabel = recognition
-                      ? formatConfiguredHourRecognition(recognition, branch.horas)
-                      : branch.horas !== undefined
-                        ? `${branch.horas}h`
+                      ? formatConfiguredHourRecognition(recognition, effectiveHours)
+                      : effectiveHours !== undefined
+                        ? `${effectiveHours}h`
                         : 'Detalle seleccionado';
                     return (
                       <div
