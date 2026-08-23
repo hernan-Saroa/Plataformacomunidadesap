@@ -1196,8 +1196,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                         <Eye className="w-3 h-3" /> <span className="hidden sm:inline">Revisar</span> propuesta
                       </button>
                     )}
-                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[0.72rem] font-semibold cursor-pointer hover:bg-gray-50 hover:shadow-sm active:scale-[0.97] transition-all">
-                      <Printer className="w-3 h-3" /> <span className="hidden xs:inline">Imprimir</span>
+                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} title="Descargar PDF" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[0.72rem] font-semibold cursor-pointer hover:bg-gray-50 hover:shadow-sm active:scale-[0.97] transition-all">
+                      <Download className="w-3 h-3" /> <span className="hidden xs:inline">Descargar PDF</span>
                     </button>
                     <button onClick={() => setIsReporteOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-blue-100 bg-blue-50/80 text-[#1E3A8A] text-[0.72rem] font-bold cursor-pointer hover:bg-blue-100 active:scale-[0.97] transition-all">
                       <FileText className="w-3 h-3" /> <span className="hidden sm:inline">Reporte</span>

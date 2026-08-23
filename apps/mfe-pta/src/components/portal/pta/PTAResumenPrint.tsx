@@ -10,8 +10,7 @@
  * el layout crítico va con estilos inline y la impresión se aísla con el
  * bloque @media print del render.
  */
-import React from 'react';
-import { Printer, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
+import { Printer, Download, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
@@ -297,7 +296,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
                 onClick={handlePrint}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: '#fff', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
               >
-                <Printer size={14} /> Imprimir / PDF
+                <Download size={14} /> Descargar PDF
               </button>
               <button
                 onClick={onClose}
