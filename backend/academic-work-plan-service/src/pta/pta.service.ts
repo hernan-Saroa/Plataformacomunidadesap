@@ -2778,8 +2778,14 @@ export class PtaService {
 
       const programaResumen = coalesceString(dto.programa_academico, dto.programa, dto.programa_nombre)
         || this.compactNameList(programaNames);
-      const territorialResumen = coalesceString(dto.territorial, dto.territorial_nombre)
-        || this.compactNameList(territorialNames);
+      // La territorial del DOCENTE es la de su vinculación, no la de las
+      // asignaturas que dicta. Antes, si el PTA no traía la suya, se rellenaba
+      // con la lista de territoriales de las asignaturas ("Risaralda +2"), y la
+      // ficha del docente terminaba mostrando una territorial que no le
+      // corresponde. Si no se conoce, se deja vacía: las territoriales de las
+      // asignaturas ya viajan aparte en `territorialesAsignaturas`, que es donde
+      // la UI debe leerlas.
+      const territorialResumen = coalesceString(dto.territorial, dto.territorial_nombre);
       const cetapResumen = coalesceString(dto.cetap, dto.cetap_nombre, dto.sede)
         || this.compactNameList(cetapNames);
 

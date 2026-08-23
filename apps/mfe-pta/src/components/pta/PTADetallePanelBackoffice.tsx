@@ -1212,6 +1212,19 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
   const territorialResumen = pta.territorial || pta.territorial_nombre;
+  // Territoriales donde se dictan las asignaturas del PTA. NO son la territorial
+  // de vinculación del docente (ver 'Territorial del docente'): un docente de
+  // Risaralda puede tener asignaturas en Chocó.
+  const territorialesAsignaturas: string[] = useMemo(() => {
+    const delBackend = Array.isArray(pta?.territorialesAsignaturas) ? pta.territorialesAsignaturas : [];
+    if (delBackend.length > 0) return delBackend.map(String).filter(Boolean);
+    return [...new Set(
+      asignaturas
+        .map((a: any) => a?.territorial_nombre || a?.territorialNombre || a?.territorial)
+        .map((v: any) => String(v || '').trim())
+        .filter(Boolean),
+    )];
+  }, [pta, asignaturas]);
   const historial = pta.historial || [];
   const concertacion = pta.concertacion || {};
 
@@ -3403,7 +3416,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               }}>
                 {[
                   { label: 'Programa', value: programaResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificado'), icon: GraduationCap },
-                  { label: 'Territorial', value: territorialResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificada'), icon: MapPin },
+                  { label: 'Territorial del docente', value: territorialResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificada'), icon: MapPin },
+                  // Se listan aparte para no confundirlas con la territorial de
+                  // vinculación del docente: un PTA puede tener asignaturas en
+                  // varias territoriales distintas a la suya.
+                  ...(territorialesAsignaturas.length > 0
+                    ? [{ label: 'Territoriales de las asignaturas', value: territorialesAsignaturas.join(', '), icon: MapPin }]
+                    : []),
                   { label: 'Asignaturas', value: `${pta.num_asignaturas || asignaturas.length || 0}${tieneTotalidadAcadAdmin && !asignaturas.length ? ' (No aplica)' : ''}`, icon: BookOpen },
                   { label: 'Dedicación', value: pta.dedicacion || 'TC', icon: Clock },
                   { label: 'Vinculación', value: pta.tipo_vinculacion || 'Carrera Administrativa', icon: Award },
