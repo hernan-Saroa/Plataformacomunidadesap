@@ -8308,7 +8308,7 @@ export class PtaService {
     const { pares, propios } = alcance;
     const keyOf = (territorialId: string, nivel: string) => `${territorialId}::${nivel}`;
 
-    const rows = await this.ensureTerritorialApprovalRows(ptaId, pares);
+    const rows = await this.ensureTerritorialApprovalRows(ptaId, pares, componente);
     const rowByKey = new Map(rows.map((r) => [keyOf(r.territorialId, r.nivel), r]));
 
     const requestedTerritorialId = coalesceString(body?.territorialId, body?.territorial_id);
@@ -8397,7 +8397,7 @@ export class PtaService {
       const key = keyOf(territorialId, nivel);
       let row = rowByKey.get(key);
       if (!row) {
-        row = this.ptaTerritorialApprovalRepo.create({ ptaId, territorialId, nivel, estado: 'pendiente' });
+        row = this.ptaTerritorialApprovalRepo.create({ ptaId, componente, territorialId, nivel, estado: 'pendiente' });
       }
       row.estado = estado;
       row.actorId = actorId;
@@ -8488,7 +8488,7 @@ export class PtaService {
     const { pares, propios } = alcance;
     const keyOf = (territorialId: string, nivel: string) => `${territorialId}::${nivel}`;
 
-    const rows = await this.ensureTerritorialReviewRows(ptaId, pares);
+    const rows = await this.ensureTerritorialReviewRows(ptaId, pares, componente);
     const rowByKey = new Map(rows.map((r) => [keyOf(r.territorialId, r.nivel), r]));
 
     const requestedTerritorialId = coalesceString(body?.territorialId, body?.territorial_id);
@@ -8529,7 +8529,7 @@ export class PtaService {
       const key = keyOf(territorialId, nivel);
       let row = rowByKey.get(key);
       if (!row) {
-        row = this.ptaTerritorialReviewRepo.create({ ptaId, territorialId, nivel, estado: 'pendiente' });
+        row = this.ptaTerritorialReviewRepo.create({ ptaId, componente, territorialId, nivel, estado: 'pendiente' });
       }
       row.estado = 'revisado';
       row.revisorId = revisorId;
