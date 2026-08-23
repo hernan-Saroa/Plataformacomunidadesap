@@ -2423,10 +2423,29 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     (async () => {
       try {
         const terrs = await getCatalogoTerritoriales(periodo);
-        if (active && terrs.success) {
+        if (active && terrs.success && Array.isArray(terrs.data)) {
           setTerritoriales(terrs.data);
+          const initialMap: Record<string, any[]> = {};
+          for (const t of terrs.data) {
+            if (Array.isArray(t.sedes) && t.sedes.length > 0) {
+              const terrNombre = String(t.nombre || t.nom_seccional || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              const isSedeCentralTerr = terrNombre === 'sede central' || terrNombre.includes('sede central') || String(t.codigo || '').toUpperCase() === 'SC';
+              if (isSedeCentralTerr) {
+                const scOnly = t.sedes.filter((c: any) => {
+                  const n = String(c?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+                  return n === 'sede central' || (n.includes('sede central') && !n.includes('otro') && !n.includes('principal'));
+                });
+                initialMap[String(t.id)] = scOnly.length > 0 ? scOnly : t.sedes.filter((c: any) => !String(c?.nombre || '').toUpperCase().includes('OTRO'));
+              } else {
+                initialMap[String(t.id)] = t.sedes;
+              }
+            }
+          }
+          if (Object.keys(initialMap).length > 0) {
+            setCetapsMap(prev => ({ ...initialMap, ...prev }));
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[PTAForm] No se pudieron cargar territoriales para el período:', err?.message || err);
       }
     })();
@@ -2641,13 +2660,30 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       loadingCetapsRef.current.add(territorialId);
       getCatalogoCetaps(territorialId).then(res => {
         loadingCetapsRef.current.delete(territorialId);
-        if (res.success) {
-          setCetapsMap(curr => ({ ...curr, [territorialId]: res.data }));
+        if (res.success && Array.isArray(res.data)) {
+          let list = res.data;
+          const terrObj = territoriales.find(t => String(t.id) === String(territorialId));
+          const terrNombre = String(terrObj?.nombre || terrObj?.nom_seccional || territorialId || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim();
+          const isSedeCentralTerr = terrNombre === 'sede central' || terrNombre.includes('sede central') || String(terrObj?.codigo || '').toUpperCase() === 'SC' || territorialId === '1' || territorialId === 'sede-central';
+          if (isSedeCentralTerr) {
+            const scOnly = list.filter((c: any) => {
+              const n = String(c?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              return n === 'sede central' || (n.includes('sede central') && !n.includes('otro') && !n.includes('principal'));
+            });
+            list = scOnly.length > 0 ? scOnly : list.filter((c: any) => !String(c?.nombre || '').toUpperCase().includes('OTRO'));
+          }
+          setCetapsMap(curr => ({ ...curr, [territorialId]: list }));
         }
+      }).catch(() => {
+        loadingCetapsRef.current.delete(territorialId);
       });
       return prev;
     });
-  }, []);
+  }, [territoriales]);
 
   const loadingProgramasRef = useRef<Set<string>>(new Set());
   const loadingAsignaturasProgramasRef = useRef<Set<string>>(new Set());
@@ -6124,10 +6160,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         // distinto del que fue devuelto o autorizado a editar.
                         const bloqueadaPorComponente = !canEditDocenciaAsignatura(asig);
                         const rowEditable = isEditable && !bloqueadaPorTerritorial && !bloqueadaPorComponente;
-                        // Datos de CETAP según la territorial de ESTA asignatura
                         const tIdAsig = asig.territorial_id;
                         const cetapsCargadosAsig = tIdAsig in cetapsMap;
-                        const listaCetapsAsig = cetapsMap[tIdAsig] || [];
+                        const rawCetapsAsig = cetapsMap[tIdAsig] || [];
+                        const listaCetapsAsig = (() => {
+                          if (!Array.isArray(rawCetapsAsig) || rawCetapsAsig.length === 0) return [];
+                          const terrObj = territoriales.find(t => String(t.id) === String(tIdAsig));
+                          const terrNombre = String(terrObj?.nombre || terrObj?.nom_seccional || tIdAsig || '')
+                            .toLowerCase()
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .trim();
+                          const isSedeCentralTerr = terrNombre === 'sede central' || terrNombre.includes('sede central') || String(terrObj?.codigo || '').toUpperCase() === 'SC' || tIdAsig === '1' || tIdAsig === 'sede-central';
+                          if (isSedeCentralTerr) {
+                            const scOnly = rawCetapsAsig.filter((c: any) => {
+                              const n = String(c?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+                              return n === 'sede central' || (n.includes('sede central') && !n.includes('otro') && !n.includes('principal'));
+                            });
+                            return scOnly.length > 0 ? scOnly : rawCetapsAsig.filter((c: any) => !String(c?.nombre || '').toUpperCase().includes('OTRO'));
+                          }
+                          return rawCetapsAsig;
+                        })();
                         const hasCetapsAsig = listaCetapsAsig.length > 0;
                         const programaHabilitado = hasCetapsAsig ? !!asig.cetap_id : !!tIdAsig;
                         const territorialNombre = territoriales.find(t => t.id === asig.territorial_id)?.nombre

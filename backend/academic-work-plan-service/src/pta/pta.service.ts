@@ -6546,7 +6546,25 @@ export class PtaService {
       `;
     }
 
-    return await this.ptaRepo.manager.query(queryStr, params);
+    const results = await this.ptaRepo.manager.query(queryStr, params);
+    if (Array.isArray(results)) {
+      return results.map((sec: any) => {
+        if (Array.isArray(sec.sedes)) {
+          const hasSC = sec.sedes.some((s: any) => {
+            const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            return n === 'sede central';
+          });
+          if (hasSC) {
+            sec.sedes = sec.sedes.filter((s: any) => {
+              const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              return n !== 'otro' && n !== 'cetap sede principal';
+            });
+          }
+        }
+        return sec;
+      });
+    }
+    return results;
   }
 
   async getCatalogoCetaps(query?: any) {
@@ -6609,7 +6627,20 @@ export class PtaService {
       `;
     }
 
-    return await this.ptaRepo.manager.query(queryStr, params);
+    const results = await this.ptaRepo.manager.query(queryStr, params);
+    if (Array.isArray(results)) {
+      const hasSC = results.some((s: any) => {
+        const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        return n === 'sede central';
+      });
+      if (hasSC) {
+        return results.filter((s: any) => {
+          const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+          return n !== 'otro' && n !== 'cetap sede principal';
+        });
+      }
+    }
+    return results;
   }
 
   /**
