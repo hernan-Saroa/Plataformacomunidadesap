@@ -939,6 +939,45 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const claveComentarioRevision = (componente: string, subseccion: string, par?: ParTerritorial) =>
     par ? `${componente}:${subseccion}::${par.territorialId}::${par.nivel}` : `${componente}:${subseccion}`;
 
+  /**
+   * Decisión efectiva de una territorial en "Aprobaciones de Jefatura".
+   *
+   * Esas filas (AprobacionJefatura) las escribe únicamente el flujo legacy de
+   * aprobación por rol; aprobar por COMPONENTE nunca las tocaba, así que el
+   * contador se quedaba clavado (p. ej. 1/3) aunque el trabajo real avanzara.
+   *
+   * Se respeta la decisión legacy cuando existe, y si sigue 'pendiente' se deriva
+   * del estado real: las filas por (territorial, nivel) de Docencia Territorial
+   * para las territoriales, y las aprobaciones de Docencia de Sede Central para la
+   * fila central, que no aparece en el desglose territorial.
+   */
+  const decisionJefaturaEfectiva = useCallback((fila: any): string => {
+    const decisionLegacy = String(fila?.decision || 'pendiente');
+    if (decisionLegacy !== 'pendiente') return decisionLegacy;
+
+    const idFila = normalizeTerritorialToken(fila?.territorialId);
+    const nombreFila = normalizeTerritorialToken(fila?.territorialNombre || fila?.territorial_nombre_actual);
+    const filasTerritoriales = aprobacionTerritorial.filter(t => {
+      const id = normalizeTerritorialToken(t.territorialId);
+      const nombre = normalizeTerritorialToken(t.territorialNombre);
+      return (idFila && id === idFila) || (nombreFila && nombre === nombreFila);
+    });
+
+    if (filasTerritoriales.length > 0) {
+      if (filasTerritoriales.some(t => t.estado === 'devuelto')) return 'devuelto';
+      return filasTerritoriales.every(t => t.estado === 'aprobado') ? 'aprobado' : 'pendiente';
+    }
+
+    // Sede Central: su Docencia va a academica_pregrado/posgrado, no al desglose
+    // territorial. Solo se consideran los sub-componentes que existen en el PTA.
+    const docenciaCentral = componentesAprobacion.filter(
+      c => c.componente === 'academica_pregrado' || c.componente === 'academica_posgrado',
+    );
+    if (docenciaCentral.length === 0) return 'pendiente';
+    if (docenciaCentral.some(c => c.estado === 'devuelto')) return 'devuelto';
+    return docenciaCentral.every(c => c.estado === 'aprobado') ? 'aprobado' : 'pendiente';
+  }, [aprobacionTerritorial, componentesAprobacion]);
+
   const etiquetaParDe = useCallback((par: ParTerritorial) => {
     const fila = aprobacionTerritorial.find(
       t => t.territorialId === par.territorialId && t.nivel === par.nivel,
@@ -947,6 +986,27 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     );
     return etiquetaPar(fila || { territorialId: par.territorialId, nivel: par.nivel });
   }, [aprobacionTerritorial, revisionTerritorial]);
+
+  /**
+   * Refresca los datos derivados del PTA después de decidir sobre un componente.
+   *
+   * `componentes_estado` lo calcula el BACKEND (agrega los sub-componentes y aplica
+   * la regla de que lo que no tiene horas no bloquea), así que no se puede
+   * recomponer en el cliente: hay que releer el PTA. Sin esto, el encabezado de
+   * componentes y el bloque de Aprobaciones de Jefatura seguían mostrando el estado
+   * previo hasta recargar la página, que es justo lo que se reportó.
+   */
+  const refrescarEstadoDerivadoDelPta = async () => {
+    const [resPta, resJefatura] = await Promise.all([
+      getPTAById(pta.id),
+      getAprobacionesJefatura(pta.id),
+    ]);
+    if (resPta.success && resPta.data) {
+      setPta((prev: any) => ({ ...prev, ...resPta.data }));
+      onUpdated?.({ ...pta, ...resPta.data });
+    }
+    if (resJefatura.success) setAprobacionesJefatura(resJefatura.data || []);
+  };
 
   const handleAprobarComponente = async (
     componente: string,
@@ -1026,6 +1086,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
           onUpdated?.({ ...pta, estado: nuevoEstado });
         }
+        // Estado por componente y avance de Jefatura: los recalcula el backend.
+        await refrescarEstadoDerivadoDelPta();
       } else {
         // Caso de carrera: el panel seguía mostrando el botón "Aprobar" con datos
         // ya desactualizados (otro aprobador resolvió el último par propio pendiente
@@ -1138,6 +1200,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
           onUpdated?.({ ...pta, estado: nuevoEstado });
         }
+        // Igual que al aprobar: 'en_revision' también cambia componentes_estado.
+        await refrescarEstadoDerivadoDelPta();
       } else {
         toast.error(res.message || 'Error al actualizar la revisión del componente');
       }
@@ -3337,40 +3401,35 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </span>
                     <span style={{
                       fontSize: '0.78rem', fontWeight: 800,
-                      color: aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(a.decision)).length === aprobacionesJefatura.length ? '#059669' : '#D97706',
+                      color: aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(decisionJefaturaEfectiva(a))).length === aprobacionesJefatura.length ? '#059669' : '#D97706',
                     }}>
-                      {aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(a.decision)).length}
+                      {aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(decisionJefaturaEfectiva(a))).length}
                       {' / '}
                       {aprobacionesJefatura.length}
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {aprobacionesJefatura.map((a: any) => (
-                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem' }}>
-                        <div style={{
-                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                          background: a.decision === 'aprobado' ? '#059669'
-                            : a.decision === 'aprobado_con_cambios' ? '#D97706'
-                            : a.decision === 'devuelto' ? '#DC2626'
-                            : '#9CA3AF',
-                        }} />
-                        <span style={{ flex: 1, color: '#374151' }}>
-                          {a.territorialNombre || a.territorial_nombre_actual || a.territorialId}
-                        </span>
-                        <span style={{
-                          fontWeight: 600,
-                          color: a.decision === 'aprobado' ? '#059669'
-                            : a.decision === 'aprobado_con_cambios' ? '#D97706'
-                            : a.decision === 'devuelto' ? '#DC2626'
-                            : '#9CA3AF',
-                        }}>
-                          {a.decision === 'aprobado' ? '✓ Aprobado'
-                            : a.decision === 'aprobado_con_cambios' ? '~ Con cambios'
-                            : a.decision === 'devuelto' ? '✗ Devuelto'
-                            : '⏳ Pendiente'}
-                        </span>
-                      </div>
-                    ))}
+                    {aprobacionesJefatura.map((a: any) => {
+                      const decision = decisionJefaturaEfectiva(a);
+                      const color = decision === 'aprobado' ? '#059669'
+                        : decision === 'aprobado_con_cambios' ? '#D97706'
+                        : decision === 'devuelto' ? '#DC2626'
+                        : '#9CA3AF';
+                      return (
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem' }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: color }} />
+                          <span style={{ flex: 1, color: '#374151' }}>
+                            {a.territorialNombre || a.territorial_nombre_actual || a.territorialId}
+                          </span>
+                          <span style={{ fontWeight: 600, color }}>
+                            {decision === 'aprobado' ? '✓ Aprobado'
+                              : decision === 'aprobado_con_cambios' ? '~ Con cambios'
+                              : decision === 'devuelto' ? '✗ Devuelto'
+                              : '⏳ Pendiente'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
