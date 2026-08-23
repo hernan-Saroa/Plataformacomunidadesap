@@ -7,7 +7,7 @@
  * bloque @media print propio (ver <style> al inicio del render).
  */
 import React, { useRef, useState } from 'react';
-import { Download, Loader2, X, Printer, ShieldCheck } from 'lucide-react';
+import { Download, Loader2, X, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -848,15 +848,6 @@ export function ReportePTAInstitucional({
     asignaturas.length === 1 ? pta?.cetap : null,
   ));
 
-  const handleNativePrint = () => {
-    // Permite que el navegador complete el layout del modal antes de activar
-    // los estilos y gráficos específicos de impresión.
-    window.dispatchEvent(new Event('resize'));
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => window.print());
-    });
-  };
-
   const esperarRender = (ms = 0) => new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -971,7 +962,7 @@ export function ReportePTAInstitucional({
       pdf.save(`PTA_GTH-F081_${periodoCodigo || 'periodo'}_${nombreArchivo || 'Docente'}.pdf`);
     } catch (error) {
       console.error('[Reporte PTA] No fue posible generar el PDF fiel:', error);
-      setErrorExportacion('No fue posible generar el PDF. Puede intentar nuevamente o usar Imprimir.');
+      setErrorExportacion('No fue posible generar el PDF. Por favor, intente nuevamente.');
     } finally {
       if (sheet) {
         sheet.style.width = originalSheetWidth;
@@ -1072,14 +1063,6 @@ export function ReportePTAInstitucional({
                   ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
                   : <Download size={14} />}
                 {exportandoPdf ? 'Generando PDF…' : 'Descargar PDF fiel'}
-              </button>
-              <button
-                onClick={handleNativePrint}
-                disabled={exportandoPdf}
-                title="Abrir la impresión estándar del navegador"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: '0.76rem', fontWeight: 700, cursor: exportandoPdf ? 'not-allowed' : 'pointer', opacity: exportandoPdf ? 0.55 : 1 }}
-              >
-                <Printer size={14} /> Imprimir
               </button>
               <button
                 onClick={onClose}
