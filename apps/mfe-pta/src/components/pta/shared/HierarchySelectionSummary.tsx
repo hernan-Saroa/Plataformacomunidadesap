@@ -356,46 +356,119 @@ export function HierarchySelectionSummary({
 
   return (
     <div
-      className={`rounded-lg border border-slate-200 bg-slate-50 ${compact ? 'p-2' : 'p-3'} ${className}`}
+      className={`rounded-lg ${className}`}
+      style={{
+        marginTop: 6,
+        padding: compact ? '6px 8px' : '10px 12px',
+        background: '#F8FAFC',
+        border: '1px solid #CBD5E1',
+        borderRadius: 6,
+        textAlign: 'left',
+        boxSizing: 'border-box',
+      }}
       data-pta-hierarchy-summary
     >
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-        <GitBranch className="h-3.5 w-3.5" style={{ color: accent }} />
-        Desglose seleccionado
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        marginBottom: 6,
+        fontSize: '0.6rem',
+        fontWeight: 800,
+        textTransform: 'uppercase',
+        letterSpacing: '0.03em',
+        color: '#475569',
+      }}>
+        <GitBranch style={{ width: 12, height: 12, color: accent, flexShrink: 0 }} />
+        <span>Desglose seleccionado</span>
       </div>
-      <div className="space-y-2">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {selections.map(selection => (
-          <div key={selection.clave} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+          <div
+            key={selection.clave}
+            style={{
+              padding: compact ? '5px 7px' : '8px 10px',
+              background: '#FFFFFF',
+              border: '1px solid #E2E8F0',
+              borderRadius: 5,
+              boxSizing: 'border-box',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: '0.54rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748B', letterSpacing: '0.02em' }}>
                   {selection.etiqueta}
                 </div>
-                <div className="mt-0.5 text-[12px] font-semibold leading-snug text-slate-700">
+                <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#1E293B', lineHeight: 1.25, marginTop: 1, overflowWrap: 'anywhere' }}>
                   {selection.nombre}
                 </div>
               </div>
-              {selection.horas > 0 ? (
-                <span
-                  className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold"
-                  style={{ color: accent, borderColor: `${accent}45`, backgroundColor: `${accent}0D` }}
-                >
-                  Total {selection.horas}h
-                </span>
-              ) : (
-                <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-                  Total 0h · informativo
-                </span>
-              )}
+              <div style={{ flexShrink: 0 }}>
+                {selection.horas > 0 ? (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      border: `1px solid ${accent}45`,
+                      background: `${accent}0D`,
+                      color: accent,
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    Total {selection.horas}h
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      border: '1px solid #CBD5E1',
+                      background: '#F1F5F9',
+                      color: '#64748B',
+                      fontSize: '0.6rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    Total 0h · informativo
+                  </span>
+                )}
+              </div>
             </div>
             {selection.reconocimiento && (
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-100 bg-slate-50/80 px-2 py-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                  Reconocimiento base
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginTop: 4,
+                paddingTop: 4,
+                borderTop: '1px dashed #E2E8F0',
+                fontSize: '0.58rem',
+              }}>
+                <span style={{ fontWeight: 700, color: '#64748B', textTransform: 'uppercase', fontSize: '0.54rem' }}>
+                  Reconocimiento base:
                 </span>
                 <span
-                  className="rounded-full border px-2 py-0.5 text-[10px] font-bold"
-                  style={{ color: accent, borderColor: `${accent}35`, backgroundColor: '#FFFFFF' }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '1px 6px',
+                    borderRadius: 4,
+                    border: `1px solid ${accent}35`,
+                    background: '#FFFFFF',
+                    color: accent,
+                    fontSize: '0.58rem',
+                    fontWeight: 800,
+                    whiteSpace: 'nowrap',
+                  }}
                 >
                   {formatConfiguredHourRecognition(
                     selection.reconocimiento,
@@ -405,11 +478,11 @@ export function HierarchySelectionSummary({
               </div>
             )}
             {selection.ramificaciones.length > 0 && (
-              <div className="mt-2 border-t border-slate-100 pt-2">
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              <div style={{ marginTop: 6, paddingTop: 5, borderTop: '1px solid #E2E8F0' }}>
+                <div style={{ fontSize: '0.54rem', fontWeight: 800, textTransform: 'uppercase', color: '#64748B', marginBottom: 4 }}>
                   Opciones elegidas ({selection.ramificaciones.length})
                 </div>
-                <div className="grid gap-1.5">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {selection.ramificaciones.map((branch, branchIndex) => {
                     const levels = getHierarchyBranchDisplayLevels(branch);
                     const selectedLevel = levels[levels.length - 1];
@@ -427,20 +500,40 @@ export function HierarchySelectionSummary({
                     return (
                       <div
                         key={`${branch.clave}:${branchIndex}`}
-                        className="flex min-w-0 flex-wrap items-start gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 6,
+                          padding: '4px 6px',
+                          borderRadius: 4,
+                          border: '1px solid #E2E8F0',
+                          background: '#F8FAFC',
+                          boxSizing: 'border-box',
+                        }}
                       >
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
-                        <div className="min-w-0 flex-1">
-                          <div className="break-words text-[11px] font-semibold leading-snug text-slate-700">
+                        <CheckCircle2 style={{ width: 12, height: 12, color: accent, flexShrink: 0, marginTop: 2 }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#334155', lineHeight: 1.25, overflowWrap: 'anywhere' }}>
                             {selectedLevel?.valor || branch.nombre}
                           </div>
-                          <div className="mt-0.5 break-words text-[9px] leading-snug text-slate-400">
+                          <div style={{ fontSize: '0.54rem', color: '#94A3B8', marginTop: 1, overflowWrap: 'anywhere' }}>
                             {formatHierarchyBranchPath(branch)}
                           </div>
                         </div>
                         <span
-                          className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold"
-                          style={{ color: accent, borderColor: `${accent}35`, backgroundColor: `${accent}08` }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '1px 6px',
+                            borderRadius: 4,
+                            border: `1px solid ${accent}35`,
+                            background: `${accent}0D`,
+                            color: accent,
+                            fontSize: '0.58rem',
+                            fontWeight: 800,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
                         >
                           {recognitionLabel}
                         </span>
