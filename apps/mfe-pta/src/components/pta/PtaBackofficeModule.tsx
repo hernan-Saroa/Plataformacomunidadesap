@@ -4746,8 +4746,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               {pta.docente_nombre || 'Docente ESAP'}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#6B7280', display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span>{pta.territorial || ''}</span>
-                              {pta.programa && <span>· {pta.programa}</span>}
+                              {/* Se oculta el resumen "territorial · programa" del docente:
+                                  mezclaba la territorial de vinculación con la lista compactada
+                                  de programas de sus asignaturas ("+2"), sin que quedara claro
+                                  qué representaba ni para qué servía. El dato correcto y
+                                  desglosado ya está en el detalle del PTA (Territorial del
+                                  docente / Territoriales de las asignaturas).
+                                  Las etiquetas de abajo SÍ tienen función (clic = filtrar),
+                                  por eso la fila se conserva. */}
                               {/* Feature 29: Inline tags (clic = filtrar por etiqueta) */}
                               {(ptaTags[pta.id] || []).map(tag => {
                                 const activeFilter = filtroTags.includes(tag.label);

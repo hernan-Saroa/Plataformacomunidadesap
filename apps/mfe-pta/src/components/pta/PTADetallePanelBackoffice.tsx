@@ -27,7 +27,7 @@ import {
   ChevronDown, ChevronRight, ArrowRight, AlertTriangle, Calendar,
   MapPin, Award, Hash, Calculator, TrendingUp, Shield, Printer,
   GraduationCap, Scale, Zap, Target, Building2, Layers, BarChart3, Loader2,
-  Activity, Download, ExternalLink, Lock, ShieldCheck
+  Activity, Download, ExternalLink, Lock, ShieldCheck, Info
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
@@ -61,6 +61,7 @@ import {
   hasReviewPermission,
   PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
@@ -363,16 +364,31 @@ function ApprovalTracker({
   componentesAprobacion = [],
   isMobile = false,
   visibleComponentKeys,
+  modoRevision = false,
+  componentesRevision = [],
 }: {
   estado: string;
   componentesAprobacion?: any[];
   isMobile?: boolean;
   visibleComponentKeys?: string[];
+  /** Rol Revisor: el seguimiento refleja la etapa de Revisión, no la de Aprobación. */
+  modoRevision?: boolean;
+  componentesRevision?: any[];
 }) {
   const visibleSet = visibleComponentKeys?.length ? new Set(visibleComponentKeys) : null;
   const getStatusForComponent = (compKeys: string[]) => {
     const scopedKeys = visibleSet ? compKeys.filter(key => visibleSet.has(key)) : compKeys;
     if (scopedKeys.length === 0) return 'hidden';
+
+    if (modoRevision) {
+      const revisiones = componentesRevision.filter(r => scopedKeys.includes(r.componente));
+      // Sin filas de revisión el componente no exige revisión: no es "pendiente"
+      // para el revisor, simplemente no le aplica.
+      if (revisiones.length === 0) return 'no_aplica';
+      if (revisiones.some(r => (r.estado || 'pendiente') === 'devuelto')) return 'devuelto';
+      return revisiones.every(r => r.estado === 'revisado') ? 'revisado' : 'pendiente';
+    }
+
     const approvals = componentesAprobacion.filter(c => scopedKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
@@ -416,7 +432,13 @@ function ApprovalTracker({
       // pregrado / posgrado), igual patrón que Docencia arriba.
       label: 'Complementarias',
       icon: Briefcase,
-      status: getStatusForComponent(['complementarias', 'complementarias_pregrado', 'complementarias_posgrado']),
+      // Se toma la lista compartida y no una literal: al agregar los ámbitos
+      // Territorial y Gestión Profesoral (EFDS-1353) esta copia quedó corta y el
+      // chip solo miraba los 3 componentes viejos. Si las complementarias del PTA
+      // se enrutaban a un ámbito nuevo, los 3 viejos quedaban auto-aprobados por
+      // el Sistema (vacíos) y el componente se mostraba como "No aplica" pese a
+      // tener actividades.
+      status: getStatusForComponent([...PTA_COMPLEMENTARIAS_COMPONENT_KEYS]),
       baseColor: '#FFC000'
     }
   ].filter(step => step.status !== 'hidden');
@@ -438,7 +460,15 @@ function ApprovalTracker({
         let iconBg = '#F3F4F6';
         let iconColor = '#6B7280';
 
-        if (step.status === 'aprobado') {
+        if (step.status === 'revisado') {
+          // Nomenclatura del rol Revisor: su aval es "Revisado", no "Aprobado".
+          bg = '#F0FDFA';
+          borderColor = '#99F6E4';
+          statusColor = '#0F766E';
+          statusLabel = 'Revisado';
+          iconBg = '#CCFBF1';
+          iconColor = '#0D9488';
+        } else if (step.status === 'aprobado') {
           bg = '#F0FDF4';
           borderColor = '#BBF7D0';
           statusColor = '#15803D';
@@ -1205,6 +1235,19 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
   const territorialResumen = pta.territorial || pta.territorial_nombre;
+  // Territoriales donde se dictan las asignaturas del PTA. NO son la territorial
+  // de vinculación del docente (ver 'Territorial del docente'): un docente de
+  // Risaralda puede tener asignaturas en Chocó.
+  const territorialesAsignaturas: string[] = useMemo(() => {
+    const delBackend = Array.isArray(pta?.territorialesAsignaturas) ? pta.territorialesAsignaturas : [];
+    if (delBackend.length > 0) return delBackend.map(String).filter(Boolean);
+    return [...new Set(
+      asignaturas
+        .map((a: any) => a?.territorial_nombre || a?.territorialNombre || a?.territorial)
+        .map((v: any) => String(v || '').trim())
+        .filter(Boolean),
+    )];
+  }, [pta, asignaturas]);
   const historial = pta.historial || [];
   const concertacion = pta.concertacion || {};
 
@@ -3147,6 +3190,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               estado={pta.estado}
               componentesAprobacion={componentesAprobacion}
               isMobile={isMobile}
+              /* Rol Revisor: su etapa es la Revisión, así que el seguimiento debe
+                 hablar de "Revisado", no de "Aprobado" (que corresponde a la etapa
+                 del Aprobador). Misma funcionalidad, nomenclatura del rol. */
+              modoRevision={!puedeAprobar && tieneAlgunPermisoRevision}
+              componentesRevision={componentesRevision}
             />
           </div>
         </div>
@@ -3390,13 +3438,34 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 ))}
               </div>
 
-              {/* Info Grid */}
+              {/* Info Grid. Se rotula el origen de los datos (QA #45): el revisor no
+                  podía saber de dónde salía esta información ni por qué no es editable
+                  aquí. Los datos del docente (dedicación, vinculación, escalafón,
+                  prorrateo) provienen del Banco de Docentes, que se alimenta del cargue
+                  del RUND; lo académico (programa, territoriales, asignaturas) sale de
+                  las asignaturas del propio PTA. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+                fontSize: '0.68rem', color: '#64748B',
+              }}>
+                <Info style={{ width: 12, height: 12, color: '#94A3B8' }} />
+                <span>
+                  Datos del docente tomados del <strong>Banco de Docentes (RUND)</strong>;
+                  programa, territoriales y asignaturas, de las asignaturas registradas en este PTA.
+                </span>
+              </div>
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 16,
               }}>
                 {[
                   { label: 'Programa', value: programaResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificado'), icon: GraduationCap },
-                  { label: 'Territorial', value: territorialResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificada'), icon: MapPin },
+                  { label: 'Territorial del docente', value: territorialResumen || (tieneTotalidadAcadAdmin ? 'No aplica por AADM 100%' : 'No especificada'), icon: MapPin },
+                  // Se listan aparte para no confundirlas con la territorial de
+                  // vinculación del docente: un PTA puede tener asignaturas en
+                  // varias territoriales distintas a la suya.
+                  ...(territorialesAsignaturas.length > 0
+                    ? [{ label: 'Territoriales de las asignaturas', value: territorialesAsignaturas.join(', '), icon: MapPin }]
+                    : []),
                   { label: 'Asignaturas', value: `${pta.num_asignaturas || asignaturas.length || 0}${tieneTotalidadAcadAdmin && !asignaturas.length ? ' (No aplica)' : ''}`, icon: BookOpen },
                   { label: 'Dedicación', value: pta.dedicacion || 'TC', icon: Clock },
                   { label: 'Vinculación', value: pta.tipo_vinculacion || 'Carrera Administrativa', icon: Award },

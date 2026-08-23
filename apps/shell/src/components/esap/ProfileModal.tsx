@@ -682,16 +682,11 @@ export function ProfileModal({
                         </label>
                       </div>
 
-                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                        <div>
-                          <p className="font-semibold text-gray-900">Tema oscuro</p>
-                          <p className="text-sm text-gray-500">Cambiar apariencia de la interfaz</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" className="sr-only peer" />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1e5da8]"></div>
-                        </label>
-                      </div>
+                      {/* El interruptor "Tema oscuro" se retira: era un checkbox sin
+                          onChange ni estado asociado, así que no cambiaba nada de la
+                          interfaz. Volver a mostrarlo cuando exista el tema oscuro real
+                          (habría que persistir la preferencia y aplicarla en el shell y
+                          en los micro-frontends). */}
                     </div>
                   </div>
 
