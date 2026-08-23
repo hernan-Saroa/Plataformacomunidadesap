@@ -61,6 +61,7 @@ import {
   hasReviewPermission,
   PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
@@ -416,7 +417,13 @@ function ApprovalTracker({
       // pregrado / posgrado), igual patrón que Docencia arriba.
       label: 'Complementarias',
       icon: Briefcase,
-      status: getStatusForComponent(['complementarias', 'complementarias_pregrado', 'complementarias_posgrado']),
+      // Se toma la lista compartida y no una literal: al agregar los ámbitos
+      // Territorial y Gestión Profesoral (EFDS-1353) esta copia quedó corta y el
+      // chip solo miraba los 3 componentes viejos. Si las complementarias del PTA
+      // se enrutaban a un ámbito nuevo, los 3 viejos quedaban auto-aprobados por
+      // el Sistema (vacíos) y el componente se mostraba como "No aplica" pese a
+      // tener actividades.
+      status: getStatusForComponent([...PTA_COMPLEMENTARIAS_COMPONENT_KEYS]),
       baseColor: '#FFC000'
     }
   ].filter(step => step.status !== 'hidden');

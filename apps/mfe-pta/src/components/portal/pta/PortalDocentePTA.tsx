@@ -52,6 +52,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import { PTA_COMPLEMENTARIAS_COMPONENT_KEYS } from '../../pta/shared/ptaComponentPermissions';
 import { formatPtaCompletionPercentage, formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PortalDocentePTAProps {
@@ -324,7 +325,10 @@ const COMPONENT_STEPS = [
   { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
   // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
-  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000', compKeys: ['complementarias', 'complementarias_pregrado', 'complementarias_posgrado'] },
+  // Lista compartida (no una copia literal): con los ámbitos Territorial y
+  // Gestión Profesoral añadidos en EFDS-1353, una copia local queda corta y el
+  // componente se muestra como si no aplicara aunque tenga actividades.
+  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000', compKeys: [...PTA_COMPLEMENTARIAS_COMPONENT_KEYS] },
 ];
 
 function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
