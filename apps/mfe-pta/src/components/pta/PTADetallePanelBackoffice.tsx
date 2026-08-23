@@ -18,6 +18,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
+import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../utils/officePreview';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -299,7 +300,8 @@ function CountdownTimer({ assignmentDate, isApproved }: { assignmentDate: Date; 
 }
 
 const IMAGE_FILE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
-const OFFICE_FILE_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+// Qué formatos de Office se pueden previsualizar lo decide ahora
+// utils/officePreview (conversión en el navegador), no una lista local.
 const EMBED_FILE_EXTENSIONS = ['txt', 'csv', 'json', 'xml', 'html', 'htm'];
 const BLOB_PREVIEW_EXTENSIONS = ['pdf', ...IMAGE_FILE_EXTENSIONS, ...EMBED_FILE_EXTENSIONS];
 const MIME_EXTENSION_MAP: Record<string, string> = {
@@ -347,16 +349,6 @@ function getEvidenceFileUrl(evidencia: any): string {
   if (normalizedPath.startsWith('/pta/uploads/')) return `${gatewayBaseUrl}${normalizedPath}`;
   if (normalizedPath.startsWith('/uploads/')) return `${gatewayBaseUrl}/pta${normalizedPath}`;
   return `${gatewayBaseUrl}${normalizedPath}`;
-}
-
-function canUseOfficeViewer(url: string): boolean {
-  if (!/^https?:\/\//i.test(url)) return false;
-  try {
-    const { hostname } = new URL(url);
-    return hostname !== 'localhost' && hostname !== '127.0.0.1';
-  } catch {
-    return false;
-  }
 }
 
 function getMimeTypeForExtension(extension: string): string {
@@ -684,6 +676,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loadingEvidencias, setLoadingEvidencias] = useState(false);
   const [previewFile, setPreviewFile] = useState<EvidencePreviewFile | null>(null);
+  // Documento de Office convertido en el navegador (null = aún cargando).
+  const [officeHtml, setOfficeHtml] = useState<string | null>(null);
+  const [officeError, setOfficeError] = useState<string>('');
 
   const [componentesAprobacion, setComponentesAprobacion] = useState<any[]>([]);
   const [loadingComponentesAprobacion, setLoadingComponentesAprobacion] = useState(false);
@@ -1331,6 +1326,29 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       if (previewFile?.objectUrl) URL.revokeObjectURL(previewFile.objectUrl);
     };
   }, [previewFile?.objectUrl]);
+
+  // Convierte el adjunto de Office al abrirlo. Se prefiere el objectUrl ya
+  // descargado (evita una segunda petición) y se cae al sourceUrl si aún no está.
+  useEffect(() => {
+    if (!previewFile || !puedePrevisualizarOffice(previewFile.tipo)) {
+      setOfficeHtml(null);
+      setOfficeError('');
+      return;
+    }
+    const origen = previewFile.displayUrl || previewFile.sourceUrl;
+    if (!origen) return;
+    let cancelado = false;
+    setOfficeHtml(null);
+    setOfficeError('');
+    cargarPreviewOffice(origen, previewFile.tipo)
+      .then(res => { if (!cancelado) setOfficeHtml(res.html); })
+      .catch(err => {
+        if (cancelado) return;
+        console.error('[mfe-pta] No se pudo previsualizar el documento:', err);
+        setOfficeError(err?.message || 'No se pudo previsualizar este documento.');
+      });
+    return () => { cancelado = true; };
+  }, [previewFile?.displayUrl, previewFile?.sourceUrl, previewFile?.tipo]);
 
   const openEvidencePreview = async (evidencia: any) => {
     const sourceUrl = getEvidenceFileUrl(evidencia);
@@ -4458,12 +4476,31 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 <object data={previewFile.displayUrl} type="application/pdf" style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }}>
                   <iframe src={previewFile.displayUrl} title={previewFile.nombre} style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }} />
                 </object>
-              ) : OFFICE_FILE_EXTENSIONS.includes(previewFile.tipo) && canUseOfficeViewer(previewFile.sourceUrl) ? (
-                <iframe
-                  src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewFile.sourceUrl)}`}
-                  title={previewFile.nombre}
-                  style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }}
-                />
+              ) : puedePrevisualizarOffice(previewFile.tipo) ? (
+                /* Word/Excel convertidos en el navegador (utils/officePreview).
+                   Reemplaza al visor de Microsoft, que descargaba el archivo
+                   desde sus servidores y por eso no funcionaba en despliegues
+                   internos (IP privada, sin HTTPS o sin salida a internet). */
+                officeError ? (
+                  <div style={{ height: '100%', minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#6B7280', padding: 24 }}>
+                    <div>
+                      <FileText style={{ width: 54, height: 54, margin: '0 auto 12px', color: '#D1D5DB' }} />
+                      <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#B91C1C' }}>{officeError}</p>
+                      <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#6B7280', maxWidth: 420 }}>
+                        Puedes abrirlo o descargarlo desde las acciones del encabezado.
+                      </p>
+                    </div>
+                  </div>
+                ) : officeHtml === null ? (
+                  <div style={{ height: '100%', minHeight: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6B7280' }}>
+                    <p style={{ margin: 0, fontSize: '0.85rem' }}>Cargando documento…</p>
+                  </div>
+                ) : (
+                  <div style={{ width: '100%', height: '100%', minHeight: 520, overflow: 'auto', background: 'white', borderRadius: 8, padding: 24 }}>
+                    <style>{ESTILOS_PREVIEW_OFFICE}</style>
+                    <div className="pta-office-preview" dangerouslySetInnerHTML={{ __html: officeHtml }} />
+                  </div>
+                )
               ) : EMBED_FILE_EXTENSIONS.includes(previewFile.tipo) && previewFile.displayUrl ? (
                 <iframe src={previewFile.displayUrl} title={previewFile.nombre} style={{ width: '100%', height: '100%', minHeight: 520, border: 'none', borderRadius: 8, background: 'white' }} />
               ) : (
