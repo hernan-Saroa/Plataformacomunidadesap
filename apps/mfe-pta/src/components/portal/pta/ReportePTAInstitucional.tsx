@@ -735,7 +735,14 @@ export function ReportePTAInstitucional({
     complementarias: 'Complementarias',
     complementarias_pregrado: 'Complementarias (Pregrado)',
     complementarias_posgrado: 'Complementarias (Posgrado)',
+    complementarias_territorial: 'Complementarias (Territorial)',
+    complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
   };
+  // El backend auto-aprueba con aprobadorNombre='Sistema' los componentes sin
+  // actividades. Mostrar "Sistema" sugería que alguien lo avaló; para el lector
+  // ese subcomponente sigue sin aprobación de una persona.
+  const nombreAprobadorVisible = (nombre?: string | null): string | null =>
+    !nombre ? null : (nombre === 'Sistema' ? 'Pendiente' : nombre);
   const detalleRevisiones = (componentesAprobacion || [])
     .filter((r: any) => r && (r.componente || r.key))
     .map((r: any) => {
@@ -744,7 +751,7 @@ export function ReportePTAInstitucional({
       return {
         key,
         label: SUBCOMP_LABELS[key] || key,
-        aprobador: r.aprobador_nombre || r.aprobadorNombre || null,
+        aprobador: nombreAprobadorVisible(r.aprobador_nombre || r.aprobadorNombre),
         fecha: fecha ? fmtFechaReporte(String(fecha)) : null,
         fechaOrden: fecha ? String(fecha) : '',
       };

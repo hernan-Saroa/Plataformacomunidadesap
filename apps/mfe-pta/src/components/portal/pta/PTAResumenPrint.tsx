@@ -49,7 +49,23 @@ const SUBCOMP_LABELS: Record<string, string> = {
   complementarias: 'Complementarias',
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
+  complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
 };
+
+/**
+ * Nombre a mostrar como responsable de la aprobación.
+ *
+ * El backend auto-aprueba con aprobadorNombre='Sistema' los componentes que no
+ * tienen actividades, para no bloquear el flujo. Mostrar "Sistema" en el detalle
+ * hacía parecer que alguien lo avaló; para el lector no está aprobado por nadie,
+ * así que se rotula como pendiente.
+ */
+const NOMBRE_APROBADOR_AUTOMATICO = 'Sistema';
+function nombreAprobadorVisible(nombre?: string | null): string | null {
+  if (!nombre) return null;
+  return nombre === NOMBRE_APROBADOR_AUTOMATICO ? 'Pendiente' : nombre;
+}
 const coarseKeyDe = (key: string): string => {
   if (key.startsWith('academica')) return 'academica';
   if (key.startsWith('ext_')) return 'extension';
@@ -238,7 +254,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
       return {
         key,
         label: SUBCOMP_LABELS[key] || key,
-        aprobador: r.aprobador_nombre || r.aprobadorNombre || null,
+        aprobador: nombreAprobadorVisible(r.aprobador_nombre || r.aprobadorNombre),
         fecha: fmtFechaHora(fecha ? String(fecha) : null),
         fechaOrden: fecha ? String(fecha) : '',
       };
