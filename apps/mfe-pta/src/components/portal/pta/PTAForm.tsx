@@ -5899,7 +5899,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 {hasBlockingHourLimits ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
                   <span className="font-bold">
-                    {hasBlockingHourLimits ? componentLimitViolations[0]?.message : totalHoras >= horasAProgramar ? 'Topes por componente cumplidos. Listo para enviar.' : `PTA Incompleto: Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
+                    {/* Se retira la etiqueta "PTA Incompleto" (EFDS/QA #31): el mensaje
+                        ya indica exactamente cuántas horas faltan, y calificar el plan
+                        como "incompleto" resultaba innecesariamente negativo. */}
+                    {hasBlockingHourLimits ? componentLimitViolations[0]?.message : totalHoras >= horasAProgramar ? 'Topes por componente cumplidos. Listo para enviar.' : `Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
                   </span>
                   <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)</span>
                 </div>
