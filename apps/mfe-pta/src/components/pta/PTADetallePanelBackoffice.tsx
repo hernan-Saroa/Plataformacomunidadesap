@@ -366,6 +366,7 @@ function ApprovalTracker({
   visibleComponentKeys,
   modoRevision = false,
   componentesRevision = [],
+  componentesEstado = [],
 }: {
   estado: string;
   componentesAprobacion?: any[];
@@ -374,9 +375,11 @@ function ApprovalTracker({
   /** Rol Revisor: el seguimiento refleja la etapa de Revisión, no la de Aprobación. */
   modoRevision?: boolean;
   componentesRevision?: any[];
+  /** `componentes_estado` del DTO: estado colapsado calculado por el backend. */
+  componentesEstado?: any[];
 }) {
   const visibleSet = visibleComponentKeys?.length ? new Set(visibleComponentKeys) : null;
-  const getStatusForComponent = (compKeys: string[]) => {
+  const getStatusForComponent = (compKeys: string[], collapsedKey?: string) => {
     const scopedKeys = visibleSet ? compKeys.filter(key => visibleSet.has(key)) : compKeys;
     if (scopedKeys.length === 0) return 'hidden';
 
@@ -390,6 +393,29 @@ function ApprovalTracker({
     }
 
     const approvals = componentesAprobacion.filter(c => scopedKeys.includes(c.componente));
+
+    // Sin recorte por permisos, el estado colapsado que calcula el backend
+    // (`componentes_estado`) manda: es el mismo dato que muestran el detalle y el
+    // portal del docente, y aplica la regla de que un sub-componente SIN HORAS no
+    // bloquea. Agregar aquí las filas granulares por separado hacía que un PTA con
+    // Docencia solo en Sede Central se viera "Pendiente" en unas vistas y
+    // "Aprobado" en otras, por la fila territorial que queda sin horas.
+    // Con recorte activo se sigue agregando a mano, porque el colapsado del backend
+    // no distingue qué sub-componentes le corresponden a este usuario.
+    const estadoBackend = !visibleSet && collapsedKey && Array.isArray(componentesEstado)
+      ? componentesEstado.find((c: any) => c?.key === collapsedKey)?.estado
+      : undefined;
+    if (estadoBackend) {
+      if (estadoBackend === 'devuelto') return 'devuelto';
+      if (estadoBackend === 'aprobado') {
+        // Se conserva el matiz de "No aplica": si todo lo que hay fue auto-aprobado
+        // por el Sistema (componente vacío), no es un aval de nadie.
+        const todoAuto = approvals.length > 0 && approvals.every(a => a.aprobadorNombre === 'Sistema');
+        return todoAuto ? 'no_aplica' : 'aprobado';
+      }
+      return 'pendiente';
+    }
+
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
     if (approvals.every(a => a.estado === 'aprobado')) {
@@ -406,13 +432,13 @@ function ApprovalTracker({
     {
       label: 'Docencia',
       icon: BookOpen,
-      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado', 'academica_territorial']),
+      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado', 'academica_territorial'], 'academica'),
       baseColor: '#4472C4'
     },
     {
       label: 'Investigación',
       icon: FlaskConical,
-      status: getStatusForComponent(['investigacion']),
+      status: getStatusForComponent(['investigacion'], 'investigacion'),
       baseColor: '#ED7D31'
     },
     {
@@ -423,7 +449,7 @@ function ApprovalTracker({
         'ext_procesos',
         'ext_fortalecimiento',
         'ext_gobierno'
-      ]),
+      ], 'extension'),
       baseColor: '#059669'
     },
     {
@@ -438,7 +464,7 @@ function ApprovalTracker({
       // se enrutaban a un ámbito nuevo, los 3 viejos quedaban auto-aprobados por
       // el Sistema (vacíos) y el componente se mostraba como "No aplica" pese a
       // tener actividades.
-      status: getStatusForComponent([...PTA_COMPLEMENTARIAS_COMPONENT_KEYS]),
+      status: getStatusForComponent([...PTA_COMPLEMENTARIAS_COMPONENT_KEYS], 'complementarias'),
       baseColor: '#FFC000'
     }
   ].filter(step => step.status !== 'hidden');
@@ -3195,6 +3221,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                  del Aprobador). Misma funcionalidad, nomenclatura del rol. */
               modoRevision={!puedeAprobar && tieneAlgunPermisoRevision}
               componentesRevision={componentesRevision}
+              componentesEstado={pta.componentes_estado}
             />
           </div>
         </div>
