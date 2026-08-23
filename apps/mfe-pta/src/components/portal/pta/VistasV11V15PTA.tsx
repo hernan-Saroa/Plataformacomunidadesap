@@ -535,6 +535,21 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
 
   useEffect(() => { loadEvidencias(); }, [activePtaId]);
 
+  // Documentos de Office que el navegador no sabe renderizar: se delegan al
+  // visor embebido de Office (espejo de PTADetallePanelBackoffice).
+  const OFFICE_PREVIEW_EXTENSIONS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+  /** El visor de Office descarga el archivo desde los servidores de Microsoft:
+   *  solo sirve con URLs http(s) públicas (localhost nunca funciona). */
+  const puedeUsarVisorOffice = (url: string): boolean => {
+    if (!/^https?:\/\//i.test(url)) return false;
+    try {
+      const { hostname } = new URL(url);
+      return hostname !== 'localhost' && hostname !== '127.0.0.1';
+    } catch {
+      return false;
+    }
+  };
+
   const fileIcon = (nombre: string) => {
     const ext = nombre.split('.').pop()?.toLowerCase() || '';
     if (ext === 'pdf') return { icon: FileText, color: '#DC2626' };
@@ -1239,6 +1254,18 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <img src={previewFile.url} alt={previewFile.nombre} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, objectFit: 'contain' }} />
               ) : previewFile.tipo === 'pdf' ? (
                 <iframe src={previewFile.url} title={previewFile.nombre} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 8 }} />
+              ) : OFFICE_PREVIEW_EXTENSIONS.includes(previewFile.tipo) && puedeUsarVisorOffice(previewFile.url) ? (
+                /* Word/Excel/PowerPoint no se pueden renderizar en el navegador; antes
+                   caían al bloque "no se puede previsualizar" y solo quedaba descargar.
+                   Se embebe el visor de Office (mismo que ya usa el backoffice). Ojo:
+                   el visor de Microsoft descarga el archivo desde SUS servidores, así
+                   que la URL debe ser públicamente alcanzable; si no lo es, el iframe
+                   muestra el error del visor y el botón de descarga sigue disponible. */
+                <iframe
+                  src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewFile.url)}`}
+                  title={previewFile.nombre}
+                  style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 8 }}
+                />
               ) : (
                 <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
                   <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />
