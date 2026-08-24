@@ -973,12 +973,14 @@ export function FormularioAuditoriaUnificado({
 
     // Validaciones de Responsable del Área y Auditor Líder sólo aplican en modo edición
     if (mode === 'edit') {
-      if (!formData.responsableArea || !formData.responsableArea.idPersona) {
+      const resp = formData.responsableArea;
+      const tieneResponsable = resp && (resp.idPersona || resp.nombre || (resp as any).id);
+      if (!resp || !tieneResponsable) {
         toast.error('Debe seleccionar el responsable del área auditada');
         setPasoActual(2);
         return;
       }
-      if (!formData.responsableArea.email || !formData.responsableArea.email.includes('@')) {
+      if (!resp.email || !resp.email.includes('@')) {
         toast.error('La persona seleccionada como responsable del área no tiene un correo válido');
         setPasoActual(2);
         return;

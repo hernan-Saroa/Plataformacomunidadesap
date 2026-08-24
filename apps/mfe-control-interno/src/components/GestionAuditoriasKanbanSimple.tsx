@@ -3350,6 +3350,7 @@ export function GestionAuditoriasKanbanSimple() {
                 procesoAuditado: (auditoriaParaEditar as any).procesoAuditado || meta.procesoAuditado || auditoriaParaEditar.areaObjetivo || '',
                 alcance: (auditoriaParaEditar as any).alcance || auditoriaParaEditar.descripcion || meta.alcance || '',
                 responsableArea: {
+                  idPersona: (auditoriaParaEditar as any).responsableAreaId || (auditoriaParaEditar as any).responsableArea?.idPersona || (auditoriaParaEditar as any).responsable || auditoriaParaEditar.responsableAreaNombre || '',
                   nombre: auditoriaParaEditar.responsableAreaNombre || '',
                   cargo: auditoriaParaEditar.responsableAreaCargo || '',
                   email: auditoriaParaEditar.responsableAreaEmail || '',
