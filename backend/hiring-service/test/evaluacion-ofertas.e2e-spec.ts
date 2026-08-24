@@ -14,12 +14,15 @@ import { HiringAccess } from '../src/auth/hiring-access';
 /**
  * HU EFDS-1157 · Evaluar ofertas (actividad 6.3).
  *
- * Lo que hay que comprobar contra la base es que la evaluación respete lo
- * construido antes: solo sobre una lista cerrada, solo con comité designado, y
- * solo por quien fue designado en esa dimensión. Esas tres condiciones viven en
- * tablas de las actividades 6.1 y 6.2, así que solo se ven punta a punta.
+ * La evaluación se hace **por fuera** de la plataforma: el comité califica con
+ * sus formatos, elige la ganadora y aquí solo registra el resultado con su
+ * informe. Lo que hay que comprobar contra la base, entonces, no es ninguna
+ * cuenta —no hay ninguna— sino que el registro sea creíble: lista cerrada,
+ * comité designado, quien registra designado en ese comité, ganadora de entre
+ * las ofertas recibidas e informe adjunto. Esas condiciones viven en tablas de
+ * las actividades 6.1 y 6.2, así que solo se ven punta a punta.
  */
-describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
+describe('HU EFDS-1157 · resultado de la evaluación (actividad 6.3)', () => {
   let app: INestApplication;
   let evaluacion: EvaluacionService;
   let comite: ComiteService;
@@ -57,12 +60,17 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   const haceHoras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  const enHoras = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
   const archivo = (nombre: string, mimetype = 'application/pdf') => ({
     filename: `${nombre}-en-disco`,
     originalname: nombre,
     mimetype,
     size: 1024,
+    path: `/tmp/${nombre}`,
   });
+
+  const JUSTIFICACION =
+    'Cumplió los requisitos habilitantes y obtuvo el mayor puntaje del comité evaluador.';
 
   /**
    * Selección abreviada de menor cuantía: el flujo arranca en la apertura, y
@@ -72,8 +80,8 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
   const crear = (modalidad = 'ABREVIADA_MENOR_CUANTIA') =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
 
-  /** Proceso abierto, con dos ofertas y la recepción cerrada. */
-  const conOfertasCerradas = async () => {
+  /** Proceso abierto con dos ofertas registradas; la recepción sigue viva. */
+  const conOfertas = async (vencimiento: string) => {
     const proceso = await crear();
 
     await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
@@ -95,7 +103,7 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
       gestor,
     );
 
-    await ofertas.fijarPlazo(proceso.id, { vencimiento: haceHoras(3) }, gestor);
+    await ofertas.fijarPlazo(proceso.id, { vencimiento }, gestor);
     const registrar = (id: string, nombre: string, valor: number) =>
       ofertas.registrar(
         proceso.id,
@@ -107,6 +115,12 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
     await registrar('900111111-1', 'Barata SAS', 40_000_000);
     await registrar('900222222-2', 'Cara SAS', 50_000_000);
 
+    return proceso;
+  };
+
+  /** Proceso con dos ofertas y la recepción ya cerrada. */
+  const conOfertasCerradas = async () => {
+    const proceso = await conOfertas(haceHoras(3));
     return { proceso, estado: await ofertas.cerrar(proceso.id, gestor) };
   };
 
@@ -127,9 +141,31 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
       ordenador,
     );
 
-  /** Los criterios de una dimensión, tal como los devuelve el estado. */
-  const criteriosDe = async (procesoId: string, dimension: string) =>
-    (await evaluacion.estado(procesoId, gestor)).criterios.filter((c) => c.dimension === dimension);
+  /** El registro típico: gana la primera oferta, con nota sobre 100. */
+  const registrar = (
+    procesoId: string,
+    oferenteId: string,
+    quien: HiringAccess,
+    datos: Partial<{
+      puntajeObtenido: number;
+      puntajeMaximo: number;
+      valorEvaluado: number;
+      justificacion: string;
+    }> = {},
+  ) =>
+    evaluacion.registrar(
+      procesoId,
+      {
+        oferenteId,
+        puntajeObtenido: 92.5,
+        puntajeMaximo: 100,
+        justificacion: JUSTIFICACION,
+        ...datos,
+      },
+      archivo('informe-evaluacion.pdf'),
+      'i'.repeat(64),
+      quien,
+    );
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -183,13 +219,10 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
     const deOfertas = `SELECT o.id FROM hiring.oferentes o JOIN hiring.recepciones_ofertas r ON r.id = o.recepcion_id WHERE r.${deProceso}`;
 
     await dataSource.query(
-      `DELETE FROM hiring.evaluacion_criterios WHERE evaluacion_id IN (SELECT id FROM hiring.evaluaciones_oferta WHERE oferente_id IN (${deOfertas}))`,
+      `DELETE FROM hiring.evidencias_evaluacion WHERE resultado_id IN (SELECT id FROM hiring.resultados_evaluacion WHERE ${deProceso})`,
       [OBJETO],
     );
-    await dataSource.query(
-      `DELETE FROM hiring.evaluaciones_oferta WHERE oferente_id IN (${deOfertas})`,
-      [OBJETO],
-    );
+    await dataSource.query(`DELETE FROM hiring.resultados_evaluacion WHERE ${deProceso}`, [OBJETO]);
     await dataSource.query(
       `DELETE FROM hiring.miembros_comite WHERE comite_id IN (SELECT id FROM hiring.comites_evaluadores WHERE ${deProceso})`,
       [OBJETO],
@@ -204,374 +237,222 @@ describe('HU EFDS-1157 · evaluación de ofertas (actividad 6.3)', () => {
 
   // ------------------------------------------------------------ criterio 1 --
 
-  describe('Criterio 1 · cada evaluador registra lo suyo', () => {
-    it('guarda la evaluación de una dimensión con todos sus criterios', async () => {
+  describe('Criterio 1 · la plataforma recibe el resultado, no lo calcula', () => {
+    it('registra la ganadora con su valoración y el informe del comité', async () => {
       const { proceso, estado } = await conOfertasCerradas();
       await designar(proceso.id);
 
-      const criterios = await criteriosDe(proceso.id, 'JURIDICO');
-      const oferta = estado.oferentes[0];
+      const ganadora = estado.oferentes[0];
+      const tras = await registrar(proceso.id, ganadora.id, juridica.acceso);
 
-      const tras = await evaluacion.evaluar(
+      expect(tras.resultado).not.toBeNull();
+      expect(tras.resultado!.ganadora!.id).toBe(ganadora.id);
+      expect(tras.resultado!.puntajeObtenido).toBe(92.5);
+      expect(tras.resultado!.puntajeMaximo).toBe(100);
+      expect(tras.resultado!.justificacion).toBe(JUSTIFICACION);
+      expect(tras.resultado!.informe).not.toBeNull();
+      expect(tras.resultado!.registradoPor).toBe('prueba.juridica');
+      // Sin corrección aritmética, el valor evaluado es el que la oferta trajo.
+      expect(tras.resultado!.valorEvaluado).toBe(40_000_000);
+    });
+
+    it('deja al comité corregir aritméticamente el valor de la oferta', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+
+      const tras = await registrar(proceso.id, estado.oferentes[0].id, tecnico.acceso, {
+        valorEvaluado: 39_500_000,
+      });
+
+      expect(tras.resultado!.valorEvaluado).toBe(39_500_000);
+      // La oferta sigue diciendo lo que el oferente presentó.
+      expect(tras.resultado!.ganadora!.valorOfertado).toBe(40_000_000);
+    });
+
+    it('admite un resultado sin puntaje: no toda modalidad puntúa', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+
+      const tras = await evaluacion.registrar(
         proceso.id,
-        oferta.id,
-        {
-          dimension: 'JURIDICO',
-          resultados: criterios.map((c) => ({ criterioId: c.id, cumple: true })),
-        },
-        juridica.acceso,
+        { oferenteId: estado.oferentes[0].id, justificacion: JUSTIFICACION },
+        archivo('informe-evaluacion.pdf'),
+        'i'.repeat(64),
+        financiera.acceso,
       );
 
-      const evaluada = tras.ofertas.find((o) => o.id === oferta.id);
-      expect(evaluada!.evaluaciones).toHaveLength(1);
-      expect(evaluada!.evaluaciones[0].dimension).toBe('JURIDICO');
-      expect(evaluada!.evaluaciones[0].evaluadaPor).toBe('prueba.juridica');
+      expect(tras.resultado!.puntajeObtenido).toBeNull();
+      expect(tras.resultado!.puntajeMaximo).toBeNull();
     });
 
-    it('reevaluar sustituye el juicio anterior, no lo acumula', async () => {
+    it('da la actividad 6.3 por cumplida al registrar el resultado', async () => {
       const { proceso, estado } = await conOfertasCerradas();
       await designar(proceso.id);
+      await registrar(proceso.id, estado.oferentes[0].id, juridica.acceso);
 
-      const criterios = await criteriosDe(proceso.id, 'JURIDICO');
-      const oferta = estado.oferentes[0];
-      const evaluar = (cumple: boolean) =>
-        evaluacion.evaluar(
-          proceso.id,
-          oferta.id,
-          {
-            dimension: 'JURIDICO',
-            resultados: criterios.map((c) => ({
-              criterioId: c.id,
-              cumple,
-              observacion: cumple ? undefined : 'No aportó el certificado de existencia',
-            })),
-          },
-          juridica.acceso,
-        );
-
-      await evaluar(true);
-      const tras = await evaluar(false);
-
-      const evaluada = tras.ofertas.find((o) => o.id === oferta.id);
-      expect(evaluada!.evaluaciones).toHaveLength(1);
-      expect(evaluada!.evaluaciones[0].resultados.every((r) => r.cumple === false)).toBe(true);
-    });
-
-    it('el estado dice en qué dimensiones puede calificar quien consulta', async () => {
-      const { proceso } = await conOfertasCerradas();
-      await designar(proceso.id);
-
-      expect((await evaluacion.estado(proceso.id, juridica.acceso)).misDimensiones).toEqual([
-        'JURIDICO',
-      ]);
-      // El gestor lleva el proceso pero no evalúa.
-      expect((await evaluacion.estado(proceso.id, gestor)).misDimensiones).toEqual([]);
+      const [actividad] = await dataSource.query(
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '6.3'`,
+        [proceso.id],
+      );
+      expect(actividad.estado).toBe('APROBADO');
     });
   });
 
   // ------------------------------------------------------------ criterio 2 --
 
-  describe('Criterio 2 · consolidación de habilitadas y calificación', () => {
-    /** Evalúa una dimensión entera con el mismo veredicto para todo. */
-    const evaluarTodo = async (
-      procesoId: string,
-      ofertaId: string,
-      dimension: 'JURIDICO' | 'TECNICO' | 'FINANCIERO',
-      quien: HiringAccess,
-      opciones: { cumple?: boolean; puntajePleno?: boolean } = {},
-    ) => {
-      const { cumple = true, puntajePleno = true } = opciones;
-      const criterios = await criteriosDe(procesoId, dimension);
+  describe('Criterio 2 · quién puede registrarlo y sobre qué', () => {
+    it('lo registra quien integra el comité, no quien lleva el proceso', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
 
-      return evaluacion.evaluar(
-        procesoId,
-        ofertaId,
-        {
-          dimension,
-          resultados: criterios.map((c) =>
-            c.tipo === 'HABILITANTE'
-              ? {
-                  criterioId: c.id,
-                  cumple,
-                  observacion: cumple ? undefined : 'No acreditó lo exigido en el pliego',
-                }
-              : { criterioId: c.id, puntaje: puntajePleno ? c.puntajeMaximo! : 0 },
-          ),
-        },
-        quien,
+      // El gestor lleva el proceso pero no evaluó: no responde por el resultado.
+      await expect(registrar(proceso.id, estado.oferentes[0].id, gestor)).rejects.toThrow(
+        /no fuiste designado en el comité/i,
       );
-    };
 
-    it('habilita la oferta con todo cumplido y le calcula el puntaje económico', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
-
-      const [barata, cara] = estado.oferentes;
-      for (const oferta of [barata, cara]) {
-        await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso);
-        await evaluarTodo(proceso.id, oferta.id, 'TECNICO', tecnico.acceso);
-        await evaluarTodo(proceso.id, oferta.id, 'FINANCIERO', financiera.acceso);
-      }
-
-      const tras = await evaluacion.estado(proceso.id, gestor);
-      const laBarata = tras.ofertas.find((o) => o.id === barata.id)!.consolidado!;
-      const laCara = tras.ofertas.find((o) => o.id === cara.id)!.consolidado!;
-
-      expect(laBarata.estado).toBe('HABILITADA');
-      expect(laCara.estado).toBe('HABILITADA');
-      // 40 y 50 millones: la barata se lleva el máximo económico y la otra
-      // baja en proporción, así que su total tiene que ser menor.
-      expect(laBarata.puntajeTotal).toBeGreaterThan(laCara.puntajeTotal);
-      expect(laBarata.puntajeTotal).toBe(laBarata.puntajeMaximo);
+      const visto = await evaluacion.estado(proceso.id, gestor);
+      expect(visto.esMiembroDelComite).toBe(false);
+      expect(visto.puedeRegistrar).toBe(false);
     });
 
-    it('marca NO HABILITADA a la que incumple un habilitante y dice cuál', async () => {
+    it('no lo registra un evaluador designado en otro proceso', async () => {
+      const otro = await conOfertasCerradas();
+      await designar(otro.proceso.id);
+
+      // Este proceso tiene su propio comité, sin la evaluadora jurídica.
       const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
+      await comite.designar(
+        proceso.id,
+        {
+          fechaDesignacion: hoy(),
+          miembros: [{ personaId: tecnico.personaId, nombre: 'Evaluador técnico', rol: 'TECNICO' }],
+        },
+        archivo('memorando.pdf'),
+        'm'.repeat(64),
+        ordenador,
+      );
 
-      const oferta = estado.oferentes[0];
-      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso, { cumple: false });
-      await evaluarTodo(proceso.id, oferta.id, 'TECNICO', tecnico.acceso);
-      await evaluarTodo(proceso.id, oferta.id, 'FINANCIERO', financiera.acceso);
-
-      const tras = await evaluacion.estado(proceso.id, gestor);
-      const consolidado = tras.ofertas.find((o) => o.id === oferta.id)!.consolidado!;
-
-      expect(consolidado.estado).toBe('NO_HABILITADA');
-      expect(consolidado.incumplimientos.length).toBeGreaterThan(0);
-      expect(consolidado.incumplimientos[0].motivo).toMatch(/no acreditó/i);
+      await expect(registrar(proceso.id, estado.oferentes[0].id, juridica.acceso)).rejects.toThrow(
+        /no fuiste designado en el comité/i,
+      );
     });
 
-    it('deja pendiente la oferta a la que le falta una dimensión', async () => {
+    it('no registra resultado sin comité designado', async () => {
       const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
 
-      const oferta = estado.oferentes[0];
-      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso);
-
-      const tras = await evaluacion.estado(proceso.id, gestor);
-      const consolidado = tras.ofertas.find((o) => o.id === oferta.id)!.consolidado!;
-
-      expect(consolidado.estado).toBe('PENDIENTE');
-      expect(consolidado.dimensionesPendientes).toContain('TECNICO');
+      await expect(registrar(proceso.id, estado.oferentes[0].id, juridica.acceso)).rejects.toThrow(
+        /no tiene comité evaluador designado/i,
+      );
     });
 
-    it('la consolidación sigue a la evaluación cuando se corrige', async () => {
+    it('no registra resultado mientras la recepción siga abierta', async () => {
+      // Sin cerrar no hay comité que designar, así que el reclamo por la
+      // recepción abierta tiene que llegar antes que el del comité.
+      const proceso = await conOfertas(enHoras(48));
+      const abiertas = await ofertas.estado(proceso.id);
+
+      await expect(
+        registrar(proceso.id, abiertas.oferentes[0].id, juridica.acceso),
+      ).rejects.toThrow(/sigue abierta/i);
+    });
+
+    it('la ganadora tiene que ser una de las ofertas del proceso', async () => {
+      const ajeno = await conOfertasCerradas();
+      const { proceso } = await conOfertasCerradas();
+      await designar(proceso.id);
+
+      await expect(
+        registrar(proceso.id, ajeno.estado.oferentes[0].id, juridica.acceso),
+      ).rejects.toThrow(/no está en la lista de este proceso/i);
+    });
+
+    it('el puntaje va con su escala y no la supera', async () => {
       const { proceso, estado } = await conOfertasCerradas();
       await designar(proceso.id);
 
-      const oferta = estado.oferentes[0];
-      await evaluarTodo(proceso.id, oferta.id, 'TECNICO', tecnico.acceso);
-      await evaluarTodo(proceso.id, oferta.id, 'FINANCIERO', financiera.acceso);
-      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso, { cumple: false });
+      await expect(
+        registrar(proceso.id, estado.oferentes[0].id, juridica.acceso, {
+          puntajeMaximo: undefined,
+        }),
+      ).rejects.toThrow(/va con su escala/i);
 
-      const fuera = (await evaluacion.estado(proceso.id, gestor)).ofertas.find(
-        (o) => o.id === oferta.id,
-      )!.consolidado!;
-      expect(fuera.estado).toBe('NO_HABILITADA');
-
-      // Se corrige el juicio jurídico: no hay que rehacer nada más, porque el
-      // consolidado se calcula al consultarlo.
-      await evaluarTodo(proceso.id, oferta.id, 'JURIDICO', juridica.acceso, { cumple: true });
-
-      const dentro = (await evaluacion.estado(proceso.id, gestor)).ofertas.find(
-        (o) => o.id === oferta.id,
-      )!.consolidado!;
-      expect(dentro.estado).toBe('HABILITADA');
-      expect(dentro.incumplimientos).toHaveLength(0);
+      await expect(
+        registrar(proceso.id, estado.oferentes[0].id, juridica.acceso, {
+          puntajeObtenido: 120,
+          puntajeMaximo: 100,
+        }),
+      ).rejects.toThrow(/no puede superar el máximo/i);
     });
   });
 
-  // ------------------------------------------------------- quién y cuándo --
+  // ------------------------------------------------------------ criterio 3 --
 
-  describe('Solo evalúa quien fue designado, y solo lo suyo', () => {
-    it('rechaza a quien no está en el comité de este proceso', async () => {
+  describe('Criterio 3 · un solo resultado vigente, con sus evidencias', () => {
+    it('no admite un segundo resultado sin rectificar el anterior', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+      await registrar(proceso.id, estado.oferentes[0].id, juridica.acceso);
+
+      await expect(registrar(proceso.id, estado.oferentes[1].id, tecnico.acceso)).rejects.toThrow(
+        /ya tiene resultado registrado/i,
+      );
+    });
+
+    it('rectificar conserva el anterior y deja registrar otro', async () => {
+      const { proceso, estado } = await conOfertasCerradas();
+      await designar(proceso.id);
+      await registrar(proceso.id, estado.oferentes[0].id, juridica.acceso);
+
+      const rectificado = await evaluacion.rectificar(
+        proceso.id,
+        { motivo: 'El comité corrigió la verificación financiera de la primera oferta' },
+        juridica.acceso,
+      );
+
+      expect(rectificado.resultado).toBeNull();
+      expect(rectificado.rectificados).toHaveLength(1);
+      expect(rectificado.rectificados[0].motivoRectificacion).toMatch(/corrigió/i);
+
+      // Y la actividad vuelve a quedar en curso: el proceso se quedó sin
+      // resultado hasta que se registre el nuevo.
+      const [actividad] = await dataSource.query(
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '6.3'`,
+        [proceso.id],
+      );
+      expect(actividad.estado).toBe('BORRADOR');
+
+      const tras = await registrar(proceso.id, estado.oferentes[1].id, tecnico.acceso);
+      expect(tras.resultado!.ganadora!.id).toBe(estado.oferentes[1].id);
+      expect(tras.rectificados).toHaveLength(1);
+    });
+
+    it('las evidencias se cargan sobre un resultado ya registrado', async () => {
       const { proceso, estado } = await conOfertasCerradas();
       await designar(proceso.id);
 
-      const criterios = await criteriosDe(proceso.id, 'JURIDICO');
-
-      await expect(
-        evaluacion.evaluar(
+      const evidencia = (descripcion: string, quien: HiringAccess) =>
+        evaluacion.agregarEvidencia(
           proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'JURIDICO',
-            resultados: criterios.map((c) => ({ criterioId: c.id, cumple: true })),
-          },
-          gestor,
-        ),
-      ).rejects.toThrow(/no fuiste designado/i);
-    });
+          { descripcion },
+          archivo('verificacion.pdf'),
+          'v'.repeat(64),
+          quien,
+        );
 
-    it('rechaza al evaluador que se sale de su dimensión', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
+      await expect(evidencia('Verificación jurídica', juridica.acceso)).rejects.toThrow(
+        /primero se registra el resultado/i,
+      );
 
-      const criterios = await criteriosDe(proceso.id, 'JURIDICO');
+      await registrar(proceso.id, estado.oferentes[0].id, juridica.acceso);
+      await evidencia('Verificación jurídica', juridica.acceso);
+      const tras = await evidencia('Cuadro comparativo', tecnico.acceso);
 
-      // El técnico está designado, pero no para lo jurídico.
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'JURIDICO',
-            resultados: criterios.map((c) => ({ criterioId: c.id, cumple: true })),
-          },
-          tecnico.acceso,
-        ),
-      ).rejects.toThrow(/no para la juridico/i);
-    });
-
-    it('no deja evaluar sin comité designado', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-
-      const criterios = await criteriosDe(proceso.id, 'JURIDICO');
-
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'JURIDICO',
-            resultados: criterios.map((c) => ({ criterioId: c.id, cumple: true })),
-          },
-          juridica.acceso,
-        ),
-      ).rejects.toThrow(/no tiene comité evaluador designado/i);
-    });
-  });
-
-  // ------------------------------------------------- forma de la evaluación --
-
-  describe('El juicio cubre la dimensión y respeta el tipo del criterio', () => {
-    it('exige todos los criterios de la dimensión', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
-
-      const criterios = await criteriosDe(proceso.id, 'TECNICO');
-      expect(criterios.length).toBeGreaterThan(1);
-
-      // Falta uno: media evaluación se leería como criterios incumplidos.
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'TECNICO',
-            resultados: [
-              criterios[0].tipo === 'HABILITANTE'
-                ? { criterioId: criterios[0].id, cumple: true }
-                : { criterioId: criterios[0].id, puntaje: 1 },
-            ],
-          },
-          tecnico.acceso,
-        ),
-      ).rejects.toThrow(/falta calificar/i);
-    });
-
-    it('no admite puntaje en un habilitante ni "cumple" en un ponderable', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
-
-      const criterios = await criteriosDe(proceso.id, 'TECNICO');
-      const habilitante = criterios.find((c) => c.tipo === 'HABILITANTE')!;
-      const ponderable = criterios.find((c) => c.tipo === 'PONDERABLE')!;
-
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'TECNICO',
-            resultados: criterios.map((c) =>
-              c.id === habilitante.id
-                ? { criterioId: c.id, puntaje: 5 }
-                : { criterioId: c.id, puntaje: 1 },
-            ),
-          },
-          tecnico.acceso,
-        ),
-      ).rejects.toThrow(/habilitante/i);
-
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'TECNICO',
-            resultados: criterios.map((c) =>
-              c.id === ponderable.id
-                ? { criterioId: c.id, cumple: true }
-                : { criterioId: c.id, cumple: true },
-            ),
-          },
-          tecnico.acceso,
-        ),
-      ).rejects.toThrow(/ponderable/i);
-    });
-
-    it('no deja pasar un puntaje por encima del máximo del criterio', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
-
-      const criterios = await criteriosDe(proceso.id, 'TECNICO');
-      const ponderable = criterios.find((c) => c.tipo === 'PONDERABLE')!;
-
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'TECNICO',
-            resultados: criterios.map((c) =>
-              c.tipo === 'HABILITANTE'
-                ? { criterioId: c.id, cumple: true }
-                : {
-                    criterioId: c.id,
-                    puntaje: c.id === ponderable.id ? ponderable.puntajeMaximo! + 1 : 0,
-                  },
-            ),
-          },
-          tecnico.acceso,
-        ),
-      ).rejects.toThrow(/admite hasta/i);
-    });
-
-    it('exige el motivo cuando un habilitante no se cumple', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
-
-      const criterios = await criteriosDe(proceso.id, 'JURIDICO');
-
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          {
-            dimension: 'JURIDICO',
-            resultados: criterios.map((c) => ({ criterioId: c.id, cumple: false })),
-          },
-          juridica.acceso,
-        ),
-      ).rejects.toThrow(/explica por qué/i);
-    });
-
-    it('no deja registrar a mano la dimensión económica', async () => {
-      const { proceso, estado } = await conOfertasCerradas();
-      await designar(proceso.id);
-
-      await expect(
-        evaluacion.evaluar(
-          proceso.id,
-          estado.oferentes[0].id,
-          // El DTO ya la rechaza; el servicio también, porque la regla es suya
-          // y no de la forma de la petición.
-          { dimension: 'ECONOMICO' as any, resultados: [{ criterioId: estado.oferentes[0].id }] },
-          juridica.acceso,
-        ),
-      ).rejects.toThrow(/se calcula sobre el valor ofertado/i);
+      expect(tras.resultado!.evidencias).toHaveLength(2);
+      expect(tras.resultado!.evidencias.map((e) => e.descripcion)).toEqual([
+        'Verificación jurídica',
+        'Cuadro comparativo',
+      ]);
+      expect(tras.resultado!.evidencias[1].cargadaPor).toBe('prueba.tecnico');
     });
   });
 });

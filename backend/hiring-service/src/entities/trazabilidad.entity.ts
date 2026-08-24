@@ -21,7 +21,10 @@ export type AccionTraza =
   | 'RETIRAR'
   // Designación del comité evaluador (etapa 6).
   | 'DESIGNAR'
-  | 'REVOCAR';
+  | 'REVOCAR'
+  // Resultado de la evaluación (etapa 6): rectificar no es anular, porque el
+  // resultado rectificado sigue en el expediente con su informe.
+  | 'RECTIFICAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {
