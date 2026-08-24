@@ -6,7 +6,7 @@ import * as nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { SendValidationCodeDto } from './dto/send-validation-code.dto';
 import { SendEmailAttachmentDto } from './dto/send-email-attachment.dto';
-import { SendEmailDto } from './dto/send-email.dto';
+import { EmailAttachmentDto, SendEmailDto } from './dto/send-email.dto';
 
 type SmtpConfig = {
   host: string;
@@ -44,6 +44,14 @@ export class EmailsService {
   private readonly logger = new Logger(EmailsService.name);
   private transporter: nodemailer.Transporter | null = null;
   private graphClient: Client | null = null;
+
+  private decodeAttachments(items: EmailAttachmentDto[] = []): EmailAttachment[] {
+    return items.map((item) => ({
+      filename: item.filename,
+      content: Buffer.from(item.contentBase64, 'base64'),
+      contentType: item.contentType || 'application/octet-stream',
+    }));
+  }
 
   private getSmtpConfig(): SmtpConfig | null {
     const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
@@ -322,6 +330,7 @@ export class EmailsService {
           content: contentBuffer,
           contentType: data.attachmentContentType || 'application/octet-stream',
         },
+        ...this.decodeAttachments(data.additionalAttachments),
       ],
     };
 
@@ -375,6 +384,7 @@ export class EmailsService {
             </td></tr></table>
           </div>
         `,
+      attachments: this.decodeAttachments(data.attachments),
     };
 
     try {

@@ -137,9 +137,9 @@ const FALLBACK_CATEGORIES: PrimaTecnicaCategoriaConfig[] = [
     label: 'Directivos',
     description: 'Gestión de porcentajes para directivos.',
     template_text:
-      'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+      'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
     default_template_text:
-      'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+      'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
     display_order: 10,
     is_system: true,
     is_active: true,
@@ -150,9 +150,9 @@ const FALLBACK_CATEGORIES: PrimaTecnicaCategoriaConfig[] = [
     label: 'Coordinadores',
     description: 'Gestión de porcentajes para coordinadores.',
     template_text:
-      'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+      'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
     default_template_text:
-      'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+      'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
     display_order: 20,
     is_system: true,
     is_active: true,
@@ -285,11 +285,11 @@ function renderTemplateHighlighted(text: string): React.ReactNode {
 const MODAL_ITEMS_PER_PAGE = 20;
 
 const DEFAULT_BONUS_TEMPLATES: Record<PrimaTecnicaCategoria, string> = {
-  DIRECTIVOS: 'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
-  COORDINADORES: 'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+  DIRECTIVOS: 'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
+  COORDINADORES: 'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.',
 };
 const DEFAULT_DYNAMIC_BONUS_TEMPLATE =
-  'Percibe una prima en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.';
+  'Percibe una prima en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de (${valor_numerico}) {valor_letras} pesos m/cte.';
 const BULK_PREVIEW_ITEMS_LIMIT = 20;
 const BULK_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s'.-]+$/;
 const BULK_ID_NUMBER_REGEX = /^\d+$/;

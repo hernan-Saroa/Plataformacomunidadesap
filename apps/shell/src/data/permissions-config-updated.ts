@@ -352,6 +352,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'cl.notification.send', name: 'Enviar Notificaciones', description: 'Notificar al solicitante', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.history.view', name: 'Ver Histórico', description: 'Consultar histórico de validaciones', module: 'certificados_laborales', criticidad: 'baja' },
       { id: 'cl.config.edit', name: 'Editar Prima', description: 'Modificar primas', module: 'certificados_laborales', criticidad: 'alta' },
+      { id: 'cl.correction.manage', name: 'Gestionar correcciones', description: 'Revisar y resolver solicitudes de corrección de certificados', module: 'certificados_laborales', criticidad: 'alta' },
     ]
   },
 

@@ -11,13 +11,14 @@ import { BancoDocenteInvitacionEntity } from '../entities/banco-docente-invitaci
 import { RundAprobacionLogEntity } from '../entities/rund-aprobacion-log.entity';
 import { RundCampoEstadoEntity } from '../entities/rund-campo-estado.entity';
 import { RundSoporteCampoEntity } from '../entities/rund-soporte-campo.entity';
+import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
   controllers: [BancoDocentesController],
-  providers: [BancoDocentesService, DocumentTypeValidatorService],
+  providers: [BancoDocentesService, DocumentTypeValidatorService, BancoDocentesRolesGuard],
   exports: [BancoDocentesService, DocumentTypeValidatorService],
 })
 export class BancoDocentesModule {}

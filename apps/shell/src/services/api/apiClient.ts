@@ -334,6 +334,7 @@ export class ApiClient {
 
         // No reintentar en estos casos
         if (
+          error.status === 400 || // Bad Request: error de validación/negocio, determinista — reintentar repite el mismo rechazo
           error.status === 401 || // Unauthorized
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found

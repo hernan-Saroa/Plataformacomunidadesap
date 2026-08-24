@@ -115,7 +115,7 @@ describe('PtaService.aprobarComponentesLote', () => {
       { ptaId: 'pta-inexistente', componente: 'complementarias_pregrado', estado: 'fallido', motivo: 'PTA no encontrado' },
     ]);
 
-    expect(result.resumen).toEqual({ total: 8, aprobados: 1, omitidos: 4, fallidos: 3 });
+    expect(result.resumen).toEqual({ total: 8, aprobados: 1, devueltos: 0, omitidos: 4, fallidos: 3 });
   });
 
   it('reporta fallido con un motivo legible cuando el PTA no existe, sin tocar getComponentesAprobacion', async () => {
@@ -138,7 +138,7 @@ describe('PtaService.aprobarComponentesLote', () => {
     expect(result.resultados).toEqual([
       { ptaId: 'pta-fantasma', componente: 'investigacion', estado: 'fallido', motivo: 'PTA no encontrado' },
     ]);
-    expect(result.resumen).toEqual({ total: 1, aprobados: 0, omitidos: 0, fallidos: 1 });
+    expect(result.resumen).toEqual({ total: 1, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 1 });
   });
 
   it('no llama aprobarComponente para nada si todo ya está resuelto (lote sin cambios)', async () => {
@@ -154,7 +154,7 @@ describe('PtaService.aprobarComponentesLote', () => {
     );
 
     expect(service.aprobarComponente).not.toHaveBeenCalled();
-    expect(result.resumen).toEqual({ total: 1, aprobados: 0, omitidos: 1, fallidos: 0 });
+    expect(result.resumen).toEqual({ total: 1, aprobados: 0, devueltos: 0, omitidos: 1, fallidos: 0 });
   });
 
   it('propaga aprobadorRol al body de aprobarComponente, igual que la aprobación individual', async () => {
@@ -192,5 +192,51 @@ describe('PtaService.aprobarComponentesLote', () => {
       }),
       authInvestigacion,
     );
+  });
+
+  it('con estado "devuelto" devuelve en lote en vez de aprobar, y omite lo que ya estaba devuelto', async () => {
+    const service = createService();
+    // PTA A: investigacion pendiente (se devuelve). PTA B: investigacion ya devuelto (se omite,
+    // no se re-devuelve — mismo candado que aprobarComponente aplica sobre una devolución previa).
+    service.getComponentesAprobacion = jest.fn(async (ptaId: string) => {
+      if (ptaId === 'pta-A') return [{ componente: 'investigacion', estado: 'pendiente' }];
+      if (ptaId === 'pta-B') return [{ componente: 'investigacion', estado: 'devuelto' }];
+      throw new Error('No debería llegar aquí');
+    });
+    service.aprobarComponente = jest.fn(async (ptaId: string, body: any) => ({
+      approval: { ptaId, componente: body.componente, estado: body.estado },
+      estadoGeneral: 'Devuelto',
+    }));
+
+    const authInvestigacion = { ...auth, allowedComponents: ['investigacion'] };
+    const result = await service.aprobarComponentesLote(
+      {
+        ptaIds: ['pta-A', 'pta-B'],
+        componentes: ['investigacion'],
+        estado: 'devuelto',
+        comentarios: 'Falta corregir horas',
+      },
+      authInvestigacion,
+    );
+
+    expect(service.aprobarComponente).toHaveBeenCalledTimes(1);
+    expect(service.aprobarComponente).toHaveBeenCalledWith(
+      'pta-A',
+      expect.objectContaining({ componente: 'investigacion', estado: 'devuelto', comentarios: 'Falta corregir horas' }),
+      authInvestigacion,
+    );
+
+    expect(result.resultados).toEqual([
+      { ptaId: 'pta-A', componente: 'investigacion', estado: 'devuelto' },
+      { ptaId: 'pta-B', componente: 'investigacion', estado: 'omitido', motivo: 'Ya estaba devuelto' },
+    ]);
+    expect(result.resumen).toEqual({ total: 2, aprobados: 0, devueltos: 1, omitidos: 1, fallidos: 0 });
+  });
+
+  it('rechaza un valor de estado distinto de "aprobado"/"devuelto"', async () => {
+    const service = createService();
+    await expect(
+      service.aprobarComponentesLote({ ptaIds: ['p1'], componentes: ['investigacion'], estado: 'rechazado' }, auth),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

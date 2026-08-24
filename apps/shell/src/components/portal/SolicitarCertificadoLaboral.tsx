@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, FileText, Download, CheckCircle, CheckCircle2, AlertCircle,
   Send, Loader2, User, CreditCard, Building2, Calendar,
-  Mail, Phone, MapPin, Search, ChevronDown,
+  Mail, Phone, MapPin, Search, ChevronDown, ChevronRight,
   Shield, Clock, FileCheck, Sparkles, TrendingUp, Star, Eye, XCircle, Lock
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -31,6 +31,7 @@ import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoF
 import { PublicNavbar } from './PublicNavbar';
 // import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { CertificateCorrectionRequestModal } from './CertificateCorrectionRequestModal';
 
 interface SolicitarCertificadoLaboralProps {
   onBack: () => void;
@@ -531,6 +532,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
   // Estados para el visor de PDF
   const [showPDFViewer, setShowPDFViewer] = useState(false);
+  const [showCorrectionRequest, setShowCorrectionRequest] = useState(false);
   const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | 'email' | null>(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const emailDestinoRef = useRef<string | null>(null);
@@ -1257,8 +1259,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     if (!destinatario) {
       toast.error('No hay un correo registrado para este empleado');
       setIsSendingEmail(false);
-      setAutoPDFAction(null);
-      setShowPDFViewer(false);
       return;
     }
 
@@ -1283,8 +1283,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       });
     } finally {
       setIsSendingEmail(false);
-      setAutoPDFAction(null);
-      setShowPDFViewer(false);
     }
   };
 
@@ -2063,29 +2061,57 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                 <div className="flex flex-col gap-3">
                   <Button
                     onClick={handleVerPDF}
-                    className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold shadow-lg"
+                    className="certificate-document-action certificate-document-action--view h-12 w-full font-bold"
                   >
-                    <Eye className="w-5 h-5 mr-2" />
-                    Ver PDF
+                    <span className="certificate-document-action__icon">
+                      <Eye className="h-4 w-4" />
+                    </span>
+                    <span>Ver PDF</span>
                   </Button>
 
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Button
                       onClick={handleDescargar}
-                      className="flex-1 h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold shadow-lg"
+                      className="certificate-document-action certificate-document-action--download h-12 flex-1 font-bold"
                     >
-                      <Download className="w-5 h-5 mr-2" />
-                      Descargar PDF
+                      <span className="certificate-document-action__icon">
+                        <Download className="h-4 w-4" />
+                      </span>
+                      <span>Descargar PDF</span>
                     </Button>
                     <Button
                       onClick={handleNuevaSolicitud}
                       variant="outline"
-                      className="flex-1 h-12 border-2 font-bold"
+                      className="certificate-document-action certificate-document-action--new h-12 flex-1 font-bold"
                     >
-                      <FileText className="w-5 h-5 mr-2" />
-                      Nueva Solicitud
+                      <span className="certificate-document-action__icon">
+                        <FileText className="h-4 w-4" />
+                      </span>
+                      <span>Nueva Solicitud</span>
                     </Button>
                   </div>
+                  <Button
+                    onClick={() => setShowCorrectionRequest(true)}
+                    className="certificate-correction-trigger group h-auto w-full justify-between whitespace-normal sm:px-5"
+                  >
+                    <span className="flex min-w-0 items-center gap-3 text-left">
+                      <span className="certificate-correction-trigger__icon flex h-10 w-10 flex-none items-center justify-center rounded-md">
+                        <AlertCircle className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold leading-5 sm:text-[15px]">
+                          Solicitar corrección del certificado
+                        </span>
+                        <span className="certificate-correction-trigger__caption block text-xs font-normal leading-4">
+                          Reporta información incorrecta y adjunta las evidencias
+                        </span>
+                      </span>
+                    </span>
+                    <span className="certificate-correction-trigger__action ml-3 flex flex-none items-center gap-1.5">
+                      <span className="certificate-correction-trigger__action-label">Crear solicitud</span>
+                      <ChevronRight className="certificate-correction-trigger__arrow h-4 w-4" />
+                    </span>
+                  </Button>
                 </div>
 
                 {/* Info adicional */}
@@ -2112,6 +2138,16 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       </div>
 
       {/* Visor de PDF Modal */}
+      {certificadoGenerado?.certificado_completo && (
+        <CertificateCorrectionRequestModal
+          open={showCorrectionRequest}
+          onOpenChange={setShowCorrectionRequest}
+          certificateId={String(certificadoGenerado.certificado_completo.id || '')}
+          verificationCode={certificadoGenerado.qr_code}
+          certificateNumber={certificadoGenerado.numero_radicado}
+        />
+      )}
+
       {certificadoGenerado?.certificado_completo && (
         <VisorPDFCertificado
           isOpen={showPDFViewer}

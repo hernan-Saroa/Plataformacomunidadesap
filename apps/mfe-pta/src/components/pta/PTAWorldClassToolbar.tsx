@@ -42,11 +42,13 @@ interface PTAWorldClassToolbarProps {
 
 const WORKFLOW_TABS = [
   { id: '', label: 'Todos', color: '#6B7280' },
-  { id: 'borrador', label: 'Borradores', color: '#9CA3AF' },
+  // Pestañas ocultas a pedido: no deben salir para nadie por ahora. No borrar,
+  // solo comentadas por si se necesitan reactivar más adelante.
+  // { id: 'borrador', label: 'Borradores', color: '#9CA3AF' },
   { id: 'pendientes', label: 'Aprobación', color: '#F59E0B' },
-  { id: 'concertacion', label: 'Concertación', color: '#8B5CF6' },
+  // { id: 'concertacion', label: 'Concertación', color: '#8B5CF6' },
   { id: 'aprobado', label: 'Aprobado', color: '#10B981' },
-  { id: 'sna', label: 'SNA', color: '#EF4444' }, // Pestaña dedicada para SNA
+  // { id: 'sna', label: 'SNA', color: '#EF4444' }, // Pestaña dedicada para SNA
 ];
 
 function normalizeEstadoKey(value?: string | null) {

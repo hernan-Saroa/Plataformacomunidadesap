@@ -159,7 +159,8 @@ export class NewsService {
         datos_adicionales: { noticiaId: noticiaGuardada.id, radicado },
       }).catch(() => {});
 
-      return noticiaGuardada;
+      const diasHabilesRestantes = await this.calcularDiasHabilesRestantesRecepcion(noticiaGuardada.fechaRecepcion);
+      return { ...noticiaGuardada, diasHabilesRestantes } as unknown as DisciplinaryNews;
     } catch (error) {
       throw new HttpException(
         `Error al radicar noticia: ${error.message}`,

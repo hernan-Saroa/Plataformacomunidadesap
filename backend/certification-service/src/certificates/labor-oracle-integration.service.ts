@@ -454,7 +454,7 @@ export class LaborOracleIntegrationService {
       email: emailInstitucional || emailPersonal,
       personal_email: emailPersonal,
       phone: null,
-      department: dependencia || centroCosto || sucursal,
+      department: centroCosto || dependencia,
       status: this.normalizeStatus(this.pickValue(row, 'ESTADO')),
       observations: this.toText(this.pickValue(row, 'TIPO')),
       request_date: requestDate,
@@ -475,7 +475,7 @@ export class LaborOracleIntegrationService {
       mapping_notes: [
         'career_category se arma como CARGO + " Grado " + GRADO.',
         'position_category usa TIPOACTOADMINISTRATIVO y deja Tipo_Vinculacion como candidato alterno.',
-        'position_location y department toman DEPENDENCIA como primera opcion.',
+        'position_location toma DEPENDENCIA como primera opcion; department prioriza CENTROCOSTO y luego DEPENDENCIA.',
         'request_number y person_id quedan nulos porque la vista Oracle no los expone.',
         'La respuesta expone el mapeo usado para sincronizar certificate_requests cuando el autoservicio consulta el documento.',
       ],

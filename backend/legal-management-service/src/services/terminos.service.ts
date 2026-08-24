@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { TerminoProcesal } from '../entities/termino-procesal.entity';
 import { Expediente } from '../entities/expediente.entity';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
@@ -26,7 +26,39 @@ export class TerminosService {
         private procesoCoactivoRepository: Repository<ProcesoCoactivo>,
         @InjectRepository(Actuacion)
         private actuacionRepository: Repository<Actuacion>,
+        @InjectDataSource()
+        private readonly dataSource: DataSource,
     ) { }
+
+    /** Resuelve nombres reales de usuario (auth.user/personas) a partir de ids, para no exponer UUIDs crudos como "responsable". */
+    private async resolveNombresDesdeAuth(ids: (string | null | undefined)[]): Promise<Map<string, string>> {
+        const filteredIds = [...new Set(ids.filter((id): id is string => !!id))];
+        if (filteredIds.length === 0) return new Map();
+
+        try {
+            const rows = await this.dataSource.query(
+                `SELECT
+                    u.id_user::text AS id_user,
+                    u.public_id::text AS public_id,
+                    COALESCE(p.nom_largo, u.username, u.id_user::text) AS nombre
+                 FROM auth."user" u
+                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                 WHERE u.id_user::text = ANY($1)
+                    OR u.public_id::text = ANY($1)`,
+                [filteredIds],
+            );
+
+            const map = new Map<string, string>();
+            for (const row of rows) {
+                if (row.id_user) map.set(row.id_user, row.nombre);
+                if (row.public_id) map.set(row.public_id, row.nombre);
+            }
+            return map;
+        } catch (error) {
+            this.logger.warn(`No se pudieron resolver nombres desde auth: ${(error as any)?.message || error}`);
+            return new Map();
+        }
+    }
 
     async create(data: Partial<TerminoProcesal>): Promise<TerminoProcesal> {
         // Si no viene referenciaId pero sí numeroRadicado, intentamos resolverlo
@@ -585,9 +617,12 @@ export class TerminosService {
 
         // 1. Defensa y Juzgamiento (Expedientes)
         const expedientes = await this.expedienteRepository.find();
+        const nombresAbogados = await this.resolveNombresDesdeAuth(expedientes.map(e => e.abogadoSustanciador));
 
         for (const exp of expedientes) {
-            const abogadoNombre = exp.abogadoSustanciador || 'Sin asignar';
+            const abogadoNombre = (exp.abogadoSustanciador && nombresAbogados.get(exp.abogadoSustanciador))
+                || exp.abogadoSustanciador
+                || 'Sin asignar';
             // Fallback chain for "Hechos"
             const hechos = exp.hechos || exp.pretensionDemandante || exp.asunto || 'Sin descripción detallada';
 
@@ -667,9 +702,13 @@ export class TerminosService {
 
         // 2. Asesoria Jurídica
         const consultas = await this.consultaRepository.find();
+        const nombresAsesoria = await this.resolveNombresDesdeAuth(consultas.map(c => c.abogadoAsignadoId));
         for (const cons of consultas) {
             const responsableUUID = cons.abogadoAsignadoId || undefined;
-            const responsableNombre = cons.abogadoAsignadoNombre || cons.abogadoAsignadoId || 'Sin asignar';
+            const responsableNombre = cons.abogadoAsignadoNombre
+                || (cons.abogadoAsignadoId && nombresAsesoria.get(cons.abogadoAsignadoId))
+                || cons.abogadoAsignadoId
+                || 'Sin asignar';
             const descripcion = cons.descripcion || cons.materiaJuridica || 'Consulta Jurídica sin descripción';
 
             const hasFecha = !!cons.fechaMaximaRespuesta;
@@ -712,9 +751,14 @@ export class TerminosService {
 
         this.logger.log(`[ORGANOS_CONTROL] Encontrados ${requerimientosOC.length} requerimientos para procesar.`);
 
+        const nombresOC = await this.resolveNombresDesdeAuth(requerimientosOC.map(r => r.abogadoAsignadoId));
+
         for (const req of requerimientosOC) {
             const responsableUUID = req.abogadoAsignadoId || undefined;
-            const responsableNombre = req.funcionarioResponsable || req.abogadoAsignadoId || 'Sin asignar';
+            const responsableNombre = req.funcionarioResponsable
+                || (req.abogadoAsignadoId && nombresOC.get(req.abogadoAsignadoId))
+                || req.abogadoAsignadoId
+                || 'Sin asignar';
             const descripcion = req.descripcion || 'Requerimiento Ente de Control';
 
             // Additional logging to debug specific Skipping reasons

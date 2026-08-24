@@ -100,6 +100,17 @@ const obtenerConceptoPrimaTecnica = (categoria: PrimaTecnicaCategoria | null): s
       ? 'prima técnica'
       : 'prima técnica y/o coordinación';
 
+const normalizarOrdenValoresPrima = (value: unknown): string =>
+  String(value || '')
+    .replace(
+      /\{valor_letras\}\s*(\(\s*\$?\s*\{valor_numerico\}\s*\))/gi,
+      '$1 {valor_letras}',
+    )
+    .replace(
+      /\{valor_letras\}\s*(\$\s*\{valor_numerico\})/gi,
+      '$1 {valor_letras}',
+    );
+
 export function VisorPDFCertificado({
   isOpen,
   onClose,
@@ -283,11 +294,6 @@ export function VisorPDFCertificado({
       certificado.empleado.salario ??
       0,
   );
-  const salarioTextoBase =
-    (certificado.empleado as any)?.salarioTextoOriginal ??
-    certificado.empleado.salarioTexto ??
-    '';
-
   const limpiarSeccionesSalario = (html: string): string => {
     if (incluirSalario || !html) return html;
     try {
@@ -419,7 +425,7 @@ export function VisorPDFCertificado({
       '[DATO5]': cargoPlantilla,
       '[DATO6]': dato6,
       '[DATO7]': dato7,
-      '[DATO8]': incluirSalario ? (salarioTextoBase || salarioEnLetras) : '',
+      '[DATO8]': incluirSalario ? salarioEnLetras : '',
       '[NOMBRE_EMPLEADO]': certificado.empleado.nombre || '',
       '[DOCUMENTO]': certificado.empleado.documento || '',
       '[CARGO]': cargoVariable,
@@ -503,6 +509,7 @@ export function VisorPDFCertificado({
     const unidades = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
     const especiales = ['diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve'];
     const decenas = ['', '', 'veinte', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+    const veintenas = ['', 'veintiún', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
     const centenas = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
 
     if (num === 0) return 'cero';
@@ -512,7 +519,7 @@ export function VisorPDFCertificado({
       if (n === 0) return '';
       if (n < 10) return unidades[n];
       if (n < 20) return especiales[n - 10];
-      if (n < 30) return n === 20 ? 'veinte' : 'veinti' + unidades[n - 20];
+      if (n < 30) return n === 20 ? 'veinte' : veintenas[n - 20];
       if (n < 100) {
         const dec = Math.floor(n / 10);
         const uni = n % 10;
@@ -700,7 +707,7 @@ export function VisorPDFCertificado({
       maximumFractionDigits: 2,
     });
     const primaTecnicaEnLetras = numeroALetras(prima.value);
-    const customTemplate = String(prima.templateText || '').trim();
+    const customTemplate = normalizarOrdenValoresPrima(prima.templateText).trim();
 
     if (customTemplate) {
       const rendered = customTemplate
@@ -713,7 +720,7 @@ export function VisorPDFCertificado({
     const conceptoPrimaTecnica = obtenerConceptoPrimaTecnica(
       normalizarCategoriaPrimaTecnica(prima.category),
     );
-    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(prima.value)}) pesos m/cte.</p>`;
+    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ($${formatearMonto(prima.value)}) ${primaTecnicaEnLetras} pesos m/cte.</p>`;
   };
 
   const handleDescargar = async () => {

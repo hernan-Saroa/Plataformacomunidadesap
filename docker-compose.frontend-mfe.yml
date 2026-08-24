@@ -35,6 +35,7 @@ services:
       - frontend-mfe-gestion-legal
       - frontend-mfe-pta
       - frontend-mfe-contratacion
+      - frontend-mfe-viaticos
       - api-gateway
       - onlyoffice
     volumes:
@@ -219,5 +220,17 @@ services:
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-contratacion
         FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-contratacion
     container_name: superapp-mfe-contratacion${FRONTEND_CONTAINER_SUFFIX:--prod}
+    <<: *frontend-service
+
+  frontend-mfe-viaticos:
+    build:
+      context: .
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
+      args:
+        <<: *frontend-build-args
+        FRONTEND_APP_DIR: mfe-viaticos
+        FRONTEND_DIST_DIR: /app/build/remotes/mfe-viaticos
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-viaticos
+    container_name: superapp-mfe-viaticos${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
 
