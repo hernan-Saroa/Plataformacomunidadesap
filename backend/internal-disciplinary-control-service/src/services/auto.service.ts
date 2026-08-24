@@ -152,7 +152,7 @@ export class AutoService {
    */
   async findAll(): Promise<LegalAuto[]> {
     return await this.autoRepository.find({
-      relations: ['process', 'process.abogadoAsignado'],
+      relations: ['process', 'process.abogadoAsignado', 'process.news'],
     });
   }
 
