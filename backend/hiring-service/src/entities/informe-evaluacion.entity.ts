@@ -1,7 +1,5 @@
 import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
-import { DimensionEvaluacion } from './criterio-evaluacion.entity';
-
 /**
  * Borrador es el informe generado y todavía no publicado; trasladado es el que
  * ya se les notificó a los oferentes y tiene término corriendo; cerrado es el
@@ -11,42 +9,61 @@ import { DimensionEvaluacion } from './criterio-evaluacion.entity';
 export type EstadoInforme = 'BORRADOR' | 'TRASLADADO' | 'CERRADO' | 'ANULADO';
 
 /**
- * Cómo quedó una oferta en el informe, con la forma en que se congela.
+ * Una oferta recibida, como aparece en el informe.
  *
- * Es una copia de lo que devolvía la consolidación (EFDS-1442) el día del
- * traslado, no una referencia a ella: los nombres de los criterios viajan con
- * el resultado para que retirar uno del catálogo no deje el informe mudo.
+ * La plataforma no dice quién quedó habilitado —eso lo decide el comité por
+ * fuera (EFDS-1157)—, así que de cada oferta se congela lo que sí consta:
+ * quién es, por cuánto ofertó y si es la que el comité eligió.
  */
 export interface OfertaEnInforme {
-  ofertaId: string;
+  oferenteId: string;
   numero: number;
   nombre: string;
-  identificacion: string;
+  identificacion: string | null;
   valorOfertado: number | null;
-  estado: 'HABILITADA' | 'NO_HABILITADA' | 'PENDIENTE';
-  incumplimientos: { criterioId: string; nombre: string; motivo: string | null }[];
-  puntajePorDimension: Partial<Record<DimensionEvaluacion, number>>;
-  puntajeTotal: number;
-  puntajeMaximo: number;
+  ganadora: boolean;
 }
 
-/** El consolidado congelado, con el contexto que hace falta para leerlo. */
+/** Una evidencia del comité, congelada con su descripción. */
+export interface EvidenciaEnInforme {
+  documentoId: string;
+  descripcion: string;
+}
+
+/**
+ * El resultado del comité congelado, con el contexto que hace falta para leerlo
+ * sin volver a consultar nada.
+ *
+ * Copia y no referencia: los nombres viajan con el resultado para que el
+ * informe trasladado se lea igual aunque después se rectifique la evaluación.
+ */
 export interface ResultadoInforme {
   modalidad: string | null;
-  puntajeMaximo: number;
-  /** Si al generarlo había criterios sin ratificar. Se dice en el informe. */
-  criteriosSinConfirmar: boolean;
+  /** El resultado que se congeló, para poder rastrear de cuál salió. */
+  resultadoId: string;
+  ganadora: {
+    oferenteId: string;
+    nombre: string;
+    identificacion: string | null;
+  };
+  puntajeObtenido: number | null;
+  puntajeMaximo: number | null;
+  valorEvaluado: number | null;
+  justificacion: string;
+  /** El informe del comité, que es lo que se traslada. */
+  informeDocumentoId: string;
+  evidencias: EvidenciaEnInforme[];
   ofertas: OfertaEnInforme[];
 }
 
 /**
  * Informe de evaluación del proceso (actividad 6.4, EFDS-1158).
  *
- * Congela su resultado a propósito. La consolidación se calcula al consultarla
- * —corregir un juicio tiene que reflejarse sin rehacer nada—, pero el informe
- * es una pieza notificada: si mañana un evaluador corrige algo, lo que recibió
- * el oferente no puede cambiar detrás de él. Lo que se mueve es la
- * consolidación viva; el informe queda como estaba.
+ * Congela su resultado a propósito. El resultado de la evaluación se rectifica
+ * —el comité corrige, registra otro y el anterior queda como rectificado—, y
+ * así debe ser. Pero el informe es una pieza notificada: si mañana el comité
+ * rectifica, lo que recibió el oferente no puede cambiar detrás de él. Lo que
+ * se mueve es el resultado vigente; el informe queda como estaba.
  */
 @Entity('informes_evaluacion', { schema: 'hiring' })
 @Unique('uq_informe_numero', ['procesoId', 'numero'])
@@ -61,18 +78,29 @@ export class InformeEvaluacion {
   @Column({ type: 'int' })
   numero: number;
 
+  /**
+   * El resultado que este informe traslada.
+   *
+   * La clave foránea dice cuál se trasladó; el jsonb de abajo dice cómo se veía
+   * ese día. Las dos cosas hacen falta: sin la primera no se sabe de dónde
+   * salió, sin la segunda el expediente cambia cuando el comité rectifica.
+   */
+  @Column({ name: 'resultado_id' })
+  resultadoId: string;
+
   @Column({ type: 'jsonb' })
   resultado: ResultadoInforme;
 
   /**
-   * Cuántas ofertas quedaron habilitadas al generarlo.
+   * Cuántas ofertas había recibido el proceso al generarlo.
    *
    * Sale del resultado, pero se guarda aparte porque es la pregunta que decide
    * si el proceso sigue o se declara desierto, y no se responde escarbando un
-   * jsonb.
+   * jsonb. No es "habilitadas": quién queda habilitado lo decide el comité por
+   * fuera y la plataforma no lo calcula.
    */
-  @Column({ name: 'ofertas_habilitadas', type: 'int', default: 0 })
-  ofertasHabilitadas: number;
+  @Column({ name: 'ofertas_recibidas', type: 'int', default: 0 })
+  ofertasRecibidas: number;
 
   @Column({ length: 20, default: 'BORRADOR' })
   estado: EstadoInforme;

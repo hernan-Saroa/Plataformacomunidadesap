@@ -1,5 +1,9 @@
 -- ============================================================================
--- 037 · Traslado del informe de evaluación y subsanaciones (actividades 6.4 a 6.6)
+-- 039 · Traslado del informe de evaluación y subsanaciones (actividades 6.4 a 6.6)
+--
+-- Nació como 037 y se renumeró: el informe apunta con clave foránea al
+-- resultado de la evaluación, que crea la 038. Se renumera en vez de partirla
+-- porque nunca se aplicó en ningún ambiente, igual que se hizo con la 035.
 --
 -- EFDS-1158 (RF-PUB-08): evaluadas las ofertas, la entidad publica el informe,
 -- lo traslada a los oferentes y abre el término para que subsanen y observen.
@@ -12,12 +16,12 @@
 -- atiene a eso. El "informe de evaluación preliminar" que la matriz numera 6.3
 -- se elabora dentro de la 6.4, porque ese numeral lo ocupa la evaluación.
 --
--- La decisión que gobierna el modelo: **el informe congela su resultado**. La
--- consolidación de EFDS-1442 se calcula al consultarla, y así debe ser mientras
--- se evalúa —corregir un juicio tiene que reflejarse solo—. Pero lo que se
--- traslada es una pieza notificada: si mañana un evaluador corrige algo, el
--- informe que recibió el oferente no puede cambiar detrás de él. Se guarda tal
--- como estaba el día del traslado, y lo que se mueve es la consolidación viva.
+-- La decisión que gobierna el modelo: **el informe congela su resultado**. El
+-- resultado de la evaluación (038) se rectifica —el comité corrige, registra
+-- otro y el anterior queda como rectificado—, y así debe ser. Pero lo que se
+-- traslada es una pieza notificada: si mañana el comité rectifica, el informe
+-- que recibió el oferente no puede cambiar detrás de él. Se guarda tal como
+-- estaba el día del traslado, y lo que se mueve es el resultado vigente.
 -- ============================================================================
 
 -- ------------------------------------------- plazo de traslado por modalidad --
@@ -70,20 +74,28 @@ CREATE TABLE IF NOT EXISTS hiring.informes_evaluacion (
   -- los dos quedan en el expediente y se distinguen por su número.
   numero                int         NOT NULL,
 
-  -- El consolidado tal como estaba al generarlo: qué ofertas quedaron
-  -- habilitadas, cuáles no y por qué criterio, y el puntaje de cada una.
+  -- El resultado que este informe traslada. Con FK: el informe no se inventa
+  -- una ganadora, notifica la que el comité registró en la 6.3. Sin ON DELETE
+  -- CASCADE a propósito: un resultado con informe trasladado no se borra.
+  resultado_id          uuid        NOT NULL REFERENCES hiring.resultados_evaluacion(id),
+
+  -- El resultado tal como estaba al generarlo: la ganadora, su valoración, la
+  -- justificación, las evidencias que la sustentan y las ofertas recibidas.
   --
-  -- En jsonb y no en tablas normalizadas a propósito. Esto no es un dato vivo
-  -- que se consulte y se cruce, sino la fotografía de lo que se notificó: si
-  -- mañana cambia la forma del consolidado, o se retira un criterio del
-  -- catálogo, el informe trasladado tiene que seguir leyéndose igual. Con
-  -- claves foráneas a los criterios, retirar uno rompería el expediente.
+  -- En jsonb y no leyéndolo por la FK a propósito. La FK dice cuál resultado se
+  -- trasladó; el jsonb dice cómo se veía ese día. Si el comité rectifica —y
+  -- rectificar es lo normal después de una subsanación aceptada—, la fila de
+  -- `resultados_evaluacion` pasa a RECTIFICADO y la ganadora puede ser otra:
+  -- el informe notificado tiene que seguir leyéndose igual que cuando se
+  -- notificó, o el oferente reclama contra una pieza que ya cambió.
   resultado             jsonb       NOT NULL,
 
-  -- Cuántas ofertas quedaron habilitadas al generarlo. Sale del resultado, pero
-  -- se guarda aparte porque es la pregunta que decide si el proceso sigue o se
-  -- declara desierto (EFDS-1160), y no se responde escarbando un jsonb.
-  ofertas_habilitadas   int         NOT NULL DEFAULT 0,
+  -- Cuántas ofertas había recibido el proceso al generarlo. Sale del resultado,
+  -- pero se guarda aparte porque es la pregunta que decide si el proceso sigue
+  -- o se declara desierto (EFDS-1160), y no se responde escarbando un jsonb.
+  -- No es "habilitadas": quién queda habilitado lo decide el comité por fuera
+  -- y la plataforma no lo calcula (038).
+  ofertas_recibidas     int         NOT NULL DEFAULT 0,
 
   estado                varchar(20) NOT NULL DEFAULT 'BORRADOR',
 
@@ -132,7 +144,7 @@ CREATE TABLE IF NOT EXISTS hiring.informes_evaluacion (
 );
 
 COMMENT ON TABLE hiring.informes_evaluacion IS
-  'Informe de evaluación del proceso, con el consolidado congelado al momento de trasladarlo (EFDS-1158).';
+  'Informe de evaluación del proceso, con el resultado del comité congelado al momento de trasladarlo (EFDS-1158).';
 
 -- Un solo informe en juego por proceso. Los anulados no cuentan: son los que
 -- explican por qué hubo que rehacerlo.
