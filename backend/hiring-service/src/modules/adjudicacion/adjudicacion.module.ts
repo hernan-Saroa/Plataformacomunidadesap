@@ -5,6 +5,8 @@ import { AudienciaService } from './audiencia.service';
 import { AudienciaController } from './audiencia.controller';
 import { InformeDefinitivoService } from './informe-definitivo.service';
 import { InformeDefinitivoController } from './informe-definitivo.controller';
+import { ActoAdjudicacionService } from './acto-adjudicacion.service';
+import { ActoAdjudicacionController } from './acto-adjudicacion.controller';
 
 import {
   AudienciaAdjudicacion,
@@ -52,8 +54,8 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
-  controllers: [AudienciaController, InformeDefinitivoController],
-  providers: [AudienciaService, InformeDefinitivoService],
-  exports: [AudienciaService, InformeDefinitivoService],
+  controllers: [AudienciaController, InformeDefinitivoController, ActoAdjudicacionController],
+  providers: [AudienciaService, InformeDefinitivoService, ActoAdjudicacionService],
+  exports: [AudienciaService, InformeDefinitivoService, ActoAdjudicacionService],
 })
 export class AdjudicacionModule {}
