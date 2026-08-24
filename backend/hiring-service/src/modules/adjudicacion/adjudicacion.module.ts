@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AudienciaService } from './audiencia.service';
 import { AudienciaController } from './audiencia.controller';
+import { InformeDefinitivoService } from './informe-definitivo.service';
+import { InformeDefinitivoController } from './informe-definitivo.controller';
 
 import {
   AudienciaAdjudicacion,
@@ -50,8 +52,8 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
-  controllers: [AudienciaController],
-  providers: [AudienciaService],
-  exports: [AudienciaService],
+  controllers: [AudienciaController, InformeDefinitivoController],
+  providers: [AudienciaService, InformeDefinitivoService],
+  exports: [AudienciaService, InformeDefinitivoService],
 })
 export class AdjudicacionModule {}

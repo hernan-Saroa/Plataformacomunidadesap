@@ -23,6 +23,7 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { festivosEntre } from '../publicacion/festivos-colombia';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from '../publicacion/dias-habiles';
+import { congelarResultado } from './congelar-resultado';
 import { AnularInformeDto, GenerarInformeDto, TrasladarInformeDto } from './dto/traslado.dto';
 
 /** Actividad 6.4 de la matriz: publicación y traslado del informe preliminar. */
@@ -313,11 +314,11 @@ export class TrasladoService {
   // ----------------------------------------------------------- auxiliares --
 
   /**
-   * La fotografía del resultado, con todo lo que hace falta para leer el
-   * informe sin volver a consultar nada.
+   * La fotografía del resultado que se traslada.
    *
-   * Los nombres viajan con la copia a propósito: el informe trasladado tiene
-   * que leerse igual dentro de un año, cuando la evaluación ya se rectificó.
+   * La regla de copiar en vez de referenciar vive en `congelarResultado`, que
+   * comparten los dos informes —este y el definitivo de la etapa 7—. Aquí solo
+   * se trae de la base lo que esa función necesita.
    */
   private async congelar(
     em: EntityManager,
@@ -325,45 +326,12 @@ export class TrasladoService {
     resultado: ResultadoEvaluacion,
   ): Promise<ResultadoInforme> {
     const oferentes = await this.ofertasDe(em, proceso.id);
-    const ganadora = oferentes.find((o) => o.id === resultado.oferenteId);
-
-    if (!ganadora) {
-      throw new ConflictException(
-        'La oferta ganadora ya no está en la lista del proceso: revisa el resultado de la evaluación',
-      );
-    }
-
     const evidencias = await em.getRepository(EvidenciaEvaluacion).find({
       where: { resultadoId: resultado.id },
       order: { createdAt: 'ASC' },
     });
 
-    return {
-      modalidad: proceso.modalidad,
-      resultadoId: resultado.id,
-      ganadora: {
-        oferenteId: ganadora.id,
-        nombre: ganadora.nombre,
-        identificacion: ganadora.identificacion,
-      },
-      puntajeObtenido: resultado.puntajeObtenido != null ? Number(resultado.puntajeObtenido) : null,
-      puntajeMaximo: resultado.puntajeMaximo != null ? Number(resultado.puntajeMaximo) : null,
-      valorEvaluado: resultado.valorEvaluado != null ? Number(resultado.valorEvaluado) : null,
-      justificacion: resultado.justificacion,
-      informeDocumentoId: resultado.informeDocumentoId,
-      evidencias: evidencias.map((e) => ({
-        documentoId: e.documentoId,
-        descripcion: e.descripcion,
-      })),
-      ofertas: oferentes.map((o) => ({
-        oferenteId: o.id,
-        numero: o.numero,
-        nombre: o.nombre,
-        identificacion: o.identificacion,
-        valorOfertado: o.valorOfertado != null ? Number(o.valorOfertado) : null,
-        ganadora: o.id === ganadora.id,
-      })),
-    };
+    return congelarResultado(proceso.modalidad, resultado, oferentes, evidencias);
   }
 
   private presentar(
