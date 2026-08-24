@@ -1,6 +1,14 @@
 import { Column, CreateDateColumn, Entity, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Expediente } from './expediente.entity';
 
+/**
+ * Cómo terminó el proceso de selección, o que todavía no ha terminado.
+ *
+ * La etapa 7 tiene dos desenlaces y ninguno es obligatorio: se adjudica
+ * (EFDS-1159) o se declara desierto (EFDS-1160).
+ */
+export type EstadoProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO';
+
 @Entity('procesos', { schema: 'hiring' })
 export class Proceso {
   @PrimaryGeneratedColumn('uuid')
@@ -47,6 +55,16 @@ export class Proceso {
   /** Etapa de la matriz de flujo. Este HU trabaja siempre sobre la 3. */
   @Column({ type: 'int', default: 3 })
   etapa: number;
+
+  /**
+   * Desenlace del proceso de selección (EFDS-1160).
+   *
+   * Distinto de la etapa y del riel de actividades, que dicen en qué va: esto
+   * dice si ya terminó y cómo. Un proceso se adjudica (EFDS-1159) o se declara
+   * desierto, y mientras no pase ninguna de las dos cosas está en curso.
+   */
+  @Column({ length: 20, default: 'EN_CURSO' })
+  estado: EstadoProceso;
 
   @Column({ name: 'fecha_radicacion', type: 'timestamptz', default: () => 'now()' })
   fechaRadicacion: Date;
