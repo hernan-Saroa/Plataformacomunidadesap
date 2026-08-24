@@ -20,6 +20,7 @@ import {
   AudienciaAdjudicacion,
   EstadoAdjudicacion,
   EstadoAudienciaAdjudicacion,
+  EstadoDeclaratoriaDesierta,
   EstadoInformeDefinitivoProceso,
   InformeDefinitivo,
   TipoPiezaAudiencia,
@@ -35,6 +36,7 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, momentoConHora } from '../shared/fechas';
+import { PanelDesierta } from './PanelDesierta';
 
 interface Props {
   procesoId: string;
@@ -80,6 +82,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   const [audiencia, setAudiencia] = useState<EstadoAudienciaAdjudicacion | null>(null);
   const [definitivo, setDefinitivo] = useState<EstadoInformeDefinitivoProceso | null>(null);
   const [acto, setActo] = useState<EstadoAdjudicacion | null>(null);
+  const [desierta, setDesierta] = useState<EstadoDeclaratoriaDesierta | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -118,11 +121,13 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       contratacionService.audienciaAdjudicacion(procesoId),
       contratacionService.informeDefinitivo(procesoId),
       contratacionService.adjudicacion(procesoId),
+      contratacionService.declaratoriaDesierta(procesoId),
     ])
-      .then(([a, d, ac]) => {
+      .then(([a, d, ac, de]) => {
         setAudiencia(a);
         setDefinitivo(d);
         setActo(ac);
+        setDesierta(de);
         setError(null);
       })
       .catch((err: any) => setError(err.message))
@@ -251,7 +256,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
     );
   }
 
-  if (error || !audiencia || !definitivo || !acto) {
+  if (error || !audiencia || !definitivo || !acto || !desierta) {
     return (
       <Marco>
         <Titulo>Adjudicación del proceso</Titulo>
@@ -272,6 +277,22 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
     !!adjudicatario &&
     !!acto.ganadoraPropuesta &&
     adjudicatario !== acto.ganadoraPropuesta.oferenteId;
+
+  // Declarado desierto, la etapa 7 no sigue. Se dice por qué en vez de mostrar
+  // botones que el backend va a rechazar; lo único que queda vivo es la propia
+  // declaratoria, que se puede publicar y revocar.
+  if (desierta.declaratoria) {
+    return (
+      <Marco>
+        <Titulo>Adjudicación del proceso</Titulo>
+        <Aviso tono="aviso" titulo="El proceso se declaró desierto">
+          No hay audiencia, informe definitivo ni acto que adelantar: el proceso terminó sin
+          contrato. Revocar la declaratoria devuelve la etapa a donde estaba.
+        </Aviso>
+        <PanelDesierta procesoId={procesoId} estado={desierta} onCambio={leer} />
+      </Marco>
+    );
+  }
 
   return (
     <Marco>
@@ -686,6 +707,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
           </div>
         )}
       </div>
+      <PanelDesierta procesoId={procesoId} estado={desierta} onCambio={leer} />
     </Marco>
   );
 }
@@ -819,7 +841,7 @@ function ResumenDefinitivo({ informe }: { informe: InformeDefinitivo }) {
 /** El acto vigente: a quién, por cuánto y con qué resolución. */
 function ResumenActo({ acto }: { acto: ActoAdjudicacion }) {
   return (
-    <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg p-3 space-y-1.5">
+    <div className="border border-emerald-200 bg-emerald-50 rounded-lg p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-[12.5px] font-bold text-slate-800 m-0">
           <CheckCircle2 size={13} className="inline mr-1 text-emerald-700" />

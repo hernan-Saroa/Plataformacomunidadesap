@@ -13,7 +13,9 @@ import {
   EstadoComite,
   EstadoEvaluacion,
   Adjudicar,
+  DeclararDesierto,
   EstadoAdjudicacion,
+  EstadoDeclaratoriaDesierta,
   EstadoAudienciaAdjudicacion,
   EstadoInformeDefinitivoProceso,
   EstadoSubsanaciones,
@@ -1072,6 +1074,62 @@ export const contratacionService = {
 
   revocarActoAdjudicacion: (procesoId: string, motivo: string) =>
     pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto/revocar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------------------- declaratoria desierta (EFDS-1160) --
+
+  /** La declaratoria vigente, qué causal cabe y qué impide declarar. */
+  declaratoriaDesierta: (procesoId: string) =>
+    pedir<EstadoDeclaratoriaDesierta>(`/procesos/${procesoId}/adjudicacion/desierta`),
+
+  /**
+   * Declara desierto el proceso y lo cierra.
+   *
+   * El informe del comité va solo cuando la causal es que ninguna oferta quedó
+   * habilitada: sin ofertas no hay comité que haya evaluado nada. La
+   * justificación, solo cuando el comité ya había registrado una ganadora.
+   */
+  declararDesierto: (
+    procesoId: string,
+    datos: DeclararDesierto,
+    acto: File,
+    informeComite: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('acto', acto);
+    if (informeComite) cuerpo.append('informeComite', informeComite);
+    cuerpo.append('causal', datos.causal);
+    cuerpo.append('motivo', datos.motivo);
+    cuerpo.append('numeroActo', datos.numeroActo);
+    cuerpo.append('fechaActo', datos.fechaActo);
+    if (datos.justificacion?.trim()) cuerpo.append('justificacion', datos.justificacion.trim());
+
+    return pedir<EstadoDeclaratoriaDesierta>(`/procesos/${procesoId}/adjudicacion/desierta`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  publicarDeclaratoriaDesierta: (
+    procesoId: string,
+    datos: { medioPublicacion: string; notificadaAt?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', datos.medioPublicacion);
+    if (datos.notificadaAt) cuerpo.append('notificadaAt', datos.notificadaAt);
+
+    return pedir<EstadoDeclaratoriaDesierta>(
+      `/procesos/${procesoId}/adjudicacion/desierta/publicar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  revocarDeclaratoriaDesierta: (procesoId: string, motivo: string) =>
+    pedir<EstadoDeclaratoriaDesierta>(`/procesos/${procesoId}/adjudicacion/desierta/revocar`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),

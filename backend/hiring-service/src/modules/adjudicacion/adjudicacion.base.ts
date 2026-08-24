@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 
 import { ActividadExcluida } from '../../entities/actividad.entity';
@@ -9,6 +14,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { Oferente } from '../../entities/oferente.entity';
 import { InformeEvaluacion } from '../../entities/informe-evaluacion.entity';
+import { DeclaratoriaDesierta } from '../../entities/declaratoria-desierta.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 
@@ -17,6 +23,23 @@ export const NUMERAL_AUDIENCIA = '7.1';
 export const NUMERAL_SOBRE_ECONOMICO = '7.2';
 export const NUMERAL_INFORME_DEFINITIVO = '7.3';
 export const NUMERAL_ACTO = '7.4';
+
+/**
+ * Las cuatro actividades de la etapa, en orden.
+ *
+ * La declaratoria desierta (EFDS-1160) las marca NO_APLICA de golpe: no tiene
+ * numeral propio —la matriz no le da uno— y lo que hace en el riel es decir que
+ * estas ya no se van a adelantar.
+ */
+export const NUMERALES_ETAPA_7 = [
+  NUMERAL_AUDIENCIA,
+  NUMERAL_SOBRE_ECONOMICO,
+  NUMERAL_INFORME_DEFINITIVO,
+  NUMERAL_ACTO,
+];
+
+/** La actividad que recibe las ofertas. Sin ella no hay nada que declarar desierto. */
+export const NUMERAL_RECEPCION = '6.1';
 
 export interface ArchivoCargado {
   filename: string;
@@ -93,6 +116,26 @@ export class AdjudicacionBase {
     }
 
     return informe;
+  }
+
+  /**
+   * Un proceso declarado desierto no adelanta nada más de la etapa 7.
+   *
+   * Vive aquí y no en cada servicio a propósito: son cuatro actividades y el
+   * día que se agregue una quinta nadie se va a acordar de ponerle el guardián.
+   * Que la declaratoria se pueda revocar es lo que hace que esto sea un
+   * bloqueo y no un callejón sin salida.
+   */
+  protected async exigirQueNoEsteDesierto(em: EntityManager, procesoId: string) {
+    const desierta = await em
+      .getRepository(DeclaratoriaDesierta)
+      .findOne({ where: { procesoId, estado: 'VIGENTE' } });
+
+    if (desierta) {
+      throw new ConflictException(
+        `El proceso se declaró desierto con la resolución ${desierta.numeroActo}: para seguir adelantando la etapa 7 hay que revocarla`,
+      );
+    }
   }
 
   /** Las ofertas que el proceso recibió, por número. */

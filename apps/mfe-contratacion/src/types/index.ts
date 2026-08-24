@@ -1303,6 +1303,66 @@ export interface EstadoAdjudicacion {
   ofertas: OfertaEvaluable[];
 }
 
+// ------------------------------------------ declaratoria desierta (EFDS-1160) --
+
+/**
+ * Por qué el proceso no terminó en contrato.
+ *
+ * Dos caminos distintos del expediente: que no se presentara nadie y que se
+ * presentaran y ninguna quedara habilitada. La segunda exige el informe del
+ * comité, que es lo único que sustenta ese veredicto.
+ */
+export type CausalDesierta = 'SIN_OFERTAS' | 'SIN_OFERTAS_HABILITADAS';
+
+export type EstadoDesierta = 'VIGENTE' | 'REVOCADA';
+
+export interface DeclaratoriaDesierta {
+  id: string;
+  estado: EstadoDesierta;
+  causal: CausalDesierta;
+  motivo: string;
+  numeroActo: string;
+  fechaActo: string;
+  ofertasRecibidas: number;
+  /** La declaratoria se apartó de una ganadora que el comité ya había nombrado. */
+  seApartaDelResultado: boolean;
+  acto: { id: string; nombre: string; archivoUrl: string } | null;
+  informeComite: { id: string; nombre: string; archivoUrl: string } | null;
+  evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  notificadaAt: string | null;
+  publicadaAt: string | null;
+  declaradaPor: string | null;
+  declaradaAt: string;
+  revocadaPor: string | null;
+  revocadaAt: string | null;
+  motivoRevocacion: string | null;
+}
+
+export interface EstadoDeclaratoriaDesierta {
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  recepcionCerrada: boolean;
+  ofertasRecibidas: number;
+  /** Qué causal cabe según lo que el expediente muestra; la pantalla no ofrece otra. */
+  causalesPosibles: CausalDesierta[];
+  adjudicado: boolean;
+  /** Si el comité nombró una ganadora, declarar desierto se aparta de él. */
+  ganadoraDelComite: { oferenteId: string; numero: number; nombre: string } | null;
+  puedeDeclarar: boolean;
+  declaratoria: DeclaratoriaDesierta | null;
+  revocadas: DeclaratoriaDesierta[];
+}
+
+/** Lo que se firma para cerrar el proceso sin contrato. */
+export interface DeclararDesierto {
+  causal: CausalDesierta;
+  motivo: string;
+  numeroActo: string;
+  fechaActo: string;
+  /** Obligatoria solo si el comité ya había registrado una ganadora. */
+  justificacion?: string;
+}
+
 /** Lo que el Ordenador del Gasto firma. */
 export interface Adjudicar {
   oferenteId: string;

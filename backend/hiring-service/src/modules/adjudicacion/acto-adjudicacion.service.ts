@@ -101,6 +101,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
   ) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
+      await this.exigirQueNoEsteDesierto(em, procesoId);
       await this.exigirQueAplique(em, proceso, NUMERAL_ACTO);
 
       const definitivo = await this.definitivoPublicado(em, procesoId);
@@ -159,6 +160,11 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       );
 
       await this.marcarActividad(em, procesoId, NUMERAL_ACTO, true, acceso);
+      // El proceso de selección terminó: lo que sigue es contrato. El estado lo
+      // trajo EFDS-1160 para poder decir "desierto"; adjudicar es el otro
+      // desenlace y dejarlo EN_CURSO haría que la columna mintiera.
+      proceso.estado = 'ADJUDICADO';
+      await em.save(proceso);
       await this.traza(em, procesoId, guardado.id, 'acto_adjudicacion', 'ADJUDICAR', acceso, {
         actividad: NUMERAL_ACTO,
         numeroActo: dto.numeroActo.trim(),
@@ -226,7 +232,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
    */
   async revocar(procesoId: string, dto: RevocarActoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
-      await this.exigirProceso(em, procesoId);
+      const proceso = await this.exigirProceso(em, procesoId);
 
       const acto = await this.actoVigente(em, procesoId);
       if (!acto) throw new NotFoundException('El proceso no tiene acto de adjudicación vigente');
@@ -238,6 +244,10 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       await em.save(acto);
 
       await this.marcarActividad(em, procesoId, NUMERAL_ACTO, false, acceso);
+      // Revocado el acto, el proceso vuelve a estar sin desenlace: puede
+      // adjudicarse a otro o declararse desierto.
+      proceso.estado = 'EN_CURSO';
+      await em.save(proceso);
       await this.traza(em, procesoId, acto.id, 'acto_adjudicacion', 'REVOCAR_ACTO', acceso, {
         actividad: NUMERAL_ACTO,
         numeroActo: acto.numeroActo,

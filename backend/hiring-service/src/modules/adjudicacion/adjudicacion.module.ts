@@ -7,6 +7,8 @@ import { InformeDefinitivoService } from './informe-definitivo.service';
 import { InformeDefinitivoController } from './informe-definitivo.controller';
 import { ActoAdjudicacionService } from './acto-adjudicacion.service';
 import { ActoAdjudicacionController } from './acto-adjudicacion.controller';
+import { DeclaratoriaDesiertaService } from './declaratoria-desierta.service';
+import { DeclaratoriaDesiertaController } from './declaratoria-desierta.controller';
 
 import {
   AudienciaAdjudicacion,
@@ -15,6 +17,7 @@ import {
 import { SobreEconomico } from '../../entities/sobre-economico.entity';
 import { InformeDefinitivo } from '../../entities/informe-definitivo.entity';
 import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
+import { DeclaratoriaDesierta } from '../../entities/declaratoria-desierta.entity';
 import { InformeEvaluacion } from '../../entities/informe-evaluacion.entity';
 import { Subsanacion } from '../../entities/subsanacion.entity';
 import { ResultadoEvaluacion } from '../../entities/resultado-evaluacion.entity';
@@ -37,6 +40,7 @@ import { Expediente } from '../../entities/expediente.entity';
       SobreEconomico,
       InformeDefinitivo,
       ActoAdjudicacion,
+      DeclaratoriaDesierta,
       // De la etapa 6: la adjudicación va después de un traslado cerrado, y el
       // informe definitivo congela el resultado del comité.
       InformeEvaluacion,
@@ -54,8 +58,23 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
-  controllers: [AudienciaController, InformeDefinitivoController, ActoAdjudicacionController],
-  providers: [AudienciaService, InformeDefinitivoService, ActoAdjudicacionService],
-  exports: [AudienciaService, InformeDefinitivoService, ActoAdjudicacionService],
+  controllers: [
+    AudienciaController,
+    InformeDefinitivoController,
+    ActoAdjudicacionController,
+    DeclaratoriaDesiertaController,
+  ],
+  providers: [
+    AudienciaService,
+    InformeDefinitivoService,
+    ActoAdjudicacionService,
+    DeclaratoriaDesiertaService,
+  ],
+  exports: [
+    AudienciaService,
+    InformeDefinitivoService,
+    ActoAdjudicacionService,
+    DeclaratoriaDesiertaService,
+  ],
 })
 export class AdjudicacionModule {}

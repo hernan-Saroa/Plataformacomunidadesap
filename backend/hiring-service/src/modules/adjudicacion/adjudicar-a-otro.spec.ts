@@ -43,6 +43,7 @@ function conEscenario(opciones: { definitivo?: any; actoVigente?: any } = {}) {
   const s = servicio() as any;
   s.exigirProceso = async () => ({ id: 'p-1', modalidad: 'LICITACION_PUBLICA' });
   s.exigirQueAplique = async () => undefined;
+  s.exigirQueNoEsteDesierto = async () => undefined;
   s.ofertasDe = async () => OFERTAS;
   s.definitivoPublicado = async () =>
     opciones.definitivo === undefined ? DEFINITIVO : opciones.definitivo;

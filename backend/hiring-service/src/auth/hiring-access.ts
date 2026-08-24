@@ -238,6 +238,24 @@ export const ROLES_AUDIENCIA_ADJUDICACION = [
  */
 export const ROLES_ADJUDICAR = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
 
+/**
+ * Quién declara desierto el proceso (EFDS-1160, RF-ADJ-02).
+ *
+ * El gestor del proceso, porque es lo que dice la historia: "Como Gestor de
+ * Contratación quiero declarar desierto el proceso".
+ *
+ * **Queda una tensión sin resolver** (EFDS-1513): la declaratoria desierta es
+ * un acto administrativo motivado, de la misma naturaleza del acto de
+ * adjudicación, y aquel lo firma el Ordenador del Gasto. Se implementa como
+ * dice la historia y no como el equipo supone que debería ser; si Contratación
+ * confirma lo otro, esta lista es lo único que cambia.
+ */
+export const ROLES_DECLARAR_DESIERTO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

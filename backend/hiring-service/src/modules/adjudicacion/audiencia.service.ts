@@ -114,6 +114,7 @@ export class AudienciaService extends AdjudicacionBase {
   ) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
+      await this.exigirQueNoEsteDesierto(em, procesoId);
       await this.exigirQueAplique(em, proceso, NUMERAL_AUDIENCIA);
       await this.exigirTrasladoCerrado(em, procesoId);
 
@@ -250,6 +251,7 @@ export class AudienciaService extends AdjudicacionBase {
   ) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
+      await this.exigirQueNoEsteDesierto(em, procesoId);
       await this.exigirQueAplique(em, proceso, NUMERAL_SOBRE_ECONOMICO);
 
       const audiencia = await this.audienciaVigente(em, procesoId);
