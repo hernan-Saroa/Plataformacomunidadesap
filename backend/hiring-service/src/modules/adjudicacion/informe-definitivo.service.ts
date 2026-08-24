@@ -101,6 +101,7 @@ export class InformeDefinitivoService extends AdjudicacionBase {
   ) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
+      await this.exigirQueNoEsteDesierto(em, procesoId);
       await this.exigirQueAplique(em, proceso, NUMERAL_INFORME_DEFINITIVO);
 
       const preliminar = await this.exigirTrasladoCerrado(em, procesoId);
