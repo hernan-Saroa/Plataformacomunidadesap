@@ -20,6 +20,7 @@ import { PanelAdendas } from '../adendas/PanelAdendas';
 import { PanelOfertas } from '../ofertas/PanelOfertas';
 import { PanelComite } from '../comite/PanelComite';
 import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
+import { PanelTraslado } from '../traslado/PanelTraslado';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -46,6 +47,16 @@ const NUMERAL_COMITE = '6.2';
 /** Evaluación de las ofertas (EFDS-1157). */
 const NUMERAL_EVALUACION = '6.3';
 
+/**
+ * Traslado del informe y subsanaciones (EFDS-1158).
+ *
+ * Tres numerales y un solo panel: para el usuario es un solo trámite —se
+ * publica el informe, corre un término, entran escritos y se responden—, y
+ * partirlo obligaría a saltar entre pantallas para saber si el plazo sigue
+ * abierto.
+ */
+const NUMERALES_TRASLADO = ['6.4', '6.5', '6.6'];
+
 /** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
 const NUMERALES_ETAPA_5 = [
   NUMERAL_DOCUMENTOS,
@@ -63,7 +74,12 @@ const NUMERALES_ETAPA_5 = [
  * Lista aparte y no añadida a la de la etapa 5: son etapas distintas, y meterlas
  * en la misma constante haría que el nombre dejara de decir la verdad.
  */
-const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE, NUMERAL_EVALUACION];
+const NUMERALES_ETAPA_6 = [
+  NUMERAL_OFERTAS,
+  NUMERAL_COMITE,
+  NUMERAL_EVALUACION,
+  ...NUMERALES_TRASLADO,
+];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -365,6 +381,14 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_EVALUACION ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelEvaluacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada &&
+            NUMERALES_TRASLADO.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelTraslado
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

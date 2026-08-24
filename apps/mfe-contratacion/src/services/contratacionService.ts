@@ -12,6 +12,9 @@ import {
   EstadoMipyme,
   EstadoComite,
   EstadoEvaluacion,
+  EstadoSubsanaciones,
+  EstadoTraslado,
+  RegistrarSubsanacion,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -822,6 +825,104 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+
+  // --------------------- traslado del informe y subsanaciones (6.4 a 6.6) ---
+
+  /**
+   * Estado del traslado: el informe en juego con su resultado congelado, el
+   * plazo que se le aplicó y lo que queda de término.
+   */
+  traslado: (procesoId: string) => pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado`),
+
+  /**
+   * Genera el informe preliminar congelando el resultado del comité.
+   *
+   * El archivo es opcional: volver a llamarlo sin adjuntar vuelve a tomar la
+   * fotografía —porque el comité rectificó— conservando el documento que ya
+   * estaba cargado.
+   */
+  generarInformeTraslado: (procesoId: string, observacion: string, informe: File | null) => {
+    const cuerpo = new FormData();
+    if (informe) cuerpo.append('file', informe);
+    if (observacion.trim()) cuerpo.append('observacion', observacion.trim());
+
+    return pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/informe`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Publica y traslada el informe, con lo que abre el término.
+   *
+   * La evidencia va en la misma petición: no hay integración con SECOP II, así
+   * que el soporte es lo que prueba la publicación.
+   */
+  trasladarInforme: (procesoId: string, medioPublicacion: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', medioPublicacion);
+
+    return pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/trasladar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto el informe en juego; el anulado queda con su motivo. */
+  anularInformeTraslado: (procesoId: string, motivo: string) =>
+    pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** Lo presentado contra el informe trasladado, con sus respuestas. */
+  subsanaciones: (procesoId: string) =>
+    pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones`),
+
+  /** Transcribe lo que presentó un oferente, con su soporte. */
+  registrarSubsanacion: (procesoId: string, datos: RegistrarSubsanacion, soporte: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('tipo', datos.tipo);
+    cuerpo.append('presentadoPor', datos.presentadoPor);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+    cuerpo.append('asunto', datos.asunto);
+    cuerpo.append('contenido', datos.contenido);
+    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
+
+    return pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Responde un escrito. El documento por dimensión es opcional. */
+  responderSubsanacion: (
+    procesoId: string,
+    subsanacionId: string,
+    datos: { aceptada: boolean; respuesta: string },
+    documento: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (documento) cuerpo.append('file', documento);
+    cuerpo.append('aceptada', String(datos.aceptada));
+    cuerpo.append('respuesta', datos.respuesta);
+
+    return pedir<EstadoSubsanaciones>(
+      `/procesos/${procesoId}/traslado/subsanaciones/${subsanacionId}/responder`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Da por agotado el término: exige plazo vencido y nada sin responder. */
+  cerrarTraslado: (procesoId: string, nota: string) =>
+    pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones/cerrar`, {
+      method: 'POST',
+      body: JSON.stringify(nota.trim() ? { nota: nota.trim() } : {}),
+    }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };
