@@ -13,119 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../services/api/controlInternoService';
 import { auditoresApi } from './plan-anual/api';
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TIPOS
-// ═══════════════════════════════════════════════════════════════════════════
-
-type EstadoAuditoria =
-  | 'Programa Anual'
-  | 'Planeación'
-  | 'Ejecución'
-  | 'Comunicación'
-  | 'Seguimiento'
-  | 'Finalizada';
-
-type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
-type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
-type TipoAuditoria = string; // Ahora es dinámico y soporta cualquier string
-type Prioridad = 'crítica' | 'alta' | 'media' | 'baja';
-
-interface Persona {
-  nombre: string;
-  cargo: string;
-  iniciales: string;
-  tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA';
-  numeroIdentificacion: string;
-}
-
-interface ObjetivoAuditoria {
-  id: string;
-  descripcion: string;
-}
-
-export interface AuditoriaKanban {
-  id: string;
-  codigo: string;
-  titulo: string;
-  descripcion: string;
-  estado: EstadoAuditoria;
-  riesgo: RiesgoAuditoria;
-  semaforo: SemaforoColor;
-  territorial: string;
-  auditorLider: Persona;
-  auditorAsignado: Persona;
-  // ✅ CRONOGRAMA DE 3 ETAPAS
-  // Etapa 1: Planeación
-  fechaInicio: string;           // = fechaInicioPlaneacion
-  fechaFinPlaneacion?: string;   // Fin de Planeación
-  // Etapa 2: Ejecución
-  fechaInicioEjecucion?: string; // Inicio de Ejecución
-  fechaFinEjecucion?: string;    // Fin de Ejecución
-  // Etapa 3: Comunicación
-  fechaInicioComunicacion?: string; // Inicio de Comunicación
-  fechaFin: string;              // = fechaFinComunicacion (fin de auditoría)
-  progreso: number;
-  hallazgos: number;
-  diasRestantes: number;
-  porcentajeTiempo: number;
-  ultimaActuacion: string;
-  objetivos: ObjetivoAuditoria[];
-  calificacionRiesgo: string;
-  documentos: number;
-  informes: number;
-  tareas: number;
-  tipo: TipoAuditoria;
-  prioridad: Prioridad;
-  areaObjetivo: string;
-  permiteCambiarObjetivos: boolean;
-  equipoAuditores: string[];
-  territorialInfo?: {
-    nombre: string;
-    ciudad: string;
-    departamento: string;
-  };
-  especial?: {
-    tipoMotivo: string;
-    solicitante: string;
-    justificacion: string;
-  };
-  actividadesCompletas?: boolean;
-  actividadesPendientes?: number;
-  // Criterios de auditoría
-  criterios?: CriterioAuditoria[];
-  // ID del auditor líder asignado
-  auditorLiderId?: string | number;
-  // ✅ Responsable del Área Auditada (viene del backend)
-  responsableAreaNombre?: string;
-  responsableAreaCargo?: string;
-  responsableAreaEmail?: string;
-  // Vigencia asociada
-  planAnualAño?: number;
-  vigencia?: number;
-  // ✅ RESPONSABLE DEL ÁREA AUDITADA
-  responsableAreaNombre?: string;
-  responsableAreaCargo?: string;
-  responsableAreaEmail?: string;
-  presupuestoEstimado?: string | number;
-}
-
-export interface CriterioAuditoria {
-  id: string;
-  criterio: string;
-}
-
-export interface AuditorDisponible {
-  id: string;
-  nombre: string;
-  cargo: string;
-  email: string;
-  iniciales?: string;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPERS DE TRANSFORMACIÓN
-// ═══════════════════════════════════════════════════════════════════════════
+import { AuditoriaKanban, EstadoAuditoria, RiesgoAuditoria, SemaforoColor, TipoAuditoria, Prioridad, Persona, AuditorDisponible } from '../../interfaces/AuditoriaKanban.interface';
 
 /**
  * Mapea fase/estadoKanban del backend a estado del Kanban
@@ -536,6 +424,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     planAnualVigencia:
       auditoriaBackend.planAnualVigencia ?? auditoriaBackend.plan_anual_vigencia,
     planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
+    programaAnualMetadata: auditoriaBackend.programaAnualMetadata,
   };
 }
 

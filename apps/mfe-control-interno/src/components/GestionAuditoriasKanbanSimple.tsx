@@ -71,8 +71,8 @@ import { useTareas } from './TareasContext';
 import {
   useAuditoriasKanban,
   auditoriaCoincideVigenciaPlan,
-  type AuditoriaKanban,
-  type AuditorDisponible,
+  // type AuditoriaKanban,
+  // type AuditorDisponible,
 } from './services/useAuditoriasKanban';
 
 // ✅ PERMISOS: Hook de control de acceso
@@ -85,6 +85,8 @@ import {
   type EstadoAuditoria,
   iconoParaEstadoAuditoria,
 } from './config/auditoriaKanbanCatalog';
+
+import { AuditoriaKanban as Auditoria } from '../interfaces/AuditoriaKanban.interface';
 
 // ============ TIPOS ============
 
@@ -105,675 +107,6 @@ interface ObjetivoAuditoria {
   id: string;
   descripcion: string;
 }
-
-interface Auditoria {
-  id: string;
-  codigo: string;
-  titulo: string;
-  descripcion: string;
-  estado: EstadoAuditoria;
-  riesgo: RiesgoAuditoria;
-  semaforo: SemaforoColor;
-  territorial: string;
-  auditorLider: Persona;
-  auditorAsignado: Persona;
-  // ✅ CRONOGRAMA DE 3 ETAPAS
-  // Etapa 1: Planeación
-  fechaInicio: string;           // = fechaInicioPlaneacion
-  fechaFinPlaneacion?: string;   // Fin de Planeación
-  // Etapa 2: Ejecución
-  fechaInicioEjecucion?: string; // Inicio de Ejecución
-  fechaFinEjecucion?: string;    // Fin de Ejecución
-  // Etapa 3: Comunicación
-  fechaInicioComunicacion?: string; // Inicio de Comunicación
-  fechaFin: string;              // = fechaFinComunicacion (fin de auditoría)
-  progreso: number;
-  hallazgos: number;
-  diasRestantes: number;
-  porcentajeTiempo: number;
-  ultimaActuacion: string;
-  objetivos: ObjetivoAuditoria[];
-  calificacionRiesgo: string;
-  documentos: number;
-  informes: number;
-  tareas: number;
-  documentoCierre?: any; // Campo JSONB del backend — necesario para el Expediente
-
-  // Nuevos campos del formulario unificado
-  tipo: TipoAuditoria;
-  prioridad: Prioridad;
-  areaObjetivo: string;
-  permiteCambiarObjetivos: boolean;
-  equipoAuditores: string[];
-  responsableAreaNombre?: string;
-  responsableAreaCargo?: string;
-  responsableAreaEmail?: string;
-
-  // Información territorial (si aplica)
-  territorialInfo?: {
-    nombre: string;
-    ciudad: string;
-    departamento: string;
-  };
-
-  // Información especial (si aplica)
-  especial?: {
-    tipoMotivo: string;
-    solicitante: string;
-    justificacion: string;
-  };
-
-  // ✅ INTEGRACIÓN: Validación de actividades del proceso de auditoría
-  actividadesCompletas?: boolean; // ¿Completó las 3 actividades de la fase actual?
-  actividadesPendientes?: number; // Número de actividades pendientes (0-3)
-
-  // Criterios de auditoría
-  criterios?: { id: string; criterio: string }[];
-
-  // ID del auditor líder asignado
-  auditorLiderId?: string | number;
-}
-
-// ============ DATOS DE PRUEBA ============
-
-const AUDITORIAS_MOCK: Auditoria[] = [
-  // PLANEACIÓN (3)
-  {
-    id: 'aud-001',
-    codigo: 'AUD-2025-001',
-    titulo: 'Auditoría de Gestión Administrativa Territorial Antioquia',
-    descripcion: 'Evaluación integral de procesos administrativos',
-    estado: 'Planeación',
-    riesgo: 'Medio',
-    semaforo: 'verde',
-    territorial: 'Antioquia',
-    auditorLider: {
-      nombre: 'Juan Pérez Gómez',
-      cargo: 'Auditor Senior',
-      iniciales: 'JP',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '80123456'
-    },
-    auditorAsignado: {
-      nombre: 'Ana María López Silva',
-      cargo: 'Auditor Junior',
-      iniciales: 'AL',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '52987654'
-    },
-    fechaInicio: '01/02/2025',
-    fechaFin: '28/02/2025',
-    progreso: 15,
-    hallazgos: 0,
-    diasRestantes: 25,
-    porcentajeTiempo: 15,
-    ultimaActuacion: 'Planeación de alcance y definición de objetivos',
-    objetivos: [
-      { id: 'obj-1', descripcion: 'Evaluar cumplimiento normativo' },
-      { id: 'obj-2', descripcion: 'Verificar documentación administrativa' }
-    ],
-    calificacionRiesgo: 'Riesgo Moderado',
-    documentos: 8,
-    informes: 1,
-    tareas: 6,
-    tipo: 'territorial',
-    prioridad: 'media',
-    areaObjetivo: 'Gestión Administrativa',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['María González', 'Pedro Ruiz', 'Luis Pérez'],
-    territorialInfo: {
-      nombre: 'Antioquia - Medellín',
-      ciudad: 'Medellín',
-      departamento: 'Antioquia'
-    },
-    actividadesCompletas: false, // ⚠️ Actividades incompletas
-    actividadesPendientes: 2 // Faltan 2 actividades
-  },
-  {
-    id: 'aud-002',
-    codigo: 'AUD-2025-002',
-    titulo: 'Auditoría de Gestión Financiera y Presupuestal',
-    descripcion: 'Revisión de ejecución presupuestal',
-    estado: 'Planeación',
-    riesgo: 'Alto',
-    semaforo: 'amarillo',
-    territorial: 'Bogotá',
-    auditorLider: {
-      nombre: 'Roberto Torres Sánchez',
-      cargo: 'Auditor Líder',
-      iniciales: 'RT',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '79456789'
-    },
-    auditorAsignado: {
-      nombre: 'Diana Patricia López Vargas',
-      cargo: 'Auditor Senior',
-      iniciales: 'DL',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '52123456'
-    },
-    fechaInicio: '05/02/2025',
-    fechaFin: '05/03/2025',
-    progreso: 20,
-    hallazgos: 0,
-    diasRestantes: 30,
-    porcentajeTiempo: 20,
-    ultimaActuacion: 'Definición de objetivos y alcance de auditoría',
-    objetivos: [
-      { id: 'obj-3', descripcion: 'Verificar ejecución presupuestal' },
-      { id: 'obj-4', descripcion: 'Auditar procesos contables' }
-    ],
-    calificacionRiesgo: 'Riesgo Alto',
-    documentos: 12,
-    informes: 2,
-    tareas: 8,
-    tipo: 'especial',
-    prioridad: 'crítica',
-    areaObjetivo: 'Área Financiera',
-    permiteCambiarObjetivos: false,
-    equipoAuditores: ['Ana López', 'Sandra Morales', 'Jorge Ramírez', 'Diana Rojas'],
-    especial: {
-      tipoMotivo: 'Solicitud ente de control',
-      solicitante: 'Contraloría General de la República',
-      justificacion: 'Revisión urgente solicitada por hallazgos previos en ejecución presupuestal'
-    },
-    actividadesCompletas: true, // ✅ Todas las actividades completadas
-    actividadesPendientes: 0
-  },
-  {
-    id: 'aud-003',
-    codigo: 'AUD-2025-003',
-    titulo: 'Auditoría de Sistemas de Información y Seguridad TI',
-    descripcion: 'Evaluación de seguridad informática',
-    estado: 'Planeación',
-    riesgo: 'Alto',
-    semaforo: 'verde',
-    territorial: 'Nacional',
-    auditorLider: {
-      nombre: 'Sandra Montero Ruiz',
-      cargo: 'Auditor Especialista TI',
-      iniciales: 'SM',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '52345678'
-    },
-    auditorAsignado: {
-      nombre: 'Mario Bernal Castro',
-      cargo: 'Auditor TI',
-      iniciales: 'MB',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '80987654'
-    },
-    fechaInicio: '10/02/2025',
-    fechaFin: '10/03/2025',
-    progreso: 10,
-    hallazgos: 0,
-    diasRestantes: 35,
-    porcentajeTiempo: 10,
-    ultimaActuacion: 'Planificación inicial y conformación de equipo',
-    objetivos: [
-      { id: 'obj-5', descripcion: 'Evaluar seguridad informática' },
-      { id: 'obj-6', descripcion: 'Revisar backup y recuperación' },
-      { id: 'obj-7', descripcion: 'Verificar políticas de acceso' }
-    ],
-    calificacionRiesgo: 'Riesgo Crítico',
-    documentos: 6,
-    informes: 1,
-    tareas: 5,
-    tipo: 'regular',
-    prioridad: 'alta',
-    areaObjetivo: 'Tecnología e Informática',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Fabián Ortiz', 'Laura Castillo', 'Hernán Castro']
-  },
-
-  // EJECUCIÓN (3)
-  {
-    id: 'aud-004',
-    codigo: 'AUD-2025-004',
-    titulo: 'Auditoría de Recursos Humanos y Gestión del Talento',
-    descripcion: 'Revisión de procesos de contratación',
-    estado: 'Ejecución',
-    riesgo: 'Medio',
-    semaforo: 'amarillo',
-    territorial: 'Valle del Cauca',
-    auditorLider: {
-      nombre: 'Carlos Ramírez Díaz',
-      cargo: 'Auditor Senior',
-      iniciales: 'CR',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '94123456'
-    },
-    auditorAsignado: {
-      nombre: 'Patricia Gómez Silva',
-      cargo: 'Auditor',
-      iniciales: 'PG',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '66987654'
-    },
-    fechaInicio: '15/01/2025',
-    fechaFin: '15/02/2025',
-    progreso: 45,
-    hallazgos: 3,
-    diasRestantes: 15,
-    porcentajeTiempo: 45,
-    ultimaActuacion: 'Trabajo de campo y recolección de evidencias',
-    objetivos: [
-      { id: 'obj-8', descripcion: 'Evaluar procesos de selección' },
-      { id: 'obj-9', descripcion: 'Verificar cumplimiento laboral' }
-    ],
-    calificacionRiesgo: 'Riesgo Moderado',
-    documentos: 15,
-    informes: 3,
-    tareas: 10,
-    tipo: 'regular',
-    prioridad: 'media',
-    areaObjetivo: 'Recursos Humanos',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Juliana Reyes', 'Oscar Medina', 'Carolina Díaz']
-  },
-  {
-    id: 'aud-005',
-    codigo: 'AUD-2025-005',
-    titulo: 'Auditoría de Gestión Académica y Calidad Educativa',
-    descripcion: 'Evaluación de procesos académicos',
-    estado: 'Ejecución',
-    riesgo: 'Bajo',
-    semaforo: 'verde',
-    territorial: 'Atlántico',
-    auditorLider: {
-      nombre: 'Diana López Vargas',
-      cargo: 'Auditor Senior',
-      iniciales: 'DL',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '72123456'
-    },
-    auditorAsignado: {
-      nombre: 'Roberto Torres Méndez',
-      cargo: 'Auditor',
-      iniciales: 'RT',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '1098765432'
-    },
-    fechaInicio: '10/01/2025',
-    fechaFin: '10/02/2025',
-    progreso: 60,
-    hallazgos: 2,
-    diasRestantes: 10,
-    porcentajeTiempo: 60,
-    ultimaActuacion: 'Recolección de evidencias y análisis de documentos',
-    objetivos: [
-      { id: 'obj-10', descripcion: 'Evaluar calidad académica' },
-      { id: 'obj-11', descripcion: 'Revisar programas vigentes' }
-    ],
-    calificacionRiesgo: 'Riesgo Bajo',
-    documentos: 20,
-    informes: 4,
-    tareas: 7,
-    tipo: 'regular',
-    prioridad: 'media',
-    areaObjetivo: 'Gestión Académica',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Felipe Torres', 'Paula Castro']
-  },
-  {
-    id: 'aud-006',
-    codigo: 'AUD-2025-006',
-    titulo: 'Auditoría de Infraestructura y Seguridad Física',
-    descripcion: 'Inspección de instalaciones físicas',
-    estado: 'Ejecución',
-    riesgo: 'Medio',
-    semaforo: 'rojo',
-    territorial: 'Santander',
-    auditorLider: {
-      nombre: 'Mario Bernal Castro',
-      cargo: 'Auditor Líder',
-      iniciales: 'MB',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '91234567'
-    },
-    auditorAsignado: {
-      nombre: 'Sandra Montero Ruiz',
-      cargo: 'Auditor',
-      iniciales: 'SM',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '63456789'
-    },
-    fechaInicio: '20/01/2025',
-    fechaFin: '20/02/2025',
-    progreso: 35,
-    hallazgos: 5,
-    diasRestantes: 5,
-    porcentajeTiempo: 75,
-    ultimaActuacion: 'Inspección de campo y evaluación de riesgos',
-    objetivos: [
-      { id: 'obj-12', descripcion: 'Evaluar condiciones físicas' },
-      { id: 'obj-13', descripcion: 'Verificar normativa de seguridad' }
-    ],
-    calificacionRiesgo: 'Riesgo Moderado',
-    documentos: 18,
-    informes: 2,
-    tareas: 12,
-    tipo: 'regular',
-    prioridad: 'alta',
-    areaObjetivo: 'Servicios Generales',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Diego Ramírez', 'María González']
-  },
-
-  // COMUNICACIÓN (2)
-  {
-    id: 'aud-007',
-    codigo: 'AUD-2025-007',
-    titulo: 'Auditoría de Gestión Ambiental y Sostenibilidad',
-    descripcion: 'Evaluación de políticas ambientales',
-    estado: 'Comunicación',
-    riesgo: 'Bajo',
-    semaforo: 'verde',
-    territorial: 'Cundinamarca',
-    auditorLider: {
-      nombre: 'Patricia Gómez Silva',
-      cargo: 'Auditor Senior',
-      iniciales: 'PG',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '52987456'
-    },
-    auditorAsignado: {
-      nombre: 'Luis Vargas Moreno',
-      cargo: 'Auditor',
-      iniciales: 'LV',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '80456789'
-    },
-    fechaInicio: '15/12/2024',
-    fechaFin: '15/01/2025',
-    progreso: 85,
-    hallazgos: 1,
-    diasRestantes: 5,
-    porcentajeTiempo: 85,
-    ultimaActuacion: 'Elaboración de informe final',
-    objetivos: [
-      { id: 'obj-14', descripcion: 'Evaluar gestión de residuos' },
-      { id: 'obj-15', descripcion: 'Verificar cumplimiento normativo ambiental' }
-    ],
-    calificacionRiesgo: 'Riesgo Bajo',
-    documentos: 22,
-    informes: 5,
-    tareas: 4,
-    tipo: 'regular',
-    prioridad: 'media',
-    areaObjetivo: 'Servicios Generales',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Pedro Ruiz', 'Sandra Morales', 'Claudia Martínez']
-  },
-  {
-    id: 'aud-008',
-    codigo: 'AUD-2025-008',
-    titulo: 'Auditoría de Procesos Contractuales y Adquisiciones',
-    descripcion: 'Revisión de procesos de contratación',
-    estado: 'Comunicación',
-    riesgo: 'Alto',
-    semaforo: 'amarillo',
-    territorial: 'Nariño',
-    auditorLider: {
-      nombre: 'Claudia Rojas Martínez',
-      cargo: 'Auditor Líder',
-      iniciales: 'CR',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '37123456'
-    },
-    auditorAsignado: {
-      nombre: 'Mario Bernal Castro',
-      cargo: 'Auditor Senior',
-      iniciales: 'MB',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '79987654'
-    },
-    fechaInicio: '10/12/2024',
-    fechaFin: '10/01/2025',
-    progreso: 90,
-    hallazgos: 7,
-    diasRestantes: 3,
-    porcentajeTiempo: 90,
-    ultimaActuacion: 'Informe preliminar y comunicación de hallazgos',
-    objetivos: [
-      { id: 'obj-16', descripcion: 'Evaluar procesos de contratación' },
-      { id: 'obj-17', descripcion: 'Verificar cumplimiento legal' }
-    ],
-    calificacionRiesgo: 'Riesgo Alto',
-    documentos: 35,
-    informes: 8,
-    tareas: 15,
-    tipo: 'regular',
-    prioridad: 'alta',
-    areaObjetivo: 'Contratación',
-    permiteCambiarObjetivos: false,
-    equipoAuditores: ['Jorge Ramírez', 'Diana Rojas', 'Fabián Ortiz', 'Laura Castillo']
-  },
-
-  // SEGUIMIENTO (2)
-  {
-    id: 'aud-009',
-    codigo: 'AUD-2024-015',
-    titulo: 'Auditoría de Gestión Documental y Archivo',
-    descripcion: 'Seguimiento a hallazgos de gestión documental',
-    estado: 'Seguimiento',
-    riesgo: 'Medio',
-    semaforo: 'verde',
-    territorial: 'Tolima',
-    auditorLider: {
-      nombre: 'Ana Martínez Díaz',
-      cargo: 'Auditor Senior',
-      iniciales: 'AM',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '46123456'
-    },
-    auditorAsignado: {
-      nombre: 'Carlos Pérez Gómez',
-      cargo: 'Auditor',
-      iniciales: 'CP',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '80765432'
-    },
-    fechaInicio: '01/11/2024',
-    fechaFin: '01/02/2025',
-    progreso: 70,
-    hallazgos: 4,
-    diasRestantes: 12,
-    porcentajeTiempo: 70,
-    ultimaActuacion: 'Verificación de implementación de acciones',
-    objetivos: [
-      { id: 'obj-18', descripcion: 'Verificar implementación de acciones' },
-      { id: 'obj-19', descripcion: 'Evaluar mejoras' }
-    ],
-    calificacionRiesgo: 'Riesgo Moderado',
-    documentos: 28,
-    informes: 6,
-    tareas: 9,
-    tipo: 'regular',
-    prioridad: 'media',
-    areaObjetivo: 'Gestión Documental',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Hernán Castro', 'Juliana Reyes']
-  },
-  {
-    id: 'aud-010',
-    codigo: 'AUD-2024-016',
-    titulo: 'Auditoría de Servicio al Ciudadano y Atención',
-    descripcion: 'Seguimiento a mejoras en atención al usuario',
-    estado: 'Seguimiento',
-    riesgo: 'Bajo',
-    semaforo: 'verde',
-    territorial: 'Boyacá',
-    auditorLider: {
-      nombre: 'Luis Vargas Moreno',
-      cargo: 'Auditor',
-      iniciales: 'LV',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '74123456'
-    },
-    auditorAsignado: {
-      nombre: 'Patricia Gómez Silva',
-      cargo: 'Auditor',
-      iniciales: 'PG',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '52345678'
-    },
-    fechaInicio: '15/11/2024',
-    fechaFin: '15/02/2025',
-    progreso: 80,
-    hallazgos: 2,
-    diasRestantes: 18,
-    porcentajeTiempo: 80,
-    ultimaActuacion: 'Evaluación de mejoras implementadas',
-    objetivos: [
-      { id: 'obj-20', descripcion: 'Verificar mejoras implementadas' },
-      { id: 'obj-21', descripcion: 'Evaluar satisfacción del usuario' }
-    ],
-    calificacionRiesgo: 'Riesgo Bajo',
-    documentos: 16,
-    informes: 4,
-    tareas: 6,
-    tipo: 'regular',
-    prioridad: 'baja',
-    areaObjetivo: 'Atención al Ciudadano',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Oscar Medina', 'Carolina Díaz']
-  },
-
-  // FINALIZADAS (3)
-  {
-    id: 'aud-011',
-    codigo: 'AUD-2024-012',
-    titulo: 'Auditoría de Sistema de Gestión de Calidad',
-    descripcion: 'Evaluación del SGC institucional',
-    estado: 'Finalizada',
-    riesgo: 'Medio',
-    semaforo: 'verde',
-    territorial: 'Caldas',
-    auditorLider: {
-      nombre: 'Roberto Torres Sánchez',
-      cargo: 'Auditor Líder',
-      iniciales: 'RT',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '75123456'
-    },
-    auditorAsignado: {
-      nombre: 'Diana López Vargas',
-      cargo: 'Auditor Senior',
-      iniciales: 'DL',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '52987654'
-    },
-    fechaInicio: '01/11/2024',
-    fechaFin: '31/12/2024',
-    progreso: 100,
-    hallazgos: 6,
-    diasRestantes: 0,
-    porcentajeTiempo: 100,
-    ultimaActuacion: 'Informe final aprobado y cerrado',
-    objetivos: [
-      { id: 'obj-22', descripcion: 'Evaluar SGC' },
-      { id: 'obj-23', descripcion: 'Verificar certificación ISO' }
-    ],
-    calificacionRiesgo: 'Riesgo Moderado',
-    documentos: 42,
-    informes: 10,
-    tareas: 14,
-    tipo: 'regular',
-    prioridad: 'media',
-    areaObjetivo: 'Planeación Estratégica',
-    permiteCambiarObjetivos: false,
-    equipoAuditores: ['Felipe Torres', 'Paula Castro', 'Diego Ramírez']
-  },
-  {
-    id: 'aud-012',
-    codigo: 'AUD-2024-013',
-    titulo: 'Auditoría de Sistema de Gestión de Riesgos',
-    descripcion: 'Evaluación del sistema de riesgos',
-    estado: 'Finalizada',
-    riesgo: 'Alto',
-    semaforo: 'verde',
-    territorial: 'Risaralda',
-    auditorLider: {
-      nombre: 'Sandra Montero Ruiz',
-      cargo: 'Auditor Especialista',
-      iniciales: 'SM',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '42123456'
-    },
-    auditorAsignado: {
-      nombre: 'Mario Bernal Castro',
-      cargo: 'Auditor Senior',
-      iniciales: 'MB',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '79345678'
-    },
-    fechaInicio: '15/10/2024',
-    fechaFin: '15/12/2024',
-    progreso: 100,
-    hallazgos: 8,
-    diasRestantes: 0,
-    porcentajeTiempo: 100,
-    ultimaActuacion: 'Informe final entregado y auditoría cerrada',
-    objetivos: [
-      { id: 'obj-24', descripcion: 'Evaluar mapa de riesgos' },
-      { id: 'obj-25', descripcion: 'Verificar controles' }
-    ],
-    calificacionRiesgo: 'Riesgo Alto',
-    documentos: 38,
-    informes: 9,
-    tareas: 11,
-    tipo: 'regular',
-    prioridad: 'alta',
-    areaObjetivo: 'Planeación Estratégica',
-    permiteCambiarObjetivos: false,
-    equipoAuditores: ['María González', 'Pedro Ruiz', 'Ana López', 'Luis Pérez']
-  },
-  {
-    id: 'aud-013',
-    codigo: 'AUD-2024-014',
-    titulo: 'Auditoría de Comunicación Institucional',
-    descripcion: 'Evaluación de estrategia de comunicación',
-    estado: 'Finalizada',
-    riesgo: 'Bajo',
-    semaforo: 'verde',
-    territorial: 'Quindío',
-    auditorLider: {
-      nombre: 'Diana López Vargas',
-      cargo: 'Auditor Senior',
-      iniciales: 'DL',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '52456789'
-    },
-    auditorAsignado: {
-      nombre: 'Ana Martínez Díaz',
-      cargo: 'Auditor',
-      iniciales: 'AM',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: '46987654'
-    },
-    fechaInicio: '01/11/2024',
-    fechaFin: '20/12/2024',
-    progreso: 100,
-    hallazgos: 3,
-    diasRestantes: 0,
-    porcentajeTiempo: 100,
-    ultimaActuacion: 'Auditoría cerrada exitosamente',
-    objetivos: [
-      { id: 'obj-26', descripcion: 'Evaluar estrategia de comunicación' },
-      { id: 'obj-27', descripcion: 'Verificar canales de comunicación' }
-    ],
-    calificacionRiesgo: 'Riesgo Bajo',
-    documentos: 24,
-    informes: 5,
-    tareas: 7,
-    tipo: 'regular',
-    prioridad: 'baja',
-    areaObjetivo: 'Atención al Ciudadano',
-    permiteCambiarObjetivos: true,
-    equipoAuditores: ['Sandra Morales', 'Claudia Martínez']
-  }
-];
 
 // ============ CONFIGURACIÓN DE COLUMNAS ============
 
@@ -847,7 +180,6 @@ function TarjetaAuditoria({
   puedeAsignar = true
 }: TarjetaAuditoriaProps) {
   const [isDragging, setIsDragging] = useState(false);
-
   const handleDragStart = (e: React.DragEvent) => {
     if (auditoria.estado === 'Finalizada') {
       e.preventDefault();
@@ -1329,7 +661,6 @@ function ColumnaKanban({
   modoVista = 'ajustado'
 }: ColumnaKanbanProps) {
   const [isOver, setIsOver] = useState(false);
-
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -1813,6 +1144,7 @@ export function GestionAuditoriasKanbanSimple() {
         responsableAreaNombre: aud.responsableAreaNombre,
         responsableAreaCargo: aud.responsableAreaCargo,
         responsableAreaEmail: aud.responsableAreaEmail,
+        programaAnualMetadata: aud.programaAnualMetadata,
       } as Auditoria));
 
       // ✅ DEDUPLICAR: Preservar las auditorías temporales del programa anual (id empieza con 'aud-prog-')
@@ -1882,31 +1214,6 @@ export function GestionAuditoriasKanbanSimple() {
         if (window.innerWidth >= 768 && window.innerWidth <= 1440) {
           const innerDiv = container.querySelector('div');
           const columns = container.querySelectorAll('.bg-white.rounded-xl');
-
-          console.log('🔍 DIAGNÓSTICO SCROLL HORIZONTAL:', {
-            pantalla: {
-              ancho: window.innerWidth,
-              alto: window.innerHeight
-            },
-            contenedor: {
-              scrollWidth: container.scrollWidth,
-              clientWidth: container.clientWidth,
-              diferencia: container.scrollWidth - container.clientWidth,
-              tieneScroll: hasScroll,
-              overflowX: getComputedStyle(container).overflowX
-            },
-            divInterno: innerDiv ? {
-              flexWrap: getComputedStyle(innerDiv).flexWrap,
-              display: getComputedStyle(innerDiv).display,
-              minWidth: getComputedStyle(innerDiv).minWidth
-            } : 'NO ENCONTRADO',
-            columnas: {
-              total: columns.length,
-              anchos: Array.from(columns).map(col => getComputedStyle(col).width),
-              flexShrink: Array.from(columns).map(col => getComputedStyle(col).flexShrink)
-            },
-            modoVista: modoVista
-          });
         }
       }
     };
@@ -1948,12 +1255,6 @@ export function GestionAuditoriasKanbanSimple() {
         scrollContainerRef.current.style.display = 'none';
         scrollContainerRef.current.offsetHeight; // Trigger reflow
         scrollContainerRef.current.style.display = '';
-
-        console.log('🔄 Recálculo forzado después de cambio de modo:', {
-          modo: modoVista,
-          scrollWidth: scrollContainerRef.current.scrollWidth,
-          clientWidth: scrollContainerRef.current.clientWidth
-        });
       }
     };
 
@@ -1964,8 +1265,6 @@ export function GestionAuditoriasKanbanSimple() {
   // ✅ NUEVO: Effect para procesar auditorías programadas desde Planeación
   useEffect(() => {
     if (auditoriasProgramadas.length > 0) {
-      console.log('🎯 Kanban: Recibidas', auditoriasProgramadas.length, 'auditorías del Programa Anual');
-
       // Filtrar las programadas que ya existen en el backend (por código) para evitar duplicados en el Kanban
       const codigosExistentes = new Set([
         ...(auditorias || []).map(a => String(a.codigo || '').trim()),
@@ -2055,7 +1354,6 @@ export function GestionAuditoriasKanbanSimple() {
   // ✅ NUEVO: Foco automático desde Notificaciones (Abrir expediente)
   useEffect(() => {
     if (auditoriaIdFoco && auditorias.length > 0) {
-      console.log('[Kanban] Detectado foco para auditoría:', auditoriaIdFoco, 'Fase:', faseFoco);
       const auditoria = auditorias.find(a => a.id === auditoriaIdFoco);
       if (auditoria) {
         handleVerDetalle(auditoria);
@@ -2090,7 +1388,7 @@ export function GestionAuditoriasKanbanSimple() {
   // Filtrar auditorías
   const auditoriasFiltradas = auditorias.filter(aud => {
     const cumpleVigencia = vigenciaActiva
-      ? auditoriaCoincideVigenciaPlan(aud as AuditoriaKanban, vigenciaActiva)
+      ? auditoriaCoincideVigenciaPlan(aud as Auditoria, vigenciaActiva)
       : true;
 
     const terminoBusqueda = String(busqueda || '').toLowerCase();
@@ -2175,7 +1473,6 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   const handleAprobado = async (auditoria: Auditoria, comentarios: string) => {
-    console.log('Aprobando:', auditoria, comentarios);
     // ✅ Usar función del backend
     const exito = await aprobarAuditoriaBackend(auditoria.id, comentarios);
     if (exito) {
@@ -2185,7 +1482,6 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   const handleRechazado = async (auditoria: Auditoria, justificacion: string) => {
-    console.log('Rechazando:', auditoria, justificacion);
     // ✅ Usar función del backend
     const exito = await rechazarAuditoriaBackend(auditoria.id, justificacion);
     if (exito) {
@@ -2198,10 +1494,6 @@ export function GestionAuditoriasKanbanSimple() {
     if (!auditoriaParaFinalizar) return;
 
     try {
-      console.log('[handleFinalizar] Finalizando auditoría:', auditoriaParaFinalizar.id);
-      console.log('[handleFinalizar] Archivo:', archivo.name, archivo.size);
-      console.log('[handleFinalizar] Comentarios:', comentarios);
-
       // Obtener datos del usuario logueado
       const usuarioStr = localStorage.getItem('usuario');
       const usuario = usuarioStr ? JSON.parse(usuarioStr) : null;
@@ -2251,27 +1543,11 @@ export function GestionAuditoriasKanbanSimple() {
 
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
     try {
-      // 🔍 DEBUG: Log de fechas recibidas
-      console.log('═══════════════════════════════════════════════════════════════');
-      console.log('📥 handleCrearAuditoria - DATOS RECIBIDOS:');
-      console.log('   fechaInicioPlaneacion:', data.fechaInicioPlaneacion);
-      console.log('   fechaFinPlaneacion:', data.fechaFinPlaneacion);
-      console.log('   fechaInicioEjecucion:', data.fechaInicioEjecucion);
-      console.log('   fechaFinEjecucion:', data.fechaFinEjecucion);
-      console.log('   fechaInicioComunicacion:', data.fechaInicioComunicacion);
-      console.log('   fechaFinComunicacion:', data.fechaFinComunicacion);
-      console.log('═══════════════════════════════════════════════════════════════');
-
       // Auto-calcular fechas de inicio de etapas si no están definidas
       // Etapa 2: fechaInicioEjecucion = día siguiente a fechaFinPlaneacion
       // Etapa 3: fechaInicioComunicacion = día siguiente a fechaFinEjecucion
       const fechaInicioEjecucionCalculada = data.fechaInicioEjecucion || data.fechaFinPlaneacion;
       const fechaInicioComunicacionCalculada = data.fechaInicioComunicacion || data.fechaFinEjecucion;
-
-      // 🔍 DEBUG: Log de valores calculados
-      console.log('📊 VALORES CALCULADOS:');
-      console.log('   fechaInicioEjecucionCalculada:', fechaInicioEjecucionCalculada);
-      console.log('   fechaInicioComunicacionCalculada:', fechaInicioComunicacionCalculada);
 
       // Preparar datos para el backend (incluir equipo auditor y riesgos — antes no se enviaban)
       const datosBackend = {
@@ -2387,8 +1663,6 @@ export function GestionAuditoriasKanbanSimple() {
 
   const handleActualizarAuditoria = async (data: AuditoriaFormData) => {
     if (!auditoriaParaEditar) return;
-
-    console.log('Actualizar auditoría:', auditoriaParaEditar.id, data);
 
     // Auto-calcular fechas de inicio de etapas si no están definidas
     const fechaFinPlaneacion = (data as any).fechaFinPlaneacion;
@@ -2630,8 +1904,6 @@ export function GestionAuditoriasKanbanSimple() {
     // ✅ NUEVO: Mapear estado Kanban a fase del backend
     const faseBackend = mapearEstadoAFaseBackend(nuevoEstado);
 
-    console.log(`[handleDrop] Cambiando ${item.codigo} de ${estadoAnterior} a ${nuevoEstado} (fase backend: ${faseBackend})`);
-
     // ✅ NUEVO: Llamar al backend para cambiar la fase
     const exito = await cambiarFaseBackend(item.id, faseBackend);
 
@@ -2662,8 +1934,6 @@ export function GestionAuditoriasKanbanSimple() {
         estadoNuevo: nuevoEstado
       };
 
-      console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
-
       // 🚀 DISPARAR EVENTO AL BACKEND (Notificaciones Campanita + Email)
       try {
         await notificationsService.triggerEvent('EVT-KANBAN-001', {
@@ -2674,7 +1944,6 @@ export function GestionAuditoriasKanbanSimple() {
           mensajeCustom: `La auditoría ${item.codigo} ha sido movida a la etapa: ${nuevoEstado}.`,
           url_accion: `/control-interno/auditorias/${item.id}`,
         });
-        console.log(`✅ Evento KANBAN_MOVE disparado exitosamente al backend.`);
       } catch (err) {
         console.error('❌ Error al disparar evento al Shell:', err);
       }
@@ -2791,7 +2060,6 @@ export function GestionAuditoriasKanbanSimple() {
         estadoNuevo: nuevoEstado
       };
 
-      console.log('📋 Trazabilidad - Cambio manual de estado:', eventoTrazabilidad);
     }
 
     setModalCambiarEstadoOpen(false);
@@ -2915,8 +2183,6 @@ export function GestionAuditoriasKanbanSimple() {
         progreso: auditoria.progreso,
         hallazgos: auditoria.hallazgos,
       };
-
-      console.log('📄 Datos para PDF:', datosAuditoria);
 
       // Generar PDF
       const resultado = await exportarAuditoriaPDF(datosAuditoria);
@@ -3176,13 +2442,6 @@ export function GestionAuditoriasKanbanSimple() {
       toast.success(`${auditoria.codigo} eliminada permanentemente`, {
         description: 'La auditoría y todos sus datos han sido eliminados',
         duration: 5000
-      });
-
-      console.log('🗑️ Auditoría eliminada:', {
-        auditoria: auditoria,
-        comentario: comentario,
-        fecha: new Date(),
-        usuario: 'Usuario Actual'
       });
     }
 
@@ -3915,7 +3174,6 @@ export function GestionAuditoriasKanbanSimple() {
             isOpen={modalExpedienteOpen}
             tabInicial={(() => {
               if (faseFoco) {
-                console.log('[Kanban] Aplicando fase focal:', faseFoco);
                 const fase = faseFoco.toLowerCase();
                 if (fase === 'ejecucion' || fase === 'ejecución') return 'ejecucion';
                 if (fase === 'planeacion' || fase === 'planeación') return 'planeacion';
@@ -4195,8 +3453,6 @@ export function GestionAuditoriasKanbanSimple() {
               }
 
               // ✅ Conectar con backend para cambiar fase a "Planeación" (primera fase)
-              console.log('[onIniciar] Iniciando auditoría:', auditoria.id);
-
               const exito = await cambiarFaseBackend(auditoria.id, 'Planeación');
 
               if (exito) {
@@ -4233,7 +3489,6 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriaId={auditoriaSeleccionada.id}
             auditorActualId={auditoriaSeleccionada.auditorLiderId}
             onAsignar={async (auditorId) => {
-              console.log('Auditor asignado:', auditorId);
               // Actualizar auditoría en el backend - asignar a ambos roles por defecto en este flujo
               const exito = await actualizarAuditoriaBackend(auditoriaSeleccionada.id, {
                 auditorLiderId: auditorId,
@@ -4289,7 +3544,6 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriaId={auditoriaSeleccionada.id}
             estadoActual={auditoriaSeleccionada.estado}
             onCambiar={(nuevoEstado) => {
-              console.log('Estado cambiado:', nuevoEstado);
               handleGuardarCambioEstado(auditoriaSeleccionada.id, nuevoEstado, '');
             }}
           />
