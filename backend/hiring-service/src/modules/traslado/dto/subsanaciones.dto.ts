@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsISO8601,
   IsNotEmpty,
@@ -63,4 +65,50 @@ export class RegistrarSubsanacionDto {
   @IsNotEmpty({ message: 'Transcribe lo que presentó el oferente' })
   @MinLength(10, { message: 'El contenido tiene que decir qué presentó el oferente' })
   contenido: string;
+}
+
+/**
+ * Los booleanos llegan como texto dentro del multipart —la petición puede traer
+ * el documento de respuesta— y `FormData` no distingue tipos. Se convierten
+ * antes de validar; sin esto `IsBoolean` rechazaría siempre.
+ */
+const aBooleano = ({ value }: { value: unknown }) => {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
+};
+
+export class ResponderSubsanacionDto {
+  /**
+   * Qué decidió la entidad.
+   *
+   * Aceptar una subsanación puede cambiar la habilitación y llevar al comité a
+   * rectificar su resultado; rechazarla también hay que sustentarla. En los dos
+   * casos se dice por qué.
+   */
+  @ApiProperty({ description: 'True si se acepta lo presentado' })
+  @Transform(aBooleano)
+  @IsBoolean({ message: 'Di si se acepta o no lo presentado' })
+  aceptada: boolean;
+
+  @ApiProperty({ description: 'La respuesta de la entidad' })
+  @IsString()
+  @IsNotEmpty({ message: 'Escribe la respuesta: es la que se le notifica al oferente' })
+  @MinLength(10, { message: 'La respuesta tiene que sustentarse, no basta con aceptar o negar' })
+  respuesta: string;
+}
+
+export class CerrarTrasladoDto {
+  /**
+   * Nota de cierre, opcional.
+   *
+   * Sirve para dejar dicho lo que no cabe en las respuestas: que nadie presentó
+   * nada, o que el comité rectificó a raíz de una subsanación aceptada.
+   */
+  @ApiPropertyOptional({ description: 'Nota de cierre del traslado' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  nota?: string;
 }

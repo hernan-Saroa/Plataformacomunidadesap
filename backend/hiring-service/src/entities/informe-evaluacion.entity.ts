@@ -151,6 +151,13 @@ export class InformeEvaluacion {
   @Column({ name: 'cerrado_at', type: 'timestamptz', nullable: true })
   cerradoAt: Date | null;
 
+  /**
+   * Lo que no cabe en las respuestas: que nadie presentó nada, o que el comité
+   * rectificó a raíz de una subsanación aceptada.
+   */
+  @Column({ name: 'nota_cierre', type: 'text', nullable: true })
+  notaCierre: string | null;
+
   @Column({ name: 'anulado_at', type: 'timestamptz', nullable: true })
   anuladoAt: Date | null;
 

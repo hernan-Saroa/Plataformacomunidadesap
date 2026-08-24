@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS hiring.informes_evaluacion (
 
   cerrado_por           varchar(120),
   cerrado_at            timestamptz,
+  -- Lo que no cabe en las respuestas: que nadie presento nada, o que el comite
+  -- rectifico a raiz de una subsanacion aceptada.
+  nota_cierre           text,
 
   anulado_at            timestamptz,
   motivo_anulacion      text,

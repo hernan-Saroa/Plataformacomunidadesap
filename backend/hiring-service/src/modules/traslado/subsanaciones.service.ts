@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { InformeEvaluacion } from '../../entities/informe-evaluacion.entity';
 import { Subsanacion } from '../../entities/subsanacion.entity';
@@ -11,10 +11,17 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ArchivoCargado, TrasladoService } from './traslado.service';
-import { RegistrarSubsanacionDto } from './dto/subsanaciones.dto';
+import {
+  CerrarTrasladoDto,
+  RegistrarSubsanacionDto,
+  ResponderSubsanacionDto,
+} from './dto/subsanaciones.dto';
 
 /** Actividad 6.5 de la matriz: recepción de subsanaciones y observaciones. */
 export const NUMERAL_SUBSANACIONES = '6.5';
+
+/** Actividad 6.6 de la matriz: respuestas a las observaciones. */
+export const NUMERAL_RESPUESTAS = '6.6';
 
 /**
  * Subsanaciones y observaciones al informe — actividad 6.5 (EFDS-1158).
@@ -87,6 +94,23 @@ export class SubsanacionesService extends TrasladoService {
       // marcado como extemporáneo: la entidad decide si lo acepta.
       enTermino: trasladado && !!informe.venceEl && this.hoy() <= informe.venceEl,
       puedeRegistrar: !excluida && trasladado,
+      pendientesDeRespuesta: presentadas.filter((s) => !s.respondidaAt).length,
+      // Cerrar antes de que venza el término le quitaría al oferente el plazo
+      // que se le notificó, y cerrar con algo sin responder dejaría el traslado
+      // a medias: las dos condiciones se dicen aquí para que la pantalla
+      // explique cuál falta en vez de deshabilitar un botón sin motivo.
+      terminoVencido: trasladado && !!informe.venceEl && this.hoy() > informe.venceEl,
+      puedeCerrar:
+        trasladado &&
+        !!informe.venceEl &&
+        this.hoy() > informe.venceEl &&
+        presentadas.every((s) => !!s.respondidaAt),
+      // Una subsanación aceptada puede cambiar la habilitación, y entonces el
+      // comité tiene que rectificar su resultado (6.3). La plataforma no lo
+      // hace sola —no evalúa—, pero sí lo advierte.
+      requiereRectificacion: presentadas.some(
+        (s) => s.tipo === 'SUBSANACION' && s.aceptada === true,
+      ),
       subsanaciones: presentadas.map((s) => this.presentarSubsanacion(s, oferentes, documentos)),
     };
   }
@@ -173,6 +197,139 @@ export class SubsanacionesService extends TrasladoService {
         },
         'subsanacion',
       );
+    });
+
+    return this.listar(procesoId);
+  }
+
+  // ------------------------------------------------------------ respuestas --
+
+  /**
+   * Responde una subsanación u observación — actividad 6.6.
+   *
+   * La matriz pide respuesta documentada por dimensión —jurídica, financiera y
+   * técnica—, así que puede traer su documento. Se permite corregir la
+   * respuesta mientras el traslado siga abierto: cada una queda en la traza, y
+   * un error de digitación antes del cierre no debería obligar a rehacer el
+   * informe. Cerrado ya no se toca.
+   */
+  async responder(
+    procesoId: string,
+    subsanacionId: string,
+    dto: ResponderSubsanacionDto,
+    documento: ArchivoCargado | null,
+    hash: string | null,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirProceso(em, procesoId);
+
+      const informe = await this.informeEnJuego(procesoId, em);
+      if (!informe) throw new NotFoundException('El proceso no tiene informe de evaluación');
+      if (informe.estado === 'CERRADO') {
+        throw new ConflictException(
+          'El traslado ya se cerró: las respuestas quedaron notificadas y no se reescriben',
+        );
+      }
+
+      const subsanacion = await em
+        .getRepository(Subsanacion)
+        .findOne({ where: { id: subsanacionId, informeId: informe.id } });
+      if (!subsanacion) {
+        throw new NotFoundException('Eso no se presentó contra el informe en juego');
+      }
+
+      const doc = documento
+        ? await this.guardarDocumento(
+            em,
+            procesoId,
+            `Respuesta a ${subsanacion.presentadoPor}`,
+            documento,
+            hash as string,
+            acceso,
+            NUMERAL_RESPUESTAS,
+          )
+        : null;
+
+      const yaRespondida = !!subsanacion.respondidaAt;
+
+      subsanacion.respuesta = dto.respuesta.trim();
+      subsanacion.aceptada = dto.aceptada;
+      subsanacion.respuestaDocumentoId = doc?.id ?? subsanacion.respuestaDocumentoId;
+      subsanacion.respondidaPor = acceso.userName;
+      subsanacion.respondidaAt = new Date();
+      await em.save(subsanacion);
+
+      await this.marcarRespuestas(em, procesoId, informe.id, acceso);
+      await this.traza(
+        em,
+        procesoId,
+        subsanacion.id,
+        'RESPONDER',
+        acceso,
+        {
+          actividad: NUMERAL_RESPUESTAS,
+          tipo: subsanacion.tipo,
+          aceptada: dto.aceptada,
+          // Que sea una corrección se anota: es lo que explica dos respuestas
+          // en la traza sobre el mismo escrito.
+          correccion: yaRespondida,
+        },
+        'subsanacion',
+      );
+    });
+
+    return this.listar(procesoId);
+  }
+
+  /**
+   * Cierra el traslado.
+   *
+   * Dos condiciones, y ninguna es formalismo: el término tiene que haber
+   * vencido —cerrar antes le quita al oferente el plazo que se le notificó— y
+   * no puede quedar nada sin responder, porque el informe definitivo se
+   * sustenta en esas respuestas.
+   */
+  async cerrar(procesoId: string, dto: CerrarTrasladoDto, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirProceso(em, procesoId);
+
+      const informe = await this.informeEnJuego(procesoId, em);
+      if (!informe) throw new NotFoundException('El proceso no tiene informe de evaluación');
+      if (informe.estado === 'BORRADOR') {
+        throw new ConflictException('El informe todavía no se ha trasladado');
+      }
+      if (informe.estado === 'CERRADO') {
+        throw new ConflictException('El traslado de este informe ya está cerrado');
+      }
+
+      if (!informe.venceEl || this.hoy() <= informe.venceEl) {
+        throw new ConflictException(
+          `El término sigue corriendo hasta el ${informe.venceEl}: cerrarlo ahora le quitaría al oferente el plazo que se le notificó`,
+        );
+      }
+
+      const pendientes = await em
+        .getRepository(Subsanacion)
+        .count({ where: { informeId: informe.id, respondidaAt: IsNull() } });
+      if (pendientes > 0) {
+        throw new ConflictException(
+          `Quedan ${pendientes} escritos sin responder: el informe definitivo se sustenta en esas respuestas`,
+        );
+      }
+
+      informe.estado = 'CERRADO';
+      informe.cerradoPor = acceso.userName;
+      informe.cerradoAt = new Date();
+      informe.notaCierre = dto.nota?.trim() || null;
+      await em.save(informe);
+
+      await this.marcarCierre(em, procesoId, acceso);
+      await this.traza(em, procesoId, informe.id, 'CERRAR', acceso, {
+        actividad: NUMERAL_RESPUESTAS,
+        numero: informe.numero,
+        venceEl: informe.venceEl,
+      });
     });
 
     return this.listar(procesoId);
@@ -265,6 +422,70 @@ export class SubsanacionesService extends TrasladoService {
         `Esta modalidad no recibe subsanaciones al informe: ${excluida.motivo}`,
       );
     }
+  }
+
+  /**
+   * Las respuestas quedan cumplidas cuando no queda nada sin responder.
+   *
+   * Vuelve a quedar en curso si después entra otro escrito —extemporáneo, que
+   * también se responde—: la actividad la cierra el estado real, no el orden en
+   * que ocurrieron las cosas.
+   */
+  private async marcarRespuestas(
+    em: EntityManager,
+    procesoId: string,
+    informeId: string,
+    acceso: HiringAccess,
+  ) {
+    const pendientes = await em
+      .getRepository(Subsanacion)
+      .count({ where: { informeId, respondidaAt: IsNull() } });
+    const completas = pendientes === 0;
+
+    await this.marcarActividadDelTraslado(
+      em,
+      procesoId,
+      NUMERAL_RESPUESTAS,
+      completas ? 'APROBADO' : 'BORRADOR',
+      completas ? acceso : null,
+    );
+  }
+
+  /** Cerrar el traslado cierra las dos actividades: la recepción y sus respuestas. */
+  private async marcarCierre(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+    await this.marcarActividadDelTraslado(em, procesoId, NUMERAL_SUBSANACIONES, 'APROBADO', acceso);
+    await this.marcarActividadDelTraslado(em, procesoId, NUMERAL_RESPUESTAS, 'APROBADO', acceso);
+  }
+
+  /** Crea o actualiza la fila del riel para un numeral de esta historia. */
+  private async marcarActividadDelTraslado(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+    estado: 'APROBADO' | 'BORRADOR',
+    acceso: HiringAccess | null,
+  ) {
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral } });
+
+    if (!actividad) {
+      await em.save(
+        em.create(ProcesoActividad, {
+          procesoId,
+          numeral,
+          estado: estado as any,
+          datos: {},
+          ...(acceso ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
+        }),
+      );
+      return;
+    }
+
+    actividad.estado = estado as any;
+    actividad.revisadoPor = acceso ? acceso.userName : null;
+    actividad.revisadoAt = acceso ? new Date() : null;
+    await em.save(actividad);
   }
 
   /**

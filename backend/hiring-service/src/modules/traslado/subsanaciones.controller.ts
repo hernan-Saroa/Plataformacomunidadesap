@@ -17,7 +17,11 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { SubsanacionesService } from './subsanaciones.service';
-import { RegistrarSubsanacionDto } from './dto/subsanaciones.dto';
+import {
+  CerrarTrasladoDto,
+  RegistrarSubsanacionDto,
+  ResponderSubsanacionDto,
+} from './dto/subsanaciones.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import {
@@ -101,5 +105,69 @@ export class SubsanacionesController {
       await unlink(ruta).catch(() => undefined);
       throw error;
     }
+  }
+
+  @Post(':subsanacionId/responder')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_TRASLADO)
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      // La matriz pide respuesta documentada por dimensión —jurídica,
+      // financiera y técnica—, así que puede traer su documento.
+      opcionesDeCarga(MIME_DOCUMENTOS, 'La respuesta se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Actividad 6.6 · Responder una subsanación u observación',
+    description:
+      'Qué decidió la entidad y por qué, con el documento de la dimensión que corresponda. Se puede corregir mientras el traslado siga abierto.',
+  })
+  async responder(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('subsanacionId', ParseUUIDPipe) subsanacionId: string,
+    @Body() dto: ResponderSubsanacionDto,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    // Sin documento es un caso legítimo: hay respuestas que se sustentan en el
+    // propio texto, y la matriz pide documento por dimensión, no por escrito.
+    if (!file) {
+      return this.service.responder(procesoId, subsanacionId, dto, null, null, getHiringAccess(req));
+    }
+
+    const ruta = join(STORAGE_PATH, file.filename);
+
+    try {
+      const hash = await sha256Archivo(ruta);
+      return await this.service.responder(
+        procesoId,
+        subsanacionId,
+        dto,
+        file,
+        hash,
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  @Post('cerrar')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_TRASLADO)
+  @ApiOperation({
+    summary: 'Cerrar el traslado',
+    description:
+      'Da por agotado el término. Exige que el plazo haya vencido y que no quede nada sin responder.',
+  })
+  cerrar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: CerrarTrasladoDto,
+    @Req() req: any,
+  ) {
+    return this.service.cerrar(procesoId, dto, getHiringAccess(req));
   }
 }
