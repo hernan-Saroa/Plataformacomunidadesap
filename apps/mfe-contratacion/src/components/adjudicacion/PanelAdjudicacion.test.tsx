@@ -8,6 +8,7 @@ import { contratacionService } from '../../services/contratacionService';
 import {
   EstadoAdjudicacion,
   EstadoAudienciaAdjudicacion,
+  EstadoDeclaratoriaDesierta,
   EstadoInformeDefinitivoProceso,
 } from '../../types';
 
@@ -16,6 +17,7 @@ vi.mock('../../services/contratacionService', () => ({
     audienciaAdjudicacion: vi.fn(),
     informeDefinitivo: vi.fn(),
     adjudicacion: vi.fn(),
+    declaratoriaDesierta: vi.fn(),
     celebrarAudiencia: vi.fn(),
     cargarPiezaAudiencia: vi.fn(),
     abrirSobreEconomico: vi.fn(),
@@ -26,6 +28,9 @@ vi.mock('../../services/contratacionService', () => ({
     adjudicar: vi.fn(),
     publicarActoAdjudicacion: vi.fn(),
     revocarActoAdjudicacion: vi.fn(),
+    declararDesierto: vi.fn(),
+    publicarDeclaratoriaDesierta: vi.fn(),
+    revocarDeclaratoriaDesierta: vi.fn(),
     urlDescarga: (url: string) => `https://gateway${url}`,
   },
 }));
@@ -36,6 +41,7 @@ const servicio = contratacionService as unknown as {
   audienciaAdjudicacion: ReturnType<typeof vi.fn>;
   informeDefinitivo: ReturnType<typeof vi.fn>;
   adjudicacion: ReturnType<typeof vi.fn>;
+  declaratoriaDesierta: ReturnType<typeof vi.fn>;
 };
 
 const OFERTAS = [
@@ -133,12 +139,29 @@ const adjudicacion = (parcial: Partial<EstadoAdjudicacion> = {}): EstadoAdjudica
   ...parcial,
 });
 
+const desierta = (
+  parcial: Partial<EstadoDeclaratoriaDesierta> = {},
+): EstadoDeclaratoriaDesierta => ({
+  aplica: true,
+  motivoNoAplica: null,
+  recepcionCerrada: true,
+  ofertasRecibidas: 2,
+  causalesPosibles: ['SIN_OFERTAS_HABILITADAS'],
+  adjudicado: false,
+  ganadoraDelComite: null,
+  puedeDeclarar: true,
+  declaratoria: null,
+  revocadas: [],
+  ...parcial,
+});
+
 describe('PanelAdjudicacion · etapa 7', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     servicio.audienciaAdjudicacion.mockResolvedValue(audiencia());
     servicio.informeDefinitivo.mockResolvedValue(definitivo());
     servicio.adjudicacion.mockResolvedValue(adjudicacion());
+    servicio.declaratoriaDesierta.mockResolvedValue(desierta());
   });
 
   it('dice que el informe propone y el acto decide', async () => {
