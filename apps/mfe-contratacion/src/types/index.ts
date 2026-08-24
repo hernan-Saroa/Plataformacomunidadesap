@@ -1027,3 +1027,138 @@ export interface RegistrarResultado {
   valorEvaluado?: number;
   justificacion: string;
 }
+
+/* ---------------------------------------------------------------------------
+ * Traslado del informe de evaluación y subsanaciones — actividades 6.4 a 6.6
+ * (EFDS-1158).
+ *
+ * Evaluadas las ofertas, la entidad publica el informe preliminar, lo traslada
+ * y abre el término para que los oferentes subsanen y observen. Es el debido
+ * proceso previo a la adjudicación.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Borrador es el informe generado y no publicado; trasladado, el que ya se
+ * notificó y tiene término corriendo; cerrado, el que lo agotó. Anulado no se
+ * borra: explica por qué hubo que rehacerlo.
+ */
+export type EstadoInforme = 'BORRADOR' | 'TRASLADADO' | 'CERRADO' | 'ANULADO';
+
+/** Una oferta recibida, como quedó congelada en el informe. */
+export interface OfertaEnInforme {
+  oferenteId: string;
+  numero: number;
+  nombre: string;
+  identificacion: string | null;
+  valorOfertado: number | null;
+  ganadora: boolean;
+}
+
+/**
+ * El resultado del comité tal como estaba el día del traslado.
+ *
+ * Copia y no referencia: si el comité rectifica después, el informe que recibió
+ * el oferente tiene que seguir leyéndose igual.
+ */
+export interface ResultadoCongelado {
+  modalidad: string | null;
+  resultadoId: string;
+  ganadora: { oferenteId: string; nombre: string; identificacion: string | null };
+  puntajeObtenido: number | null;
+  puntajeMaximo: number | null;
+  valorEvaluado: number | null;
+  justificacion: string;
+  informeDocumentoId: string;
+  evidencias: { documentoId: string; descripcion: string }[];
+  ofertas: OfertaEnInforme[];
+}
+
+export interface InformeEvaluacion {
+  id: string;
+  numero: number;
+  estado: EstadoInforme;
+  resultadoId: string;
+  resultado: ResultadoCongelado;
+  /** Recibidas, no habilitadas: quién queda habilitado lo decide el comité. */
+  ofertasRecibidas: number;
+  observacionEntidad: string | null;
+  informe: { id: string; nombre: string; archivoUrl: string } | null;
+  evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  generadoPor: string | null;
+  generadoAt: string;
+  trasladadoPor: string | null;
+  trasladadoAt: string | null;
+  plazoDiasHabiles: number | null;
+  venceEl: string | null;
+  diasRestantes: number | null;
+  estadoPlazo: EstadoPlazo;
+  cerradoPor: string | null;
+  cerradoAt: string | null;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
+}
+
+export interface EstadoTraslado {
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  /** Sin fila no se inventa un término: la pantalla lo dice y bloquea. */
+  plazo: { diasHabiles: number; fundamento: string | null; confirmado: boolean } | null;
+  hayResultado: boolean;
+  puedeGenerar: boolean;
+  puedeTrasladar: boolean;
+  informe: InformeEvaluacion | null;
+  anulados: InformeEvaluacion[];
+}
+
+/** Aporta lo que faltaba, o cuestiona la evaluación. No se responden igual. */
+export type TipoSubsanacion = 'SUBSANACION' | 'OBSERVACION';
+
+export interface Subsanacion {
+  id: string;
+  tipo: TipoSubsanacion;
+  oferta: { id: string; numero: number; nombre: string } | null;
+  presentadoPor: string;
+  identificacion: string | null;
+  fechaPresentacion: string;
+  /** Extemporáneo no es rechazado: quien decide si lo acepta es la entidad. */
+  extemporanea: boolean;
+  asunto: string;
+  contenido: string;
+  soporte: { id: string; nombre: string; archivoUrl: string } | null;
+  respuesta: string | null;
+  respuestaDocumento: { id: string; nombre: string; archivoUrl: string } | null;
+  aceptada: boolean | null;
+  respondidaPor: string | null;
+  respondidaAt: string | null;
+  registradoPor: string | null;
+  registradoAt: string;
+}
+
+export interface EstadoSubsanaciones {
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  trasladado: boolean;
+  informeId?: string;
+  venceEl: string | null;
+  enTermino: boolean;
+  puedeRegistrar: boolean;
+  pendientesDeRespuesta?: number;
+  terminoVencido?: boolean;
+  puedeCerrar?: boolean;
+  /** Una subsanación aceptada puede obligar al comité a rectificar (6.3). */
+  requiereRectificacion?: boolean;
+  subsanaciones: Subsanacion[];
+}
+
+/** Lo que el gestor transcribe de lo que presentó un oferente. */
+export interface RegistrarSubsanacion {
+  oferenteId: string;
+  tipo: TipoSubsanacion;
+  presentadoPor: string;
+  identificacion?: string;
+  fechaPresentacion: string;
+  asunto: string;
+  contenido: string;
+}
