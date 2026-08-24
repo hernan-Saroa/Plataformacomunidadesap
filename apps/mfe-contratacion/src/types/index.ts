@@ -1162,3 +1162,153 @@ export interface RegistrarSubsanacion {
   asunto: string;
   contenido: string;
 }
+
+/* ---------------------------------------------------------------------------
+ * Adjudicación — etapa 7, actividades 7.1 a 7.4 (EFDS-1159).
+ *
+ * Cerrado el traslado, la entidad celebra la audiencia —donde en obra pública
+ * se abre el sobre económico—, produce el informe definitivo y adjudica por
+ * acto del Ordenador del Gasto. Es el desenlace del proceso.
+ * ------------------------------------------------------------------------- */
+
+export type EstadoAudiencia = 'CELEBRADA' | 'ANULADA';
+
+/** Una grabación no se lee como una respuesta: el tipo evita adivinar. */
+export type TipoPiezaAudiencia = 'GRABACION' | 'OBSERVACION' | 'ANEXO';
+
+export interface PiezaAudiencia {
+  id: string;
+  tipo: TipoPiezaAudiencia;
+  descripcion: string;
+  cargadaPor: string | null;
+  cargadaAt: string;
+  archivoUrl: string | null;
+}
+
+export interface SobreEconomico {
+  id: string;
+  oferta: { id: string; numero: number; nombre: string } | null;
+  /** Lo que traía el sobre. */
+  valorOfertado: number;
+  /** Lo que la oferta había declarado al presentarse. */
+  valorDeclarado: number | null;
+  /** El hecho por el que el sobre se abre delante de todos. */
+  coincideConLoDeclarado: boolean | null;
+  observacion: string | null;
+  abiertoPor: string | null;
+  abiertoAt: string;
+  evidenciaUrl: string | null;
+}
+
+export interface AudienciaAdjudicacion {
+  id: string;
+  estado: EstadoAudiencia;
+  celebradaAt: string;
+  presididaPor: string;
+  resumen: string | null;
+  acta: { id: string; nombre: string; archivoUrl: string } | null;
+  registradaPor: string | null;
+  registradaAt: string;
+  anuladaAt: string | null;
+  motivoAnulacion: string | null;
+  piezas: PiezaAudiencia[];
+  sobres: SobreEconomico[];
+}
+
+export interface EstadoAudienciaAdjudicacion {
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  modalidad: string | null;
+  modalidadNombre: string | null;
+  trasladoCerrado: boolean;
+  aplicaSobreEconomico: boolean;
+  motivoNoAplicaSobre: string | null;
+  puedeCelebrar: boolean;
+  audiencia: AudienciaAdjudicacion | null;
+  anuladas: AudienciaAdjudicacion[];
+  ofertas: OfertaEvaluable[];
+}
+
+export type EstadoInformeDefinitivo = 'BORRADOR' | 'PUBLICADO' | 'ANULADO';
+
+/** Qué cambió entre lo que se notificó y lo que se va a adjudicar. */
+export interface CambiosDelDefinitivo {
+  huboRectificacion: boolean;
+  motivoRectificacion: string | null;
+  cambioLaGanadora: boolean;
+  subsanacionesAceptadas: { id: string; oferente: string; asunto: string }[];
+  escritosPresentados: number;
+}
+
+export interface InformeDefinitivo {
+  id: string;
+  estado: EstadoInformeDefinitivo;
+  informePreliminarId: string;
+  resultadoId: string;
+  resultado: ResultadoCongelado;
+  cambios: CambiosDelDefinitivo;
+  ofertasRecibidas: number;
+  informe: { id: string; nombre: string; archivoUrl: string } | null;
+  evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  generadoPor: string | null;
+  generadoAt: string;
+  publicadoPor: string | null;
+  publicadoAt: string | null;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
+}
+
+export interface EstadoInformeDefinitivoProceso {
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  trasladoCerrado: boolean;
+  audienciaPendiente: boolean;
+  hayResultado: boolean;
+  puedeGenerar: boolean;
+  puedePublicar: boolean;
+  informe: InformeDefinitivo | null;
+  anulados: InformeDefinitivo[];
+}
+
+export type EstadoActo = 'VIGENTE' | 'REVOCADO';
+
+export interface ActoAdjudicacion {
+  id: string;
+  estado: EstadoActo;
+  informeDefinitivoId: string;
+  adjudicatario: OfertaEvaluable | null;
+  numeroActo: string;
+  fechaActo: string;
+  valorAdjudicado: number;
+  acto: { id: string; nombre: string; archivoUrl: string } | null;
+  evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  notificadoAt: string | null;
+  publicadoAt: string | null;
+  emitidoPor: string | null;
+  emitidoAt: string;
+  revocadoPor: string | null;
+  revocadoAt: string | null;
+  motivoRevocacion: string | null;
+}
+
+export interface EstadoAdjudicacion {
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  informeDefinitivoPublicado: boolean;
+  /** La ganadora que propone el informe: el acto puede apartarse, con motivo. */
+  ganadoraPropuesta: { oferenteId: string; nombre: string; valorEvaluado: number | null } | null;
+  puedeAdjudicar: boolean;
+  acto: ActoAdjudicacion | null;
+  revocados: ActoAdjudicacion[];
+  ofertas: OfertaEvaluable[];
+}
+
+/** Lo que el Ordenador del Gasto firma. */
+export interface Adjudicar {
+  oferenteId: string;
+  numeroActo: string;
+  fechaActo: string;
+  valorAdjudicado: number;
+  /** Obligatoria solo si el adjudicatario no es la ganadora del informe. */
+  justificacion?: string;
+}
