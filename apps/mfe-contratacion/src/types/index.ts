@@ -951,108 +951,55 @@ export interface SimulacionFormulario {
   reglasEvaluadas: number;
 }
 
-// --------------------------------------------- criterios de evaluación (6.3)
-
-export type DimensionEvaluacion = 'JURIDICO' | 'FINANCIERO' | 'TECNICO' | 'ECONOMICO';
-
-/** Habilitante deja pasar; ponderable suma. No son dos etiquetas del mismo dato. */
-export type TipoCriterio = 'HABILITANTE' | 'PONDERABLE';
-
-export interface CriterioCatalogo {
-  id: string;
-  /** Nula: aplica a todas las modalidades. */
-  modalidad: string | null;
-  modalidadNombre: string | null;
-  dimension: DimensionEvaluacion;
-  tipo: TipoCriterio;
-  nombre: string;
-  descripcion: string | null;
-  /** Solo en los ponderables. */
-  puntajeMaximo: number | null;
-  orden: number;
-  activo: boolean;
-  fundamento: string | null;
-  confirmado: boolean;
-  actualizadoEn: string;
-  /** Por qué un criterio ya usado se desactiva en vez de borrarse. */
-  evaluacionesQueLoUsan: number;
-}
-
-export interface CatalogoCriterios {
-  puedeEditar: boolean;
-  dimensiones: { codigo: DimensionEvaluacion; nombre: string; calculada: boolean }[];
-  modalidades: { codigo: string; nombre: string }[];
-  haySinConfirmar: boolean;
-  criterios: CriterioCatalogo[];
-  /** Cuánto suma el máximo ponderable de cada modalidad. */
-  totales: { modalidad: string; nombre: string; total: number; propios: number }[];
-}
-
-export interface GuardarCriterio {
-  modalidad?: string | null;
-  dimension?: DimensionEvaluacion;
-  tipo?: TipoCriterio;
-  nombre?: string;
-  descripcion?: string | null;
-  puntajeMaximo?: number | null;
-  orden?: number;
-  fundamento?: string | null;
-  confirmado?: boolean;
-}
-
 // ------------------------------------------- evaluación de ofertas (6.3) ---
 
-/** Las tres que califica una persona; la económica la calcula el sistema. */
-export type DimensionManual = 'JURIDICO' | 'FINANCIERO' | 'TECNICO';
+/**
+ * La evaluación se hace por fuera (EFDS-1157).
+ *
+ * El comité califica con sus propios formatos y su cuadro comparativo, y elige
+ * la ganadora; la plataforma recibe la decisión ya tomada con el informe que la
+ * sustenta. Por eso aquí no hay criterios, ni puntajes por dimensión, ni
+ * consolidación: nada de eso se calcula en la aplicación.
+ */
 
-export type EstadoOferta = 'HABILITADA' | 'NO_HABILITADA' | 'PENDIENTE';
+/** Vigente hasta que se rectifique: corregir no borra el resultado anterior. */
+export type EstadoResultado = 'VIGENTE' | 'RECTIFICADO';
 
-/** Un criterio tal como lo ve quien evalúa este proceso. */
-export interface CriterioAplicable {
-  id: string;
-  dimension: DimensionEvaluacion;
-  tipo: TipoCriterio;
-  nombre: string;
-  descripcion: string | null;
-  puntajeMaximo: number | null;
-  confirmado: boolean;
-}
-
-export interface ResultadoCriterio {
-  criterioId: string;
-  /** En los habilitantes. */
-  cumple: boolean | null;
-  /** En los ponderables. */
-  puntaje: number | null;
-  observacion: string | null;
-}
-
-export interface EvaluacionDimension {
-  dimension: DimensionEvaluacion;
-  evaluadaPor: string | null;
-  evaluadaAt: string | null;
-  resultados: ResultadoCriterio[];
-}
-
-export interface ConsolidadoOferta {
-  ofertaId: string;
-  estado: EstadoOferta;
-  /** Qué criterio la dejó fuera: es lo que el oferente reclama. */
-  incumplimientos: { criterioId: string; nombre: string; motivo: string | null }[];
-  dimensionesPendientes: DimensionEvaluacion[];
-  puntajePorDimension: Record<string, number>;
-  puntajeTotal: number;
-  puntajeMaximo: number;
-}
-
-export interface OfertaEnEvaluacion {
+/** Una oferta de la lista publicada, como se ve al elegir la ganadora. */
+export interface OfertaEvaluable {
   id: string;
   numero: number;
   nombre: string;
   identificacion: string;
   valorOfertado: number | null;
-  consolidado: ConsolidadoOferta | null;
-  evaluaciones: EvaluacionDimension[];
+}
+
+/** Un documento con que el comité sustenta lo que decidió. */
+export interface EvidenciaEvaluacion {
+  id: string;
+  descripcion: string;
+  cargadaPor: string | null;
+  cargadaAt: string;
+  archivoUrl: string | null;
+}
+
+export interface ResultadoEvaluacion {
+  id: string;
+  estado: EstadoResultado;
+  ganadora: OfertaEvaluable | null;
+  /** Nulos donde la modalidad no puntúa; cuando vienen, vienen los dos. */
+  puntajeObtenido: number | null;
+  puntajeMaximo: number | null;
+  /** Puede no ser el valor ofertado: el comité corrige aritmética. */
+  valorEvaluado: number | null;
+  justificacion: string;
+  informe: { id: string; nombre: string; archivoUrl: string } | null;
+  registradoPor: string | null;
+  registradoAt: string;
+  rectificadoPor: string | null;
+  rectificadoAt: string | null;
+  motivoRectificacion: string | null;
+  evidencias: EvidenciaEvaluacion[];
 }
 
 export interface EstadoEvaluacion {
@@ -1062,17 +1009,21 @@ export interface EstadoEvaluacion {
   modalidadNombre: string | null;
   recepcionCerrada: boolean;
   comiteDesignado: boolean;
-  /** En qué dimensiones puede calificar quien consulta. Vacío: solo mira. */
-  misDimensiones: DimensionManual[];
-  puedeEvaluar: boolean;
-  criteriosSinConfirmar: boolean;
-  puntajeMaximo: number;
-  criterios: CriterioAplicable[];
-  ofertas: OfertaEnEvaluacion[];
+  /** En qué dimensiones integra el comité quien consulta. Vacío: solo mira. */
+  misDimensiones: RolEvaluador[];
+  esMiembroDelComite: boolean;
+  puedeRegistrar: boolean;
+  ofertas: OfertaEvaluable[];
+  resultado: ResultadoEvaluacion | null;
+  /** Los rectificados se muestran: explican que haya dos informes. */
+  rectificados: ResultadoEvaluacion[];
 }
 
-/** Una dimensión completa: evaluar es un juicio entero, no un criterio suelto. */
-export interface EvaluarDimension {
-  dimension: DimensionManual;
-  resultados: { criterioId: string; cumple?: boolean; puntaje?: number; observacion?: string }[];
+/** Lo que el comité reporta. Los puntajes son opcionales y van en pareja. */
+export interface RegistrarResultado {
+  oferenteId: string;
+  puntajeObtenido?: number;
+  puntajeMaximo?: number;
+  valorEvaluado?: number;
+  justificacion: string;
 }

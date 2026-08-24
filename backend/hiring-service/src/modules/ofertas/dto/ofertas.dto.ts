@@ -62,11 +62,11 @@ export class RegistrarOferenteDto {
   fechaRadicacion: string;
 
   /**
-   * Valor de la oferta, base de la evaluación económica (EFDS-1157).
+   * Valor de la oferta tal como se presentó.
    *
    * Opcional a propósito: no todas las modalidades califican precio, y una
    * oferta ya recibida no se puede rechazar por un dato que la actividad 6.1 no
-   * pedía cuando se registró. Sin él, la dimensión económica dirá que falta.
+   * pedía cuando se registró.
    */
   @ApiPropertyOptional({ description: 'Valor de la oferta presentada', example: 45000000 })
   @IsOptional()
