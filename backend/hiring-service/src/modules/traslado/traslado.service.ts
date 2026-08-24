@@ -54,7 +54,9 @@ export interface ArchivoCargado {
  */
 @Injectable()
 export class TrasladoService {
-  constructor(private readonly dataSource: DataSource) {}
+  // Protegido y no privado: la actividad 6.5 (EFDS-1464) extiende este servicio
+  // para reusar el proceso, el expediente, la traza y el calendario.
+  constructor(protected readonly dataSource: DataSource) {}
 
   // ------------------------------------------------------------- consulta --
 

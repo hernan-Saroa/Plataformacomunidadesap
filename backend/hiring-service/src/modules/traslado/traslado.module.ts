@@ -3,9 +3,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { TrasladoService } from './traslado.service';
 import { TrasladoController } from './traslado.controller';
+import { SubsanacionesService } from './subsanaciones.service';
+import { SubsanacionesController } from './subsanaciones.controller';
 
 import { InformeEvaluacion } from '../../entities/informe-evaluacion.entity';
 import { PlazoTraslado } from '../../entities/plazo-traslado.entity';
+import { Subsanacion } from '../../entities/subsanacion.entity';
 import { ResultadoEvaluacion } from '../../entities/resultado-evaluacion.entity';
 import { EvidenciaEvaluacion } from '../../entities/evidencia-evaluacion.entity';
 import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
@@ -24,6 +27,7 @@ import { DiaNoHabil } from '../../entities/dia-no-habil.entity';
     TypeOrmModule.forFeature([
       InformeEvaluacion,
       PlazoTraslado,
+      Subsanacion,
       ResultadoEvaluacion,
       EvidenciaEvaluacion,
       RecepcionOfertas,
@@ -40,8 +44,8 @@ import { DiaNoHabil } from '../../entities/dia-no-habil.entity';
       DiaNoHabil,
     ]),
   ],
-  controllers: [TrasladoController],
-  providers: [TrasladoService],
-  exports: [TrasladoService],
+  controllers: [TrasladoController, SubsanacionesController],
+  providers: [TrasladoService, SubsanacionesService],
+  exports: [TrasladoService, SubsanacionesService],
 })
 export class TrasladoModule {}
