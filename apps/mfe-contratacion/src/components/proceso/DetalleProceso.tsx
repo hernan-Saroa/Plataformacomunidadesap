@@ -21,6 +21,7 @@ import { PanelOfertas } from '../ofertas/PanelOfertas';
 import { PanelComite } from '../comite/PanelComite';
 import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
 import { PanelTraslado } from '../traslado/PanelTraslado';
+import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -56,6 +57,15 @@ const NUMERAL_EVALUACION = '6.3';
  * abierto.
  */
 const NUMERALES_TRASLADO = ['6.4', '6.5', '6.6'];
+
+/**
+ * Adjudicación (EFDS-1159), etapa 7 completa.
+ *
+ * Cuatro numerales y un solo panel, por lo mismo que el traslado: para el
+ * usuario es un solo desenlace —audiencia, sobre económico, informe definitivo
+ * y acto— y saber en qué paso va exige verlos juntos.
+ */
+const NUMERALES_ADJUDICACION = ['7.1', '7.2', '7.3', '7.4'];
 
 /** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
 const NUMERALES_ETAPA_5 = [
@@ -240,7 +250,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       if (
         NUMERALES_CDP.includes(act.numeral) ||
         NUMERALES_ETAPA_5.includes(act.numeral) ||
-        NUMERALES_ETAPA_6.includes(act.numeral)
+        NUMERALES_ETAPA_6.includes(act.numeral) ||
+        NUMERALES_ADJUDICACION.includes(act.numeral)
       ) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
@@ -389,6 +400,14 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             NUMERALES_TRASLADO.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelTraslado
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada &&
+            NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelAdjudicacion
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

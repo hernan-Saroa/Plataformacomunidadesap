@@ -28,7 +28,13 @@ export type AccionTraza =
   // Traslado del informe de evaluación (etapa 6). Trasladar no es publicar: la
   // publicación es el medio, y lo que el traslado abre es un término.
   | 'TRASLADAR'
-  | 'RESPONDER';
+  | 'RESPONDER'
+  // Adjudicación (etapa 7). Adjudicar es el desenlace del proceso; revocar no
+  // lo borra, porque el acto pudo notificarse y publicarse.
+  | 'ADJUDICAR'
+  | 'REVOCAR_ACTO'
+  | 'CELEBRAR'
+  | 'ABRIR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

@@ -12,9 +12,14 @@ import {
   EstadoMipyme,
   EstadoComite,
   EstadoEvaluacion,
+  Adjudicar,
+  EstadoAdjudicacion,
+  EstadoAudienciaAdjudicacion,
+  EstadoInformeDefinitivoProceso,
   EstadoSubsanaciones,
   EstadoTraslado,
   RegistrarSubsanacion,
+  TipoPiezaAudiencia,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -922,6 +927,153 @@ export const contratacionService = {
     pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones/cerrar`, {
       method: 'POST',
       body: JSON.stringify(nota.trim() ? { nota: nota.trim() } : {}),
+    }),
+
+
+  // ---------------------------------------- adjudicación, etapa 7 (7.1-7.4) ---
+
+  /** La audiencia registrada, sus piezas y los sobres abiertos. */
+  audienciaAdjudicacion: (procesoId: string) =>
+    pedir<EstadoAudienciaAdjudicacion>(`/procesos/${procesoId}/adjudicacion/audiencia`),
+
+  /** Registra que la audiencia se celebró, con su acta. */
+  celebrarAudiencia: (
+    procesoId: string,
+    datos: { celebradaAt: string; presididaPor: string; resumen?: string },
+    acta: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acta);
+    cuerpo.append('celebradaAt', datos.celebradaAt);
+    cuerpo.append('presididaPor', datos.presididaPor);
+    if (datos.resumen?.trim()) cuerpo.append('resumen', datos.resumen.trim());
+
+    return pedir<EstadoAudienciaAdjudicacion>(`/procesos/${procesoId}/adjudicacion/audiencia`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Una grabación, una observación con su respuesta, o un anexo. */
+  cargarPiezaAudiencia: (
+    procesoId: string,
+    datos: { tipo: TipoPiezaAudiencia; descripcion: string },
+    archivo: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('tipo', datos.tipo);
+    cuerpo.append('descripcion', datos.descripcion);
+
+    return pedir<EstadoAudienciaAdjudicacion>(
+      `/procesos/${procesoId}/adjudicacion/audiencia/piezas`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Abre el sobre económico de una oferta; la evidencia es opcional. */
+  abrirSobreEconomico: (
+    procesoId: string,
+    datos: { oferenteId: string; valorOfertado: number; observacion?: string },
+    evidencia: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (evidencia) cuerpo.append('file', evidencia);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('valorOfertado', String(datos.valorOfertado));
+    if (datos.observacion?.trim()) cuerpo.append('observacion', datos.observacion.trim());
+
+    return pedir<EstadoAudienciaAdjudicacion>(
+      `/procesos/${procesoId}/adjudicacion/audiencia/sobres`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  anularAudiencia: (procesoId: string, motivo: string) =>
+    pedir<EstadoAudienciaAdjudicacion>(`/procesos/${procesoId}/adjudicacion/audiencia/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** El informe definitivo, con lo que cambió desde el preliminar. */
+  informeDefinitivo: (procesoId: string) =>
+    pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo`,
+    ),
+
+  /** Congela el resultado vigente del comité. El archivo es opcional. */
+  generarInformeDefinitivo: (procesoId: string, informe: File | null) => {
+    const cuerpo = new FormData();
+    if (informe) cuerpo.append('file', informe);
+
+    return pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  publicarInformeDefinitivo: (procesoId: string, medioPublicacion: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', medioPublicacion);
+
+    return pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo/publicar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  anularInformeDefinitivo: (procesoId: string, motivo: string) =>
+    pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo/anular`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** El acto vigente y la ganadora que propone el informe definitivo. */
+  adjudicacion: (procesoId: string) =>
+    pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto`),
+
+  /**
+   * Emite la resolución de adjudicación.
+   *
+   * La justificación solo se envía cuando el adjudicatario no es la ganadora
+   * del informe: el backend la exige ahí y solo ahí.
+   */
+  adjudicar: (procesoId: string, datos: Adjudicar, acto: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('numeroActo', datos.numeroActo);
+    cuerpo.append('fechaActo', datos.fechaActo);
+    cuerpo.append('valorAdjudicado', String(datos.valorAdjudicado));
+    if (datos.justificacion?.trim()) cuerpo.append('justificacion', datos.justificacion.trim());
+
+    return pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  publicarActoAdjudicacion: (
+    procesoId: string,
+    datos: { medioPublicacion: string; notificadoAt?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', datos.medioPublicacion);
+    if (datos.notificadoAt) cuerpo.append('notificadoAt', datos.notificadoAt);
+
+    return pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto/publicar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  revocarActoAdjudicacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto/revocar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
     }),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
