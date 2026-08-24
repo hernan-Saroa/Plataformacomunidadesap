@@ -211,6 +211,33 @@ export const ROLES_TRASLADO = [
  */
 export const ROLES_ADMIN_PLAZOS_TRASLADO = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
 
+/**
+ * Quién registra la audiencia de adjudicación y abre el sobre económico
+ * (actividades 7.1 y 7.2, EFDS-1159).
+ *
+ * El trámite lo lleva el gestor del proceso, como el traslado: registrar que la
+ * audiencia se celebró y cargar su acta es documentar un hecho, no decidir.
+ * Adjudicar sí es decidir, y por eso tiene su propia lista.
+ *
+ * **Supuesto del equipo, sin confirmar** (EFDS-1489): la historia dice que el
+ * Ordenador del Gasto adjudica, pero no dice quién preside ni quién registra la
+ * audiencia.
+ */
+export const ROLES_AUDIENCIA_ADJUDICACION = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién emite el acto de adjudicación (actividad 7.4, EFDS-1159).
+ *
+ * El Ordenador del Gasto, con la misma separación de la designación del comité
+ * (EFDS-1438): el gestor lleva el trámite, pero comprometer a la entidad con un
+ * tercero es de quien ordena el gasto. Aquí sí lo dice la historia.
+ */
+export const ROLES_ADJUDICAR = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

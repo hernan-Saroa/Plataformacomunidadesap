@@ -20,6 +20,7 @@ import { OfertasModule } from './modules/ofertas/ofertas.module';
 import { ComiteModule } from './modules/comite/comite.module';
 import { EvaluacionModule } from './modules/evaluacion/evaluacion.module';
 import { TrasladoModule } from './modules/traslado/traslado.module';
+import { AdjudicacionModule } from './modules/adjudicacion/adjudicacion.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -109,6 +110,7 @@ import { ActoAdjudicacion } from './entities/acto-adjudicacion.entity';
     ComiteModule,
     EvaluacionModule,
     TrasladoModule,
+    AdjudicacionModule,
   ],
   controllers: [HealthController],
   providers: [
