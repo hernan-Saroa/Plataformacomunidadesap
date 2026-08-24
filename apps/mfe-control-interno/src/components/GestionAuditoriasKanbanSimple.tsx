@@ -1114,6 +1114,7 @@ export function GestionAuditoriasKanbanSimple() {
         auditorLider: aud.auditorLider,
         auditorAsignado: aud.auditorAsignado,
         auditorLiderId: aud.auditorLiderId, // ✅ Preservar ID del auditor líder
+        supervisorAsignadoId: aud.supervisorAsignadoId,
         fechaInicio: aud.fechaInicio,
         fechaFinPlaneacion: aud.fechaFinPlaneacion, // ✅ Fecha fin de Planeación
         fechaInicioEjecucion: aud.fechaInicioEjecucion, // ✅ Fecha inicio de Ejecución
@@ -3353,7 +3354,9 @@ export function GestionAuditoriasKanbanSimple() {
                   cargo: auditoriaParaEditar.responsableAreaCargo || '',
                   email: auditoriaParaEditar.responsableAreaEmail || '',
                 },
-                auditorLider: auditoriaParaEditar.auditorLider?.id || (auditoriaParaEditar.auditorLider as any)?.nombre || '',
+                equipoAuditores: auditoriaParaEditar.equipoAuditores || [],
+                supervisorAsignado: auditoriaParaEditar.supervisorAsignadoId || '',
+                auditorLider: auditoriaParaEditar.auditorLiderId || auditoriaParaEditar.auditorLider?.id || (auditoriaParaEditar.auditorLider as any)?.nombre || '',
                 fechaInicioPlaneacion: (auditoriaParaEditar as any).fechaInicioPlaneacion || auditoriaParaEditar.fechaInicio || meta.fechaInicioPlaneacion || meta.fechaInicio || '',
                 fechaFinPlaneacion: (auditoriaParaEditar as any).fechaFinPlaneacion || meta.fechaFinPlaneacion || '',
                 fechaInicioEjecucion: (auditoriaParaEditar as any).fechaInicioEjecucion || meta.fechaInicioEjecucion || '',

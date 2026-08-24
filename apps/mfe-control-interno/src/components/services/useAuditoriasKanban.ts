@@ -396,7 +396,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     prioridad: (auditoriaBackend.prioridadKanban as Prioridad) || mapearPrioridad(auditoriaBackend.prioridad, auditoriaBackend.nivelRiesgo),
     areaObjetivo: auditoriaBackend.areaObjetivo || auditoriaBackend.procesoAuditado || '',
     permiteCambiarObjetivos: auditoriaBackend.permiteCambiarObjetivos ?? true,
-    equipoAuditores: normalizarEquipoAuditores(auditoriaBackend.equipoAuditores, auditoresDisponibles),
+    equipoAuditores: auditoriaBackend.equipoAuditores || [],
+    // equipoAuditores: normalizarEquipoAuditores(auditoriaBackend.equipoAuditores, auditoresDisponibles),
     territorialInfo: auditoriaBackend.territorial ? {
       nombre: auditoriaBackend.territorial,
       ciudad: '',
@@ -425,6 +426,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
       auditoriaBackend.planAnualVigencia ?? auditoriaBackend.plan_anual_vigencia,
     planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
     programaAnualMetadata: auditoriaBackend.programaAnualMetadata,
+    supervisorAsignadoId: auditoriaBackend.supervisorAsignadoId || '',
   };
 }
 

@@ -387,7 +387,21 @@ export function FormularioAuditoriaUnificado({
       responsableArea: data?.responsableArea,
       auditorLider: data?.auditorLider || '',
       auditorAsignado: data?.auditorAsignado || '',
-      equipoAuditores: data?.equipoAuditores || [],
+      equipoAuditores: Array.from(
+        new Set(
+          (data?.equipoAuditores || [])
+            .filter((e: any) => typeof e === 'string' || e?.activo !== false)
+            .map((e: any) => {
+              if (!e) return '';
+              if (typeof e === 'string') return e.trim();
+              if (typeof e === 'object') {
+                return String(e.personaId || e.id || e.idTercero || e.idPerson || '').trim();
+              }
+              return String(e).trim();
+            })
+            .filter((id): id is string => Boolean(id && id.length > 0))
+        )
+      ),
       supervisorAsignado: data?.supervisorAsignado || '',
       // Etapas del cronograma formateadas para input type="date" (YYYY-MM-DD)
       fechaInicioPlaneacion: inicioP,
@@ -2406,12 +2420,40 @@ function Paso3EquipoAuditor({
   disponibilidadEquipoAuditor,
   validandoDisponibilidadEquipo,
 }: Paso3Props) {
-  const handleToggleAuditor = (auditorId: string) => {
-    const existe = formData.equipoAuditores.includes(auditorId);
-    if (existe) {
-      onChange('equipoAuditores', formData.equipoAuditores.filter(id => id !== auditorId));
+  const getAuditorIds = (auditor: AuditorOption): string[] => {
+    return [
+      auditor.id,
+      (auditor as any).idPerson,
+      (auditor as any).idTercero,
+      (auditor as any).idConfig,
+      auditor.nombre,
+    ]
+      .filter((v): v is string => Boolean(v && String(v).trim().length > 0))
+      .map((v) => String(v).trim().toLowerCase());
+  };
+
+  const isAuditorEnEquipo = (auditor: AuditorOption): boolean => {
+    if (!formData.equipoAuditores || formData.equipoAuditores.length === 0) return false;
+    const auditorIds = getAuditorIds(auditor);
+    return formData.equipoAuditores.some((eqId) =>
+      auditorIds.includes(String(eqId).trim().toLowerCase())
+    );
+  };
+
+  const handleToggleAuditor = (auditor: AuditorOption) => {
+    const auditorIds = getAuditorIds(auditor);
+    const estaEnEquipo = isAuditorEnEquipo(auditor);
+
+    if (estaEnEquipo) {
+      // Remover todas las posibles variantes de ID de este auditor
+      const nuevoEquipo = formData.equipoAuditores.filter(
+        (eqId) => !auditorIds.includes(String(eqId).trim().toLowerCase())
+      );
+      onChange('equipoAuditores', nuevoEquipo);
     } else {
-      onChange('equipoAuditores', [...formData.equipoAuditores, auditorId]);
+      // Agregar la mejor variante de ID (idPerson o id)
+      const targetId = (auditor as any).idPerson || auditor.id;
+      onChange('equipoAuditores', [...formData.equipoAuditores, targetId]);
     }
   };
 
@@ -2473,41 +2515,44 @@ function Paso3EquipoAuditor({
                 a.id !== formData.supervisorAsignado &&
                 a.id !== formData.auditorLider &&
                 REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo)
-              ).map(auditor => (
-                <button
-                  key={auditor.id}
-                  type="button"
-                  onClick={() => handleToggleAuditor(auditor.id)}
-                  className={`
-                    p-3 rounded-lg border-2 transition-all text-left
-                    ${
-                      formData.equipoAuditores.includes(auditor.id)
-                        ? 'border-blue-600 bg-blue-50'
-                        : 'border-gray-300 hover:border-blue-400'
-                    }
-                  `}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`
-                        w-5 h-5 rounded border-2 flex items-center justify-center
-                        ${
-                          formData.equipoAuditores.includes(auditor.id)
-                            ? 'border-blue-600 bg-blue-600'
-                            : 'border-gray-400'
-                        }
-                      `}
-                    >
-                      {formData.equipoAuditores.includes(auditor.id) && (
-                        <CheckSquare className="w-3 h-3 text-white" />
-                      )}
+              ).map(auditor => {
+                const seleccionado = isAuditorEnEquipo(auditor);
+                return (
+                  <button
+                    key={auditor.id}
+                    type="button"
+                    onClick={() => handleToggleAuditor(auditor)}
+                    className={`
+                      p-3 rounded-lg border-2 transition-all text-left
+                      ${
+                        seleccionado
+                          ? 'border-blue-600 bg-blue-50'
+                          : 'border-gray-300 hover:border-blue-400'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`
+                          w-5 h-5 rounded border-2 flex items-center justify-center
+                          ${
+                            seleccionado
+                              ? 'border-blue-600 bg-blue-600'
+                              : 'border-gray-400'
+                          }
+                        `}
+                      >
+                        {seleccionado && (
+                          <CheckSquare className="w-3 h-3 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-gray-900">{auditor.nombre}</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-gray-900">{auditor.nombre}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
             {formData.equipoAuditores.length > 0 && (
               <p className="text-xs text-blue-600 mt-2">

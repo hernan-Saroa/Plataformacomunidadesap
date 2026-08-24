@@ -90,6 +90,7 @@ export interface AuditoriaKanban {
   criterios?: CriterioAuditoria[];
   // ID del auditor líder asignado
   auditorLiderId?: string | number;
+  supervisorAsignadoId?: string | number;
   // ✅ Responsable del Área Auditada (viene del backend)
   responsableAreaNombre?: string;
   responsableAreaCargo?: string;
