@@ -427,6 +427,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
     programaAnualMetadata: auditoriaBackend.programaAnualMetadata,
     supervisorAsignadoId: auditoriaBackend.supervisorAsignadoId || '',
+    vinculadaPlanAnual: auditoriaBackend.vinculadaPlanAnual || true,
   };
 }
 

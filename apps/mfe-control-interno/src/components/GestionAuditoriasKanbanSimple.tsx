@@ -1146,6 +1146,7 @@ export function GestionAuditoriasKanbanSimple() {
         responsableAreaCargo: aud.responsableAreaCargo,
         responsableAreaEmail: aud.responsableAreaEmail,
         programaAnualMetadata: aud.programaAnualMetadata,
+        vinculadaPlanAnual: aud.vinculadaPlanAnual,
       } as Auditoria));
 
       // ✅ DEDUPLICAR: Preservar las auditorías temporales del programa anual (id empieza con 'aud-prog-')
@@ -3308,6 +3309,7 @@ export function GestionAuditoriasKanbanSimple() {
                 auditorAsignadoId: data.auditorAsignado || undefined,
                 equipoAuditores: data.equipoAuditores || [],
                 supervisorAsignadoId: data.supervisorAsignado || undefined,
+                vinculadaPlanAnual: data.vinculadaPlanAnual,
                 // Metadata del programa anual (focos, recursos, riesgos, controles, normatividad, presupuesto)
                 programaAnualMetadata: {
                   focos: data.focos,
@@ -3378,6 +3380,7 @@ export function GestionAuditoriasKanbanSimple() {
                 controlesAplicar: (auditoriaParaEditar as any).controlesAplicar || meta.controlesAplicar || [],
                 rolDecretoAsociado: (auditoriaParaEditar as any).rolDecretoAsociado || meta.rolDecretoAsociado || '',
                 estadoKanban: auditoriaParaEditar.estado || 'Programa Anual',
+                vinculadaPlanAnual: auditoriaParaEditar.vinculadaPlanAnual || true,
               };
             })()}
           />

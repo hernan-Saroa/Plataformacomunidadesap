@@ -103,4 +103,5 @@ export interface AuditoriaKanban {
   planAnualVigencia?: number;
   planAnualId?: string;
   programaAnualMetadata?: any;
+  vinculadaPlanAnual?: boolean;
 }

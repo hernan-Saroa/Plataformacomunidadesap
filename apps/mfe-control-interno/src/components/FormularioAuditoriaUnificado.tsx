@@ -251,6 +251,13 @@ const ROLES_DECRETO_648 = [
 const fourWeek = 4 * 7;
 const fiveWeek = 5 * 7;
 
+const formatMiles = (val: string | number | undefined | null): string => {
+  if (val === undefined || val === null) return '';
+  const soloNumeros = String(val).replace(/\D/g, '');
+  if (!soloNumeros) return '';
+  return new Intl.NumberFormat('es-CO').format(parseInt(soloNumeros, 10));
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENTE AUXILIAR: FIELD WRAPPER
 // ═══════════════════════════════════════════════════════════════════════════
@@ -418,7 +425,7 @@ export function FormularioAuditoriaUnificado({
       normatividadAplicable: data?.normatividadAplicable || [],
       metodologia: data?.metodologia || '',
       recursos: data?.recursos || [],
-      presupuestoEstimado: data?.presupuestoEstimado || '',
+      presupuestoEstimado: data?.presupuestoEstimado ? formatMiles(data.presupuestoEstimado) : '',
       productosEsperados: data?.productosEsperados || [],
       nivelRiesgo: data?.nivelRiesgo || 'Medio',
       riesgosIdentificados: data?.riesgosIdentificados || [],
@@ -1101,21 +1108,6 @@ export function FormularioAuditoriaUnificado({
     setIsSubmitting(true);
 
     try {
-      // 🔍 DEBUG: Log de fechas antes de enviar
-      console.log('═══════════════════════════════════════════════════════════════');
-      console.log('📤 FormularioAuditoriaUnificado - DATOS A ENVIAR:');
-      console.log('   fechaInicioPlaneacion:', formData.fechaInicioPlaneacion);
-      console.log('   fechaFinPlaneacion:', formData.fechaFinPlaneacion);
-      console.log('   fechaInicioEjecucion:', formData.fechaInicioEjecucion);
-      console.log('   fechaFinEjecucion:', formData.fechaFinEjecucion);
-      console.log('   fechaInicioComunicacion:', formData.fechaInicioComunicacion);
-      console.log('   fechaFinComunicacion:', formData.fechaFinComunicacion);
-      console.log('   auditorLider:', formData.auditorLider);
-      console.log('   supervisorAsignado:', formData.supervisorAsignado);
-      console.log('   equipoAuditores:', formData.equipoAuditores);
-      console.log('   titulo:', formData.titulo);
-      console.log('   tipoAuditoria:', formData.tipoAuditoria);
-      console.log('═══════════════════════════════════════════════════════════════');
       
       const dataToSubmit = { ...formData };
       
@@ -1130,12 +1122,7 @@ export function FormularioAuditoriaUnificado({
       
       // Log detallado en consola si incluye hallazgos preliminares
       if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log('✅ AUDITORÍA GUARDADA CON HALLAZGOS PRELIMINARES');
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log(`📋 Auditoría: ${formData.titulo}`);
-        console.log(`⚠️  Hallazgos preliminares: ${formData.hallazgos.length}`);
-        console.log('');
+        
         formData.hallazgos.forEach((h, idx) => {
           console.log(`   ${idx + 1}. ${h.tipo.toUpperCase()}: ${h.descripcion.substring(0, 60)}...`);
         });
@@ -3206,8 +3193,11 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
           >
             <Input
               type="text"
-              value={formData.presupuestoEstimado}
-              onChange={(e) => onChange('presupuestoEstimado', e.target.value)}
+              value={formatMiles(formData.presupuestoEstimado)}
+              onChange={(e) => {
+                const soloNumeros = e.target.value.replace(/\D/g, '');
+                onChange('presupuestoEstimado', soloNumeros ? formatMiles(soloNumeros) : '');
+              }}
               placeholder="Ej: $5,000,000 COP"
               className="border-gray-300"
             />
