@@ -25,6 +25,7 @@ import * as mammoth from 'mammoth';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { ModalPliegoCargos } from './ModalPliegoCargos';
+import { ModalCompartirExpediente } from './ModalCompartirExpediente';
 import { authService } from '../../../services/api';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import {
@@ -1128,19 +1129,28 @@ function ModalConfirmarEnvioRevision({
 function formatFechaActuacion(fecha?: string | null, withTime = false): string {
   if (!fecha) return 'Sin fecha';
 
-  // Evita el desfase por zona horaria cuando la fecha viene como YYYY-MM-DD.
+  // Las fechas "solo día" (YYYY-MM-DD) son una fecha civil, no un instante:
+  // anclarlas a mediodía UTC evita que se corran de día al formatear en
+  // America/Bogota. Las fechas con hora (timestamps del backend) se formatean
+  // directamente, pero siempre fijando la zona horaria a America/Bogota (no la
+  // del navegador/servidor donde corre la app, que puede no coincidir con la
+  // hora real de los usuarios y era la causa de que la hora mostrada no
+  // coincidiera con la hora real del registro).
   const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const parsed = soloFecha
-    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]))
+    ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
     : new Date(fecha);
 
   if (Number.isNaN(parsed.getTime())) return fecha;
 
   return parsed.toLocaleString(
     'es-CO',
-    withTime
-      ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
-      : { year: 'numeric', month: 'short', day: '2-digit' }
+    {
+      ...(withTime
+        ? { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }
+        : { year: 'numeric', month: 'short', day: '2-digit' }),
+      timeZone: 'America/Bogota',
+    }
   );
 }
 
@@ -1150,9 +1160,11 @@ function formatFechaBogota(
 ): string {
   if (!fecha) return '—';
 
-  // Las cadenas YYYY-MM-DD representan una fecha civil, no un instante UTC.
-  // Usar mediodía UTC mantiene el mismo día al presentarlo en America/Bogota.
-  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  // Las cadenas de fecha (con o sin componente de hora, p.ej. el timestamp que
+  // devuelve el backend) representan una fecha civil, no un instante preciso.
+  // Usar mediodía UTC del día indicado evita que una medianoche UTC se muestre
+  // como el día anterior al convertir a America/Bogota (UTC-5).
+  const soloFecha = fecha.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const parsed = soloFecha
     ? new Date(Date.UTC(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]), 12))
     : new Date(fecha);
@@ -2124,6 +2136,7 @@ export function ModalDetallesProceso({
   const [creandoTarea, setCreandoTarea] = useState(false);
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
+  const [mostrarModalCompartir, setMostrarModalCompartir] = useState(false);
   const [mostrarModalPliego, setMostrarModalPliego] = useState(false);
   const [mostrarModalEnvioJuridica, setMostrarModalEnvioJuridica] = useState(false);
   const [enviandoJuridica, setEnviandoJuridica] = useState(false);
@@ -6152,8 +6165,7 @@ export function ModalDetallesProceso({
 
             <div className="flex items-center gap-1.5">
               {[
-                { label: 'Notificar', icon: <Bell   className="w-3.5 h-3.5" />, fn: () => toast.info('Notificar', { description: proceso.numeroProceso }) },
-                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => toast.info('Compartir') },
+                { label: 'Compartir', icon: <Share2 className="w-3.5 h-3.5" />, fn: () => setMostrarModalCompartir(true) },
               ].map(({ label, icon, fn }) => (
                 <button key={label} onClick={fn}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-600 hover:bg-white hover:border-gray-400 transition-all">
@@ -6295,6 +6307,18 @@ export function ModalDetallesProceso({
           />
         )}
       </AnimatePresence>
+
+      {mostrarModalCompartir && (
+        <ModalCompartirExpediente
+          expediente={{
+            id: proceso.id,
+            radicado: proceso.numeroProceso,
+            nombreDisciplinado: getNombre(proceso.denunciado),
+            estado: proceso.estadoActual,
+          }}
+          onClose={() => setMostrarModalCompartir(false)}
+        />
+      )}
 
       <AnimatePresence>
         {/* Modal confirmación envío a jurídica */}

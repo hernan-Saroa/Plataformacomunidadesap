@@ -18,6 +18,8 @@ import { TechnicalBonusAssignment } from './technical-bonus-assignment.entity';
 import { TechnicalBonusTemplate } from './technical-bonus-template.entity';
 import { LaborOracleIntegrationController } from './labor-oracle-integration.controller';
 import { LaborOracleIntegrationService } from './labor-oracle-integration.service';
+import { CertificateCorrectionRequest } from './certificate-correction-request.entity';
+import { CertificateCorrectionRequestsController } from './certificate-correction-requests.controller';
 
 @Module({
   imports: [
@@ -32,12 +34,14 @@ import { LaborOracleIntegrationService } from './labor-oracle-integration.servic
       TemplateSigner,
       TechnicalBonusAssignment,
       TechnicalBonusTemplate,
+      CertificateCorrectionRequest,
     ]),
   ],
   controllers: [
     CertificatesController,
     TemplateConfigController,
     LaborOracleIntegrationController,
+    CertificateCorrectionRequestsController,
   ],
   providers: [
     CertificatesService,

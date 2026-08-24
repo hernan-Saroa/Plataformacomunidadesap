@@ -846,7 +846,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   };
 
   return (
-    <NotificationsProvider>
+    <NotificationsProvider currentModule={currentModule}>
       <TourProvider>
         {/* ✅ APP LAYOUT - Mobile First */}
         <div className="backoffice-shell-layout min-h-screen bg-gray-50">

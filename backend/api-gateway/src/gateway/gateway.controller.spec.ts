@@ -39,7 +39,7 @@ describe('GatewayController', () => {
         send: jest.fn(),
       } as any;
 
-      await controller.proxyVersioned('legal', '1', 'evidencias/123', mockReq, mockRes);
+      await controller.proxyVersioned('legal', '1', mockReq, mockRes);
 
       expect(service.forwardRequest).toHaveBeenCalledWith('legal', '1', mockReq, mockRes);
     });
@@ -57,7 +57,7 @@ describe('GatewayController', () => {
         send: jest.fn(),
       } as any;
 
-      await controller.proxyVersioned('legal', '2', 'actas/456', mockReq, mockRes);
+      await controller.proxyVersioned('legal', '2', mockReq, mockRes);
 
       expect(service.forwardRequest).toHaveBeenCalledWith('legal', '2', mockReq, mockRes);
     });
@@ -77,7 +77,7 @@ describe('GatewayController', () => {
         send: jest.fn(),
       } as any;
 
-      await controller.proxyDefault('legal', 'evidencias/123', mockReq, mockRes);
+      await controller.proxyDefault('legal', mockReq, mockRes);
 
       expect(service.forwardRequest).toHaveBeenCalledWith('legal', '1', mockReq, mockRes);
     });
@@ -97,7 +97,7 @@ describe('GatewayController', () => {
         send: jest.fn(),
       } as any;
 
-      await controller.proxyUploads('legal', 'documentos/123.pdf', mockReq, mockRes);
+      await controller.proxyUploads('legal', mockReq, mockRes);
 
       expect(service.forwardStatic).toHaveBeenCalledWith('legal', mockReq, mockRes);
     });
