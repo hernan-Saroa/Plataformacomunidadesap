@@ -7,7 +7,7 @@
  * bloque @media print propio (ver <style> al inicio del render).
  */
 import React, { useRef, useState } from 'react';
-import { Download, Loader2, X, Printer, ShieldCheck } from 'lucide-react';
+import { Download, Loader2, X, ShieldCheck, Printer } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -183,6 +183,9 @@ const normalizarColoresCaptura = (documentoClonado: Document) => {
     .reporte-pta-document * {
       animation: none !important;
       transition: none !important;
+      -webkit-font-smoothing: antialiased !important;
+      -moz-osx-font-smoothing: grayscale !important;
+      text-rendering: optimizeLegibility !important;
     }
     .reporte-pta-document *::before,
     .reporte-pta-document *::after {
@@ -191,6 +194,100 @@ const normalizarColoresCaptura = (documentoClonado: Document) => {
     }
   `;
   documentoClonado.head.appendChild(estilosCaptura);
+};
+
+/**
+ * Normaliza y aísla el árbol DOM clonado en html2canvas para captura perfecta:
+ * 1. Convierte funciones de color modernas (oklch, etc.) a rgba().
+ * 2. Neutraliza scrolls, offsets y anchos dinámicos que causaban recorte en el margen izquierdo.
+ * 3. Expande la cuadrícula de identificación y tablas para que se capturen completas a 300+ DPI.
+ */
+const normalizarCapturaReporte = (documentoClonado: Document) => {
+  normalizarColoresCaptura(documentoClonado);
+
+  const overlayClonado = documentoClonado.querySelector<HTMLElement>('.reporte-pta-overlay');
+  const sheetClonado = documentoClonado.querySelector<HTMLElement>('.reporte-pta-sheet');
+  const reporteClonado = documentoClonado.querySelector<HTMLElement>('.reporte-pta-document');
+
+  if (documentoClonado.documentElement) {
+    documentoClonado.documentElement.style.background = '#FFFFFF';
+    documentoClonado.documentElement.style.margin = '0';
+    documentoClonado.documentElement.style.padding = '0';
+  }
+
+  if (documentoClonado.body) {
+    documentoClonado.body.style.margin = '0';
+    documentoClonado.body.style.padding = '0';
+    documentoClonado.body.style.background = '#FFFFFF';
+    documentoClonado.body.style.width = '1220px';
+    documentoClonado.body.style.minWidth = '1220px';
+    documentoClonado.body.style.overflow = 'visible';
+    documentoClonado.body.style.transform = 'none';
+  }
+
+  if (overlayClonado) {
+    overlayClonado.style.position = 'static';
+    overlayClonado.style.inset = 'auto';
+    overlayClonado.style.display = 'block';
+    overlayClonado.style.width = '1220px';
+    overlayClonado.style.minWidth = '1220px';
+    overlayClonado.style.maxWidth = '1220px';
+    overlayClonado.style.margin = '0';
+    overlayClonado.style.padding = '0';
+    overlayClonado.style.overflow = 'visible';
+    overlayClonado.style.background = '#FFFFFF';
+    overlayClonado.style.transform = 'none';
+  }
+
+  if (sheetClonado) {
+    sheetClonado.style.position = 'static';
+    sheetClonado.style.width = '1200px';
+    sheetClonado.style.minWidth = '1200px';
+    sheetClonado.style.maxWidth = '1200px';
+    sheetClonado.style.margin = '0 auto';
+    sheetClonado.style.padding = '0';
+    sheetClonado.style.overflow = 'visible';
+    sheetClonado.style.boxShadow = 'none';
+    sheetClonado.style.borderRadius = '0';
+    sheetClonado.style.transform = 'none';
+  }
+
+  if (reporteClonado) {
+    reporteClonado.style.position = 'static';
+    reporteClonado.style.width = '1188px';
+    reporteClonado.style.minWidth = '1188px';
+    reporteClonado.style.maxWidth = '1188px';
+    reporteClonado.style.margin = '0 auto';
+    reporteClonado.style.boxSizing = 'border-box';
+    reporteClonado.style.overflow = 'visible';
+    reporteClonado.style.transform = 'none';
+    reporteClonado.style.border = `8px solid ${NAVY}`;
+  }
+
+  // Asegurar que las cuadrículas y tablas se muestren con el 100% de su contenido sin recortes
+  const elementosScroll = documentoClonado.querySelectorAll<HTMLElement>(
+    '.reporte-pta-ident-scroll, .reporte-pta-document div, .reporte-pta-document table'
+  );
+  elementosScroll.forEach((el) => {
+    if (
+      el.classList.contains('reporte-pta-ident-scroll') ||
+      el.style.overflowX === 'auto' ||
+      el.style.overflowY === 'auto' ||
+      el.style.overflow === 'auto'
+    ) {
+      el.style.overflow = 'visible';
+      el.style.overflowX = 'visible';
+      el.style.overflowY = 'visible';
+      el.style.width = '100%';
+      el.style.maxWidth = '100%';
+    }
+  });
+
+  const identGrid = documentoClonado.querySelector<HTMLElement>('.reporte-pta-ident-grid');
+  if (identGrid) {
+    identGrid.style.width = '100%';
+    identGrid.style.minWidth = '100%';
+  }
 };
 
 const ESTADO_COMP_CFG: Record<string, { label: string; color: string; bg: string }> = {
@@ -301,7 +398,21 @@ const claseSeccionReporte = (cantidadRegistros: number) => `reporte-pta-section 
 function EstadoComponente({ estado }: { estado: string }) {
   const cfg = ESTADO_COMP_CFG[estado] || ESTADO_COMP_CFG.pendiente;
   return (
-    <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, background: cfg.bg, color: cfg.color, fontSize: '0.6rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '3px 10px',
+      borderRadius: 999,
+      background: cfg.bg,
+      color: cfg.color,
+      border: `1px solid ${cfg.color}40`,
+      fontSize: '0.62rem',
+      fontWeight: 800,
+      whiteSpace: 'nowrap',
+      lineHeight: 1.2,
+      boxSizing: 'border-box',
+    }}>
       {cfg.label}
     </span>
   );
@@ -309,14 +420,41 @@ function EstadoComponente({ estado }: { estado: string }) {
 
 function EncabezadoDetalle({ titulo, subtitulo, horas, color, estado }: { titulo: string; subtitulo: string; horas: number; color: string; estado: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '7px 10px', background: `${color}0D`, borderLeft: `5px solid ${color}`, borderBottom: '1px solid #CBD5E1' }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '0.76rem', fontWeight: 900, color: '#111827', textTransform: 'uppercase' }}>{titulo}</div>
-        <div style={{ fontSize: '0.6rem', color: '#64748B', fontWeight: 600, marginTop: 1 }}>{subtitulo}</div>
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      padding: '8px 12px',
+      background: `${color}0D`,
+      borderLeft: `6px solid ${color}`,
+      borderBottom: '1px solid #CBD5E1',
+      boxSizing: 'border-box',
+      flexWrap: 'nowrap',
+    }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: '0.78rem', fontWeight: 900, color: '#111827', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{titulo}</div>
+        <div style={{ fontSize: '0.62rem', color: '#64748B', fontWeight: 600, marginTop: 2 }}>{subtitulo}</div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 'auto' }}>
         <EstadoComponente estado={estado} />
-        <span style={{ padding: '3px 9px', borderRadius: 999, background: '#fff', border: `1px solid ${color}55`, color, fontSize: '0.68rem', fontWeight: 900, whiteSpace: 'nowrap' }}>{horas} h</span>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '3px 10px',
+          borderRadius: 999,
+          background: '#FFFFFF',
+          border: `1.5px solid ${color}66`,
+          color,
+          fontSize: '0.7rem',
+          fontWeight: 900,
+          whiteSpace: 'nowrap',
+          lineHeight: 1.2,
+          boxSizing: 'border-box',
+        }}>
+          {horas} h
+        </span>
       </div>
     </div>
   );
@@ -597,7 +735,14 @@ export function ReportePTAInstitucional({
     complementarias: 'Complementarias',
     complementarias_pregrado: 'Complementarias (Pregrado)',
     complementarias_posgrado: 'Complementarias (Posgrado)',
+    complementarias_territorial: 'Complementarias (Territorial)',
+    complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
   };
+  // El backend auto-aprueba con aprobadorNombre='Sistema' los componentes sin
+  // actividades. Mostrar "Sistema" sugería que alguien lo avaló; para el lector
+  // ese subcomponente sigue sin aprobación de una persona.
+  const nombreAprobadorVisible = (nombre?: string | null): string | null =>
+    !nombre ? null : (nombre === 'Sistema' ? 'Pendiente' : nombre);
   const detalleRevisiones = (componentesAprobacion || [])
     .filter((r: any) => r && (r.componente || r.key))
     .map((r: any) => {
@@ -606,7 +751,7 @@ export function ReportePTAInstitucional({
       return {
         key,
         label: SUBCOMP_LABELS[key] || key,
-        aprobador: r.aprobador_nombre || r.aprobadorNombre || null,
+        aprobador: nombreAprobadorVisible(r.aprobador_nombre || r.aprobadorNombre),
         fecha: fecha ? fmtFechaReporte(String(fecha)) : null,
         fechaOrden: fecha ? String(fecha) : '',
       };
@@ -648,10 +793,19 @@ export function ReportePTAInstitucional({
     userPerfil?.identificacion,
     pta?.docente_documento,
   ));
+  // El nombre llegaba vacío cuando el perfil aún no había cargado y el PTA no
+  // traía `docente_nombre` con ese nombre exacto: distintos orígenes del DTO lo
+  // exponen como nombre_docente / docente.nombre / nombre_completo. Se agotan
+  // todas las variantes antes de dejar el campo en blanco.
   const nombreDocente = datoNoVacio(
     userPerfil?.nombre_completo,
     userPerfil?.nombre,
     pta?.docente_nombre,
+    pta?.nombre_docente,
+    pta?.docenteNombre,
+    pta?.docente?.nombre_completo,
+    pta?.docente?.nombre,
+    pta?.nombre_completo,
   );
   const perfilAcademico = datoNoVacio(
     userPerfil?.perfil_academico,
@@ -839,15 +993,6 @@ export function ReportePTAInstitucional({
     asignaturas.length === 1 ? pta?.cetap : null,
   ));
 
-  const handleNativePrint = () => {
-    // Permite que el navegador complete el layout del modal antes de activar
-    // los estilos y gráficos específicos de impresión.
-    window.dispatchEvent(new Event('resize'));
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => window.print());
-    });
-  };
-
   const esperarRender = (ms = 0) => new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -858,9 +1003,9 @@ export function ReportePTAInstitucional({
   });
 
   /**
-   * Genera una página PDF continua a partir del documento visible. Al rasterizar
-   * el reporte completo no hay reflujo, saltos automáticos ni diferencias entre
-   * el layout de pantalla y el archivo descargado.
+   * Genera un PDF fiel de alta definición (300 DPI) paginado en formato institucional
+   * estándar A4 Landscape (297 x 210 mm), asegurando que el 100% de los datos, tablas,
+   * desgloses y flujo de aprobación se capturen completos sin cortes al final de página.
    */
   const handleExportPdfFiel = async () => {
     const reporte = reporteDocumentoRef.current;
@@ -877,38 +1022,26 @@ export function ReportePTAInstitucional({
     const originalReportMinWidth = reporte.style.minWidth;
 
     try {
-      // La exportación usa el ancho institucional aun si se inicia desde un
-      // teléfono. La vista responsive se restaura al terminar la captura.
-      if (reporte.getBoundingClientRect().width < 1160) {
-        if (sheet) {
-          sheet.style.width = '1200px';
-          sheet.style.maxWidth = 'none';
-          sheet.style.overflow = 'visible';
-        }
-        reporte.style.width = '1188px';
-        reporte.style.minWidth = '1188px';
-        window.dispatchEvent(new Event('resize'));
-        await esperarRender(220);
-      }
       if (document.fonts?.ready) await document.fonts.ready;
       // Recharts calcula sus dimensiones después del layout y de las fuentes.
-      // Esta espera breve garantiza que la captura use el SVG definitivo.
-      await esperarRender(180);
+      await esperarRender(200);
 
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import('html2canvas'),
         import('jspdf'),
       ]);
 
-      const ancho = Math.ceil(reporte.scrollWidth);
-      const alto = Math.ceil(reporte.scrollHeight);
-      const maxLadoCanvas = 30_000;
-      const maxPixelesCanvas = 70_000_000;
-      const escala = Math.max(0.75, Math.min(
-        2,
-        maxLadoCanvas / Math.max(ancho, alto),
-        Math.sqrt(maxPixelesCanvas / Math.max(ancho * alto, 1)),
+      const anchoReportePx = 1188;
+      const altoReportePx = Math.ceil(Math.max(
+        reporte.scrollHeight,
+        reporte.offsetHeight,
+        reporte.getBoundingClientRect().height,
+        1200,
       ));
+
+      // Máximo lado de canvas seguro para navegadores (evita recorte por buffer GPU a >8192px)
+      const maxLadoCanvas = 8000;
+      const escala = Math.max(1.5, Math.min(2.5, maxLadoCanvas / altoReportePx));
 
       const canvas = await html2canvas(reporte, {
         scale: escala,
@@ -916,13 +1049,23 @@ export function ReportePTAInstitucional({
         allowTaint: false,
         backgroundColor: '#FFFFFF',
         logging: false,
-        onclone: normalizarColoresCaptura,
-        width: ancho,
-        height: alto,
-        windowWidth: Math.max(1200, ancho),
-        windowHeight: Math.max(window.innerHeight, alto),
+        onclone: (documentoClonado) => {
+          normalizarCapturaReporte(documentoClonado);
+          const clonedReport = documentoClonado.querySelector<HTMLElement>('.reporte-pta-document');
+          if (clonedReport) {
+            clonedReport.style.height = 'auto';
+            clonedReport.style.minHeight = `${altoReportePx}px`;
+            clonedReport.style.overflow = 'visible';
+          }
+        },
+        width: anchoReportePx,
+        height: altoReportePx,
+        windowWidth: 1240,
+        windowHeight: altoReportePx + 300,
         scrollX: 0,
-        scrollY: -window.scrollY,
+        scrollY: 0,
+        x: 0,
+        y: 0,
       });
 
       if (!canvas.width || !canvas.height) {
@@ -930,11 +1073,14 @@ export function ReportePTAInstitucional({
       }
 
       const anchoPdfMm = 297;
-      const altoPdfMm = (canvas.height * anchoPdfMm) / canvas.width;
+      const altoPaginaA4Mm = 210;
+      const altoPaginaCanvasPx = Math.round(canvas.width * (altoPaginaA4Mm / anchoPdfMm));
+      const totalPaginas = Math.max(1, Math.ceil(canvas.height / altoPaginaCanvasPx));
+
       const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation: 'landscape',
         unit: 'mm',
-        format: [anchoPdfMm, altoPdfMm],
+        format: 'a4',
         compress: true,
       });
 
@@ -943,16 +1089,46 @@ export function ReportePTAInstitucional({
         subject: 'Reporte Institucional PTA - Formato GTH-F081',
         author: 'Escuela Superior de Administración Pública - ESAP',
       });
-      pdf.addImage(
-        canvas.toDataURL('image/png'),
-        'PNG',
-        0,
-        0,
-        anchoPdfMm,
-        altoPdfMm,
-        undefined,
-        'FAST',
-      );
+
+      for (let p = 0; p < totalPaginas; p++) {
+        if (p > 0) {
+          pdf.addPage('a4', 'landscape');
+        }
+
+        const ySource = p * altoPaginaCanvasPx;
+        const altoSource = Math.min(altoPaginaCanvasPx, canvas.height - ySource);
+
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = altoPaginaCanvasPx;
+        const ctx = pageCanvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+          ctx.drawImage(
+            canvas,
+            0,
+            ySource,
+            canvas.width,
+            altoSource,
+            0,
+            0,
+            canvas.width,
+            altoSource,
+          );
+
+          pdf.addImage(
+            pageCanvas.toDataURL('image/png'),
+            'PNG',
+            0,
+            0,
+            anchoPdfMm,
+            altoPaginaA4Mm,
+            undefined,
+            'SLOW',
+          );
+        }
+      }
 
       const nombreArchivo = String(nombreDocente || 'Docente')
         .normalize('NFD')
@@ -962,7 +1138,7 @@ export function ReportePTAInstitucional({
       pdf.save(`PTA_GTH-F081_${periodoCodigo || 'periodo'}_${nombreArchivo || 'Docente'}.pdf`);
     } catch (error) {
       console.error('[Reporte PTA] No fue posible generar el PDF fiel:', error);
-      setErrorExportacion('No fue posible generar el PDF. Puede intentar nuevamente o usar Imprimir.');
+      setErrorExportacion('No fue posible generar el PDF. Por favor, intente nuevamente.');
     } finally {
       if (sheet) {
         sheet.style.width = originalSheetWidth;
@@ -1057,7 +1233,21 @@ export function ReportePTAInstitucional({
               <button
                 onClick={handleExportPdfFiel}
                 disabled={exportandoPdf}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: '#fff', fontSize: '0.76rem', fontWeight: 700, cursor: exportandoPdf ? 'wait' : 'pointer', opacity: exportandoPdf ? 0.75 : 1 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#003DA5',
+                  color: '#fff',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: exportandoPdf ? 'wait' : 'pointer',
+                  opacity: exportandoPdf ? 0.75 : 1,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                }}
               >
                 {exportandoPdf
                   ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
@@ -1065,17 +1255,40 @@ export function ReportePTAInstitucional({
                 {exportandoPdf ? 'Generando PDF…' : 'Descargar PDF fiel'}
               </button>
               <button
-                onClick={handleNativePrint}
+                onClick={() => window.print()}
                 disabled={exportandoPdf}
-                title="Abrir la impresión estándar del navegador"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1D4ED8', fontSize: '0.76rem', fontWeight: 700, cursor: exportandoPdf ? 'not-allowed' : 'pointer', opacity: exportandoPdf ? 0.55 : 1 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: '1px solid #CBD5E1',
+                  background: '#F8FAFC',
+                  color: '#334155',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
               >
                 <Printer size={14} /> Imprimir
               </button>
               <button
                 onClick={onClose}
                 aria-label="Cerrar reporte"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: '1px solid #FCA5A5',
+                  background: '#FEF2F2',
+                  color: '#DC2626',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
               >
                 <X size={14} /> Cerrar
               </button>
@@ -1226,38 +1439,89 @@ export function ReportePTAInstitucional({
             {componentes.length > 0 && (
               <>
                 {/* Solo se muestran los componentes realmente diligenciados en este PTA. */}
-                <div className="reporte-pta-keep-together" style={{ background: '#fff', padding: '20px 12px', borderBottom: `6px solid ${NAVY}`, display: 'flex', gap: 12, flexWrap: 'wrap', position: 'relative', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', inset: 0, opacity: 0.03, backgroundImage: 'linear-gradient(90deg, #000 1px, transparent 1px), linear-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+                <div className="reporte-pta-keep-together" style={{
+                  background: '#F8FAFC',
+                  padding: '16px 14px',
+                  borderBottom: `6px solid ${NAVY}`,
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${componentes.length}, minmax(0, 1fr))`,
+                  gap: 12,
+                }}>
                   {componentes.map(btn => (
-                    <div key={btn.key} style={{ flex: '1 1 180px', position: 'relative', zIndex: 1 }}>
-                      <div style={{
-                        width: '100%', minHeight: 72, color: btn.key === 'complementarias' ? '#713F12' : '#fff', fontWeight: 700, fontSize: '0.78rem',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
-                        padding: '8px 10px', lineHeight: 1.3, border: '1px solid rgba(0,0,0,0.1)',
+                    <div
+                      key={btn.key}
+                      style={{
+                        minHeight: 74,
+                        color: btn.key === 'complementarias' ? '#78350F' : '#FFFFFF',
                         backgroundColor: btn.color,
-                        boxShadow: 'inset 4px 4px 8px rgba(255,255,255,0.3), inset -4px -4px 8px rgba(0,0,0,0.2), 6px 6px 0px rgba(0,0,0,0.15)',
+                        borderRadius: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        padding: '10px 12px',
+                        border: '1px solid rgba(0,0,0,0.12)',
+                        boxShadow: '0 3px 8px rgba(0,0,0,0.08)',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <div style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.03em',
+                        lineHeight: 1.2,
+                        opacity: 0.95,
                       }}>
-                        {btn.label}<br />{btn.horas} h
+                        {btn.label}
+                      </div>
+                      <div style={{
+                        fontSize: '1.4rem',
+                        fontWeight: 900,
+                        marginTop: 4,
+                        lineHeight: 1,
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: 3,
+                      }}>
+                        <span>{btn.horas}</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, opacity: 0.9 }}>h</span>
                       </div>
                     </div>
                   ))}
                 </div>
 
                 <BandaTitulo>Resumen Plan de Trabajo</BandaTitulo>
-                <div className="reporte-pta-keep-together" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 0, borderBottom: `6px solid ${NAVY}` }}>
+                <div className="reporte-pta-keep-together" style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${componentes.length}, minmax(0, 1fr))`,
+                  gap: 0,
+                  borderBottom: `6px solid ${NAVY}`,
+                }}>
                   {componentes.map(c => (
-                    <div key={c.key} style={{ border: `1px solid ${NAVY}`, display: 'flex', flexDirection: 'column', background: '#fff' }}>
-                      <div style={{ padding: '6px 8px', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', textAlign: 'center', borderBottom: `1px solid ${NAVY}`, borderTop: `4px solid ${c.color}`, color: '#111827' }}>
+                    <div key={c.key} style={{ borderRight: `1px solid ${NAVY}`, borderLeft: `1px solid ${NAVY}`, display: 'flex', flexDirection: 'column', background: '#fff' }}>
+                      <div style={{
+                        padding: '7px 8px',
+                        fontSize: '0.65rem',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        textAlign: 'center',
+                        borderBottom: `1px solid ${NAVY}`,
+                        borderTop: `4px solid ${c.color}`,
+                        color: '#111827',
+                        background: '#F8FAFC',
+                      }}>
                         Carga en {c.label}
                       </div>
                       <div style={{ display: 'flex', flex: 1 }}>
                         <div style={{ flex: 1, borderRight: `1px solid ${NAVY}`, display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.58rem', fontWeight: 800, textAlign: 'center', padding: '3px 0', background: HEAD_BG, borderBottom: `1px solid ${NAVY}` }}>PORCENTAJE</span>
-                          <span style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 800, padding: '6px 0', color: c.key === 'complementarias' ? '#A16207' : c.color }}>{getPct(c.horas)}%</span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 800, textAlign: 'center', padding: '4px 0', background: HEAD_BG, borderBottom: `1px solid ${NAVY}` }}>PORCENTAJE</span>
+                          <span style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 900, padding: '8px 0', color: c.key === 'complementarias' ? '#A16207' : c.color }}>{getPct(c.horas)}%</span>
                         </div>
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.58rem', fontWeight: 800, textAlign: 'center', padding: '3px 0', background: HEAD_BG, borderBottom: `1px solid ${NAVY}` }}>TOTAL HORAS</span>
-                          <span style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 800, padding: '6px 0' }}>{c.horas}</span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 800, textAlign: 'center', padding: '4px 0', background: HEAD_BG, borderBottom: `1px solid ${NAVY}` }}>TOTAL HORAS</span>
+                          <span style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 900, padding: '8px 0', color: '#111827' }}>{c.horas}</span>
                         </div>
                       </div>
                     </div>
@@ -1636,16 +1900,16 @@ export function ReportePTAInstitucional({
               </div>
 
               {/* Panel lateral de aprobación / firma */}
-              <div style={{ flex: '1 1 280px', minWidth: 0, borderLeft: `6px solid ${NAVY}`, padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 260 }}>
-                <div style={{ alignSelf: 'stretch', fontSize: '0.66rem', fontWeight: 800, color: '#4B5563', textTransform: 'uppercase', borderBottom: '1px solid #D1D5DB', paddingBottom: 4, marginBottom: 12 }}>
+              <div style={{ flex: '1 1 280px', minWidth: 0, borderLeft: `6px solid ${NAVY}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 260, boxSizing: 'border-box', background: '#FAFAFA' }}>
+                <div style={{ alignSelf: 'stretch', fontSize: '0.68rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em', borderBottom: '2px solid #E2E8F0', paddingBottom: 6, marginBottom: 12, textAlign: 'center' }}>
                   Porcentaje de Aprobación del PTA
                 </div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 900, color: pctGlobal >= 100 ? '#047857' : '#B45309', lineHeight: 1 }}>{pctGlobal}%</div>
-                <div style={{ fontSize: '0.64rem', color: '#6B7280', fontWeight: 600, marginTop: 4 }}>{totalAprobadas} de {horasProg} horas aprobadas</div>
+                <div style={{ fontSize: '2.8rem', fontWeight: 900, color: pctGlobal >= 100 ? '#047857' : '#D97706', lineHeight: 1, margin: '4px 0' }}>{pctGlobal}%</div>
+                <div style={{ fontSize: '0.72rem', color: '#475569', fontWeight: 700, marginTop: 4 }}>{totalAprobadas} de {horasProg} horas aprobadas</div>
                 {isParcial ? (
-                  <div style={{ textAlign: 'center', opacity: 0.45, marginTop: 18 }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 900, textTransform: 'uppercase' }}>¡Informe Parcial!</div>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, marginTop: 4 }}>El documento queda en firme cuando todos los componentes estén aprobados y firmados.</div>
+                  <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 8, background: '#FEF3C7', border: '1.5px solid #F59E0B', textAlign: 'center', width: '100%', boxSizing: 'border-box', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>¡Informe Parcial!</div>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 600, color: '#78350F', marginTop: 4, lineHeight: 1.35 }}>El documento queda en firme cuando todos los componentes estén aprobados y firmados.</div>
                   </div>
                 ) : (
                   <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '100%' }}>

@@ -20,6 +20,96 @@ import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environ
 // Nueva estructura: /{service}/api/v{version}/{path}
 const SERVICE_PREFIX = '/certificados/api/v1';
 
+export type CorrectionStatus = 'PENDING' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED';
+
+export type CorrectionEvidence = {
+  index: number;
+  originalName: string;
+  mimeType: string;
+  size: number;
+};
+
+export type CorrectionTraceChange = {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+};
+
+export type CorrectionTraceEvent = {
+  id: string;
+  type: 'REQUEST_CREATED' | 'REVIEW_STARTED' | 'CERTIFICATE_SENT' | 'REQUEST_REJECTED';
+  title: string;
+  description: string;
+  status: CorrectionStatus;
+  occurred_at: string;
+  actor_name: string;
+  actor_email?: string | null;
+  actor_role: 'SOLICITANTE' | 'COORDINADOR';
+  metadata?: {
+    certificate_number?: string;
+    due_date?: string;
+    evidence_count?: number;
+    requested_recipient?: string;
+    recipient?: string;
+    delivery_status?: 'SENT' | 'FAILED' | 'UNKNOWN';
+    changes?: CorrectionTraceChange[];
+    [key: string]: unknown;
+  };
+};
+
+export type CorrectionCertificatePreview = {
+  content_html: string;
+  cargo_title: string;
+  typography_font: string;
+  signer_name: string;
+  signer_position: string;
+  template_type: 'docente' | 'administrador';
+  template_version: string | null;
+  certificate_number: string;
+  template_variables: Array<{
+    code: string;
+    label: string;
+    value: string;
+    source_fields: string[];
+  }>;
+};
+
+export type CertificateCorrectionRequest = {
+  id: string;
+  request_number: string;
+  certificate_id: string;
+  status: CorrectionStatus;
+  description: string;
+  requester_name: string;
+  requester_email: string;
+  submitted_evidence: CorrectionEvidence[];
+  certificate_snapshot: Record<string, any>;
+  due_date: string;
+  reviewed_by_name?: string | null;
+  reviewed_by_email?: string | null;
+  review_started_at?: string | null;
+  resolution_description?: string | null;
+  resolution_evidence: CorrectionEvidence[];
+  corrected_data?: Record<string, any> | null;
+  traceability: CorrectionTraceEvent[];
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  certificate?: Record<string, any>;
+};
+
+export type CertificateCorrectionListResponse =
+  | CertificateCorrectionRequest[]
+  | {
+      items?: CertificateCorrectionRequest[];
+      data?: CertificateCorrectionRequest[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    };
+
 export type PrimaTecnicaCategoria = string;
 
 export type PrimaTecnicaCategoriaConfig = {
@@ -51,6 +141,80 @@ export type PrimaTecnicaRegistroApi = {
 };
 
 export const certificadosService = {
+  correcciones: {
+    async listar(params?: {
+      page?: number;
+      limit?: number;
+      status?: CorrectionStatus | 'ALL';
+      search?: string;
+    }): Promise<CertificateCorrectionListResponse> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params);
+    },
+
+    async estadisticas(): Promise<{
+      total: number;
+      pending: number;
+      in_review: number;
+      approved: number;
+      rejected: number;
+      overdue: number;
+    }> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/stats`);
+    },
+
+    async obtener(id: string): Promise<CertificateCorrectionRequest> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests/${id}`);
+    },
+
+    async iniciarRevision(id: string): Promise<CertificateCorrectionRequest> {
+      return apiClient.patch(`${SERVICE_PREFIX}/certificates/correction-requests/${id}/start-review`, {});
+    },
+
+    async previsualizar(id: string, data: Record<string, any>): Promise<CorrectionCertificatePreview> {
+      return apiClient.post(`${SERVICE_PREFIX}/certificates/correction-requests/${id}/preview`, data);
+    },
+
+    async aprobar(
+      id: string,
+      data: Record<string, any>,
+      files: File[] = [],
+      onProgress?: (progress: number) => void,
+    ): Promise<CertificateCorrectionRequest & { message: string; email: string; email_sent: boolean }> {
+      const formData = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) formData.append(key, String(value));
+      });
+      files.forEach((file) => formData.append('files', file));
+      return apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/correction-requests/${id}/approve`,
+        formData,
+        onProgress,
+      );
+    },
+
+    async rechazar(
+      id: string,
+      description: string,
+      files: File[],
+      onProgress?: (progress: number) => void,
+    ): Promise<CertificateCorrectionRequest & { message: string; email_sent: boolean }> {
+      const formData = new FormData();
+      formData.append('description', description);
+      files.forEach((file) => formData.append('files', file));
+      return apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/correction-requests/${id}/reject`,
+        formData,
+        onProgress,
+      );
+    },
+
+    async evidencia(id: string, kind: 'submitted' | 'resolution', index: number): Promise<Blob> {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/certificates/correction-requests/${id}/evidence/${kind}/${index}`,
+      );
+    },
+  },
+
   /**
    * CERTIFICADOS DE GRADUADOS
    */

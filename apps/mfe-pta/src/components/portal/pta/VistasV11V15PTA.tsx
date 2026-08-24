@@ -27,6 +27,7 @@ import {
   registrarEvidenciaPTA, getEvidenciasPTA, eliminarEvidenciaPTA, uploadEvidenciaFile,
 } from '../../../services/api/ptaApi';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../../utils/officePreview';
 
 // ═══ V11: Calendario Académico Personal ══════════════════════════════
 
@@ -375,7 +376,31 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ url: string; nombre: string; tipo: string } | null>(null);
+  // HTML del documento de Office convertido en el navegador (null = cargando).
+  const [officeHtml, setOfficeHtml] = useState<string | null>(null);
+  const [officeError, setOfficeError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Convierte el adjunto al abrir la previsualización. El flag `cancelado` evita
+  // pintar el resultado de un documento que el usuario ya cerró (o cambió por otro).
+  useEffect(() => {
+    if (!previewFile || !puedePrevisualizarOffice(previewFile.nombre)) {
+      setOfficeHtml(null);
+      setOfficeError('');
+      return;
+    }
+    let cancelado = false;
+    setOfficeHtml(null);
+    setOfficeError('');
+    cargarPreviewOffice(previewFile.url, previewFile.nombre)
+      .then(res => { if (!cancelado) setOfficeHtml(res.html); })
+      .catch(err => {
+        if (cancelado) return;
+        console.error('[mfe-pta] No se pudo previsualizar el documento:', err);
+        setOfficeError(err?.message || 'No se pudo previsualizar este documento.');
+      });
+    return () => { cancelado = true; };
+  }, [previewFile?.url, previewFile?.nombre]);
 
   // Botones Ver/Descargar por archivo (mismo patrón que el Seguimiento del backoffice).
   const renderBotonesArchivo = (ev: any, compacto = false) => {
@@ -1239,6 +1264,27 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <img src={previewFile.url} alt={previewFile.nombre} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, objectFit: 'contain' }} />
               ) : previewFile.tipo === 'pdf' ? (
                 <iframe src={previewFile.url} title={previewFile.nombre} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 8 }} />
+              ) : puedePrevisualizarOffice(previewFile.nombre) ? (
+                /* Word/Excel: se convierten a HTML en el navegador (ver
+                   utils/officePreview). No se usa el visor de Microsoft porque
+                   descarga el archivo desde sus servidores y no puede alcanzar
+                   un despliegue interno. */
+                officeError ? (
+                  <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
+                    <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />
+                    <p style={{ fontSize: '0.85rem', color: '#B91C1C' }}>{officeError}</p>
+                    <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
+                  </div>
+                ) : officeHtml === null ? (
+                  <div style={{ textAlign: 'center', color: '#6B7280', padding: 24 }}>
+                    <p style={{ fontSize: '0.85rem' }}>Cargando documento…</p>
+                  </div>
+                ) : (
+                  <div style={{ width: '100%', maxHeight: '70vh', overflow: 'auto', background: 'white', borderRadius: 8, padding: 20, textAlign: 'left' }}>
+                    <style>{ESTILOS_PREVIEW_OFFICE}</style>
+                    <div className="pta-office-preview" dangerouslySetInnerHTML={{ __html: officeHtml }} />
+                  </div>
+                )
               ) : (
                 <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
                   <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />

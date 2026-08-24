@@ -2423,10 +2423,29 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     (async () => {
       try {
         const terrs = await getCatalogoTerritoriales(periodo);
-        if (active && terrs.success) {
+        if (active && terrs.success && Array.isArray(terrs.data)) {
           setTerritoriales(terrs.data);
+          const initialMap: Record<string, any[]> = {};
+          for (const t of terrs.data) {
+            if (Array.isArray(t.sedes) && t.sedes.length > 0) {
+              const terrNombre = String(t.nombre || t.nom_seccional || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              const isSedeCentralTerr = terrNombre === 'sede central' || terrNombre.includes('sede central') || String(t.codigo || '').toUpperCase() === 'SC';
+              if (isSedeCentralTerr) {
+                const scOnly = t.sedes.filter((c: any) => {
+                  const n = String(c?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+                  return n === 'sede central' || (n.includes('sede central') && !n.includes('otro') && !n.includes('principal'));
+                });
+                initialMap[String(t.id)] = scOnly.length > 0 ? scOnly : t.sedes.filter((c: any) => !String(c?.nombre || '').toUpperCase().includes('OTRO'));
+              } else {
+                initialMap[String(t.id)] = t.sedes;
+              }
+            }
+          }
+          if (Object.keys(initialMap).length > 0) {
+            setCetapsMap(prev => ({ ...initialMap, ...prev }));
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[PTAForm] No se pudieron cargar territoriales para el período:', err?.message || err);
       }
     })();
@@ -2641,13 +2660,30 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       loadingCetapsRef.current.add(territorialId);
       getCatalogoCetaps(territorialId).then(res => {
         loadingCetapsRef.current.delete(territorialId);
-        if (res.success) {
-          setCetapsMap(curr => ({ ...curr, [territorialId]: res.data }));
+        if (res.success && Array.isArray(res.data)) {
+          let list = res.data;
+          const terrObj = territoriales.find(t => String(t.id) === String(territorialId));
+          const terrNombre = String(terrObj?.nombre || terrObj?.nom_seccional || territorialId || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim();
+          const isSedeCentralTerr = terrNombre === 'sede central' || terrNombre.includes('sede central') || String(terrObj?.codigo || '').toUpperCase() === 'SC' || territorialId === '1' || territorialId === 'sede-central';
+          if (isSedeCentralTerr) {
+            const scOnly = list.filter((c: any) => {
+              const n = String(c?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              return n === 'sede central' || (n.includes('sede central') && !n.includes('otro') && !n.includes('principal'));
+            });
+            list = scOnly.length > 0 ? scOnly : list.filter((c: any) => !String(c?.nombre || '').toUpperCase().includes('OTRO'));
+          }
+          setCetapsMap(curr => ({ ...curr, [territorialId]: list }));
         }
+      }).catch(() => {
+        loadingCetapsRef.current.delete(territorialId);
       });
       return prev;
     });
-  }, []);
+  }, [territoriales]);
 
   const loadingProgramasRef = useRef<Set<string>>(new Set());
   const loadingAsignaturasProgramasRef = useRef<Set<string>>(new Set());
@@ -5863,7 +5899,10 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 {hasBlockingHourLimits ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : totalHoras >= horasAProgramar ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <Info className="w-4 h-4 shrink-0 mt-0.5" />}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 flex-1">
                   <span className="font-bold">
-                    {hasBlockingHourLimits ? componentLimitViolations[0]?.message : totalHoras >= horasAProgramar ? 'Topes por componente cumplidos. Listo para enviar.' : `PTA Incompleto: Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
+                    {/* Se retira la etiqueta "PTA Incompleto" (EFDS/QA #31): el mensaje
+                        ya indica exactamente cuántas horas faltan, y calificar el plan
+                        como "incompleto" resultaba innecesariamente negativo. */}
+                    {hasBlockingHourLimits ? componentLimitViolations[0]?.message : totalHoras >= horasAProgramar ? 'Topes por componente cumplidos. Listo para enviar.' : `Faltan ${horasAProgramar - totalHoras}h por programar para el 100% (${horasAProgramar}h).`}
                   </span>
                   <span className="text-[11px] opacity-70 mt-0.5 sm:mt-0">{totalHoras}h / {horasAProgramar}h ({formatPtaPercentage(porcentaje)}%)</span>
                 </div>
@@ -6079,32 +6118,70 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 {/* Cruce presencial: bloqueante sin depender de la territorial. */}
                 {docenciaBlockingOverlapWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {docenciaBlockingOverlapWarnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border-2 border-red-400 text-red-800 text-sm font-semibold shadow-sm">
+                    {docenciaBlockingOverlapWarnings.length > 2 ? (
+                      <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border-2 border-red-400 text-red-800 text-sm font-semibold shadow-sm">
                         <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                        <div>
-                          <div className="font-bold text-red-700 mb-0.5">Conflicto de fechas presenciales</div>
-                          <span className="font-normal text-red-700">{w}</span>
-                          <div className="mt-1 text-xs font-medium text-red-500">La asignatura posterior no se suma al total y el PTA no se puede enviar hasta corregir el cruce.</div>
+                        <div className="w-full">
+                          <div className="font-bold text-red-700 mb-1.5">
+                            Conflictos de fechas presenciales ({docenciaBlockingOverlapWarnings.length})
+                          </div>
+                          <ul className="space-y-1.5 list-disc list-inside text-sm font-normal text-red-700 pl-1">
+                            {docenciaBlockingOverlapWarnings.map((w, i) => (
+                              <li key={i} className="leading-relaxed">{w}</li>
+                            ))}
+                          </ul>
+                          <div className="mt-2.5 text-xs font-medium text-red-500">
+                            Las asignaturas posteriores no se suman al total y el PTA no se puede enviar hasta corregir los cruces.
+                          </div>
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      docenciaBlockingOverlapWarnings.map((w, i) => (
+                        <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border-2 border-red-400 text-red-800 text-sm font-semibold shadow-sm">
+                          <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-red-700 mb-0.5">Conflicto de fechas presenciales</div>
+                            <span className="font-normal text-red-700">{w}</span>
+                            <div className="mt-1 text-xs font-medium text-red-500">La asignatura posterior no se suma al total y el PTA no se puede enviar hasta corregir el cruce.</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
                 {/* Virtual/Distancia: aviso visible, pero nunca bloquea ni descuenta horas. */}
                 {docenciaAdvisoryOverlapWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {docenciaAdvisoryOverlapWarnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-sm font-semibold shadow-sm">
+                    {docenciaAdvisoryOverlapWarnings.length > 2 ? (
+                      <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-sm font-semibold shadow-sm">
                         <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                        <div>
-                          <div className="font-bold text-amber-800 mb-0.5">Aviso de cruce Virtual/Distancia</div>
-                          <span className="font-normal text-amber-800">{w}</span>
-                          <div className="mt-1 text-xs font-medium text-amber-700">Este aviso aplica aunque las territoriales sean diferentes. Las horas sí se suman y puede enviar el PTA.</div>
+                        <div className="w-full">
+                          <div className="font-bold text-amber-800 mb-1.5">
+                            Avisos de cruce Virtual/Distancia ({docenciaAdvisoryOverlapWarnings.length})
+                          </div>
+                          <ul className="space-y-1.5 list-disc list-inside text-sm font-normal text-amber-800 pl-1">
+                            {docenciaAdvisoryOverlapWarnings.map((w, i) => (
+                              <li key={i} className="leading-relaxed">{w}</li>
+                            ))}
+                          </ul>
+                          <div className="mt-2.5 text-xs font-medium text-amber-700">
+                            Este aviso aplica aunque las territoriales sean diferentes. Las horas sí se suman y puede enviar el PTA.
+                          </div>
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      docenciaAdvisoryOverlapWarnings.map((w, i) => (
+                        <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-sm font-semibold shadow-sm">
+                          <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold text-amber-800 mb-0.5">Aviso de cruce Virtual/Distancia</div>
+                            <span className="font-normal text-amber-800">{w}</span>
+                            <div className="mt-1 text-xs font-medium text-amber-700">Este aviso aplica aunque las territoriales sean diferentes. Las horas sí se suman y puede enviar el PTA.</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -6124,10 +6201,27 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                         // distinto del que fue devuelto o autorizado a editar.
                         const bloqueadaPorComponente = !canEditDocenciaAsignatura(asig);
                         const rowEditable = isEditable && !bloqueadaPorTerritorial && !bloqueadaPorComponente;
-                        // Datos de CETAP según la territorial de ESTA asignatura
                         const tIdAsig = asig.territorial_id;
                         const cetapsCargadosAsig = tIdAsig in cetapsMap;
-                        const listaCetapsAsig = cetapsMap[tIdAsig] || [];
+                        const rawCetapsAsig = cetapsMap[tIdAsig] || [];
+                        const listaCetapsAsig = (() => {
+                          if (!Array.isArray(rawCetapsAsig) || rawCetapsAsig.length === 0) return [];
+                          const terrObj = territoriales.find(t => String(t.id) === String(tIdAsig));
+                          const terrNombre = String(terrObj?.nombre || terrObj?.nom_seccional || tIdAsig || '')
+                            .toLowerCase()
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .trim();
+                          const isSedeCentralTerr = terrNombre === 'sede central' || terrNombre.includes('sede central') || String(terrObj?.codigo || '').toUpperCase() === 'SC' || tIdAsig === '1' || tIdAsig === 'sede-central';
+                          if (isSedeCentralTerr) {
+                            const scOnly = rawCetapsAsig.filter((c: any) => {
+                              const n = String(c?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+                              return n === 'sede central' || (n.includes('sede central') && !n.includes('otro') && !n.includes('principal'));
+                            });
+                            return scOnly.length > 0 ? scOnly : rawCetapsAsig.filter((c: any) => !String(c?.nombre || '').toUpperCase().includes('OTRO'));
+                          }
+                          return rawCetapsAsig;
+                        })();
                         const hasCetapsAsig = listaCetapsAsig.length > 0;
                         const programaHabilitado = hasCetapsAsig ? !!asig.cetap_id : !!tIdAsig;
                         const territorialNombre = territoriales.find(t => t.id === asig.territorial_id)?.nombre
@@ -6446,12 +6540,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                 {invWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {invWarnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                    {invWarnings.length > 2 ? (
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
                         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                        <span>{w}</span>
+                        <div className="w-full">
+                          <div className="font-bold text-amber-800 mb-1">
+                            Advertencias de Investigación ({invWarnings.length})
+                          </div>
+                          <ul className="space-y-1 list-disc list-inside text-amber-800 pl-1">
+                            {invWarnings.map((w, i) => (
+                              <li key={i} className="leading-relaxed">{w}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
-                    ))}
+                    ) : (
+                      invWarnings.map((w, i) => (
+                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <span>{w}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -7096,12 +7206,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                 {extWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {extWarnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                    {extWarnings.length > 2 ? (
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
                         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                        <span>{w}</span>
+                        <div className="w-full">
+                          <div className="font-bold text-amber-800 mb-1">
+                            Advertencias de Extensión ({extWarnings.length})
+                          </div>
+                          <ul className="space-y-1 list-disc list-inside text-amber-800 pl-1">
+                            {extWarnings.map((w, i) => (
+                              <li key={i} className="leading-relaxed">{w}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
-                    ))}
+                    ) : (
+                      extWarnings.map((w, i) => (
+                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <span>{w}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -7446,12 +7572,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                 {compWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {compWarnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                    {compWarnings.length > 2 ? (
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
                         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                        <span>{w}</span>
+                        <div className="w-full">
+                          <div className="font-bold text-amber-800 mb-1">
+                            Advertencias de Actividades Complementarias ({compWarnings.length})
+                          </div>
+                          <ul className="space-y-1 list-disc list-inside text-amber-800 pl-1">
+                            {compWarnings.map((w, i) => (
+                              <li key={i} className="leading-relaxed">{w}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
-                    ))}
+                    ) : (
+                      compWarnings.map((w, i) => (
+                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <span>{w}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -7663,12 +7805,28 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
                 {acadWarnings.length > 0 && (
                   <div className="mx-4 md:mx-6 mt-3 space-y-2">
-                    {acadWarnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                    {acadWarnings.length > 2 ? (
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
                         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                        <span>{w}</span>
+                        <div className="w-full">
+                          <div className="font-bold text-amber-800 mb-1">
+                            Advertencias de Actividades Académico-Administrativas ({acadWarnings.length})
+                          </div>
+                          <ul className="space-y-1 list-disc list-inside text-amber-800 pl-1">
+                            {acadWarnings.map((w, i) => (
+                              <li key={i} className="leading-relaxed">{w}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
-                    ))}
+                    ) : (
+                      acadWarnings.map((w, i) => (
+                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <span>{w}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 

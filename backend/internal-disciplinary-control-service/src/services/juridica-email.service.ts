@@ -96,7 +96,7 @@ export class JuridicaEmailService {
         </div>
         <div class="footer">
           <p>Este correo fue generado autom&aacute;ticamente por el m&oacute;dulo de Control Disciplinario del SIGL - ESAP.</p>
-          <p>Fecha de env&iacute;o: ${new Date().toLocaleString('es-CO')}</p>
+          <p>Fecha de env&iacute;o: ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}</p>
         </div>
       </body>
       </html>
@@ -176,7 +176,7 @@ export class JuridicaEmailService {
         </div>
         <div class="footer">
           <p>Este correo fue generado autom&aacute;ticamente por el m&oacute;dulo de Control Disciplinario del SIGL - ESAP.</p>
-          <p>Fecha: ${new Date().toLocaleString('es-CO')}</p>
+          <p>Fecha: ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}</p>
         </div>
       </body>
       </html>

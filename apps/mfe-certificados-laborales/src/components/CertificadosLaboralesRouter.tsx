@@ -9,7 +9,8 @@ import {
   Bell, 
   Code,
   ChevronLeft,
-  Settings
+  Settings,
+  ClipboardCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -21,7 +22,7 @@ import { GeneradorReportes } from './GeneradorReportes';
 import { NotificacionesValidacion } from './NotificacionesValidacion';
 import { APIDocumentacion } from './APIDocumentacion';
 import { ConfiguracionPlantilla } from './ConfiguracionPlantilla';
-import { Button } from '@esap-mfe/shared-ui/button';
+import { CertificateCorrectionRequests } from './CertificateCorrectionRequests';
 
 type Vista = 
   | 'dashboard' 
@@ -31,7 +32,8 @@ type Vista =
   | 'reportes' 
   | 'notificaciones' 
   | 'api-docs'
-  | 'configuracion-plantilla';
+  | 'configuracion-plantilla'
+  | 'solicitudes-correccion';
 
 interface MenuOption {
   id: Vista;
@@ -60,6 +62,24 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
   const canExportReport = useMemo(() => hasCertPerm('export.report'), [hasCertPerm]);
   const canDeliver = useMemo(() => hasCertPerm('certificate.deliver'), [hasCertPerm]);
   const canVerify = useMemo(() => hasCertPerm('certificate.verify'), [hasCertPerm]);
+  const canManageCorrections = useMemo(() => {
+    const normalizedRoles = userRoles.map((role) => String(role || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, ''));
+    return hasCertPerm('correction.manage') || normalizedRoles.some((role) => [
+      'COORDINADOR_CERT_LABORAL',
+      'COORDINADOR_CERTIFICADOS_LABORALES',
+      'ADMIN_CERTIFICADOS_LABORALES',
+      'ADMIN_CERT_LABORAL',
+      'SUPER_ADMIN',
+      'SUPERADMIN',
+      'ADMIN',
+      'ADMINISTRADOR',
+    ].includes(role));
+  }, [hasCertPerm, userRoles]);
 
   const handleNavigate = (vista: Vista) => {
     setVistaActual(vista);
@@ -133,6 +153,13 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
       icon: <Settings className="w-5 h-5" />,
       description: 'Configuración de la plantilla de certificados',
       color: '#FF9900'
+    },
+    {
+      id: 'solicitudes-correccion',
+      label: 'Solicitudes de corrección',
+      icon: <ClipboardCheck className="w-5 h-5" />,
+      description: 'Revisión y respuesta de correcciones',
+      color: '#F59E0B'
     }
   ];
 
@@ -140,16 +167,25 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
   if (vistaActual !== 'dashboard') {
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Botón Volver - Mobile optimized */}
-        <div className="bg-white border-b px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
-          <Button
-            variant="ghost"
+        {/* Navegación de regreso - Mobile optimized */}
+        <div className="certificate-subview-navigation sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-6 sm:py-4">
+          <motion.button
+            type="button"
             onClick={() => setVistaActual('dashboard')}
-            className="hover:bg-gray-100 min-h-[44px]"
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 430, damping: 25 }}
+            className="certificate-dashboard-back"
+            aria-label="Volver al dashboard de certificados laborales"
           >
-            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-            <span className="text-sm sm:text-base">Volver al Dashboard</span>
-          </Button>
+            <span className="certificate-dashboard-back__icon" aria-hidden="true">
+              <ChevronLeft className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="certificate-dashboard-back__label">Volver al dashboard</span>
+              <span className="certificate-dashboard-back__subtitle">Certificados laborales</span>
+            </span>
+          </motion.button>
         </div>
 
         {/* Contenido de la vista */}
@@ -171,8 +207,11 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
             {vistaActual === 'configuracion-plantilla' && (
               <ConfiguracionPlantilla 
                 canEdit={canManageTemplate}
-                currentUserEmail={userEmail}
+                currentUserEmail={userEmail || ''}
               />
+            )}
+            {vistaActual === 'solicitudes-correccion' && canManageCorrections && (
+              <CertificateCorrectionRequests />
             )}
           </motion.div>
         </AnimatePresence>
@@ -185,12 +224,13 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
     <>
     <Toaster position="bottom-right" richColors />
     <CertificadosLaboralesDashboard
-      onNavigate={handleNavigate}
+      onNavigate={(vista) => handleNavigate(vista as Vista)}
       canManageTemplates={canManageTemplate}
       canEditPrima={canEditPrima}
       canExportReport={canExportReport}
       canDeliver={canDeliver}
       canVerify={canVerify}
+      canManageCorrections={canManageCorrections}
     />
     </>
   );

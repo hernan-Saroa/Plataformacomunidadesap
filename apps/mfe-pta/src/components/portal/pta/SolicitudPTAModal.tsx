@@ -18,14 +18,14 @@ interface SolicitudPTAModalProps {
   onSuccess: () => void;
 }
 
-const CASOS = [
+export const CASOS = [
   { key: 'edicion_pta', label: 'Editar componentes de un PTA existente', desc: 'Habilita uno o varios componentes sin crear un nuevo PTA.', icon: Edit3, color: '#003DA5' },
   { key: 'caso_1', label: 'Necesito crear un PTA en otra territorial/CETAP', desc: 'Tengo asignación en una segunda territorial y necesito un PTA separado.', icon: MapPin, color: '#003DA5' },
   { key: 'caso_2', label: 'Necesito rehacer mi PTA actual', desc: 'Mi PTA actual tiene errores graves y necesito empezar de cero.', icon: RotateCcw, color: '#D97706' },
   { key: 'caso_3', label: 'Otro caso', desc: 'Tengo un motivo diferente que requiere aprobación del administrador.', icon: HelpCircle, color: '#6B21A8' },
 ] as const;
 
-const COMPONENTES_EDICION = [
+export const COMPONENTES_EDICION = [
   { key: 'docencia', label: 'Docencia', icon: BookOpen, color: '#003DA5' },
   { key: 'investigacion', label: 'Investigación', icon: FlaskConical, color: '#7C3AED' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669' },
@@ -36,7 +36,7 @@ const MAX_ARCHIVOS_SOLICITUD = 5;
 const MAX_PESO_ARCHIVO = 10 * 1024 * 1024;
 const MAX_CARACTERES_DESCRIPCION = 3000;
 
-function normalizeEstado(value: unknown) {
+export function normalizeEstado(value: unknown) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -56,7 +56,7 @@ function normalizeEstado(value: unknown) {
 // valida el endpoint, de modo que UI y servicio no pueden desincronizarse.
 // El espejo de estados de abajo solo actúa como respaldo para payloads que
 // todavía no traigan el flag.
-const ESTADOS_PTA_APROBADO_TOTAL = new Set([
+export const ESTADOS_PTA_APROBADO_TOTAL = new Set([
   'APROBADO',
   'APROBADO_DEF',
   'EN_FIRME',
@@ -66,13 +66,59 @@ const ESTADOS_PTA_APROBADO_TOTAL = new Set([
   'TERMINADO',
 ]);
 
-function admiteSolicitudEdicion(pta: any) {
+export function admiteSolicitudEdicion(pta: any) {
   if (!pta?.id) return false;
   if (typeof pta.admite_solicitud_edicion === 'boolean') return pta.admite_solicitud_edicion;
   return ESTADOS_PTA_APROBADO_TOTAL.has(normalizeEstado(pta?.estado));
 }
 
+export interface MotivoSolicitudState {
+  disabled: boolean;
+  desc: string;
+}
+
+export function obtenerEstadoMotivo(
+  cKey: string,
+  hasPtaCreado: boolean,
+  ptasEditablesCount: number,
+  casosList: readonly { key: string; label: string; desc: string; [k: string]: any }[] = CASOS,
+): MotivoSolicitudState {
+  if (!hasPtaCreado) {
+    let desc = 'Debes registrar tu Plan de Trabajo Académico antes de solicitar esta opción.';
+    if (cKey === 'edicion_pta') {
+      desc = 'Disponible únicamente cuando tengas un PTA registrado y aprobado en su totalidad.';
+    } else if (cKey === 'caso_1') {
+      desc = 'Disponible únicamente tras haber creado tu primer PTA.';
+    } else if (cKey === 'caso_2') {
+      desc = 'Disponible únicamente si ya cuentas con un PTA registrado.';
+    } else if (cKey === 'caso_3') {
+      desc = 'Disponible únicamente tras haber creado tu PTA.';
+    }
+    return {
+      disabled: true,
+      desc,
+    };
+  }
+
+  if (cKey === 'edicion_pta' && ptasEditablesCount === 0) {
+    return {
+      disabled: true,
+      desc: 'Disponible solo cuando tu PTA esté aprobado en su totalidad. Mientras esté en creación o en proceso de aprobación, corrige directamente en el formulario.',
+    };
+  }
+
+  const matched = casosList.find(c => c.key === cKey);
+  return {
+    disabled: false,
+    desc: matched?.desc || '',
+  };
+}
+
 export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas = [], onClose, onSuccess }: SolicitudPTAModalProps) {
+  const hasPtaCreado = useMemo(
+    () => ptas.some(pta => Boolean(pta?.id)),
+    [ptas],
+  );
   const ptasEditables = useMemo(
     () => ptas
       .filter(admiteSolicitudEdicion)
@@ -93,6 +139,8 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
   const [submitted, setSubmitted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const getMotivoState = (cKey: string) => obtenerEstadoMotivo(cKey, hasPtaCreado, ptasEditables.length);
+
   const wordCount = justificacion.trim().split(/\s+/).filter(Boolean).length;
   const caracteresRestantes = MAX_CARACTERES_DESCRIPCION - justificacion.length;
   const casoInfo = CASOS.find(c => c.key === caso);
@@ -100,13 +148,18 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
   const descripcionValida = justificacion.length <= MAX_CARACTERES_DESCRIPCION
     && (esEdicion ? justificacion.trim().length > 0 : wordCount >= 50);
   const formularioValido = Boolean(
-    caso
+    hasPtaCreado
+    && caso
     && descripcionValida
     && (caso !== 'caso_3' || casoLibre.trim())
     && (!esEdicion || (ptaId && componentes.length > 0)),
   );
 
   const handleAddFiles = (files: FileList) => {
+    if (!hasPtaCreado) {
+      toast.error('Debes crear un PTA antes de adjuntar documentos.');
+      return;
+    }
     const seleccionados = Array.from(files);
     const cuposDisponibles = Math.max(0, MAX_ARCHIVOS_SOLICITUD - archivos.length);
 
@@ -216,6 +269,17 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
           </div>
         ) : (
           <div style={{ padding: 'clamp(16px, 4vw, 20px) clamp(14px, 5vw, 24px)' }}>
+            {/* Aviso informativo cuando el PTA no ha sido creado */}
+            {!hasPtaCreado && (
+              <div style={{ padding: '12px 14px', borderRadius: 12, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', gap: 10, marginBottom: 18, alignItems: 'flex-start' }}>
+                <AlertTriangle style={{ width: 18, height: 18, color: '#2563EB', flexShrink: 0, marginTop: 1 }} />
+                <div style={{ fontSize: '0.75rem', color: '#1E40AF', lineHeight: 1.45 }}>
+                  <strong style={{ display: 'block', marginBottom: 2 }}>PTA no creado</strong>
+                  Aún no tienes un Plan de Trabajo Académico registrado en este periodo. Todos los motivos de solicitud y la carga de documentos de soporte permanecen deshabilitados hasta que crees tu PTA.
+                </div>
+              </div>
+            )}
+
             {/* Paso 1: Seleccionar caso */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#374151', display: 'block', marginBottom: 8 }}>Motivo de la solicitud *</label>
@@ -223,32 +287,32 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
                 {CASOS.map(c => {
                   const Icon = c.icon;
                   const selected = caso === c.key;
-                  const disabled = c.key === 'edicion_pta' && ptasEditables.length === 0;
+                  const { disabled, desc } = getMotivoState(c.key);
                   return (
                     <button
                       key={c.key}
                       type="button"
                       disabled={disabled}
                       onClick={() => {
+                        if (disabled) return;
                         setCaso(c.key);
                         if (c.key !== 'edicion_pta') setComponentes([]);
                       }}
                       style={{
                         display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px',
                         borderRadius: 12, border: `2px solid ${selected ? c.color : '#E5E7EB'}`,
-                        background: selected ? `${c.color}08` : 'white', cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left',
+                        background: selected ? `${c.color}08` : disabled ? '#F9FAFB' : 'white',
+                        cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left',
                         transition: 'all 0.15s', opacity: disabled ? 0.55 : 1,
                       }}
                     >
-                      <div style={{ width: 36, height: 36, borderRadius: 10, background: `${c.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Icon style={{ width: 18, height: 18, color: c.color }} />
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: disabled ? '#E5E7EB' : `${c.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Icon style={{ width: 18, height: 18, color: disabled ? '#9CA3AF' : c.color }} />
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#111827' }}>{c.label}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2 }}>
-                          {disabled
-                            ? 'Disponible solo cuando tu PTA esté aprobado en su totalidad. Mientras esté en creación o en proceso de aprobación, corrige directamente en el formulario.'
-                            : c.desc}
+                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: disabled ? '#6B7280' : '#111827' }}>{c.label}</div>
+                        <div style={{ fontSize: '0.72rem', color: disabled ? '#9CA3AF' : '#6B7280', marginTop: 2, lineHeight: 1.35 }}>
+                          {desc}
                         </div>
                       </div>
                     </button>
@@ -310,9 +374,14 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>Describe tu caso *</label>
                 <input
                   value={casoLibre}
+                  disabled={!hasPtaCreado}
                   onChange={e => setCasoLibre(e.target.value)}
                   placeholder="Ej: Necesito un PTA temporal para un programa especial..."
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box' }}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: 8,
+                    border: '1px solid #D1D5DB', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box',
+                    background: !hasPtaCreado ? '#F9FAFB' : 'white', cursor: !hasPtaCreado ? 'not-allowed' : 'text',
+                  }}
                 />
               </div>
             )}
@@ -330,13 +399,22 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
               </label>
               <textarea
                 value={justificacion}
+                disabled={!hasPtaCreado}
                 onChange={e => setJustificacion(e.target.value.slice(0, MAX_CARACTERES_DESCRIPCION))}
                 maxLength={MAX_CARACTERES_DESCRIPCION}
                 rows={5}
-                placeholder={esEdicion
+                placeholder={!hasPtaCreado
+                  ? 'Debes crear tu Plan de Trabajo Académico antes de registrar una justificación...'
+                  : esEdicion
                   ? 'Explica qué necesitas modificar en los componentes seleccionados y el motivo del cambio...'
                   : 'Explique detalladamente por qué necesita crear un nuevo PTA. Incluya contexto, razones académicas y cualquier información relevante para el administrador (mínimo 50 palabras)...'}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: `1px solid ${descripcionValida ? '#6EE7B7' : '#D1D5DB'}`, fontSize: '0.82rem', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box' }}
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 8,
+                  border: `1px solid ${!hasPtaCreado ? '#E5E7EB' : descripcionValida ? '#6EE7B7' : '#D1D5DB'}`,
+                  background: !hasPtaCreado ? '#F9FAFB' : 'white',
+                  cursor: !hasPtaCreado ? 'not-allowed' : 'text',
+                  fontSize: '0.82rem', outline: 'none', resize: 'vertical', lineHeight: 1.5, boxSizing: 'border-box',
+                }}
               />
               {!esEdicion && (
                 <p style={{ margin: '5px 1px 0', color: wordCount >= 50 ? '#059669' : '#64748B', fontSize: '0.68rem', fontWeight: 600 }}>
@@ -347,8 +425,13 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
 
             {/* Archivos */}
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
-                Documentos de soporte opcionales (máximo 5 PDF · 10 MB cada uno)
+              <label style={{ fontSize: '0.72rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span>Documentos de soporte opcionales (máximo 5 PDF · 10 MB cada uno)</span>
+                {!hasPtaCreado && (
+                  <span style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 500 }}>
+                    (Deshabilitado hasta crear PTA)
+                  </span>
+                )}
               </label>
               {archivos.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
@@ -367,13 +450,36 @@ export function SolicitudPTAModal({ docenteId, docenteNombre, docenteEmail, ptas
               {archivos.length < MAX_ARCHIVOS_SOLICITUD && (
                 <button
                   type="button"
-                  onClick={() => fileRef.current?.click()}
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, border: '2px dashed #D1D5DB', background: '#FAFAFA', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '0.78rem', color: '#6B7280', fontWeight: 600 }}
+                  disabled={!hasPtaCreado}
+                  onClick={() => {
+                    if (!hasPtaCreado) return;
+                    fileRef.current?.click();
+                  }}
+                  style={{
+                    width: '100%', padding: '10px', borderRadius: 8,
+                    border: `2px dashed ${!hasPtaCreado ? '#E5E7EB' : '#D1D5DB'}`,
+                    background: !hasPtaCreado ? '#F9FAFB' : '#FAFAFA',
+                    cursor: !hasPtaCreado ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    fontSize: '0.78rem', color: !hasPtaCreado ? '#9CA3AF' : '#6B7280',
+                    fontWeight: 600, opacity: !hasPtaCreado ? 0.6 : 1,
+                  }}
                 >
                   <Upload style={{ width: 14, height: 14 }} /> Adjuntar PDF
                 </button>
               )}
-              <input ref={fileRef} type="file" accept=".pdf" multiple style={{ display: 'none' }} onChange={e => { if (e.target.files) handleAddFiles(e.target.files); e.target.value = ''; }} />
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf"
+                multiple
+                disabled={!hasPtaCreado}
+                style={{ display: 'none' }}
+                onChange={e => {
+                  if (e.target.files) handleAddFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
             </div>
 
             {/* Warning */}

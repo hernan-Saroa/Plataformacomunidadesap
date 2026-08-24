@@ -10,8 +10,7 @@
  * el layout crítico va con estilos inline y la impresión se aísla con el
  * bloque @media print del render.
  */
-import React from 'react';
-import { Printer, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
+import { Printer, Download, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
@@ -50,7 +49,23 @@ const SUBCOMP_LABELS: Record<string, string> = {
   complementarias: 'Complementarias',
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
+  complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
 };
+
+/**
+ * Nombre a mostrar como responsable de la aprobación.
+ *
+ * El backend auto-aprueba con aprobadorNombre='Sistema' los componentes que no
+ * tienen actividades, para no bloquear el flujo. Mostrar "Sistema" en el detalle
+ * hacía parecer que alguien lo avaló; para el lector no está aprobado por nadie,
+ * así que se rotula como pendiente.
+ */
+const NOMBRE_APROBADOR_AUTOMATICO = 'Sistema';
+function nombreAprobadorVisible(nombre?: string | null): string | null {
+  if (!nombre) return null;
+  return nombre === NOMBRE_APROBADOR_AUTOMATICO ? 'Pendiente' : nombre;
+}
 const coarseKeyDe = (key: string): string => {
   if (key.startsWith('academica')) return 'academica';
   if (key.startsWith('ext_')) return 'extension';
@@ -239,7 +254,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
       return {
         key,
         label: SUBCOMP_LABELS[key] || key,
-        aprobador: r.aprobador_nombre || r.aprobadorNombre || null,
+        aprobador: nombreAprobadorVisible(r.aprobador_nombre || r.aprobadorNombre),
         fecha: fmtFechaHora(fecha ? String(fecha) : null),
         fechaOrden: fecha ? String(fecha) : '',
       };
@@ -297,7 +312,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
                 onClick={handlePrint}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: '#fff', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
               >
-                <Printer size={14} /> Imprimir / PDF
+                <Download size={14} /> Descargar PDF
               </button>
               <button
                 onClick={onClose}
@@ -335,7 +350,10 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componen
             <div style={{ marginBottom: 24 }}>
               <TituloSeccion num={numDe('info')} titulo="Información del Docente" color="#003DA5" />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px 16px', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px' }}>
-                <Dato label="Nombre" value={userName || pta?.docente_nombre} />
+                {/* Mismas variantes de nombre que ReportePTAInstitucional: según el
+                    origen del DTO el campo llega como docente_nombre, nombre_docente
+                    o anidado en `docente`, y con una sola alternativa quedaba vacío. */}
+                <Dato label="Nombre" value={userName || pta?.docente_nombre || pta?.nombre_docente || pta?.docenteNombre || pta?.docente?.nombre_completo || pta?.docente?.nombre} />
                 <Dato label="Identificación (ID)" value={userPersonId} />
                 <Dato label="Dedicación" value={pta?.dedicacion} />
                 <Dato label="Tipo de Vinculación" value={pta?.tipo_vinculacion} />

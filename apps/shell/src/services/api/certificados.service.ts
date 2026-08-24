@@ -20,7 +20,37 @@ import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environ
 // Nueva estructura: /{service}/api/v{version}/{path}
 const SERVICE_PREFIX = '/certificados/api/v1';
 
+export type SolicitudCorreccionCreada = {
+  id: string;
+  request_number: string;
+  status: 'PENDING';
+  due_date: string;
+  message: string;
+  business_days: number;
+};
+
 export const certificadosService = {
+  correcciones: {
+    async crearSolicitud(
+      certificateId: string,
+      verificationCode: string,
+      description: string,
+      files: File[],
+      onProgress?: (progress: number) => void,
+    ): Promise<SolicitudCorreccionCreada> {
+      const formData = new FormData();
+      formData.append('certificateId', certificateId);
+      formData.append('verificationCode', verificationCode);
+      formData.append('description', description);
+      files.forEach((file) => formData.append('files', file));
+      return apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/public/correction-requests`,
+        formData,
+        onProgress,
+      );
+    },
+  },
+
   /**
    * CERTIFICADOS DE GRADUADOS
    */

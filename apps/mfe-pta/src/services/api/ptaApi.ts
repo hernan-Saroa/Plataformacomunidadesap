@@ -579,6 +579,7 @@ export async function aprobarComponente(ptaId: string, data: {
       success: false,
       data: null,
       message: (error as any)?.message || 'Error al actualizar el estado del componente',
+      code: (error as any)?.code || (error as any)?.response?.data?.code || null,
     };
   }
 }

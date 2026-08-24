@@ -52,6 +52,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import { PTA_COMPLEMENTARIAS_COMPONENT_KEYS } from '../../pta/shared/ptaComponentPermissions';
 import { formatPtaCompletionPercentage, formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PortalDocentePTAProps {
@@ -320,20 +321,49 @@ function ResolucionChip({ nombre, url }: { nombre?: string; url?: string }) {
 // V08: Component-based approval tracker (Docencia, Inv, Ext, Comp, AADM)
 // ═══════════════════════════════════════════════════════════════════════
 const COMPONENT_STEPS = [
-  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
+  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4', compKeys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'] },
   { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
   // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
-  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
+  // Lista compartida (no una copia literal): con los ámbitos Territorial y
+  // Gestión Profesoral añadidos en EFDS-1353, una copia local queda corta y el
+  // componente se muestra como si no aplicara aunque tenga actividades.
+  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000', compKeys: [...PTA_COMPLEMENTARIAS_COMPONENT_KEYS] },
 ];
 
-function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
+function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { estado: string; componentesAprobacion?: any[]; pta?: any }) {
   const isAprobado = estado === 'Aprobado' || estado === 'En Firme' || estado === 'Finalizado';
   const isBorrador = estado === 'Borrador';
 
-  const getStatusForComponent = (compKeys: string[]) => {
+  /**
+   * Fuente de verdad: `componentes_estado` del backend (claves colapsadas
+   * 'academica' / 'investigacion' / 'extension' / 'complementarias'), el mismo
+   * dato que usa el detalle del PTA y el backoffice.
+   *
+   * Antes esta barra agregaba por su cuenta las filas granulares y exigia que
+   * TODAS estuvieran 'aprobado'. Eso ignoraba la regla del backend de que un
+   * sub-componente SIN HORAS no bloquea (estaAprobado): un PTA con Docencia solo
+   * en Sede Central conserva una fila 'academica_territorial' en pendiente, asi
+   * que la barra mostraba "Pendiente" mientras el detalle y el backoffice --que
+   * si aplican esa regla-- mostraban "Aprobado".
+   *
+   * La agregacion granular se conserva como respaldo para payloads sin
+   * `componentes_estado`.
+   */
+  const getStatusForComponent = (compKeys: string[], collapsedKey: string) => {
     if (isAprobado) return 'aprobado';
     if (isBorrador) return 'pendiente';
+
+    const delBackend = Array.isArray(pta?.componentes_estado)
+      ? pta.componentes_estado.find((c: any) => c?.key === collapsedKey)?.estado
+      : undefined;
+    if (delBackend) {
+      if (delBackend === 'aprobado') return 'aprobado';
+      if (delBackend === 'devuelto') return 'devuelto';
+      // 'pendiente', 'en_revision' y 'no_iniciado' se muestran como pendientes.
+      return 'pendiente';
+    }
+
     const approvals = componentesAprobacion.filter(c => compKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
@@ -352,7 +382,7 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
         {COMPONENT_STEPS.map(step => {
           const Icon = step.icon;
           const keys = (step as any).compKeys || [step.key];
-          const status = getStatusForComponent(keys);
+          const status = getStatusForComponent(keys, step.key);
 
           let bg = '#FFFBEB';
           let borderColor = '#FEF3C7';
@@ -1102,6 +1132,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                             <ComponentApprovalBar
                               estado={pta.estado}
                               componentesAprobacion={componentApprovalsByPta[pta.id] || []}
+                              pta={pta}
                             />
                           </div>
 
@@ -1192,8 +1223,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                         <Eye className="w-3 h-3" /> <span className="hidden sm:inline">Revisar</span> propuesta
                       </button>
                     )}
-                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[0.72rem] font-semibold cursor-pointer hover:bg-gray-50 hover:shadow-sm active:scale-[0.97] transition-all">
-                      <Printer className="w-3 h-3" /> <span className="hidden xs:inline">Imprimir</span>
+                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} title="Descargar PDF" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[0.72rem] font-semibold cursor-pointer hover:bg-gray-50 hover:shadow-sm active:scale-[0.97] transition-all">
+                      <Download className="w-3 h-3" /> <span className="hidden xs:inline">Descargar PDF</span>
                     </button>
                     <button onClick={() => setIsReporteOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-blue-100 bg-blue-50/80 text-[#1E3A8A] text-[0.72rem] font-bold cursor-pointer hover:bg-blue-100 active:scale-[0.97] transition-all">
                       <FileText className="w-3 h-3" /> <span className="hidden sm:inline">Reporte</span>

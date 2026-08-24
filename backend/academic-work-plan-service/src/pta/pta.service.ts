@@ -2778,8 +2778,14 @@ export class PtaService {
 
       const programaResumen = coalesceString(dto.programa_academico, dto.programa, dto.programa_nombre)
         || this.compactNameList(programaNames);
-      const territorialResumen = coalesceString(dto.territorial, dto.territorial_nombre)
-        || this.compactNameList(territorialNames);
+      // La territorial del DOCENTE es la de su vinculación, no la de las
+      // asignaturas que dicta. Antes, si el PTA no traía la suya, se rellenaba
+      // con la lista de territoriales de las asignaturas ("Risaralda +2"), y la
+      // ficha del docente terminaba mostrando una territorial que no le
+      // corresponde. Si no se conoce, se deja vacía: las territoriales de las
+      // asignaturas ya viajan aparte en `territorialesAsignaturas`, que es donde
+      // la UI debe leerlas.
+      const territorialResumen = coalesceString(dto.territorial, dto.territorial_nombre);
       const cetapResumen = coalesceString(dto.cetap, dto.cetap_nombre, dto.sede)
         || this.compactNameList(cetapNames);
 
@@ -6546,7 +6552,25 @@ export class PtaService {
       `;
     }
 
-    return await this.ptaRepo.manager.query(queryStr, params);
+    const results = await this.ptaRepo.manager.query(queryStr, params);
+    if (Array.isArray(results)) {
+      return results.map((sec: any) => {
+        if (Array.isArray(sec.sedes)) {
+          const hasSC = sec.sedes.some((s: any) => {
+            const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            return n === 'sede central';
+          });
+          if (hasSC) {
+            sec.sedes = sec.sedes.filter((s: any) => {
+              const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+              return n !== 'otro' && n !== 'cetap sede principal';
+            });
+          }
+        }
+        return sec;
+      });
+    }
+    return results;
   }
 
   async getCatalogoCetaps(query?: any) {
@@ -6609,7 +6633,20 @@ export class PtaService {
       `;
     }
 
-    return await this.ptaRepo.manager.query(queryStr, params);
+    const results = await this.ptaRepo.manager.query(queryStr, params);
+    if (Array.isArray(results)) {
+      const hasSC = results.some((s: any) => {
+        const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        return n === 'sede central';
+      });
+      if (hasSC) {
+        return results.filter((s: any) => {
+          const n = String(s?.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+          return n !== 'otro' && n !== 'cetap sede principal';
+        });
+      }
+    }
+    return results;
   }
 
   /**
@@ -8277,7 +8314,7 @@ export class PtaService {
     const { pares, propios } = alcance;
     const keyOf = (territorialId: string, nivel: string) => `${territorialId}::${nivel}`;
 
-    const rows = await this.ensureTerritorialApprovalRows(ptaId, pares);
+    const rows = await this.ensureTerritorialApprovalRows(ptaId, pares, componente);
     const rowByKey = new Map(rows.map((r) => [keyOf(r.territorialId, r.nivel), r]));
 
     const requestedTerritorialId = coalesceString(body?.territorialId, body?.territorial_id);
@@ -8349,7 +8386,14 @@ export class PtaService {
             : `${nombresEnEseEstado.join(', ')} ya fue(ron) devuelta(s)`,
         );
       }
-      throw new BadRequestException(`${partes.join('; ')}. No se puede volver a ${estado === 'aprobado' ? 'aprobar' : 'devolver'}.`);
+      // `code` es un extra sobre el `message` de siempre (no lo reemplaza): permite
+      // que el frontend detecte este caso puntual ("ya no le queda nada propio por
+      // decidir en este componente mixto") sin tener que hacer matching de texto en
+      // español sobre el mensaje, que es frágil ante cambios de copy o de idioma.
+      throw new BadRequestException({
+        message: `${partes.join('; ')}. No se puede volver a ${estado === 'aprobado' ? 'aprobar' : 'devolver'}.`,
+        code: 'PTA_TERRITORIAL_SIN_PENDIENTES_PROPIOS',
+      });
     }
     if (yaResueltos.length > 0) {
       targets = targets.filter((t) => !yaResueltos.some((y) => y.territorialId === t.territorialId && y.nivel === t.nivel));
@@ -8359,7 +8403,7 @@ export class PtaService {
       const key = keyOf(territorialId, nivel);
       let row = rowByKey.get(key);
       if (!row) {
-        row = this.ptaTerritorialApprovalRepo.create({ ptaId, territorialId, nivel, estado: 'pendiente' });
+        row = this.ptaTerritorialApprovalRepo.create({ ptaId, componente, territorialId, nivel, estado: 'pendiente' });
       }
       row.estado = estado;
       row.actorId = actorId;
@@ -8450,7 +8494,7 @@ export class PtaService {
     const { pares, propios } = alcance;
     const keyOf = (territorialId: string, nivel: string) => `${territorialId}::${nivel}`;
 
-    const rows = await this.ensureTerritorialReviewRows(ptaId, pares);
+    const rows = await this.ensureTerritorialReviewRows(ptaId, pares, componente);
     const rowByKey = new Map(rows.map((r) => [keyOf(r.territorialId, r.nivel), r]));
 
     const requestedTerritorialId = coalesceString(body?.territorialId, body?.territorial_id);
@@ -8491,7 +8535,7 @@ export class PtaService {
       const key = keyOf(territorialId, nivel);
       let row = rowByKey.get(key);
       if (!row) {
-        row = this.ptaTerritorialReviewRepo.create({ ptaId, territorialId, nivel, estado: 'pendiente' });
+        row = this.ptaTerritorialReviewRepo.create({ ptaId, componente, territorialId, nivel, estado: 'pendiente' });
       }
       row.estado = 'revisado';
       row.revisorId = revisorId;

@@ -184,7 +184,7 @@ export class GatewayService {
         ? { authorization: `Bearer ${cookieToken}` }
         : {};
 
-    const forwardHeaders = {
+    const forwardHeaders: Record<string, any> = {
       ...req.headers,
       ...userHeaders,
       ...authHeaderFromCookie,
@@ -192,6 +192,16 @@ export class GatewayService {
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),
     };
+
+    // Express ya transformó los cuerpos JSON en un objeto. Axios los serializa
+    // nuevamente y debe calcular su propia longitud: reenviar la longitud del
+    // request original puede dejar al microservicio esperando bytes que nunca
+    // llegarán. En multipart conservamos los headers originales porque el cuerpo
+    // se transmite como stream y el boundary forma parte del Content-Type.
+    if (!isMultipart) {
+      delete forwardHeaders['content-length'];
+      delete forwardHeaders['transfer-encoding'];
+    }
 
     try {
       // Detectar si se espera un archivo binario basándose en el Accept header
@@ -213,7 +223,7 @@ export class GatewayService {
           method: req.method,
           url: targetUrl,
           data: isMultipart ? req : req.body,
-          headers: isMultipart ? forwardHeaders : forwardHeaders,
+          headers: forwardHeaders,
           ...(isMultipart
             ? {
               maxContentLength: Infinity,

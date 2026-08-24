@@ -4,7 +4,7 @@ import {
   X, User, Mail, Phone, Building2, Shield, Calendar, Clock, MapPin, Globe, 
   Edit2, Save, Eye, Key, Activity, TrendingUp, Award, Zap, LogOut,
   Settings, Bell, Lock, Sparkles, CheckCircle2, BarChart3, Users,
-  Camera, Upload, Link as LinkIcon, MessageSquare, Hash
+  Camera, Upload, Link as LinkIcon, Hash
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
@@ -30,7 +30,7 @@ export function ProfileModal({
   onClose, 
   userName, 
   userEmail, 
-  userRole,
+  userRole, 
   userInitials,
   onLogout 
 }: ProfileModalProps) {
@@ -46,7 +46,6 @@ export function ProfileModal({
     department: 'Administración',
     location: 'Bogotá, Colombia',
     timezone: 'GMT-5 (Colombia)',
-    bio: 'Administrador del sistema con más de 5 años de experiencia en gestión de plataformas educativas.',
   });
 
   // Mock: Roles activos del usuario (basado en sistema Usuario-Persona)
@@ -237,40 +236,6 @@ export function ProfileModal({
               <div className="flex-1 overflow-y-auto p-1 md:p-1.5" style={{ scrollbarGutter: 'stable' }}>
                 {/* Tab: General */}
                 <TabsContent value="general" className="mt-0 space-y-1.5">
-                  {/* Bio Section */}
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="bg-white rounded-lg border border-gray-200 p-1.5 md:p-2 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xs md:text-sm font-black text-gray-900 flex items-center gap-1.5">
-                        <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5 text-[#1e5da8]" />
-                        Biografía
-                      </h3>
-                      {!isEditing && (
-                        <button
-                          onClick={() => setIsEditing(true)}
-                          className="text-[10px] md:text-xs text-[#1e5da8] hover:text-[#174a8a] font-semibold flex items-center gap-1 active:scale-95 transition-transform"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          Editar
-                        </button>
-                      )}
-                    </div>
-                    {isEditing ? (
-                      <textarea
-                        value={formData.bio}
-                        onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                        className="w-full px-2.5 py-2 border-2 border-gray-200 rounded-lg text-[11px] md:text-xs focus:border-[#1e5da8] outline-none resize-none transition-colors"
-                        rows={2}
-                      />
-                    ) : (
-                      <p className="text-[11px] md:text-xs text-gray-600 leading-relaxed">{formData.bio}</p>
-                    )}
-                  </motion.div>
-
                   {/* Personal Info Grid */}
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
@@ -588,16 +553,9 @@ export function ProfileModal({
                         </label>
                       </div>
 
-                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                        <div>
-                          <p className="font-semibold text-gray-900">Tema oscuro</p>
-                          <p className="text-sm text-gray-500">Cambiar apariencia de la interfaz</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" className="sr-only peer" />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1e5da8]"></div>
-                        </label>
-                      </div>
+                      {/* Copia del mismo interruptor sin funcionalidad del ProfileModal
+                          del shell: se retira aquí también para que no reaparezca al
+                          abrir el perfil desde este módulo. */}
                     </div>
                   </div>
                 </TabsContent>

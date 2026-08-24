@@ -268,10 +268,15 @@ export function formatHierarchySelectionText(activity: any): string {
     const branches = selection.ramificaciones.map(branch => {
       const path = formatHierarchyBranchPath(branch);
       const recognition = getHierarchyBranchDisplayLevels(branch).slice(-1)[0]?.reconocimiento;
+      const effectiveHours = Number(branch.horas) > 0
+        ? Number(branch.horas)
+        : (Number(selection.horas) > 0
+            ? Number(selection.horas)
+            : undefined);
       const recognitionLabel = recognition
-        ? ` [${formatConfiguredHourRecognition(recognition, branch.horas)}]`
-        : branch.horas
-          ? ` [${branch.horas}h]`
+        ? ` [${formatConfiguredHourRecognition(recognition, effectiveHours)}]`
+        : effectiveHours !== undefined
+          ? ` [${effectiveHours}h]`
           : '';
       return `${path}${recognitionLabel}`;
     }).filter(Boolean).join('; ');

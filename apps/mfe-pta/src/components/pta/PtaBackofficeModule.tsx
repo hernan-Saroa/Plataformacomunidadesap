@@ -65,6 +65,7 @@ import {
   PTA_COMPONENT_PERMISSION,
   PTA_APPROVE_ALL_PERMISSION,
   PTA_EXTENSION_COMPONENT_KEYS,
+  PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
   PTA_BULK_APPROVAL_GROUPS,
   type PTAComponentKey,
   type PTABulkApprovalGroupKey,
@@ -1456,6 +1457,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           || visibleComponentKeySet.has('academica_territorial');
       case 'extension':
         return PTA_EXTENSION_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
+      // Complementarias también se colapsa y tiene varios ámbitos (pregrado,
+      // posgrado, territorial y gestión profesoral). Sin expandirla, un usuario
+      // cuyo permiso fuera uno de esos ámbitos no cruzaba contra la clave
+      // 'complementarias' del listado y sus PTAs no contaban como pendientes suyos.
+      case 'complementarias':
+        return PTA_COMPLEMENTARIAS_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
       default:
         return visibleComponentKeySet.has(key);
     }
@@ -4746,8 +4753,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                               {pta.docente_nombre || 'Docente ESAP'}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#6B7280', display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span>{pta.territorial || ''}</span>
-                              {pta.programa && <span>· {pta.programa}</span>}
+                              {/* Se oculta el resumen "territorial · programa" del docente:
+                                  mezclaba la territorial de vinculación con la lista compactada
+                                  de programas de sus asignaturas ("+2"), sin que quedara claro
+                                  qué representaba ni para qué servía. El dato correcto y
+                                  desglosado ya está en el detalle del PTA (Territorial del
+                                  docente / Territoriales de las asignaturas).
+                                  Las etiquetas de abajo SÍ tienen función (clic = filtrar),
+                                  por eso la fila se conserva. */}
                               {/* Feature 29: Inline tags (clic = filtrar por etiqueta) */}
                               {(ptaTags[pta.id] || []).map(tag => {
                                 const activeFilter = filtroTags.includes(tag.label);
