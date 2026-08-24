@@ -188,6 +188,29 @@ export const ROLES_EVALUACION = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién publica y traslada el informe de evaluación (actividad 6.4, EFDS-1158).
+ *
+ * El comité evalúa y entrega su resultado (6.3); trasladarlo es un acto de la
+ * entidad, no del comité: se publica, se notifica y se abre el término para que
+ * los oferentes reclamen. Por eso vuelve al gestor del proceso y los
+ * evaluadores quedan fuera —nadie corre el traslado de su propia evaluación—.
+ */
+export const ROLES_TRASLADO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién mueve los plazos de traslado (EFDS-1467).
+ *
+ * Mismo criterio que los umbrales, los plazos de publicidad y los de ofertas:
+ * cambiar un término no afecta a un proceso sino a todos los que se trasladen
+ * después, así que queda en la Dirección de Contratación.
+ */
+export const ROLES_ADMIN_PLAZOS_TRASLADO = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

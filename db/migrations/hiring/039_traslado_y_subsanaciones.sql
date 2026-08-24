@@ -97,6 +97,12 @@ CREATE TABLE IF NOT EXISTS hiring.informes_evaluacion (
   -- y la plataforma no lo calcula (038).
   ofertas_recibidas     int         NOT NULL DEFAULT 0,
 
+  -- Lo que la entidad quiera advertir sobre el informe, aparte de lo que trajo
+  -- el comité: una modalidad sin puntaje, una oferta retirada. Va en columna
+  -- propia y no dentro del jsonb porque el jsonb es la copia de lo que dijo el
+  -- comité, y esto lo dice la entidad.
+  observacion_entidad   text,
+
   estado                varchar(20) NOT NULL DEFAULT 'BORRADOR',
 
   informe_documento_id  uuid        REFERENCES hiring.documentos(id),

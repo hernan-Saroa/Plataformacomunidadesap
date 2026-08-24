@@ -102,6 +102,14 @@ export class InformeEvaluacion {
   @Column({ name: 'ofertas_recibidas', type: 'int', default: 0 })
   ofertasRecibidas: number;
 
+  /**
+   * Lo que la entidad advierte sobre el informe, aparte de lo que trajo el
+   * comité. Columna propia y no dentro del jsonb: el jsonb es la copia de lo
+   * que dijo el comité, y esto lo dice la entidad.
+   */
+  @Column({ name: 'observacion_entidad', type: 'text', nullable: true })
+  observacionEntidad: string | null;
+
   @Column({ length: 20, default: 'BORRADOR' })
   estado: EstadoInforme;
 

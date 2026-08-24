@@ -24,7 +24,11 @@ export type AccionTraza =
   | 'REVOCAR'
   // Resultado de la evaluación (etapa 6): rectificar no es anular, porque el
   // resultado rectificado sigue en el expediente con su informe.
-  | 'RECTIFICAR';
+  | 'RECTIFICAR'
+  // Traslado del informe de evaluación (etapa 6). Trasladar no es publicar: la
+  // publicación es el medio, y lo que el traslado abre es un término.
+  | 'TRASLADAR'
+  | 'RESPONDER';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {
