@@ -5238,8 +5238,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               onAprobar={() => { setSelectedPTA(null); loadData(); }}
               onDevolver={() => { setSelectedPTA(null); loadData(); }}
               onUpdated={(updatedPta) => {
+                // Actualización optimista para que el panel (que permanece abierto)
+                // refleje el cambio al instante, sin esperar el round-trip de loadData().
                 setPtas(prev => prev.map(p => (p.id === updatedPta.id ? { ...p, ...updatedPta } : p)));
                 setSelectedPTA((prev: any) => prev ? { ...prev, ...updatedPta } : prev);
+                // Los avales de Revisor/Aprobador por componente solo tocaban el estado
+                // local: los contadores de la vista principal (pestañas Todos/Aprobación/
+                // Aprobado, estadísticas, % de avance) quedaban desactualizados hasta el
+                // siguiente refresh manual. Recargar aquí iguala este flujo al resto de
+                // acciones (aprobar, devolver, lote), que ya llaman loadData().
+                loadData();
               }}
               onConcertar={() => { setConcertacionPtaId(selectedPTA.id); setSelectedPTA(null); }}
               onVerReporte={() => setShowReporteR01(true)}
