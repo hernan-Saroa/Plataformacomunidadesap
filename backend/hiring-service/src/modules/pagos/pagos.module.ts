@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { PagosService } from './pagos.service';
+import { PagosController } from './pagos.controller';
 
 import { PagoContrato, SoportePago } from '../../entities/pago-contrato.entity';
 import { ActaInicio } from '../../entities/acta-inicio.entity';
@@ -28,6 +29,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
+  controllers: [PagosController],
   providers: [PagosService],
   // La liquidación (EFDS-1172) preguntará aquí cuánto se pagó de verdad.
   exports: [PagosService],
