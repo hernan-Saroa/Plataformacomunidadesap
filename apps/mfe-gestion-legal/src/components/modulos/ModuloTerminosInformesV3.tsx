@@ -289,7 +289,7 @@ export function ModuloTerminosInformesV3() {
     }
 
     toast.success('Etapa actualizada', {
-      description: `Solicitud ${id} movida a ${nuevaEtapa}`,
+      description: `Término ${id} movido a ${nuevaEtapa}`,
       icon: <CheckCircle className="w-4 h-4" />
     });
   };

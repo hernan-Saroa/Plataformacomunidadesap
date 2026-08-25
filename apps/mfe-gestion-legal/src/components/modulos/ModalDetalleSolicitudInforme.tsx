@@ -244,14 +244,14 @@ export function ModalDetalleSolicitudInforme({
       const url = window.URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Solicitud_${solicitud.id}_${new Date().getTime()}.pdf`;
+      link.download = `Termino_${solicitud.id}_${new Date().getTime()}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
       toast.success('✅ Documento exportado exitosamente', {
-        description: `Solicitud_${solicitud.id}.pdf`,
+        description: `Termino_${solicitud.id}.pdf`,
         duration: 4000
       });
     } catch (error) {
@@ -306,15 +306,15 @@ export function ModalDetalleSolicitudInforme({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
-          Detalle de Solicitud de Informe {solicitud.id}
+          Detalle de Término {solicitud.id}
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Vista completa de la solicitud de informe {solicitud.id} con información detallada sobre plazos, etapas, responsables y documentación asociada.
+          Vista completa del término {solicitud.id} con información detallada sobre plazos, etapas, responsables y documentación asociada.
         </DialogDescription>
-        
+
         {/* Header ESAP 2025 */}
         <ModalHeaderClean
-          titulo={`Solicitud ${solicitud.id}`}
+          titulo={`Término ${solicitud.id}`}
           subtitulo={solicitud.asunto}
           icono={FileText}
           colorIcono="blue"
@@ -414,7 +414,7 @@ export function ModalDetalleSolicitudInforme({
                 <div className="p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2 mb-1">
                     <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                    <p className="text-xs text-gray-500">Fecha de Solicitud</p>
+                    <p className="text-xs text-gray-500">Fecha del Término</p>
                   </div>
                   <p className="text-sm font-bold text-gray-900">
                     {solicitud.fechaSolicitud.toLocaleDateString('es-CO', {
@@ -783,7 +783,7 @@ export function ModalDetalleSolicitudInforme({
               <div className="flex items-start gap-3">
                 <Target className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
                 <div className="text-xs text-purple-900">
-                  <p className="font-bold mb-1">💡 Gestión de la Solicitud:</p>
+                  <p className="font-bold mb-1">💡 Gestión del Término:</p>
                   <ul className="list-disc list-inside space-y-1 text-purple-700">
                     <li>Actualice la etapa según el avance del informe</li>
                     <li>Documente cualquier inconveniente o retraso en los comentarios</li>
@@ -876,7 +876,7 @@ export function ModalDetalleSolicitudInforme({
                     <strong className="text-gray-900">Destinatario:</strong> {solicitud.responsable}
                   </p>
                   <p className="text-gray-600 mt-1">
-                    <strong className="text-gray-900">Solicitud:</strong> {solicitud.id}
+                    <strong className="text-gray-900">Término:</strong> {solicitud.id}
                   </p>
                   <p className="text-gray-600 mt-1">
                     <strong className="text-gray-900">Días restantes:</strong>{' '}
