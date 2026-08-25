@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { LiquidacionService } from './liquidacion.service';
+import { LiquidacionController } from './liquidacion.controller';
 
 import { ActaLiquidacion } from '../../entities/acta-liquidacion.entity';
 import { InformeFinal } from '../../entities/informe-final.entity';
@@ -29,6 +30,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
+  controllers: [LiquidacionController],
   providers: [LiquidacionService],
   // El cierre definitivo (EFDS-1175) preguntará aquí: no se archiva un
   // expediente cuyo contrato sigue sin liquidar.

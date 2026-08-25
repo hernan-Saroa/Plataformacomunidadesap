@@ -405,6 +405,20 @@ export const ROLES_TRAMITAR_PAGO = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMI
  */
 export const ROLES_INFORME_FINAL = [ROL_SUPERVISOR_CONTRATO, ROL_SUPER_ADMIN];
 
+/**
+ * Quién liquida el contrato (actividad 10.2, EFDS-1172).
+ *
+ * La Dirección de Contratación, que es de quien habla la historia. Y tiene
+ * sentido que no sea el supervisor: él concluye sobre la ejecución en el
+ * informe final (10.1), y sobre ese informe la entidad cierra el contrato. Un
+ * supervisor que liquidara estaría cerrando su propia gestión.
+ */
+export const ROLES_LIQUIDAR = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
