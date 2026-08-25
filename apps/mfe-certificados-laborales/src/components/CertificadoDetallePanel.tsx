@@ -64,6 +64,8 @@ interface CertificadoDetallePanelProps {
       technicalBonusCategory?: string | null;
       technical_bonuses?: any[] | null;
       technicalBonuses?: any[] | null;
+      functions_snapshot?: any;
+      functionsSnapshot?: any;
     };
     technical_bonus?: number;
     technical_bonus_category?: string | null;
@@ -72,6 +74,10 @@ interface CertificadoDetallePanelProps {
     technicalBonuses?: any[] | null;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
+    incluyeFunciones?: boolean;
+    include_functions?: boolean;
+    functions_snapshot?: any;
+    functionsSnapshot?: any;
     templateSnapshot?: any;
     templateType?: 'docente' | 'administrador';
     solicitante?: {

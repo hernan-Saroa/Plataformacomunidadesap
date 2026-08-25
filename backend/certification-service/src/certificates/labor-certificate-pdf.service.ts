@@ -21,6 +21,7 @@ type TechnicalBonusRenderItem = {
 type PdfOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
+  includeFunctions?: boolean;
   templateType?: TemplateType;
   publicBaseUrl?: string;
   technicalBonusTemplate?: string;
@@ -60,6 +61,7 @@ const TEMPLATE_VARIABLE_META: Record<string, { label: string; sourceFields: stri
   '[SALARIO]': { label: 'Salario mensual', sourceFields: ['monthly_salary', 'include_salary'] },
   '[SALARIO_LETRAS]': { label: 'Salario en letras calculado', sourceFields: ['monthly_salary', 'include_salary'] },
   '[PRIMA_TECNICA]': { label: 'Prima técnica calculada', sourceFields: ['technical_bonus', 'include_technical_bonus'] },
+  '[FUNCIONES]': { label: 'Funciones laborales', sourceFields: ['functions_snapshot', 'include_functions'] },
   '[FECHA_EXPEDICION_COMPLETA]': { label: 'Fecha de expedición', sourceFields: [] },
   '[CIUDAD_EXPEDICION]': { label: 'Ciudad de expedición', sourceFields: [] },
 };
@@ -156,6 +158,10 @@ export class LaborCertificatePdfService {
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
       : false;
+    const includeFunctions = this.normalizeBoolean(
+      options.includeFunctions,
+      this.normalizeBoolean(certificate.include_functions, false),
+    );
 
     const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
     const typographyFont = this.sanitizeTypographyFont(
@@ -172,6 +178,7 @@ export class LaborCertificatePdfService {
       templateType,
       includeSalary,
       includeTechnicalBonus,
+      includeFunctions,
       templateHtml: config?.certificateContentHtml || '',
       technicalBonusTemplate: options.technicalBonusTemplate,
     });
@@ -216,6 +223,8 @@ export class LaborCertificatePdfService {
     options: PdfOptions = {},
   ): Promise<{
     content_html: string;
+    body_content_html: string;
+    closing_content_html: string;
     cargo_title: string;
     typography_font: string;
     signer_name: string;
@@ -246,6 +255,10 @@ export class LaborCertificatePdfService {
           this.normalizeBoolean(certificate.include_technical_bonus, false),
         )
       : false;
+    const includeFunctions = this.normalizeBoolean(
+      options.includeFunctions,
+      this.normalizeBoolean(certificate.include_functions, false),
+    );
     const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
     let templateVariables: LaborCertificateTemplateVariable[] = [];
     const contentHtml = this.buildCertificateContent({
@@ -253,6 +266,7 @@ export class LaborCertificatePdfService {
       templateType,
       includeSalary,
       includeTechnicalBonus,
+      includeFunctions,
       templateHtml: config?.certificateContentHtml || '',
       technicalBonusTemplate:
         options.technicalBonusTemplate || config?.technicalBonusTemplate,
@@ -261,9 +275,12 @@ export class LaborCertificatePdfService {
         templateVariables = variables;
       },
     });
+    const closingContent = this.splitCertificateClosingContent(contentHtml);
 
     return {
       content_html: contentHtml,
+      body_content_html: closingContent.bodyHtml,
+      closing_content_html: closingContent.closingHtml,
       cargo_title: String(config?.cargoTitle || ''),
       typography_font: this.sanitizeTypographyFont(
         config?.typography?.font || config?.typographyFont,
@@ -730,12 +747,17 @@ export class LaborCertificatePdfService {
     templateType: TemplateType;
     includeSalary: boolean;
     includeTechnicalBonus: boolean;
+    includeFunctions?: boolean;
     templateHtml: string;
     technicalBonusTemplate?: string;
     highlightVariables?: boolean;
     collectTemplateVariables?: (variables: LaborCertificateTemplateVariable[]) => void;
   }): string {
     const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml, technicalBonusTemplate } = params;
+    const includeFunctions = this.normalizeBoolean(
+      params.includeFunctions,
+      this.normalizeBoolean(certificate.include_functions, false),
+    );
 
     const certificateExtras = certificate as Certificate & {
       cod_cargo?: string;
@@ -895,6 +917,9 @@ export class LaborCertificatePdfService {
           technicalBonusTemplate,
         )
       : [];
+    const laborFunctions = includeFunctions
+      ? this.resolveLaborFunctions(certificate)
+      : [];
     const activeTemplateVariables: LaborCertificateTemplateVariable[] = Object.entries(replacements)
       .filter(([code]) => templateHtml.includes(code))
       .map(([code, value]) => ({
@@ -913,6 +938,14 @@ export class LaborCertificatePdfService {
         source_fields: templateVariableSourceFields('[PRIMA_TECNICA]', templateType),
       });
     }
+    if (laborFunctions.length) {
+      activeTemplateVariables.push({
+        code: '[FUNCIONES]',
+        label: TEMPLATE_VARIABLE_META['[FUNCIONES]'].label,
+        value: laborFunctions.map((item) => `• ${item.description}`).join('\n'),
+        source_fields: templateVariableSourceFields('[FUNCIONES]', templateType),
+      });
+    }
     params.collectTemplateVariables?.(activeTemplateVariables);
 
     const replacementsForRender = params.highlightVariables
@@ -926,6 +959,7 @@ export class LaborCertificatePdfService {
 
     let result = this.normalizeTemplateHtml(templateHtml || '');
     result = this.replaceVariables(result, replacementsForRender);
+    result = result.replace(/\[FUNCIONES\]/gi, '');
     result = this.normalizeSpacing(result);
     result = this.normalizeParagraphStructure(result);
 
@@ -941,7 +975,16 @@ export class LaborCertificatePdfService {
       );
     }
 
-    return this.normalizeParagraphStructure(result);
+    result = this.normalizeParagraphStructure(result);
+    if (laborFunctions.length) {
+      result = this.insertLaborFunctions(
+        result,
+        laborFunctions,
+        params.highlightVariables === true,
+      );
+    }
+
+    return result;
   }
 
   private formatDocumentType(value?: string | null): string {
@@ -1107,6 +1150,126 @@ export class LaborCertificatePdfService {
     return `${result}${bonusParagraph}`;
   }
 
+  private resolveLaborFunctions(
+    certificate: Certificate,
+  ): Array<{ ordinal: number; description: string }> {
+    const certificateWithFunctions = certificate as Certificate & {
+      functions_snapshot?: any;
+      functionsSnapshot?: any;
+    };
+    let snapshot =
+      certificateWithFunctions.functions_snapshot ??
+      certificateWithFunctions.functionsSnapshot ??
+      null;
+    if (typeof snapshot === 'string') {
+      try {
+        snapshot = JSON.parse(snapshot);
+      } catch {
+        return [];
+      }
+    }
+    const rawFunctions = Array.isArray(snapshot)
+      ? snapshot
+      : Array.isArray(snapshot?.functions)
+        ? snapshot.functions
+        : [];
+    const seen = new Set<string>();
+    return rawFunctions
+      .map((item: any, index: number) => ({
+        ordinal: Math.max(1, Number(item?.ordinal ?? item?.order ?? index + 1) || index + 1),
+        description: String(
+          typeof item === 'string'
+            ? item
+            : item?.description ?? item?.text ?? item?.function ?? '',
+        )
+          .replace(/\u00a0/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      }))
+      .filter((item) => {
+        const key = item.description
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((left, right) => left.ordinal - right.ordinal);
+  }
+
+  private escapeHtml(value: string): string {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private buildPageFooterTemplate(): string {
+    return `
+      <div style="width:100%; padding:0 54pt; display:flex; align-items:center; justify-content:center; gap:5px; color:#64748b; font-family:Arial,sans-serif; font-size:7pt; line-height:1; white-space:nowrap;">
+        <span>Página <span class="pageNumber"></span> de <span class="totalPages"></span></span>
+      </div>
+    `;
+  }
+
+  private renderLaborFunctions(
+    functions: Array<{ ordinal: number; description: string }>,
+    highlightVariables = false,
+  ): string {
+    if (!functions.length) return '';
+    const items = functions
+      .map((item) => {
+        const description = this.escapeHtml(
+          this.repairCommonMojibake(item.description),
+        );
+        const rendered = highlightVariables
+          ? `<mark class="labor-function-preview-highlight">${description}</mark>`
+          : description;
+        return `<li class="labor-function-item">${rendered}</li>`;
+      })
+      .join('');
+    return `<section class="labor-functions-section"><p class="labor-functions-title">Las funciones asociadas al cargo son:</p><ul class="labor-functions-list">${items}</ul></section>`;
+  }
+
+  private insertLaborFunctions(
+    html: string,
+    functions: Array<{ ordinal: number; description: string }>,
+    highlightVariables = false,
+  ): string {
+    const section = this.renderLaborFunctions(functions, highlightVariables);
+    if (!section) return html;
+
+    const expideIndex = html.toLocaleLowerCase('es').indexOf('se expide');
+    if (expideIndex >= 0) {
+      const htmlBeforeExpide = html.slice(0, expideIndex);
+      const paragraphStart = Math.max(
+        htmlBeforeExpide.lastIndexOf('<p'),
+        htmlBeforeExpide.lastIndexOf('<div'),
+      );
+      if (paragraphStart >= 0) {
+        return `${html.slice(0, paragraphStart)}${section}${html.slice(paragraphStart)}`;
+      }
+    }
+
+    const salaryOrBonusRegex = /<(p|div)\b[^>]*>(?:(?!<\/\1>)[\s\S])*?(salari|asignaci|\bprima\b)(?:(?!<\/\1>)[\s\S])*?<\/\1>/gi;
+    let lastMatch: RegExpExecArray | null = null;
+    let match: RegExpExecArray | null = null;
+    while ((match = salaryOrBonusRegex.exec(html)) !== null) {
+      lastMatch = match;
+    }
+    if (lastMatch && lastMatch.index !== undefined) {
+      const insertAt = lastMatch.index + lastMatch[0].length;
+      return `${html.slice(0, insertAt)}${section}${html.slice(insertAt)}`;
+    }
+
+    return `${html}${section}`;
+  }
+
   private repairCommonMojibake(value: string): string {
     return String(value || '')
       .replace(/\u00c3\u0081/g, 'Á')
@@ -1164,6 +1327,42 @@ export class LaborCertificatePdfService {
     );
   }
 
+  private splitCertificateClosingContent(contentHtml: string): {
+    bodyHtml: string;
+    closingHtml: string;
+  } {
+    const html = String(contentHtml || '');
+    const findIssueBlock = (tag: 'p' | 'div') => {
+      const pattern = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, 'gi');
+      let match: RegExpExecArray | null = null;
+
+      while ((match = pattern.exec(html)) !== null) {
+        const plainText = match[0]
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;|&#160;/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLocaleLowerCase('es');
+        if (plainText.includes('se expide')) {
+          return match;
+        }
+      }
+
+      return null;
+    };
+
+    const issueBlock = findIssueBlock('p') || findIssueBlock('div');
+    if (!issueBlock || issueBlock.index === undefined) {
+      return { bodyHtml: html, closingHtml: '' };
+    }
+
+    return {
+      bodyHtml: html.slice(0, issueBlock.index).trim(),
+      // Cualquier contenido institucional posterior también pertenece al cierre.
+      closingHtml: html.slice(issueBlock.index).trim(),
+    };
+  }
+
   private buildHtml(params: {
     certificate: Certificate;
     contentHtml: string;
@@ -1184,6 +1383,7 @@ export class LaborCertificatePdfService {
       qrCodeDataUrl,
       signerName,
     } = params;
+    const closingContent = this.splitCertificateClosingContent(contentHtml);
     const effectiveTypographyFont = this.sanitizeTypographyFont(typographyFont);
     const cargoTitleHtml = (cargoTitle || '').replace(/\n/g, '<br/>');
     const logoTag = logoDataUrl
@@ -1202,7 +1402,13 @@ export class LaborCertificatePdfService {
         <head>
           <meta charset="UTF-8" />
           <style>
-            @page { size: Letter; margin: 0; }
+            /*
+             * La primera página conserva el encabezado original y todas las
+             * hojas reservan una franja inferior exclusiva para la paginación.
+             * Las continuaciones reciben además una zona segura superior.
+             */
+            @page { size: Letter; margin: 40px 0 56px 0; }
+            @page :first { margin: 0 0 56px 0; }
             * { box-sizing: border-box; }
             body {
               margin: 0;
@@ -1217,8 +1423,9 @@ export class LaborCertificatePdfService {
             .certificate {
               position: relative;
               width: 816px;
-              min-height: 1056px;
-              padding: 72px;
+              /* 1056px de la hoja menos los 56px reservados a la paginación. */
+              min-height: 1000px;
+              padding: 72px 72px 0 72px;
             }
             .logo {
               position: absolute;
@@ -1269,6 +1476,34 @@ export class LaborCertificatePdfService {
               padding: 0;
               margin: 0;
             }
+            .labor-functions-section {
+              margin: 0 0 12pt 0;
+            }
+            .certificate-content-block .labor-functions-title {
+              margin: 0 0 8pt 0;
+              page-break-after: avoid;
+              break-after: avoid;
+            }
+            .labor-functions-list {
+              margin: 0 0 12pt 0;
+              padding: 0 0 0 20pt;
+              list-style-position: outside;
+              list-style-type: disc;
+            }
+            .certificate-content-block .labor-functions-list .labor-function-item {
+              margin: 0 0 8pt 0;
+              padding-left: 3pt;
+              text-align: justify;
+              text-align-last: left;
+              line-height: 1.5;
+              page-break-inside: avoid;
+              break-inside: avoid;
+              orphans: 3;
+              widows: 3;
+            }
+            .certificate-content-block .labor-functions-list .labor-function-item:last-child {
+              margin-bottom: 0;
+            }
             .signature {
               width: auto;
               height: 60px;
@@ -1276,6 +1511,28 @@ export class LaborCertificatePdfService {
               object-fit: contain;
               display: block;
               margin: 0 auto 12pt auto;
+            }
+            .certificate-signature-block {
+              text-align: center;
+            }
+            .certificate-closing-block {
+              position: relative;
+              /*
+               * Si el cierre salta a una hoja nueva, esta separación evita que
+               * el párrafo de expedición quede pegado al margen superior. Si
+               * permanece en la misma hoja, conserva una transición natural
+               * respecto del último párrafo o función.
+               */
+              padding-top: 28px;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .certificate-signature-spacer {
+              height: 48pt;
+            }
+            .certificate-final-footer-reserve {
+              /* Mantiene fecha, firma y nombre lejos del pie institucional final. */
+              height: 172px;
             }
             .signer-name {
               margin: 0;
@@ -1328,12 +1585,16 @@ export class LaborCertificatePdfService {
             <div class="section-title">HACE CONSTAR</div>
             <div style="height:12pt;"></div>
             <div class="certificate-content-block" style="text-align: justify; line-height: 1.5; font-size: 12pt;">
-              ${contentHtml}
+              ${closingContent.bodyHtml}
             </div>
-            <div style="height:48pt;"></div>
-            <div style="text-align: center;">
-              ${signatureTag}
-              <p class="signer-name">${signerName}</p>
+            <div class="certificate-closing-block">
+              ${closingContent.closingHtml ? `<div class="certificate-content-block certificate-issue-block" style="text-align: justify; line-height: 1.5; font-size: 12pt;">${closingContent.closingHtml}</div>` : ''}
+              <div class="certificate-signature-spacer"></div>
+              <div class="certificate-signature-block">
+                ${signatureTag}
+                <p class="signer-name">${signerName}</p>
+              </div>
+              <div class="certificate-final-footer-reserve" aria-hidden="true"></div>
             </div>
             <div class="footer-left">
               <p style="margin:0 0 2px 0;">Sede principal</p>
@@ -1364,10 +1625,12 @@ export class LaborCertificatePdfService {
     try {
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: 'networkidle0' });
-
       const pdfOutput = await page.pdf({
         format: 'Letter',
         printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: '<div></div>',
+        footerTemplate: this.buildPageFooterTemplate(),
         margin: {
           top: '0cm',
           right: '0cm',

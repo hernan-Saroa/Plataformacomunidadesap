@@ -57,6 +57,12 @@ export type LaborOracleSuggestedRequest = {
   salary_text: string | null;
   cod_cargo: string | null;
   cod_grade: string | null;
+  base_position_code: string | null;
+  hierarchical_level: string | null;
+  position_name: string | null;
+  organization_department: string | null;
+  internal_group: string | null;
+  cost_center: string | null;
   email: string | null;
   personal_email: string | null;
   phone: string | null;
@@ -77,6 +83,8 @@ export type LaborOracleSuggestedRequest = {
     dependencia: string | null;
     sucursal: string | null;
     centro_costo: string | null;
+    nivel_jerarquico: string | null;
+    grupo_interno: string | null;
   };
   mapping_notes: string[];
 };
@@ -430,6 +438,36 @@ export class LaborOracleIntegrationService {
         'CODIGO_CENTRO_COSTO',
       ),
     );
+    const nivelJerarquico = this.toText(
+      this.pickValue(row, 'NIVEL_JERARQUICO', 'NIVELJERARQUICO', 'NIVEL'),
+    );
+    const grupoInterno = this.toText(
+      this.pickValue(
+        row,
+        'GRUPO_INTERNO',
+        'GRUPOINTERNO',
+        'GRUPO_INTERNO_TRABAJO',
+        'GRUPO_TRABAJO',
+      ),
+    );
+    const cargo = this.toText(
+      this.pickValue(row, 'CARGO', 'DENOMINACION_EMPLEO', 'DENOMINACION'),
+    );
+    const grade = this.toText(this.pickValue(row, 'GRADO'));
+    const combinedCargoCode = this.toText(this.pickValue(row, 'COD_CARGO'));
+    const explicitBasePositionCode = this.toText(
+      this.pickValue(row, 'CODIGO_CARGO_BASE', 'CODIGO_EMPLEO'),
+    );
+    const combinedDigits = String(combinedCargoCode || '').replace(/\D+/g, '');
+    const gradeDigits = String(grade || '').replace(/\D+/g, '');
+    const derivedBasePositionCode =
+      gradeDigits &&
+      combinedDigits.length > 4 &&
+      combinedDigits.endsWith(gradeDigits)
+        ? combinedDigits.slice(0, -gradeDigits.length)
+        : combinedDigits.length <= 4
+          ? combinedDigits
+          : '';
     const emailInstitucional = this.toText(this.pickValue(row, 'EMAIL'));
     const emailPersonal = this.toText(this.pickValue(row, 'EMAILPERSONAL'));
 
@@ -451,6 +489,12 @@ export class LaborOracleIntegrationService {
       salary_text: null,
       cod_cargo: this.toText(this.pickValue(row, 'COD_CARGO')),
       cod_grade: this.toText(this.pickValue(row, 'GRADO')),
+      base_position_code: explicitBasePositionCode || derivedBasePositionCode || null,
+      hierarchical_level: nivelJerarquico,
+      position_name: cargo,
+      organization_department: dependencia,
+      internal_group: grupoInterno,
+      cost_center: centroCosto,
       email: emailInstitucional || emailPersonal,
       personal_email: emailPersonal,
       phone: null,
@@ -471,6 +515,8 @@ export class LaborOracleIntegrationService {
         dependencia,
         sucursal,
         centro_costo: centroCosto,
+        nivel_jerarquico: nivelJerarquico,
+        grupo_interno: grupoInterno,
       },
       mapping_notes: [
         'career_category se arma como CARGO + " Grado " + GRADO.',

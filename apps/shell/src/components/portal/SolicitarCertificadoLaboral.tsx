@@ -4,7 +4,8 @@ import {
   ArrowLeft, FileText, Download, CheckCircle, CheckCircle2, AlertCircle,
   Send, Loader2, User, CreditCard, Building2, Calendar,
   Mail, Phone, MapPin, Search, ChevronDown, ChevronRight,
-  Shield, Clock, FileCheck, Sparkles, TrendingUp, Star, Eye, XCircle, Lock
+  Shield, Clock, FileCheck, Sparkles, TrendingUp, Star, Eye, XCircle, Lock,
+  ListChecks
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -69,6 +70,8 @@ interface CertificadoGenerado {
   salario_original?: number;
   salario_texto_original?: string;
   incluyeSalario?: boolean;
+  incluyeFunciones?: boolean;
+  funciones_snapshot?: any;
   qr_code: string;
   nombre_completo: string;
   certificado_completo?: any; // Datos completos del certificado para el visor PDF
@@ -80,6 +83,13 @@ interface PrimaTecnicaMetadata {
   porcentaje: number;
   valor: number;
   categoria: 'DIRECTIVOS' | 'COORDINADORES' | null;
+}
+
+interface FuncionesMetadata {
+  documento: string;
+  disponible: boolean;
+  cantidad: number;
+  estado: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
 }
 
 const formatearTiempo = (segundos: number): string => {
@@ -413,6 +423,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           false,
         )
       : false;
+    const incluyeFuncionesBackend = normalizarBoolean(
+      cert.include_functions ?? cert.includeFunctions ?? cert.incluyeFunciones,
+      false,
+    );
     const cargoFormateado = construirCargoVisual(
       cert.career_category || cert.position_category,
       cert.cod_cargo || cert.codCargo,
@@ -435,6 +449,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       salario_texto_original: salarioTextoBase,
       incluyeSalario: incluyeSalarioBackend,
       incluyePrimaTecnica: incluyePrimaBackend,
+      incluyeFunciones: incluyeFuncionesBackend,
+      funciones_snapshot: cert.functions_snapshot ?? cert.functionsSnapshot ?? null,
       qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
       nombre_completo: cert.full_name || 'N/A',
         certificado_completo: {
@@ -444,6 +460,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           cantidadEscaneos: 0,
           incluyeSalario: incluyeSalarioBackend,
           incluyePrimaTecnica: incluyePrimaBackend,
+          incluyeFunciones: incluyeFuncionesBackend,
+          functions_snapshot: cert.functions_snapshot ?? cert.functionsSnapshot ?? null,
           technical_bonus: bonusBase,
           technical_bonus_category:
             cert.technical_bonus_category ??
@@ -504,6 +522,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const [certificadoExistente, setCertificadoExistente] = useState(false);
   const [incluirSalario, setIncluirSalario] = useState(true);
   const [incluirPrimaTecnica, setIncluirPrimaTecnica] = useState(false);
+  const [incluirFunciones, setIncluirFunciones] = useState(false);
+  const [funcionesMetadata, setFuncionesMetadata] = useState<FuncionesMetadata | null>(null);
+  const [mensajeFunciones, setMensajeFunciones] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const [validandoFunciones, setValidandoFunciones] = useState(false);
   const [primaTecnicaMetadata, setPrimaTecnicaMetadata] = useState<PrimaTecnicaMetadata | null>(null);
   const [validandoPrimaTecnica, setValidandoPrimaTecnica] = useState(false);
   const certificadoBaseRef = useRef<CertificadoGenerado | null>(null);
@@ -637,9 +659,11 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const registrarCertificado = (cert: CertificadoGenerado) => {
     const incluirSalarioInicial = cert.incluyeSalario ?? incluirSalario;
     const incluirPrimaInicial = incluirSalarioInicial ? (cert.incluyePrimaTecnica ?? incluirPrimaTecnica) : false;
+    const incluirFuncionesInicial = cert.incluyeFunciones ?? incluirFunciones;
     certificadoBaseRef.current = cert;
     setIncluirSalario(incluirSalarioInicial);
     setIncluirPrimaTecnica(incluirPrimaInicial);
+    setIncluirFunciones(incluirFuncionesInicial);
     setCertificadoGenerado(aplicarPreferenciasCertificado(cert, incluirSalarioInicial, incluirPrimaInicial));
   };
 
@@ -703,7 +727,72 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     const metadata = construirMetadataPrimaTecnica(doc, metadataOrigen);
     setPrimaTecnicaMetadata(metadata);
 
-    return { verificacion, solicitudVerificada, metadata };
+    const funciones: FuncionesMetadata = {
+      documento: doc,
+      disponible: normalizarBoolean(
+        metadataOrigen.functions_available ?? metadataOrigen.functionsAvailable,
+        false,
+      ),
+      cantidad: Number(
+        metadataOrigen.functions_count ?? metadataOrigen.functionsCount ?? 0,
+      ) || 0,
+      estado: ['MATCHED', 'AMBIGUOUS'].includes(
+        String(metadataOrigen.functions_match_status || '').toUpperCase(),
+      )
+        ? String(metadataOrigen.functions_match_status).toUpperCase() as 'MATCHED' | 'AMBIGUOUS'
+        : 'NOT_FOUND',
+    };
+    setFuncionesMetadata(funciones);
+
+    return { verificacion, solicitudVerificada, metadata, funciones };
+  };
+
+  const validarFuncionesPorDocumento = async (documento: string) => {
+    const doc = String(documento || '').trim();
+    if (!doc || doc.length < 6) {
+      setMensajeFunciones({
+        type: 'info',
+        text: 'Ingresa tu documento y al solicitar validaremos la asociación exacta de tus funciones.',
+      });
+      return false;
+    }
+
+    setValidandoFunciones(true);
+    try {
+      const { verificacion, funciones } =
+        await consultarDocumento(doc);
+      if (!verificacion?.existe || !funciones.disponible) {
+        const text = funciones.estado === 'AMBIGUOUS'
+          ? 'Encontramos más de una matriz posible y no podemos asociar tus funciones con seguridad. Talento Humano debe revisar tus datos.'
+          : 'No cuentas con funciones laborales asociadas para incluir en el certificado en este momento.';
+        setMensajeFunciones({ type: 'error', text });
+        return false;
+      }
+      setMensajeFunciones({
+        type: 'success',
+        text: `${funciones.cantidad} funciones laborales verificadas y disponibles para tu certificado.`,
+      });
+      return true;
+    } catch (error: any) {
+      setMensajeFunciones({
+        type: 'error',
+        text: error?.response?.data?.message || error?.message || 'No fue posible validar tus funciones laborales.',
+      });
+      return false;
+    } finally {
+      setValidandoFunciones(false);
+    }
+  };
+
+  const handleToggleFunciones = async (checked: boolean | 'indeterminate') => {
+    const activar = checked === true;
+    setIncluirFunciones(activar);
+    if (!activar) {
+      setMensajeFunciones(null);
+      return;
+    }
+    const documentoIngresado = (numeroDocumentoRef.current || numeroDocumento).trim();
+    await validarFuncionesPorDocumento(documentoIngresado);
   };
 
   const validarPrimaTecnicaPorDocumento = async (
@@ -838,7 +927,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
     try {
       // Verificar si existe, si ya tiene certificado activo y si es docente
-      const { verificacion, solicitudVerificada, metadata } = await consultarDocumento(documentoIngresado);
+      const { verificacion, solicitudVerificada, metadata, funciones } = await consultarDocumento(documentoIngresado);
       if (!verificacion || typeof verificacion !== 'object' || !('existe' in verificacion)) {
         setBuscandoEmpleado(false);
         toast.error('No pudimos validar tu documento en este momento. Intenta nuevamente.');
@@ -874,6 +963,21 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           'No tienes prima técnica y/o coordinación registrada en tu información laboral. No es posible incluirla en el certificado.',
         );
         return;
+      }
+
+      if (incluirFunciones) {
+        if (!funciones.disponible) {
+          const text = funciones.estado === 'AMBIGUOUS'
+            ? 'Encontramos más de una matriz posible y no podemos asociar tus funciones con seguridad. Talento Humano debe revisar tus datos.'
+            : 'No cuentas con funciones laborales asociadas para incluir en el certificado en este momento.';
+          setMensajeFunciones({ type: 'error', text });
+          setBuscandoEmpleado(false);
+          return;
+        }
+        setMensajeFunciones({
+          type: 'success',
+          text: `${funciones.cantidad} funciones laborales verificadas y disponibles para tu certificado.`,
+        });
       }
 
       // Llamar al backend para verificar documento y generar código
@@ -988,6 +1092,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           documentType: tipoDocumento,
           includeSalary: incluirSalario,
           includeTechnicalBonus: incluirPrimaTecnica,
+          includeFunctions: incluirFunciones,
         }
       );
       const cert = response?.certificado;
@@ -1020,6 +1125,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           incluirPrimaTecnica,
         );
         const incluyePrimaFinal = incluyeSalarioFinal ? incluyePrimaBackend : false;
+        const incluyeFuncionesFinal = normalizarBoolean(
+          cert.include_functions ?? cert.includeFunctions,
+          incluirFunciones,
+        );
         setPrimaTecnicaMetadata(
           construirMetadataPrimaTecnica(numeroDocumento, {
             ...cert,
@@ -1050,6 +1159,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         salario_texto_original: salarioTextoBase,
         incluyeSalario: incluyeSalarioFinal,
         incluyePrimaTecnica: incluyePrimaFinal,
+        incluyeFunciones: incluyeFuncionesFinal,
+        funciones_snapshot: cert.functions_snapshot ?? cert.functionsSnapshot ?? null,
         qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
         nombre_completo: cert.full_name || empleadoEncontrado?.nombre_completo || 'N/A',
         // Datos completos del certificado para el visor
@@ -1060,6 +1171,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         cantidadEscaneos: 0,
         incluyeSalario: incluyeSalarioFinal,
         incluyePrimaTecnica: incluyePrimaFinal,
+        incluyeFunciones: incluyeFuncionesFinal,
+        functions_snapshot: cert.functions_snapshot ?? cert.functionsSnapshot ?? null,
         technical_bonus: bonusBase,
         technical_bonus_category:
           cert.technical_bonus_category ??
@@ -1233,6 +1346,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setNumeroDocumento('');
     setIncluirSalario(true);
     setIncluirPrimaTecnica(false);
+    setIncluirFunciones(false);
+    setFuncionesMetadata(null);
+    setMensajeFunciones(null);
     setPrimaTecnicaMetadata(null);
     setValidandoPrimaTecnica(false);
     setDigitosCodigo(['', '', '', '', '', '']);
@@ -1527,6 +1643,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                               numeroDocumentoRef.current = limpio;
                               setEstadoLaboral(null);
                               setPrimaTecnicaMetadata(null);
+                              setFuncionesMetadata(null);
+                              if (incluirFunciones) {
+                                setMensajeFunciones({
+                                  type: 'info',
+                                  text: 'Documento actualizado. Validaremos nuevamente la asociación de funciones al solicitar.',
+                                });
+                              }
                               if (incluirPrimaTecnica) {
                                 setIncluirPrimaTecnica(false);
                               }
@@ -1595,6 +1718,57 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       </div>
 
                       {/* Botón Solicitar Certificado */}
+                      <div className={`flex items-start gap-3 rounded-lg border p-4 ${
+                        mensajeFunciones?.type === 'error'
+                          ? 'border-red-300 bg-red-50'
+                          : mensajeFunciones?.type === 'success'
+                            ? 'border-emerald-300 bg-emerald-50'
+                            : 'border-blue-200 bg-blue-50'
+                      }`}>
+                        <Checkbox
+                          id="incluir-funciones-paso1"
+                          checked={incluirFunciones}
+                          disabled={validandoFunciones}
+                          onCheckedChange={handleToggleFunciones}
+                          className="mt-1"
+                        />
+                        <div className="min-w-0">
+                          <Label htmlFor="incluir-funciones-paso1" className="cursor-pointer text-sm font-semibold text-gray-800">
+                            Incluir las funciones de mi cargo
+                          </Label>
+                          <p className="mt-1 text-xs text-gray-600">
+                            Marca esta opción para que el certificado muestre las funciones asociadas a tu cargo actual.
+                          </p>
+                          {validandoFunciones && (
+                            <span className="mt-2 flex items-center gap-1.5 text-xs font-medium text-blue-700" role="status">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Validando tus datos laborales...
+                            </span>
+                          )}
+                          {!validandoFunciones && incluirFunciones && mensajeFunciones && (
+                            <span
+                              className={`mt-2 flex items-start gap-1.5 text-xs font-semibold ${
+                                mensajeFunciones.type === 'error'
+                                  ? 'text-red-700'
+                                  : mensajeFunciones.type === 'success'
+                                    ? 'text-emerald-700'
+                                    : 'text-blue-700'
+                              }`}
+                              role={mensajeFunciones.type === 'error' ? 'alert' : 'status'}
+                            >
+                              {mensajeFunciones.type === 'error'
+                                ? <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+                                : <ListChecks className="mt-0.5 h-3.5 w-3.5 flex-none" />}
+                              {mensajeFunciones.text}
+                            </span>
+                          )}
+                          {!validandoFunciones && incluirFunciones && !mensajeFunciones && funcionesMetadata?.disponible && (
+                            <span className="mt-2 block text-xs font-semibold text-emerald-700">
+                              {funcionesMetadata.cantidad} funciones disponibles.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
                       <Button
                         onClick={handleBuscarEmpleado}
                         disabled={buscandoEmpleado || estadoLaboral === 'inactivo' || tipoDocumento === ''}
