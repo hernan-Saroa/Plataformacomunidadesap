@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CierreFinancieroService } from './cierre-financiero.service';
+import { CierreFinancieroController } from './cierre-financiero.controller';
 
 import { CierreFinanciero } from '../../entities/cierre-financiero.entity';
 import { RegistroPresupuestal } from '../../entities/registro-presupuestal.entity';
@@ -29,6 +30,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
+  controllers: [CierreFinancieroController],
   providers: [CierreFinancieroService],
   // El cierre definitivo (EFDS-1175) preguntará aquí: no se archiva un
   // expediente cuyo contrato sigue con saldo sin liberar.
