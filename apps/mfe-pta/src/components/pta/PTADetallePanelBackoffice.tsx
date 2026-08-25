@@ -366,6 +366,7 @@ function ApprovalTracker({
   visibleComponentKeys,
   modoRevision = false,
   componentesRevision = [],
+  componentesEstado = [],
 }: {
   estado: string;
   componentesAprobacion?: any[];
@@ -374,9 +375,11 @@ function ApprovalTracker({
   /** Rol Revisor: el seguimiento refleja la etapa de Revisión, no la de Aprobación. */
   modoRevision?: boolean;
   componentesRevision?: any[];
+  /** `componentes_estado` del DTO: estado colapsado calculado por el backend. */
+  componentesEstado?: any[];
 }) {
   const visibleSet = visibleComponentKeys?.length ? new Set(visibleComponentKeys) : null;
-  const getStatusForComponent = (compKeys: string[]) => {
+  const getStatusForComponent = (compKeys: string[], collapsedKey?: string) => {
     const scopedKeys = visibleSet ? compKeys.filter(key => visibleSet.has(key)) : compKeys;
     if (scopedKeys.length === 0) return 'hidden';
 
@@ -390,6 +393,29 @@ function ApprovalTracker({
     }
 
     const approvals = componentesAprobacion.filter(c => scopedKeys.includes(c.componente));
+
+    // Sin recorte por permisos, el estado colapsado que calcula el backend
+    // (`componentes_estado`) manda: es el mismo dato que muestran el detalle y el
+    // portal del docente, y aplica la regla de que un sub-componente SIN HORAS no
+    // bloquea. Agregar aquí las filas granulares por separado hacía que un PTA con
+    // Docencia solo en Sede Central se viera "Pendiente" en unas vistas y
+    // "Aprobado" en otras, por la fila territorial que queda sin horas.
+    // Con recorte activo se sigue agregando a mano, porque el colapsado del backend
+    // no distingue qué sub-componentes le corresponden a este usuario.
+    const estadoBackend = !visibleSet && collapsedKey && Array.isArray(componentesEstado)
+      ? componentesEstado.find((c: any) => c?.key === collapsedKey)?.estado
+      : undefined;
+    if (estadoBackend) {
+      if (estadoBackend === 'devuelto') return 'devuelto';
+      if (estadoBackend === 'aprobado') {
+        // Se conserva el matiz de "No aplica": si todo lo que hay fue auto-aprobado
+        // por el Sistema (componente vacío), no es un aval de nadie.
+        const todoAuto = approvals.length > 0 && approvals.every(a => a.aprobadorNombre === 'Sistema');
+        return todoAuto ? 'no_aplica' : 'aprobado';
+      }
+      return 'pendiente';
+    }
+
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
     if (approvals.every(a => a.estado === 'aprobado')) {
@@ -406,13 +432,13 @@ function ApprovalTracker({
     {
       label: 'Docencia',
       icon: BookOpen,
-      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado', 'academica_territorial']),
+      status: getStatusForComponent(['academica_pregrado', 'academica_posgrado', 'academica_territorial'], 'academica'),
       baseColor: '#4472C4'
     },
     {
       label: 'Investigación',
       icon: FlaskConical,
-      status: getStatusForComponent(['investigacion']),
+      status: getStatusForComponent(['investigacion'], 'investigacion'),
       baseColor: '#ED7D31'
     },
     {
@@ -423,7 +449,7 @@ function ApprovalTracker({
         'ext_procesos',
         'ext_fortalecimiento',
         'ext_gobierno'
-      ]),
+      ], 'extension'),
       baseColor: '#059669'
     },
     {
@@ -438,7 +464,7 @@ function ApprovalTracker({
       // se enrutaban a un ámbito nuevo, los 3 viejos quedaban auto-aprobados por
       // el Sistema (vacíos) y el componente se mostraba como "No aplica" pese a
       // tener actividades.
-      status: getStatusForComponent([...PTA_COMPLEMENTARIAS_COMPONENT_KEYS]),
+      status: getStatusForComponent([...PTA_COMPLEMENTARIAS_COMPONENT_KEYS], 'complementarias'),
       baseColor: '#FFC000'
     }
   ].filter(step => step.status !== 'hidden');
@@ -913,6 +939,53 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const claveComentarioRevision = (componente: string, subseccion: string, par?: ParTerritorial) =>
     par ? `${componente}:${subseccion}::${par.territorialId}::${par.nivel}` : `${componente}:${subseccion}`;
 
+  /**
+   * Decisión efectiva de una territorial en "Aprobaciones de Jefatura".
+   *
+   * Esas filas (AprobacionJefatura) las escribe únicamente el flujo legacy de
+   * aprobación por rol; aprobar por COMPONENTE nunca las tocaba, así que el
+   * contador se quedaba clavado (p. ej. 1/3) aunque el trabajo real avanzara.
+   *
+   * Se respeta la decisión legacy cuando existe, y si sigue 'pendiente' se deriva
+   * del estado real: las filas por (territorial, nivel) de Docencia Territorial
+   * para las territoriales, y las aprobaciones de Docencia de Sede Central para la
+   * fila central, que no aparece en el desglose territorial.
+   */
+  const decisionJefaturaEfectiva = useCallback((fila: any): string => {
+    const decisionLegacy = String(fila?.decision || 'pendiente');
+
+    const idFila = normalizeTerritorialToken(fila?.territorialId);
+    const nombreFila = normalizeTerritorialToken(fila?.territorialNombre || fila?.territorial_nombre_actual);
+    const filasTerritoriales = aprobacionTerritorial.filter(t => {
+      const id = normalizeTerritorialToken(t.territorialId);
+      const nombre = normalizeTerritorialToken(t.territorialNombre);
+      return (idFila && id === idFila) || (nombreFila && nombre === nombreFila);
+    });
+
+    // La aprobación POR COMPONENTE manda. El bloque mostraba la decisión del flujo
+    // legacy por rol, que se registra sin aprobar ningún componente: por eso podía
+    // leerse "1/3 · Risaralda ✓ Aprobado" con TODOS los componentes en Pendiente.
+    // Cuando existe el detalle por componente, ese es el avance real.
+    if (filasTerritoriales.length > 0) {
+      if (filasTerritoriales.some(t => t.estado === 'devuelto')) return 'devuelto';
+      return filasTerritoriales.every(t => t.estado === 'aprobado') ? 'aprobado' : 'pendiente';
+    }
+
+    // Sede Central no aparece en el desglose territorial: su Docencia se enruta a
+    // academica_pregrado/posgrado. Solo cuentan los sub-componentes que existan.
+    const docenciaCentral = componentesAprobacion.filter(
+      c => c.componente === 'academica_pregrado' || c.componente === 'academica_posgrado',
+    );
+    if (docenciaCentral.length > 0) {
+      if (docenciaCentral.some(c => c.estado === 'devuelto')) return 'devuelto';
+      return docenciaCentral.every(c => c.estado === 'aprobado') ? 'aprobado' : 'pendiente';
+    }
+
+    // Sin ningún dato por componente (PTAs resueltos solo con el flujo legacy) se
+    // conserva su decisión, para no borrar aprobaciones ya registradas.
+    return decisionLegacy;
+  }, [aprobacionTerritorial, componentesAprobacion]);
+
   const etiquetaParDe = useCallback((par: ParTerritorial) => {
     const fila = aprobacionTerritorial.find(
       t => t.territorialId === par.territorialId && t.nivel === par.nivel,
@@ -921,6 +994,27 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     );
     return etiquetaPar(fila || { territorialId: par.territorialId, nivel: par.nivel });
   }, [aprobacionTerritorial, revisionTerritorial]);
+
+  /**
+   * Refresca los datos derivados del PTA después de decidir sobre un componente.
+   *
+   * `componentes_estado` lo calcula el BACKEND (agrega los sub-componentes y aplica
+   * la regla de que lo que no tiene horas no bloquea), así que no se puede
+   * recomponer en el cliente: hay que releer el PTA. Sin esto, el encabezado de
+   * componentes y el bloque de Aprobaciones de Jefatura seguían mostrando el estado
+   * previo hasta recargar la página, que es justo lo que se reportó.
+   */
+  const refrescarEstadoDerivadoDelPta = async () => {
+    const [resPta, resJefatura] = await Promise.all([
+      getPTAById(pta.id),
+      getAprobacionesJefatura(pta.id),
+    ]);
+    if (resPta.success && resPta.data) {
+      setPta((prev: any) => ({ ...prev, ...resPta.data }));
+      onUpdated?.({ ...pta, ...resPta.data });
+    }
+    if (resJefatura.success) setAprobacionesJefatura(resJefatura.data || []);
+  };
 
   const handleAprobarComponente = async (
     componente: string,
@@ -1000,6 +1094,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
           onUpdated?.({ ...pta, estado: nuevoEstado });
         }
+        // Estado por componente y avance de Jefatura: los recalcula el backend.
+        await refrescarEstadoDerivadoDelPta();
       } else {
         // Caso de carrera: el panel seguía mostrando el botón "Aprobar" con datos
         // ya desactualizados (otro aprobador resolvió el último par propio pendiente
@@ -1112,6 +1208,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
           onUpdated?.({ ...pta, estado: nuevoEstado });
         }
+        // Igual que al aprobar: 'en_revision' también cambia componentes_estado.
+        await refrescarEstadoDerivadoDelPta();
       } else {
         toast.error(res.message || 'Error al actualizar la revisión del componente');
       }
@@ -3195,6 +3293,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                  del Aprobador). Misma funcionalidad, nomenclatura del rol. */
               modoRevision={!puedeAprobar && tieneAlgunPermisoRevision}
               componentesRevision={componentesRevision}
+              componentesEstado={pta.componentes_estado}
             />
           </div>
         </div>
@@ -3310,40 +3409,35 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </span>
                     <span style={{
                       fontSize: '0.78rem', fontWeight: 800,
-                      color: aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(a.decision)).length === aprobacionesJefatura.length ? '#059669' : '#D97706',
+                      color: aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(decisionJefaturaEfectiva(a))).length === aprobacionesJefatura.length ? '#059669' : '#D97706',
                     }}>
-                      {aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(a.decision)).length}
+                      {aprobacionesJefatura.filter(a => ['aprobado','aprobado_con_cambios'].includes(decisionJefaturaEfectiva(a))).length}
                       {' / '}
                       {aprobacionesJefatura.length}
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {aprobacionesJefatura.map((a: any) => (
-                      <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem' }}>
-                        <div style={{
-                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                          background: a.decision === 'aprobado' ? '#059669'
-                            : a.decision === 'aprobado_con_cambios' ? '#D97706'
-                            : a.decision === 'devuelto' ? '#DC2626'
-                            : '#9CA3AF',
-                        }} />
-                        <span style={{ flex: 1, color: '#374151' }}>
-                          {a.territorialNombre || a.territorial_nombre_actual || a.territorialId}
-                        </span>
-                        <span style={{
-                          fontWeight: 600,
-                          color: a.decision === 'aprobado' ? '#059669'
-                            : a.decision === 'aprobado_con_cambios' ? '#D97706'
-                            : a.decision === 'devuelto' ? '#DC2626'
-                            : '#9CA3AF',
-                        }}>
-                          {a.decision === 'aprobado' ? '✓ Aprobado'
-                            : a.decision === 'aprobado_con_cambios' ? '~ Con cambios'
-                            : a.decision === 'devuelto' ? '✗ Devuelto'
-                            : '⏳ Pendiente'}
-                        </span>
-                      </div>
-                    ))}
+                    {aprobacionesJefatura.map((a: any) => {
+                      const decision = decisionJefaturaEfectiva(a);
+                      const color = decision === 'aprobado' ? '#059669'
+                        : decision === 'aprobado_con_cambios' ? '#D97706'
+                        : decision === 'devuelto' ? '#DC2626'
+                        : '#9CA3AF';
+                      return (
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem' }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: color }} />
+                          <span style={{ flex: 1, color: '#374151' }}>
+                            {a.territorialNombre || a.territorial_nombre_actual || a.territorialId}
+                          </span>
+                          <span style={{ fontWeight: 600, color }}>
+                            {decision === 'aprobado' ? '✓ Aprobado'
+                              : decision === 'aprobado_con_cambios' ? '~ Con cambios'
+                              : decision === 'devuelto' ? '✗ Devuelto'
+                              : '⏳ Pendiente'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

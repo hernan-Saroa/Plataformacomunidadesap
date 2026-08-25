@@ -331,13 +331,39 @@ const COMPONENT_STEPS = [
   { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000', compKeys: [...PTA_COMPLEMENTARIAS_COMPONENT_KEYS] },
 ];
 
-function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
+function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { estado: string; componentesAprobacion?: any[]; pta?: any }) {
   const isAprobado = estado === 'Aprobado' || estado === 'En Firme' || estado === 'Finalizado';
   const isBorrador = estado === 'Borrador';
 
-  const getStatusForComponent = (compKeys: string[]) => {
+  /**
+   * Fuente de verdad: `componentes_estado` del backend (claves colapsadas
+   * 'academica' / 'investigacion' / 'extension' / 'complementarias'), el mismo
+   * dato que usa el detalle del PTA y el backoffice.
+   *
+   * Antes esta barra agregaba por su cuenta las filas granulares y exigia que
+   * TODAS estuvieran 'aprobado'. Eso ignoraba la regla del backend de que un
+   * sub-componente SIN HORAS no bloquea (estaAprobado): un PTA con Docencia solo
+   * en Sede Central conserva una fila 'academica_territorial' en pendiente, asi
+   * que la barra mostraba "Pendiente" mientras el detalle y el backoffice --que
+   * si aplican esa regla-- mostraban "Aprobado".
+   *
+   * La agregacion granular se conserva como respaldo para payloads sin
+   * `componentes_estado`.
+   */
+  const getStatusForComponent = (compKeys: string[], collapsedKey: string) => {
     if (isAprobado) return 'aprobado';
     if (isBorrador) return 'pendiente';
+
+    const delBackend = Array.isArray(pta?.componentes_estado)
+      ? pta.componentes_estado.find((c: any) => c?.key === collapsedKey)?.estado
+      : undefined;
+    if (delBackend) {
+      if (delBackend === 'aprobado') return 'aprobado';
+      if (delBackend === 'devuelto') return 'devuelto';
+      // 'pendiente', 'en_revision' y 'no_iniciado' se muestran como pendientes.
+      return 'pendiente';
+    }
+
     const approvals = componentesAprobacion.filter(c => compKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
@@ -356,7 +382,7 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
         {COMPONENT_STEPS.map(step => {
           const Icon = step.icon;
           const keys = (step as any).compKeys || [step.key];
-          const status = getStatusForComponent(keys);
+          const status = getStatusForComponent(keys, step.key);
 
           let bg = '#FFFBEB';
           let borderColor = '#FEF3C7';
@@ -1106,6 +1132,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                             <ComponentApprovalBar
                               estado={pta.estado}
                               componentesAprobacion={componentApprovalsByPta[pta.id] || []}
+                              pta={pta}
                             />
                           </div>
 

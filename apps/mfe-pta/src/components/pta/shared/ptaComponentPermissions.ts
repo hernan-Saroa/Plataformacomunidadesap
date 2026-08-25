@@ -464,6 +464,23 @@ export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolea
       const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
       return items.some((item: any) => item?.componente_complementaria === 'complementarias_posgrado');
     }
+    // EFDS-1353 agregó estos dos ámbitos pero no sus casos aquí, así que caían en
+    // `default: false`. Como este predicado decide qué PTAs ve cada usuario según
+    // sus componentes autorizados, un revisor/aprobador cuyo alcance de
+    // Complementarias fuera Territorial o Gestión Profesoral no veía NINGÚN PTA
+    // ("Sin resultados"), aunque existieran.
+    case 'complementarias_territorial': {
+      const backend = pta?.complementarias_por_componente;
+      if (backend && typeof backend === 'object') return Number(backend.complementarias_territorial || 0) > 0;
+      const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_territorial');
+    }
+    case 'complementarias_gestion_profesoral': {
+      const backend = pta?.complementarias_por_componente;
+      if (backend && typeof backend === 'object') return Number(backend.complementarias_gestion_profesoral || 0) > 0;
+      const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_gestion_profesoral');
+    }
     default:
       return false;
   }

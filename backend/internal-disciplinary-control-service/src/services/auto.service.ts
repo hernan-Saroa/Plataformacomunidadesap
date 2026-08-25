@@ -152,7 +152,7 @@ export class AutoService {
    */
   async findAll(): Promise<LegalAuto[]> {
     return await this.autoRepository.find({
-      relations: ['process', 'process.abogadoAsignado'],
+      relations: ['process', 'process.abogadoAsignado', 'process.news'],
     });
   }
 
@@ -375,6 +375,28 @@ export class AutoService {
               `Observaciones: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
             aprobadoPorId,
           );
+        }
+      } else {
+        // Notificación de devolución para el resto de tipos de auto.
+        const proceso = auto.process;
+        if (proceso?.abogadoAsignadoId) {
+          this.notificationClient
+            .send({
+              id_usuario_destinatario: proceso.abogadoAsignadoId,
+              tipo_notificacion: 'AUTO_DEVUELTO',
+              titulo: 'Auto devuelto para corrección',
+              mensaje: `El auto ${auto.tipo} del proceso ${proceso.radicadoProceso} fue devuelto por el Jefe OCID. ` +
+                `Observaciones: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
+              descripcion_corta: `Auto devuelto - ${proceso.radicadoProceso}`,
+              icono: 'RotateCcw',
+              color: '#DC2626',
+              prioridad: 'Alta',
+              categoria: 'DISCIPLINARIO',
+              tiene_accion: true,
+              texto_boton_accion: 'Ver auto',
+              datos_adicionales: { processId: auto.processId, radicadoProceso: proceso.radicadoProceso, autoId: auto.id },
+            })
+            .catch(() => {});
         }
       }
 

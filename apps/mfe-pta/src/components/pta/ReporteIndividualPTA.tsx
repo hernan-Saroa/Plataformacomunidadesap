@@ -19,11 +19,64 @@ import {
   FlaskConical, Globe, ListChecks, Award, QrCode, Loader2, Briefcase,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { toast } from 'sonner';
 import { PTA_COLORS } from './shared/ptaColors';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { jsPDF } from 'jspdf';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
+
+/**
+ * html2canvas 1.x no reconoce funciones de color CSS modernas como oklch()
+ * (usadas por las clases de Tailwind v4, p. ej. en HierarchySelectionSummary)
+ * y lanza una excepción silenciosa al recorrer el árbol clonado. Se convierten
+ * a rgba() dentro del clon usado para la captura, sin afectar la vista real.
+ */
+const normalizarColoresParaCaptura = (documentoClonado: Document, elementoClonado: HTMLElement) => {
+  const vista = documentoClonado.defaultView;
+  if (!vista) return;
+
+  const patronColorModerno = /(?:oklch|oklab|lab|lch|color)\((?:[^()]|\([^()]*\))*\)/gi;
+  const propiedadesColor = [
+    'background-color', 'background-image',
+    'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+    'box-shadow', 'caret-color', 'color', 'fill', 'outline-color', 'stroke',
+    'text-decoration-color', 'text-shadow', '-webkit-text-stroke-color',
+  ];
+  const cacheColores = new Map<string, string>();
+  const canvasColor = documentoClonado.createElement('canvas');
+  canvasColor.width = 1;
+  canvasColor.height = 1;
+  const contextoColor = canvasColor.getContext('2d', { willReadFrequently: true });
+
+  const convertirColor = (colorCss: string): string => {
+    const cacheado = cacheColores.get(colorCss);
+    if (cacheado) return cacheado;
+    if (!contextoColor) return 'rgba(0, 0, 0, 1)';
+    try {
+      contextoColor.clearRect(0, 0, 1, 1);
+      contextoColor.fillStyle = '#010203';
+      contextoColor.fillStyle = colorCss;
+      contextoColor.fillRect(0, 0, 1, 1);
+      const [r, g, b, alpha] = contextoColor.getImageData(0, 0, 1, 1).data;
+      const convertido = `rgba(${r}, ${g}, ${b}, ${(alpha / 255).toFixed(4)})`;
+      cacheColores.set(colorCss, convertido);
+      return convertido;
+    } catch {
+      return 'rgba(0, 0, 0, 1)';
+    }
+  };
+
+  const elementos = [elementoClonado, ...Array.from(elementoClonado.querySelectorAll<HTMLElement>('*'))];
+  for (const elemento of elementos) {
+    const estiloCalculado = vista.getComputedStyle(elemento);
+    for (const propiedad of propiedadesColor) {
+      const valor = estiloCalculado.getPropertyValue(propiedad);
+      if (!valor || !/(?:oklch|oklab|lab|lch|color)\(/i.test(valor)) continue;
+      elemento.style.setProperty(propiedad, valor.replace(patronColorModerno, convertirColor), 'important');
+    }
+  }
+};
 
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
 // 7 slots: Docencia, Investigación, las 4 secciones de Extensión y Complementarias.
@@ -224,6 +277,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         backgroundColor: '#ffffff',
         logging: false,
         windowWidth: 900,
+        onclone: normalizarColoresParaCaptura,
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -244,6 +298,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
       pdf.save(`${versionLabel}_${nombre.replace(/\s+/g, '_')}_${pta.periodo || '2025-2'}.pdf`);
     } catch (err) {
       console.error('PDF export error:', err);
+      toast.error('No fue posible generar el PDF del reporte. Intente nuevamente.');
     } finally {
       setExportingPdf(false);
     }

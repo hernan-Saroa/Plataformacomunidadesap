@@ -65,6 +65,7 @@ import {
   PTA_COMPONENT_PERMISSION,
   PTA_APPROVE_ALL_PERMISSION,
   PTA_EXTENSION_COMPONENT_KEYS,
+  PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
   PTA_BULK_APPROVAL_GROUPS,
   type PTAComponentKey,
   type PTABulkApprovalGroupKey,
@@ -1456,6 +1457,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           || visibleComponentKeySet.has('academica_territorial');
       case 'extension':
         return PTA_EXTENSION_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
+      // Complementarias también se colapsa y tiene varios ámbitos (pregrado,
+      // posgrado, territorial y gestión profesoral). Sin expandirla, un usuario
+      // cuyo permiso fuera uno de esos ámbitos no cruzaba contra la clave
+      // 'complementarias' del listado y sus PTAs no contaban como pendientes suyos.
+      case 'complementarias':
+        return PTA_COMPLEMENTARIAS_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
       default:
         return visibleComponentKeySet.has(key);
     }
