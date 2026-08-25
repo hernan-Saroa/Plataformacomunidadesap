@@ -390,7 +390,7 @@ export function ModalDetalleSolicitudInforme({
                     <Building className="w-3.5 h-3.5 text-gray-500" />
                     <p className="text-xs text-gray-500">Ente Solicitante</p>
                   </div>
-                  <p className="text-sm font-bold text-gray-900">{solicitud.enteSolicitante}</p>
+                  <p className="text-sm font-bold text-gray-900">{solicitud.enteSolicitante || 'No especificado'}</p>
                 </div>
 
                 <div className="p-3 bg-gray-50 rounded-lg">

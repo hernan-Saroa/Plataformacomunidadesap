@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns, Send } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns, Send, Building } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
@@ -52,6 +52,7 @@ import {
   EnteControlPM,
   Dependencia,
   DestinatarioInforme,
+  EnteSolicitanteInforme,
   TipoFuenteNormativa
 } from '../config/ConfiguracionesSIGLContext';
 
@@ -278,6 +279,8 @@ export function ConfiguracionesSIGL() {
     entesControlPM,
     destinatariosInforme,
     actualizarDestinatariosInforme,
+    entesSolicitantesInforme,
+    actualizarEntesSolicitantesInforme,
     tiposFuenteNormativa,
     actualizarTiposFuenteNormativa,
     guardarConfiguraciones,
@@ -1789,6 +1792,121 @@ export function ConfiguracionesSIGL() {
                     {destinatariosInforme.length === 0 && (
                       <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
                         <p>No hay destinatarios registrados.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Entes Solicitantes del Informe */}
+              <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-100 rounded-md">
+                          <Building className="w-5 h-5 text-blue-700" />
+                        </div>
+                        Entes Solicitantes del Informe
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Gestiona las entidades o personas que pueden solicitar los informes y términos (ej. Contraloría, Procuraduría, Ciudadano)
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const nuevo: EnteSolicitanteInforme = {
+                          id: `ente-sol-${Date.now()}`,
+                          nombre: 'Nuevo Ente Solicitante',
+                          descripcion: 'Descripción del ente o persona solicitante',
+                          activo: true
+                        };
+                        actualizarEntesSolicitantesInforme([...entesSolicitantesInforme, nuevo]);
+                        toast.success('Ente solicitante agregado');
+                      }}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Ente Solicitante</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {entesSolicitantesInforme.map((ente, index) => (
+                      <div
+                        key={ente.id}
+                        className="p-3 sm:p-4 bg-gradient-to-br from-gray-50 to-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center font-bold text-xs text-gray-500 shadow-sm flex-shrink-0">
+                            {index + 1}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={ente.nombre}
+                            onChange={(e) => {
+                              const nuevos = entesSolicitantesInforme.map(item =>
+                                item.id === ente.id ? { ...item, nombre: e.target.value } : item
+                              );
+                              actualizarEntesSolicitantesInforme(nuevos);
+                            }}
+                            className="flex-1 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            placeholder="Nombre del ente o persona solicitante..."
+                          />
+
+                          <div className="flex items-center gap-2 ml-2">
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={ente.activo}
+                                onChange={(e) => {
+                                  const nuevos = entesSolicitantesInforme.map(item =>
+                                    item.id === ente.id ? { ...item, activo: e.target.checked } : item
+                                  );
+                                  actualizarEntesSolicitantesInforme(nuevos);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs font-medium text-gray-600 select-none">Activo</span>
+                            </label>
+
+                            <button
+                              onClick={() => {
+                                const nuevos = entesSolicitantesInforme.filter(e => e.id !== ente.id);
+                                actualizarEntesSolicitantesInforme(nuevos);
+                                toast.success('Ente solicitante eliminado');
+                              }}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar ente solicitante"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <textarea
+                          value={ente.descripcion}
+                          onChange={(e) => {
+                            const nuevos = entesSolicitantesInforme.map(item =>
+                              item.id === ente.id ? { ...item, descripcion: e.target.value } : item
+                            );
+                            actualizarEntesSolicitantesInforme(nuevos);
+                          }}
+                          className="w-full px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white"
+                          placeholder="Descripción del ente o persona solicitante..."
+                          rows={2}
+                        />
+                      </div>
+                    ))}
+
+                    {entesSolicitantesInforme.length === 0 && (
+                      <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                        <p>No hay entes solicitantes registrados.</p>
                       </div>
                     )}
                   </div>

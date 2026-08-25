@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalProgramacionVencimientos } from './ModalProgramacionVencimientos';
-import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send, Scale, Trash2 } from 'lucide-react';
+import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send, Scale, Trash2, Building } from 'lucide-react';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 import {
     NOMBRES_MESES,
@@ -42,6 +42,7 @@ const PRIORIDADES = [
 ];
 
 const DESTINATARIO_OTRO = '__OTRO__';
+const ENTE_SOLICITANTE_OTRO = '__OTRO__';
 
 interface FuenteNormativaEntry {
     id: string;
@@ -60,8 +61,9 @@ const nuevaFuenteNormativa = (): FuenteNormativaEntry => ({
 });
 
 export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoTerminoProps) {
-    const { getDestinatariosInformeActivos, getTiposFuenteNormativaActivos } = useConfiguracionesSIGL();
+    const { getDestinatariosInformeActivos, getEntesSolicitantesInformeActivos, getTiposFuenteNormativaActivos } = useConfiguracionesSIGL();
     const destinatariosDisponibles = getDestinatariosInformeActivos();
+    const entesSolicitantesDisponibles = getEntesSolicitantesInformeActivos();
     const tiposFuenteNormativaDisponibles = getTiposFuenteNormativaActivos();
     const [loading, setLoading] = useState(false);
     const [profesionales, setProfesionales] = useState<any[]>([]);
@@ -74,9 +76,11 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         observaciones: '',
         responsableId: '',
         origenModulo: '',
-        destinatario: ''
+        destinatario: '',
+        enteSolicitante: ''
     });
     const [destinatarioOtro, setDestinatarioOtro] = useState('');
+    const [enteSolicitanteOtro, setEnteSolicitanteOtro] = useState('');
     const [fuentesNormativas, setFuentesNormativas] = useState<FuenteNormativaEntry[]>([nuevaFuenteNormativa()]);
 
     const resetForm = () => {
@@ -87,9 +91,11 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             observaciones: '',
             responsableId: '',
             origenModulo: '',
-            destinatario: ''
+            destinatario: '',
+            enteSolicitante: ''
         });
         setDestinatarioOtro('');
+        setEnteSolicitanteOtro('');
         setFuentesNormativas([nuevaFuenteNormativa()]);
         setProgramacion(null);
     };
@@ -121,6 +127,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             ? destinatarioOtro.trim()
             : formData.destinatario;
 
+        const enteSolicitanteFinal = formData.enteSolicitante === ENTE_SOLICITANTE_OTRO
+            ? enteSolicitanteOtro.trim()
+            : formData.enteSolicitante;
+
         const fundamentoNormativo = fuentesNormativas
             .filter(f => f.tipo || f.cita)
             .map(f => ({
@@ -144,6 +154,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                         legalService.createTerminoManual({
                             ...formData,
                             destinatario: destinatarioFinal,
+                            enteSolicitante: enteSolicitanteFinal,
                             fundamentoNormativo,
                             nombreActuacion: `${formData.nombreActuacion} — ${NOMBRES_MESES[o.mes - 1]} ${o.anio}`,
                             fechaBase: fechaLocalYMD(o.fechaInicio),
@@ -183,6 +194,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             await legalService.createTerminoManual({
                 ...formData,
                 destinatario: destinatarioFinal,
+                enteSolicitante: enteSolicitanteFinal,
                 fundamentoNormativo,
                 responsableId: formData.responsableId || null
             });
@@ -249,6 +261,36 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                             className="border-2 border-gray-300 focus:border-blue-500"
                             required
                         />
+                    </div>
+
+                    {/* Ente solicitante del informe */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Building className="w-4 h-4" />
+                            Ente Solicitante
+                        </Label>
+                        <Select
+                            value={formData.enteSolicitante}
+                            onValueChange={(val: string) => setFormData({ ...formData, enteSolicitante: val })}
+                        >
+                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                <SelectValue placeholder="Seleccione el ente o persona solicitante..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white max-h-[200px] z-[9999]">
+                                {entesSolicitantesDisponibles.map((e) => (
+                                    <SelectItem key={e.id} value={e.nombre}>{e.nombre}</SelectItem>
+                                ))}
+                                <SelectItem value={ENTE_SOLICITANTE_OTRO}>Otro (especificar)...</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {formData.enteSolicitante === ENTE_SOLICITANTE_OTRO && (
+                            <Input
+                                placeholder="Especifique el ente o persona solicitante..."
+                                value={enteSolicitanteOtro}
+                                onChange={(e) => setEnteSolicitanteOtro(e.target.value)}
+                                className="border-2 border-gray-300 focus:border-blue-500"
+                            />
+                        )}
                     </div>
 
                     {/* Destinatario del informe */}

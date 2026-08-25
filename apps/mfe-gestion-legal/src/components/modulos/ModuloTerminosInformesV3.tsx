@@ -153,7 +153,7 @@ export function ModuloTerminosInformesV3() {
         etapa: t.estado as any,
         tipoInforme: t.origenModulo,
         moduloOrigen: t.origenModulo, // Add this for filter compatibility
-        enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
+        enteSolicitante: t.enteSolicitante || (t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema'),
         destinatario: t.destinatario || '',
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
