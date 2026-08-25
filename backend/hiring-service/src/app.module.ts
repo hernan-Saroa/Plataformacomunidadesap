@@ -26,6 +26,7 @@ import { LegalizacionModule } from './modules/legalizacion/legalizacion.module';
 import { SupervisionModule } from './modules/supervision/supervision.module';
 import { RegistroPresupuestalModule } from './modules/registro-presupuestal/registro-presupuestal.module';
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
+import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -132,6 +133,7 @@ import { ActaInicio } from './entities/acta-inicio.entity';
     SupervisionModule,
     RegistroPresupuestalModule,
     PublicacionContratoModule,
+    ActaInicioModule,
   ],
   controllers: [HealthController],
   providers: [

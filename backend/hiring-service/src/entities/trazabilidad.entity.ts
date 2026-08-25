@@ -42,7 +42,10 @@ export type AccionTraza =
   // Contrato electrónico y legalización (etapa 8).
   | 'ACEPTAR'
   | 'FIRMAR'
-  | 'LEGALIZAR';
+  | 'LEGALIZAR'
+  // Acta de inicio (etapa 9). Acción propia y no reuso de FIRMAR: lo que el
+  // acta hace no es firmar un documento más, es poner el contrato a correr.
+  | 'INICIAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {
