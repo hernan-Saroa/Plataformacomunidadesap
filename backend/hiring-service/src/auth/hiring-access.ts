@@ -419,6 +419,18 @@ export const ROLES_LIQUIDAR = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién cierra financieramente el contrato (actividad 10.3, EFDS-1173).
+ *
+ * La Dirección Financiera y nadie más. Es la lista más estrecha del módulo
+ * junto con la del CDP, y por la misma razón: liberar saldo devuelve plata al
+ * presupuesto de la entidad, y eso es competencia suya.
+ *
+ * Ni el gestor que liquidó ni el supervisor que vigiló: cada uno hizo lo suyo,
+ * pero ninguno mueve presupuesto.
+ */
+export const ROLES_CIERRE_FINANCIERO = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

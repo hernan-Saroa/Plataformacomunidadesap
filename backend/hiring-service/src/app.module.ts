@@ -30,6 +30,7 @@ import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { PagosModule } from './modules/pagos/pagos.module';
 import { InformeFinalModule } from './modules/informe-final/informe-final.module';
 import { LiquidacionModule } from './modules/liquidacion/liquidacion.module';
+import { CierreFinancieroModule } from './modules/cierre-financiero/cierre-financiero.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -90,6 +91,7 @@ import { ActaInicio } from './entities/acta-inicio.entity';
 import { PagoContrato, SoportePago } from './entities/pago-contrato.entity';
 import { InformeFinal, EntregableInforme } from './entities/informe-final.entity';
 import { ActaLiquidacion } from './entities/acta-liquidacion.entity';
+import { CierreFinanciero } from './entities/cierre-financiero.entity';
 
 @Module({
   imports: [
@@ -107,7 +109,7 @@ import { ActaLiquidacion } from './entities/acta-liquidacion.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -143,6 +145,7 @@ import { ActaLiquidacion } from './entities/acta-liquidacion.entity';
     PagosModule,
     InformeFinalModule,
     LiquidacionModule,
+    CierreFinancieroModule,
   ],
   controllers: [HealthController],
   providers: [

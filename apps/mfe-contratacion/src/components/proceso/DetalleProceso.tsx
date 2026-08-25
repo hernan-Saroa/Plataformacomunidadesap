@@ -26,6 +26,7 @@ import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelPagos } from '../pagos/PanelPagos';
 import { PanelInformeFinal } from '../informe-final/PanelInformeFinal';
 import { PanelLiquidacion } from '../liquidacion/PanelLiquidacion';
+import { PanelCierreFinanciero } from '../cierre-financiero/PanelCierreFinanciero';
 import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
@@ -146,7 +147,13 @@ const NUMERALES_ETAPA_9 = [NUMERAL_ACTA_INICIO, NUMERAL_PAGOS];
 const NUMERAL_INFORME_FINAL = '10.1';
 /** Acta de liquidacion del contrato (EFDS-1172). */
 const NUMERAL_LIQUIDACION = '10.2';
-const NUMERALES_ETAPA_10 = [NUMERAL_INFORME_FINAL, NUMERAL_LIQUIDACION];
+/** Pago final y liberacion del saldo del RP (EFDS-1173). */
+const NUMERAL_CIERRE_FINANCIERO = '10.3';
+const NUMERALES_ETAPA_10 = [
+  NUMERAL_INFORME_FINAL,
+  NUMERAL_LIQUIDACION,
+  NUMERAL_CIERRE_FINANCIERO,
+];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -468,6 +475,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelAdjudicacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_CIERRE_FINANCIERO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelCierreFinanciero
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

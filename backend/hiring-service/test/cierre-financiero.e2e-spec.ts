@@ -4,6 +4,10 @@ import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
 import { PagosService } from '../src/modules/pagos/pagos.service';
+import { InformeFinalService } from '../src/modules/informe-final/informe-final.service';
+import { LiquidacionService } from '../src/modules/liquidacion/liquidacion.service';
+import { CierreFinancieroService } from '../src/modules/cierre-financiero/cierre-financiero.service';
+import { RegistroPresupuestalService } from '../src/modules/registro-presupuestal/registro-presupuestal.service';
 import { ActaInicioService } from '../src/modules/acta-inicio/acta-inicio.service';
 import { ContratosService } from '../src/modules/contratos/contratos.service';
 import { LegalizacionService } from '../src/modules/legalizacion/legalizacion.service';
@@ -21,18 +25,23 @@ import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-prev
 import { HiringAccess } from '../src/auth/hiring-access';
 
 /**
- * HU EFDS-1170 · Tramitar pagos del contrato (actividad 9.4).
+ * HU EFDS-1173 · Registrar el pago final y cerrar financieramente (10.3).
  *
- * Va sobre un contrato en ejecución, así que el camino incluye toda la etapa 8
- * y el acta de inicio (EFDS-1167). Nada de esto se ve en una prueba unitaria:
- * cada eslabón vive en la tabla de otra actividad.
+ * Va sobre un contrato con informe final, así que el camino arrastra las etapas
+ * 8, 9 y la 10.1. Lo que aquí importa y no se ve en una unitaria son **las dos
+ * ventanas de plazo**: que la potestad unilateral no exista antes de tiempo y
+ * que la consulta lo diga.
  *
- * **Alcance:** sin integración con Click. Los soportes se cargan a mano y eso
- * es lo que se prueba.
+ * El plazo se mueve cambiando la fecha de inicio del contrato, que es de donde
+ * sale la terminación. Esperar cuatro meses no es opción.
  */
-describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
+describe('HU EFDS-1173 · cierre financiero del contrato (10.3)', () => {
   let app: INestApplication;
   let pagos: PagosService;
+  let informeFinal: InformeFinalService;
+  let liquidacion: LiquidacionService;
+  let cierre: CierreFinancieroService;
+  let rp: RegistroPresupuestalService;
   let actaInicio: ActaInicioService;
   let contratos: ContratosService;
   let legalizacion: LegalizacionService;
@@ -50,7 +59,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
   let dataSource: DataSource;
 
   /** Objeto propio de esta suite: las demás corren en paralelo (EFDS-1443). */
-  const OBJETO = 'Tramite de pagos para pruebas';
+  const OBJETO = 'Cierre financiero para pruebas';
 
   const gestor: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000001',
@@ -113,6 +122,10 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
     await app.init();
 
     pagos = app.get(PagosService);
+    informeFinal = app.get(InformeFinalService);
+    liquidacion = app.get(LiquidacionService);
+    cierre = app.get(CierreFinancieroService);
+    rp = app.get(RegistroPresupuestalService);
     actaInicio = app.get(ActaInicioService);
     contratos = app.get(ContratosService);
     legalizacion = app.get(LegalizacionService);
@@ -157,6 +170,13 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
     const deContratos = `SELECT id FROM hiring.contratos WHERE ${deProceso}`;
     const borrar = (sql: string) => dataSource.query(sql, [OBJETO]);
 
+    await borrar(`DELETE FROM hiring.cierres_financieros WHERE contrato_id IN (${deContratos})`);
+    await borrar(`DELETE FROM hiring.registros_presupuestales WHERE contrato_id IN (${deContratos})`);
+    await borrar(`DELETE FROM hiring.actas_liquidacion WHERE contrato_id IN (${deContratos})`);
+    await borrar(
+      `DELETE FROM hiring.entregables_informe WHERE informe_id IN (SELECT id FROM hiring.informes_finales WHERE contrato_id IN (${deContratos}))`,
+    );
+    await borrar(`DELETE FROM hiring.informes_finales WHERE contrato_id IN (${deContratos})`);
     await borrar(
       `DELETE FROM hiring.soportes_pago WHERE pago_id IN (SELECT id FROM hiring.pagos_contrato WHERE contrato_id IN (${deContratos}))`,
     );
@@ -209,7 +229,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
   /** Todo el camino hasta dejar el contrato legalizado y con supervisor. */
   const hastaContratoLegalizado = async () => {
     const n = ++vuelta;
-    const documento = `9004444${String(n).padStart(2, '0')}-4`;
+    const documento = `9007777${String(n).padStart(2, '0')}-7`;
 
     const proceso = await procesos.crearProceso(
       { objeto: OBJETO, modalidad: 'ABREVIADA_MENOR_CUANTIA', valorEstimado: VALOR_CONTRATO },
@@ -220,13 +240,13 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
     await cdp.verificar(proceso.id, financiero);
     await cdp.expedir(
       proceso.id,
-      { numero: `CDP-2026-170-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
+      { numero: `CDP-2026-173-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
       financiero,
     );
 
     await apertura.registrar(
       proceso.id,
-      { resolucionNumero: `RES-2026-170-${n}`, resolucionFecha: hoy() },
+      { resolucionNumero: `RES-2026-173-${n}`, resolucionFecha: hoy() },
       archivo('resolucion.pdf'),
       'a'.repeat(64),
       archivo('pliego.pdf'),
@@ -305,7 +325,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       proceso.id,
       {
         oferenteId: cierre.oferentes[0].id,
-        numeroActo: `RES-ADJ-2026-170-${n}`,
+        numeroActo: `RES-ADJ-2026-173-${n}`,
         fechaActo: hoy(),
         valorAdjudicado: VALOR_CONTRATO,
       },
@@ -318,7 +338,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       proceso.id,
       {
         tipologia: 'CONSULTORIA',
-        numero: `CTO-2026-170-${CORRIDA}-${n}`,
+        numero: `CTO-2026-173-${CORRIDA}-${n}`,
         objeto: 'Servicios profesionales de apoyo a la gestión',
         valor: VALOR_CONTRATO,
         plazoDias: 180,
@@ -350,7 +370,7 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
-        numeroPoliza: `POL-170-${CORRIDA}-${n}`,
+        numeroPoliza: `POL-173-${CORRIDA}-${n}`,
         amparos: [
           {
             tipo: 'CUMPLIMIENTO',
@@ -397,15 +417,14 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
 
     return proceso;
   };
-
-  const radicar = (procesoId: string, datos: Record<string, unknown> = {}) =>
-    pagos.radicar(
+  /** Una cuenta de cobro tramitada, que es lo que el balance suma. */
+  const pagar = async (procesoId: string, valor: number) => {
+    const radicado = await pagos.radicar(
       procesoId,
       {
         periodoDesde: haceDias(30),
         periodoHasta: haceDias(1),
-        valor: 10_000_000,
-        ...datos,
+        valor,
       } as any,
       archivo('factura.pdf'),
       'x'.repeat(64),
@@ -414,314 +433,336 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       gestor,
     );
 
-  // ------------------------------------------------------------ criterio --
+    const pagoId = radicado.pagos[0].id;
+    await pagos.avalar(procesoId, pagoId, {}, supervisor);
+    await pagos.tramitar(
+      procesoId,
+      pagoId,
+      { referenciaPago: `OP-2026-${Math.floor(Math.random() * 100000)}` },
+      financiero,
+    );
+    return pagoId;
+  };
 
-  describe('Criterio 1 · factura, informe y aval tramitan el pago', () => {
-    it('recorre el trámite completo hasta dejar el pago tramitado', async () => {
-      const proceso = await contratoEnEjecucion();
+  /** Una cuenta radicada y sin tramitar, para el aviso. */
+  const dejarPendiente = async (procesoId: string, valor: number) => {
+    await pagos.radicar(
+      procesoId,
+      { periodoDesde: haceDias(20), periodoHasta: haceDias(1), valor } as any,
+      archivo('factura-pendiente.pdf'),
+      'r'.repeat(64),
+      archivo('informe-pendiente.pdf'),
+      's'.repeat(64),
+      gestor,
+    );
+  };
+  const CONCLUSION =
+    'El contrato se ejecutó conforme al alcance pactado y los entregables se recibieron a satisfacción.';
 
-      const radicado = await radicar(proceso.id);
-      expect(radicado.pagos).toHaveLength(1);
-      expect(radicado.pagos[0].estado).toBe('RADICADO');
-      expect(radicado.pagos[0].numero).toBe(1);
-      expect(radicado.pagos[0].factura).not.toBeNull();
-      expect(radicado.pagos[0].informe).not.toBeNull();
+  /**
+   * Un contrato con informe final, con la ejecución empezada hace los días que
+   * se le pidan.
+   *
+   * El plazo del contrato es de 180 días, así que la terminación —y con ella la
+   * ventana de liquidación— queda en `inicio + 180`. Mover ese único número es
+   * lo que permite probar las dos ventanas sin esperar cuatro meses.
+   */
+  const conInformeFinal = async (diasDesdeInicio = 200) => {
+    const proceso = await hastaContratoLegalizado();
+    const inicio = haceDias(diasDesdeInicio);
 
-      const avalado = await pagos.avalar(
+    await actaInicio.suscribir(
+      proceso.id,
+      { fechaReunion: inicio, fechaInicio: inicio } as any,
+      archivo('acta-inicio.pdf'),
+      'k'.repeat(64),
+      supervisor,
+    );
+    await informeFinal.elaborar(
+      proceso.id,
+      { fechaElaboracion: hoy(), conclusion: CONCLUSION } as any,
+      archivo('informe-final.pdf'),
+      'w'.repeat(64),
+      supervisor,
+    );
+
+    return proceso;
+  };
+
+  const liquidar = (
+    procesoId: string,
+    datos: Record<string, unknown> = {},
+    soporte: any = null,
+  ) =>
+    liquidacion.liquidar(
+      procesoId,
+      { tipo: 'BILATERAL', fechaActa: hoy(), ...datos } as any,
+      archivo('acta-liquidacion.pdf'),
+      'l'.repeat(64),
+      soporte,
+      soporte ? 'p'.repeat(64) : null,
+      gestor,
+    );
+  const VALOR_RP = 70_000_000;
+
+  /**
+   * Un contrato liquidado y con RP expedido, que es la condición de entrada de
+   * la 10.3.
+   *
+   * El RP se expide por menos que el contrato a propósito: es lo corriente
+   * —se compromete lo de la vigencia— y así el saldo liberado no coincide por
+   * casualidad con el saldo del contrato.
+   */
+  /**
+   * El RP sobre un contrato ya suscrito, que es donde lo sitúa la etapa 8.
+   *
+   * Va antes del acta de inicio a propósito: `admiteRp` solo acepta un contrato
+   * PERFECCIONADO o LEGALIZADO, así que una vez que arranca la ejecución ya no
+   * se puede expedir. Es el orden real —el RP es 8.3 y el acta es 9.1— pero
+   * conviene tenerlo presente.
+   */
+  const conRpExpedido = async (procesoId: string) => {
+    await rp.solicitar(procesoId, { rubro: 'A-02-02', valor: VALOR_RP }, financiero);
+    await rp.verificar(procesoId, financiero);
+    await rp.expedir(
+      procesoId,
+      {
+        numero: `RP-2026-173-${CORRIDA}-${++vuelta}`,
+        valor: VALOR_RP,
+        fechaExpedicion: haceDias(210),
+      } as any,
+      null,
+      null,
+      financiero,
+    );
+  };
+
+  /** Un contrato liquidado y con RP expedido: la entrada de la 10.3. */
+  const listoParaCerrar = async (pagado = 40_000_000) => {
+    const proceso = await hastaContratoLegalizado();
+    await conRpExpedido(proceso.id);
+
+    const inicio = haceDias(200);
+    await actaInicio.suscribir(
+      proceso.id,
+      { fechaReunion: inicio, fechaInicio: inicio } as any,
+      archivo('acta-inicio.pdf'),
+      'k'.repeat(64),
+      supervisor,
+    );
+
+    if (pagado > 0) await pagar(proceso.id, pagado);
+
+    await informeFinal.elaborar(
+      proceso.id,
+      { fechaElaboracion: hoy(), conclusion: CONCLUSION } as any,
+      archivo('informe-final.pdf'),
+      'w'.repeat(64),
+      supervisor,
+    );
+    await liquidar(proceso.id);
+
+    return proceso;
+  };
+
+  const cerrarFinanciero = (procesoId: string, datos: Record<string, unknown> = {}) =>
+    cierre.cerrar(
+      procesoId,
+      {
+        referenciaPagoFinal: 'OP-2026-9001',
+        fechaPagoFinal: hoy(),
+        ...datos,
+      } as any,
+      archivo('soporte-cierre.pdf'),
+      'c'.repeat(64),
+      financiero,
+    );
+
+  // ------------------------------------------------------------- criterio --
+
+  describe('Criterio 1 · el pago final cierra y libera el saldo', () => {
+    it('libera la diferencia entre el RP y lo pagado', async () => {
+      const proceso = await listoParaCerrar(40_000_000);
+
+      const estado = await cerrarFinanciero(proceso.id);
+
+      expect(estado.cierre).not.toBeNull();
+      expect((estado.cierre as any).valorRp).toBe(VALOR_RP);
+      expect((estado.cierre as any).valorPagado).toBe(40_000_000);
+      expect((estado.cierre as any).valorLiberado).toBe(VALOR_RP - 40_000_000);
+      expect((estado.cierre as any).referenciaPagoFinal).toBe('OP-2026-9001');
+      expect(estado.puedeCerrar).toBe(false);
+    });
+
+    it('cuenta lo tramitado y no lo cobrado', async () => {
+      const proceso = await listoParaCerrar(40_000_000);
+      // Una cuenta radicada sin tramitar no es plata que salió: no reduce el
+      // saldo que vuelve al presupuesto.
+      await dejarPendiente(proceso.id, 20_000_000);
+
+      const estado = await cerrarFinanciero(proceso.id);
+
+      expect((estado.cierre as any).valorPagado).toBe(40_000_000);
+      expect((estado.cierre as any).valorLiberado).toBe(VALOR_RP - 40_000_000);
+    });
+
+    it('libera el RP entero cuando el contrato no tuvo pagos', async () => {
+      const proceso = await listoParaCerrar(0);
+
+      const estado = await cerrarFinanciero(proceso.id);
+
+      expect((estado.cierre as any).valorLiberado).toBe(VALOR_RP);
+    });
+  });
+
+  describe('Criterio 2 · la cadena que exige el cierre', () => {
+    it('no cierra un contrato sin liquidar', async () => {
+      const proceso = await hastaContratoLegalizado();
+      await conRpExpedido(proceso.id);
+      const inicio = haceDias(200);
+      await actaInicio.suscribir(
         proceso.id,
-        radicado.pagos[0].id,
-        { observacion: 'Las actividades del periodo se cumplieron' },
+        { fechaReunion: inicio, fechaInicio: inicio } as any,
+        archivo('acta-inicio.pdf'),
+        'k'.repeat(64),
         supervisor,
       );
-      expect(avalado.pagos[0].estado).toBe('AVALADO');
-      expect(avalado.pagos[0].avaladoPor).toBe(supervisor.userName);
 
-      const tramitado = await pagos.tramitar(
+      await expect(cerrarFinanciero(proceso.id)).rejects.toThrow(/todavía no está liquidado/i);
+    });
+
+    it('no cierra sin registro presupuestal expedido', async () => {
+      const proceso = await conInformeFinal();
+      await liquidar(proceso.id);
+
+      // Sin RP no hay saldo que liberar, y el mensaje apunta al numeral.
+      await expect(cerrarFinanciero(proceso.id)).rejects.toThrow(/registro presupuestal/i);
+    });
+
+    it('la consulta dice cuál de las dos cosas falta', async () => {
+      const proceso = await conInformeFinal();
+
+      const sinLiquidar = await cierre.estado(proceso.id, financiero);
+      expect(sinLiquidar.puedeCerrar).toBe(false);
+      expect(sinLiquidar.motivoNoPuede).toMatch(/acta de liquidación/i);
+
+      await liquidar(proceso.id);
+      const sinRp = await cierre.estado(proceso.id, financiero);
+      expect(sinRp.motivoNoPuede).toMatch(/registro presupuestal/i);
+    });
+
+    it('no deja dos cierres vigentes', async () => {
+      const proceso = await listoParaCerrar();
+      await cerrarFinanciero(proceso.id);
+
+      await expect(cerrarFinanciero(proceso.id)).rejects.toThrow(/ya tiene cierre financiero/i);
+    });
+  });
+
+  describe('Criterio 3 · el sobrepago se avisa y no bloquea', () => {
+    it('avisa cuando lo pagado supera el RP y no libera nada', async () => {
+      // El RP es de 70 y se pagan 75: hubo plata sin respaldo presupuestal.
+      const proceso = await listoParaCerrar(75_000_000);
+
+      const antes = await cierre.estado(proceso.id, financiero);
+      expect(antes.cuadre!.sobrepago).toBe(5_000_000);
+      expect(antes.cuadre!.advertencia).toMatch(/sin respaldo/i);
+
+      // Y aun así se puede cerrar: el hallazgo se registra, no se esconde.
+      const estado = await cerrarFinanciero(proceso.id);
+      expect((estado.cierre as any).valorLiberado).toBe(0);
+    });
+
+    it('deja el sobrepago en la traza, no solo en la advertencia', async () => {
+      const proceso = await listoParaCerrar(75_000_000);
+      await cerrarFinanciero(proceso.id);
+
+      const [traza] = await dataSource.query(
+        `SELECT accion, detalle FROM hiring.trazabilidad
+          WHERE proceso_id = $1 AND entidad = 'cierre_financiero' ORDER BY id DESC LIMIT 1`,
+        [proceso.id],
+      );
+
+      expect(traza.accion).toBe('CERRAR');
+      expect(traza.detalle.actividad).toBe('10.3');
+      expect(Number(traza.detalle.sobrepago)).toBe(5_000_000);
+    });
+  });
+
+  describe('Criterio 4 · el cuadre queda congelado', () => {
+    it('un pago posterior no reescribe lo que se liberó', async () => {
+      const proceso = await listoParaCerrar(40_000_000);
+      await cerrarFinanciero(proceso.id);
+
+      // Entra un pago rezagado después de cerrar.
+      await pagar(proceso.id, 10_000_000);
+      const estado = await cierre.estado(proceso.id, financiero);
+
+      // El cierre sigue diciendo lo que se reintegró ese día...
+      expect((estado.cierre as any).valorLiberado).toBe(VALOR_RP - 40_000_000);
+      // ...y el cuadre de hoy ya es otro.
+      expect(estado.cuadre!.valorPagado).toBe(50_000_000);
+    });
+  });
+
+  describe('Criterio 5 · revertir conserva el cierre anterior', () => {
+    it('el revertido queda con su motivo y se puede cerrar otra vez', async () => {
+      const proceso = await listoParaCerrar(40_000_000);
+      await cerrarFinanciero(proceso.id);
+
+      const revertido = await cierre.revertir(
         proceso.id,
-        radicado.pagos[0].id,
-        { referenciaPago: 'OP-2026-4471' },
+        { motivo: 'El pago final se registró con la referencia de otro contrato' },
         financiero,
       );
-      expect(tramitado.pagos[0].estado).toBe('TRAMITADO');
-      expect(tramitado.pagos[0].referenciaPago).toBe('OP-2026-4471');
-      expect(tramitado.resumen.tramitado).toBe(10_000_000);
-      expect(tramitado.resumen.saldo).toBe(VALOR_CONTRATO - 10_000_000);
-    });
 
-    it('no deja tramitar lo que el supervisor no avaló', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
+      expect(revertido.cierre).toBeNull();
+      expect(revertido.historial).toHaveLength(1);
+      expect((revertido.historial[0] as any).valorLiberado).toBe(VALOR_RP - 40_000_000);
+      expect((revertido.historial[0] as any).motivoReversion).toMatch(/otro contrato/i);
 
-      await expect(
-        pagos.tramitar(
-          proceso.id,
-          radicado.pagos[0].id,
-          { referenciaPago: 'OP-2026-0001' },
-          financiero,
-        ),
-      ).rejects.toThrow(/todavía no la ha avalado/i);
-    });
-
-    it('numera las cuentas de corrido dentro del contrato', async () => {
-      const proceso = await contratoEnEjecucion();
-
-      await radicar(proceso.id, { valor: 5_000_000 });
-      const segunda = await radicar(proceso.id, { valor: 5_000_000 });
-
-      // La lista viene de la más nueva a la más vieja.
-      expect(segunda.pagos.map((p) => p.numero)).toEqual([2, 1]);
-    });
-  });
-
-  describe('Criterio 2 · solo se cobra lo que ya se está ejecutando', () => {
-    it('no admite cuentas sobre un contrato que no arrancó', async () => {
-      const proceso = await hastaContratoLegalizado();
-
-      // Legalizado pero sin acta de inicio: es justo lo que EFDS-1167 aporta.
-      await expect(radicar(proceso.id)).rejects.toThrow(/acta de inicio/i);
-    });
-
-    it('no deja cobrar un periodo anterior al inicio de la ejecución', async () => {
-      const proceso = await contratoEnEjecucion(haceDias(10));
-
-      await expect(
-        radicar(proceso.id, { periodoDesde: haceDias(40), periodoHasta: haceDias(1) }),
-      ).rejects.toThrow(/no se cobra un periodo anterior/i);
-    });
-
-    it('rechaza un periodo invertido', async () => {
-      const proceso = await contratoEnEjecucion();
-
-      await expect(
-        radicar(proceso.id, { periodoDesde: haceDias(1), periodoHasta: haceDias(20) }),
-      ).rejects.toThrow(/anterior a su inicio/i);
-    });
-  });
-
-  describe('Criterio 3 · el aval es de quien vigila, no de quien tiene el rol', () => {
-    it('el supervisor de otro contrato no puede avalar', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
-
-      // Tiene SUPERVISOR_CONTRATO y llega hasta aquí: lo que lo detiene es no
-      // ser el supervisor de este contrato, que es la regla de EFDS-1438.
-      await expect(
-        pagos.avalar(proceso.id, radicado.pagos[0].id, {}, otroSupervisor),
-      ).rejects.toThrow(/no eres el supervisor de este contrato/i);
-    });
-
-    it('devolver deja la cuenta corregible y sin aval', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
-
-      const devuelto = await pagos.devolver(
-        proceso.id,
-        radicado.pagos[0].id,
-        { motivo: 'El informe de actividades no cubre todo el periodo cobrado' },
-        supervisor,
-      );
-
-      expect(devuelto.pagos[0].estado).toBe('DEVUELTO');
-      expect(devuelto.pagos[0].motivoDevolucion).toMatch(/no cubre todo el periodo/i);
-      // Sin aval: dejarlo permitiría tramitarla saltándose la corrección.
-      expect(devuelto.pagos[0].avaladoAt).toBeNull();
-
-      await expect(
-        pagos.tramitar(
-          proceso.id,
-          radicado.pagos[0].id,
-          { referenciaPago: 'OP-2026-0002' },
-          financiero,
-        ),
-      ).rejects.toThrow(/no se puede tramitar/i);
-    });
-
-    it('la devuelta no se reabre: se corrige radicando una cuenta nueva', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
-      await pagos.devolver(
-        proceso.id,
-        radicado.pagos[0].id,
-        { motivo: 'El informe de actividades no cubre todo el periodo cobrado' },
-        supervisor,
-      );
-
-      // La factura y el informe se fijan al radicar y no hay como
-      // reemplazarlos, asi que reabrir la devuelta la dejaria avalada con los
-      // documentos que el supervisor rechazo. Se radica otra.
-      await expect(
-        pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor),
-      ).rejects.toThrow(/no se puede avalar una cuenta devuelta/i);
-
-      const corregida = await radicar(proceso.id, { valor: 8_000_000 });
-      const avalada = await pagos.avalar(
-        proceso.id,
-        corregida.pagos[0].id,
-        {},
-        supervisor,
-      );
-
-      // Las dos quedan: la devuelta explica por que hubo dos cuentas del mismo
-      // periodo, y solo la nueva cuenta contra el valor del contrato.
-      expect(avalada.pagos.map((p) => p.estado)).toEqual(['AVALADO', 'DEVUELTO']);
-      expect(avalada.resumen.cobrado).toBe(8_000_000);
-    });
-  });
-
-  describe('Criterio 4 · los soportes que Click evitaría pedir', () => {
-    it('suma seguridad social y RUT a la cuenta radicada', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
-      const pagoId = radicado.pagos[0].id;
-
-      await pagos.cargarSoporte(
-        proceso.id,
-        pagoId,
-        { tipo: 'SEGURIDAD_SOCIAL' },
-        archivo('planilla.pdf'),
-        's'.repeat(64),
-        gestor,
-      );
-      const conSoportes = await pagos.cargarSoporte(
-        proceso.id,
-        pagoId,
-        { tipo: 'RUT' },
-        archivo('rut.pdf'),
-        't'.repeat(64),
-        gestor,
-      );
-
-      expect(conSoportes.pagos[0].soportes.map((s: any) => s.tipo)).toEqual([
-        'SEGURIDAD_SOCIAL',
-        'RUT',
-      ]);
-      // Mientras esto sea falso, la carga es manual y la pantalla lo dice.
-      expect(conSoportes.integracionClick).toBe(false);
-    });
-
-    it('no admite soportes sobre una cuenta ya tramitada', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
-      const pagoId = radicado.pagos[0].id;
-
-      await pagos.avalar(proceso.id, pagoId, {}, supervisor);
-      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0003' }, financiero);
-
-      await expect(
-        pagos.cargarSoporte(
-          proceso.id,
-          pagoId,
-          { tipo: 'OTRO' },
-          archivo('tardio.pdf'),
-          'u'.repeat(64),
-          gestor,
-        ),
-      ).rejects.toThrow(/ya se cerró/i);
-    });
-  });
-
-  describe('Criterio 5 · el aviso cuando lo cobrado supera el contrato', () => {
-    it('avisa sin bloquear la radicación', async () => {
-      const proceso = await contratoEnEjecucion();
-
-      await radicar(proceso.id, { valor: VALOR_CONTRATO });
-      // La segunda se pasa del valor y aun así entra: pagarla o no es decisión
-      // de la entidad, con el mismo criterio del CDP.
-      const excedido = await radicar(proceso.id, { valor: 5_000_000 });
-
-      expect(excedido.pagos).toHaveLength(2);
-      expect(excedido.resumen.advertencia).toMatch(/supera el valor del contrato/i);
-      expect(excedido.resumen.saldo).toBe(-5_000_000);
-    });
-
-    it('la cuenta anulada deja de contar contra el valor', async () => {
-      const proceso = await contratoEnEjecucion();
-      const primera = await radicar(proceso.id, { valor: VALOR_CONTRATO });
-
-      const anulada = await pagos.anular(
-        proceso.id,
-        primera.pagos[0].id,
-        { motivo: 'Se radicó con el valor de otro contrato' },
-        gestor,
-      );
-
-      expect(anulada.pagos[0].estado).toBe('ANULADO');
-      expect(anulada.resumen.cobrado).toBe(0);
-      expect(anulada.resumen.advertencia).toBeNull();
-    });
-
-    it('no se anula un pago ya tramitado', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
-      const pagoId = radicado.pagos[0].id;
-
-      await pagos.avalar(proceso.id, pagoId, {}, supervisor);
-      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0004' }, financiero);
-
-      await expect(
-        pagos.anular(proceso.id, pagoId, { motivo: 'Se radicó por error de digitación' }, gestor),
-      ).rejects.toThrow(/ya se tramitó/i);
+      const nuevo = await cerrarFinanciero(proceso.id, { referenciaPagoFinal: 'OP-2026-9002' });
+      expect((nuevo.cierre as any).referenciaPagoFinal).toBe('OP-2026-9002');
+      expect(nuevo.historial).toHaveLength(1);
     });
   });
 
   describe('El riel y el expediente', () => {
-    it('marca la 9.4 solo cuando un pago se tramitó de verdad', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
+    it('marca la 10.3 cumplida y la devuelve en curso al revertir', async () => {
+      const proceso = await listoParaCerrar();
+      await cerrarFinanciero(proceso.id);
 
       const estadoDe = async () => {
         const [fila] = await dataSource.query(
-          `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '9.4'`,
+          `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '10.3'`,
           [proceso.id],
         );
         return fila?.estado;
       };
 
-      // Radicada y avalada, la actividad sigue en curso: todavía no hay pago.
-      expect(await estadoDe()).toBe('BORRADOR');
-      await pagos.avalar(proceso.id, radicado.pagos[0].id, {}, supervisor);
-      expect(await estadoDe()).toBe('BORRADOR');
+      expect(await estadoDe()).toBe('APROBADO');
 
-      await pagos.tramitar(
+      await cierre.revertir(
         proceso.id,
-        radicado.pagos[0].id,
-        { referenciaPago: 'OP-2026-0005' },
+        { motivo: 'El pago final se registró con la referencia de otro contrato' },
         financiero,
       );
-      expect(await estadoDe()).toBe('APROBADO');
+      expect(await estadoDe()).toBe('BORRADOR');
     });
 
-    it('archiva la factura y el informe en el expediente bajo su numeral', async () => {
-      const proceso = await contratoEnEjecucion();
-      await radicar(proceso.id);
+    it('archiva el soporte del cierre en el expediente', async () => {
+      const proceso = await listoParaCerrar();
+      await cerrarFinanciero(proceso.id);
 
       const docs = await dataSource.query(
         `SELECT d.nombre FROM hiring.documentos d
            JOIN hiring.expedientes e ON e.id = d.expediente_id
-          WHERE e.proceso_id = $1 AND d.numeral = '9.4' ORDER BY d.nombre`,
+          WHERE e.proceso_id = $1 AND d.numeral = '10.3'`,
         [proceso.id],
       );
 
-      expect(docs).toHaveLength(2);
-      expect(docs.map((d: any) => d.nombre).join(' ')).toMatch(/factura/i);
-      expect(docs.map((d: any) => d.nombre).join(' ')).toMatch(/informe de actividades/i);
-    });
-
-    it('deja traza de la radicación, el aval y el trámite', async () => {
-      const proceso = await contratoEnEjecucion();
-      const radicado = await radicar(proceso.id);
-      const pagoId = radicado.pagos[0].id;
-
-      await pagos.avalar(proceso.id, pagoId, {}, supervisor);
-      await pagos.tramitar(proceso.id, pagoId, { referenciaPago: 'OP-2026-0006' }, financiero);
-
-      const trazas = await dataSource.query(
-        `SELECT accion FROM hiring.trazabilidad
-          WHERE proceso_id = $1 AND entidad = 'pago_contrato' ORDER BY id ASC`,
-        [proceso.id],
-      );
-
-      expect(trazas.map((t: any) => t.accion)).toEqual(['SOLICITAR', 'APROBAR', 'EXPEDIR']);
+      expect(docs).toHaveLength(1);
+      expect(docs[0].nombre).toMatch(/cierre financiero/i);
     });
   });
 });

@@ -1972,3 +1972,59 @@ export interface DatosLiquidacion {
   pazYSalvo?: boolean;
   observaciones?: string;
 }
+
+// ------------------- etapa 10 · cierre financiero (10.3) -------------------
+
+/** El cuadre del contrato contra su respaldo presupuestal. */
+export interface CuadrePresupuestal {
+  valorRp: number;
+  /** Lo efectivamente tramitado, no lo cobrado. */
+  valorPagado: number;
+  /** Lo que vuelve al presupuesto. Nunca negativo. */
+  valorLiberado: number;
+  /** Cuanto se pago por encima del RP, si paso. */
+  sobrepago: number;
+  advertencia: string | null;
+}
+
+export interface CierreFinancieroVigente {
+  id: string;
+  referenciaPagoFinal: string;
+  fechaPagoFinal: string;
+  valorRp: number;
+  valorPagado: number;
+  /** Congelado: lo que se reintegro ese dia. */
+  valorLiberado: number;
+  observaciones: string | null;
+  cerradoPor: string | null;
+  soporte: { nombre: string; url: string } | null;
+}
+
+export interface CierreFinancieroRevertido {
+  referenciaPagoFinal: string;
+  fechaPagoFinal: string;
+  valorLiberado: number;
+  revertidoAt: string | null;
+  revertidoPor: string | null;
+  motivoReversion: string | null;
+}
+
+export interface EstadoCierreFinanciero {
+  contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
+  /** Sin acta de liquidacion no hay cierre financiero (10.2). */
+  tieneLiquidacion: boolean;
+  rp: { numero: string | null; valor: number | null; fechaExpedicion: string | null } | null;
+  puedeCerrar: boolean;
+  /** Cual de las dos cosas falta. */
+  motivoNoPuede: string | null;
+  cuadre: CuadrePresupuestal | null;
+  cierre: CierreFinancieroVigente | null;
+  historial: CierreFinancieroRevertido[];
+}
+
+/** Lo que la pantalla envia al cerrar. */
+export interface DatosCierreFinanciero {
+  referenciaPagoFinal: string;
+  fechaPagoFinal: string;
+  observaciones?: string;
+}
