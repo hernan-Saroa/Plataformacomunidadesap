@@ -22,6 +22,7 @@ import { PanelComite } from '../comite/PanelComite';
 import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
 import { PanelTraslado } from '../traslado/PanelTraslado';
 import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
+import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
@@ -120,6 +121,16 @@ const NUMERALES_ETAPA_8 = [
   NUMERAL_ARL,
   NUMERAL_PUBLICACION_CONTRATO,
 ];
+
+/**
+ * Reunión y acta de inicio (EFDS-1167), primera actividad de la etapa 9.
+ *
+ * Lista propia con un solo elemento, por lo mismo que las anteriores: la etapa
+ * 9 es otra, y meterla en la de la 8 haría que el nombre dejara de decir la
+ * verdad. Crecerá con EFDS-1168 a EFDS-1170.
+ */
+const NUMERAL_ACTA_INICIO = '9.1';
+const NUMERALES_ETAPA_9 = [NUMERAL_ACTA_INICIO];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -282,7 +293,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         NUMERALES_ETAPA_5.includes(act.numeral) ||
         NUMERALES_ETAPA_6.includes(act.numeral) ||
         NUMERALES_ADJUDICACION.includes(act.numeral) ||
-        NUMERALES_ETAPA_8.includes(act.numeral)
+        NUMERALES_ETAPA_8.includes(act.numeral) ||
+        NUMERALES_ETAPA_9.includes(act.numeral)
       ) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
@@ -439,6 +451,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelAdjudicacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelActaInicio
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

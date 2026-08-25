@@ -9,6 +9,7 @@ import { DataSource, EntityManager, In } from 'typeorm';
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
+import { ETAPA_EJECUCION } from '../../entities/acta-inicio.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -70,6 +71,10 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  *
  * La declaratoria desierta no suma numeral —la matriz no le da uno—: se trabaja
  * desde el panel de la 7.1 a la 7.4.
+ *
+ * La 9 entra con EFDS-1167 (acta de inicio). Solo su 9.1 tiene panel; las demás
+ * actividades de la etapa aparecen en el riel sin él mientras EFDS-1168 a
+ * EFDS-1170 estén por hacer, que es la verdad de lo entregado.
  */
 export const ETAPA_ADJUDICACION = 7;
 export const ETAPA_LEGALIZACION = 8;
@@ -81,6 +86,7 @@ export const ETAPAS_ENTREGADAS = [
   ETAPA_RECEPCION,
   ETAPA_ADJUDICACION,
   ETAPA_LEGALIZACION,
+  ETAPA_EJECUCION,
 ];
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */

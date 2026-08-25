@@ -30,6 +30,8 @@ import {
   EstadoLegalizacion,
   EstadoSupervision,
   DatosSupervisor,
+  EstadoActaInicio,
+  DatosActaInicio,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -532,6 +534,41 @@ export const contratacionService = {
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
       method: 'POST',
       body: JSON.stringify({}),
+    }),
+
+  // ----------------------------- etapa 9 · acta de inicio (9.1) -------------
+
+  /** Si el contrato admite acta, quien lo supervisa y el acta vigente. */
+  actaInicio: (procesoId: string) =>
+    pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`),
+
+  /**
+   * Suscribe el acta y deja el contrato en ejecucion.
+   *
+   * Viaja como multipart porque lleva el acta firmada: sin ella hubo una
+   * reunion, no un inicio.
+   */
+  suscribirActaInicio: (procesoId: string, datos: DatosActaInicio, acta: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acta);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula el acta vigente; el contrato vuelve a legalizado. */
+  anularActaInicio: (procesoId: string, motivo: string) =>
+    pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
     }),
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
