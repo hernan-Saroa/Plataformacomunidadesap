@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -39,7 +39,7 @@ export const NUMERAL_SUPERVISOR = '8.2';
  * fuentes corrige. Función pura para poder probar la regla sin base de datos.
  */
 export function admiteSupervisor(estado: EstadoContrato): boolean {
-  return estado === 'PERFECCIONADO' || estado === 'LEGALIZADO';
+  return alMenos(estado, 'PERFECCIONADO');
 }
 
 interface ArchivoCargado {

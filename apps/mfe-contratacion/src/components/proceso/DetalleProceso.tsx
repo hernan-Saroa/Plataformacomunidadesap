@@ -24,6 +24,7 @@ import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
 import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
+import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -78,17 +79,26 @@ const NUMERAL_GARANTIAS = '8.4';
 /** Registro de la ARL para contratistas persona natural (EFDS-1164). */
 const NUMERAL_ARL = '8.5';
 
-/** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
 /** Publicación del contrato dentro del plazo legal (EFDS-1166). */
 const NUMERAL_PUBLICACION_CONTRATO = '8.8';
 
-const NUMERALES_ETAPA_8 = [
+/** Reunión de inicio que da comienzo a la ejecución (EFDS-1167). */
+const NUMERAL_ACTA_INICIO = '9.1';
+
+/**
+ * Las que se trabajan desde su propio panel y no desde el formulario.
+ *
+ * Ya no son solo de la etapa 8: la reunión de inicio abre la 9 y sigue el mismo
+ * criterio, así que la lista se nombra por lo que tienen en común.
+ */
+const NUMERALES_CON_PANEL_PROPIO = [
   NUMERAL_CONTRATO,
   NUMERAL_SUPERVISOR,
   NUMERAL_RP,
   NUMERAL_GARANTIAS,
   NUMERAL_ARL,
   NUMERAL_PUBLICACION_CONTRATO,
+  NUMERAL_ACTA_INICIO,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -251,7 +261,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         NUMERALES_CDP.includes(act.numeral) ||
         NUMERALES_ETAPA_5.includes(act.numeral) ||
         NUMERALES_ETAPA_6.includes(act.numeral) ||
-        NUMERALES_ETAPA_8.includes(act.numeral)
+        NUMERALES_CON_PANEL_PROPIO.includes(act.numeral)
       ) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
@@ -406,6 +416,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_SUPERVISOR ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelSupervision
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelActaInicio
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

@@ -69,6 +69,13 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
 export const ETAPA_ADJUDICACION = 7;
 export const ETAPA_LEGALIZACION = 8;
 
+/**
+ * La 9 entra con EFDS-1167: la reunión de inicio (9.1) da comienzo a la
+ * ejecución, y sin la etapa en esta lista el riel no la devolvería y la
+ * actividad quedaría construida pero inalcanzable desde la pantalla.
+ */
+export const ETAPA_EJECUCION = 9;
+
 export const ETAPAS_ENTREGADAS = [
   3,
   ETAPA_CDP,
@@ -76,6 +83,7 @@ export const ETAPAS_ENTREGADAS = [
   ETAPA_RECEPCION,
   ETAPA_ADJUDICACION,
   ETAPA_LEGALIZACION,
+  ETAPA_EJECUCION,
 ];
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */

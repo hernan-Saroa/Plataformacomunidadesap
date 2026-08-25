@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
 import { FirmaContrato } from '../../entities/firma-contrato.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
@@ -57,12 +57,12 @@ export const PARTES_FIRMANTES = ['ORDENADOR', 'CONTRATISTA'] as const;
 /**
  * Si el contrato ya quedó suscrito por las dos partes.
  *
- * LEGALIZADO cuenta: se alcanza desde PERFECCIONADO (EFDS-1164) y un contrato
- * legalizado sigue estando suscrito. Tratarlo como «no perfeccionado» haría
- * que la pantalla se contradijera justo al aprobar la última garantía.
+ * Los estados posteriores cuentan: uno legalizado o en ejecución sigue estando
+ * suscrito. Tratarlos como «no perfeccionado» haría que la pantalla se
+ * contradijera justo al aprobar la última garantía.
  */
 export function yaSuscrito(estado: EstadoContrato): boolean {
-  return estado === 'PERFECCIONADO' || estado === 'LEGALIZADO';
+  return alMenos(estado, 'PERFECCIONADO');
 }
 
 /**

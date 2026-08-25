@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
 import { EstadoRp, RegistroPresupuestal } from '../../entities/registro-presupuestal.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -27,7 +27,7 @@ export const NUMERAL_RP = '8.3';
  * partes todavía no han firmado: no habría con quién comprometerlos.
  */
 export function admiteRp(estado: EstadoContrato): boolean {
-  return estado === 'PERFECCIONADO' || estado === 'LEGALIZADO';
+  return alMenos(estado, 'PERFECCIONADO');
 }
 
 /**
