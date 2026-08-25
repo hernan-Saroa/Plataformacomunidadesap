@@ -17,7 +17,14 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { SupervisionService } from './supervision.service';
-import { DesignarSupervisorDto, RelevarSupervisorDto } from './dto/supervision.dto';
+import {
+  DesignarSupervisorDto,
+  ReasignarSupervisorDto,
+  RelevarSupervisorDto,
+} from './dto/supervision.dto';
+import { PermisosGuard } from '../../auth/permisos.guard';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PERMISO_SUPERVISION_REASIGNAR } from '../../auth/permisos';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/roles.decorator';
 import {
@@ -108,6 +115,55 @@ export class SupervisionController {
     @Req() req: any,
   ) {
     return this.service.relevar(procesoId, dto, getHiringAccess(req));
+  }
+
+  /**
+   * Actividad 9.3 · Reasignación de la supervisión (EFDS-1169).
+   *
+   * Declara permiso y no roles: los roles los crea y renombra el administrador
+   * desde la plataforma, así que nombrarlos aquí ataría el endpoint a una
+   * configuración que puede cambiar mañana.
+   */
+  @Post('reasignar')
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_SUPERVISION_REASIGNAR)
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El acto de reasignación se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Actividad 9.3 · Reasignar la supervisión del contrato',
+    description:
+      'Releva al vigente y designa al nuevo en un solo acto, para que el contrato no quede sin quien lo vigile. El anterior se conserva en el expediente con el motivo del cambio.',
+  })
+  async reasignar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: ReasignarSupervisorDto,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException(
+        'Adjunta el acto de reasignación: sin él hay un cambio de nombre, no una designación',
+      );
+    }
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.reasignar(
+        procesoId,
+        dto,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
   }
 
   @Post('aviso')
