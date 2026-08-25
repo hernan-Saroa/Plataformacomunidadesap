@@ -23,6 +23,7 @@ import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
 import { PanelTraslado } from '../traslado/PanelTraslado';
 import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
+import { PanelPagos } from '../pagos/PanelPagos';
 import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
@@ -130,7 +131,9 @@ const NUMERALES_ETAPA_8 = [
  * verdad. Crecerá con EFDS-1168 a EFDS-1170.
  */
 const NUMERAL_ACTA_INICIO = '9.1';
-const NUMERALES_ETAPA_9 = [NUMERAL_ACTA_INICIO];
+/** Tramite de pagos del contrato (EFDS-1170). */
+const NUMERAL_PAGOS = '9.4';
+const NUMERALES_ETAPA_9 = [NUMERAL_ACTA_INICIO, NUMERAL_PAGOS];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
 const ACTIVIDADES_ETAPA_3 = [
@@ -451,6 +454,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelAdjudicacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_PAGOS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelPagos
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

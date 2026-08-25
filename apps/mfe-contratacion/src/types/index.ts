@@ -1741,3 +1741,82 @@ export interface DatosActaInicio {
   asistentes?: string;
   compromisos?: string;
 }
+
+// ----------------------- etapa 9 · tramite de pagos (9.4) ------------------
+
+export type EstadoPago = 'RADICADO' | 'AVALADO' | 'DEVUELTO' | 'TRAMITADO' | 'ANULADO';
+
+/**
+ * Lo que acompana a la cuenta de cobro.
+ *
+ * Los dos primeros son los que la integracion con Click evitaria pedir.
+ * Mientras no exista se cargan a mano.
+ */
+export type TipoSoportePago =
+  | 'SEGURIDAD_SOCIAL'
+  | 'RUT'
+  | 'CERTIFICACION_BANCARIA'
+  | 'OTRO';
+
+export interface SoportePago {
+  id: string;
+  tipo: TipoSoportePago;
+  descripcion: string | null;
+  documento: { nombre: string; url: string } | null;
+}
+
+export interface PagoContrato {
+  id: string;
+  /** Consecutivo dentro del contrato: «el pago 3». */
+  numero: number;
+  periodoDesde: string;
+  periodoHasta: string;
+  valor: number;
+  estado: EstadoPago;
+  radicadoAt: string;
+  radicadoPor: string | null;
+  avaladoAt: string | null;
+  avaladoPor: string | null;
+  observacionAval: string | null;
+  devueltoAt: string | null;
+  motivoDevolucion: string | null;
+  tramitadoAt: string | null;
+  referenciaPago: string | null;
+  motivoAnulacion: string | null;
+  factura: { nombre: string; url: string } | null;
+  informe: { nombre: string; url: string } | null;
+  soportes: SoportePago[];
+}
+
+export interface EstadoPagos {
+  /** Solo el contrato en ejecucion admite cuentas de cobro (EFDS-1167). */
+  admitePagos: boolean;
+  motivoNoAdmite: string | null;
+  contrato: {
+    numero: string;
+    objeto: string;
+    estado: string;
+    valor: number;
+    fechaInicio: string | null;
+  } | null;
+  supervisor: { nombre: string; cargo: string | null; personaId: string } | null;
+  puedeRadicar: boolean;
+  /** Si quien consulta es el supervisor de este contrato y puede avalar. */
+  esSupervisor: boolean;
+  /** Mientras sea falso, los soportes se cargan a mano. */
+  integracionClick: boolean;
+  pagos: PagoContrato[];
+  resumen: {
+    cobrado: number;
+    tramitado: number;
+    saldo: number;
+    advertencia: string | null;
+  };
+}
+
+/** Lo que la pantalla envia al radicar una cuenta. */
+export interface DatosPago {
+  periodoDesde: string;
+  periodoHasta: string;
+  valor: number;
+}
