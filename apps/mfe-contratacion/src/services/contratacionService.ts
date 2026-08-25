@@ -38,6 +38,8 @@ import {
   EstadoInformeFinal,
   DatosInformeFinal,
   DatosEntregable,
+  EstadoLiquidacion,
+  DatosLiquidacion,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -701,6 +703,47 @@ export const contratacionService = {
   /** Anula el informe vigente para rehacerlo. */
   anularInformeFinal: (procesoId: string, motivo: string) =>
     pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ---------------------- etapa 10 · acta de liquidacion (10.2) -------------
+
+  /** El acta vigente, la ventana de plazos y que liquidacion esta habilitada. */
+  liquidacion: (procesoId: string) =>
+    pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion`),
+
+  /**
+   * Liquida el contrato, bilateral o unilateral.
+   *
+   * El soporte del paz y salvo va en la misma peticion: declararlo sin
+   * documento deja al expediente afirmando algo que no puede probar.
+   */
+  liquidar: (
+    procesoId: string,
+    datos: DatosLiquidacion,
+    acta: File,
+    pazYSalvoSoporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('acta', acta);
+    if (pazYSalvoSoporte) cuerpo.append('pazYSalvoSoporte', pazYSalvoSoporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula el acta vigente para rehacerla. */
+  anularLiquidacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion/anular`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
