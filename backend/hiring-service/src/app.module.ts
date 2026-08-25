@@ -30,6 +30,7 @@ import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { PagosModule } from './modules/pagos/pagos.module';
 import { InformeFinalModule } from './modules/informe-final/informe-final.module';
 import { LiquidacionModule } from './modules/liquidacion/liquidacion.module';
+import { CierreFinancieroModule } from './modules/cierre-financiero/cierre-financiero.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -144,6 +145,7 @@ import { CierreFinanciero } from './entities/cierre-financiero.entity';
     PagosModule,
     InformeFinalModule,
     LiquidacionModule,
+    CierreFinancieroModule,
   ],
   controllers: [HealthController],
   providers: [
