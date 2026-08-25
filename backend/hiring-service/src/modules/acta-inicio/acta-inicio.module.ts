@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ActaInicioService } from './acta-inicio.service';
+import { ActaInicioController } from './acta-inicio.controller';
 
 import { ActaInicio } from '../../entities/acta-inicio.entity';
 import { Contrato } from '../../entities/contrato.entity';
@@ -25,6 +26,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
+  controllers: [ActaInicioController],
   providers: [ActaInicioService],
   // El trámite de pagos (EFDS-1170) preguntará aquí desde cuándo corre la
   // ejecución: no hay factura anterior al inicio.

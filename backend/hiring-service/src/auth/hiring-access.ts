@@ -327,6 +327,36 @@ export const ROL_SUPERVISOR_CONTRATO = 'SUPERVISOR_CONTRATO';
  */
 export const ROLES_DESIGNAR_SUPERVISOR = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
 
+/**
+ * Quién suscribe el acta de inicio (actividad 9.1, EFDS-1167).
+ *
+ * La historia es del Supervisor: es él quien convoca la reunión, socializa el
+ * alcance y responde por la ejecución que arranca. Se le suman el gestor y el
+ * Director de Contratación, que son quienes llevan el expediente y quienes
+ * tendrán que registrar el acta cuando el supervisor no la cargue él mismo.
+ *
+ * Como con el comité evaluador (EFDS-1438), **el rol solo abre la puerta**: el
+ * servicio exige que el contrato tenga supervisor vigente designado, así que
+ * un supervisor de otro contrato llega hasta aquí y no suscribe nada.
+ */
+export const ROLES_ACTA_INICIO = [
+  ROL_SUPERVISOR_CONTRATO,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién consulta la etapa 9.
+ *
+ * Los de contratación más el supervisor: sin esto, quien vigila la ejecución no
+ * podría ni abrir la pantalla del contrato que le asignaron.
+ */
+export const ROLES_LECTURA_EJECUCION = [
+  ...ROLES_LECTURA_CONTRATACION,
+  ROL_SUPERVISOR_CONTRATO,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
