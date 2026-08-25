@@ -37,6 +37,21 @@ export { NUMERAL_PAGOS };
 const ESTADOS_VIVOS: EstadoPago[] = ['RADICADO', 'AVALADO', 'TRAMITADO'];
 
 /**
+ * Cómo se nombra cada estado dentro de una frase.
+ *
+ * La entidad se llama «pago» y lo que el usuario ve es una «cuenta», así que
+ * concatenar el estado en crudo produce «una cuenta devuelto». Se escriben en
+ * femenino, que es como se leen los mensajes.
+ */
+const EN_FEMENINO: Record<EstadoPago, string> = {
+  RADICADO: 'radicada',
+  AVALADO: 'avalada',
+  DEVUELTO: 'devuelta',
+  TRAMITADO: 'tramitada',
+  ANULADO: 'anulada',
+};
+
+/**
  * Si el contrato admite que se le radiquen cuentas de cobro.
  *
  * Solo en ejecución, y esa es toda la dependencia de EFDS-1167: el criterio de
@@ -71,6 +86,46 @@ export function cobradoCabeEnElContrato(
       `Lo cobrado supera el valor del contrato en ${exceso.toLocaleString('es-CO')} pesos; ` +
       'confirma la cifra o tramita primero una adición',
   };
+}
+
+/** Un documento tal como lo devuelve la consulta. */
+interface DocumentoResumen {
+  nombre: string;
+  url: string;
+}
+
+/**
+ * Una cuenta de cobro tal como la ve la pantalla.
+ *
+ * Declarada y no inferida porque la consulta tiene una salida temprana —el
+ * proceso sin contrato— y sin un tipo comun las dos ramas se unifican en
+ * `unknown[]`, que deja a quien consume sin forma.
+ */
+export interface PagoResumen {
+  id: string;
+  numero: number;
+  periodoDesde: string;
+  periodoHasta: string;
+  valor: number;
+  estado: EstadoPago;
+  radicadoAt: Date;
+  radicadoPor: string | null;
+  avaladoAt: Date | null;
+  avaladoPor: string | null;
+  observacionAval: string | null;
+  devueltoAt: Date | null;
+  motivoDevolucion: string | null;
+  tramitadoAt: Date | null;
+  referenciaPago: string | null;
+  motivoAnulacion: string | null;
+  factura: DocumentoResumen | null;
+  informe: DocumentoResumen | null;
+  soportes: Array<{
+    id: string;
+    tipo: SoportePago['tipo'];
+    descripcion: string | null;
+    documento: DocumentoResumen | null;
+  }>;
 }
 
 interface ArchivoCargado {
@@ -114,7 +169,7 @@ export class PagosService {
         puedeRadicar: false,
         esSupervisor: false,
         integracionClick: false,
-        pagos: [] as unknown[],
+        pagos: [] as PagoResumen[],
         resumen: { cobrado: 0, tramitado: 0, saldo: 0, advertencia: null as string | null },
       };
     }
@@ -158,7 +213,7 @@ export class PagosService {
       esSupervisor: this.esElSupervisor(supervisor, acceso),
       /** Mientras sea falso, los soportes se cargan a mano. */
       integracionClick: false,
-      pagos: pagos.map((pago) => ({
+      pagos: pagos.map((pago): PagoResumen => ({
         id: pago.id,
         numero: pago.numero,
         periodoDesde: pago.periodoDesde,
@@ -367,10 +422,15 @@ export class PagosService {
   }
 
   /**
-   * El supervisor devuelve la cuenta para que la corrijan.
+   * El supervisor devuelve la cuenta.
    *
    * No se borra: el periodo y los documentos que el contratista presentó
    * existieron, y el motivo es lo que le dice qué arreglar.
+   *
+   * **La devuelta no se reabre.** La factura y el informe se fijan al radicar y
+   * no hay forma de reemplazarlos, así que corregir es radicar una cuenta
+   * nueva; la devuelta queda como la constancia de por qué hubo dos. De ahí que
+   * `avalar` solo acepte una cuenta recién radicada.
    */
   async devolver(procesoId: string, pagoId: string, dto: DevolverPagoDto, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
@@ -419,7 +479,7 @@ export class PagosService {
         throw new ConflictException(
           pago.estado === 'RADICADO'
             ? 'La cuenta todavía no la ha avalado el supervisor: sin su aval no hay quien responda por la prestación'
-            : `No se puede tramitar una cuenta ${pago.estado.toLowerCase()}`,
+            : `No se puede tramitar una cuenta ${EN_FEMENINO[pago.estado]}`,
         );
       }
 
@@ -556,7 +616,7 @@ export class PagosService {
     if (admitidos.includes(pago.estado)) return;
 
     throw new ConflictException(
-      `No se puede ${accion} una cuenta ${pago.estado.toLowerCase()}`,
+      `No se puede ${accion} una cuenta ${EN_FEMENINO[pago.estado]}`,
     );
   }
 
