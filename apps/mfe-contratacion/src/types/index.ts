@@ -1890,3 +1890,85 @@ export interface DatosEntregable {
   fechaEntrega?: string;
   observacion?: string;
 }
+
+// --------------------- etapa 10 · acta de liquidacion (10.2) ---------------
+
+export type TipoLiquidacion = 'BILATERAL' | 'UNILATERAL';
+
+/** En que punto del plazo legal esta el contrato. */
+export type MomentoDelPlazo = 'BILATERAL' | 'UNILATERAL' | 'VENCIDO';
+
+export interface VentanaLiquidacion {
+  /** La terminacion del contrato: desde ahi corre todo. */
+  fechaTerminacion: string;
+  bilateralHasta: string;
+  unilateralHasta: string;
+}
+
+/** La alerta de RF-SIS-03, resuelta en el servidor. */
+export interface AlertaPlazo {
+  momento: MomentoDelPlazo;
+  /** Dias hasta el fin de la ventana en curso. Negativo si vencio. */
+  dias: number;
+  mensaje: string;
+}
+
+export interface BalanceLiquidacion {
+  valorContrato: number;
+  valorPagado: number;
+  /** Positivo: quedo plata sin ejecutar. Negativo: se pago de mas. */
+  saldo: number;
+  cuentasTramitadas: number;
+  cuentasPendientes: number;
+}
+
+export interface ActaLiquidacionVigente {
+  id: string;
+  tipo: TipoLiquidacion;
+  fechaActa: string;
+  balance: BalanceLiquidacion;
+  pazYSalvo: boolean;
+  observaciones: string | null;
+  fechaTerminacion: string | null;
+  bilateralHasta: string | null;
+  unilateralHasta: string | null;
+  /** Congelado: explica que una liquidacion tardia se aceptara. */
+  momentoDelPlazo: MomentoDelPlazo | null;
+  liquidadoPor: string | null;
+  documento: { nombre: string; url: string } | null;
+  pazYSalvoDocumento: { nombre: string; url: string } | null;
+}
+
+export interface ActaLiquidacionAnulada {
+  tipo: TipoLiquidacion;
+  fechaActa: string;
+  momentoDelPlazo: MomentoDelPlazo | null;
+  anuladoAt: string | null;
+  anuladoPor: string | null;
+  motivoAnulacion: string | null;
+}
+
+export interface EstadoLiquidacion {
+  admiteLiquidacion: boolean;
+  motivoNoAdmite: string | null;
+  contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
+  /** Sin informe final no hay nada que liquidar (10.1). */
+  tieneInformeFinal: boolean;
+  ventana: VentanaLiquidacion | null;
+  alerta: AlertaPlazo | null;
+  puedeLiquidarBilateral: boolean;
+  puedeLiquidarUnilateral: boolean;
+  /** Desde cuando estara disponible la unilateral, si todavia no lo esta. */
+  motivoNoUnilateral: string | null;
+  balanceActual: BalanceLiquidacion | null;
+  acta: ActaLiquidacionVigente | null;
+  historial: ActaLiquidacionAnulada[];
+}
+
+/** Lo que la pantalla envia al liquidar. */
+export interface DatosLiquidacion {
+  tipo: TipoLiquidacion;
+  fechaActa: string;
+  pazYSalvo?: boolean;
+  observaciones?: string;
+}
