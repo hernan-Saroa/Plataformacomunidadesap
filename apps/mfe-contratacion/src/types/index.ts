@@ -1689,3 +1689,55 @@ export interface DatosPublicacionContrato {
   secopNumero?: string;
   secopUrl?: string;
 }
+
+// ------------------------- etapa 9 · acta de inicio (9.1) ------------------
+
+/** Un acta que se anulo, con el motivo que lo explica. */
+export interface ActaInicioAnulada {
+  fechaReunion: string;
+  fechaInicio: string;
+  anuladaAt: string | null;
+  anuladaPor: string | null;
+  motivoAnulacion: string | null;
+}
+
+export interface ActaInicioVigente {
+  id: string;
+  fechaReunion: string;
+  /** Desde cuando corre el plazo; puede ser posterior a la reunion. */
+  fechaInicio: string;
+  /** Derivada del plazo del contrato. Nula si el contrato no lo fijo. */
+  fechaTerminacionEstimada: string | null;
+  asistentes: string | null;
+  compromisos: string | null;
+  suscritaPor: string | null;
+  documento: { nombre: string; url: string } | null;
+}
+
+export interface EstadoActaInicio {
+  /** Si el contrato ya esta legalizado; el acta va despues de toda la etapa 8. */
+  admiteActa: boolean;
+  motivoNoAdmite: string | null;
+  contrato: {
+    numero: string;
+    objeto: string;
+    estado: string;
+    plazoDias: number | null;
+    enEjecucionAt: string | null;
+  } | null;
+  /** Sin supervisor no se suscribe: es quien responde por la ejecucion. */
+  supervisor: { nombre: string; cargo: string | null; personaId: string } | null;
+  puedeSuscribir: boolean;
+  /** Cual de las dos condiciones falta, para decirlo en vez de un boton apagado. */
+  motivoNoSuscribe?: string | null;
+  acta: ActaInicioVigente | null;
+  historial: ActaInicioAnulada[];
+}
+
+/** Lo que la pantalla envia al suscribir el acta. */
+export interface DatosActaInicio {
+  fechaReunion: string;
+  fechaInicio: string;
+  asistentes?: string;
+  compromisos?: string;
+}

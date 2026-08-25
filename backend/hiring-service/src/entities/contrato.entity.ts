@@ -16,13 +16,18 @@ import {
  *
  * `PERFECCIONADO` lo deriva el servicio al comprobar que ya están las dos
  * firmas (EFDS-1162); no lo declara quien firma.
+ *
+ * `EJECUCION` lo deriva igual el servicio, al suscribirse el acta de inicio
+ * (EFDS-1167): es el estado donde el contrato deja de tramitarse y empieza a
+ * cumplirse, y donde lo toma la etapa 9.
  */
 export type EstadoContrato =
   | 'GENERADO'
   | 'ACEPTADO'
   | 'RECHAZADO'
   | 'PERFECCIONADO'
-  | 'LEGALIZADO';
+  | 'LEGALIZADO'
+  | 'EJECUCION';
 
 /** Determina si la legalización exigirá ARL (EFDS-1164, criterio 2). */
 export type TipoPersona = 'NATURAL' | 'JURIDICA';
@@ -134,6 +139,16 @@ export class Contrato {
    */
   @Column({ name: 'legalizado_at', type: 'timestamptz', nullable: true })
   legalizadoAt: Date | null;
+
+  /**
+   * Cuándo empezó a ejecutarse (EFDS-1167).
+   *
+   * Columna propia y no derivada del acta vigente porque es la pregunta que
+   * hace cada consulta de la etapa 9 —¿este contrato está corriendo?— y
+   * resolverla con un join a cada paso es gratuito de evitar.
+   */
+  @Column({ name: 'en_ejecucion_at', type: 'timestamptz', nullable: true })
+  enEjecucionAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
