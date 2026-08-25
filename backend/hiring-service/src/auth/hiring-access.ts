@@ -393,6 +393,18 @@ export const ROLES_AVALAR_PAGO = [ROL_SUPERVISOR_CONTRATO, ROL_SUPER_ADMIN];
  */
 export const ROLES_TRAMITAR_PAGO = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
 
+/**
+ * Quién elabora el informe final de ejecución (actividad 10.1, EFDS-1171).
+ *
+ * El supervisor, y por la misma razón que avala los pagos: el informe final es
+ * la conclusión de su vigilancia. El gestor lleva el expediente, pero no puede
+ * concluir sobre una ejecución que no vigiló.
+ *
+ * Como en el aval, el rol solo abre la puerta: el servicio exige que sea el
+ * supervisor **vigente de ese contrato**.
+ */
+export const ROLES_INFORME_FINAL = [ROL_SUPERVISOR_CONTRATO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
