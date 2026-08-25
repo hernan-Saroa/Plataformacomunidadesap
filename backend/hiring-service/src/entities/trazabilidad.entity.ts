@@ -38,7 +38,11 @@ export type AccionTraza =
   // Declaratoria desierta (etapa 7): el otro desenlace. Tiene acción propia y
   // no reusa ANULAR, porque el proceso no se anula: termina sin contrato.
   | 'DECLARAR_DESIERTO'
-  | 'REVOCAR_DECLARATORIA';
+  | 'REVOCAR_DECLARATORIA'
+  // Contrato electrónico y legalización (etapa 8).
+  | 'ACEPTAR'
+  | 'FIRMAR'
+  | 'LEGALIZAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

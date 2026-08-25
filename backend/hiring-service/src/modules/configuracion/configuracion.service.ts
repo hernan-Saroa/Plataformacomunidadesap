@@ -10,6 +10,7 @@ import {
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
+import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Documento } from '../../entities/documento.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -21,6 +22,7 @@ import {
   CrearCampoDto,
   EstadoPlantillaDto,
   GuardarPlantillaDto,
+  GuardarTipologiaDto,
   SimularDto,
 } from './dto/configuracion.dto';
 import {
@@ -61,6 +63,69 @@ export class ConfiguracionService {
       etapa,
       actividades: lista,
     }));
+  }
+
+  // ------------------------------------------- tipologías de contrato --
+
+  /**
+   * Las tipologías con las que se elabora un contrato (EFDS-1161).
+   *
+   * Se administran desde aquí y no solo por migración: la historia habla de 16
+   * tipologías sin enumerarlas, así que la lista sembrada es un punto de
+   * partida y Contratación tiene que poder completarla sin pedir un despliegue.
+   *
+   * Van en la configuración de etapas y no en una sección propia porque son un
+   * parámetro del flujo, igual que los umbrales o los plazos.
+   */
+  tipologias() {
+    return this.dataSource.getRepository(TipologiaContrato).find({
+      order: { orden: 'ASC', nombre: 'ASC' },
+    });
+  }
+
+  async guardarTipologia(dto: GuardarTipologiaDto) {
+    const repo = this.dataSource.getRepository(TipologiaContrato);
+    const existente = await repo.findOne({ where: { codigo: dto.codigo } });
+
+    if (existente) {
+      // El código es la llave y no se cambia: los contratos ya firmados lo
+      // referencian, y cambiarlo dejaría huérfano lo que apunta a él.
+      existente.nombre = dto.nombre;
+      existente.descripcion = dto.descripcion ?? null;
+      if (dto.exigeGarantias !== undefined) existente.exigeGarantias = dto.exigeGarantias;
+      if (dto.activo !== undefined) existente.activo = dto.activo;
+      if (dto.orden !== undefined) existente.orden = dto.orden;
+      await repo.save(existente);
+      return existente;
+    }
+
+    return repo.save(
+      repo.create({
+        codigo: dto.codigo,
+        nombre: dto.nombre,
+        descripcion: dto.descripcion ?? null,
+        numeralFormato: '8.1',
+        exigeGarantias: dto.exigeGarantias ?? true,
+        activo: dto.activo ?? true,
+        orden: dto.orden ?? 100,
+      } as Partial<TipologiaContrato>),
+    );
+  }
+
+  /**
+   * Retira una tipología de circulación.
+   *
+   * Se desactiva en vez de borrarse: los contratos que la usaron la conservan,
+   * y borrarla dejaría el expediente sin poder decir qué se contrató.
+   */
+  async retirarTipologia(codigo: string) {
+    const repo = this.dataSource.getRepository(TipologiaContrato);
+    const tipologia = await repo.findOne({ where: { codigo } });
+    if (!tipologia) throw new NotFoundException('La tipología no existe');
+
+    tipologia.activo = false;
+    await repo.save(tipologia);
+    return tipologia;
   }
 
   /**

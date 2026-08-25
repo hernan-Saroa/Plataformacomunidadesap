@@ -22,6 +22,19 @@ import {
   EstadoTraslado,
   RegistrarSubsanacion,
   TipoPiezaAudiencia,
+  EstadoContratoProceso,
+  DatosContrato,
+  DatosFirma,
+  DatosGarantia,
+  DatosArl,
+  EstadoLegalizacion,
+  EstadoSupervision,
+  DatosSupervisor,
+  EstadoRegistroPresupuestal,
+  DatosSolicitudRp,
+  DatosExpedicionRp,
+  EstadoPublicacionContrato,
+  DatosPublicacionContrato,
   EstadoObservaciones,
   EstadoOfertas,
   MiembroPropuesto,
@@ -38,6 +51,8 @@ import {
   ActividadCatalogo,
   ActividadAplicable,
   EtapaConActividades,
+  TipologiaConfigurable,
+  GuardarTipologia,
   Modalidad,
   GuardarRegla,
   ReglaActividad,
@@ -285,6 +300,238 @@ export const contratacionService = {
     pedir<EstadoComite>(`/procesos/${procesoId}/comite/revocar`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
+    }),
+
+  // -------------------------- etapa 8 · contrato electrónico (8.1) ----------
+
+  /** Contrato del proceso, las tipologías y los formatos del SIG. */
+  contrato: (procesoId: string) =>
+    pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato`),
+
+  /**
+   * Genera el contrato con la minuta ya diligenciada.
+   *
+   * Los datos van sueltos en el multipart y no como JSON: son campos planos, y
+   * `FormData` los transporta sin necesidad de serializarlos.
+   */
+  generarContrato: (procesoId: string, datos: DatosContrato, minuta: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', minuta);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Registra la aceptación del proponente, con su nombre. */
+  aceptarContrato: (procesoId: string, aceptadoPor: string, observacion?: string) =>
+    pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/aceptar`, {
+      method: 'POST',
+      body: JSON.stringify({ aceptadoPor, observacion }),
+    }),
+
+  /**
+   * Registra la firma de una de las partes, con su evidencia (EFDS-1162).
+   *
+   * Con la segunda firma el contrato queda perfeccionado; eso lo decide el
+   * servidor al comprobar que ya están las dos, no la pantalla.
+   */
+  firmarContrato: (procesoId: string, datos: DatosFirma, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/firmar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Registra que el proponente no acepta; la minuta queda en el expediente. */
+  rechazarContrato: (procesoId: string, rechazadoPor: string, motivo: string) =>
+    pedir<EstadoContratoProceso>(`/procesos/${procesoId}/contrato/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ rechazadoPor, motivo }),
+    }),
+
+  // -------------------- etapa 8 · pólizas, garantías y ARL (8.4/8.5) --------
+
+  /** Garantías con sus amparos, la ARL y qué falta para legalizar. */
+  legalizacion: (procesoId: string) =>
+    pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion`),
+
+  /**
+   * Carga una póliza con sus amparos desglosados.
+   *
+   * Los amparos van como JSON dentro del multipart: la petición lleva también
+   * la póliza, y `FormData` no transporta arreglos de objetos.
+   */
+  cargarGarantia: (procesoId: string, datos: DatosGarantia, poliza: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', poliza);
+    cuerpo.append('aseguradora', datos.aseguradora);
+    cuerpo.append('numeroPoliza', datos.numeroPoliza);
+    cuerpo.append('amparos', JSON.stringify(datos.amparos));
+
+    return pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion/garantias`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Aprueba una póliza; con todas aprobadas el contrato queda legalizado.
+   *
+   * Con cuerpo vacío explícito: el gateway trata mal los POST sin body.
+   */
+  aprobarGarantia: (procesoId: string, garantiaId: string) =>
+    pedir<EstadoLegalizacion>(
+      `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/aprobar`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  /** Devuelve una póliza con el motivo; después se carga la corregida. */
+  rechazarGarantia: (procesoId: string, garantiaId: string, motivo: string) =>
+    pedir<EstadoLegalizacion>(
+      `/procesos/${procesoId}/legalizacion/garantias/${garantiaId}/rechazar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Registra la afiliación a la ARL, obligatoria para persona natural. */
+  registrarArl: (procesoId: string, datos: DatosArl, soporte: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoLegalizacion>(`/procesos/${procesoId}/legalizacion/arl`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ---------------------- etapa 8 · publicación del contrato (8.8) ----------
+
+  /** Dónde se publicó el contrato, si llegó a tiempo y qué falta. */
+  publicacionContrato: (procesoId: string) =>
+    pedir<EstadoPublicacionContrato>(`/procesos/${procesoId}/publicacion-contrato`),
+
+  /** Registra la publicación con su evidencia. */
+  publicarContrato: (
+    procesoId: string,
+    datos: DatosPublicacionContrato,
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoPublicacionContrato>(`/procesos/${procesoId}/publicacion-contrato`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ---------------------- etapa 8 · registro presupuestal (8.3) -------------
+
+  /** En qué punto va el RP del contrato y si el monto alcanza a cubrirlo. */
+  registroPresupuestal: (procesoId: string) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal`),
+
+  /** Radica la solicitud ante la Dirección Financiera. */
+  solicitarRp: (procesoId: string, datos: DatosSolicitudRp) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** La Financiera confirma que hay recursos que comprometer. */
+  verificarRp: (procesoId: string) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/verificar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  /** Expide el RP con su número; el soporte es opcional, como en el CDP. */
+  expedirRp: (procesoId: string, datos: DatosExpedicionRp, soporte: File | null) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoRegistroPresupuestal>(
+      `/procesos/${procesoId}/registro-presupuestal/expedir`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Rechaza la solicitud con su motivo. */
+  rechazarRp: (procesoId: string, observaciones: string) =>
+    pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  // ---------------------- etapa 8 · supervisión del contrato (8.2) ----------
+
+  /** Quién supervisa el contrato, si ya se le avisó y quiénes lo hicieron antes. */
+  supervision: (procesoId: string) =>
+    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`),
+
+  /** Designa al supervisor con el acto administrativo que lo nombra. */
+  designarSupervisor: (procesoId: string, datos: DatosSupervisor, acto: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Releva al supervisor vigente; el anterior se conserva en el expediente. */
+  relevarSupervisor: (procesoId: string, motivo: string) =>
+    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/relevar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** Deja constancia de que se le comunicó la designación (matriz 8.2). */
+  avisarSupervisor: (procesoId: string) =>
+    pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     }),
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
@@ -679,6 +926,25 @@ export const contratacionService = {
 
   /** Las 63 actividades de la matriz, agrupadas por etapa. */
   catalogoActividades: () => pedir<EtapaConActividades[]>('/configuracion/actividades'),
+
+  // ---------------- configuración · tipologías de contrato (EFDS-1161) ------
+
+  /** Las tipologías con las que se elabora un contrato. */
+  tipologias: () => pedir<TipologiaConfigurable[]>('/configuracion/tipologias'),
+
+  /** Crea una tipología o ajusta la que ya existe con ese código. */
+  guardarTipologia: (datos: GuardarTipologia) =>
+    pedir<TipologiaConfigurable>('/configuracion/tipologias', {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** La retira de circulación; los contratos que la usaron la conservan. */
+  retirarTipologia: (codigo: string) =>
+    pedir<TipologiaConfigurable>(`/configuracion/tipologias/${codigo}/retirar`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    }),
 
   /** Actividades marcadas según apliquen o no a la modalidad. */
   actividadesDeModalidad: (modalidad: string) =>

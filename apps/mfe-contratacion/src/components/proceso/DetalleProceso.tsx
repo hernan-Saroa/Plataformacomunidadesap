@@ -22,6 +22,11 @@ import { PanelComite } from '../comite/PanelComite';
 import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
 import { PanelTraslado } from '../traslado/PanelTraslado';
 import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
+import { PanelContrato } from '../contrato/PanelContrato';
+import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
+import { PanelSupervision } from '../supervision/PanelSupervision';
+import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
+import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -89,6 +94,31 @@ const NUMERALES_ETAPA_6 = [
   NUMERAL_COMITE,
   NUMERAL_EVALUACION,
   ...NUMERALES_TRASLADO,
+];
+
+/** Elaboración del contrato y aceptación del proponente (EFDS-1161). */
+const NUMERAL_CONTRATO = '8.1';
+
+/** Designación del supervisor del contrato (EFDS-1165). */
+const NUMERAL_SUPERVISOR = '8.2';
+/** Expedición del registro presupuestal del contrato (EFDS-1163). */
+const NUMERAL_RP = '8.3';
+/** Constitución de garantías con sus amparos (EFDS-1164). */
+const NUMERAL_GARANTIAS = '8.4';
+/** Registro de la ARL para contratistas persona natural (EFDS-1164). */
+const NUMERAL_ARL = '8.5';
+
+/** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
+/** Publicación del contrato dentro del plazo legal (EFDS-1166). */
+const NUMERAL_PUBLICACION_CONTRATO = '8.8';
+
+const NUMERALES_ETAPA_8 = [
+  NUMERAL_CONTRATO,
+  NUMERAL_SUPERVISOR,
+  NUMERAL_RP,
+  NUMERAL_GARANTIAS,
+  NUMERAL_ARL,
+  NUMERAL_PUBLICACION_CONTRATO,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -251,7 +281,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         NUMERALES_CDP.includes(act.numeral) ||
         NUMERALES_ETAPA_5.includes(act.numeral) ||
         NUMERALES_ETAPA_6.includes(act.numeral) ||
-        NUMERALES_ADJUDICACION.includes(act.numeral)
+        NUMERALES_ADJUDICACION.includes(act.numeral) ||
+        NUMERALES_ETAPA_8.includes(act.numeral)
       ) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
@@ -408,6 +439,43 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelAdjudicacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION_CONTRATO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelPublicacionContrato
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_RP ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelRegistroPresupuestal
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_SUPERVISOR ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelSupervision
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
+            actividadSeleccionada?.numeral === NUMERAL_ARL ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelLegalizacion
+                procesoId={procesoId}
+                numeral={actividadSeleccionada.numeral as '8.4' | '8.5'}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_CONTRATO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelContrato
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

@@ -1,8 +1,5 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-/** Etapa 7 — Adjudicación. También la etapa de la declaratoria desierta. */
-export const ETAPA_ADJUDICACION = 7;
-
 /**
  * Revocado no se borra: el acto pudo notificarse y publicarse, y hay terceros
  * que lo conocieron. Mismo criterio del resultado rectificado.

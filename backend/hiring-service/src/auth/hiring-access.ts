@@ -256,6 +256,77 @@ export const ROLES_DECLARAR_DESIERTO = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién elabora el contrato y registra la aceptación del proponente
+ * (actividad 8.1, EFDS-1161).
+ *
+ * Es el gestor que lleva el proceso quien redacta la minuta y quien deja
+ * constancia de la respuesta del proponente. El Ordenador del Gasto entra
+ * después, al firmar (EFDS-1162): una cosa es elaborar el contrato y otra
+ * comprometer a la entidad con él.
+ */
+export const ROLES_CONTRATO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién registra las firmas que suscriben el contrato (actividad 8.1,
+ * EFDS-1162).
+ *
+ * Se suma el Ordenador del Gasto a los que elaboran: la historia dice que es él
+ * quien firma por la entidad, y firmar es comprometerla. La del contratista la
+ * registra el gestor con su evidencia, porque el contratista no tiene cuenta en
+ * el sistema; por eso quien firma y quien registra se guardan por separado.
+ */
+export const ROLES_SUSCRIBIR_CONTRATO = [
+  ROL_ORDENADOR_GASTO,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién carga las pólizas y registra la ARL (actividades 8.4 y 8.5,
+ * EFDS-1164).
+ *
+ * Las constituye el contratista, pero él no tiene cuenta en el sistema: quien
+ * las sube es el gestor que lleva el contrato, igual que registra la firma de
+ * la otra parte.
+ */
+export const ROLES_LEGALIZACION = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién aprueba o devuelve una garantía (actividad 8.4).
+ *
+ * Más estrecho que quien las carga, y a propósito: si el mismo que sube la
+ * póliza pudiera aprobarla, la revisión que pide el criterio 1 no sería una
+ * revisión. La verificación de las coberturas es de la Dirección de
+ * Contratación, que es quien responde por que el contrato quede amparado.
+ */
+export const ROLES_APROBAR_GARANTIAS = [
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_REVISOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/** Vigila la ejecución del contrato que le asignaron (etapa 9). */
+export const ROL_SUPERVISOR_CONTRATO = 'SUPERVISOR_CONTRATO';
+
+/**
+ * Quién designa al supervisor del contrato (actividad 8.2, EFDS-1165).
+ *
+ * Más estrecho que el resto de la etapa y por la misma razón que el comité: la
+ * historia dice que la designación es del Ordenador del Gasto, y es él quien
+ * responde por a quién encarga la vigilancia de la ejecución.
+ */
+export const ROLES_DESIGNAR_SUPERVISOR = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

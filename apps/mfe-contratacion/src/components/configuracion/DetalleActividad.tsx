@@ -108,6 +108,7 @@ export function DetalleActividad({
 
           {pestana === 'configurar' && (
             <QueSePide
+              numeral={actividad.numeral}
               campos={campos}
               cargando={cargandoCampos}
               onAgregar={onAgregarCampo}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Check, Lock } from 'lucide-react';
+import { AlertTriangle, Check, FileText, Lock, Paperclip } from 'lucide-react';
 
 /**
  * Piezas comunes de los paneles de actividad.
@@ -111,3 +111,133 @@ export const BotonSecundario = ({
 
 export const campo =
   'w-full px-2.5 py-1.5 text-[12.5px] rounded-md border border-gray-300 bg-white focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20';
+
+/** Lo que el backend acepta como documento (ver `MIME_DOCUMENTOS`). */
+export const ARCHIVOS_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
+
+/** El tope que aplica multer en el servidor. */
+const MAX_BYTES = 25 * 1024 * 1024;
+
+const pesoLegible = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+/**
+ * Adjunto de una actividad, con su nombre cuando ya está elegido.
+ *
+ * El input nativo se oculta detrás de un botón del sistema: el del navegador
+ * dice «Ningún archivo seleccionado» en el idioma del sistema operativo y con
+ * un estilo que no es el de la aplicación.
+ *
+ * El tamaño y la extensión se comprueban aquí y no solo en el servidor: subir
+ * 30 MB para que los rechacen al final gasta la espera del usuario, y el
+ * mensaje de multer no dice cuál era el tope.
+ */
+export const SelectorArchivo = ({
+  etiqueta,
+  archivo,
+  onElegir,
+  ayuda,
+  obligatorio = true,
+  id,
+}: {
+  etiqueta: string;
+  archivo: File | null;
+  onElegir: (archivo: File | null) => void;
+  ayuda?: string;
+  obligatorio?: boolean;
+  id?: string;
+}) => {
+  const input = React.useRef<HTMLInputElement>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const elegir = (elegido: File | null) => {
+    if (!elegido) return;
+
+    const extension = elegido.name.slice(elegido.name.lastIndexOf('.')).toLowerCase();
+    if (!ARCHIVOS_ACEPTADOS.split(',').includes(extension)) {
+      setError('Solo se admiten documentos en PDF, Word o Excel.');
+      return;
+    }
+    if (elegido.size > MAX_BYTES) {
+      setError(`El archivo pesa ${pesoLegible(elegido.size)} y el máximo son 25 MB.`);
+      return;
+    }
+
+    setError(null);
+    onElegir(elegido);
+  };
+
+  return (
+    <div
+      className={`rounded-lg border px-3.5 py-3 space-y-2 ${
+        archivo ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <p
+        className={`text-xs font-bold m-0 flex items-start gap-1.5 ${
+          archivo ? 'text-emerald-900' : 'text-slate-700'
+        }`}
+      >
+        <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+        {etiqueta} {obligatorio ? <span className="text-red-600">*</span> : null}
+      </p>
+
+      <p
+        className={`text-[11.5px] m-0 leading-relaxed break-words ${
+          archivo ? 'text-emerald-900' : 'text-slate-600'
+        }`}
+      >
+        {archivo
+          ? `${archivo.name} · ${pesoLegible(archivo.size)}`
+          : (ayuda ?? 'Sin archivo seleccionado.')}
+      </p>
+
+      {error ? (
+        <p role="alert" className="text-[11.5px] text-red-700 m-0 leading-relaxed">
+          {error}
+        </p>
+      ) : null}
+
+      <input
+        ref={input}
+        id={id}
+        type="file"
+        className="hidden"
+        accept={ARCHIVOS_ACEPTADOS}
+        onChange={(e) => {
+          const elegido = e.target.files?.[0] ?? null;
+          // Se limpia para que elegir el mismo archivo dos veces vuelva a
+          // disparar el cambio; sin esto, corregir tras un error no reacciona.
+          e.target.value = '';
+          elegir(elegido);
+        }}
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md border border-gray-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          <Paperclip className="w-3.5 h-3.5" />
+          {archivo ? 'Cambiar archivo' : 'Elegir archivo'}
+        </button>
+        {archivo ? (
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              onElegir(null);
+            }}
+            className="text-[11.5px] font-bold text-slate-500 hover:underline"
+          >
+            Quitar
+          </button>
+        ) : null}
+        <span className="text-[11px] text-slate-500">PDF, Word o Excel · máx. 25 MB</span>
+      </div>
+    </div>
+  );
+};

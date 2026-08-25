@@ -9,7 +9,6 @@ import { DataSource, EntityManager, In } from 'typeorm';
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
-import { ETAPA_ADJUDICACION } from '../../entities/acto-adjudicacion.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -61,19 +60,27 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  * `hiring.actividades` no basta, porque lo que no esté en estas etapas no se
  * devuelve y la pantalla no tiene cómo llegar a ella.
  *
- * La 7 entra con EFDS-1159 (adjudicación) y EFDS-1160 (declaratoria desierta).
- * Sus paneles y su API estaban construidos y probados desde sus HUs, pero el
- * riel no listaba la etapa y no había por dónde llegar a ellos: es el mismo
- * olvido que tuvo la 6, y la prueba de esta suite existe para que no se repita
- * una tercera vez. La declaratoria no suma numeral —la matriz no le da uno—:
- * se trabaja desde el panel de la 7.1 a la 7.4.
+ * La 7 entra con EFDS-1159 (adjudicación) y EFDS-1160 (declaratoria desierta),
+ * y la 8 con EFDS-1161 (contrato electrónico), EFDS-1162 (suscripción) y
+ * EFDS-1164 (garantías y ARL). Las dos llegaron por caminos distintos y con el
+ * mismo olvido: sus paneles y su API estaban construidos y probados, pero la
+ * etapa no figuraba aquí y el riel no tenía cómo mostrarla. Es la tercera vez
+ * que pasa —ya había pasado con la 6— y por eso ahora cada etapa entra con su
+ * prueba de que llega al riel.
+ *
+ * La declaratoria desierta no suma numeral —la matriz no le da uno—: se trabaja
+ * desde el panel de la 7.1 a la 7.4.
  */
+export const ETAPA_ADJUDICACION = 7;
+export const ETAPA_LEGALIZACION = 8;
+
 export const ETAPAS_ENTREGADAS = [
   3,
   ETAPA_CDP,
   ETAPA_APERTURA,
   ETAPA_RECEPCION,
   ETAPA_ADJUDICACION,
+  ETAPA_LEGALIZACION,
 ];
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */

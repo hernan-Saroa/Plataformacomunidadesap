@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -245,6 +246,19 @@ export class GuardarPlantillaDto {
     example: ['LICITACION_PUBLICA'],
   })
   @IsOptional()
+  // El alta del formato viaja como multipart porque lleva el archivo, y
+  // `FormData` no transporta arreglos: la lista llega como texto JSON. Sin
+  // convertirla antes de validar, `IsArray` rechaza siempre.
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      // Se devuelve el string para que la validacion lo rechace con un mensaje
+      // de negocio en vez de reventar aqui con un error de sintaxis.
+      return value;
+    }
+  })
   @IsArray()
   modalidades?: string[];
 }
@@ -316,4 +330,47 @@ export class SimularDto {
   @IsOptional()
   @IsObject()
   datos?: Record<string, any>;
+}
+
+/**
+ * Alta o ajuste de una tipologia de contrato (EFDS-1161).
+ *
+ * La historia habla de 16 tipologias sin enumerarlas, asi que la lista sembrada
+ * es un punto de partida: Contratacion completa la suya desde la configuracion
+ * en vez de pedir una migracion cada vez.
+ */
+export class GuardarTipologiaDto {
+  @ApiProperty({ description: 'Codigo de la tipologia. Es la llave y no se cambia.' })
+  @IsString()
+  @IsNotEmpty({ message: 'La tipologia necesita un codigo' })
+  @MaxLength(60)
+  codigo: string;
+
+  @ApiProperty({ description: 'Como se llama en el catalogo de la entidad' })
+  @IsString()
+  @IsNotEmpty({ message: 'La tipologia necesita un nombre' })
+  @MaxLength(200)
+  nombre: string;
+
+  @ApiPropertyOptional({ description: 'Que se contrata con esta tipologia' })
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  /** Lo consume la legalizacion (EFDS-1164) al exigir polizas. */
+  @ApiPropertyOptional({ description: 'Si los contratos de esta tipologia exigen garantias' })
+  @IsOptional()
+  @IsBoolean()
+  exigeGarantias?: boolean;
+
+  @ApiPropertyOptional({ description: 'false la retira; los contratos que la usaron la conservan' })
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+
+  @ApiPropertyOptional({ description: 'Orden en el que se ofrece al gestor' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  orden?: number;
 }

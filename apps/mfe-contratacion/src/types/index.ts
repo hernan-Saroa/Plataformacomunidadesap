@@ -1372,3 +1372,320 @@ export interface Adjudicar {
   /** Obligatoria solo si el adjudicatario no es la ganadora del informe. */
   justificacion?: string;
 }
+
+// ---------------------------- etapa 8 · contrato electronico (8.1) ---------
+
+/** Determina si la legalizacion exigira ARL (EFDS-1164, criterio 2). */
+export type TipoPersonaContratista = 'NATURAL' | 'JURIDICA';
+
+export type EstadoContrato =
+  | 'GENERADO'
+  | 'ACEPTADO'
+  | 'RECHAZADO'
+  | 'PERFECCIONADO'
+  | 'LEGALIZADO';
+
+/** Las dos partes que suscriben el contrato (EFDS-1162). */
+export type ParteFirmante = 'ORDENADOR' | 'CONTRATISTA';
+
+export interface FirmaContrato {
+  parte: ParteFirmante;
+  firmanteNombre: string;
+  firmanteDocumento: string | null;
+  fechaFirma: string;
+  registradaPor: string | null;
+}
+
+/** Lo que la pantalla envia para registrar una firma. */
+export interface DatosFirma {
+  parte: ParteFirmante;
+  firmanteNombre: string;
+  firmanteDocumento?: string;
+  fechaFirma: string;
+}
+
+export interface TipologiaContrato {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  exigeGarantias: boolean;
+}
+
+/** Formato del SIG del que sale la minuta, ofrecido para descarga. */
+export interface FormatoContrato {
+  id: string;
+  codigo: string;
+  nombre: string;
+  version: string;
+  archivoUrl: string | null;
+}
+
+export interface ContratoDelProceso {
+  id: string;
+  tipologia: string;
+  tipologiaNombre: string;
+  numero: string;
+  objeto: string;
+  valor: number;
+  plazoDias: number | null;
+  contratista: {
+    documento: string;
+    nombre: string;
+    tipo: TipoPersonaContratista;
+  };
+  estado: EstadoContrato;
+  generadoPor: string | null;
+  generadoAt: string;
+  aceptadoPor: string | null;
+  aceptadoAt: string | null;
+  aceptadoObservacion: string | null;
+  perfeccionadoAt: string | null;
+  minuta: { nombre: string; url: string | null } | null;
+}
+
+export interface EstadoContratoProceso {
+  /** Las dos condiciones por separado, para poder decir cual falta. */
+  adjudicado: boolean;
+  motivoNoAdjudicado: string | null;
+  puedeGenerar: boolean;
+  tipologias: TipologiaContrato[];
+  formatos: FormatoContrato[];
+  contrato: ContratoDelProceso | null;
+  /** La suscripcion: quien firmo y cual parte falta (EFDS-1162). */
+  puedeFirmar: boolean;
+  perfeccionado: boolean;
+  firmas: FirmaContrato[];
+  partesPendientes: ParteFirmante[];
+}
+
+// ------------------------ etapa 8 · polizas, garantias y ARL (8.4/8.5) ----
+
+export type EstadoGarantia = 'CARGADA' | 'APROBADA' | 'RECHAZADA';
+
+export interface TipoAmparoCatalogo {
+  codigo: string;
+  nombre: string;
+}
+
+export interface AmparoDeGarantia {
+  tipo: string;
+  valorAsegurado: number;
+  vigenciaDesde: string;
+  vigenciaHasta: string;
+}
+
+export interface GarantiaDelContrato {
+  id: string;
+  aseguradora: string;
+  numeroPoliza: string;
+  estado: EstadoGarantia;
+  cargadaPor: string | null;
+  revisadaPor: string | null;
+  revisadaAt: string | null;
+  motivoRechazo: string | null;
+  /** Ordenados por vencimiento: el primero es el que hay que vigilar. */
+  amparos: AmparoDeGarantia[];
+}
+
+export interface AfiliacionArlRegistro {
+  afiliadoPor: 'ENTIDAD' | 'CONTRATISTA';
+  administradora: string;
+  numeroAfiliacion: string | null;
+  fechaAfiliacion: string;
+  registradaPor: string | null;
+}
+
+export interface EstadoLegalizacion {
+  suscrito: boolean;
+  motivoNoSuscrito: string | null;
+  contratista?: { nombre: string; tipo: TipoPersonaContratista };
+  requiereArl: boolean;
+  tiposAmparo: TipoAmparoCatalogo[];
+  garantias: GarantiaDelContrato[];
+  arl: AfiliacionArlRegistro | null;
+  legalizado: boolean;
+  /** Que falta, dicho por el servidor en palabras. */
+  pendientes: string[];
+  /** Que puede hacer quien consulta; sin esto la pantalla ofreceria un 403. */
+  puedeCargar: boolean;
+  puedeAprobar: boolean;
+}
+
+/** Lo que la pantalla envia al cargar una garantia. */
+export interface DatosGarantia {
+  aseguradora: string;
+  numeroPoliza: string;
+  amparos: AmparoDeGarantia[];
+}
+
+/** Lo que la pantalla envia al registrar la ARL. */
+export interface DatosArl {
+  afiliadoPor: 'ENTIDAD' | 'CONTRATISTA';
+  administradora: string;
+  numeroAfiliacion?: string;
+  fechaAfiliacion: string;
+}
+
+/** Lo que la pantalla envia para generar el contrato. */
+export interface DatosContrato {
+  tipologia: string;
+  numero: string;
+  objeto: string;
+  valor: number;
+  plazoDias?: number;
+  contratistaDocumento: string;
+  contratistaNombre: string;
+  contratistaTipo: TipoPersonaContratista;
+  plantillaId?: string;
+}
+
+/** Tipologia de contrato configurable (EFDS-1161). */
+export interface TipologiaConfigurable {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  numeralFormato: string;
+  exigeGarantias: boolean;
+  activo: boolean;
+  orden: number;
+}
+
+/** Lo que la pantalla envia al crear o ajustar una tipologia. */
+export interface GuardarTipologia {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  exigeGarantias?: boolean;
+  activo?: boolean;
+  orden?: number;
+}
+
+// ---------------------- etapa 8 · supervision del contrato (8.2) -----------
+
+export interface SupervisorContrato {
+  id: string;
+  personaId: string;
+  nombre: string;
+  cargo: string | null;
+  email: string | null;
+  fechaDesignacion: string;
+  designadoPor: string | null;
+  /** Nulo mientras no quede constancia de que se le aviso (matriz 8.2). */
+  alertaEnviadaAt: string | null;
+  acto: { nombre: string; url: string | null } | null;
+}
+
+/** Quien supervisO antes; se conserva porque respondiO por ese periodo. */
+export interface SupervisionRelevada {
+  nombre: string;
+  cargo: string | null;
+  fechaDesignacion: string;
+  relevadoAt: string | null;
+  motivoRelevo: string | null;
+}
+
+export interface EstadoSupervision {
+  /**
+   * Si el contrato ya admite supervisor. La matriz sitúa la designación en el
+   * puesto 2 de la etapa, así que basta con que esté perfeccionado: no se
+   * espera a las garantías, que van en 8.4.
+   */
+  admiteSupervisor: boolean;
+  motivoNoAdmite: string | null;
+  contrato?: { numero: string; objeto: string };
+  puedeDesignar?: boolean;
+  supervisor: SupervisorContrato | null;
+  /** El aviso que pide la matriz sigue pendiente. */
+  avisoPendiente: boolean;
+  historial: SupervisionRelevada[];
+}
+
+/** Lo que la pantalla envia al designar. */
+export interface DatosSupervisor {
+  personaId: string;
+  nombre: string;
+  cargo?: string;
+  email?: string;
+  fechaDesignacion: string;
+}
+
+// ---------------------- etapa 8 · registro presupuestal (8.3) --------------
+
+/** Mismo ciclo que el CDP: es el mismo tramite en otro momento. */
+export type EstadoRp = 'SOLICITADO' | 'VERIFICADO' | 'EXPEDIDO' | 'RECHAZADO' | 'ANULADO';
+
+export interface RegistroPresupuestal {
+  id: string;
+  numero: string | null;
+  valor: number | null;
+  rubro: string | null;
+  fechaExpedicion: string | null;
+  vigenciaFiscal: number | null;
+  estado: EstadoRp;
+  observaciones: string | null;
+  solicitadoPor: string | null;
+  expedidoPor: string | null;
+}
+
+export interface EstadoRegistroPresupuestal {
+  suscrito: boolean;
+  motivoNoSuscrito: string | null;
+  contrato?: { numero: string; valor: number };
+  puedeSolicitar?: boolean;
+  rp: RegistroPresupuestal | null;
+  expedido: boolean;
+  /** Avisa si el RP no alcanza a cubrir el valor del contrato. */
+  advertencia: string | null;
+}
+
+export interface DatosSolicitudRp {
+  rubro?: string;
+  valor?: number;
+  vigenciaFiscal?: number;
+}
+
+export interface DatosExpedicionRp {
+  numero: string;
+  valor: number;
+  fechaExpedicion: string;
+  rubro?: string;
+  vigenciaFiscal?: number;
+}
+
+// ---------------------- etapa 8 · publicacion del contrato (8.8) -----------
+
+/** La historia dice SECOP II y la matriz la pagina web: se registra cual. */
+export type DestinoPublicacion = 'SECOP_II' | 'WEB_ESAP';
+
+export interface PublicacionDelContrato {
+  id: string;
+  destino: DestinoPublicacion;
+  fechaPublicacion: string;
+  fechaLimite: string | null;
+  plazoDiasHabiles: number | null;
+  secopNumero: string | null;
+  secopUrl: string | null;
+  publicadoPor: string | null;
+  /** Si llego dentro del plazo; publicar tarde es un hallazgo. */
+  aTiempo: boolean | null;
+  diasHabilesRestantes: number | null;
+  estadoPlazo: EstadoPlazo;
+}
+
+export interface EstadoPublicacionContrato {
+  legalizado: boolean;
+  motivoNoLegalizado: string | null;
+  contrato?: { numero: string; objeto: string };
+  plazo: { diasHabiles: number; fundamento: string | null; confirmado: boolean };
+  publicaciones: PublicacionDelContrato[];
+  /** Que destinos faltan, dicho por el servidor. */
+  pendientes: DestinoPublicacion[];
+}
+
+/** Lo que la pantalla envia al registrar la publicacion. */
+export interface DatosPublicacionContrato {
+  destino: DestinoPublicacion;
+  fechaPublicacion: string;
+  secopNumero?: string;
+  secopUrl?: string;
+}
