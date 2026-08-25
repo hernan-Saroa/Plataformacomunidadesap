@@ -1265,3 +1265,43 @@ export interface DatosPublicacionContrato {
   secopNumero?: string;
   secopUrl?: string;
 }
+
+// ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
+
+/** La reunión que da comienzo formal a la ejecución (EFDS-1167). */
+export interface ReunionDeInicio {
+  id: string;
+  fechaInicio: string;
+  temasTratados: string;
+  asistentes: string | null;
+  /** Si el contrato la pactó; de eso dependía que el acta fuera exigible. */
+  actaPactada: boolean;
+  registradoPor: string | null;
+  createdAt: string;
+  documento: { nombre: string; url: string | null } | null;
+}
+
+export interface EstadoActaInicio {
+  /** El contrato tiene sus coberturas en firme. */
+  legalizado: boolean;
+  tieneSupervisor: boolean;
+  puedeIniciar: boolean;
+  /** Qué falta, dicho por el servidor y no deducido en pantalla. */
+  motivoNoPuede: string | null;
+  contrato?: {
+    numero: string;
+    objeto: string;
+    enEjecucion: boolean;
+    ejecucionDesde: string | null;
+  };
+  supervisor: { nombre: string; cargo: string | null } | null;
+  acta: ReunionDeInicio | null;
+}
+
+/** Lo que la pantalla envia al registrar la reunion. */
+export interface DatosActaInicio {
+  fechaInicio: string;
+  temasTratados: string;
+  asistentes?: string;
+  actaPactada?: boolean;
+}

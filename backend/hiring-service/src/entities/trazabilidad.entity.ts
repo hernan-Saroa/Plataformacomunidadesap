@@ -25,7 +25,9 @@ export type AccionTraza =
   // Contrato electrónico y legalización (etapa 8).
   | 'ACEPTAR'
   | 'FIRMAR'
-  | 'LEGALIZAR';
+  | 'LEGALIZAR'
+  // Ejecución y supervisión (etapa 9).
+  | 'INICIAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

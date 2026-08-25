@@ -19,6 +19,8 @@ import {
   EstadoLegalizacion,
   EstadoSupervision,
   DatosSupervisor,
+  EstadoActaInicio,
+  DatosActaInicio,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -1024,6 +1026,34 @@ export const contratacionService = {
       method: 'PUT',
       body: JSON.stringify(datos),
     }),
+
+  // ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
+
+  /** Si el contrato puede arrancar, qué le falta, y la reunión ya registrada. */
+  actaInicio: (procesoId: string) =>
+    pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`),
+
+  /**
+   * Registra la reunión de inicio y deja el contrato en ejecución.
+   *
+   * El acta va aparte porque puede no existir: la matriz la describe como
+   * «firmada por ambas partes, si fue pactada en el contrato».
+   */
+  suscribirActaInicio: (procesoId: string, datos: DatosActaInicio, acta?: File | null) => {
+    const cuerpo = new FormData();
+    if (acta) cuerpo.append('file', acta);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };
