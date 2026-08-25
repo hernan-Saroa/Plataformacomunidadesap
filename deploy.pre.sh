@@ -2,7 +2,6 @@
 
 # =====================================================
 # Script de Despliegue para ESAP SuperApp - ENTORNO PRE
-# Servidor: http://172.16.202.222
 # Uso: ./deploy.pre.sh [comando]
 # =====================================================
 
@@ -47,7 +46,7 @@ fi
 
 COMPOSE_FILE_ENV="docker-compose.pre.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
-SERVER_URL_ENV="http://172.16.202.222"
+SERVER_URL_ENV="${SERVER_URL_ENV:-NOT_DEFINED}"
 ENV_FILE=".env.pre"
 ENV_NETWORK_KEY="superapp-net-pre"
 ENV_CONTAINER_SUFFIX="-pre"
@@ -516,8 +515,8 @@ cmd_up() {
 
     echo ""
     echo -e "${YELLOW}URLs de acceso (PRE):${NC}"
-    echo "  Frontend:    http://172.16.202.222"
-    echo "  API Gateway: http://172.16.202.222/services"
+    echo "  Frontend:    ${SERVER_URL_ENV}"
+    echo "  API Gateway: ${SERVER_URL_ENV}/services"
     echo ""
 }
 

@@ -130,6 +130,7 @@ export interface AuditoriaFormData {
 export interface AuditoriaResponse {
   id: string;
   nombre: string;
+  codigo: string;
   tipo: string;
   territorial: string;
   sede: string;
@@ -244,6 +245,7 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
   return {
     id: auditoria.id,
     nombre: auditoria.nombre,
+    codigo: auditoria.codigo,
     tipo: mapearTipoUI(auditoria.tipo),
     proceso: {
       nombre: auditoria.procesoAuditado || auditoria.areaObjetivo || 'General',
@@ -293,6 +295,7 @@ export interface AuditoriaUI {
   id: string;
   nombre: string;
   tipo: 'CUMPLIMIENTO' | 'GESTION' | 'FINANCIERA' | 'TI' | 'ESPECIAL';
+  codigo: string;
   // Tipo operativo original: Regular / Territorial / Especial
   tipoOperativo?: 'regular' | 'territorial' | 'especial';
   proceso: { nombre: string; codigo: string };

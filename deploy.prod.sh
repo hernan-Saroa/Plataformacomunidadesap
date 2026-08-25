@@ -2,7 +2,6 @@
 
 # =====================================================
 # Script de Despliegue para ESAP SuperApp - ENTORNO PROD
-# Servidor: https://comunidadesap.esap.edu.co
 # Uso: ./deploy.prod.sh [comando]
 # =====================================================
 
@@ -47,7 +46,7 @@ fi
 
 COMPOSE_FILE_ENV="docker-compose.prod.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
-SERVER_URL_ENV="https://comunidadesap.esap.edu.co"
+SERVER_URL_ENV="${SERVER_URL_ENV:-NOT_DEFINED}"
 ENV_FILE=".env.prod"
 ENV_NETWORK_KEY="superapp-net-prod"
 ENV_CONTAINER_SUFFIX="-prod"
@@ -509,8 +508,8 @@ cmd_up() {
 
     echo ""
     echo -e "${YELLOW}URLs de acceso (PROD):${NC}"
-    echo "  Frontend:    https://comunidadesap.esap.edu.co"
-    echo "  API Gateway: https://comunidadesap.esap.edu.co/services"
+    echo "  Frontend:    ${SERVER_URL_ENV}"
+    echo "  API Gateway: ${SERVER_URL_ENV}/services"
     echo ""
 }
 
