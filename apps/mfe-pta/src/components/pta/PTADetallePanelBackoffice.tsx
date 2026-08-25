@@ -47,7 +47,6 @@ import {
   PTA_COMPONENT_LEVELS,
   PTA_COMPONENT_PERMISSION,
   PTA_APPROVE_ALL_PERMISSION,
-  PTA_EXTENSION_COMPONENT_KEYS,
   type PTAComponentKey,
   componentKeysForApprovalLevel,
   splitComplementarias,
@@ -1731,23 +1730,16 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       .reduce((s: number, e: any) => s + (e.horas || 0), 0);
   };
 
-  // La vista de detalle conserva siempre el contexto completo del PTA. Los permisos
-  // granulares restringen las acciones y el formulario de concertación, no la
-  // visibilidad de los demás componentes.
-  /**
-   * ¿Se le muestra este componente al usuario actual?
-   *
-   * QA pidió que un revisor/aprobador vea ÚNICAMENTE lo que le corresponde revisar o
-   * aprobar (p. ej. el revisor de Docencia-Pregrado no debe ver las asignaturas de
-   * Posgrado). Antes esta función devolvía siempre `true` porque se mostraba el PTA
-   * completo "para dar contexto".
-   *
-   * Se muestra todo (sin restringir) a: superusuario, aprobador integral, el propio
-   * docente dueño del PTA, y a los roles sin ningún permiso granular (compatibilidad
-   * con el esquema legacy por nivel). Para el resto, se ve el componente si puede
-   * APROBARLO o REVISARLO — son capas independientes: hay revisores sin permiso de
-   * aprobación y viceversa.
-   */
+  // La vista de detalle conserva siempre el contexto completo del PTA: revisor y
+  // aprobador ven (en modo consulta) las asignaturas/actividades de todos los
+  // componentes, no solo el suyo (EFDS-1531). Los permisos granulares restringen
+  // las ACCIONES (aprobar/devolver, vía `componentAuthorized`/`canEvaluateComponent`
+  // más abajo) y el formulario de concertación, no la visibilidad de los demás
+  // componentes.
+  //
+  // `shouldShowComponentKey` ya no oculta el detalle de un componente: se usa
+  // únicamente para calcular el progreso de aprobación PROPIO del actor (cuántos de
+  // los componentes que le corresponde resolver ya quedaron aprobados/devueltos).
   const puedeRevisarAlgunaSubseccion = useCallback((key: string): boolean => {
     const subsecciones = REVIEW_SUBSECCIONES_BY_COMPONENT[key as PTAComponentKey] || [];
     return subsecciones.some(sub => isSubseccionAuthorizedToReview(key, sub));
@@ -3711,14 +3703,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 const nivelLabel = item.label.split(' - ')[1];
                 return (
                   <React.Fragment key={item.key}>
-                    {shouldShowComponentKey(item.key) && (
-                      <SectionCollapsible
-                        title={`Detalle Docencia - ${nivelLabel}`}
-                        icon={BookOpen}
-                        color="#4472C4"
-                        count={item.asignaturas.length}
-                        defaultOpen={true}
-                      >
+                    <SectionCollapsible
+                      title={`Detalle Docencia - ${nivelLabel}`}
+                      icon={BookOpen}
+                      color="#4472C4"
+                      count={item.asignaturas.length}
+                      defaultOpen={true}
+                    >
                         {item.asignaturas.length > 0 ? (
                           <div>
                             {/* Scroll horizontal en mobile para la tabla de asignaturas */}
@@ -3786,7 +3777,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                           </p>
                         )}
                       </SectionCollapsible>
-                    )}
 
                     {renderComponentCard(
                       item.key,
@@ -3800,7 +3790,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               })}
 
               {/* Investigación */}
-              {shouldShowComponentKey('investigacion') && (
               <SectionCollapsible
                 title="Componente Investigación"
                 icon={FlaskConical}
@@ -3875,7 +3864,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </span>
                 </div>
               </SectionCollapsible>
-              )}
 
               {/* Investigación — aprobar/devolver */}
               {renderComponentCard(
@@ -3887,22 +3875,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               )}
 
               {/* Extensión */}
-              {PTA_EXTENSION_COMPONENT_KEYS.some(shouldShowComponentKey) && (
               <SectionCollapsible
                 title="Componente Extensión (4 secciones)"
                 icon={Globe}
                 color="#059669"
               >
-                {['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno', 'otras'].filter(sec => {
-                  const componentBySection: Record<string, string> = {
-                    capacitacion: 'ext_capacitacion',
-                    seleccion: 'ext_procesos',
-                    fortalecimiento: 'ext_fortalecimiento',
-                    alto_gobierno: 'ext_gobierno',
-                    otras: 'ext_secciones',
-                  };
-                  return shouldShowComponentKey(componentBySection[sec]);
-                }).map(sec => {
+                {['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno', 'otras'].map(sec => {
                   const LABELS: Record<string, string> = {
                     capacitacion: 'Dirección de Capacitación',
                     seleccion: 'Dirección de Procesos de Selección',
@@ -3952,7 +3930,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </span>
                 </div>
               </SectionCollapsible>
-              )}
 
               {/* Extensión — aprobar/devolver (por subcomponente) */}
               {extensionCards.length > 0 && (
@@ -4034,7 +4011,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               )}
 
               {/* Complementarias */}
-              {shouldShowComponentKey('complementarias') && (
               <SectionCollapsible
                 title="Actividades Complementarias"
                 icon={Briefcase}
@@ -4076,7 +4052,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   </p>
                 )}
               </SectionCollapsible>
-              )}
 
               {/* Complementarias — aprobar/devolver (incluye AADM) */}
               {renderComponentCard(
