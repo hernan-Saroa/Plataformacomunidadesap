@@ -139,6 +139,14 @@ export interface DestinatarioInforme {
   activo: boolean;
 }
 
+// Tipos de fuente normativa configurables para el módulo de Términos e Informes
+export interface TipoFuenteNormativa {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
+}
+
 // Entes de control dedicados para Planes de Mejoramiento
 export interface EnteControlPM {
   id: string;
@@ -611,6 +619,17 @@ const destinatariosInformeIniciales: DestinatarioInforme[] = [
   }
 ];
 
+// ============ TIPOS DE FUENTE NORMATIVA INICIALES ============
+
+const tiposFuenteNormativaIniciales: TipoFuenteNormativa[] = [
+  { id: 'ley', nombre: 'Ley', descripcion: 'Ley expedida por el Congreso de la República', activo: true },
+  { id: 'decreto', nombre: 'Decreto', descripcion: 'Decreto reglamentario o con fuerza de ley', activo: true },
+  { id: 'resolucion', nombre: 'Resolución', descripcion: 'Resolución expedida por una entidad u organismo de control', activo: true },
+  { id: 'circular', nombre: 'Circular', descripcion: 'Circular externa o interna', activo: true },
+  { id: 'acuerdo', nombre: 'Acuerdo', descripcion: 'Acuerdo del organismo competente', activo: true },
+  { id: 'otro', nombre: 'Otro', descripcion: 'Otro tipo de fuente normativa', activo: true }
+];
+
 const entesControlPMIniciales: EnteControlPM[] = [
   { id: 'CONTRALORIA', nombre: 'Contraloría General', descripcion: 'Máximo órgano de control fiscal del Estado', icono: '🏛️', color: '#DC2626', activo: true },
   { id: 'PROCURADURIA', nombre: 'Procuraduría General', descripcion: 'Órgano de vigilancia de la conducta oficial de servidores públicos', icono: '⚖️', color: '#059669', activo: true },
@@ -643,6 +662,7 @@ interface ConfiguracionesSIGLContextType {
   entesControlPM: EnteControlPM[];
   categoriasDocumentos: CategoriaDocumento[];
   destinatariosInforme: DestinatarioInforme[];
+  tiposFuenteNormativa: TipoFuenteNormativa[];
   cambiosPendientes: boolean;
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
@@ -660,6 +680,7 @@ interface ConfiguracionesSIGLContextType {
   getEntesControlPMActivos: () => EnteControlPM[];
   getCategoriasDocumentosActivas: () => CategoriaDocumento[];
   getDestinatariosInformeActivos: () => DestinatarioInforme[];
+  getTiposFuenteNormativaActivos: () => TipoFuenteNormativa[];
   actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
@@ -668,6 +689,7 @@ interface ConfiguracionesSIGLContextType {
   actualizarEntesControlPM: (nuevosEntes: EnteControlPM[]) => void;
   actualizarCategoriasDocumentos: (nuevasCategorias: CategoriaDocumento[]) => void;
   actualizarDestinatariosInforme: (nuevosDestinatarios: DestinatarioInforme[]) => void;
+  actualizarTiposFuenteNormativa: (nuevosTipos: TipoFuenteNormativa[]) => void;
   guardarConfiguraciones: (silencioso?: boolean) => Promise<void>;
   restablecerDefecto: () => void;
   setCambiosPendientes: (value: boolean) => void;
@@ -691,6 +713,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [entesControlPM, setEntesControlPM] = useState<EnteControlPM[]>(entesControlPMIniciales);
   const [categoriasDocumentos, setCategoriasDocumentos] = useState<CategoriaDocumento[]>(categoriasDocumentosIniciales);
   const [destinatariosInforme, setDestinatariosInforme] = useState<DestinatarioInforme[]>(destinatariosInformeIniciales);
+  const [tiposFuenteNormativa, setTiposFuenteNormativa] = useState<TipoFuenteNormativa[]>(tiposFuenteNormativaIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -846,6 +869,17 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.error('❌ Error al cargar destinatarios de informes:', error);
       }
     }
+
+    const tiposFuenteNormativaGuardados = localStorage.getItem('sigl-tipos-fuente-normativa');
+    if (tiposFuenteNormativaGuardados) {
+      try {
+        const parsed = JSON.parse(tiposFuenteNormativaGuardados);
+        setTiposFuenteNormativa(parsed);
+        console.log('✅ Tipos de Fuente Normativa cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar tipos de fuente normativa:', error);
+      }
+    }
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -934,6 +968,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return destinatariosInforme.filter(d => d.activo);
   };
 
+  const getTiposFuenteNormativaActivos = (): TipoFuenteNormativa[] => {
+    return tiposFuenteNormativa.filter(t => t.activo);
+  };
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
@@ -977,6 +1015,11 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
   const actualizarDestinatariosInforme = (nuevosDestinatarios: DestinatarioInforme[]) => {
     setDestinatariosInforme(nuevosDestinatarios);
+    setCambiosPendientes(true);
+  };
+
+  const actualizarTiposFuenteNormativa = (nuevosTipos: TipoFuenteNormativa[]) => {
+    setTiposFuenteNormativa(nuevosTipos);
     setCambiosPendientes(true);
   };
 
@@ -1061,6 +1104,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
       localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
       localStorage.setItem('sigl-destinatarios-informe', JSON.stringify(destinatariosInforme));
+      localStorage.setItem('sigl-tipos-fuente-normativa', JSON.stringify(tiposFuenteNormativa));
 
       setCambiosPendientes(false);
       
@@ -1099,7 +1143,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     }, 1500); // 1.5s debounce
 
     return () => clearTimeout(timer);
-  }, [configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM, destinatariosInforme]);
+  }, [configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM, destinatariosInforme, tiposFuenteNormativa]);
 
   // Limpiar estado 'saved' / 'error' de vuelta a 'idle' después de unos segundos
   useEffect(() => {
@@ -1121,6 +1165,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     setEntesControlPM(entesControlPMIniciales);
     setCategoriasDocumentos(categoriasDocumentosIniciales);
     setDestinatariosInforme(destinatariosInformeIniciales);
+    setTiposFuenteNormativa(tiposFuenteNormativaIniciales);
 
     localStorage.removeItem('sigl-configuraciones');
     localStorage.removeItem('sigl-ejes-estrategicos');
@@ -1130,6 +1175,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     localStorage.removeItem('sigl-entes-control-pm');
     localStorage.removeItem('sigl-categorias-documentos');
     localStorage.removeItem('sigl-destinatarios-informe');
+    localStorage.removeItem('sigl-tipos-fuente-normativa');
 
     setCambiosPendientes(false);
     toast.success('Configuraciones restablecidas', {
@@ -1147,6 +1193,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     entesControlPM,
     categoriasDocumentos,
     destinatariosInforme,
+    tiposFuenteNormativa,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -1164,6 +1211,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getEntesControlPMActivos,
     getCategoriasDocumentosActivas,
     getDestinatariosInformeActivos,
+    getTiposFuenteNormativaActivos,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
@@ -1172,6 +1220,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     actualizarEntesControlPM,
     actualizarCategoriasDocumentos,
     actualizarDestinatariosInforme,
+    actualizarTiposFuenteNormativa,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,

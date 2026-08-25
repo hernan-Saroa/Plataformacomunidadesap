@@ -56,6 +56,7 @@ declare module 'certificados_laborales/Router' {
   interface CertificadosLaboralesRouterProps {
     userRoles: string[];
     userEmail: string;
+    userPermissions?: string[];
   }
   const Module: React.ComponentType<CertificadosLaboralesRouterProps>;
   export { Module as CertificadosLaboralesRouter };

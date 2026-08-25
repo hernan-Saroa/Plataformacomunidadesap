@@ -1,4 +1,14 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { EmailAttachmentDto } from './send-email.dto';
 
 export class SendEmailAttachmentDto {
   @IsEmail()
@@ -27,4 +37,11 @@ export class SendEmailAttachmentDto {
   @IsString()
   @IsOptional()
   attachmentContentType?: string;
+
+  @IsArray()
+  @ArrayMaxSize(2)
+  @ValidateNested({ each: true })
+  @Type(() => EmailAttachmentDto)
+  @IsOptional()
+  additionalAttachments?: EmailAttachmentDto[];
 }

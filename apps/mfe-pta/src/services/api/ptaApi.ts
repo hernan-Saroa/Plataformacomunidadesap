@@ -19,6 +19,15 @@ function asObject(raw: any): Record<string, any> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
+function getApiErrorMessage(error: any, fallback: string): string {
+  const responseMessage = error?.response?.data?.message;
+  if (Array.isArray(responseMessage)) return responseMessage.join(', ');
+  if (responseMessage && typeof responseMessage === 'object') {
+    return responseMessage.message || fallback;
+  }
+  return responseMessage || error?.message || fallback;
+}
+
 
 export async function getActivePeriodoAcademico() {
   try {
@@ -570,6 +579,7 @@ export async function aprobarComponente(ptaId: string, data: {
       success: false,
       data: null,
       message: (error as any)?.message || 'Error al actualizar el estado del componente',
+      code: (error as any)?.code || (error as any)?.response?.data?.code || null,
     };
   }
 }
@@ -1929,7 +1939,7 @@ export async function createBancoDocente(body: any) {
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][createBancoDocente] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible crear el docente.') };
   }
 }
 
@@ -1939,17 +1949,23 @@ export async function updateBancoDocente(id: string, body: any) {
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][updateBancoDocente] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible actualizar el docente.') };
   }
 }
 
-export async function toggleBancoDocenteEstado(id: string) {
+export async function toggleBancoDocenteEstado(id: string, body: {
+  estadoObjetivo: 'ACTIVO' | 'INACTIVO';
+  justificacion: string;
+  soporteId: string;
+  actorId?: string;
+  periodoCarga?: string;
+}) {
   try {
-    const raw = await apiClient.delete<any>(`${BD_BASE}/${id}`);
+    const raw = await apiClient.put<any>(`${BD_BASE}/${id}/estado`, body);
     return normalizeResult<any>(raw, null);
   } catch (error) {
     console.error('[mfe-pta][toggleBancoDocenteEstado] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible cambiar el estado del docente.') };
   }
 }
 
@@ -2060,7 +2076,7 @@ export async function vincularRundSoporte(docenteId: string, bloque: string, dat
     }
   } catch (error) {
     console.error('[mfe-pta][vincularRundSoporte] Error:', error);
-    return { success: false, data: null };
+    return { success: false, data: null, message: getApiErrorMessage(error, 'No fue posible cargar el soporte documental.') };
   }
 }
 

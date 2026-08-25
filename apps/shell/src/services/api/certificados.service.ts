@@ -20,7 +20,37 @@ import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environ
 // Nueva estructura: /{service}/api/v{version}/{path}
 const SERVICE_PREFIX = '/certificados/api/v1';
 
+export type SolicitudCorreccionCreada = {
+  id: string;
+  request_number: string;
+  status: 'PENDING';
+  due_date: string;
+  message: string;
+  business_days: number;
+};
+
 export const certificadosService = {
+  correcciones: {
+    async crearSolicitud(
+      certificateId: string,
+      verificationCode: string,
+      description: string,
+      files: File[],
+      onProgress?: (progress: number) => void,
+    ): Promise<SolicitudCorreccionCreada> {
+      const formData = new FormData();
+      formData.append('certificateId', certificateId);
+      formData.append('verificationCode', verificationCode);
+      formData.append('description', description);
+      files.forEach((file) => formData.append('files', file));
+      return apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/public/correction-requests`,
+        formData,
+        onProgress,
+      );
+    },
+  },
+
   /**
    * CERTIFICADOS DE GRADUADOS
    */
@@ -367,6 +397,9 @@ export const certificadosService = {
       technical_bonus_percentage?: number;
       technical_bonus_value?: number;
       technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+      functions_available?: boolean;
+      functions_count?: number;
+      functions_match_status?: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
       solicitud?: {
         full_name?: string;
         id_number?: string;
@@ -388,6 +421,9 @@ export const certificadosService = {
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
         technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        functions_available?: boolean;
+        functions_count?: number;
+        functions_match_status?: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
         [key: string]: any;
       };
       certificado?: any;
@@ -428,6 +464,9 @@ export const certificadosService = {
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
         technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        functions_available?: boolean;
+        functions_count?: number;
+        functions_match_status?: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
         [key: string]: any;
       };
     }> {
@@ -450,6 +489,7 @@ export const certificadosService = {
         documentType?: string;
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
+        includeFunctions?: boolean;
       },
     ): Promise<{
       mensaje: string;
@@ -462,6 +502,7 @@ export const certificadosService = {
           ...(options?.documentType ? { documentType: options.documentType } : {}),
           ...(options?.includeSalary !== undefined ? { includeSalary: options.includeSalary } : {}),
           ...(options?.includeTechnicalBonus !== undefined ? { includeTechnicalBonus: options.includeTechnicalBonus } : {}),
+          ...(options?.includeFunctions !== undefined ? { includeFunctions: options.includeFunctions } : {}),
         },
         { requiresAuth: false }
       );

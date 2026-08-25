@@ -26,7 +26,13 @@ export class TerminosCalculatorService {
     dias: number;
     fechaVencimiento: Date;
   }> {
-    const config = await this.configRepo.findOne({ where: { etapa: etapa } });
+    // Comparación insensible a tildes/mayúsculas: el valor guardado en BD para una
+    // etapa puede no coincidir exactamente con el literal usado aquí (p.ej. 'RECEPCIÓN'
+    // vs 'RECEPCION'), y una coincidencia exacta fallida caía silenciosamente en el
+    // default de 30 días sin importar la configuración real de la etapa.
+    const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+    const configs = await this.configRepo.find();
+    const config = configs.find(c => normalizar(c.etapa) === normalizar(etapa));
 
     // Default values if not configured
     let dias = 30;

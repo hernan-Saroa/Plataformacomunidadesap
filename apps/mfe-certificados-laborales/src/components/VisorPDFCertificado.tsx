@@ -30,6 +30,11 @@ interface VisorPDFCertificadoProps {
     qrCode?: string;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
+    incluyeFunciones?: boolean;
+    include_functions?: boolean;
+    includeFunctions?: boolean;
+    functions_snapshot?: any;
+    functionsSnapshot?: any;
     technical_bonus?: number;
     technical_bonus_category?: string | null;
     technicalBonusCategory?: string | null;
@@ -99,6 +104,17 @@ const obtenerConceptoPrimaTecnica = (categoria: PrimaTecnicaCategoria | null): s
     : categoria === 'DIRECTIVOS'
       ? 'prima técnica'
       : 'prima técnica y/o coordinación';
+
+const normalizarOrdenValoresPrima = (value: unknown): string =>
+  String(value || '')
+    .replace(
+      /\{valor_letras\}\s*(\(\s*\$?\s*\{valor_numerico\}\s*\))/gi,
+      '$1 {valor_letras}',
+    )
+    .replace(
+      /\{valor_letras\}\s*(\$\s*\{valor_numerico\})/gi,
+      '$1 {valor_letras}',
+    );
 
 export function VisorPDFCertificado({
   isOpen,
@@ -275,6 +291,17 @@ export function VisorPDFCertificado({
   }, [isOpen, certificado.id]);
 
   const incluirSalario = certificado?.incluyeSalario !== false;
+  const includeFunctionsValue: unknown =
+    certificado?.incluyeFunciones ??
+    certificado?.include_functions ??
+    certificado?.includeFunctions ??
+    false;
+  const incluirFunciones =
+    includeFunctionsValue === true ||
+    includeFunctionsValue === 1 ||
+    ['true', '1', 'yes', 'si', 's'].includes(
+      String(includeFunctionsValue || '').trim().toLowerCase(),
+    );
   const typographyFont = normalizarTipografia(
     plantillaConfig?.typography?.font || plantillaConfig?.typographyFont,
   );
@@ -283,11 +310,6 @@ export function VisorPDFCertificado({
       certificado.empleado.salario ??
       0,
   );
-  const salarioTextoBase =
-    (certificado.empleado as any)?.salarioTextoOriginal ??
-    certificado.empleado.salarioTexto ??
-    '';
-
   const limpiarSeccionesSalario = (html: string): string => {
     if (incluirSalario || !html) return html;
     try {
@@ -419,7 +441,7 @@ export function VisorPDFCertificado({
       '[DATO5]': cargoPlantilla,
       '[DATO6]': dato6,
       '[DATO7]': dato7,
-      '[DATO8]': incluirSalario ? (salarioTextoBase || salarioEnLetras) : '',
+      '[DATO8]': incluirSalario ? salarioEnLetras : '',
       '[NOMBRE_EMPLEADO]': certificado.empleado.nombre || '',
       '[DOCUMENTO]': certificado.empleado.documento || '',
       '[CARGO]': cargoVariable,
@@ -503,6 +525,7 @@ export function VisorPDFCertificado({
     const unidades = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
     const especiales = ['diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve'];
     const decenas = ['', '', 'veinte', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+    const veintenas = ['', 'veintiún', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
     const centenas = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
 
     if (num === 0) return 'cero';
@@ -512,7 +535,7 @@ export function VisorPDFCertificado({
       if (n === 0) return '';
       if (n < 10) return unidades[n];
       if (n < 20) return especiales[n - 10];
-      if (n < 30) return n === 20 ? 'veinte' : 'veinti' + unidades[n - 20];
+      if (n < 30) return n === 20 ? 'veinte' : veintenas[n - 20];
       if (n < 100) {
         const dec = Math.floor(n / 10);
         const uni = n % 10;
@@ -700,7 +723,7 @@ export function VisorPDFCertificado({
       maximumFractionDigits: 2,
     });
     const primaTecnicaEnLetras = numeroALetras(prima.value);
-    const customTemplate = String(prima.templateText || '').trim();
+    const customTemplate = normalizarOrdenValoresPrima(prima.templateText).trim();
 
     if (customTemplate) {
       const rendered = customTemplate
@@ -713,7 +736,95 @@ export function VisorPDFCertificado({
     const conceptoPrimaTecnica = obtenerConceptoPrimaTecnica(
       normalizarCategoriaPrimaTecnica(prima.category),
     );
-    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(prima.value)}) pesos m/cte.</p>`;
+    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ($${formatearMonto(prima.value)}) ${primaTecnicaEnLetras} pesos m/cte.</p>`;
+  };
+
+  const resolverFuncionesLaborales = (): Array<{ ordinal: number; description: string }> => {
+    if (!incluirFunciones) return [];
+    const cert = certificado as any;
+    let snapshot =
+      cert.functions_snapshot ??
+      cert.functionsSnapshot ??
+      cert.request?.functions_snapshot ??
+      cert.request?.functionsSnapshot ??
+      null;
+    if (typeof snapshot === 'string') {
+      try {
+        snapshot = JSON.parse(snapshot);
+      } catch {
+        return [];
+      }
+    }
+    const rawFunctions = Array.isArray(snapshot)
+      ? snapshot
+      : Array.isArray(snapshot?.functions)
+        ? snapshot.functions
+        : [];
+    const seen = new Set<string>();
+    return rawFunctions
+      .map((item: any, index: number) => ({
+        ordinal: Math.max(1, Number(item?.ordinal ?? item?.order ?? index + 1) || index + 1),
+        description: String(
+          typeof item === 'string'
+            ? item
+            : item?.description ?? item?.text ?? item?.function ?? '',
+        )
+          .replace(/\u00a0/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      }))
+      .filter((item) => {
+        const key = normalizarTexto(item.description);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((left, right) => left.ordinal - right.ordinal);
+  };
+
+  const escaparHtml = (value: string): string =>
+    String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const renderFuncionesLaborales = (
+    functions: Array<{ ordinal: number; description: string }>,
+  ): string => {
+    if (!functions.length) return '';
+    const items = functions
+      .map((item) => `<li class="labor-function-item">${escaparHtml(item.description)}</li>`)
+      .join('');
+    return `<section class="labor-functions-section"><p class="labor-functions-title">Las funciones asociadas al cargo son:</p><ul class="labor-functions-list">${items}</ul></section>`;
+  };
+
+  const insertarFuncionesLaborales = (
+    html: string,
+    functions: Array<{ ordinal: number; description: string }>,
+  ): string => {
+    const section = renderFuncionesLaborales(functions);
+    if (!section) return html;
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const sectionDoc = parser.parseFromString(section, 'text/html');
+      const sectionNode = sectionDoc.body.firstElementChild;
+      if (!sectionNode) return `${html}${section}`;
+
+      const expideNode = Array.from(doc.body.querySelectorAll('p, div')).find((node) =>
+        normalizarTexto(node.textContent || '').includes('se expide'),
+      );
+      if (expideNode) {
+        expideNode.parentNode?.insertBefore(doc.importNode(sectionNode, true), expideNode);
+      } else {
+        doc.body.appendChild(doc.importNode(sectionNode, true));
+      }
+      return doc.body.innerHTML;
+    } catch {
+      return `${html}${section}`;
+    }
   };
 
   const handleDescargar = async () => {
@@ -726,9 +837,48 @@ export function VisorPDFCertificado({
       return;
     }
 
+    const fileName = `Certificado_Laboral_${certificado.empleado.nombre.replace(/\s+/g, '_')}_${certificado.consecutivo}.pdf`;
+
     try {
       if (autoAction !== 'email') {
         toast.loading('Generando PDF del certificado...', { id: 'generating-pdf' });
+      }
+
+      // El backend es la fuente única del documento. Así la vista previa, la
+      // descarga, el correo y los reenvíos conservan exactamente el mismo PDF.
+      if (certificado.id) {
+        try {
+          const backendBlob = await certificadosService.laborales.obtenerPDFBlob(certificado.id);
+          if (autoAction === 'email') {
+            const bytes = new Uint8Array(await backendBlob.arrayBuffer());
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+              binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+            }
+            onEmailReady?.({ base64: btoa(binary), fileName });
+          } else {
+            const blobUrl = URL.createObjectURL(backendBlob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            toast.success('¡Certificado descargado exitosamente!', {
+              id: 'generating-pdf',
+              description: `Certificado de ${certificado.empleado.nombre}`,
+              duration: 3000,
+            });
+            if (autoAction === 'download') {
+              onAutoActionComplete?.('download', true);
+            }
+          }
+          return;
+        } catch (backendError) {
+          console.warn('No fue posible obtener el PDF oficial; se usará el respaldo local.', backendError);
+        }
       }
 
       // Esperar un momento para que todo se renderice correctamente
@@ -793,9 +943,6 @@ export function VisorPDFCertificado({
 
       // Añadir la imagen al PDF (tamaño completo de la página)
       pdf.addImage(imgData, 'PNG', 0, 0, CERTIFICATE_WIDTH, CERTIFICATE_HEIGHT, '', 'FAST');
-
-      // Nombre del archivo dinámico según el certificado
-      const fileName = `Certificado_Laboral_${certificado.empleado.nombre.replace(/\s+/g, '_')}_${certificado.consecutivo}.pdf`;
 
       if (autoAction === 'email') {
         const dataUri = pdf.output('datauristring');
@@ -1131,6 +1278,7 @@ export function VisorPDFCertificado({
     .map((prima) => renderPrimaTecnicaParrafo(prima))
     .filter(Boolean)
     .join('');
+  const funcionesLaborales = resolverFuncionesLaborales();
 
   const qrToken =
     certificado.qrCode ||
@@ -1180,7 +1328,10 @@ export function VisorPDFCertificado({
       return `${contenidoNormalizado}${primaTecnicaParrafos}`;
     }
   })();
-  const contenidoFinalNormalizado = normalizarEstructuraParrafos(contenidoFinal);
+  const contenidoFinalNormalizado = insertarFuncionesLaborales(
+    normalizarEstructuraParrafos(contenidoFinal),
+    funcionesLaborales,
+  );
 
   const renderCertificate = (ref?: React.Ref<HTMLDivElement>, extraStyle?: React.CSSProperties) => (
     <div
@@ -1191,7 +1342,7 @@ export function VisorPDFCertificado({
         minHeight: `${CERTIFICATE_HEIGHT}px`,
         fontFamily: typographyFont,
         fontSize: '12pt',
-        padding: '72px 72px 72px 72px',
+        padding: '72px 72px 170px 72px',
         position: 'relative',
         ...extraStyle
       }}
@@ -1216,6 +1367,34 @@ export function VisorPDFCertificado({
           letter-spacing: normal;
           padding: 0;
           margin: 0;
+        }
+        .labor-functions-section {
+          margin: 0 0 12pt 0;
+        }
+        .certificate-content-block .labor-functions-title,
+        .labor-functions-title {
+          margin: 0 0 8pt 0;
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+        .labor-functions-list {
+          margin: 0 0 12pt 0;
+          padding: 0 0 0 20pt;
+          list-style-position: outside;
+          list-style-type: disc;
+        }
+        .certificate-content-block .labor-functions-list .labor-function-item,
+        .labor-functions-list .labor-function-item {
+          margin: 0 0 8pt 0;
+          padding-left: 3pt;
+          text-align: justify;
+          text-align-last: left;
+          line-height: 1.5;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .labor-functions-list .labor-function-item:last-child {
+          margin-bottom: 0;
         }
       `}</style>
 
@@ -1343,6 +1522,27 @@ export function VisorPDFCertificado({
                   : '(salario no disponible)'}
               </strong> {salarioParaMostrar ? `${salarioEnLetrasParaMostrar} pesos m/cte` : 'pesos m/cte'}.
             </p>
+          )}
+
+          {primaTecnicaParrafos && (
+            <div
+              className="certificate-content-block"
+              dangerouslySetInnerHTML={{ __html: primaTecnicaParrafos }}
+              style={{ lineHeight: '1.5', fontSize: '12pt' }}
+            />
+          )}
+
+          {funcionesLaborales.length > 0 && (
+            <section className="labor-functions-section" style={{ fontSize: '12pt', lineHeight: '1.5' }}>
+              <p className="labor-functions-title">Las funciones asociadas al cargo son:</p>
+              <ul className="labor-functions-list">
+                {funcionesLaborales.map((funcion, index) => (
+                  <li className="labor-function-item" key={`${funcion.ordinal}-${index}`}>
+                    {funcion.description}
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
 
           <div style={{ height: '12pt' }}></div>

@@ -56,6 +56,12 @@ export class Certificate {
   @Column({ type: 'boolean', default: false })
   include_technical_bonus: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  include_functions: boolean;
+
+  @Column({ type: 'jsonb', nullable: true })
+  functions_snapshot: any | null;
+
   @Column({ length: 255, nullable: true })
   salary_text: string;
 
@@ -69,6 +75,11 @@ export class Certificate {
   // The physical PostgreSQL identifier is standardized in English.
   @Column({ name: 'grade_code', length: 255, nullable: true })
   cod_grade: string;
+
+  // Snapshot of the assignment indicator used by the certificate renderer.
+  // It is kept on the certificate so a correction never mutates HR source data.
+  @Column({ name: 'assignment_type', type: 'varchar', length: 1, nullable: true })
+  encargo_type: 'E' | 'N' | null;
 
   @Column({ length: 100, nullable: true })
   campus: string;
@@ -102,6 +113,12 @@ export class Certificate {
 
   @Column({ length: 50, default: 'VALID' })
   status: string;
+
+  @Column({ type: 'boolean', default: false })
+  is_corrected: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  last_corrected_at: Date | null;
 
   @CreateDateColumn()
   created_at: Date;

@@ -20,7 +20,7 @@ import {
  * consolida (aprobado) solo cuando TODAS las filas (territorial, nivel) de esta
  * tabla quedan en 'aprobado'.
  */
-@Unique(['ptaId', 'territorialId', 'nivel'])
+@Unique(['ptaId', 'componente', 'territorialId', 'nivel'])
 @Index(['ptaId'])
 @Entity({ schema: 'academic_work_plan', name: 'PtaTerritorialApproval' })
 export class PtaTerritorialApprovalEntity {
@@ -30,6 +30,13 @@ export class PtaTerritorialApprovalEntity {
   // PlanTrabajoAcademico.id es TEXT (gen_random_uuid()::text), no uuid.
   @Column({ name: 'pta_id', type: 'text' })
   ptaId: string;
+
+  // EFDS-1353: qué componente territorial aprueba esta fila
+  // ('academica_territorial' | 'complementarias_territorial'). Sin esta columna,
+  // la Docencia y la Complementaria de una misma territorial/nivel colisionarían
+  // en la misma fila (migración 401).
+  @Column({ name: 'componente', type: 'varchar', length: 60, default: 'academica_territorial' })
+  componente: string;
 
   @Column({ name: 'territorial_id', type: 'text' })
   territorialId: string;

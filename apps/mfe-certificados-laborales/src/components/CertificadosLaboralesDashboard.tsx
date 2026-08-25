@@ -23,6 +23,10 @@ import {
   Mail,
   History,
   Percent,
+  ClipboardCheck,
+  ChevronDown,
+  SlidersHorizontal,
+  BookOpenCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -60,6 +64,8 @@ interface CertificadoLaboral {
   technicalBonuses?: any[] | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
+  incluyeFunciones?: boolean;
+  functions_snapshot?: any;
   templateSnapshot?: any;
   templateType?: 'docente' | 'administrador';
   estadoLaboral?: 'activo' | 'inactivo';
@@ -99,12 +105,14 @@ interface CertificadosLaboralesDashboardProps {
   onNavigate?: (vista: string) => void;
   canManageTemplates?: boolean;
   canEditPrima?: boolean;
+  canManageFunctions?: boolean;
   canExportReport?: boolean;
   canDeliver?: boolean;
   canVerify?: boolean;
+  canManageCorrections?: boolean;
 }
 
-export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canExportReport = false, canDeliver = false, canVerify = false }: CertificadosLaboralesDashboardProps) {
+export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canManageFunctions = false, canExportReport = false, canDeliver = false, canVerify = false, canManageCorrections = false }: CertificadosLaboralesDashboardProps) {
   const resolverTemplateType = (value?: string) => {
     const base = String(value || '').toLowerCase();
     const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
@@ -275,6 +283,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           false,
         )
       : false;
+    const incluyeFunciones = normalizarBoolean(
+      cert.include_functions ??
+        cert.includeFunctions ??
+        cert.incluyeFunciones ??
+        cert.request?.include_functions ??
+        cert.request?.includeFunctions,
+      false,
+    );
     const certificadoId = String(
       cert.id ||
         cert.id_certificado ||
@@ -320,6 +336,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         null,
       incluyeSalario,
       incluyePrimaTecnica,
+      incluyeFunciones,
+      functions_snapshot:
+        cert.functions_snapshot ??
+        cert.functionsSnapshot ??
+        cert.request?.functions_snapshot ??
+        cert.request?.functionsSnapshot ??
+        null,
       templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
       templateType: templateTypeNormalizado,
       estadoLaboral: employmentEstado,
@@ -400,7 +423,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       }
       setError(null);
 
-      console.log('🔄 Cargando certificados desde el backend...');
       const filtrosGlobalesActivos = Boolean(statusFilter !== 'all' || cargoFilter.trim() || tipoVinculacionFilter.trim());
       const baseParams: Record<string, any> = {
         page: currentPage,
@@ -454,21 +476,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         total = Array.isArray(response) ? items.length : (response.total || 0);
         serverStats = Array.isArray(response) ? null : response.stats;
       }
-      console.log(`✅ Se cargaron ${items.length} certificados`);
-
       // Transformar datos del backend al formato del componente
       const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any, index: number) => transformarCertificado(cert, index));
 
       const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
         new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
       ));
-
-      console.log('📊 Contador de validaciones por certificado:',
-        certificadosOrdenados.map(c => ({
-          consecutivo: c.consecutivo,
-          validaciones: c.cantidadEscaneos
-        }))
-      );
 
       setCertificadosRaw(certificadosOrdenados);
       if (!filtrosGlobalesActivos) {
@@ -729,13 +742,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header - World Class Design */}
       <motion.div
+        key="certificates-header"
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-6 md:px-8 py-4 md:py-5">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
-            <div className="flex items-start gap-3 md:gap-4">
+        <div className="rounded-2xl bg-white border border-gray-200 shadow-sm px-4 sm:px-6 md:px-8 py-4 md:py-5">
+          <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-center lg:justify-between gap-3 md:gap-4">
+            <div className="flex flex-shrink-0 items-start gap-3 md:gap-4">
               <div 
                 className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ backgroundColor: '#EBF0FA' }}
@@ -751,62 +765,154 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {canVerify && (
-                <button
-                  onClick={() => onNavigate?.('validar-qr')}
-                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap bg-[#003DA5] text-white hover:bg-[#002D7A] hover:shadow-lg hover:-translate-y-0.5"
-                  title="Validar Certificado"
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:ml-auto lg:w-auto lg:justify-end">
+              {(canManageCorrections || canVerify) && (
+                <div
+                  className="flex flex-1 gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-inner sm:flex-none"
+                  role="group"
+                  aria-label="Vistas principales de certificados laborales"
                 >
-                  <QrCode className="w-4 h-4 flex-shrink-0" />
-                  <span>Validar Certificado</span>
-                </button>
+                  {canManageCorrections && (
+                    <motion.button
+                      key="correction-requests-action"
+                      onClick={() => onNavigate?.('solicitudes-correccion')}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                      className="certificates-corrections-button group inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-inset ring-slate-200 transition-[color,background-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 sm:flex-none sm:px-4"
+                      title="Solicitudes de corrección"
+                    >
+                      <span className="certificates-corrections-button__icon flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-all duration-200">
+                        <ClipboardCheck className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
+                      </span>
+                      <span>Correcciones</span>
+                    </motion.button>
+                  )}
+                  {canVerify && (
+                    <motion.button
+                      key="validate-certificate-action"
+                      onClick={() => onNavigate?.('validar-qr')}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.97 }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                      className="certificates-primary-action group inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#003DA5] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 sm:flex-none sm:px-4"
+                      title="Validar certificado"
+                    >
+                      <QrCode className="h-4 w-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                      <span className="sm:hidden">Validar</span>
+                      <span className="hidden sm:inline">Validar certificado</span>
+                    </motion.button>
+                  )}
+                </div>
               )}
-              <button
-                onClick={() => onNavigate?.('configuracion-plantilla')}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
-                title={puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}
-              >
-                <Settings className="w-4 h-4 flex-shrink-0" />
-                <span>{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
-              </button>
-              <button
-                onClick={() => fetchCertificados(true)}
-                disabled={isRefreshing}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
-                title="Actualizar"
-              >
-                <RefreshCw className={`w-4 h-4 flex-shrink-0 ${isRefreshing ? 'animate-spin' : ''}`} />
-                <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
-              </button>
-              {canEditPrima && (
-                <button
-                  onClick={() => setIsPrimaTecnicaOpen(true)}
-                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
-                  title="Prima técnica y/o coordinación"
+
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="certificates-tools-trigger group inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-[#003DA5] shadow-sm transition-[color,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 sm:flex-none"
+                      aria-label="Abrir herramientas de certificados laborales"
+                    >
+                      <SlidersHorizontal className="certificates-tools-trigger__icon h-4 w-4 transition-transform duration-200" />
+                      <span>Herramientas</span>
+                      <ChevronDown className="certificates-tools-trigger__chevron h-4 w-4 text-slate-400 transition-transform duration-200" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    sideOffset={8}
+                    className="certificates-tools-menu w-[calc(100vw-2rem)] max-w-80 rounded-2xl border-slate-200 bg-white p-2 shadow-2xl"
+                  >
+                    <div className="px-2 pb-2 pt-1">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Herramientas del módulo</p>
+                      <p className="mt-0.5 text-xs text-slate-500">Configuración, reportes y trazabilidad</p>
+                    </div>
+                    <DropdownMenuSeparator className="my-1 bg-slate-100" />
+                    <DropdownMenuItem
+                      onClick={() => onNavigate?.('configuracion-plantilla')}
+                      className="certificates-tools-item certificates-tools-item--blue group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
+                    >
+                      <span className="certificates-tools-item__icon flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#003DA5] transition-colors">
+                        <Settings className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-slate-800">{puedeConfigurarPlantilla ? 'Configurar plantilla' : 'Ver plantilla'}</span>
+                        <span className="block truncate text-xs font-normal text-slate-500">Contenido y formato del certificado</span>
+                      </span>
+                    </DropdownMenuItem>
+                    {canEditPrima && (
+                      <DropdownMenuItem
+                        onClick={() => setIsPrimaTecnicaOpen(true)}
+                        className="certificates-tools-item certificates-tools-item--violet group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
+                      >
+                        <span className="certificates-tools-item__icon flex h-9 w-9 items-center justify-center rounded-lg bg-violet-50 text-violet-700 transition-colors">
+                          <Percent className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-800">Prima técnica</span>
+                          <span className="block truncate text-xs font-normal text-slate-500">Prima técnica y coordinación</span>
+                        </span>
+                      </DropdownMenuItem>
+                    )}
+                    {canManageFunctions && (
+                      <DropdownMenuItem
+                        onClick={() => onNavigate?.('funciones-laborales')}
+                        className="certificates-tools-item group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
+                      >
+                        <span className="certificates-tools-item__icon flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700 transition-colors">
+                          <BookOpenCheck className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-800">Funciones laborales</span>
+                          <span className="block truncate text-xs font-normal text-slate-500">Carga individual y Matriz Funciones ESAP</span>
+                        </span>
+                      </DropdownMenuItem>
+                    )}
+                    {canExportReport && (
+                      <DropdownMenuItem
+                        onClick={() => setIsReporteOpen(true)}
+                        className="certificates-tools-item certificates-tools-item--emerald group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
+                      >
+                        <span className="certificates-tools-item__icon flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 transition-colors">
+                          <Download className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-800">Exportar reporte</span>
+                          <span className="block truncate text-xs font-normal text-slate-500">Descarga la información filtrada</span>
+                        </span>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator className="my-1 bg-slate-100" />
+                    <DropdownMenuItem
+                      onClick={() => setIsHistorialOpen(true)}
+                      className="certificates-tools-item certificates-tools-item--slate group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
+                    >
+                      <span className="certificates-tools-item__icon flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700 transition-colors">
+                        <History className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-slate-800">Historial</span>
+                        <span className="block truncate text-xs font-normal text-slate-500">Consulta movimientos anteriores</span>
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <motion.button
+                  key="refresh-certificates-action"
+                  onClick={() => fetchCertificados(true)}
+                  disabled={isRefreshing}
+                  whileHover={isRefreshing ? undefined : { y: -2, scale: 1.03 }}
+                  whileTap={isRefreshing ? undefined : { scale: 0.94 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                  className="certificates-refresh-button group inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-[#003DA5] shadow-sm transition-[color,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
+                  data-refreshing={isRefreshing}
+                  title={isRefreshing ? 'Actualizando certificados' : 'Actualizar certificados'}
+                  aria-label={isRefreshing ? 'Actualizando certificados' : 'Actualizar certificados'}
                 >
-                  <Percent className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">Prima técnica</span>
-                </button>
-              )}
-              {canExportReport && (
-                <button
-                  onClick={() => setIsReporteOpen(true)}
-                  className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap bg-white text-[#003DA5] border-2 border-[#003DA5] hover:bg-[#003DA5] hover:text-white"
-                  title="Exportar"
-                >
-                  <Download className="w-4 h-4 flex-shrink-0" />
-                  <span>Exportar</span>
-                </button>
-              )}
-              <button
-                onClick={() => setIsHistorialOpen(true)}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl font-semibold transition-all text-sm whitespace-nowrap text-[#003DA5] hover:bg-[#003DA5]/10 border border-gray-300"
-                title="Ver historial"
-              >
-                <History className="w-4 h-4 flex-shrink-0" />
-                <span>Ver historial</span>
-              </button>
+                  <RefreshCw className={`certificates-refresh-button__icon h-4 w-4 transition-transform duration-300 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </motion.button>
+              </div>
             </div>
           </div>
         </div>
@@ -814,6 +920,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
       {/* Banner Autoservicio */}
       <motion.div
+        key="self-service-summary"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
@@ -884,6 +991,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
       {/* Búsqueda y Filtros - Mobile First */}
       <motion.div
+        key="certificate-filters"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
@@ -1061,6 +1169,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
       {/* Tabla de Certificados */}
       <motion.div
+        key="certificate-results"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.25 }}

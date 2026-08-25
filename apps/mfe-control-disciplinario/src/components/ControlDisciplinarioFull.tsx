@@ -38,6 +38,19 @@ export interface ResultadoRevision {
   fecha: string;
 }
 
+const getDenunciadoNombre = (disciplinable: any): string => {
+  if (Array.isArray(disciplinable) && disciplinable.length > 0) {
+    return disciplinable[0]?.nombre || 'Sin información';
+  }
+  if (typeof disciplinable === 'object' && disciplinable?.nombre) {
+    return disciplinable.nombre;
+  }
+  if (typeof disciplinable === 'string' && disciplinable) {
+    return disciplinable;
+  }
+  return 'Sin información';
+};
+
 const BORRADORES_INICIALES: BorradorPendiente[] = [];
 const getAuthUserRenderKey = () => {
   const user = authService.getCurrentUser() as any;
@@ -168,7 +181,7 @@ export function ControlDisciplinarioFull() {
           },
           observacionesProfesional: auto.comentarios || '',
           contenido: auto.contenido || '',
-          denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
+          denunciado: getDenunciadoNombre(auto.process?.news?.disciplinable),
           etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
           prioridad: 'media' as const,
           estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
