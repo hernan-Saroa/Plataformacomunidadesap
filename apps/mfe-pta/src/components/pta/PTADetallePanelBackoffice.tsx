@@ -4287,7 +4287,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       <CheckCircle style={{ width: 15, height: 15 }} />
                       ✓ Tu firma ya fue registrada — esperando otras jefaturas
                     </div>
-                  ) : (
+                  ) : hayComponentesPendientesParaMi ? (
                   <button
                     onClick={handleAprobar}
                     disabled={procesandoAprobacion}
@@ -4302,7 +4302,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     <CheckCircle style={{ width: 15, height: 15 }} />
                     {procesandoAprobacion ? 'Procesando...' : getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0))}
                   </button>
-                  )}
+                  ) : null}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={onVerReporte}
@@ -4397,7 +4397,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       <CheckCircle style={{ width: 13, height: 13 }} />
                       Firma registrada — esperando otras jefaturas
                     </div>
-                  ) : (
+                  ) : hayComponentesPendientesParaMi ? (
                   <button
                     onClick={handleAprobar}
                     disabled={procesandoAprobacion}
@@ -4411,7 +4411,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     <CheckCircle style={{ width: 13, height: 13 }} />
                     {procesandoAprobacion ? 'Procesando...' : getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0))}
                   </button>
-                  )}
+                  ) : null}
                 </div>
               )}
 
