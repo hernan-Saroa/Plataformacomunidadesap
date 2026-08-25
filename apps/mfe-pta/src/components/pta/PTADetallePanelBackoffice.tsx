@@ -60,6 +60,7 @@ import {
   hasReviewPermission,
   PTA_TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
+  PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
   PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
@@ -802,8 +803,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // ¿Tiene el usuario algún permiso granular pta.review.*? Se usa solo para decidir
   // la etiqueta de la pestaña "Concertación" (ver TABS más abajo), independiente de
   // isSubseccionAuthorizedToReview que evalúa componente/subsección puntuales.
+  // EFDS-1533: PTA_COMPONENT_REVIEW_PERMISSION solo trae el permiso general de
+  // 'academica_territorial'/'complementarias_territorial' — los permisos reales que
+  // reciben los roles Revisor/Aprobador de una territorial son los granulares por
+  // nivel (pregrado/posgrado, ver PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION y
+  // PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_REVIEW_PERMISSION), que quedaban fuera de
+  // este chequeo y hacían que la pestaña se mostrara siempre como "Concertación".
   const tieneAlgunPermisoRevision = useMemo(
-    () => revisaTodo || Object.values(PTA_COMPONENT_REVIEW_PERMISSION).some(p => puedePerm(p)),
+    () => revisaTodo
+      || Object.values(PTA_COMPONENT_REVIEW_PERMISSION).some(p => puedePerm(p))
+      || Object.values(PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION).some(p => puedePerm(p))
+      || Object.values(PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_REVIEW_PERMISSION).some(p => puedePerm(p)),
     [revisaTodo, puedePerm],
   );
   const isSubseccionAuthorizedToReview = useCallback((key: string, subseccion: string): boolean => {
