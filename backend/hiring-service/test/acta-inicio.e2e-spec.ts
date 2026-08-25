@@ -190,7 +190,15 @@ describe('HU EFDS-1167 · acta de inicio del contrato (9.1)', () => {
    * Todo el camino hasta dejar el contrato legalizado y con supervisor, que es
    * la condición de entrada de la 9.1.
    */
-  /** Consecutivo propio de la corrida: contrato y póliza son únicos en la base. */
+  /**
+   * Consecutivo propio de la corrida: contrato y póliza son únicos en la base.
+   *
+   * El token va además del contador porque el contador vuelve a empezar en cada
+   * corrida y la base no: basta un proceso que quedara de una corrida anterior
+   * —o de una siembra para revisar la pantalla— para que el primer contrato
+   * choque contra un número que ya existe.
+   */
+  const CORRIDA = Math.random().toString(36).slice(2, 7);
   let vuelta = 0;
 
   const hastaContratoLegalizado = async () => {
@@ -305,7 +313,7 @@ describe('HU EFDS-1167 · acta de inicio del contrato (9.1)', () => {
       proceso.id,
       {
         tipologia: 'OBRA_PUBLICA',
-        numero: `CTO-2026-167-${n}`,
+        numero: `CTO-2026-167-${CORRIDA}-${n}`,
         objeto: 'Construcción de la sede regional',
         valor: 78_000_000,
         plazoDias: 180,
@@ -337,7 +345,7 @@ describe('HU EFDS-1167 · acta de inicio del contrato (9.1)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
-        numeroPoliza: `POL-167-${n}`,
+        numeroPoliza: `POL-167-${CORRIDA}-${n}`,
         amparos: [
           {
             tipo: 'CUMPLIMIENTO',

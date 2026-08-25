@@ -207,7 +207,15 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
     await app?.close();
   });
 
-  /** Consecutivo propio de la corrida: contrato y póliza son únicos en la base. */
+  /**
+   * Consecutivo propio de la corrida: contrato y póliza son únicos en la base.
+   *
+   * El token va además del contador porque el contador vuelve a empezar en cada
+   * corrida y la base no: basta un proceso que quedara de una corrida anterior
+   * —o de una siembra para revisar la pantalla— para que el primer contrato
+   * choque contra un número que ya existe.
+   */
+  const CORRIDA = Math.random().toString(36).slice(2, 7);
   let vuelta = 0;
 
   /** Todo el camino hasta dejar el contrato legalizado y con supervisor. */
@@ -322,7 +330,7 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
       proceso.id,
       {
         tipologia: 'CONSULTORIA',
-        numero: `CTO-2026-172-${n}`,
+        numero: `CTO-2026-172-${CORRIDA}-${n}`,
         objeto: 'Servicios profesionales de apoyo a la gestión',
         valor: VALOR_CONTRATO,
         plazoDias: 180,
@@ -354,7 +362,7 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
       proceso.id,
       {
         aseguradora: 'Seguros del Estado',
-        numeroPoliza: `POL-172-${n}`,
+        numeroPoliza: `POL-172-${CORRIDA}-${n}`,
         amparos: [
           {
             tipo: 'CUMPLIMIENTO',
