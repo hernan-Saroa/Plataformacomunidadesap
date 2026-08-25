@@ -2,7 +2,6 @@
 
 # =====================================================
 # Script de Despliegue para ESAP SuperApp - ENTORNO QA
-# Servidor: http://135.237.81.133
 # Uso: ./deploy.qa.sh [comando]
 # =====================================================
 
@@ -47,7 +46,7 @@ fi
 
 COMPOSE_FILE_ENV="docker-compose.qa.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
-SERVER_URL_ENV="http://135.237.81.133"
+SERVER_URL_ENV="${SERVER_URL_ENV:-NOT_DEFINED}"
 ENV_FILE=".env.qa"
 ENV_NETWORK_KEY="superapp-net-qa"
 ENV_CONTAINER_SUFFIX="-qa"
@@ -516,8 +515,8 @@ cmd_up() {
 
     echo ""
     echo -e "${YELLOW}URLs de acceso (QA):${NC}"
-    echo "  Frontend:    http://135.237.81.133"
-    echo "  API Gateway: http://135.237.81.133/services"
+    echo "  Frontend:    ${SERVER_URL_ENV}"
+    echo "  API Gateway: ${SERVER_URL_ENV}/services"
     echo ""
 }
 

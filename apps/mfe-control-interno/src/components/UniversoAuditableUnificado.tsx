@@ -656,6 +656,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       {mostrarFormulario && (
         <FormularioAuditoriaUnificado
           open={mostrarFormulario}
+          mode="create"
           onClose={() => setMostrarFormulario(false)}
           initialData={{
             vinculadaPlanAnual: true,
