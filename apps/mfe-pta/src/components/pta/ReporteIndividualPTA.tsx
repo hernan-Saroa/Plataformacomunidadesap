@@ -438,7 +438,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         <SectionHeader icon={User} label="1. IDENTIFICACION DEL DOCENTE" />
         <div style={{ padding: '16px 32px 20px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: '0.85rem' }}>
-            <Field label="Documento" value={pta.docente_identificacion || pta.cedula || pta.numero_documento || 'N/A'} />
+            <Field label="Documento" value={pta.documento_identidad || pta.docente_identificacion || pta.cedula || pta.numero_documento || 'N/A'} />
             <Field label="Nombre Completo" value={pta.docente_nombre || pta.nombre_docente || 'N/A'} bold />
             <Field label="Territorial" value={pta.territorial || pta.sede || 'SEDE CENTRAL'} />
             <Field label="Tipo Vinculacion" value={pta.tipo_vinculacion || 'Profesor de Carrera'} />
@@ -446,6 +446,9 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
             <Field label="Categoria Escalafon" value={pta.categoria_escalafon || pta.escalafon || 'Asociado'} />
             <Field label="Nucleo Tematico" value={pta.nucleo_tematico || 'Administracion Publica'} />
             <Field label="Horas a Programar" value={`${horasProgramables} horas`} bold />
+          </div>
+          <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginTop: 10 }}>
+            Información proveniente de la ficha institucional del docente (Banco de Docentes / RUND). Este bloque no modifica los datos del PTA.
           </div>
         </div>
 

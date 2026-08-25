@@ -2641,13 +2641,16 @@ export class PtaService {
     const programaKeys = new Set<string>();
     const territorialKeys = new Set<string>();
     const cetapKeys = new Set<string>();
+    const docenteIds = new Set<string>();
 
     for (const dto of dtos) {
       const asignaturas = Array.isArray(dto.asignaturas) ? dto.asignaturas : [];
       const dtoPrograma = coalesceLookupKey(dto.programa_id, dto.programaId);
       const dtoTerritorial = coalesceLookupKey(dto.territorial_id, dto.territorialId);
+      const dtoDocenteId = coalesceLookupKey(dto.docente_id, dto.docenteId);
       if (dtoPrograma) programaKeys.add(dtoPrograma);
       if (dtoTerritorial) territorialKeys.add(dtoTerritorial);
+      if (dtoDocenteId) docenteIds.add(dtoDocenteId);
 
       for (const asig of asignaturas) {
         const programaId = coalesceLookupKey(asig?.programa_id, asig?.programaId, asig?.programa?.id);
@@ -2738,11 +2741,62 @@ export class PtaService {
       }
     }
 
+    // Identificación institucional del docente (documento, escalafón, núcleo
+    // temático, territorial de su vinculación). El PTA solo persiste lo que el
+    // formulario envía (nombre, dedicación, tipo de vinculación); nunca capturó
+    // un campo de documento de identidad, por lo que ese dato -y otros que
+    // dependen del Banco de Docentes- se resuelven aquí contra la ficha oficial
+    // (academic_work_plan."Docente" + auth.personas), la misma fuente que usa
+    // el Banco de Docentes. Es la fuente autoritativa: solo completa vacíos,
+    // nunca sobrescribe un valor que el PTA ya traiga.
+    const docenteIdentidadMap = new Map<string, {
+      documentoIdentidad?: string | null;
+      tipoDocumento?: string | null;
+      categoriaEscalafon?: string | null;
+      nucleoTematico?: string | null;
+      territorial?: string | null;
+    }>();
+
+    if (docenteIds.size > 0) {
+      try {
+        const rows = await this.ptaRepo.manager.query(
+          `
+          SELECT
+            d.id::text AS docente_id,
+            p.num_identificacion AS documento_identidad,
+            p.tip_identificacion AS tipo_documento,
+            d.escalafon AS categoria_escalafon,
+            d."nucleoTematico" AS nucleo_tematico,
+            COALESCE(doc_sec.nom_seccional, sec.nom_seccional) AS territorial
+          FROM academic_work_plan."Docente" d
+          LEFT JOIN auth.personas p ON p.id_person::text = d."personaId"::text
+          LEFT JOIN auth.seccionales doc_sec ON doc_sec.id_seccional::text = d."territorialId"
+          LEFT JOIN auth.seccionales sec ON sec.id_seccional = p.id_seccional
+          WHERE d.id::text = ANY($1::text[])
+          `,
+          [[...docenteIds]],
+        );
+        for (const row of rows) {
+          docenteIdentidadMap.set(String(row.docente_id), {
+            documentoIdentidad: coalesceString(row.documento_identidad),
+            tipoDocumento: coalesceString(row.tipo_documento),
+            categoriaEscalafon: coalesceString(row.categoria_escalafon),
+            nucleoTematico: coalesceString(row.nucleo_tematico),
+            territorial: coalesceString(row.territorial),
+          });
+        }
+      } catch (err: any) {
+        this.logger.warn(`No se pudo resolver la identificación institucional del docente para el reporte PTA: ${err?.message || err}`);
+      }
+    }
+
     for (const dto of dtos) {
       const asignaturas = Array.isArray(dto.asignaturas) ? dto.asignaturas : [];
       const programaNames: string[] = [];
       const territorialNames: string[] = [];
       const cetapNames: string[] = [];
+      const docenteId = coalesceLookupKey(dto.docente_id, dto.docenteId);
+      const identidad = docenteId ? docenteIdentidadMap.get(docenteId) : undefined;
 
       for (const asig of asignaturas) {
         const programaId = coalesceLookupKey(asig?.programa_id, asig?.programaId, asig?.programa?.id);
@@ -2782,10 +2836,10 @@ export class PtaService {
       // asignaturas que dicta. Antes, si el PTA no traía la suya, se rellenaba
       // con la lista de territoriales de las asignaturas ("Risaralda +2"), y la
       // ficha del docente terminaba mostrando una territorial que no le
-      // corresponde. Si no se conoce, se deja vacía: las territoriales de las
-      // asignaturas ya viajan aparte en `territorialesAsignaturas`, que es donde
-      // la UI debe leerlas.
-      const territorialResumen = coalesceString(dto.territorial, dto.territorial_nombre);
+      // corresponde. Si no se conoce, se resuelve contra su ficha institucional
+      // (identidad, arriba); las territoriales de las asignaturas ya viajan
+      // aparte en `territorialesAsignaturas`, que es donde la UI debe leerlas.
+      const territorialResumen = coalesceString(dto.territorial, dto.territorial_nombre) || identidad?.territorial;
       const cetapResumen = coalesceString(dto.cetap, dto.cetap_nombre, dto.sede)
         || this.compactNameList(cetapNames);
 
@@ -2800,6 +2854,25 @@ export class PtaService {
       if (cetapResumen) {
         dto.cetap = cetapResumen;
         dto.cetap_nombre = dto.cetap_nombre || cetapResumen;
+      }
+      if (identidad?.documentoIdentidad) {
+        // Alias históricos que ya leen distintos reportes/exportaciones del
+        // frontend (docente_identificacion, cedula, numero_documento) — se
+        // completan todos para no tener que tocar cada consumidor.
+        dto.documento_identidad = dto.documento_identidad || identidad.documentoIdentidad;
+        dto.docente_identificacion = dto.docente_identificacion || identidad.documentoIdentidad;
+        dto.cedula = dto.cedula || identidad.documentoIdentidad;
+        dto.numero_documento = dto.numero_documento || identidad.documentoIdentidad;
+      }
+      if (identidad?.tipoDocumento) {
+        dto.tipo_documento = dto.tipo_documento || identidad.tipoDocumento;
+      }
+      if (identidad?.categoriaEscalafon) {
+        dto.categoria_escalafon = dto.categoria_escalafon || identidad.categoriaEscalafon;
+        dto.escalafon = dto.escalafon || identidad.categoriaEscalafon;
+      }
+      if (identidad?.nucleoTematico) {
+        dto.nucleo_tematico = dto.nucleo_tematico || identidad.nucleoTematico;
       }
 
       dto.programasAsignaturas = [...new Set(programaNames)];
