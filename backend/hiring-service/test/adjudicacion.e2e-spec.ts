@@ -732,4 +732,56 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       expect(actividades).toHaveLength(0);
     });
   });
+
+  // --------------------------------------------------- llegada al riel --
+
+  describe('La etapa 7 llega al riel del proceso', () => {
+    it('lista las actividades de la etapa 7 junto a las anteriores', async () => {
+      const proceso = await procesos.crearProceso(
+        { objeto: OBJETO, modalidad: 'LICITACION_PUBLICA', valorEstimado: 1_000_000 },
+        gestor,
+      );
+
+      // La misma prueba que la etapa 6 tiene en su suite, y por el mismo
+      // motivo: la 7 quedó construida y probada de punta a punta —audiencia,
+      // sobre, definitivo, acto y declaratoria desierta— pero fuera de
+      // ETAPAS_ENTREGADAS, así que el riel no la listaba y no había forma de
+      // abrir su panel desde la pantalla. Nada lo detectó porque todas las
+      // pruebas entraban por el servicio de la actividad, nunca por el camino
+      // del usuario.
+      const actividades = await cdp.actividadesDelProceso(proceso.id);
+      const numerales = actividades.map((a) => a.numeral);
+
+      expect(numerales).toEqual(expect.arrayContaining(['7.1', '7.2', '7.3', '7.4']));
+      // Y sin perder las que ya estaban.
+      expect(numerales).toContain('6.1');
+      expect(numerales).toContain('5.7');
+      expect(numerales).toContain('3.1');
+    });
+
+    it('tacha en el riel las que la modalidad no adelanta', async () => {
+      const licitacion = await procesos.crearProceso(
+        { objeto: OBJETO, modalidad: 'LICITACION_PUBLICA', valorEstimado: 1_000_000 },
+        gestor,
+      );
+      const menor = await procesos.crearProceso(
+        { objeto: OBJETO, modalidad: 'ABREVIADA_MENOR_CUANTIA', valorEstimado: 1_000_000 },
+        gestor,
+      );
+
+      const deEtapa7 = async (procesoId: string) =>
+        (await cdp.actividadesDelProceso(procesoId)).filter((a) => a.etapa === 7);
+
+      const enLicitacion = await deEtapa7(licitacion.id);
+      const enMenor = await deEtapa7(menor.id);
+
+      // Llegar al riel no basta: la etapa 7 tiene dos rutas, y la audiencia y
+      // el sobre económico solo se adelantan donde la matriz los prevé. La
+      // menor cuantía debe recibirlas tachadas —no ocultas— o el riel volvería
+      // a exigirlas para dar la etapa por completa.
+      expect(enLicitacion.every((a) => a.aplica)).toBe(true);
+      expect(enMenor.filter((a) => !a.aplica).map((a) => a.numeral)).toEqual(['7.1', '7.2']);
+      expect(enMenor.filter((a) => a.aplica).map((a) => a.numeral)).toEqual(['7.3', '7.4']);
+    });
+  });
 });
