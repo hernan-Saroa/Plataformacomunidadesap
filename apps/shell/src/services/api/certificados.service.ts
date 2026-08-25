@@ -397,6 +397,9 @@ export const certificadosService = {
       technical_bonus_percentage?: number;
       technical_bonus_value?: number;
       technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+      functions_available?: boolean;
+      functions_count?: number;
+      functions_match_status?: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
       solicitud?: {
         full_name?: string;
         id_number?: string;
@@ -418,6 +421,9 @@ export const certificadosService = {
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
         technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        functions_available?: boolean;
+        functions_count?: number;
+        functions_match_status?: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
         [key: string]: any;
       };
       certificado?: any;
@@ -458,6 +464,9 @@ export const certificadosService = {
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
         technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        functions_available?: boolean;
+        functions_count?: number;
+        functions_match_status?: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
         [key: string]: any;
       };
     }> {
@@ -480,6 +489,7 @@ export const certificadosService = {
         documentType?: string;
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
+        includeFunctions?: boolean;
       },
     ): Promise<{
       mensaje: string;
@@ -492,6 +502,7 @@ export const certificadosService = {
           ...(options?.documentType ? { documentType: options.documentType } : {}),
           ...(options?.includeSalary !== undefined ? { includeSalary: options.includeSalary } : {}),
           ...(options?.includeTechnicalBonus !== undefined ? { includeTechnicalBonus: options.includeTechnicalBonus } : {}),
+          ...(options?.includeFunctions !== undefined ? { includeFunctions: options.includeFunctions } : {}),
         },
         { requiresAuth: false }
       );

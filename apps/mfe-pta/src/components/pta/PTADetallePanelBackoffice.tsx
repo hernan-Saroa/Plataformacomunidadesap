@@ -4516,6 +4516,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 docente_id: pta.docente_id,
                 docente_nombre: pta.docente_nombre || snap.docente_nombre,
                 nombre_docente: pta.nombre_docente || snap.nombre_docente,
+                documento_identidad: pta.documento_identidad || snap.documento_identidad,
                 docente_identificacion: pta.docente_identificacion || snap.docente_identificacion,
                 cedula: pta.cedula || snap.cedula,
                 numero_documento: pta.numero_documento || snap.numero_documento,

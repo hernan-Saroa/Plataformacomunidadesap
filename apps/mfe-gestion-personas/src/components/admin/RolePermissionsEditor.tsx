@@ -173,12 +173,16 @@ const LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES = new Set([
   'certificados-laborales.config.edit',
   'certificados-laborales.export.report',
   'certificados-laborales.template.manage',
+  'certificados-laborales.correction.manage',
+  'certificados-laborales.functions.manage',
   'cl.certificate.deliver',
   'cl.certificate.sign',
   'cl.certificate.verify',
   'cl.config.edit',
   'cl.export.report',
   'cl.template.manage',
+  'cl.correction.manage',
+  'cl.functions.manage',
 ]);
 
 const isLaborCertificatePermissionCode = (code: string) =>
@@ -1035,6 +1039,9 @@ export function RolePermissionsEditor({
       });
       setSelectedPermissions(new Set(permissionsToSave));
       setHasChanges(false);
+      window.dispatchEvent(new CustomEvent('esap:role-permissions-updated', {
+        detail: { roleId: role.id, roleCode: role.code },
+      }));
       onSaved?.();
       onOpenChange(false);
     } catch (error) {

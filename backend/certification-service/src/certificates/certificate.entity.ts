@@ -56,6 +56,12 @@ export class Certificate {
   @Column({ type: 'boolean', default: false })
   include_technical_bonus: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  include_functions: boolean;
+
+  @Column({ type: 'jsonb', nullable: true })
+  functions_snapshot: any | null;
+
   @Column({ length: 255, nullable: true })
   salary_text: string;
 

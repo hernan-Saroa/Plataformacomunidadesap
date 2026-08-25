@@ -25,7 +25,12 @@ export type CertificateCorrectionEvidence = {
 
 export type CertificateCorrectionTraceEvent = {
   id: string;
-  type: 'REQUEST_CREATED' | 'REVIEW_STARTED' | 'CERTIFICATE_SENT' | 'REQUEST_REJECTED';
+  type:
+    | 'REQUEST_CREATED'
+    | 'REVIEW_STARTED'
+    | 'CERTIFICATE_SENT'
+    | 'CERTIFICATE_RESENT'
+    | 'REQUEST_REJECTED';
   title: string;
   description: string;
   status: CertificateCorrectionStatus;

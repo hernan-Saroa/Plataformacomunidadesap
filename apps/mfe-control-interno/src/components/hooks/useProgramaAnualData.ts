@@ -31,6 +31,7 @@ export type TipoAuditoria = 'CUMPLIMIENTO' | 'GESTION' | 'FINANCIERA' | 'TI' | '
 export interface AuditoriaProgramadaUI {
   id: string;
   procesoId: string;
+  codigo: string;
   proceso: ProcesoAuditableUI;
   // Tipo técnico (Gestión, Cumplimiento, etc.)
   tipo: TipoAuditoria;
@@ -561,6 +562,7 @@ export function useProgramaAnualData(
           const mapped = auditoriasDirectas.map(a => ({
             id: a.id,
             procesoId: a.procesoId || '',
+            codigo: a.codigo,
             proceso: {
               id: a.procesoId || a.id,
               nombre: a.proceso?.nombre || a.nombre,
