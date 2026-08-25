@@ -1315,3 +1315,64 @@ export interface DatosActaInicio {
   asistentes?: string;
   actaPactada?: boolean;
 }
+
+// ---------------------- etapa 9 · seguimiento de la ejecución (9.2) -------
+
+export type TipoSeguimiento = 'INFORME' | 'ACTA' | 'SOPORTE';
+
+/** Un soporte de la ejecución con el periodo que cubre (EFDS-1168). */
+export interface SoporteSeguimiento {
+  id: string;
+  tipo: TipoSeguimiento;
+  descripcion: string;
+  fechaSoporte: string;
+  periodoDesde: string | null;
+  periodoHasta: string | null;
+  registradoPor: string | null;
+  createdAt: string;
+  documento: { nombre: string; url: string | null } | null;
+}
+
+export interface EstadoSeguimiento {
+  enEjecucion: boolean;
+  puedeCargar: boolean;
+  /** Qué falta, dicho por el servidor y no deducido en pantalla. */
+  motivoNoPuede: string | null;
+  contrato: {
+    numero: string;
+    objeto: string;
+    estado: string;
+    valor: number | null;
+    ejecucionDesde: string | null;
+    perfeccionadoAt: string | null;
+    legalizadoAt: string | null;
+  } | null;
+  /** Quién responde por qué, que es el segundo criterio de la historia. */
+  responsables: {
+    contratista: { nombre: string; tipo: string };
+    supervisor: {
+      nombre: string;
+      cargo: string | null;
+      email: string | null;
+      desde: string;
+    } | null;
+    inicioRegistradoPor: string | null;
+  } | null;
+  soportes: SoporteSeguimiento[];
+  resumen?: {
+    total: number;
+    informes: number;
+    actas: number;
+    /** Desde cuándo no se reporta nada. */
+    ultimoSoporte: string | null;
+  };
+}
+
+/** Lo que la pantalla envia al cargar un soporte. */
+export interface DatosSeguimiento {
+  tipo: TipoSeguimiento;
+  descripcion: string;
+  fechaSoporte: string;
+  periodoDesde?: string;
+  periodoHasta?: string;
+}

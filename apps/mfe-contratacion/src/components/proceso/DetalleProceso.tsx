@@ -25,6 +25,8 @@ import { PanelSupervision } from '../supervision/PanelSupervision';
 import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
+import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
+import { DocumentosActividad } from '../shared/DocumentosActividad';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -85,6 +87,9 @@ const NUMERAL_PUBLICACION_CONTRATO = '8.8';
 /** Reunión de inicio que da comienzo a la ejecución (EFDS-1167). */
 const NUMERAL_ACTA_INICIO = '9.1';
 
+/** Seguimiento de la ejecución del contrato (EFDS-1168). */
+const NUMERAL_SEGUIMIENTO = '9.2';
+
 /**
  * Las que se trabajan desde su propio panel y no desde el formulario.
  *
@@ -99,6 +104,7 @@ const NUMERALES_CON_PANEL_PROPIO = [
   NUMERAL_ARL,
   NUMERAL_PUBLICACION_CONTRATO,
   NUMERAL_ACTA_INICIO,
+  NUMERAL_SEGUIMIENTO,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -427,6 +433,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelSeguimiento
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
             actividadSeleccionada?.numeral === NUMERAL_ARL ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -515,6 +528,19 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               </p>
             </div>
           )}
+
+          {/* Los documentos que la actividad dejó en el expediente.
+              Va aquí y no dentro de cada panel porque los quince paneles no
+              conocen su propio numeral, y este sitio sí sabe cuál está abierta:
+              montarlo una vez evita repetirlo en todos y que se olvide en los
+              que vengan después. */}
+          {actividadSeleccionada ? (
+            <DocumentosActividad
+              procesoId={procesoId}
+              numeral={actividadSeleccionada.numeral}
+              recargarToken={tokenExpediente}
+            />
+          ) : null}
         </div>
 
         {expedienteAbierto && (

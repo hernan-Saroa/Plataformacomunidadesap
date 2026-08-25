@@ -22,6 +22,8 @@ import {
   DatosReasignacion,
   EstadoActaInicio,
   DatosActaInicio,
+  EstadoSeguimiento,
+  DatosSeguimiento,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -1071,6 +1073,29 @@ export const contratacionService = {
     }
 
     return pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ------------------- etapa 9 · seguimiento de la ejecución (9.2) ---------
+
+  /** Estado del contrato en ejecución, sus responsables y los soportes. */
+  seguimiento: (procesoId: string) =>
+    pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`),
+
+  /** Carga un informe, acta o soporte de la ejecución al expediente. */
+  cargarSeguimiento: (procesoId: string, datos: DatosSeguimiento, soporte: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`, {
       method: 'POST',
       body: cuerpo,
     });
