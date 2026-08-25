@@ -1820,3 +1820,73 @@ export interface DatosPago {
   periodoHasta: string;
   valor: number;
 }
+
+// -------------------- etapa 10 · informe final de ejecucion (10.1) ---------
+
+/** La fotografia de la ejecucion el dia en que se firmo el informe. */
+export interface BalanceEjecucion {
+  valorContrato: number;
+  /** Lo tramitado, que no siempre es lo cobrado. */
+  valorPagado: number;
+  saldo: number;
+  cuentasTramitadas: number;
+  cuentasPendientes: number;
+  fechaInicio: string | null;
+}
+
+export interface EntregableInforme {
+  id: string;
+  descripcion: string;
+  /** Nula cuando el entregable se pacto y no se cumplio. */
+  fechaEntrega: string | null;
+  observacion: string | null;
+  documento: { nombre: string; url: string } | null;
+}
+
+export interface InformeFinalVigente {
+  id: string;
+  fechaElaboracion: string;
+  conclusion: string;
+  /** Congelado: no cambia aunque despues entren pagos. */
+  balance: BalanceEjecucion;
+  elaboradoPor: string | null;
+  documento: { nombre: string; url: string } | null;
+  entregables: EntregableInforme[];
+}
+
+export interface InformeFinalAnulado {
+  fechaElaboracion: string;
+  balance: BalanceEjecucion;
+  anuladoAt: string | null;
+  anuladoPor: string | null;
+  motivoAnulacion: string | null;
+}
+
+export interface EstadoInformeFinal {
+  /** Solo el contrato en ejecucion admite informe final. */
+  admiteInforme: boolean;
+  motivoNoAdmite: string | null;
+  contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
+  supervisor: { nombre: string; cargo: string | null; personaId: string } | null;
+  /** Si quien consulta es el supervisor y puede firmarlo. */
+  esSupervisor: boolean;
+  puedeElaborar: boolean;
+  /** El balance de hoy, para ver contra que se va a firmar. */
+  balanceActual: BalanceEjecucion | null;
+  advertencia: string | null;
+  informe: InformeFinalVigente | null;
+  historial: InformeFinalAnulado[];
+}
+
+/** Lo que la pantalla envia al elaborar el informe. */
+export interface DatosInformeFinal {
+  fechaElaboracion: string;
+  conclusion: string;
+}
+
+/** Lo que la pantalla envia al sumar un entregable. */
+export interface DatosEntregable {
+  descripcion: string;
+  fechaEntrega?: string;
+  observacion?: string;
+}

@@ -28,6 +28,7 @@ import { RegistroPresupuestalModule } from './modules/registro-presupuestal/regi
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { PagosModule } from './modules/pagos/pagos.module';
+import { InformeFinalModule } from './modules/informe-final/informe-final.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -86,6 +87,7 @@ import { PlazoPublicacionContrato, PublicacionContrato } from './entities/public
 import { TipologiaContrato } from './entities/tipologia-contrato.entity';
 import { ActaInicio } from './entities/acta-inicio.entity';
 import { PagoContrato, SoportePago } from './entities/pago-contrato.entity';
+import { InformeFinal, EntregableInforme } from './entities/informe-final.entity';
 
 @Module({
   imports: [
@@ -103,7 +105,7 @@ import { PagoContrato, SoportePago } from './entities/pago-contrato.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -137,6 +139,7 @@ import { PagoContrato, SoportePago } from './entities/pago-contrato.entity';
     PublicacionContratoModule,
     ActaInicioModule,
     PagosModule,
+    InformeFinalModule,
   ],
   controllers: [HealthController],
   providers: [

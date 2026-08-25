@@ -35,6 +35,9 @@ import {
   EstadoPagos,
   DatosPago,
   TipoSoportePago,
+  EstadoInformeFinal,
+  DatosInformeFinal,
+  DatosEntregable,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -646,6 +649,58 @@ export const contratacionService = {
   /** Anula una cuenta que no debio radicarse. */
   anularPago: (procesoId: string, pagoId: string, motivo: string) =>
     pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------ etapa 10 · informe final de ejecucion (10.1) ----------
+
+  /** El informe vigente, el balance de hoy y los que se anularon antes. */
+  informeFinal: (procesoId: string) =>
+    pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final`),
+
+  /** Elabora el informe y congela el balance de la ejecucion. */
+  elaborarInformeFinal: (procesoId: string, datos: DatosInformeFinal, informe: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', informe);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Suma un entregable al consolidado.
+   *
+   * El soporte es opcional: muchos entregables ya estan en el expediente por
+   * otra actividad.
+   */
+  agregarEntregable: (procesoId: string, datos: DatosEntregable, soporte?: File | null) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final/entregables`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula el informe vigente para rehacerlo. */
+  anularInformeFinal: (procesoId: string, motivo: string) =>
+    pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final/anular`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
