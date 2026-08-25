@@ -34,3 +34,23 @@ describe('admiteSupervisor', () => {
     expect(admiteSupervisor('RECHAZADO')).toBe(false);
   });
 });
+
+/**
+ * Criterio de EFDS-1169: «dado un contrato en ejecución, cuando el ordenador
+ * del gasto reasigna el supervisor por acto administrativo, entonces el sistema
+ * actualiza el supervisor activo y conserva el historial del anterior».
+ *
+ * Sobre cuándo puede hacerse, la historia y la matriz (9.3) dicen «en cualquier
+ * momento», mientras que el criterio dice «en ejecución». Se sigue la matriz
+ * —como en 8.2—: si el titular se va entre la designación y el acta de inicio,
+ * exigir la ejecución dejaría el contrato con un supervisor que ya no está.
+ */
+describe('admiteSupervisor · reasignación', () => {
+  it('un contrato en ejecución sigue admitiendo cambio de supervisor', () => {
+    expect(admiteSupervisor('EJECUCION')).toBe(true);
+  });
+
+  it('y uno apenas suscrito también, como dice la matriz', () => {
+    expect(admiteSupervisor('PERFECCIONADO')).toBe(true);
+  });
+});

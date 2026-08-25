@@ -19,6 +19,7 @@ import {
   EstadoLegalizacion,
   EstadoSupervision,
   DatosSupervisor,
+  DatosReasignacion,
   EstadoActaInicio,
   DatosActaInicio,
   EstadoRegistroPresupuestal,
@@ -508,6 +509,26 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
+
+  /**
+   * Reasigna la supervisión: releva al vigente y designa al nuevo de una vez
+   * (EFDS-1169). En dos pasos el contrato quedaría sin quien lo vigile.
+   */
+  reasignarSupervisor: (procesoId: string, datos: DatosReasignacion, acto: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/reasignar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
 
   /** Deja constancia de que se le comunicó la designación (matriz 8.2). */
   avisarSupervisor: (procesoId: string) =>

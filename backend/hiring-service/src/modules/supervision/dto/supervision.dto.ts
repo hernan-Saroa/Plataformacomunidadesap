@@ -59,3 +59,19 @@ export class RelevarSupervisorDto {
   @MaxLength(1000)
   motivo: string;
 }
+
+/**
+ * Reasignacion del supervisor (EFDS-1169, actividad 9.3).
+ *
+ * Releva al vigente y designa al nuevo en un solo acto. Hacerlo en dos pasos
+ * dejaria el contrato sin quien lo vigile entre uno y otro, y la historia habla
+ * de «reasignar», no de dos operaciones sueltas.
+ */
+export class ReasignarSupervisorDto extends DesignarSupervisorDto {
+  @ApiProperty({ description: 'Por que se cambia de supervisor' })
+  @IsString()
+  @IsNotEmpty({ message: 'Explica por que se reasigna la supervision' })
+  @MinLength(10, { message: 'El motivo debe explicar el cambio, no una palabra suelta' })
+  @MaxLength(1000)
+  motivo: string;
+}

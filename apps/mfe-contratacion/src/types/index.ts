@@ -1185,6 +1185,16 @@ export interface DatosSupervisor {
   fechaDesignacion: string;
 }
 
+/**
+ * Lo que la pantalla envia al reasignar la supervision (EFDS-1169).
+ *
+ * Es una designacion con motivo: releva al vigente y nombra al nuevo en un
+ * solo acto, para que el contrato no quede sin quien lo vigile.
+ */
+export interface DatosReasignacion extends DatosSupervisor {
+  motivo: string;
+}
+
 // ---------------------- etapa 8 · registro presupuestal (8.3) --------------
 
 /** Mismo ciclo que el CDP: es el mismo tramite en otro momento. */
