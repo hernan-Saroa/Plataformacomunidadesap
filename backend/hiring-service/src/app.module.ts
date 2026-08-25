@@ -28,6 +28,7 @@ import { RegistroPresupuestalModule } from './modules/registro-presupuestal/regi
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { PagosModule } from './modules/pagos/pagos.module';
+import { InformeFinalModule } from './modules/informe-final/informe-final.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -138,6 +139,7 @@ import { InformeFinal, EntregableInforme } from './entities/informe-final.entity
     PublicacionContratoModule,
     ActaInicioModule,
     PagosModule,
+    InformeFinalModule,
   ],
   controllers: [HealthController],
   providers: [
