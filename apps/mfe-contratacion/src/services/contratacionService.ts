@@ -32,6 +32,9 @@ import {
   DatosSupervisor,
   EstadoActaInicio,
   DatosActaInicio,
+  EstadoPagos,
+  DatosPago,
+  TipoSoportePago,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -567,6 +570,82 @@ export const contratacionService = {
   /** Anula el acta vigente; el contrato vuelve a legalizado. */
   anularActaInicio: (procesoId: string, motivo: string) =>
     pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // --------------------------- etapa 9 · tramite de pagos (9.4) -------------
+
+  /** Cuentas de cobro del contrato, con lo cobrado y lo tramitado. */
+  pagos: (procesoId: string) => pedir<EstadoPagos>(`/procesos/${procesoId}/pagos`),
+
+  /**
+   * Radica la cuenta con la factura y el informe de actividades.
+   *
+   * Los dos van en la misma peticion porque los dos los exige el criterio de
+   * la historia: la factura es lo que se cobra y el informe lo que sustenta
+   * que se presto.
+   */
+  radicarPago: (procesoId: string, datos: DatosPago, factura: File, informe: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('factura', factura);
+    cuerpo.append('informe', informe);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoPagos>(`/procesos/${procesoId}/pagos`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Suma un soporte: seguridad social, RUT o el anexo que sea. */
+  cargarSoportePago: (
+    procesoId: string,
+    pagoId: string,
+    tipo: TipoSoportePago,
+    archivo: File,
+    descripcion?: string,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('tipo', tipo);
+    if (descripcion) cuerpo.append('descripcion', descripcion);
+
+    return pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/soportes`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** El aval del supervisor sobre una cuenta radicada. */
+  avalarPago: (procesoId: string, pagoId: string, observacion?: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/avalar`, {
+      method: 'POST',
+      body: JSON.stringify(observacion ? { observacion } : {}),
+    }),
+
+  /** Devuelve la cuenta al contratista para que la corrija. */
+  devolverPago: (procesoId: string, pagoId: string, motivo: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/devolver`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** La Direccion Financiera registra que el pago se tramito. */
+  tramitarPago: (procesoId: string, pagoId: string, referenciaPago: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/tramitar`, {
+      method: 'POST',
+      body: JSON.stringify({ referenciaPago }),
+    }),
+
+  /** Anula una cuenta que no debio radicarse. */
+  anularPago: (procesoId: string, pagoId: string, motivo: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/anular`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),

@@ -357,6 +357,42 @@ export const ROLES_LECTURA_EJECUCION = [
   ROL_SUPERVISOR_CONTRATO,
 ];
 
+/**
+ * Quién radica la cuenta de cobro (actividad 9.4, EFDS-1170).
+ *
+ * El contratista no tiene cuenta en el sistema —igual que en la etapa 8, donde
+ * el gestor registra su firma—, así que la radica quien lleva el expediente o
+ * quien vigila la ejecución.
+ */
+export const ROLES_RADICAR_PAGO = [
+  ROL_SUPERVISOR_CONTRATO,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién avala o devuelve la cuenta (actividad 9.4).
+ *
+ * El núcleo de la historia: «el supervisor da aval». Más estrecho que quien
+ * radica, y a propósito —si quien presenta la cuenta pudiera avalarla, el aval
+ * dejaría de ser una revisión, con el mismo criterio de las garantías
+ * (EFDS-1164)—.
+ *
+ * Y el rol solo abre la puerta: el servicio exige que sea el supervisor
+ * **vigente de ese contrato**, como en la evaluación (EFDS-1438).
+ */
+export const ROLES_AVALAR_PAGO = [ROL_SUPERVISOR_CONTRATO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién tramita el pago avalado (actividad 9.4).
+ *
+ * La Dirección Financiera, con el mismo criterio del CDP y del RP: es ella la
+ * que mueve el presupuesto de la entidad. El supervisor avala la prestación;
+ * no gira el dinero.
+ */
+export const ROLES_TRAMITAR_PAGO = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
