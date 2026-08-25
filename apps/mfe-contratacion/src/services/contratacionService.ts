@@ -40,6 +40,8 @@ import {
   DatosEntregable,
   EstadoLiquidacion,
   DatosLiquidacion,
+  EstadoCierreFinanciero,
+  DatosCierreFinanciero,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -744,6 +746,45 @@ export const contratacionService = {
   /** Anula el acta vigente para rehacerla. */
   anularLiquidacion: (procesoId: string, motivo: string) =>
     pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // --------------------- etapa 10 · cierre financiero (10.3) ----------------
+
+  /** El cuadre contra el RP, el cierre vigente y los que se revirtieron. */
+  cierreFinanciero: (procesoId: string) =>
+    pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero`),
+
+  /**
+   * Registra el pago final y libera el saldo.
+   *
+   * El soporte es opcional: mientras no exista KLIC, cada entidad tramita la
+   * liberacion con el documento que tenga.
+   */
+  cerrarFinancieramente: (
+    procesoId: string,
+    datos: DatosCierreFinanciero,
+    soporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Revierte el cierre vigente. */
+  revertirCierreFinanciero: (procesoId: string, motivo: string) =>
+    pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero/revertir`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
