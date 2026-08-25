@@ -137,7 +137,7 @@ export class TerminosService {
         diasTermino: number,
         responsableId?: string,
         responsableNombre?: string,
-        tipoDias: 'HABILES' | 'CALENDARIO' = 'HABILES',
+        tipoDias: 'HABILES' | 'CALENDARIO' | 'HORAS' = 'HABILES',
         fechaVencimientoExplicita?: Date,
         observaciones?: string
     ): Promise<TerminoProcesal> {
@@ -150,6 +150,8 @@ export class TerminosService {
             vencimiento = new Date(fechaBase);
             if (tipoDias === 'CALENDARIO') {
                 vencimiento.setDate(vencimiento.getDate() + safeDias);
+            } else if (tipoDias === 'HORAS') {
+                vencimiento.setHours(vencimiento.getHours() + safeDias);
             } else {
                 let daysAdded = 0;
                 while (daysAdded < safeDias) {
@@ -778,7 +780,7 @@ export class TerminosService {
                     req.plazoOtorgado || 0,
                     responsableUUID,
                     responsableNombre,
-                    req.unidadTiempo === 'DIAS_CALENDARIO' ? 'CALENDARIO' : 'HABILES', // Map unit time
+                    req.unidadTiempo === 'DIAS_CALENDARIO' ? 'CALENDARIO' : req.unidadTiempo === 'HORAS' ? 'HORAS' : 'HABILES', // Map unit time
                     req.fechaVencimiento,
                     `[OC] ${req.asunto}. ${descripcion}`
                 );

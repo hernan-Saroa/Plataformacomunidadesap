@@ -45,6 +45,43 @@ function nombreLegible(valor?: string | null): string | null {
   return valor;
 }
 
+/**
+ * Texto y color de semáforo únicos para "días restantes", reutilizados por las
+ * 3 vistas (Timeline, Calendario, Lista). Antes cada vista mostraba el número
+ * crudo (incluyendo negativos, ej. "-3 días") sin distinguir un vencido de uno
+ * próximo a vencer.
+ */
+function formatearDiasRestantes(diasRestantes: number): { texto: string; color: string; bg: string } {
+  if (diasRestantes < 0) {
+    return { texto: `Vencido hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? 's' : ''}`, color: '#DC2626', bg: '#FEE2E2' };
+  }
+  if (diasRestantes <= 2) {
+    return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#DC2626', bg: '#FEE2E2' };
+  }
+  if (diasRestantes <= 5) {
+    return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#F59E0B', bg: '#FEF3C7' };
+  }
+  return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#10B981', bg: '#D1FAE5' };
+}
+
+/** Agrupa solicitudes por período (mes-año de vencimiento) para "VistaLista". */
+function agruparPorPeriodo(solicitudes: SolicitudInforme[]): Array<{ clave: string; etiqueta: string; items: SolicitudInforme[] }> {
+  const grupos: Record<string, SolicitudInforme[]> = {};
+  for (const s of solicitudes) {
+    const fecha = new Date(s.fechaVencimiento);
+    const clave = isNaN(fecha.getTime()) ? 'sin-fecha' : `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    (grupos[clave] ||= []).push(s);
+  }
+  return Object.entries(grupos)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([clave, items]) => {
+      if (clave === 'sin-fecha') return { clave, etiqueta: 'Sin fecha de vencimiento', items };
+      const [anio, mes] = clave.split('-').map(Number);
+      const etiqueta = new Date(anio, mes - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      return { clave, etiqueta: etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1), items };
+    });
+}
+
 
 
 export function ModuloTerminosInformesV3() {
@@ -166,6 +203,8 @@ export function ModuloTerminosInformesV3() {
         diasTotales: t.diasTermino,
         diasRestantes: t.calculo?.diasRestantes ?? 0,
         datosRequeridos: [],
+        horasAnticipacionAlertaPersonalizada: t.horasAnticipacionAlertaPersonalizada ?? null,
+        recordatorioManualHorasAnticipacion: t.recordatorioManualHorasAnticipacion ?? null,
         metadata: { uuid: t.id } // Store real UUID here
       }));
 
@@ -628,15 +667,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
       <div className="space-y-4">
         {solicitudesOrdenadas.map((solicitud, index) => {
           const diasRestantes = solicitud.diasRestantes;
-          let semaforoColor = '#10B981';
-          let semaforoBg = '#D1FAE5';
-          if (diasRestantes <= 2) {
-            semaforoColor = '#DC2626';
-            semaforoBg = '#FEE2E2';
-          } else if (diasRestantes <= 5) {
-            semaforoColor = '#F59E0B';
-            semaforoBg = '#FEF3C7';
-          }
+          const { texto: textoDias, color: semaforoColor, bg: semaforoBg } = formatearDiasRestantes(diasRestantes);
 
           return (
             <motion.div
@@ -671,7 +702,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                     className="text-xs font-bold flex-shrink-0"
                     style={{ backgroundColor: semaforoColor, color: '#FFFFFF' }}
                   >
-                    {diasRestantes} día{diasRestantes !== 1 ? 's' : ''}
+                    {textoDias}
                   </BadgeSIGL>
                 </div>
 
@@ -818,10 +849,11 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
                       key={`cal-${s.metadata?.uuid || s.id}-${idx}`}
                       className="text-[9px] px-1 py-0.5 rounded truncate"
                       style={{
-                        backgroundColor: s.diasRestantes <= 2 ? '#DC2626' : s.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
+                        backgroundColor: formatearDiasRestantes(s.diasRestantes).color,
                         color: '#FFFFFF'
                       }}
                       onClick={() => onVerDetalle(s)}
+                      title={formatearDiasRestantes(s.diasRestantes).texto}
                     >
                       {s.id}
                     </div>
@@ -849,6 +881,8 @@ interface VistaListaProps {
 }
 
 function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
+  const grupos = agruparPorPeriodo(solicitudes);
+
   return (
     <CardSIGL className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -864,11 +898,17 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Acciones</th>
             </tr>
           </thead>
-          <tbody>
-            {solicitudes.map((solicitud, index) => {
-              const semaforoColor = solicitud.diasRestantes <= 2 ? '#DC2626' : solicitud.diasRestantes <= 5 ? '#F59E0B' : '#10B981';
+          {grupos.map((grupo) => (
+            <tbody key={grupo.clave}>
+              <tr className="bg-blue-50">
+                <td colSpan={7} className="px-4 py-2 text-xs font-bold uppercase tracking-wide" style={{ color: '#003DA5' }}>
+                  📅 {grupo.etiqueta} ({grupo.items.length})
+                </td>
+              </tr>
+              {grupo.items.map((solicitud, index) => {
+                const { texto: textoDias, color: semaforoColor } = formatearDiasRestantes(solicitud.diasRestantes);
 
-              return (
+                return (
                 <tr key={solicitud.metadata?.uuid || `${solicitud.id}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{solicitud.id}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
@@ -883,7 +923,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                       className="text-xs font-bold"
                       style={{ backgroundColor: semaforoColor, color: '#FFFFFF' }}
                     >
-                      {solicitud.diasRestantes} día{solicitud.diasRestantes !== 1 ? 's' : ''}
+                      {textoDias}
                     </BadgeSIGL>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.etapa}</td>
@@ -928,9 +968,10 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                     </div>
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
+                );
+              })}
+            </tbody>
+          ))}
         </table>
       </div>
     </CardSIGL>

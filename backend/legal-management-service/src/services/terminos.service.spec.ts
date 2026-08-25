@@ -12,6 +12,7 @@ import { TerminosService } from './terminos.service';
 // Construidas con el constructor local (year, monthIndex, day) para que getDay()/setDate()
 // se comporten igual sin importar la zona horaria del runner.
 const localDate = (year: number, month: number, day: number) => new Date(year, month - 1, day);
+const localDateTime = (year: number, month: number, day: number, hour: number) => new Date(year, month - 1, day, hour);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe('TerminosService', () => {
@@ -260,8 +261,8 @@ describe('TerminosService', () => {
                 undefined, undefined, 'CALENDARIO', vencimiento,
             );
 
-            expect(result.fechaAlertaPreventiva.getTime()).toBe(localDate(2026, 3, 5).getTime());
-            expect(result.fechaAlertaCritica.getTime()).toBe(localDate(2026, 3, 8).getTime());
+            expect(result.fechaAlertaPreventiva!.getTime()).toBe(localDate(2026, 3, 5).getTime());
+            expect(result.fechaAlertaCritica!.getTime()).toBe(localDate(2026, 3, 8).getTime());
         });
 
         it('con tipoDias=CALENDARIO y sin fecha explícita debe sumar los días corridos exactos a fechaBase', async () => {
@@ -300,6 +301,30 @@ describe('TerminosService', () => {
             );
 
             expect(result.fechaVencimiento.getTime()).toBe(localDate(2026, 1, 6).getTime());
+        });
+
+        it('con tipoDias=HORAS y sin fecha explícita debe sumar horas exactas a fechaBase (no días)', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue(null);
+            const fechaBase = localDateTime(2026, 1, 1, 8);
+
+            const result = await service.createAutomatico(
+                'MANUAL', 'ref-horas', 'RAD-HORAS', 'Actuación', fechaBase, 36,
+                undefined, undefined, 'HORAS',
+            );
+
+            expect(result.fechaVencimiento.getTime()).toBe(localDateTime(2026, 1, 2, 20).getTime());
+        });
+
+        it('con tipoDias=HORAS y diasTermino<=0 debe usar el fallback de 5 (horas, no días)', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue(null);
+            const fechaBase = localDateTime(2026, 1, 1, 8);
+
+            const result = await service.createAutomatico(
+                'MANUAL', 'ref-horas-0', 'RAD-HORAS-0', 'Actuación', fechaBase, 0,
+                undefined, undefined, 'HORAS',
+            );
+
+            expect(result.fechaVencimiento.getTime()).toBe(localDateTime(2026, 1, 1, 13).getTime());
         });
 
         it('debe actualizar (no duplicar) un término existente para el mismo referenciaId + origenModulo', async () => {
@@ -872,7 +897,18 @@ describe('TerminosService', () => {
             const result = await service.sincronizar();
 
             expect(mockTerminoRepo.create).toHaveBeenCalledTimes(1);
-            expect(mockTerminoRepo.create).toHaveBeenCalledWith(expect.objectContaining({ origenModulo: 'ORGANOS_CONTROL', referenciaId: 'oc-2' }));
+            expect(mockTerminoRepo.create).toHaveBeenCalledWith(expect.objectContaining({ origenModulo: 'ORGANOS_CONTROL', referenciaId: 'oc-2', tipoDias: 'HABILES' }));
+        });
+
+        it('[BUG FIX] ORGANOS_CONTROL: unidadTiempo=HORAS ya no debe perderse mapeando a HABILES', async () => {
+            mockRequerimientoOCRepo.find.mockResolvedValue([
+                { id: 'oc-3', radicadoInterno: 'OC-3', estado: 'EN_ANALISIS', fechaVencimiento: localDate(2026, 6, 1), fechaRecepcion: localDate(2026, 1, 1), plazoOtorgado: 36, unidadTiempo: 'HORAS' },
+            ]);
+            mockTerminoRepo.findOne.mockResolvedValue(null);
+
+            await service.sincronizar();
+
+            expect(mockTerminoRepo.create).toHaveBeenCalledWith(expect.objectContaining({ referenciaId: 'oc-3', tipoDias: 'HORAS' }));
         });
 
         it('PROCESOS_COACTIVOS: debe omitir procesos en LIQUIDACION y sincronizar los que tienen vencimiento de obligación', async () => {

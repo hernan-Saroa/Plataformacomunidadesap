@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalProgramacionVencimientos } from './ModalProgramacionVencimientos';
-import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send, Scale, Trash2, Building } from 'lucide-react';
+import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send, Scale, Trash2, Building, Clock } from 'lucide-react';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 import {
     NOMBRES_MESES,
@@ -77,7 +77,8 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         responsableId: '',
         origenModulo: '',
         destinatario: '',
-        enteSolicitante: ''
+        enteSolicitante: '',
+        tipoDias: 'CALENDARIO'
     });
     const [destinatarioOtro, setDestinatarioOtro] = useState('');
     const [enteSolicitanteOtro, setEnteSolicitanteOtro] = useState('');
@@ -92,7 +93,8 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             responsableId: '',
             origenModulo: '',
             destinatario: '',
-            enteSolicitante: ''
+            enteSolicitante: '',
+            tipoDias: 'CALENDARIO'
         });
         setDestinatarioOtro('');
         setEnteSolicitanteOtro('');
@@ -509,6 +511,27 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                                 ))}
                             </div>
                         </div>
+                    </div>
+
+                    {/* Unidad del plazo */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Clock className="w-4 h-4" />
+                            Unidad del Plazo
+                        </Label>
+                        <Select
+                            value={formData.tipoDias}
+                            onValueChange={(val: string) => setFormData({ ...formData, tipoDias: val })}
+                        >
+                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white z-[9999]">
+                                <SelectItem value="CALENDARIO">Días calendario</SelectItem>
+                                <SelectItem value="HABILES">Días hábiles</SelectItem>
+                                <SelectItem value="HORAS">Horas</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* Responsable */}

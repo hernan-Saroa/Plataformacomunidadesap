@@ -18,6 +18,8 @@ import { Evidencia } from './entities/evidencia.entity';
 import { Acta } from './entities/acta.entity';
 import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { ReglaAlertaTermino } from './entities/regla-alerta-termino.entity';
+import { AlertaTerminoEnviada } from './entities/alerta-termino-enviada.entity';
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
 import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
@@ -58,6 +60,7 @@ import { FilesController } from './controllers/files.controller';
 import { ComentarioController } from './controllers/comentario.controller';
 import { JuzgamientoController } from './controllers/juzgamiento.controller';
 import { TerminosController } from './controllers/terminos.controller';
+import { ReglasAlertaTerminoController } from './controllers/reglas-alerta-termino.controller';
 import { AutosController } from './controllers/autos.controller';
 import { EvidenciasController } from './controllers/evidencias.controller';
 import { ActasController } from './controllers/actas.controller';
@@ -110,6 +113,8 @@ import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
 import { ConfigurationsService } from './services/configurations.service';
 import { DiasHabilesService } from './services/dias-habiles.service';
 import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
+import { AlertasVencimientoTerminosService } from './services/alertas-vencimiento-terminos.service';
+import { ReglasAlertaTerminoService } from './services/reglas-alerta-termino.service';
 import { SmartClassificationService } from './services/smart-classification.service';
 import { OficiosService } from './services/oficios.service';
 import { TasaReferenciaService } from './services/tasa-referencia.service';
@@ -141,6 +146,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       Acta,
       ConsultaJuridica,
       TerminoProcesal,
+      ReglaAlertaTermino,
+      AlertaTerminoEnviada,
       // Órganos de Control
       OrganismoControlOC,
       RequerimientoOC,
@@ -203,6 +210,11 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     RequerimientoController,
     FilesController,
     JuzgamientoController,
+    // ReglasAlertaTerminoController debe registrarse ANTES que TerminosController:
+    // NestJS monta las rutas de los controllers en el orden de este arreglo, y
+    // TerminosController define `GET /terminos/:id` (comodín), que de ir primero
+    // interceptaría `/terminos/reglas-alerta` tratando "reglas-alerta" como :id.
+    ReglasAlertaTerminoController,
     TerminosController,
     AutosController,
     ConsultasJuridicasController,
@@ -263,6 +275,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Días Hábiles y Alertas
     DiasHabilesService,
     AlertasVencimientoService,
+    AlertasVencimientoTerminosService,
+    ReglasAlertaTerminoService,
     // Oficios
     OficiosService,
     TasaReferenciaService,

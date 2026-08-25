@@ -290,6 +290,58 @@ export function ConfiguracionesSIGL() {
 
   const [moduloActivo, setModuloActivo] = useState<string>('defensa-judicial');
 
+  // Reglas globales de alerta de vencimiento de términos (viven en el backend,
+  // no en ConfiguracionesSIGLContext/localStorage, porque el scheduler de
+  // alertas necesita leer datos reales de BD, no del navegador del admin).
+  const [reglasAlertaTerminos, setReglasAlertaTerminos] = useState<any[]>([]);
+  const [cargandoReglasAlerta, setCargandoReglasAlerta] = useState(false);
+  const [nuevaReglaHoras, setNuevaReglaHoras] = useState(72);
+  const [nuevaReglaDescripcion, setNuevaReglaDescripcion] = useState('');
+
+  useEffect(() => {
+    if (moduloActivo !== 'terminos-informes') return;
+    setCargandoReglasAlerta(true);
+    legalService.listarReglasAlertaTerminos()
+      .then((data: any[]) => setReglasAlertaTerminos(Array.isArray(data) ? data : []))
+      .catch(() => toast.error('No se pudieron cargar las reglas de alerta'))
+      .finally(() => setCargandoReglasAlerta(false));
+  }, [moduloActivo]);
+
+  const handleAgregarReglaAlerta = async () => {
+    if (!nuevaReglaHoras || nuevaReglaHoras <= 0) {
+      toast.error('La anticipación debe ser mayor a 0 horas');
+      return;
+    }
+    try {
+      const creada = await legalService.crearReglaAlertaTermino({ horasAnticipacion: nuevaReglaHoras, descripcion: nuevaReglaDescripcion || undefined });
+      setReglasAlertaTerminos([...reglasAlertaTerminos, creada]);
+      setNuevaReglaHoras(72);
+      setNuevaReglaDescripcion('');
+      toast.success('Regla de alerta creada');
+    } catch (error) {
+      toast.error('No se pudo crear la regla (¿ya existe una con esa anticipación?)');
+    }
+  };
+
+  const handleToggleReglaAlerta = async (id: string, activa: boolean) => {
+    try {
+      const actualizada = await legalService.actualizarReglaAlertaTermino(id, { activa });
+      setReglasAlertaTerminos(reglasAlertaTerminos.map(r => r.id === id ? actualizada : r));
+    } catch (error) {
+      toast.error('No se pudo actualizar la regla');
+    }
+  };
+
+  const handleEliminarReglaAlerta = async (id: string) => {
+    try {
+      await legalService.eliminarReglaAlertaTermino(id);
+      setReglasAlertaTerminos(reglasAlertaTerminos.filter(r => r.id !== id));
+      toast.success('Regla de alerta eliminada');
+    } catch (error) {
+      toast.error('No se pudo eliminar la regla');
+    }
+  };
+
   // Estados para modales
   const [showModalAgregarEstado, setShowModalAgregarEstado] = useState(false);
   const [showModalEliminarEstado, setShowModalEliminarEstado] = useState(false);
@@ -2022,6 +2074,106 @@ export function ConfiguracionesSIGL() {
                     {tiposFuenteNormativa.length === 0 && (
                       <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
                         <p>No hay tipos de fuente normativa registrados.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Reglas Globales de Alerta de Vencimiento */}
+              <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-100 rounded-md">
+                          <AlertCircle className="w-5 h-5 text-blue-700" />
+                        </div>
+                        Reglas de Alerta de Vencimiento
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Umbrales de anticipación (en horas) para notificar automáticamente al responsable antes del vencimiento de un término. Aplican a todos los términos que no tengan una anticipación personalizada.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-2 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-gray-600">Horas de anticipación</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={nuevaReglaHoras}
+                        onChange={(e) => setNuevaReglaHoras(Number(e.target.value))}
+                        className="w-28 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1 flex-1 min-w-[180px]">
+                      <label className="text-xs font-semibold text-gray-600">Descripción (opcional)</label>
+                      <input
+                        type="text"
+                        value={nuevaReglaDescripcion}
+                        onChange={(e) => setNuevaReglaDescripcion(e.target.value)}
+                        placeholder="Ej: Alerta 15 días antes"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAgregarReglaAlerta}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg"
+                      style={{
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Regla</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {cargandoReglasAlerta && (
+                      <p className="text-sm text-gray-400 text-center py-4">Cargando reglas...</p>
+                    )}
+
+                    {!cargandoReglasAlerta && reglasAlertaTerminos.map((regla) => (
+                      <div
+                        key={regla.id}
+                        className="flex items-center justify-between gap-3 p-3 bg-gradient-to-br from-gray-50 to-white rounded-lg border border-gray-200"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Clock className="w-4 h-4 text-gray-500" />
+                          <div>
+                            <p className="text-sm font-bold text-gray-800">
+                              {regla.horasAnticipacion % 24 === 0 ? `${regla.horasAnticipacion / 24} día(s)` : `${regla.horasAnticipacion} hora(s)`} de anticipación
+                            </p>
+                            {regla.descripcion && <p className="text-xs text-gray-500">{regla.descripcion}</p>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
+                            <input
+                              type="checkbox"
+                              checked={regla.activa}
+                              onChange={(e) => handleToggleReglaAlerta(regla.id, e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs font-medium text-gray-600 select-none">Activa</span>
+                          </label>
+                          <button
+                            onClick={() => handleEliminarReglaAlerta(regla.id)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar regla"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {!cargandoReglasAlerta && reglasAlertaTerminos.length === 0 && (
+                      <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                        <p>No hay reglas de alerta registradas.</p>
                       </div>
                     )}
                   </div>

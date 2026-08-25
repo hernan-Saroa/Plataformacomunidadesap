@@ -8,10 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
+import { Input } from '@esap-mfe/shared-ui/input';
+import { Label } from '@esap-mfe/shared-ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@esap-mfe/shared-ui/select';
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Edit, Send, Download, Upload, MessageSquare,
-  Paperclip, AlertTriangle, Archive, Trash2, Eye
+  Paperclip, AlertTriangle, Archive, Trash2, Eye, BellRing
 } from 'lucide-react';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
@@ -92,12 +95,22 @@ export function ModalDetalleSolicitudInforme({
   const [visorDoc, setVisorDoc] = useState<{ archivo: string; numero: string } | null>(null);
   const [mostrarModalRecordatorio, setMostrarModalRecordatorio] = useState(false);
   const [notasTermino, setNotasTermino] = useState<Array<{ texto: string; usuario: string; fecha: string | Date }>>([]);
+  const [cantidadRecordatorio, setCantidadRecordatorio] = useState(15);
+  const [unidadRecordatorio, setUnidadRecordatorio] = useState<'dias' | 'horas'>('dias');
+  const [guardandoRecordatorio, setGuardandoRecordatorio] = useState(false);
+  const [cantidadAnticipacionPersonalizada, setCantidadAnticipacionPersonalizada] = useState(1);
+  const [unidadAnticipacionPersonalizada, setUnidadAnticipacionPersonalizada] = useState<'dias' | 'horas'>('dias');
+  const [guardandoAnticipacionPersonalizada, setGuardandoAnticipacionPersonalizada] = useState(false);
+  const [horasRecordatorioActual, setHorasRecordatorioActual] = useState<number | null>(null);
+  const [horasAnticipacionActual, setHorasAnticipacionActual] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen && solicitud) {
       const backendId = solicitud.metadata?.uuid || solicitud.id;
       fetchDocs(backendId);
       fetchNotas(backendId);
+      setHorasRecordatorioActual(solicitud.recordatorioManualHorasAnticipacion ?? null);
+      setHorasAnticipacionActual(solicitud.horasAnticipacionAlertaPersonalizada ?? null);
     }
   }, [isOpen, solicitud]);
 
@@ -263,39 +276,89 @@ export function ModalDetalleSolicitudInforme({
   };
 
   /**
-   * ✅ FUNCIONALIDAD REAL: ENVIAR RECORDATORIO
-   * Envía recordatorio por correo electrónico al responsable
+   * Abre el modal de alertas/recordatorio de vencimiento del término.
    */
-  const handleEnviarRecordatorio = () => {
+  const handleAbrirRecordatorio = () => {
     setMostrarModalRecordatorio(true);
   };
 
-  const handleConfirmarRecordatorio = async (mensaje?: string) => {
-    setMostrarModalRecordatorio(false);
-    
-    toast.loading('Enviando recordatorio...', { duration: 2000 });
+  const horasDesdeCantidad = (cantidad: number, unidad: 'dias' | 'horas') => (unidad === 'dias' ? cantidad * 24 : cantidad);
 
+  /**
+   * Programa un recordatorio manual único: el scheduler lo enviará cuando
+   * falten esas horas para el vencimiento, y luego lo limpia automáticamente.
+   */
+  const handleProgramarRecordatorio = async () => {
+    if (!cantidadRecordatorio || cantidadRecordatorio <= 0) {
+      toast.error('Ingrese una anticipación mayor a cero');
+      return;
+    }
+    const backendId = solicitud.metadata?.uuid || solicitud.id;
+    const horas = horasDesdeCantidad(cantidadRecordatorio, unidadRecordatorio);
+    setGuardandoRecordatorio(true);
     try {
-      // Simulación de envío de email
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      toast.success('✅ Recordatorio enviado exitosamente', {
-        description: `Email enviado a ${solicitud.responsable}`,
-        duration: 5000
+      await legalService.updateTermino(backendId, { recordatorioManualHorasAnticipacion: horas });
+      setHorasRecordatorioActual(horas);
+      toast.success('Recordatorio programado', {
+        description: `Se enviará cuando falten ${cantidadRecordatorio} ${unidadRecordatorio === 'dias' ? 'día(s)' : 'hora(s)'} para el vencimiento`,
       });
-
-      // Notificación adicional
-      setTimeout(() => {
-        toast.info('📧 Notificación Enviada', {
-          description: `El responsable ${solicitud.responsable} recibirá el recordatorio sobre la solicitud ${solicitud.id} que vence en ${diasRestantes} días`,
-          duration: 4000
-        });
-      }, 2500);
-
     } catch (error) {
-      toast.error('❌ Error al enviar recordatorio', {
-        description: 'Por favor intente nuevamente'
+      toast.error('No se pudo programar el recordatorio', { description: 'Por favor intente nuevamente' });
+    } finally {
+      setGuardandoRecordatorio(false);
+    }
+  };
+
+  const handleCancelarRecordatorio = async () => {
+    const backendId = solicitud.metadata?.uuid || solicitud.id;
+    setGuardandoRecordatorio(true);
+    try {
+      await legalService.updateTermino(backendId, { recordatorioManualHorasAnticipacion: null });
+      setHorasRecordatorioActual(null);
+      toast.success('Recordatorio programado cancelado');
+    } catch (error) {
+      toast.error('No se pudo cancelar el recordatorio');
+    } finally {
+      setGuardandoRecordatorio(false);
+    }
+  };
+
+  /**
+   * Define una anticipación de alerta automática específica para este término,
+   * que ignora las reglas globales de alerta configuradas en el módulo.
+   */
+  const handleGuardarAnticipacionPersonalizada = async () => {
+    if (!cantidadAnticipacionPersonalizada || cantidadAnticipacionPersonalizada <= 0) {
+      toast.error('Ingrese una anticipación mayor a cero');
+      return;
+    }
+    const backendId = solicitud.metadata?.uuid || solicitud.id;
+    const horas = horasDesdeCantidad(cantidadAnticipacionPersonalizada, unidadAnticipacionPersonalizada);
+    setGuardandoAnticipacionPersonalizada(true);
+    try {
+      await legalService.updateTermino(backendId, { horasAnticipacionAlertaPersonalizada: horas });
+      setHorasAnticipacionActual(horas);
+      toast.success('Anticipación personalizada guardada', {
+        description: `Este término alertará ${cantidadAnticipacionPersonalizada} ${unidadAnticipacionPersonalizada === 'dias' ? 'día(s)' : 'hora(s)'} antes de vencer, ignorando las reglas globales`,
       });
+    } catch (error) {
+      toast.error('No se pudo guardar la anticipación personalizada');
+    } finally {
+      setGuardandoAnticipacionPersonalizada(false);
+    }
+  };
+
+  const handleQuitarAnticipacionPersonalizada = async () => {
+    const backendId = solicitud.metadata?.uuid || solicitud.id;
+    setGuardandoAnticipacionPersonalizada(true);
+    try {
+      await legalService.updateTermino(backendId, { horasAnticipacionAlertaPersonalizada: null });
+      setHorasAnticipacionActual(null);
+      toast.success('Anticipación personalizada eliminada — este término volverá a usar las reglas globales');
+    } catch (error) {
+      toast.error('No se pudo eliminar la anticipación personalizada');
+    } finally {
+      setGuardandoAnticipacionPersonalizada(false);
     }
   };
 
@@ -840,81 +903,134 @@ export function ModalDetalleSolicitudInforme({
               <Button
                 style={{ background: '#F57C00' }}
                 className="text-white"
-                onClick={handleEnviarRecordatorio}
+                onClick={handleAbrirRecordatorio}
               >
-                <Send className="w-4 h-4 mr-2" />
-                Enviar Recordatorio
+                <BellRing className="w-4 h-4 mr-2" />
+                Alertas y Recordatorio
               </Button>
             )}
           </div>
         </div>
       </DialogContent>
 
-      {/* Modal de Confirmación de Recordatorio */}
+      {/* Modal de Alertas y Recordatorio de Vencimiento */}
       {mostrarModalRecordatorio && (
         <Dialog open={mostrarModalRecordatorio} onOpenChange={() => setMostrarModalRecordatorio(false)}>
           <DialogContent hideCloseButton className="max-w-md">
-            <DialogTitle className="sr-only">Enviar Recordatorio</DialogTitle>
+            <DialogTitle className="sr-only">Alertas y Recordatorio de Vencimiento</DialogTitle>
             <DialogDescription className="sr-only">
-              Confirmación para enviar recordatorio al responsable
+              Programar un recordatorio manual o definir una anticipación de alerta personalizada para este término
             </DialogDescription>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="flex items-center gap-3 p-4 bg-orange-50 rounded-lg border-2 border-orange-200">
-                <Send className="w-8 h-8 text-orange-600" />
+                <BellRing className="w-8 h-8 text-orange-600" />
                 <div>
-                  <h3 className="font-bold text-gray-900">Enviar Recordatorio</h3>
+                  <h3 className="font-bold text-gray-900">Alertas y Recordatorio</h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    ¿Confirma el envío de recordatorio?
+                    Vence en <span className="font-bold" style={{ color: semaforoColor }}>{diasRestantes} día(s)</span>
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
-                <div className="text-sm">
-                  <p className="text-gray-600">
-                    <strong className="text-gray-900">Destinatario:</strong> {solicitud.responsable}
-                  </p>
-                  <p className="text-gray-600 mt-1">
-                    <strong className="text-gray-900">Término:</strong> {solicitud.id}
-                  </p>
-                  <p className="text-gray-600 mt-1">
-                    <strong className="text-gray-900">Días restantes:</strong>{' '}
-                    <span className="font-bold" style={{ color: semaforoColor }}>
-                      {diasRestantes} días
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs text-blue-900">
-                  <strong>📧 El recordatorio incluirá:</strong>
+              {/* Recordatorio manual programado (envío único) */}
+              <div className="space-y-2 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <p className="text-sm font-bold text-gray-900">Programar recordatorio</p>
+                <p className="text-xs text-gray-500">
+                  Se enviará una única vez cuando falte la anticipación indicada, sin importar las reglas globales.
                 </p>
-                <ul className="text-xs text-blue-700 mt-2 list-disc list-inside space-y-1">
-                  <li>Información de la solicitud ({solicitud.id})</li>
-                  <li>Plazo de vencimiento y días restantes</li>
-                  <li>Asunto: {solicitud.asunto}</li>
-                  <li>Notificación de urgencia según semáforo</li>
-                </ul>
+                {horasRecordatorioActual != null ? (
+                  <div className="flex items-center justify-between gap-2 bg-white border border-orange-200 rounded-lg px-3 py-2">
+                    <span className="text-xs font-semibold text-orange-700">
+                      Programado: avisar {horasRecordatorioActual % 24 === 0 ? `${horasRecordatorioActual / 24} día(s)` : `${horasRecordatorioActual} hora(s)`} antes
+                    </span>
+                    <Button size="sm" variant="outline" disabled={guardandoRecordatorio} onClick={handleCancelarRecordatorio}>
+                      Cancelar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={cantidadRecordatorio}
+                      onChange={(e) => setCantidadRecordatorio(Number(e.target.value))}
+                      className="w-20 border-2 border-gray-300 focus:border-blue-500"
+                    />
+                    <Select value={unidadRecordatorio} onValueChange={(val: string) => setUnidadRecordatorio(val as 'dias' | 'horas')}>
+                      <SelectTrigger className="w-28 border-2 border-gray-300 focus:border-blue-500">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white z-[9999]">
+                        <SelectItem value="dias">día(s)</SelectItem>
+                        <SelectItem value="horas">hora(s)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-gray-500">antes</span>
+                    <Button
+                      size="sm"
+                      disabled={guardandoRecordatorio}
+                      onClick={handleProgramarRecordatorio}
+                      style={{ background: '#F57C00', color: '#FFFFFF' }}
+                      className="ml-auto"
+                    >
+                      Programar
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setMostrarModalRecordatorio(false)}
-                  className="flex-1"
-                >
+              {/* Anticipación de alerta automática personalizada para este término */}
+              <div className="space-y-2 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <p className="text-sm font-bold text-gray-900">Anticipación de alerta personalizada</p>
+                <p className="text-xs text-gray-500">
+                  Si se define, este término ignora las reglas globales de alerta y avisa solo con esta anticipación (útil para casos extremos, ej. 1 día u horas).
+                </p>
+                {horasAnticipacionActual != null ? (
+                  <div className="flex items-center justify-between gap-2 bg-white border border-blue-200 rounded-lg px-3 py-2">
+                    <span className="text-xs font-semibold text-blue-700">
+                      Personalizada: {horasAnticipacionActual % 24 === 0 ? `${horasAnticipacionActual / 24} día(s)` : `${horasAnticipacionActual} hora(s)`} de anticipación
+                    </span>
+                    <Button size="sm" variant="outline" disabled={guardandoAnticipacionPersonalizada} onClick={handleQuitarAnticipacionPersonalizada}>
+                      Quitar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={cantidadAnticipacionPersonalizada}
+                      onChange={(e) => setCantidadAnticipacionPersonalizada(Number(e.target.value))}
+                      className="w-20 border-2 border-gray-300 focus:border-blue-500"
+                    />
+                    <Select value={unidadAnticipacionPersonalizada} onValueChange={(val: string) => setUnidadAnticipacionPersonalizada(val as 'dias' | 'horas')}>
+                      <SelectTrigger className="w-28 border-2 border-gray-300 focus:border-blue-500">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white z-[9999]">
+                        <SelectItem value="dias">día(s)</SelectItem>
+                        <SelectItem value="horas">hora(s)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-gray-500">antes</span>
+                    <Button
+                      size="sm"
+                      disabled={guardandoAnticipacionPersonalizada}
+                      onClick={handleGuardarAnticipacionPersonalizada}
+                      variant="outline"
+                      className="ml-auto"
+                    >
+                      Guardar
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <Button variant="outline" onClick={() => setMostrarModalRecordatorio(false)}>
                   <X className="w-4 h-4 mr-2" />
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={() => handleConfirmarRecordatorio()}
-                  className="flex-1"
-                  style={{ background: '#F57C00', color: '#FFFFFF' }}
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Enviar Ahora
+                  Cerrar
                 </Button>
               </div>
             </div>

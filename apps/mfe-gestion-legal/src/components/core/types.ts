@@ -502,6 +502,11 @@ export interface SolicitudInforme {
   radicadoExterno: string;
   asunto: string;
   descripcion?: string;
+  // Anticipación (en horas) de alerta personalizada para este término, ignora las
+  // reglas globales de alerta cuando está definida.
+  horasAnticipacionAlertaPersonalizada?: number | null;
+  // Recordatorio programado manualmente por el usuario (envío único, en horas de anticipación).
+  recordatorioManualHorasAnticipacion?: number | null;
   // Nuevos campos
   juzgadoConocimiento?: string;
   ubicacionFisica?: string;

@@ -39,6 +39,16 @@ export class TerminoProcesal {
     @Column({ name: 'fecha_alerta_critica', type: 'timestamp with time zone', nullable: true })
     fechaAlertaCritica: Date | null;
 
+    // Si está seteada, este término ignora las reglas globales de terminos_reglas_alerta
+    // y el scheduler usa únicamente este umbral (horas antes del vencimiento).
+    @Column({ name: 'horas_anticipacion_alerta_personalizada', type: 'int', nullable: true })
+    horasAnticipacionAlertaPersonalizada: number | null;
+
+    // Recordatorio programado manualmente por el usuario (envío único); el scheduler
+    // lo limpia a null después de enviarlo.
+    @Column({ name: 'recordatorio_manual_horas_anticipacion', type: 'int', nullable: true })
+    recordatorioManualHorasAnticipacion: number | null;
+
     @Column({ length: 20, default: 'PENDIENTE' })
     @Index()
     estado: string;

@@ -10,7 +10,8 @@ export type LegalModuleKey =
   | 'ASESORIA_JURIDICA'
   | 'ORGANOS_CONTROL'
   | 'PROCESOS_COACTIVOS'
-  | 'GESTION_RIESGOS';
+  | 'GESTION_RIESGOS'
+  | 'TERMINOS_INFORMES';
 
 
 /**
@@ -61,6 +62,13 @@ const MODULE_META: Record<LegalModuleKey, { label: string; vista: string; icon: 
     color: '#DC2626',
     categoria: 'gestion-legal',
   },
+  TERMINOS_INFORMES: {
+    label: 'Términos e Informes',
+    vista: 'terminos',
+    icon: 'Clock',
+    color: '#0891B2',
+    categoria: 'gestion-legal',
+  },
 };
 
 /**
@@ -72,6 +80,29 @@ function buildUrl(modulo: LegalModuleKey, referencia?: string): string {
   const params = new URLSearchParams({ modulo: MODULE_META[modulo].vista });
   if (referencia) params.set('radicado', referencia);
   return `/gestion-legal?${params.toString()}`;
+}
+
+/**
+ * Cuerpo HTML del correo de alerta/recordatorio de vencimiento de un término.
+ */
+function buildTerminoVencimientoEmailHtml(nombreActuacion: string, radicado: string | null, textoAnticipacion: string, url: string): string {
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${url}`;
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #0891B2; border-bottom: 2px solid #0891B2; padding-bottom: 10px;">Vencimiento de Término</h2>
+      <p>Estimado(a) funcionario(a),</p>
+      <p>El término <strong>${radicado ? `${radicado} — ` : ''}${nombreActuacion}</strong> ${textoAnticipacion}.</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${link}"
+           style="background-color: #0891B2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+          Ver Término
+        </a>
+      </div>
+      <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+        Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+      </p>
+    </div>
+  `;
 }
 
 /**
@@ -655,6 +686,78 @@ export class LegalNotificationsService {
       await this.notificationClient.notifyByRole(ROLE_JEFE, basePayload);
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar modificación de provisión del riesgo ${params.codigo}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notifica al responsable de un término/informe que su vencimiento está próximo
+   * (alerta automática por regla global, por anticipación personalizada del término,
+   * o recordatorio programado manualmente por el usuario).
+   */
+  async notifyTerminoProximoAVencer(params: {
+    terminoId: string;
+    responsableId?: string | null;
+    nombreActuacion: string;
+    numeroRadicado?: string | null;
+    horasRestantes: number;
+    origen: 'automatica' | 'personalizada' | 'manual';
+  }): Promise<void> {
+    const meta = MODULE_META.TERMINOS_INFORMES;
+    const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
+    const diasRestantes = Math.round(params.horasRestantes / 24);
+    const textoTiempo = params.horasRestantes < 48
+      ? `${Math.max(0, Math.round(params.horasRestantes))} hora(s)`
+      : `${diasRestantes} día(s)`;
+    const textoAnticipacion = params.horasRestantes >= 0
+      ? `vence en aproximadamente ${textoTiempo}`
+      : `venció hace ${Math.abs(diasRestantes)} día(s)`;
+
+    const titulos: Record<typeof params.origen, string> = {
+      automatica: 'Alerta de vencimiento de término',
+      personalizada: 'Alerta personalizada de vencimiento',
+      manual: 'Recordatorio programado de vencimiento',
+    };
+
+    this.logger.log(
+      `[NOTIFY] Vencimiento de término (${params.origen}) — id=${params.terminoId} radicado=${params.numeroRadicado || 'N/A'} horasRestantes=${params.horasRestantes}`,
+    );
+
+    if (!params.responsableId) {
+      this.logger.warn(`Término ${params.terminoId} sin responsableId asignado — no se pudo notificar`);
+      return;
+    }
+
+    const dto = {
+      tipo_notificacion: 'TERMINO_PROXIMO_A_VENCER',
+      titulo: titulos[params.origen],
+      mensaje: `El término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''} ${textoAnticipacion}.`,
+      descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${textoAnticipacion}`,
+      icono: meta.icon,
+      color: params.horasRestantes < 0 ? '#DC2626' : meta.color,
+      prioridad: (params.horasRestantes < 24 ? 'Alta' : 'Media') as 'Alta' | 'Media',
+      categoria: meta.categoria,
+      tiene_accion: true,
+      texto_boton_accion: 'Ver término',
+      url_accion: url,
+      datos_adicionales: {
+        modulo: 'TERMINOS_INFORMES',
+        terminoId: params.terminoId,
+        numeroRadicado: params.numeroRadicado,
+        horasRestantes: params.horasRestantes,
+        origen: params.origen,
+      },
+    };
+
+    try {
+      await this.notificationClient.notifyUserById(params.responsableId, dto);
+      const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
+      if (detail?.email) {
+        const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
+        const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
+        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar vencimiento del término ${params.terminoId}: ${err?.message}`);
     }
   }
 }
