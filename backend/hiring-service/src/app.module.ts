@@ -27,6 +27,7 @@ import { SupervisionModule } from './modules/supervision/supervision.module';
 import { RegistroPresupuestalModule } from './modules/registro-presupuestal/registro-presupuestal.module';
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
+import { PagosModule } from './modules/pagos/pagos.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -135,6 +136,7 @@ import { PagoContrato, SoportePago } from './entities/pago-contrato.entity';
     RegistroPresupuestalModule,
     PublicacionContratoModule,
     ActaInicioModule,
+    PagosModule,
   ],
   controllers: [HealthController],
   providers: [
