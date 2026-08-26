@@ -31,6 +31,7 @@ import { PagosModule } from './modules/pagos/pagos.module';
 import { InformeFinalModule } from './modules/informe-final/informe-final.module';
 import { LiquidacionModule } from './modules/liquidacion/liquidacion.module';
 import { CierreFinancieroModule } from './modules/cierre-financiero/cierre-financiero.module';
+import { ArchivoExpedienteModule } from './modules/archivo-expediente/archivo-expediente.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -147,6 +148,7 @@ import { PlazoPublicacionActa, PublicacionActa } from './entities/publicacion-ac
     InformeFinalModule,
     LiquidacionModule,
     CierreFinancieroModule,
+    ArchivoExpedienteModule,
   ],
   controllers: [HealthController],
   providers: [

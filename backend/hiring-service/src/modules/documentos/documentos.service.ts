@@ -17,6 +17,7 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CdpService } from '../cdp/cdp.service';
+import { exigirExpedienteAbierto } from '../archivo-expediente/expediente-archivado';
 
 /** Actividad 5.1 de la matriz: la elaboración de documentos del proceso. */
 export const NUMERAL_DOCUMENTOS = '5.1';
@@ -197,7 +198,9 @@ export class DocumentosService {
         );
       }
 
-      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      // Un expediente archivado no recibe documentos (EFDS-1174): agregarle algo
+      // despues dejaria al indice congelado mintiendo.
+      const expediente = await exigirExpedienteAbierto(em, procesoId);
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
       const documento = await em.save(
@@ -249,6 +252,9 @@ export class DocumentosService {
   async anular(procesoId: string, documentoProcesoId: string, acceso: HiringAccess) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
+
+      // Tampoco se le quitan: la custodia vale en los dos sentidos (EFDS-1174).
+      await exigirExpedienteAbierto(em, procesoId);
 
       const cargado = await em.getRepository(DocumentoProceso).findOne({
         where: { id: documentoProcesoId, procesoId, anuladoAt: IsNull() },
