@@ -466,6 +466,24 @@ export const ROLES_PUBLICACION_ACTA = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién cierra definitivamente el contrato (EFDS-1175).
+ *
+ * La Dirección de Contratación, que es de quien habla la historia. Misma lista
+ * que la liquidación (EFDS-1172) y por la misma razón: el cierre definitivo es
+ * la conclusión de lo que se liquidó, y quien lleva el expediente contractual
+ * es quien lo declara en firme.
+ *
+ * Ni el supervisor —su vigilancia terminó con el informe final— ni la Dirección
+ * Financiera —aquí no se mueve presupuesto, solo se constata que los amparos
+ * vencieron—.
+ */
+export const ROLES_CIERRE_DEFINITIVO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
 export interface HiringUser {
   userId?: string;
   username?: string;

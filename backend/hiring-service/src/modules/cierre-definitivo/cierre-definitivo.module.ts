@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CierreDefinitivoService } from './cierre-definitivo.service';
+import { CierreDefinitivoController } from './cierre-definitivo.controller';
 
 import { CierreContrato } from '../../entities/cierre-contrato.entity';
 import { ActaLiquidacion } from '../../entities/acta-liquidacion.entity';
@@ -30,6 +31,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
+  controllers: [CierreDefinitivoController],
   providers: [CierreDefinitivoService],
   exports: [CierreDefinitivoService],
 })
