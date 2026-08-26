@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ArchivoExpedienteService } from './archivo-expediente.service';
+import { ArchivoExpedienteController } from './archivo-expediente.controller';
 
 import { PlazoPublicacionActa, PublicacionActa } from '../../entities/publicacion-acta.entity';
 import { ActaLiquidacion } from '../../entities/acta-liquidacion.entity';
@@ -30,6 +31,7 @@ import { DiaNoHabil } from '../../entities/dia-no-habil.entity';
       DiaNoHabil,
     ]),
   ],
+  controllers: [ArchivoExpedienteController],
   providers: [ArchivoExpedienteService],
   exports: [ArchivoExpedienteService],
 })
