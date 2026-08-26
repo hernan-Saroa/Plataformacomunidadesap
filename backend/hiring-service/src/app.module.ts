@@ -96,6 +96,11 @@ import { ActaLiquidacion } from './entities/acta-liquidacion.entity';
 import { CierreFinanciero } from './entities/cierre-financiero.entity';
 import { PlazoPublicacionActa, PublicacionActa } from './entities/publicacion-acta.entity';
 import { CierreContrato } from './entities/cierre-contrato.entity';
+import {
+  ModificacionContrato,
+  PublicacionModificacion,
+  TopeAdicion,
+} from './entities/modificacion-contrato.entity';
 
 @Module({
   imports: [
@@ -113,7 +118,7 @@ import { CierreContrato } from './entities/cierre-contrato.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato, ModificacionContrato, TopeAdicion, PublicacionModificacion],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',

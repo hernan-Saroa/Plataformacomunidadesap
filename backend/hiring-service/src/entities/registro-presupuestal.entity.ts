@@ -84,4 +84,12 @@ export class RegistroPresupuestal {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+  /**
+   * La adición que este RP compromete; nulo si es el RP del contrato (EFDS-1176).
+   *
+   * Es lo que distingue los de una modificación de los originales. Toda
+   * consulta que busque «el RP del contrato» tiene que exigirlo nulo.
+   */
+  @Column({ name: 'modificacion_id', type: 'uuid', nullable: true })
+  modificacionId: string | null;
 }
