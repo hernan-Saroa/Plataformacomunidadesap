@@ -110,13 +110,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cierre_contrato_vigente
   ON hiring.cierres_contrato (contrato_id)
   WHERE estado = 'VIGENTE';
 
-CREATE INDEX IF NOT EXISTS ix_cierres_contrato ON hiring.cierres_contrato (contrato_id);
+-- El nombre `ix_cierres_contrato` ya lo tomó la migración 046 para el índice de
+-- `cierres_financieros`. Los nombres de índice son únicos por esquema, así que
+-- uno repetido no se crea y `IF NOT EXISTS` lo deja pasar en silencio.
+CREATE INDEX IF NOT EXISTS ix_cierres_definitivos_contrato
+  ON hiring.cierres_contrato (contrato_id);
 
 COMMENT ON TABLE hiring.cierres_contrato IS
   'Cierre definitivo del contrato tras vencer los amparos de estabilidad y calidad (EFDS-1175).';
 
--- Para responder «qué amparo vence primero», que es la pregunta del gestor
--- cuando el cierre todavía no se puede hacer, y la del motor de alertas de
--- RF-SIS-03 cuando exista.
-CREATE INDEX IF NOT EXISTS ix_amparos_vencimiento
-  ON hiring.amparos (vigencia_hasta);
+-- `hiring.amparos (vigencia_hasta)` ya está indexado desde la migración 037,
+-- que lo creó para el mismo tipo de pregunta: qué amparo vence primero. No hace
+-- falta otro.

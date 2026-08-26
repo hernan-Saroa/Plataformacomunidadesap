@@ -41,10 +41,15 @@ const PENDIENTES: EstadoPago[] = ['RADICADO', 'AVALADO', 'DEVUELTO'];
  * terminar antes de su plazo, y esperar a la fecha dejaría sin salida al que
  * cumplió pronto—.
  *
+ * También liquidado, porque desde EFDS-1175 el acta deja el contrato en
+ * LIQUIDADO y anular esa acta para rehacerla exige poder tocar antes el informe
+ * del que salió. Antes de ese cambio el contrato se quedaba en EJECUCION y esto
+ * funcionaba solo; no es una regla nueva sino la misma de siempre.
+ *
  * Función pura para poder probar la regla sin base de datos.
  */
 export function admiteInformeFinal(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION';
+  return estado === 'EJECUCION' || estado === 'LIQUIDADO';
 }
 
 interface ArchivoCargado {
