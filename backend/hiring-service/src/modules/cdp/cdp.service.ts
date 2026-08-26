@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager, In } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
@@ -259,11 +259,17 @@ export class CdpService {
     return nuevas.length > 0 ? em.save(nuevas) : [];
   }
 
-  /** CDP en curso del proceso, o null si nunca se solicitó o quedó cerrado. */
+  /**
+   * CDP en curso del proceso, o null si nunca se solicitó o quedó cerrado.
+   *
+   * `modificacionId` nulo: desde EFDS-1176 una adición trae su propio CDP, y sin
+   * este filtro la apertura del proceso podría quedar respaldada por el CDP de
+   * una adición tramitada meses después.
+   */
   async delProceso(procesoId: string, em?: EntityManager): Promise<Cdp | null> {
     const manager = em ?? this.dataSource.manager;
     return manager.getRepository(Cdp).findOne({
-      where: { procesoId, estado: In(ESTADOS_CDP_EN_CURSO) },
+      where: { procesoId, estado: In(ESTADOS_CDP_EN_CURSO), modificacionId: IsNull() },
     });
   }
 
