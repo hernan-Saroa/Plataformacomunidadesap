@@ -36,12 +36,19 @@ const PENDIENTES: EstadoPago[] = ['RADICADO', 'AVALADO', 'DEVUELTO'];
 /**
  * Si el contrato admite liquidación.
  *
- * En ejecución, que es donde queda hasta que se liquide: el cierre definitivo
- * es otra actividad (EFDS-1175). Lo que de verdad condiciona esta actividad no
- * es el estado sino el informe final, y eso se comprueba aparte.
+ * En ejecución, que es donde queda hasta que se liquide. También LIQUIDADO,
+ * porque desde EFDS-1175 firmar el acta deja el contrato en ese estado y anular
+ * la vigente para rehacerla tiene que seguir siendo posible; que no se liquide
+ * dos veces lo impide el acta vigente, no el estado.
+ *
+ * CERRADO no: ahí el contrato ya se declaró en firme y hay que revertir el
+ * cierre definitivo antes de tocar el acta.
+ *
+ * Lo que de verdad condiciona esta actividad no es el estado sino el informe
+ * final, y eso se comprueba aparte.
  */
 export function admiteLiquidacion(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION';
+  return estado === 'EJECUCION' || estado === 'LIQUIDADO';
 }
 
 interface ArchivoCargado {
@@ -263,6 +270,12 @@ export class LiquidacionService {
         } as Partial<ActaLiquidacion>),
       );
 
+      // RF-SIS-01: el acta firmada es lo que deja el contrato liquidado. Se
+      // derivó aquí y no en el cierre definitivo (EFDS-1175) porque son dos
+      // hechos distintos: aquí se liquida, allá se cierra en firme.
+      contrato.estado = 'LIQUIDADO';
+      await em.save(contrato);
+
       await this.marcarActividad(em, procesoId, contrato.id, acceso);
 
       await this.traza(em, procesoId, registro.id, 'CERRAR', acceso, {
@@ -298,6 +311,11 @@ export class LiquidacionService {
       acta.anuladoPor = acceso.userName;
       acta.motivoAnulacion = dto.motivo;
       await em.save(acta);
+
+      // Sin acta vigente el contrato ya no está liquidado: vuelve a ejecución,
+      // que es de donde salió (EFDS-1175).
+      contrato.estado = 'EJECUCION';
+      await em.save(contrato);
 
       await this.marcarActividad(em, procesoId, contrato.id, acceso);
 

@@ -2107,3 +2107,61 @@ export interface DatosArchivoExpediente {
   radicadoActiveDocument?: string;
   observaciones?: string;
 }
+
+// ---------------------- etapa 10 · cierre definitivo -----------------------
+
+/** Un amparo de estabilidad o calidad tal como lo ve el cierre. */
+export interface AmparoVerificado {
+  tipo: string;
+  nombre: string;
+  numeroPoliza: string;
+  vigenciaHasta: string;
+  vencido: boolean;
+}
+
+export interface EstadoDeAmparos {
+  verificados: AmparoVerificado[];
+  /** Los que todavia amparan, que son los que impiden cerrar. */
+  pendientes: AmparoVerificado[];
+  ultimoVencimiento: string | null;
+  puedeCerrar: boolean;
+  motivo: string | null;
+  /** El contrato no quedo amparado mas alla de la ejecucion. */
+  sinAmparos: boolean;
+}
+
+export interface CierreDefinitivoVigente {
+  id: string;
+  fechaCierre: string;
+  ultimoVencimiento: string | null;
+  amparosVerificados: AmparoVerificado[];
+  observaciones: string | null;
+  cerradoPor: string | null;
+  soporte: { nombre: string; url: string } | null;
+}
+
+export interface CierreDefinitivoRevertido {
+  fechaCierre: string;
+  ultimoVencimiento: string | null;
+  revertidoAt: string | null;
+  revertidoPor: string | null;
+  motivoReversion: string | null;
+}
+
+export interface EstadoCierreDefinitivo {
+  contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
+  tieneLiquidacion: boolean;
+  amparos: EstadoDeAmparos | null;
+  puedeCerrar: boolean;
+  motivoNoPuede: string | null;
+  /** Lo que conviene resolver antes, sin impedir el cierre. */
+  advertencias: string[];
+  cierre: CierreDefinitivoVigente | null;
+  historial: CierreDefinitivoRevertido[];
+}
+
+/** Lo que la pantalla envia al cerrar definitivamente. */
+export interface DatosCierreDefinitivo {
+  fechaCierre: string;
+  observaciones?: string;
+}

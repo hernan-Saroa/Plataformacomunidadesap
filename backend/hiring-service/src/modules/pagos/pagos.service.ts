@@ -54,14 +54,20 @@ const EN_FEMENINO: Record<EstadoPago, string> = {
 /**
  * Si el contrato admite que se le radiquen cuentas de cobro.
  *
- * Solo en ejecución, y esa es toda la dependencia de EFDS-1167: el criterio de
- * la historia empieza con «dado un contrato en ejecución», y antes del acta de
+ * En ejecución, y esa es toda la dependencia de EFDS-1167: el criterio de la
+ * historia empieza con «dado un contrato en ejecución», y antes del acta de
  * inicio no hay prestación que cobrar porque no ha empezado a correr.
+ *
+ * También liquidado. Desde EFDS-1175 el acta deja el contrato en LIQUIDADO, y
+ * el acta cierra las cuentas pero no la tesorería: un pago rezagado —o el saldo
+ * que la propia liquidación reconoce— se tramita después. El cierre financiero
+ * (10.3) ya contaba con eso al congelar el cuadre. Lo que cierra la puerta es
+ * CERRADO, no LIQUIDADO.
  *
  * Función pura para poder probar la regla sin base de datos.
  */
 export function admitePagos(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION';
+  return estado === 'EJECUCION' || estado === 'LIQUIDADO';
 }
 
 /**

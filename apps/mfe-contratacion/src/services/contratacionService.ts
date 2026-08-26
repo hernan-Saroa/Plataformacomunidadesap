@@ -42,6 +42,8 @@ import {
   DatosLiquidacion,
   EstadoCierreFinanciero,
   EstadoArchivoExpediente,
+  EstadoCierreDefinitivo,
+  DatosCierreDefinitivo,
   DatosPublicacionActa,
   DatosArchivoExpediente,
   DatosCierreFinanciero,
@@ -831,6 +833,45 @@ export const contratacionService = {
   /** Reabre el expediente archivado. El indice congelado no se toca. */
   reabrirExpediente: (procesoId: string, motivo: string) =>
     pedir<EstadoArchivoExpediente>(`/procesos/${procesoId}/archivo-expediente/reabrir`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // --------------------- etapa 10 · cierre definitivo -----------------------
+
+  /** Los amparos de estabilidad y calidad, y que falta para cerrar en firme. */
+  cierreDefinitivo: (procesoId: string) =>
+    pedir<EstadoCierreDefinitivo>(`/procesos/${procesoId}/cierre-definitivo`),
+
+  /**
+   * Cierra el contrato en firme.
+   *
+   * El soporte es opcional: a veces es la certificacion de la aseguradora y a
+   * veces no hay ninguno.
+   */
+  cerrarDefinitivamente: (
+    procesoId: string,
+    datos: DatosCierreDefinitivo,
+    soporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoCierreDefinitivo>(`/procesos/${procesoId}/cierre-definitivo`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Revierte el cierre definitivo. El contrato vuelve a LIQUIDADO. */
+  revertirCierreDefinitivo: (procesoId: string, motivo: string) =>
+    pedir<EstadoCierreDefinitivo>(`/procesos/${procesoId}/cierre-definitivo/revertir`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
