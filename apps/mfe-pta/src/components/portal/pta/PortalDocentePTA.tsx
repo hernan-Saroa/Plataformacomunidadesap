@@ -52,7 +52,11 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
-import { PTA_COMPLEMENTARIAS_COMPONENT_KEYS } from '../../pta/shared/ptaComponentPermissions';
+import {
+  PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
+  PTA_COMPONENT_PROGRESS_ORDER,
+  labelDeComponente,
+} from '../../pta/shared/ptaComponentPermissions';
 import { formatPtaCompletionPercentage, formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PortalDocentePTAProps {
@@ -461,6 +465,47 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { est
           );
         })}
       </div>
+
+      {/* EFDS-1497: los cuatro rótulos de arriba agrupan varios componentes reales.
+          Se detalla el avance por componente para que el docente vea Docencia
+          separada en Pregrado / Posgrado / Territorial y Extensión por cada tipo,
+          en vez de un solo estado colapsado. Solo se listan los componentes que el
+          PTA realmente tiene. */}
+      {(() => {
+        const detalle = PTA_COMPONENT_PROGRESS_ORDER
+          .map(k => ({ key: k, fila: componentesAprobacion.find(c => c.componente === k) }))
+          .filter(item => !!item.fila);
+        if (detalle.length === 0) return null;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 8 }}>
+            {detalle.map(({ key, fila }) => {
+              const estadoComp = isAprobado ? 'aprobado' : String((fila as any)?.estado || 'pendiente');
+              const auto = estadoComp === 'aprobado' && (fila as any)?.aprobadorNombre === 'Sistema';
+              const visual = auto
+                ? { label: 'No aplica', color: '#9CA3AF', bg: '#F9FAFB', borde: '#E5E7EB' }
+                : estadoComp === 'aprobado'
+                  ? { label: 'Aprobado', color: '#15803D', bg: '#F0FDF4', borde: '#BBF7D0' }
+                  : estadoComp === 'devuelto'
+                    ? { label: 'Devuelto', color: '#B91C1C', bg: '#FEF2F2', borde: '#FECACA' }
+                    : { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FEF3C7' };
+              return (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: '0.68rem' }}>
+                  <span style={{ color: '#475569', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {labelDeComponente(key)}
+                  </span>
+                  <span style={{
+                    flexShrink: 0, padding: '2px 8px', borderRadius: 999,
+                    background: visual.bg, color: visual.color,
+                    border: `1px solid ${visual.borde}`, fontWeight: 700, fontSize: '0.62rem',
+                  }}>
+                    {visual.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }
