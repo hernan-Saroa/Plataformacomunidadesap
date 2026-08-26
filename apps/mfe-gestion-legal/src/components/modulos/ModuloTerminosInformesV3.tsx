@@ -5,10 +5,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, Printer
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -435,6 +437,79 @@ export function ModuloTerminosInformesV3() {
   const solicitudesUrgentes = solicitudesFiltradas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
   const solicitudesEnTermino = solicitudesFiltradas.filter(s => s.diasRestantes > 5).length;
 
+  /** Construye el PDF del calendario de vencimientos con lo que esté actualmente filtrado/visible. */
+  const construirPdfCalendario = (): jsPDF | null => {
+    if (solicitudesFiltradas.length === 0) {
+      toast.error('No hay términos para exportar con los filtros actuales');
+      return null;
+    }
+
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    doc.setFillColor('#003DA5');
+    doc.rect(0, 0, pageWidth, 20, 'F');
+    doc.setTextColor('#FFFFFF');
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CALENDARIO DE VENCIMIENTOS — TÉRMINOS E INFORMES', pageWidth / 2, 13, { align: 'center' });
+
+    const DIAS_RESTANTES_COL = 4;
+
+    autoTable(doc, {
+      startY: 26,
+      head: [['ID', 'Asunto', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado']],
+      body: solicitudesFiltradas.map((s) => [
+        s.id,
+        s.asunto || 'Sin asunto',
+        s.responsable,
+        new Date(s.fechaVencimiento).toLocaleDateString('es-CO'),
+        formatearDiasRestantes(s.diasRestantes).texto,
+        s.etapa,
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: '#003DA5', textColor: '#FFFFFF', fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 3 },
+      // Mismo semáforo de colores que ya se usa en pantalla (formatearDiasRestantes),
+      // para que el PDF se lea de un vistazo igual que la vista en vivo.
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.column.index === DIAS_RESTANTES_COL) {
+          const solicitud = solicitudesFiltradas[data.row.index];
+          if (solicitud) {
+            const { color } = formatearDiasRestantes(solicitud.diasRestantes);
+            const [r, g, b] = [color.slice(1, 3), color.slice(3, 5), color.slice(5, 7)].map((h) => parseInt(h, 16));
+            data.cell.styles.textColor = [r, g, b];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      },
+    });
+
+    doc.setFontSize(8);
+    doc.setTextColor('#999999');
+    doc.text(
+      `Generado: ${new Date().toLocaleString('es-CO')} — ${solicitudesFiltradas.length} término(s)`,
+      pageWidth / 2,
+      doc.internal.pageSize.getHeight() - 8,
+      { align: 'center' },
+    );
+
+    return doc;
+  };
+
+  const handleExportarCalendario = () => {
+    const doc = construirPdfCalendario();
+    if (!doc) return;
+    doc.save(`calendario_vencimientos_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Calendario exportado exitosamente');
+  };
+
+  const handleImprimirCalendario = () => {
+    const doc = construirPdfCalendario();
+    if (!doc) return;
+    window.open(doc.output('bloburl'), '_blank');
+  };
+
   return (
     <div className="space-y-4">
       {/* Header con ModuleHeader */}
@@ -451,15 +526,29 @@ export function ModuloTerminosInformesV3() {
             { label: 'Archivados', icon: <FileText className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={canModifyTerminos ? [
-          {
+        buttons={[
+          ...(canModifyTerminos ? [{
             label: 'Nuevo Informe',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
             onClick: () => setModalNuevaSolicitudOpen(true),
-            variant: 'primary'
+            variant: 'primary' as const
+          }] : []),
+          {
+            label: 'Exportar',
+            labelMobile: 'Exportar',
+            icon: <Download className="w-4 h-4" />,
+            onClick: handleExportarCalendario,
+            variant: 'outline' as const
+          },
+          {
+            label: 'Imprimir',
+            labelMobile: 'Imprimir',
+            icon: <Printer className="w-4 h-4" />,
+            onClick: handleImprimirCalendario,
+            variant: 'outline' as const
           }
-        ] : []}
+        ]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"

@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Edit, Send, Download, Upload, MessageSquare,
-  Paperclip, AlertTriangle, Archive, Trash2, Eye, BellRing
+  Paperclip, AlertTriangle, Archive, Trash2, Eye, BellRing, Printer
 } from 'lucide-react';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
@@ -270,6 +270,44 @@ export function ModalDetalleSolicitudInforme({
     } catch (error) {
       console.error('Error al exportar PDF:', error);
       toast.error('❌ Error al generar el PDF', {
+        description: 'Por favor, inténtelo de nuevo más tarde'
+      });
+    }
+  };
+
+  /**
+   * Abre el mismo PDF del informe en una pestaña nueva: el visor de PDF del
+   * navegador ya trae su propio botón de impresión, sin necesidad de generar
+   * una plantilla de impresión aparte.
+   */
+  const handleImprimir = async () => {
+    // La pestaña se abre AQUÍ, de forma síncrona dentro del gesto de clic del
+    // usuario — si se abriera después del await de red, el navegador la
+    // bloquearía como popup no solicitado.
+    const ventana = window.open('', '_blank');
+
+    toast.loading('Preparando documento...', { duration: 1500 });
+
+    try {
+      const backendId = solicitud.metadata?.uuid || solicitud.id;
+      const pdfBlob = await legalService.exportarTerminoPdf(backendId);
+      const url = window.URL.createObjectURL(pdfBlob);
+      if (ventana) {
+        ventana.location.href = url;
+      } else {
+        // Bloqueada por el navegador a pesar de todo: al menos descargamos.
+        toast.error('El navegador bloqueó la ventana de impresión. Se descargará el PDF en su lugar.');
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Termino_${solicitud.id}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error('Error al preparar impresión:', error);
+      ventana?.close();
+      toast.error('❌ Error al generar el documento para imprimir', {
         description: 'Por favor, inténtelo de nuevo más tarde'
       });
     }
@@ -898,6 +936,13 @@ export function ModalDetalleSolicitudInforme({
             >
               <Download className="w-4 h-4 mr-2" />
               Exportar
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleImprimir}
+            >
+              <Printer className="w-4 h-4 mr-2" />
+              Imprimir
             </Button>
             {canEnviarRecordatorio && (
               <Button

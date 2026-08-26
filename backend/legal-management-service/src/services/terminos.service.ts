@@ -361,13 +361,13 @@ export class TerminosService {
 
             // Header
             doc.fontSize(16).font('Helvetica-Bold').text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', { align: 'center' });
-            doc.fontSize(14).text('SOLICITUD DE INFORME', { align: 'center' });
+            doc.fontSize(14).text('TÉRMINO / INFORME', { align: 'center' });
             doc.moveDown(2);
 
             // General Info
             doc.fontSize(12).font('Helvetica-Bold').text('INFORMACIÓN GENERAL').moveDown(0.5);
             doc.font('Helvetica').fontSize(10);
-            doc.text(`ID Solicitud: ${termino.id}`);
+            doc.text(`ID Término: ${termino.id}`);
             doc.text(`Radicado: ${termino.numeroRadicado || 'N/A'}`);
             doc.text(`Módulo Origen: ${termino.origenModulo}`);
             doc.text(`Estado: ${termino.estado}`);
