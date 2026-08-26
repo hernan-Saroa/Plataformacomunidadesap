@@ -58,7 +58,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
 
       # CORS - Permitir acceso desde el frontend
-      CORS_ORIGIN: "http://4.156.71.181"
+      CORS_ORIGIN: ${CORS_ORIGIN:-NOT_DEFINED}
 
       # Rutas internas a otros microservicios (DNS de Docker)
       AUTH_SERVICE_URL: http://auth-service:3001
@@ -209,7 +209,7 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
-      PUBLIC_APP_URL: http://4.156.71.181
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-NOT_DEFINED}
     ports:
       - "3003:3003"
     depends_on:
@@ -402,7 +402,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://4.156.71.181}
+      CORS_ORIGIN: ${CORS_ORIGIN:-NOT_DEFINED}
     ports:
       - "3008:3008"
     depends_on:
