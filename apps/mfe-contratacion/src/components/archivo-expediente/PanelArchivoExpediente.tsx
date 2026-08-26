@@ -31,6 +31,7 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { PanelCierreDefinitivo } from './PanelCierreDefinitivo';
 
 interface Props {
   procesoId: string;
@@ -444,6 +445,12 @@ export function PanelArchivoExpediente({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {/* El cierre definitivo (EFDS-1175) no tiene numeral —la matriz da cuatro
+          actividades a la etapa 10 y las cuatro están tomadas—, así que vive
+          aquí anidado, como la declaratoria desierta dentro de la adjudicación.
+          Va al final porque es lo último del proceso, y puede llegar años
+          después. */}
+      <PanelCierreDefinitivo procesoId={procesoId} onCambio={onCambio} />
     </Marco>
   );
 }
