@@ -1,4 +1,3 @@
-
 # Docker Compose para entorno PRE (Pre-producción)
 # Servidor: http://172.16.202.222
 # Uso: docker-compose -f docker-compose.pre.yml up -d --build
@@ -59,7 +58,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       # CORS - Permitir acceso desde el frontend
-      CORS_ORIGIN: "http://172.16.202.222"
+      CORS_ORIGIN: ${CORS_ORIGIN:-NOT_DEFINED}
 
       # Rutas internas a otros microservicios (DNS de Docker)
       AUTH_SERVICE_URL: http://auth-service-pre:3001
@@ -210,7 +209,7 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
-      PUBLIC_APP_URL: http://172.16.202.222
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-NOT_DEFINED}
     ports:
       - "3003:3003"
     depends_on:
@@ -392,7 +391,6 @@ services:
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
-      
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
@@ -405,7 +403,7 @@ services:
       # Host público del ambiente: fallback para construir los enlaces de descarga
       # de adjuntos en los correos (tracking). Normalmente se resuelve dinámicamente
       # desde la request, pero se deja como respaldo y por consistencia con qa/prod.
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://172.16.202.222}
+      CORS_ORIGIN: ${CORS_ORIGIN:-NOT_DEFINED}
     ports:
       - "3008:3008"
     depends_on:
@@ -495,7 +493,7 @@ services:
       - superapp-net-pre
     restart: unless-stopped
 
- # ============ AUDIT SERVICE ============
+  # ============ AUDIT SERVICE ============
   audit-service:
     build:
       context: ./backend/audit-service
@@ -550,7 +548,6 @@ services:
       - superapp-net-pre
     restart: unless-stopped
 
-    
   # ============ POSTGRES ============
   db:
     image: postgres:16

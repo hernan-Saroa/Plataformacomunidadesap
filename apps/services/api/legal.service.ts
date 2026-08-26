@@ -721,6 +721,24 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/notas`, { texto });
     }
 
+    // --- REGLAS DE ALERTA DE VENCIMIENTO (TÉRMINOS/INFORMES) ---
+
+    async listarReglasAlertaTerminos(): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/reglas-alerta`);
+    }
+
+    async crearReglaAlertaTermino(data: { horasAnticipacion: number; descripcion?: string; activa?: boolean }): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/reglas-alerta`, data);
+    }
+
+    async actualizarReglaAlertaTermino(id: string, data: Partial<{ horasAnticipacion: number; descripcion: string; activa: boolean }>): Promise<any> {
+        return apiClient.patch(`${SERVICE_PREFIX}/terminos/reglas-alerta/${id}`, data);
+    }
+
+    async eliminarReglaAlertaTermino(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/terminos/reglas-alerta/${id}`);
+    }
+
 
     // --- TAREAS DE EXPEDIENTE ---
 
