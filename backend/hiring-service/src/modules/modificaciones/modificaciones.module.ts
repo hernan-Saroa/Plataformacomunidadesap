@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ModificacionesService } from './modificaciones.service';
+import { ModificacionesController } from './modificaciones.controller';
 
 import {
   ModificacionContrato,
@@ -33,6 +34,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
+  controllers: [ModificacionesController],
   providers: [ModificacionesService],
   exports: [ModificacionesService],
 })

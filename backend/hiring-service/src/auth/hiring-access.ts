@@ -484,6 +484,33 @@ export const ROLES_CIERRE_DEFINITIVO = [
   ROL_SUPER_ADMIN,
 ];
 
+/**
+ * Quién tramita las modificaciones contractuales (actividad 9.5, EFDS-1176).
+ *
+ * La Dirección de Contratación, que es de quien habla la historia. Misma lista
+ * que la liquidación y el cierre definitivo: modificar un contrato es un
+ * trámite contractual, y quien lleva el expediente es quien lo adelanta.
+ *
+ * El supervisor **solicita** las modificaciones según la matriz de roles, pero
+ * quien las tramita y las suscribe no es él. Cuando exista la solicitud del
+ * supervisor como paso propio, entrará con su propia lista.
+ */
+export const ROLES_MODIFICACIONES = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién tramita el CDP y el RP que respaldan una adición (EFDS-1176).
+ *
+ * La Dirección Financiera, exactamente como los del proceso y los del contrato.
+ * Es ella la que compromete el presupuesto de la entidad, y que la plata entre
+ * por una adición en vez de por el contrato original no cambia de quién es esa
+ * competencia.
+ */
+export const ROLES_RESPALDO_ADICION = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
+
 export interface HiringUser {
   userId?: string;
   username?: string;
