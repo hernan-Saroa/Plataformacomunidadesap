@@ -2165,3 +2165,94 @@ export interface DatosCierreDefinitivo {
   fechaCierre: string;
   observaciones?: string;
 }
+
+// ------------------ etapa 9 · modificaciones contractuales (9.5) -----------
+
+/** Los siete tipos que lista la matriz; hoy solo ADICION tiene tramite. */
+export type TipoModificacion =
+  | 'ADICION'
+  | 'PRORROGA'
+  | 'CESION'
+  | 'ACLARATORIO'
+  | 'SUSPENSION'
+  | 'REANUDACION'
+  | 'TERMINACION_ANTICIPADA';
+
+export type EstadoModificacion = 'EN_TRAMITE' | 'APROBADA' | 'RECHAZADA' | 'REVOCADA';
+
+/** El CDP o el RP que respalda una adicion, con su estado del ciclo. */
+export interface RespaldoDeAdicion {
+  id: string;
+  numero: string | null;
+  valor: number | null;
+  estado: string;
+  rubro: string | null;
+}
+
+export interface ModificacionRegistrada {
+  id: string;
+  tipo: TipoModificacion;
+  estado: EstadoModificacion;
+  numero: string | null;
+  fechaSuscripcion: string | null;
+  justificacion: string;
+  valorAdicionado: number | null;
+  valorContratoAntes: number | null;
+  valorContratoDespues: number | null;
+  topePorcentaje: number | null;
+  solicitadaPor: string | null;
+  aprobadaPor: string | null;
+  aprobadaAt: string | null;
+  revocadaAt: string | null;
+  revocadaPor: string | null;
+  motivoRevocacion: string | null;
+  documento: { nombre: string; url: string } | null;
+  cdp: RespaldoDeAdicion | null;
+  rp: RespaldoDeAdicion | null;
+  publicacion: {
+    fechaPublicacion: string;
+    secopNumero: string | null;
+    secopUrl: string | null;
+    publicadaPor: string | null;
+  } | null;
+}
+
+/** Cuanto cabe todavia contra el tope legal. */
+export interface MargenDeAdicion {
+  valorInicial: number;
+  yaAdicionado: number;
+  topePorcentaje: number;
+  topeValor: number;
+  margenDisponible: number;
+  cabe: boolean;
+  motivo: string | null;
+}
+
+export interface EstadoModificaciones {
+  contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
+  tope: { porcentaje: number; fundamento: string | null; confirmado: boolean };
+  margen: MargenDeAdicion | null;
+  puedeSolicitar: boolean;
+  motivoNoPuede: string | null;
+  modificaciones: ModificacionRegistrada[];
+}
+
+/** Lo que la pantalla envia al solicitar una adicion. */
+export interface DatosAdicion {
+  valorAdicionado: number;
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al aprobar la modificacion. */
+export interface DatosAprobacionModificacion {
+  numero: string;
+  fechaSuscripcion: string;
+}
+
+/** Lo que la pantalla envia al expedir el CDP o el RP de la adicion. */
+export interface DatosRespaldoAdicion {
+  numero: string;
+  valor: number;
+  fechaExpedicion: string;
+  vigenciaFiscal?: number;
+}
