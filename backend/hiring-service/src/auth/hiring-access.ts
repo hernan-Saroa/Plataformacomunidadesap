@@ -8,6 +8,8 @@ export const ROL_REVISOR_CONTRATACION = 'REVISOR_CONTRATACION';
 export const ROL_DIRECTOR_CONTRATACION = 'DIRECTOR_CONTRATACION';
 /** Dirección Financiera: verifica la disponibilidad y expide el CDP. */
 export const ROL_ESTRUCTURADOR_FINANCIERO = 'ESTRUCTURADOR_FINANCIERO';
+/** Archivo de Gestion DC: organiza y custodia los expedientes contractuales. */
+export const ROL_ARCHIVO_GESTION_DC = 'ARCHIVO_GESTION_DC';
 export const ROL_SUPER_ADMIN = 'SUPER_ADMIN';
 
 /** Roles que pueden escribir sobre un proceso en etapa de estudios previos. */
@@ -430,6 +432,39 @@ export const ROLES_LIQUIDAR = [
  * pero ninguno mueve presupuesto.
  */
 export const ROLES_CIERRE_FINANCIERO = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién archiva y reabre el expediente (actividad 10.4, EFDS-1174).
+ *
+ * El Archivo de Gestión y nadie más. La matriz de roles lo describe como el
+ * «personal que organiza y custodia los expedientes en su totalidad», con
+ * atributos de renombrar, consecutivo y mover: archivar es exactamente eso.
+ *
+ * Ni el gestor que liquidó ni la Dirección Financiera que cerró. Cada uno hizo
+ * lo suyo, pero la custodia del expediente no es de ninguno de los dos, y
+ * reabrir uno archivado toca algo que ya se declaró completo ante entes de
+ * control.
+ */
+export const ROLES_ARCHIVO_EXPEDIENTE = [ROL_ARCHIVO_GESTION_DC, ROL_SUPER_ADMIN];
+
+/**
+ * Quién registra la publicación del acta (actividad 10.4, EFDS-1174).
+ *
+ * Más amplio que el archivo, a propósito. La historia pone la publicación en el
+ * Archivo de Gestión, pero publicar en SECOP II ha sido siempre del gestor en
+ * este módulo —actividades 5.2 y 8.8—, y estrecharlo aquí dejaría un trámite
+ * conocido en manos de un rol que todavía no existe en producción.
+ *
+ * **Tensión anotada, no resuelta por cuenta propia:** si Contratación confirma
+ * que la publicación del acta es exclusiva del Archivo de Gestión, esta lista
+ * se reduce a la de arriba.
+ */
+export const ROLES_PUBLICACION_ACTA = [
+  ROL_ARCHIVO_GESTION_DC,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
 
 export interface HiringUser {
   userId?: string;

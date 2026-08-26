@@ -45,7 +45,10 @@ export type AccionTraza =
   | 'LEGALIZAR'
   // Acta de inicio (etapa 9). Acción propia y no reuso de FIRMAR: lo que el
   // acta hace no es firmar un documento más, es poner el contrato a correr.
-  | 'INICIAR';
+  | 'INICIAR'
+  // Cierre del expediente (etapa 10, EFDS-1174).
+  | 'ARCHIVAR'
+  | 'REABRIR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {
