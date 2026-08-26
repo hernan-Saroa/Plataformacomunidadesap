@@ -41,6 +41,9 @@ import {
   EstadoLiquidacion,
   DatosLiquidacion,
   EstadoCierreFinanciero,
+  EstadoArchivoExpediente,
+  DatosPublicacionActa,
+  DatosArchivoExpediente,
   DatosCierreFinanciero,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
@@ -785,6 +788,49 @@ export const contratacionService = {
   /** Revierte el cierre vigente. */
   revertirCierreFinanciero: (procesoId: string, motivo: string) =>
     pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero/revertir`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------ etapa 10 · publicacion y archivo (10.4) ---------------
+
+  /** Las publicaciones del acta, el expediente y que falta para archivarlo. */
+  archivoExpediente: (procesoId: string) =>
+    pedir<EstadoArchivoExpediente>(`/procesos/${procesoId}/archivo-expediente`),
+
+  /**
+   * Registra que el acta se publico.
+   *
+   * La evidencia es obligatoria, al reves del soporte del cierre financiero:
+   * sin soporte no hay publicacion registrada, solo la afirmacion de que se
+   * hizo.
+   */
+  publicarActa: (procesoId: string, datos: DatosPublicacionActa, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoArchivoExpediente>(
+      `/procesos/${procesoId}/archivo-expediente/publicaciones`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Archiva el expediente y congela su indice documental. */
+  archivarExpediente: (procesoId: string, datos: DatosArchivoExpediente) =>
+    pedir<EstadoArchivoExpediente>(`/procesos/${procesoId}/archivo-expediente/archivar`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Reabre el expediente archivado. El indice congelado no se toca. */
+  reabrirExpediente: (procesoId: string, motivo: string) =>
+    pedir<EstadoArchivoExpediente>(`/procesos/${procesoId}/archivo-expediente/reabrir`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),

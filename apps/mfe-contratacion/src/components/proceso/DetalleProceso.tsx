@@ -27,6 +27,7 @@ import { PanelPagos } from '../pagos/PanelPagos';
 import { PanelInformeFinal } from '../informe-final/PanelInformeFinal';
 import { PanelLiquidacion } from '../liquidacion/PanelLiquidacion';
 import { PanelCierreFinanciero } from '../cierre-financiero/PanelCierreFinanciero';
+import { PanelArchivoExpediente } from '../archivo-expediente/PanelArchivoExpediente';
 import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
@@ -149,10 +150,18 @@ const NUMERAL_INFORME_FINAL = '10.1';
 const NUMERAL_LIQUIDACION = '10.2';
 /** Pago final y liberacion del saldo del RP (EFDS-1173). */
 const NUMERAL_CIERRE_FINANCIERO = '10.3';
+/**
+ * Publicacion del acta y archivo del expediente (EFDS-1174).
+ *
+ * La matriz solo le da numeral al archivo; la publicacion no tiene uno propio y
+ * RF-LIQ-04 las enuncia juntas, asi que las dos viven en la 10.4.
+ */
+const NUMERAL_ARCHIVO_EXPEDIENTE = '10.4';
 const NUMERALES_ETAPA_10 = [
   NUMERAL_INFORME_FINAL,
   NUMERAL_LIQUIDACION,
   NUMERAL_CIERRE_FINANCIERO,
+  NUMERAL_ARCHIVO_EXPEDIENTE,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -475,6 +484,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelAdjudicacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_ARCHIVO_EXPEDIENTE ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelArchivoExpediente
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

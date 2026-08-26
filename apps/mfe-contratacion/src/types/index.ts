@@ -2028,3 +2028,82 @@ export interface DatosCierreFinanciero {
   fechaPagoFinal: string;
   observaciones?: string;
 }
+
+// ------------------- etapa 10 · publicacion y archivo (10.4) ----------------
+
+/** Donde quedo publicada el acta de liquidacion. */
+export type DestinoPublicacionActa = 'SECOP_II' | 'WEB_ESAP';
+
+/** Una publicacion registrada, con su control de plazo. */
+export interface PublicacionActaRegistrada {
+  id: string;
+  destino: DestinoPublicacionActa;
+  fechaPublicacion: string;
+  fechaLimite: string | null;
+  plazoDiasHabiles: number | null;
+  secopNumero: string | null;
+  secopUrl: string | null;
+  publicadoPor: string | null;
+  /** Publicar tarde es un hallazgo, no un detalle: el servidor lo dice. */
+  aTiempo: boolean | null;
+  diasHabilesRestantes: number | null;
+  estadoPlazo: string | null;
+}
+
+/** Una entrada del indice congelado: lleva el hash, no solo el nombre. */
+export interface EntradaIndiceDocumental {
+  id: string;
+  nombre: string;
+  numeral: string | null;
+  hashSha256: string;
+  createdAt: string;
+}
+
+/** Lo que el expediente contenia el dia en que se archivo. */
+export interface IndiceDocumental {
+  generadoAt: string;
+  totalDocumentos: number;
+  documentos: EntradaIndiceDocumental[];
+}
+
+export interface ExpedienteArchivado {
+  id: string;
+  numeroExpediente: string;
+  estado: 'ABIERTO' | 'ARCHIVADO';
+  fechaApertura: string | null;
+  archivadoAt: string | null;
+  archivadoPor: string | null;
+  radicadoActiveDocument: string | null;
+  observacionesArchivo: string | null;
+  indiceDocumental: IndiceDocumental | null;
+  reabiertoAt: string | null;
+  reabiertoPor: string | null;
+  motivoReapertura: string | null;
+}
+
+export interface EstadoArchivoExpediente {
+  contrato: { numero: string; objeto: string; estado: string } | null;
+  acta: { id: string; tipo: string; fechaActa: string | null } | null;
+  plazo: { diasHabiles: number; fundamento: string | null; confirmado: boolean };
+  publicaciones: PublicacionActaRegistrada[];
+  /** Que destinos faltan, dicho por el servidor. */
+  pendientesPublicacion: DestinoPublicacionActa[];
+  expediente: ExpedienteArchivado | null;
+  puedeArchivar: boolean;
+  /** Que falta antes de poder archivar, en el orden en que hay que resolverlo. */
+  pendientesArchivo: string[];
+}
+
+/** Lo que la pantalla envia al registrar la publicacion. */
+export interface DatosPublicacionActa {
+  destino: DestinoPublicacionActa;
+  fechaPublicacion: string;
+  secopNumero?: string;
+  secopUrl?: string;
+}
+
+/** Lo que la pantalla envia al archivar. */
+export interface DatosArchivoExpediente {
+  radicadoActiveDocument?: string;
+  observaciones?: string;
+}
