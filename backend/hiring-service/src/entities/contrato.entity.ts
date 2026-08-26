@@ -27,7 +27,15 @@ export type EstadoContrato =
   | 'RECHAZADO'
   | 'PERFECCIONADO'
   | 'LEGALIZADO'
-  | 'EJECUCION';
+  | 'EJECUCION'
+  // Los dos desenlaces de la etapa 10 (EFDS-1175). Son hechos distintos: el
+  // acta de liquidacion produce el primero y el vencimiento de los amparos de
+  // estabilidad y calidad, el segundo.
+  //
+  // RF-SIS-01 nombra ademas SUSPENDIDO y TERMINADO; no estan porque hoy ningun
+  // camino lleva a ellos. Entran con EFDS-1177 y EFDS-1178.
+  | 'LIQUIDADO'
+  | 'CERRADO';
 
 /** Determina si la legalización exigirá ARL (EFDS-1164, criterio 2). */
 export type TipoPersona = 'NATURAL' | 'JURIDICA';
