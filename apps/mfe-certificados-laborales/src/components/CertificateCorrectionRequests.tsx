@@ -7,7 +7,9 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleDollarSign,
   ClipboardCheck,
   Clock3,
@@ -20,13 +22,16 @@ import {
   IdCard,
   Inbox,
   Loader2,
+  ListChecks,
   Mail,
   MessageSquareText,
   Paperclip,
+  Plus,
   RefreshCw,
   Search,
   Send,
   ShieldCheck,
+  Trash2,
   User,
   UserCheck,
   X,
@@ -78,6 +83,8 @@ type EditableCertificate = {
   technical_bonus: string;
   include_salary: boolean;
   include_technical_bonus: boolean;
+  include_functions: boolean;
+  functions: string[];
 };
 
 const EMPTY_STATS: CorrectionStats = {
@@ -140,7 +147,13 @@ const sanitizePreviewHtml = (html: string) => {
   documentNode.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,button').forEach((node) => node.remove());
   const allowedTags = new Set(['P', 'BR', 'DIV', 'SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'MARK']);
   Array.from(documentNode.body.querySelectorAll('*')).forEach((element) => {
+    const isFunctionHighlight =
+      element.tagName === 'MARK' &&
+      element.classList.contains('labor-function-preview-highlight');
     Array.from(element.attributes).forEach((attribute) => element.removeAttribute(attribute.name));
+    if (isFunctionHighlight) {
+      element.setAttribute('class', 'labor-function-preview-highlight');
+    }
     if (!allowedTags.has(element.tagName)) element.replaceWith(...Array.from(element.childNodes));
   });
   return documentNode.body.innerHTML;
@@ -176,6 +189,78 @@ const normalizeWholeMoneyInput = (value: string): string => {
   return withoutDecimalPart.replace(/\D+/g, '');
 };
 
+const normalizeFunctionForComparison = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const functionsFromSource = (source: Record<string, any>): string[] => {
+  let snapshot = source.functions_snapshot ?? source.functions ?? null;
+  if (typeof snapshot === 'string' && /^[\[{]/.test(snapshot.trim())) {
+    try {
+      snapshot = JSON.parse(snapshot);
+    } catch {
+      snapshot = null;
+    }
+  }
+  const items = Array.isArray(snapshot)
+    ? snapshot
+    : Array.isArray(snapshot?.functions)
+      ? snapshot.functions
+      : [];
+  return items
+    .map((item: any) =>
+      String(
+        typeof item === 'string'
+          ? item
+          : item?.description ?? item?.text ?? item?.function ?? '',
+      )
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean);
+};
+
+const validateFunctions = (functions: string[]) => {
+  const rowErrors = new Map<number, string>();
+  const seen = new Map<string, number>();
+  functions.forEach((rawDescription, index) => {
+    const description = rawDescription.replace(/\s+/g, ' ').trim();
+    if (!description) {
+      rowErrors.set(index, 'Escribe la función o elimina esta fila.');
+      return;
+    }
+    if (description.length < 3) {
+      rowErrors.set(index, 'La función debe tener al menos 3 caracteres.');
+      return;
+    }
+    if (description.length > 2000) {
+      rowErrors.set(index, 'La función no puede superar 2.000 caracteres.');
+      return;
+    }
+    const key = normalizeFunctionForComparison(description);
+    const originalIndex = seen.get(key);
+    if (originalIndex !== undefined) {
+      rowErrors.set(index, `Esta función repite la función ${originalIndex + 1}.`);
+      return;
+    }
+    seen.set(key, index);
+  });
+  if (functions.length > 100) {
+    rowErrors.set(100, 'Puedes incluir máximo 100 funciones por certificado.');
+  }
+  if (functions.join('\n').length > 50000) {
+    rowErrors.set(
+      Math.max(0, functions.length - 1),
+      'El contenido total supera el máximo permitido de 50.000 caracteres.',
+    );
+  }
+  return rowErrors;
+};
+
 const editableCertificateFrom = (
   source: Record<string, any>,
   encargoFallback?: unknown,
@@ -197,6 +282,8 @@ const editableCertificateFrom = (
     technical_bonus: normalizeWholeMoneyValue(source.technical_bonus),
     include_salary: source.include_salary !== false,
     include_technical_bonus: source.include_technical_bonus === true,
+    include_functions: source.include_functions === true,
+    functions: functionsFromSource(source),
   };
 };
 
@@ -356,6 +443,7 @@ const TRACE_EVENT_META: Record<CorrectionTraceEvent['type'], { icon: typeof Hist
   REQUEST_CREATED: { icon: MessageSquareText, color: 'text-sky-700', bg: 'bg-sky-50 ring-sky-200' },
   REVIEW_STARTED: { icon: UserCheck, color: 'text-blue-700', bg: 'bg-blue-50 ring-blue-200' },
   CERTIFICATE_SENT: { icon: CheckCircle2, color: 'text-emerald-700', bg: 'bg-emerald-50 ring-emerald-200' },
+  CERTIFICATE_RESENT: { icon: Mail, color: 'text-violet-700', bg: 'bg-violet-50 ring-violet-200' },
   REQUEST_REJECTED: { icon: XCircle, color: 'text-red-700', bg: 'bg-red-50 ring-red-200' },
 };
 
@@ -551,7 +639,7 @@ function MinimumDescriptionFeedback({
   );
 }
 
-export function CertificateCorrectionRequests() {
+export function CertificateCorrectionRequests({ canResend = false }: { canResend?: boolean }) {
   const previewSequenceRef = useRef(0);
   const [items, setItems] = useState<CertificateCorrectionRequest[]>([]);
   const [stats, setStats] = useState<CorrectionStats>(EMPTY_STATS);
@@ -577,6 +665,9 @@ export function CertificateCorrectionRequests() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [approvalNote, setApprovalNote] = useState('');
+  const [resendTarget, setResendTarget] = useState<CertificateCorrectionRequest | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState<{ email: string } | null>(null);
 
   const loadData = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -653,6 +744,161 @@ export function CertificateCorrectionRequests() {
     }
   };
 
+  const resendApproved = async () => {
+    if (!resendTarget || !canResend || resending) return;
+    setResendSuccess(null);
+    setResending(true);
+    try {
+      const response = await certificadosService.correcciones.reenviarAprobada(
+        resendTarget.id,
+        { publicBaseUrl: window.location.origin },
+      );
+      setItems((current) =>
+        current.map((request) => request.id === response.id ? response : request),
+      );
+      if (selected?.id === response.id) {
+        setSelected(response);
+        setEditData(toEditData(response));
+      }
+      setResendSuccess({ email: response.email });
+      toast.success('Certificado corregido reenviado', {
+        description: `La versión aprobada fue enviada a ${response.email}.`,
+      });
+      void loadData(false);
+    } catch (error: any) {
+      toast.error('No se pudo reenviar el certificado corregido', {
+        description: error?.message || 'Verifica el correo e intenta nuevamente.',
+      });
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const resendDialog = (
+    <Dialog
+      open={Boolean(resendTarget)}
+      onOpenChange={(open: boolean) => {
+        if (resending || open) return;
+        setResendTarget(null);
+        setResendSuccess(null);
+      }}
+    >
+      <DialogContent
+        hideCloseButton={resending}
+        onEscapeKeyDown={(event) => {
+          if (resending) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (resending) event.preventDefault();
+        }}
+        onPointerDownOutside={(event) => {
+          if (resending) event.preventDefault();
+        }}
+        overlayClassName="correction-decision-overlay correction-resend-overlay"
+        aria-busy={resending}
+        className={`correction-decision-dialog correction-resend-dialog w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl ${resending ? 'correction-resend-dialog--busy' : ''}`}
+      >
+        <div className="relative overflow-hidden border-b border-blue-100 bg-gradient-to-br from-blue-50 via-white to-slate-50 px-5 py-4">
+          <div className="absolute -right-8 -top-10 h-28 w-28 rounded-full bg-blue-100/60 blur-2xl" aria-hidden="true" />
+          <div className="relative flex items-start gap-3 pr-7">
+            <div className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-[#003DA5] text-white shadow-md shadow-blue-900/15 ring-4 ring-blue-100">
+              <Mail className="h-[18px] w-[18px]" />
+            </div>
+            <DialogHeader className="text-left">
+              <DialogTitle className="text-lg font-black tracking-tight text-slate-900">{resendSuccess ? 'Envío confirmado' : 'Confirmar reenvío'}</DialogTitle>
+              <DialogDescription className="mt-0.5 text-xs leading-5 text-slate-500">
+                {resendSuccess
+                  ? 'El servicio institucional confirmó la recepción del correo.'
+                  : 'Se enviará nuevamente el certificado corregido que ya fue aprobado.'}
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+        </div>
+        <div className="space-y-3.5 p-5">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-3 border-b border-slate-100 px-3.5 py-3">
+              <div className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-blue-50 text-[#003DA5]"><FileText className="h-4 w-4" /></div>
+              <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Certificado aprobado</p><p className="truncate font-mono text-xs font-bold text-slate-800">{String(resendTarget?.corrected_data?.certificate_number || resendTarget?.certificate_snapshot?.certificate_number || '—')}</p></div>
+            </div>
+            <div className="flex items-center gap-3 px-3.5 py-3">
+              <div className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><Mail className="h-4 w-4" /></div>
+              <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Se enviará a</p><p className="truncate text-xs font-semibold text-slate-700" title={resendTarget?.requester_email || ''}>{resendTarget?.requester_email || '—'}</p></div>
+            </div>
+          </div>
+          <AnimatePresence mode="wait" initial={false}>
+            {resendSuccess ? (
+              <motion.div
+                key="resend-success"
+                role="status"
+                aria-live="polite"
+                initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3.5 text-emerald-900 shadow-sm"
+              >
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                  <Check className="h-4 w-4 stroke-[3]" />
+                </span>
+                <span className="min-w-0 pt-0.5 text-xs leading-5">
+                  <strong className="block font-black">Reenvío realizado correctamente</strong>
+                  <span className="block break-all text-[11px] text-emerald-800">Entregado al servicio de correo para {resendSuccess.email}.</span>
+                </span>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="resend-information"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/80 px-3.5 py-3 text-[11px] leading-[18px] text-emerald-900"
+              >
+                <ShieldCheck className="mt-0.5 h-4 w-4 flex-none text-emerald-700" />
+                <p>Se conservarán el PDF aprobado, la respuesta y sus evidencias. Esta acción no modifica la corrección.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {resendSuccess ? (
+            <Button
+              onClick={() => {
+                setResendTarget(null);
+                setResendSuccess(null);
+              }}
+              className="h-10 w-full rounded-xl bg-[#003DA5] text-xs font-bold text-white shadow-sm hover:bg-[#002D7A] hover:text-white"
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Cerrar
+            </Button>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5 border-t border-slate-100 pt-3.5">
+              <Button
+                variant="outline"
+                disabled={resending}
+                onClick={() => {
+                  setResendTarget(null);
+                  setResendSuccess(null);
+                }}
+                className="h-10 rounded-xl border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+              >
+                Cancelar
+              </Button>
+              <Button
+                disabled={resending}
+                onClick={() => void resendApproved()}
+                className="correction-resend-button correction-resend-button--confirm w-full"
+              >
+                {resending ? (
+                  <><span className="correction-resend-button__icon"><Loader2 className="h-4 w-4 animate-spin" /></span><span>Reenviando...</span></>
+                ) : (
+                  <><span className="correction-resend-button__icon"><Mail className="h-4 w-4" /></span><span>Confirmar reenvío</span></>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   const validateEditData = () => {
     if (!editData) return false;
     const required = [editData.full_name, editData.document_type, editData.id_number, editData.career_category, editData.position_category, editData.hiring_date];
@@ -667,6 +913,22 @@ export function CertificateCorrectionRequests() {
     if (editData.include_technical_bonus && !/^\d+$/.test(editData.technical_bonus)) {
       toast.error('La prima debe escribirse en pesos enteros, sin decimales.');
       return false;
+    }
+    if (editData.include_functions) {
+      if (!editData.functions.length) {
+        toast.error('Agrega al menos una función o desmarca la opción de incluir funciones.');
+        return false;
+      }
+      const functionErrors = validateFunctions(editData.functions);
+      if (functionErrors.size > 0) {
+        const firstError = [...functionErrors.entries()].sort(
+          ([firstIndex], [secondIndex]) => firstIndex - secondIndex,
+        )[0];
+        toast.error(`Revisa la función ${firstError[0] + 1}`, {
+          description: firstError[1],
+        });
+        return false;
+      }
     }
     return true;
   };
@@ -767,6 +1029,44 @@ export function CertificateCorrectionRequests() {
   const setField = <K extends keyof EditableCertificate>(field: K, value: EditableCertificate[K]) =>
     setEditData((current) => current ? { ...current, [field]: value } : current);
 
+  const setFunction = (index: number, value: string) =>
+    setEditData((current) => {
+      if (!current) return current;
+      const functions = [...current.functions];
+      functions[index] = value;
+      return { ...current, functions };
+    });
+
+  const addFunction = () =>
+    setEditData((current) =>
+      current && current.functions.length < 100
+        ? { ...current, functions: [...current.functions, ''] }
+        : current,
+    );
+
+  const removeFunction = (index: number) =>
+    setEditData((current) =>
+      current
+        ? {
+            ...current,
+            functions: current.functions.filter((_, itemIndex) => itemIndex !== index),
+          }
+        : current,
+    );
+
+  const moveFunction = (index: number, direction: -1 | 1) =>
+    setEditData((current) => {
+      if (!current) return current;
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= current.functions.length) return current;
+      const functions = [...current.functions];
+      [functions[index], functions[targetIndex]] = [
+        functions[targetIndex],
+        functions[index],
+      ];
+      return { ...current, functions };
+    });
+
   const overdue = useMemo(() => selected && isOpenStatus(selected.status) && asDateOnly(selected.due_date) < asDateOnly(new Date().toISOString()), [selected]);
 
   useEffect(() => {
@@ -797,7 +1097,21 @@ export function CertificateCorrectionRequests() {
     const editable = isOpenStatus(selected.status);
     const original = selected.certificate_snapshot || {};
     const originalEditData = editableCertificateFrom(
-      original,
+      {
+        ...original,
+        include_functions: Object.prototype.hasOwnProperty.call(
+          original,
+          'include_functions',
+        )
+          ? original.include_functions
+          : selected.certificate?.include_functions,
+        functions_snapshot: Object.prototype.hasOwnProperty.call(
+          original,
+          'functions_snapshot',
+        )
+          ? original.functions_snapshot
+          : selected.certificate?.functions_snapshot,
+      },
       original.encargo_type ??
         selected.certificate?.encargo_type ??
         selected.certificate?.request?.observations,
@@ -818,6 +1132,13 @@ export function CertificateCorrectionRequests() {
           }] : []),
         ];
     const comparableValue = (value: unknown) => {
+      if (Array.isArray(value)) {
+        return JSON.stringify(
+          value
+            .map((item) => String(item ?? '').replace(/\s+/g, ' ').trim())
+            .filter(Boolean),
+        );
+      }
       if (typeof value === 'boolean') return value ? 'Sí' : 'No';
       const raw = String(value ?? '').trim();
       if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
@@ -829,6 +1150,10 @@ export function CertificateCorrectionRequests() {
       const value = originalEditData[field];
       if (field === 'hiring_date') return formatDate(value);
       if (field === 'monthly_salary' || field === 'technical_bonus') return `$${formatMoney(value)} COP`;
+      if (field === 'functions') {
+        const count = Array.isArray(value) ? value.length : 0;
+        return `${count} función${count === 1 ? '' : 'es'}`;
+      }
       return comparableValue(value);
     };
     const resolvedTemplateVariables = Array.isArray(certificatePreview?.template_variables)
@@ -839,6 +1164,13 @@ export function CertificateCorrectionRequests() {
       resolvedTemplateVariables
         .filter((variable) => variable.source_fields.includes(field))
         .map((variable) => variable.code);
+    const functionVariableCodes = resolvedTemplateVariables
+      .filter(
+        (variable) =>
+          variable.code === '[FUNCIONES]' ||
+          variable.source_fields.includes('functions_snapshot'),
+      )
+      .map((variable) => variable.code);
     const fieldIsUsedByTemplate = (field: keyof EditableCertificate) =>
       variableCodesFor(field).length > 0;
     const showPositionLocation = templateReady && fieldIsUsedByTemplate('position_location');
@@ -850,9 +1182,23 @@ export function CertificateCorrectionRequests() {
         if (field === 'encargo_type' && !showEncargoField) return false;
         if (field === 'position_location' && !showPositionLocation) return false;
         if (field === 'campus' && !showCampus) return false;
+        if (field === 'functions' && !editData.include_functions) return false;
         return isFieldChanged(field);
       }).length;
-    const safePreviewHtml = sanitizePreviewHtml(certificatePreview?.content_html || '');
+    const functionErrors = editData.include_functions
+      ? validateFunctions(editData.functions)
+      : new Map<number, string>();
+    const hasStructuredClosingPreview =
+      typeof certificatePreview?.body_content_html === 'string' ||
+      typeof certificatePreview?.closing_content_html === 'string';
+    const safePreviewBodyHtml = sanitizePreviewHtml(
+      hasStructuredClosingPreview
+        ? certificatePreview?.body_content_html || ''
+        : certificatePreview?.content_html || '',
+    );
+    const safePreviewClosingHtml = sanitizePreviewHtml(
+      certificatePreview?.closing_content_html || '',
+    );
     return (
       <div className="mx-auto w-full max-w-[1680px] space-y-5 px-3 pb-10 sm:px-6 lg:px-8">
         <div className="sticky top-0 z-20 -mx-3 border-b border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
@@ -870,7 +1216,7 @@ export function CertificateCorrectionRequests() {
                 <p className="mt-0.5 truncate text-xs text-slate-500">Certificado {original.certificate_number} · {selected.requester_name}</p>
               </div>
             </div>
-            {editable && (
+            {editable ? (
               <div className="flex gap-2 sm:justify-end">
                 <Button variant="outline" onClick={() => setRejectOpen(true)} className="h-10 flex-1 rounded-md border-red-200 bg-white font-semibold text-red-700 hover:bg-red-50 hover:text-red-800 sm:flex-none">
                   <XCircle className="mr-2 h-4 w-4" /> Rechazar
@@ -879,7 +1225,20 @@ export function CertificateCorrectionRequests() {
                   <Send className="mr-2 h-4 w-4" /> Enviar certificado
                 </Button>
               </div>
-            )}
+            ) : selected.status === 'APPROVED' && canResend ? (
+              <Button
+                onClick={() => {
+                  setResendSuccess(null);
+                  setResendTarget(selected);
+                }}
+                aria-label="Reenviar el certificado corregido y aprobado"
+                title="Reenviar la versión aprobada al correo del solicitante"
+                className="correction-resend-button"
+              >
+                <span className="correction-resend-button__icon"><Mail className="h-4 w-4" /></span>
+                <span>Reenviar certificado</span>
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -1014,6 +1373,125 @@ export function CertificateCorrectionRequests() {
                     </div>
                   )}
                 </FormSection>
+
+                <FormSection number={4} icon={<ListChecks className="h-4.5 w-4.5" />} title="Funciones laborales" description="Incluye, corrige y ordena las funciones que aparecerán en el certificado.">
+                  <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3.5 transition ${isFieldChanged('include_functions') ? 'border-amber-300 bg-amber-50/50' : editData.include_functions ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-white'}`}>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-bold text-slate-800">Incluir funciones en el certificado</p>
+                        <TemplateVariableIndicator codes={variableCodesFor('include_functions')} templateReady={templateReady} />
+                        {isFieldChanged('include_functions') && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase text-amber-800">Modificado</span>}
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">Al desmarcar esta opción, las funciones se retiran del PDF. La lista se conserva en pantalla por si decides volver a activarla antes de aprobar.</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editData.include_functions}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setEditData((current) =>
+                          current
+                            ? {
+                                ...current,
+                                include_functions: checked,
+                                functions:
+                                  checked && current.functions.length === 0
+                                    ? ['']
+                                    : current.functions,
+                              }
+                            : current,
+                        );
+                      }}
+                      className="h-5 w-5 flex-none accent-[#003DA5]"
+                    />
+                  </label>
+
+                  {editData.include_functions && (
+                    <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70">
+                      <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-bold text-slate-800">Lista ordenada de funciones</p>
+                            <TemplateVariableIndicator codes={functionVariableCodes} templateReady={templateReady} />
+                            {isFieldChanged('functions') && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase text-amber-800">Modificada</span>}
+                          </div>
+                          <p className="mt-1 text-[11px] leading-4 text-slate-500">Cada campo corresponde a una viñeta. El orden de esta lista será exactamente el orden del certificado.</p>
+                        </div>
+                        <div className="flex flex-none items-center gap-2">
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${functionErrors.size > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                            {editData.functions.length} función{editData.functions.length === 1 ? '' : 'es'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={addFunction}
+                            disabled={!editable || editData.functions.length >= 100}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-bold text-[#003DA5] transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Agregar otra
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 p-3 sm:p-4">
+                        <AnimatePresence initial={false}>
+                          {editData.functions.map((description, index) => {
+                            const rowError = functionErrors.get(index);
+                            return (
+                              <motion.div
+                                layout
+                                key={`function-${index}`}
+                                initial={{ opacity: 0, y: -6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className={`rounded-xl border bg-white p-3 transition ${rowError ? 'border-red-300 ring-2 ring-red-50' : 'border-slate-200 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-50'}`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className="flex h-7 min-w-7 flex-none items-center justify-center rounded-lg bg-[#003DA5] px-1.5 text-[11px] font-black text-white">{index + 1}</span>
+                                  <div className="min-w-0 flex-1">
+                                    <Textarea
+                                      value={description}
+                                      onChange={(event) => setFunction(index, event.target.value)}
+                                      maxLength={2000}
+                                      rows={2}
+                                      aria-label={`Función ${index + 1}`}
+                                      aria-invalid={Boolean(rowError)}
+                                      placeholder="Ej.: Orientar y acompañar los procesos académicos asignados..."
+                                      className="min-h-[72px] resize-y border-0 bg-transparent p-0 text-sm leading-5 text-slate-800 shadow-none focus-visible:ring-0"
+                                    />
+                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                                      <span className={`text-[10px] ${rowError ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+                                        {rowError || `${description.trim().length}/2.000 caracteres`}
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        <button type="button" onClick={() => moveFunction(index, -1)} disabled={!editable || index === 0} aria-label={`Subir función ${index + 1}`} title="Subir" className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#003DA5] disabled:cursor-not-allowed disabled:opacity-35"><ChevronUp className="h-3.5 w-3.5" /></button>
+                                        <button type="button" onClick={() => moveFunction(index, 1)} disabled={!editable || index === editData.functions.length - 1} aria-label={`Bajar función ${index + 1}`} title="Bajar" className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-[#003DA5] disabled:cursor-not-allowed disabled:opacity-35"><ChevronDown className="h-3.5 w-3.5" /></button>
+                                        <button type="button" onClick={() => removeFunction(index)} disabled={!editable} aria-label={`Eliminar función ${index + 1}`} title="Eliminar" className="flex h-7 w-7 items-center justify-center rounded-md border border-red-100 text-red-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-35"><Trash2 className="h-3.5 w-3.5" /></button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
+
+                        {editData.functions.length === 0 && (
+                          <div className="rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/60 px-4 py-6 text-center">
+                            <ListChecks className="mx-auto h-7 w-7 text-[#003DA5]" />
+                            <p className="mt-2 text-xs font-bold text-slate-800">Todavía no hay funciones</p>
+                            <p className="mx-auto mt-1 max-w-sm text-[11px] leading-4 text-slate-500">Agrega la primera función. Se mostrará como una viñeta en la vista previa y en el PDF final.</p>
+                            <button type="button" onClick={addFunction} disabled={!editable} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#003DA5] px-3 text-[11px] font-bold text-white transition hover:bg-[#002D7A] disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Agregar primera función</button>
+                          </div>
+                        )}
+
+                        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[10px] leading-4 text-amber-900">
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+                          <span>Las funciones aparecerán resaltadas en amarillo en la vista previa para que puedas revisar exactamente qué contenido irá en el certificado. El PDF enviado se genera sin el resaltado.</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </FormSection>
               </fieldset>
             </div>
 
@@ -1043,10 +1521,13 @@ export function CertificateCorrectionRequests() {
                           <span className="font-mono text-[10px] text-slate-500">{certificatePreview.certificate_number}</span>
                         </div>
                         <div className="mx-auto mt-16 max-w-xl text-center"><p className="whitespace-pre-line text-sm font-black uppercase leading-5 text-slate-900">{certificatePreview.cargo_title}</p><p className="mt-16 text-sm font-black uppercase text-slate-900">HACE CONSTAR</p></div>
-                        <div className="correction-certificate-preview mx-auto mt-8 max-w-[620px] break-words text-[14px] leading-7 text-slate-900 [&_b]:font-bold [&_div]:mb-5 [&_strong]:font-bold" dangerouslySetInnerHTML={{ __html: safePreviewHtml }} />
-                        <div className="mx-auto max-w-xs text-center" style={{ marginTop: '3rem' }}><div className="mx-auto mb-2 w-44 border-t border-slate-600" /><p className="text-[11px] font-bold text-slate-800">{certificatePreview.signer_name || 'Dirección de Talento Humano'}</p><p className="mt-0.5 text-[9px] text-slate-500">{certificatePreview.signer_position || 'Firma electrónica'}</p></div>
+                        <div className="correction-certificate-preview mx-auto mt-8 max-w-[620px] break-words text-[14px] leading-7 text-slate-900 [&_b]:font-bold [&_div]:mb-5 [&_strong]:font-bold" dangerouslySetInnerHTML={{ __html: safePreviewBodyHtml }} />
+                        <div className="correction-certificate-closing-block">
+                          {safePreviewClosingHtml && <div className="correction-certificate-preview mx-auto max-w-[620px] break-words text-[14px] leading-7 text-slate-900 [&_b]:font-bold [&_div]:mb-5 [&_strong]:font-bold" dangerouslySetInnerHTML={{ __html: safePreviewClosingHtml }} />}
+                          <div className="mx-auto max-w-xs text-center" style={{ marginTop: '3rem' }}><div className="mx-auto mb-2 w-44 border-t border-slate-600" /><p className="text-[11px] font-bold text-slate-800">{certificatePreview.signer_name || 'Dirección de Talento Humano'}</p><p className="mt-0.5 text-[9px] text-slate-500">{certificatePreview.signer_position || 'Firma electrónica'}</p></div>
+                        </div>
                       </div>
-                      <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-[10px] font-medium leading-4 text-slate-600 sm:px-6 sm:text-[11px]"><strong className="font-bold text-[#003DA5]">Los valores resaltados corresponden a variables de la plantilla.</strong> El PDF final conservará el contenido sin el resaltado e incorporará firma, QR y validación institucional.</div>
+                      <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-[10px] font-medium leading-4 text-slate-600 sm:px-6 sm:text-[11px]"><strong className="font-bold text-[#003DA5]">Los valores resaltados corresponden a variables de la plantilla; las funciones se muestran en amarillo.</strong> El PDF final conservará el contenido sin el resaltado e incorporará firma, QR y validación institucional.</div>
                     </div>
                   )}
                 </div>
@@ -1119,6 +1600,7 @@ export function CertificateCorrectionRequests() {
             </div>
           </DialogContent>
         </Dialog>
+        {resendDialog}
       </div>
     );
   }
@@ -1196,6 +1678,7 @@ export function CertificateCorrectionRequests() {
         </>}
         {!loading && items.length > 0 && <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between"><p className="text-slate-500">{total} solicitud{total === 1 ? '' : 'es'} · Página {page} de {totalPages}</p><div className="flex gap-2"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Anterior</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Siguiente</Button></div></div>}
       </section>
+      {resendDialog}
     </div>
   );
 }

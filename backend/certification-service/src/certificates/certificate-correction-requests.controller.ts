@@ -26,10 +26,19 @@ import {
   CertificatesService,
   type CorrectedCertificateData,
 } from './certificates.service';
+import { LaborCertificatePermissionsService } from '../auth/labor-certificate-permissions.service';
 
 const MAX_EVIDENCE_SIZE = 10 * 1024 * 1024;
 const REQUEST_EVIDENCE_DIR = './private-uploads/certificate-corrections/submitted';
 const RESOLUTION_EVIDENCE_DIR = './private-uploads/certificate-corrections/resolution';
+const MANAGE_CORRECTIONS_PERMISSION =
+  'certificados-laborales.correction.manage';
+const DELIVER_CERTIFICATE_PERMISSION =
+  'certificados-laborales.certificate.deliver';
+const MANAGE_CORRECTIONS_DENIED_MESSAGE =
+  'No tienes permiso para aprobar solicitudes de corrección.';
+const DELIVER_CERTIFICATE_DENIED_MESSAGE =
+  'No tienes permiso para reenviar certificados laborales.';
 
 const ensureDirectory = (directory: string) => {
   mkdirSync(directory, { recursive: true });
@@ -92,7 +101,10 @@ const resolutionEvidenceUpload = {
 
 @Controller('certificates')
 export class CertificateCorrectionRequestsController {
-  constructor(private readonly certificatesService: CertificatesService) {}
+  constructor(
+    private readonly certificatesService: CertificatesService,
+    private readonly permissionsService: LaborCertificatePermissionsService,
+  ) {}
 
   private cleanupFiles(files: any[] = []) {
     for (const file of files) {
@@ -120,40 +132,21 @@ export class CertificateCorrectionRequestsController {
     }
   }
 
-  private normalizeRole(value: unknown) {
-    return String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
+  private async assertCanManage(req: any) {
+    await this.permissionsService.assertRequestPermission(
+      req,
+      MANAGE_CORRECTIONS_PERMISSION,
+      MANAGE_CORRECTIONS_DENIED_MESSAGE,
+    );
   }
 
-  private assertCoordinator(req: any) {
-    const rolesFromToken = Array.isArray(req?.user?.roles) ? req.user.roles : [req?.user?.roles];
-    const rolesFromHeader = String(req?.headers?.['x-user-roles'] || '').split(',');
-    const roles = [...rolesFromToken, ...rolesFromHeader]
-      .flatMap((role: any) =>
-        typeof role === 'object' && role
-          ? [role.code, role.name]
-          : [role],
-      )
-      .map((role) => this.normalizeRole(role))
-      .filter(Boolean);
-    const allowedRoles = new Set([
-      'COORDINADOR_CERT_LABORAL',
-      'COORDINADOR_CERTIFICADOS_LABORALES',
-      'ADMIN_CERTIFICADOS_LABORALES',
-      'ADMIN_CERT_LABORAL',
-      'SUPER_ADMIN',
-      'SUPERADMIN',
-      'ADMIN',
-      'ADMINISTRADOR',
-    ]);
-    if (!roles.some((role) => allowedRoles.has(role))) {
-      throw new ForbiddenException('Solo el Coordinador de Certificados Laborales puede gestionar estas solicitudes.');
-    }
+  private async assertCanResend(req: any) {
+    await this.assertCanManage(req);
+    await this.permissionsService.assertRequestPermission(
+      req,
+      DELIVER_CERTIFICATE_PERMISSION,
+      DELIVER_CERTIFICATE_DENIED_MESSAGE,
+    );
   }
 
   private reviewer(req: any) {
@@ -185,7 +178,7 @@ export class CertificateCorrectionRequestsController {
 
   @Get('correction-requests/stats')
   async getStats(@Req() req: any) {
-    this.assertCoordinator(req);
+    await this.assertCanManage(req);
     return this.certificatesService.getCertificateCorrectionStats();
   }
 
@@ -197,7 +190,7 @@ export class CertificateCorrectionRequestsController {
     @Query('status') status?: string,
     @Query('search') search?: string,
   ) {
-    this.assertCoordinator(req);
+    await this.assertCanManage(req);
     return this.certificatesService.listCertificateCorrectionRequests({
       page: Number(page) || 1,
       limit: Number(limit) || 10,
@@ -208,7 +201,7 @@ export class CertificateCorrectionRequestsController {
 
   @Get('correction-requests/:id')
   async getOne(@Req() req: any, @Param('id') id: string) {
-    this.assertCoordinator(req);
+    await this.assertCanManage(req);
     return this.certificatesService.getCertificateCorrectionRequest(id);
   }
 
@@ -218,13 +211,13 @@ export class CertificateCorrectionRequestsController {
     @Param('id') id: string,
     @Body() body: CorrectedCertificateData,
   ) {
-    this.assertCoordinator(req);
+    await this.assertCanManage(req);
     return this.certificatesService.previewCertificateCorrectionRequest(id, body);
   }
 
   @Patch('correction-requests/:id/start-review')
   async startReview(@Req() req: any, @Param('id') id: string) {
-    this.assertCoordinator(req);
+    await this.assertCanManage(req);
     return this.certificatesService.startCertificateCorrectionReview(id, this.reviewer(req));
   }
 
@@ -237,7 +230,7 @@ export class CertificateCorrectionRequestsController {
     @UploadedFiles() files: any[] = [],
   ) {
     try {
-      this.assertCoordinator(req);
+      await this.assertCanManage(req);
       this.assertValidFileSignatures(files || []);
       return await this.certificatesService.approveCertificateCorrectionRequest(
         id,
@@ -251,6 +244,21 @@ export class CertificateCorrectionRequestsController {
     }
   }
 
+  @Post('correction-requests/:id/resend-approved')
+  @HttpCode(HttpStatus.OK)
+  async resendApproved(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body?: { publicBaseUrl?: string },
+  ) {
+    await this.assertCanResend(req);
+    return this.certificatesService.resendApprovedCertificateCorrectionRequest(
+      id,
+      this.reviewer(req),
+      { publicBaseUrl: body?.publicBaseUrl },
+    );
+  }
+
   @Post('correction-requests/:id/reject')
   @UseInterceptors(FilesInterceptor('files', 2, resolutionEvidenceUpload))
   async reject(
@@ -260,7 +268,7 @@ export class CertificateCorrectionRequestsController {
     @UploadedFiles() files: any[] = [],
   ) {
     try {
-      this.assertCoordinator(req);
+      await this.assertCanManage(req);
       this.assertValidFileSignatures(files || []);
       return await this.certificatesService.rejectCertificateCorrectionRequest(
         id,
@@ -282,7 +290,7 @@ export class CertificateCorrectionRequestsController {
     @Param('index') indexParam: string,
     @Res({ passthrough: true }) response: Response,
   ) {
-    this.assertCoordinator(req);
+    await this.assertCanManage(req);
     if (!['submitted', 'resolution'].includes(kindParam)) {
       throw new BadRequestException('Tipo de evidencia no válido.');
     }

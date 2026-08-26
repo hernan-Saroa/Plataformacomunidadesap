@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
+import { resolve, sep } from 'path';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Raw, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
@@ -30,12 +31,19 @@ import {
   type CertificateCorrectionEvidence,
   type CertificateCorrectionTraceEvent,
 } from './certificate-correction-request.entity';
+import { LaborFunctionsService } from './labor-functions.service';
+import {
+  findDuplicateLaborFunctions,
+  normalizeLaborFunctionText,
+  parseLaborFunctionsRaw,
+} from './labor-functions.utils';
 
 type TemplateType = 'docente' | 'administrador';
 
 type SendLaborCertificateOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
+  includeFunctions?: boolean;
   templateType?: 'docente' | 'administrador';
   publicBaseUrl?: string;
   to?: string;
@@ -75,6 +83,8 @@ export type CorrectedCertificateData = {
   technical_bonus?: number | string;
   include_salary?: boolean | string;
   include_technical_bonus?: boolean | string;
+  include_functions?: boolean | string;
+  functions?: unknown;
   resolution_description?: string;
 };
 
@@ -538,6 +548,31 @@ export class CertificatesService {
       cod_grade:
         this.normalizePersistedCodeValue(suggested.cod_grade) ??
         this.normalizePersistedCodeValue(existing?.cod_grade),
+      base_position_code:
+        this.normalizeRenderedCargoCode(
+          suggested.base_position_code || suggested.cod_cargo,
+          suggested.cod_grade,
+        ) ?? existing?.base_position_code,
+      hierarchical_level:
+        this.toNullableText(suggested.hierarchical_level) ??
+        existing?.hierarchical_level ??
+        undefined,
+      position_name:
+        this.toNullableText(suggested.position_name) ??
+        existing?.position_name ??
+        undefined,
+      organization_department:
+        this.toNullableText(suggested.organization_department) ??
+        existing?.organization_department ??
+        undefined,
+      internal_group:
+        this.toNullableText(suggested.internal_group) ??
+        existing?.internal_group ??
+        undefined,
+      cost_center:
+        this.toNullableText(suggested.cost_center) ??
+        existing?.cost_center ??
+        undefined,
       email:
         this.toNullableText(suggested.email) ??
         this.toNullableText(existing?.email) ??
@@ -1781,6 +1816,7 @@ export class CertificatesService {
     private laborPdfService: LaborCertificatePdfService,
     private templateConfigService: TemplateConfigService,
     private laborOracleIntegrationService: LaborOracleIntegrationService,
+    private laborFunctionsService: LaborFunctionsService,
   ) {}
 
   // ============================================
@@ -1966,6 +2002,12 @@ export class CertificatesService {
           includeTechnicalBonusPersisted,
         )
       : false;
+    // Las funciones pertenecen al certificado emitido y a su snapshot. Nunca
+    // se recalculan ni se apagan al descargar, corregir o reenviar el documento.
+    const includeFunctions = this.normalizeBoolean(
+      certificate.include_functions,
+      false,
+    );
 
     let technicalBonusTemplate: string | undefined;
     if (includeTechnicalBonus) {
@@ -1983,6 +2025,7 @@ export class CertificatesService {
       {
         includeSalary,
         includeTechnicalBonus,
+        includeFunctions,
         templateType: options.templateType,
         publicBaseUrl: options.publicBaseUrl,
         technicalBonusTemplate,
@@ -2058,6 +2101,10 @@ export class CertificatesService {
           false,
         )
       : false;
+    const includeFunctions = this.normalizeBoolean(
+      certificate.include_functions,
+      false,
+    );
 
     let technicalBonusTemplate: string | undefined;
     if (includeTechnicalBonus) {
@@ -2070,6 +2117,7 @@ export class CertificatesService {
     return this.laborPdfService.generateCertificatePdf(certificate, {
       includeSalary,
       includeTechnicalBonus,
+      includeFunctions,
       technicalBonusTemplate,
       publicBaseUrl: options.publicBaseUrl,
     });
@@ -2207,6 +2255,37 @@ export class CertificatesService {
     }));
   }
 
+  private correctionEmailAttachmentsFromEvidence(
+    evidence: CertificateCorrectionEvidence[] = [],
+  ): OutboundEmailAttachment[] {
+    const resolutionRoot = resolve(
+      process.cwd(),
+      'private-uploads',
+      'certificate-corrections',
+      'resolution',
+    );
+
+    return evidence.map((item) => {
+      const absolutePath = resolve(process.cwd(), String(item.relativePath || ''));
+      const belongsToResolutionDirectory =
+        absolutePath === resolutionRoot ||
+        absolutePath.startsWith(`${resolutionRoot}${sep}`);
+      if (!belongsToResolutionDirectory || !existsSync(absolutePath)) {
+        throw new BadRequestException(
+          `No se puede reenviar la corrección porque la evidencia ${item.originalName || ''} ya no está disponible.`,
+        );
+      }
+
+      return {
+        filename: String(item.originalName || 'evidencia')
+          .replace(/["\r\n]/g, '_')
+          .slice(0, 255),
+        contentBase64: readFileSync(absolutePath).toString('base64'),
+        contentType: String(item.mimeType || 'application/octet-stream'),
+      };
+    });
+  }
+
   private certificateCorrectionSnapshot(certificate: Certificate) {
     return {
       id: certificate.id,
@@ -2223,6 +2302,8 @@ export class CertificatesService {
       technical_bonus: Number(certificate.technical_bonus || 0),
       include_salary: certificate.include_salary,
       include_technical_bonus: certificate.include_technical_bonus,
+      include_functions: certificate.include_functions,
+      functions_snapshot: certificate.functions_snapshot,
       salary_text: certificate.salary_text,
       department: certificate.department,
       cod_cargo: certificate.cod_cargo,
@@ -2280,8 +2361,18 @@ export class CertificatesService {
       ['salary_text', 'Salario en letras'],
       ['include_technical_bonus', 'Inclusión de prima'],
       ['technical_bonus', 'Prima técnica o de coordinación'],
+      ['include_functions', 'Inclusión de funciones'],
+      ['functions_snapshot', 'Funciones laborales'],
     ];
-    const comparable = (value: unknown) => {
+    const comparable = (field: string, value: unknown) => {
+      if (field === 'functions_snapshot') {
+        const functions = this.correctionFunctionDescriptions(value, false);
+        return functions.length
+          ? `${functions.length} función${functions.length === 1 ? '' : 'es'}: ${functions
+              .map((description, index) => `${index + 1}. ${description}`)
+              .join(' | ')}`
+          : 'Sin funciones';
+      }
       if (value instanceof Date) return value.toISOString().slice(0, 10);
       if (typeof value === 'number') return String(value);
       if (typeof value === 'boolean') return value ? 'Sí' : 'No';
@@ -2289,8 +2380,8 @@ export class CertificatesService {
       return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : raw;
     };
     return fields.flatMap(([field, label]) => {
-      const before = comparable(original[field]);
-      const after = comparable(corrected[field]);
+      const before = comparable(field, original[field]);
+      const after = comparable(field, corrected[field]);
       return before === after ? [] : [{ field, label, before, after }];
     });
   }
@@ -2524,6 +2615,7 @@ export class CertificatesService {
     return this.laborPdfService.buildCertificatePreview(previewCertificate, {
       includeSalary: previewCertificate.include_salary,
       includeTechnicalBonus: previewCertificate.include_technical_bonus,
+      includeFunctions: previewCertificate.include_functions,
     });
   }
 
@@ -2557,6 +2649,155 @@ export class CertificatesService {
     return this.getCertificateCorrectionRequest(id);
   }
 
+  private correctionFunctionDescriptions(
+    value: unknown,
+    strict: boolean,
+  ): string[] {
+    let parsed = value;
+    if (typeof parsed === 'string') {
+      const trimmed = parsed.trim();
+      if (/^[\[{]/.test(trimmed)) {
+        try {
+          parsed = JSON.parse(trimmed);
+        } catch {
+          if (strict) {
+            throw new BadRequestException(
+              'No fue posible interpretar la lista de funciones. Revisa el contenido e intenta nuevamente.',
+            );
+          }
+        }
+      }
+    }
+
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      parsed = (parsed as { functions?: unknown }).functions ?? [];
+    }
+
+    let descriptions: string[];
+    if (Array.isArray(parsed)) {
+      descriptions = parsed.map((item, index) => {
+        const raw =
+          typeof item === 'string'
+            ? item
+            : String(
+                (item as { description?: unknown; text?: unknown; function?: unknown })
+                  ?.description ??
+                  (item as { text?: unknown })?.text ??
+                  (item as { function?: unknown })?.function ??
+                  '',
+              );
+        const description = raw
+          .replace(/^\s*(?:funci[oó]n\s*)?\d{1,3}\s*[.)-]\s*/i, '')
+          .replace(/[\u0000-\u001f\u007f\u00a0]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (strict && !description) {
+          throw new BadRequestException(`La función ${index + 1} está vacía.`);
+        }
+        return description;
+      });
+    } else {
+      descriptions = parseLaborFunctionsRaw(parsed).map((description) =>
+        description
+          .replace(/[\u0000-\u001f\u007f\u00a0]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      );
+    }
+
+    descriptions = descriptions.filter(Boolean);
+    if (!strict) return descriptions;
+
+    if (!descriptions.length) {
+      throw new BadRequestException(
+        'Agrega al menos una función o desmarca la opción de incluir funciones.',
+      );
+    }
+    if (descriptions.length > 100) {
+      throw new BadRequestException('Puedes incluir máximo 100 funciones por certificado.');
+    }
+    const invalidIndex = descriptions.findIndex(
+      (description) => description.length < 3 || description.length > 2000,
+    );
+    if (invalidIndex >= 0) {
+      throw new BadRequestException(
+        `La función ${invalidIndex + 1} debe tener entre 3 y 2.000 caracteres.`,
+      );
+    }
+    if (descriptions.join('\n').length > 50000) {
+      throw new BadRequestException(
+        'El contenido total de las funciones supera el máximo permitido de 50.000 caracteres.',
+      );
+    }
+    const duplicates = findDuplicateLaborFunctions(descriptions);
+    if (duplicates.length) {
+      const detail = duplicates
+        .map(
+          (duplicate) =>
+            `la función ${duplicate.duplicateOrdinal} repite la función ${duplicate.originalOrdinal}: «${duplicate.description.slice(0, 140)}${duplicate.description.length > 140 ? '…' : ''}»`,
+        )
+        .join('; ');
+      throw new BadRequestException(
+        `Hay funciones duplicadas: ${detail}. Elimina las repetidas antes de continuar.`,
+      );
+    }
+    return descriptions;
+  }
+
+  private correctedFunctionsSnapshot(
+    certificate: Certificate,
+    input: CorrectedCertificateData,
+    includeFunctions: boolean,
+  ) {
+    const originalSnapshot = certificate.functions_snapshot;
+    if (!includeFunctions) return originalSnapshot ?? null;
+
+    const hasFunctionsInput = Object.prototype.hasOwnProperty.call(
+      input,
+      'functions',
+    );
+    const functions = this.correctionFunctionDescriptions(
+      hasFunctionsInput ? input.functions : originalSnapshot,
+      true,
+    );
+    const currentFunctions = this.correctionFunctionDescriptions(
+      originalSnapshot,
+      false,
+    );
+    const unchanged =
+      currentFunctions.length === functions.length &&
+      currentFunctions.every(
+        (description, index) =>
+          normalizeLaborFunctionText(description) ===
+          normalizeLaborFunctionText(functions[index]),
+      );
+    if (unchanged && originalSnapshot) return originalSnapshot;
+
+    let snapshotBase: Record<string, unknown> = {};
+    if (originalSnapshot && typeof originalSnapshot === 'object') {
+      snapshotBase = { ...(originalSnapshot as Record<string, unknown>) };
+    } else if (typeof originalSnapshot === 'string') {
+      try {
+        const parsed = JSON.parse(originalSnapshot);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          snapshotBase = { ...parsed };
+        }
+      } catch {
+        snapshotBase = {};
+      }
+    }
+
+    return {
+      ...snapshotBase,
+      correction_source: 'CERTIFICATE_CORRECTION',
+      corrected_at: new Date().toISOString(),
+      functions: functions.map((description, index) => ({
+        ordinal: index + 1,
+        description,
+      })),
+    };
+  }
+
   private normalizeCorrectedCertificateData(
     certificate: Certificate,
     input: CorrectedCertificateData,
@@ -2586,6 +2827,15 @@ export class CertificatesService {
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(input.include_technical_bonus, certificate.include_technical_bonus)
       : false;
+    const includeFunctions = this.normalizeBoolean(
+      input.include_functions,
+      this.normalizeBoolean(certificate.include_functions, false),
+    );
+    const functionsSnapshot = this.correctedFunctionsSnapshot(
+      certificate,
+      input,
+      includeFunctions,
+    );
     const currentEncargoType =
       certificate.encargo_type ??
       this.normalizeEncargoType(certificate.request?.observations) ??
@@ -2621,6 +2871,8 @@ export class CertificatesService {
       technical_bonus: money(input.technical_bonus ?? certificate.technical_bonus ?? 0, 'La prima técnica'),
       include_salary: includeSalary,
       include_technical_bonus: includeTechnicalBonus,
+      include_functions: includeFunctions,
+      functions_snapshot: functionsSnapshot,
       issue_date: new Date(),
       issuance_timestamp: new Date(),
       is_corrected: true,
@@ -2651,6 +2903,18 @@ export class CertificatesService {
     const immutableOriginalSnapshot = request.certificate_snapshot || {};
     const originalSnapshot = {
       ...immutableOriginalSnapshot,
+      include_functions: Object.prototype.hasOwnProperty.call(
+        immutableOriginalSnapshot,
+        'include_functions',
+      )
+        ? immutableOriginalSnapshot.include_functions
+        : request.certificate.include_functions,
+      functions_snapshot: Object.prototype.hasOwnProperty.call(
+        immutableOriginalSnapshot,
+        'functions_snapshot',
+      )
+        ? immutableOriginalSnapshot.functions_snapshot
+        : request.certificate.functions_snapshot,
       cod_cargo: this.normalizeRenderedCargoCode(
         (immutableOriginalSnapshot.cod_cargo as string | number | null | undefined) ??
           request.certificate.cod_cargo,
@@ -2731,6 +2995,96 @@ export class CertificatesService {
     return {
       ...this.correctionResponse(request),
       message: 'El certificado corregido fue enviado exitosamente.',
+      email: sent.to,
+      email_sent: true,
+    };
+  }
+
+  async resendApprovedCertificateCorrectionRequest(
+    id: string,
+    reviewer: CorrectionReviewer,
+    options: { publicBaseUrl?: string } = {},
+  ) {
+    const request = await this.correctionRequestRepo.findOne({
+      where: { id },
+      relations: ['certificate', 'certificate.request'],
+    });
+    if (!request) {
+      throw new NotFoundException('Solicitud de corrección no encontrada.');
+    }
+    if (request.status !== 'APPROVED') {
+      throw new ConflictException(
+        'Solo se pueden reenviar certificados de solicitudes corregidas y aprobadas.',
+      );
+    }
+    if (!request.certificate || request.certificate.status !== 'VALID') {
+      throw new BadRequestException(
+        'El certificado corregido ya no está vigente y no puede reenviarse.',
+      );
+    }
+    if (!this.tieneFormatoCorreoValido(request.requester_email)) {
+      throw new BadRequestException(
+        'La solicitud no tiene un correo registrado válido para realizar el reenvío.',
+      );
+    }
+
+    await this.ensureTemplateSnapshotForCertificate(request.certificate);
+    const approvedData = request.corrected_data ||
+      this.certificateCorrectionSnapshot(request.certificate);
+    const approvedCertificate = Object.assign(
+      new Certificate(),
+      request.certificate,
+      approvedData,
+      {
+        id: request.certificate.id,
+        request: request.certificate.request,
+        template_snapshot: request.certificate.template_snapshot,
+      },
+    );
+    const decisionEvidence = this.correctionEmailAttachmentsFromEvidence(
+      request.resolution_evidence || [],
+    );
+    const sent = await this.enviarCertificadoLaboralPorEmail(
+      approvedCertificate,
+      {
+        to: request.requester_email,
+        publicBaseUrl: options.publicBaseUrl,
+        correctionMessage: request.resolution_description || undefined,
+        correctionRequestNumber: request.request_number,
+        correctionEvidenceCount: decisionEvidence.length,
+        additionalAttachments: decisionEvidence,
+      },
+    );
+
+    this.appendCorrectionTrace(
+      request,
+      this.correctionTraceEvent({
+        type: 'CERTIFICATE_RESENT',
+        title: 'Certificado corregido reenviado',
+        description:
+          'Se reenvió al solicitante el certificado y la respuesta aprobada, sin modificar la decisión registrada.',
+        status: 'APPROVED',
+        actor_name:
+          reviewer.name ||
+          request.reviewed_by_name ||
+          'Coordinador Certificados Laborales',
+        actor_email: reviewer.email || request.reviewed_by_email,
+        actor_role: 'COORDINADOR',
+        metadata: {
+          certificate_number: approvedCertificate.certificate_number,
+          requested_recipient: request.requester_email,
+          recipient: sent.to,
+          delivery_status: 'SENT',
+          evidence_count: decisionEvidence.length,
+          resend: true,
+        },
+      }),
+    );
+    await this.correctionRequestRepo.save(request);
+
+    return {
+      ...this.correctionResponse(request),
+      message: 'El certificado corregido fue reenviado exitosamente.',
       email: sent.to,
       email_sent: true,
     };
@@ -3849,6 +4203,7 @@ export class CertificatesService {
     options: {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
+      includeFunctions?: boolean;
     } = {},
   ) {
     const requestById = await this.findSolicitudById(solicitudId);
@@ -3915,6 +4270,10 @@ export class CertificatesService {
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(options.includeTechnicalBonus, false)
       : false;
+    const includeFunctions = this.normalizeBoolean(
+      options.includeFunctions,
+      false,
+    );
     const requestDocumentType =
       this.normalizeLaborDocumentType(
         requestById.document_type || request.document_type,
@@ -3926,6 +4285,35 @@ export class CertificatesService {
         'No tienes Prima Tecnica registrada en este momento. No es posible incluirla en el certificado.',
       );
     }
+
+    const laborFunctions = includeFunctions
+      ? await this.laborFunctionsService.resolveForRequest(request)
+      : null;
+    if (includeFunctions && !laborFunctions?.available) {
+      const detail =
+        laborFunctions?.reason === 'AMBIGUOUS'
+          ? 'Hay más de una matriz posible para el código del cargo. Talento Humano debe completar la dependencia o el grupo interno antes de emitirlo.'
+          : 'No hay una matriz de funciones asociada al código y grado de tu cargo.';
+      throw new BadRequestException(
+        `${detail} No es posible incluir funciones en este certificado.`,
+      );
+    }
+
+    const functionsSnapshot = laborFunctions?.available
+      ? {
+          profile_id: laborFunctions.profile?.id,
+          matched_at: new Date().toISOString(),
+          position_code: laborFunctions.profile?.position_code,
+          grade_code: laborFunctions.profile?.grade_code,
+          combined_code: laborFunctions.profile?.combined_code,
+          hierarchical_level: laborFunctions.profile?.hierarchical_level,
+          position_name: laborFunctions.profile?.position_name,
+          department_name: laborFunctions.profile?.department_name,
+          internal_group: laborFunctions.profile?.internal_group,
+          cost_center: laborFunctions.profile?.cost_center,
+          functions: laborFunctions.functions,
+        }
+      : null;
 
     const technicalBonusesSnapshot = includeTechnicalBonus
       ? this.serializeTechnicalBonusItems(technicalBonus.items)
@@ -3959,6 +4347,8 @@ export class CertificatesService {
       technical_bonuses: technicalBonusesSnapshot,
       include_salary: includeSalary,
       include_technical_bonus: includeTechnicalBonus,
+      include_functions: includeFunctions,
+      functions_snapshot: functionsSnapshot,
       salary_text: request.salary_text,
       department: request.department,
       cod_cargo: request.cod_cargo,
@@ -4757,6 +5147,8 @@ export class CertificatesService {
 
     const technicalBonus =
       await this.resolveTechnicalBonusForRequest(solicitud);
+    const laborFunctions =
+      await this.laborFunctionsService.resolveForRequest(solicitud);
     const solicitudResponse = {
       ...solicitud,
       technical_bonus_available: technicalBonus.available,
@@ -4765,6 +5157,9 @@ export class CertificatesService {
       technical_bonus_category: technicalBonus.category,
       technical_bonus_assignment_id: technicalBonus.assignmentId,
       technical_bonuses: this.serializeTechnicalBonusItems(technicalBonus.items),
+      functions_available: laborFunctions.available,
+      functions_count: laborFunctions.count,
+      functions_match_status: laborFunctions.reason,
     };
 
     // Verificar si ya tiene un certificado generado
@@ -4788,6 +5183,9 @@ export class CertificatesService {
         technical_bonus_value: technicalBonus.value,
         technical_bonus_category: technicalBonus.category,
         technical_bonuses: this.serializeTechnicalBonusItems(technicalBonus.items),
+        functions_available: laborFunctions.available,
+        functions_count: laborFunctions.count,
+        functions_match_status: laborFunctions.reason,
       };
     }
 
@@ -4803,6 +5201,9 @@ export class CertificatesService {
       technical_bonus_value: technicalBonus.value,
       technical_bonus_category: technicalBonus.category,
       technical_bonuses: this.serializeTechnicalBonusItems(technicalBonus.items),
+      functions_available: laborFunctions.available,
+      functions_count: laborFunctions.count,
+      functions_match_status: laborFunctions.reason,
     };
   }
 
@@ -4921,6 +5322,15 @@ export class CertificatesService {
           (verificacion.solicitud as any).technical_bonus_category || null,
         technical_bonuses:
           (verificacion.solicitud as any).technical_bonuses || [],
+        functions_available: this.normalizeBoolean(
+          (verificacion.solicitud as any).functions_available,
+          false,
+        ),
+        functions_count: Number(
+          (verificacion.solicitud as any).functions_count || 0,
+        ),
+        functions_match_status:
+          (verificacion.solicitud as any).functions_match_status || 'NOT_FOUND',
       },
     };
   }
@@ -4935,6 +5345,7 @@ export class CertificatesService {
       documentType?: string;
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
+      includeFunctions?: boolean;
     } = {},
   ) {
     const documentoTrim = (documento || '').trim();
@@ -4990,9 +5401,14 @@ export class CertificatesService {
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(options.includeTechnicalBonus, false)
       : false;
+    const includeFunctions = this.normalizeBoolean(
+      options.includeFunctions,
+      false,
+    );
     const nuevoCertificado = await this.createCertificado(solicitud.id, {
       includeSalary,
       includeTechnicalBonus,
+      includeFunctions,
     });
 
     // Limpia el codigo y expiracion en la solicitud

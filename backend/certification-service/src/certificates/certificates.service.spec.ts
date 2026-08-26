@@ -98,6 +98,139 @@ describe('CertificatesService', () => {
     ).toThrow('pesos enteros, sin decimales');
   });
 
+  it('permite incluir y ordenar funciones desde una corrección', () => {
+    const certificate = {
+      full_name: 'Nombre empleado',
+      document_type: 'CC',
+      id_number: '123456',
+      career_category: 'Docente',
+      position_category: 'Planta docente',
+      hiring_date: new Date('2024-05-14'),
+      monthly_salary: 1000000,
+      salary_text: '',
+      technical_bonus: 0,
+      include_salary: true,
+      include_technical_bonus: false,
+      include_functions: false,
+      functions_snapshot: null,
+    } as unknown as Certificate;
+
+    const patch = service['normalizeCorrectedCertificateData'](certificate, {
+      include_functions: 'true',
+      functions: JSON.stringify([
+        'Orientar los procesos académicos asignados.',
+        'Verificar el cumplimiento de los lineamientos institucionales.',
+      ]),
+    });
+
+    expect(patch.include_functions).toBe(true);
+    expect(patch.functions_snapshot).toMatchObject({
+      correction_source: 'CERTIFICATE_CORRECTION',
+      functions: [
+        { ordinal: 1, description: 'Orientar los procesos académicos asignados.' },
+        {
+          ordinal: 2,
+          description: 'Verificar el cumplimiento de los lineamientos institucionales.',
+        },
+      ],
+    });
+  });
+
+  it('permite retirar las funciones sin borrar el snapshot del certificado', () => {
+    const functionsSnapshot = {
+      profile_id: 'profile-1',
+      functions: [
+        { ordinal: 1, description: 'Función institucional existente.' },
+      ],
+    };
+    const certificate = {
+      full_name: 'Nombre empleado',
+      document_type: 'CC',
+      id_number: '123456',
+      career_category: 'Cargo',
+      position_category: 'Vinculación',
+      hiring_date: new Date('2024-05-14'),
+      monthly_salary: 1000000,
+      salary_text: '',
+      technical_bonus: 0,
+      include_salary: true,
+      include_technical_bonus: false,
+      include_functions: true,
+      functions_snapshot: functionsSnapshot,
+    } as unknown as Certificate;
+
+    const patch = service['normalizeCorrectedCertificateData'](certificate, {
+      include_functions: false,
+      functions: [],
+    });
+
+    expect(patch.include_functions).toBe(false);
+    expect(patch.functions_snapshot).toBe(functionsSnapshot);
+  });
+
+  it('rechaza funciones vacías y duplicadas durante una corrección', () => {
+    const certificate = {
+      full_name: 'Nombre empleado',
+      document_type: 'CC',
+      id_number: '123456',
+      career_category: 'Cargo',
+      position_category: 'Vinculación',
+      hiring_date: new Date('2024-05-14'),
+      monthly_salary: 1000000,
+      salary_text: '',
+      technical_bonus: 0,
+      include_salary: true,
+      include_technical_bonus: false,
+      include_functions: false,
+      functions_snapshot: null,
+    } as unknown as Certificate;
+
+    expect(() =>
+      service['normalizeCorrectedCertificateData'](certificate, {
+        include_functions: true,
+        functions: ['Función válida.', ''],
+      }),
+    ).toThrow('La función 2 está vacía');
+
+    expect(() =>
+      service['normalizeCorrectedCertificateData'](certificate, {
+        include_functions: true,
+        functions: ['Orientar procesos académicos.', 'orientar procesos academicos'],
+      }),
+    ).toThrow('la función 2 repite la función 1');
+  });
+
+  it('incluye las funciones en el snapshot y en la trazabilidad de correcciones', () => {
+    const original = {
+      include_functions: false,
+      functions_snapshot: null,
+    };
+    const corrected = {
+      include_functions: true,
+      functions_snapshot: {
+        functions: [
+          { ordinal: 1, description: 'Acompañar procesos institucionales.' },
+        ],
+      },
+    };
+
+    const changes = service['correctionChanges'](original, corrected);
+
+    expect(changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'include_functions',
+          before: 'No',
+          after: 'Sí',
+        }),
+        expect.objectContaining({
+          field: 'functions_snapshot',
+          after: expect.stringContaining('1 función: 1. Acompañar procesos institucionales.'),
+        }),
+      ]),
+    );
+  });
+
   it('prioriza un encargo activo sobre un registro normal activo', () => {
     const normalRequest = {
       id: 'normal',
@@ -556,6 +689,112 @@ describe('CertificatesService', () => {
     await expect(
       service.rejectCertificateCorrectionRequest('request-id', '', [], {}),
     ).rejects.toThrow('motivo del rechazo');
+  });
+
+  it('reenvía una corrección aprobada con su snapshot, respuesta y trazabilidad', async () => {
+    const save = jest.fn(async (value) => value);
+    const request = {
+      id: 'correction-approved-id',
+      request_number: 'COR-PRUEBA-REENVIO',
+      status: 'APPROVED',
+      requester_email: 'persona@esap.edu.co',
+      requester_name: 'Persona de Prueba',
+      resolution_description:
+        'Se corrigió la dependencia conforme a la información institucional.',
+      resolution_evidence: [{ originalName: 'soporte.png' }],
+      traceability: [],
+      reviewed_by_name: 'Coordinador original',
+      reviewed_by_email: 'coordinador@esap.edu.co',
+      corrected_data: {
+        certificate_number: 'CERT-CORREGIDO-001',
+        full_name: 'NOMBRE APROBADO',
+        department: 'DEPENDENCIA APROBADA',
+        include_salary: true,
+        include_technical_bonus: false,
+      },
+      certificate: {
+        id: 'certificate-id',
+        certificate_number: 'CERT-CORREGIDO-001',
+        full_name: 'NOMBRE CAMBIADO DESPUÉS',
+        department: 'DEPENDENCIA CAMBIADA DESPUÉS',
+        status: 'VALID',
+        template_snapshot: { version: 'aprobada' },
+        request: { email: 'persona@esap.edu.co' },
+      },
+    };
+    (service as any).correctionRequestRepo = {
+      findOne: jest.fn().mockResolvedValue(request),
+      save,
+    };
+    jest
+      .spyOn(service as any, 'tieneFormatoCorreoValido')
+      .mockReturnValue(true);
+    jest
+      .spyOn(service as any, 'ensureTemplateSnapshotForCertificate')
+      .mockResolvedValue(undefined);
+    jest
+      .spyOn(service as any, 'correctionEmailAttachmentsFromEvidence')
+      .mockReturnValue([{
+        filename: 'soporte.png',
+        contentBase64: 'aW1hZ2Vu',
+        contentType: 'image/png',
+      }]);
+    const send = jest
+      .spyOn(service as any, 'enviarCertificadoLaboralPorEmail')
+      .mockResolvedValue({ to: 'pruebasesap@gmail.com' });
+
+    const result = await service.resendApprovedCertificateCorrectionRequest(
+      request.id,
+      { name: 'Coordinador reenvío', email: 'reenvio@esap.edu.co' },
+      { publicBaseUrl: 'https://comunidades.esap.edu.co' },
+    );
+
+    const [approvedCertificate, emailOptions] = send.mock.calls[0];
+    expect(approvedCertificate.full_name).toBe('NOMBRE APROBADO');
+    expect(approvedCertificate.department).toBe('DEPENDENCIA APROBADA');
+    expect(approvedCertificate.template_snapshot).toEqual({ version: 'aprobada' });
+    expect(emailOptions).toMatchObject({
+      to: 'persona@esap.edu.co',
+      correctionRequestNumber: 'COR-PRUEBA-REENVIO',
+      correctionMessage:
+        'Se corrigió la dependencia conforme a la información institucional.',
+      correctionEvidenceCount: 1,
+      publicBaseUrl: 'https://comunidades.esap.edu.co',
+    });
+    expect(emailOptions.additionalAttachments).toHaveLength(1);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(request.traceability).toHaveLength(1);
+    expect(request.traceability[0]).toMatchObject({
+      type: 'CERTIFICATE_RESENT',
+      status: 'APPROVED',
+      actor_name: 'Coordinador reenvío',
+      metadata: {
+        recipient: 'pruebasesap@gmail.com',
+        delivery_status: 'SENT',
+        evidence_count: 1,
+        resend: true,
+      },
+    });
+    expect(result.email_sent).toBe(true);
+  });
+
+  it('impide reenviar una solicitud que todavía no fue aprobada', async () => {
+    const save = jest.fn();
+    (service as any).correctionRequestRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: 'correction-pending-id',
+        status: 'IN_REVIEW',
+      }),
+      save,
+    };
+
+    await expect(
+      service.resendApprovedCertificateCorrectionRequest(
+        'correction-pending-id',
+        { name: 'Coordinador' },
+      ),
+    ).rejects.toThrow('Solo se pueden reenviar certificados');
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('no guarda el rechazo cuando falla el correo institucional', async () => {

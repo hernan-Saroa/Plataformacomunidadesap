@@ -26,6 +26,7 @@ import {
   ClipboardCheck,
   ChevronDown,
   SlidersHorizontal,
+  BookOpenCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -63,6 +64,8 @@ interface CertificadoLaboral {
   technicalBonuses?: any[] | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
+  incluyeFunciones?: boolean;
+  functions_snapshot?: any;
   templateSnapshot?: any;
   templateType?: 'docente' | 'administrador';
   estadoLaboral?: 'activo' | 'inactivo';
@@ -102,13 +105,14 @@ interface CertificadosLaboralesDashboardProps {
   onNavigate?: (vista: string) => void;
   canManageTemplates?: boolean;
   canEditPrima?: boolean;
+  canManageFunctions?: boolean;
   canExportReport?: boolean;
   canDeliver?: boolean;
   canVerify?: boolean;
   canManageCorrections?: boolean;
 }
 
-export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canExportReport = false, canDeliver = false, canVerify = false, canManageCorrections = false }: CertificadosLaboralesDashboardProps) {
+export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canManageFunctions = false, canExportReport = false, canDeliver = false, canVerify = false, canManageCorrections = false }: CertificadosLaboralesDashboardProps) {
   const resolverTemplateType = (value?: string) => {
     const base = String(value || '').toLowerCase();
     const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
@@ -279,6 +283,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           false,
         )
       : false;
+    const incluyeFunciones = normalizarBoolean(
+      cert.include_functions ??
+        cert.includeFunctions ??
+        cert.incluyeFunciones ??
+        cert.request?.include_functions ??
+        cert.request?.includeFunctions,
+      false,
+    );
     const certificadoId = String(
       cert.id ||
         cert.id_certificado ||
@@ -324,6 +336,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         null,
       incluyeSalario,
       incluyePrimaTecnica,
+      incluyeFunciones,
+      functions_snapshot:
+        cert.functions_snapshot ??
+        cert.functionsSnapshot ??
+        cert.request?.functions_snapshot ??
+        cert.request?.functionsSnapshot ??
+        null,
       templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
       templateType: templateTypeNormalizado,
       estadoLaboral: employmentEstado,
@@ -832,6 +851,20 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                         <span className="min-w-0 flex-1">
                           <span className="block font-semibold text-slate-800">Prima técnica</span>
                           <span className="block truncate text-xs font-normal text-slate-500">Prima técnica y coordinación</span>
+                        </span>
+                      </DropdownMenuItem>
+                    )}
+                    {canManageFunctions && (
+                      <DropdownMenuItem
+                        onClick={() => onNavigate?.('funciones-laborales')}
+                        className="certificates-tools-item group/item cursor-pointer gap-3 rounded-xl px-2.5 py-2.5"
+                      >
+                        <span className="certificates-tools-item__icon flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-teal-700 transition-colors">
+                          <BookOpenCheck className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-800">Funciones laborales</span>
+                          <span className="block truncate text-xs font-normal text-slate-500">Carga individual y Matriz Funciones ESAP</span>
                         </span>
                       </DropdownMenuItem>
                     )}

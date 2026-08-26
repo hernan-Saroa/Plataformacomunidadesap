@@ -63,6 +63,7 @@ const LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES = new Set([
   'certificados-laborales.export.report',
   'certificados-laborales.template.manage',
   'certificados-laborales.correction.manage',
+  'certificados-laborales.functions.manage',
 ]);
 
 const isLaborCertificatePermission = (code?: string | null) =>

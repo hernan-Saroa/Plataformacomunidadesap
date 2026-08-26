@@ -3,10 +3,14 @@ import type { Response } from 'express';
 import { CertificatesService } from './certificates.service';
 import { CertificateRequest } from './certificate-request.entity';
 import { Public } from '../auth/public.decorator';
+import { LaborCertificatePermissionsService } from '../auth/labor-certificate-permissions.service';
 
 @Controller('certificates')
 export class CertificatesController {
-  constructor(private readonly certificatesService: CertificatesService) {}
+  constructor(
+    private readonly certificatesService: CertificatesService,
+    private readonly permissionsService: LaborCertificatePermissionsService,
+  ) {}
 
   private resolveRequestUsername(req: any): string {
     const headerUser = req?.headers?.['x-user-username'];
@@ -396,19 +400,25 @@ export class CertificatesController {
   }
 
   @Post('certificados/:id/reenviar')
-  @Public()
   @HttpCode(HttpStatus.OK)
   async reenviarCertificadoLaboral(
+    @Req() req: any,
     @Param('id') id: string,
     @Body()
     body?: {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
+      includeFunctions?: boolean;
       templateType?: 'docente' | 'administrador';
       publicBaseUrl?: string;
       to?: string;
     },
   ) {
+    await this.permissionsService.assertRequestPermission(
+      req,
+      'certificados-laborales.certificate.deliver',
+      'No tienes permiso para reenviar certificados laborales.',
+    );
     return await this.certificatesService.reenviarCertificadoLaboral(id, body || {});
   }
 
@@ -474,6 +484,7 @@ export class CertificatesController {
       documentType?: string;
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
+      includeFunctions?: boolean;
     },
   ) {
     return await this.certificatesService.validarCodigoYGenerarCertificado(
@@ -483,6 +494,7 @@ export class CertificatesController {
         documentType: data.documentType,
         includeSalary: data.includeSalary,
         includeTechnicalBonus: data.includeTechnicalBonus,
+        includeFunctions: data.includeFunctions,
       },
     );
   }

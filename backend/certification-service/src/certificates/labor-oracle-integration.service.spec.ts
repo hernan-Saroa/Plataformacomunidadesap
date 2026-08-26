@@ -57,4 +57,24 @@ describe('LaborOracleIntegrationService', () => {
       'Subdireccion Nacional de Gestion Corporativa',
     );
   });
+
+  it('conserva como base un codigo de cuatro digitos aunque termine en el grado', () => {
+    const request = buildSuggestedRequest({
+      COD_CARGO: '9090',
+      GRADO: '90',
+      CARGO: 'DOCENTE VISITANTE',
+    });
+
+    expect(request.base_position_code).toBe('9090');
+  });
+
+  it('separa el grado cuando COD_CARGO ya viene combinado', () => {
+    const request = buildSuggestedRequest({
+      COD_CARGO: '202816',
+      GRADO: '16',
+      CARGO: 'PROFESIONAL ESPECIALIZADO',
+    });
+
+    expect(request.base_position_code).toBe('2028');
+  });
 });

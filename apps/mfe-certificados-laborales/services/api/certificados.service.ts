@@ -38,7 +38,12 @@ export type CorrectionTraceChange = {
 
 export type CorrectionTraceEvent = {
   id: string;
-  type: 'REQUEST_CREATED' | 'REVIEW_STARTED' | 'CERTIFICATE_SENT' | 'REQUEST_REJECTED';
+  type:
+    | 'REQUEST_CREATED'
+    | 'REVIEW_STARTED'
+    | 'CERTIFICATE_SENT'
+    | 'CERTIFICATE_RESENT'
+    | 'REQUEST_REJECTED';
   title: string;
   description: string;
   status: CorrectionStatus;
@@ -60,6 +65,8 @@ export type CorrectionTraceEvent = {
 
 export type CorrectionCertificatePreview = {
   content_html: string;
+  body_content_html?: string;
+  closing_content_html?: string;
   cargo_title: string;
   typography_font: string;
   signer_name: string;
@@ -140,6 +147,46 @@ export type PrimaTecnicaRegistroApi = {
   updated_at: string;
 };
 
+export type LaborFunctionItemApi = {
+  id?: string;
+  ordinal: number;
+  description: string;
+};
+
+export type LaborFunctionProfileApi = {
+  id: string;
+  position_code: string;
+  grade_code: string | null;
+  combined_code: string;
+  hierarchical_level: string | null;
+  position_name: string;
+  department_name: string | null;
+  internal_group: string | null;
+  cost_center: string | null;
+  source_sheet: string | null;
+  is_active: boolean;
+  functions: LaborFunctionItemApi[];
+  function_count: number;
+  association_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LaborFunctionProfilePayloadApi = {
+  positionCode?: string;
+  gradeCode?: string;
+  combinedCode?: string;
+  hierarchicalLevel?: string;
+  positionName?: string;
+  departmentName?: string;
+  internalGroup?: string;
+  costCenter?: string;
+  sourceSheet?: string;
+  functions: string[] | string;
+  isActive?: boolean;
+  rowNumber?: number;
+};
+
 export const certificadosService = {
   correcciones: {
     async listar(params?: {
@@ -182,7 +229,11 @@ export const certificadosService = {
     ): Promise<CertificateCorrectionRequest & { message: string; email: string; email_sent: boolean }> {
       const formData = new FormData();
       Object.entries(data).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) formData.append(key, String(value));
+        if (value === undefined || value === null) return;
+        formData.append(
+          key,
+          typeof value === 'object' ? JSON.stringify(value) : String(value),
+        );
       });
       files.forEach((file) => formData.append('files', file));
       return apiClient.upload(
@@ -205,6 +256,20 @@ export const certificadosService = {
         `${SERVICE_PREFIX}/certificates/correction-requests/${id}/reject`,
         formData,
         onProgress,
+      );
+    },
+
+    async reenviarAprobada(
+      id: string,
+      options?: { publicBaseUrl?: string },
+    ): Promise<CertificateCorrectionRequest & {
+      message: string;
+      email: string;
+      email_sent: boolean;
+    }> {
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/correction-requests/${id}/resend-approved`,
+        options || {},
       );
     },
 
@@ -275,6 +340,74 @@ export const certificadosService = {
    * CERTIFICADOS LABORALES
    */
   laborales: {
+    async listarFuncionesLaborales(params?: {
+      search?: string;
+      page?: number;
+      limit?: number;
+    }): Promise<{
+      items: LaborFunctionProfileApi[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+      stats: { profiles: number; functions: number; associatedRequests: number };
+    }> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/labor-functions`, params);
+    },
+
+    async crearFuncionesLaborales(
+      data: LaborFunctionProfilePayloadApi,
+    ): Promise<LaborFunctionProfileApi & { action: 'created' }> {
+      return apiClient.post(`${SERVICE_PREFIX}/certificates/labor-functions`, data);
+    },
+
+    async actualizarFuncionesLaborales(
+      id: string,
+      data: LaborFunctionProfilePayloadApi,
+    ): Promise<LaborFunctionProfileApi & { action: 'updated' }> {
+      return apiClient.put(`${SERVICE_PREFIX}/certificates/labor-functions/${id}`, data);
+    },
+
+    async eliminarFuncionesLaborales(id: string): Promise<{ id: string; deleted: true }> {
+      return apiClient.delete(`${SERVICE_PREFIX}/certificates/labor-functions/${id}`);
+    },
+
+    async validarFuncionesLaboralesMasivas(data: {
+      rows: LaborFunctionProfilePayloadApi[];
+      sourceSheet?: string;
+      updatedBy?: string;
+    }): Promise<{
+      summary: { total: number; valid: number; invalid: number; toCreate: number; toUpdate: number };
+      results: Array<{
+        rowNumber: number;
+        status: 'valid' | 'error';
+        action?: 'created' | 'updated' | null;
+        combined_code?: string;
+        function_count?: number;
+        message: string;
+      }>;
+    }> {
+      return apiClient.post(`${SERVICE_PREFIX}/certificates/labor-functions/bulk/validate`, data);
+    },
+
+    async cargarFuncionesLaboralesMasivas(data: {
+      rows: LaborFunctionProfilePayloadApi[];
+      sourceSheet?: string;
+      updatedBy?: string;
+    }): Promise<{
+      summary: { total: number; success: number; failed: number; created: number; updated: number };
+      results: Array<{
+        rowNumber: number;
+        status: 'success' | 'error';
+        action?: 'created' | 'updated';
+        combined_code?: string;
+        function_count?: number;
+        message: string;
+      }>;
+    }> {
+      return apiClient.post(`${SERVICE_PREFIX}/certificates/labor-functions/bulk/import`, data);
+    },
+
     /**
      * Listar certificados laborales
      */
@@ -328,6 +461,7 @@ export const certificadosService = {
       options?: {
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
+        includeFunctions?: boolean;
         templateType?: 'docente' | 'administrador';
         publicBaseUrl?: string;
       },
@@ -701,6 +835,7 @@ export const certificadosService = {
       options?: {
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
+        includeFunctions?: boolean;
       },
     ): Promise<{
       mensaje: string;
@@ -712,6 +847,7 @@ export const certificadosService = {
           codigo,
           ...(options?.includeSalary !== undefined ? { includeSalary: options.includeSalary } : {}),
           ...(options?.includeTechnicalBonus !== undefined ? { includeTechnicalBonus: options.includeTechnicalBonus } : {}),
+          ...(options?.includeFunctions !== undefined ? { includeFunctions: options.includeFunctions } : {}),
         },
         { requiresAuth: false }
       );

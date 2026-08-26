@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   Settings,
   ClipboardCheck,
+  BookOpenCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -23,6 +24,7 @@ import { NotificacionesValidacion } from './NotificacionesValidacion';
 import { APIDocumentacion } from './APIDocumentacion';
 import { ConfiguracionPlantilla } from './ConfiguracionPlantilla';
 import { CertificateCorrectionRequests } from './CertificateCorrectionRequests';
+import { LaborFunctionsManager } from './LaborFunctionsManager';
 
 type Vista = 
   | 'dashboard' 
@@ -33,7 +35,8 @@ type Vista =
   | 'notificaciones' 
   | 'api-docs'
   | 'configuracion-plantilla'
-  | 'solicitudes-correccion';
+  | 'solicitudes-correccion'
+  | 'funciones-laborales';
 
 interface MenuOption {
   id: Vista;
@@ -49,7 +52,7 @@ interface CertificadosLaboralesRouterProps {
   userPermissions?: string[];
 }
 
-export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPermissions = [] }: CertificadosLaboralesRouterProps) {
+export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }: CertificadosLaboralesRouterProps) {
   const [vistaActual, setVistaActual] = useState<Vista>('dashboard');
 
   const hasCertPerm = useMemo(() => (suffix: string) =>
@@ -59,31 +62,34 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
 
   const canManageTemplate = useMemo(() => hasCertPerm('template.manage'), [hasCertPerm]);
   const canEditPrima = useMemo(() => hasCertPerm('config.edit'), [hasCertPerm]);
+  const canManageFunctions = useMemo(() => hasCertPerm('functions.manage'), [hasCertPerm]);
   const canExportReport = useMemo(() => hasCertPerm('export.report'), [hasCertPerm]);
   const canDeliver = useMemo(() => hasCertPerm('certificate.deliver'), [hasCertPerm]);
   const canVerify = useMemo(() => hasCertPerm('certificate.verify'), [hasCertPerm]);
-  const canManageCorrections = useMemo(() => {
-    const normalizedRoles = userRoles.map((role) => String(role || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, ''));
-    return hasCertPerm('correction.manage') || normalizedRoles.some((role) => [
-      'COORDINADOR_CERT_LABORAL',
-      'COORDINADOR_CERTIFICADOS_LABORALES',
-      'ADMIN_CERTIFICADOS_LABORALES',
-      'ADMIN_CERT_LABORAL',
-      'SUPER_ADMIN',
-      'SUPERADMIN',
-      'ADMIN',
-      'ADMINISTRADOR',
-    ].includes(role));
-  }, [hasCertPerm, userRoles]);
+  const canManageCorrections = useMemo(() => hasCertPerm('correction.manage'), [hasCertPerm]);
 
   const handleNavigate = (vista: Vista) => {
+    if (vista === 'solicitudes-correccion' && !canManageCorrections) {
+      toast.error('No tienes permiso para aprobar solicitudes de corrección.');
+      return;
+    }
+    if (vista === 'funciones-laborales' && !canManageFunctions) {
+      toast.error('No tienes permiso para gestionar las funciones laborales.');
+      return;
+    }
     setVistaActual(vista);
   };
+
+  useEffect(() => {
+    const lostCorrectionAccess =
+      vistaActual === 'solicitudes-correccion' && !canManageCorrections;
+    const lostFunctionsAccess =
+      vistaActual === 'funciones-laborales' && !canManageFunctions;
+
+    if (lostCorrectionAccess || lostFunctionsAccess) {
+      setVistaActual('dashboard');
+    }
+  }, [canManageCorrections, canManageFunctions, vistaActual]);
 
   useEffect(() => {
     const lastPublished = localStorage.getItem('cert-template-last-published');
@@ -160,6 +166,13 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
       icon: <ClipboardCheck className="w-5 h-5" />,
       description: 'Revisión y respuesta de correcciones',
       color: '#F59E0B'
+    },
+    {
+      id: 'funciones-laborales',
+      label: 'Funciones laborales',
+      icon: <BookOpenCheck className="w-5 h-5" />,
+      description: 'Matriz normalizada de funciones por cargo',
+      color: '#0F766E'
     }
   ];
 
@@ -211,7 +224,10 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
               />
             )}
             {vistaActual === 'solicitudes-correccion' && canManageCorrections && (
-              <CertificateCorrectionRequests />
+              <CertificateCorrectionRequests canResend={canDeliver} />
+            )}
+            {vistaActual === 'funciones-laborales' && canManageFunctions && (
+              <LaborFunctionsManager />
             )}
           </motion.div>
         </AnimatePresence>
@@ -227,6 +243,7 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
       onNavigate={(vista) => handleNavigate(vista as Vista)}
       canManageTemplates={canManageTemplate}
       canEditPrima={canEditPrima}
+      canManageFunctions={canManageFunctions}
       canExportReport={canExportReport}
       canDeliver={canDeliver}
       canVerify={canVerify}

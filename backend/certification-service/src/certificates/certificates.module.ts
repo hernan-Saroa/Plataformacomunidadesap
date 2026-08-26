@@ -20,9 +20,15 @@ import { LaborOracleIntegrationController } from './labor-oracle-integration.con
 import { LaborOracleIntegrationService } from './labor-oracle-integration.service';
 import { CertificateCorrectionRequest } from './certificate-correction-request.entity';
 import { CertificateCorrectionRequestsController } from './certificate-correction-requests.controller';
+import { LaborFunctionProfile } from './labor-function-profile.entity';
+import { LaborFunction } from './labor-function.entity';
+import { LaborFunctionsController } from './labor-functions.controller';
+import { LaborFunctionsService } from './labor-functions.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
+    AuthModule,
     TypeOrmModule.forFeature([
       CertificateRequest,
       Certificate,
@@ -35,6 +41,8 @@ import { CertificateCorrectionRequestsController } from './certificate-correctio
       TechnicalBonusAssignment,
       TechnicalBonusTemplate,
       CertificateCorrectionRequest,
+      LaborFunctionProfile,
+      LaborFunction,
     ]),
   ],
   controllers: [
@@ -42,6 +50,7 @@ import { CertificateCorrectionRequestsController } from './certificate-correctio
     TemplateConfigController,
     LaborOracleIntegrationController,
     CertificateCorrectionRequestsController,
+    LaborFunctionsController,
   ],
   providers: [
     CertificatesService,
@@ -49,11 +58,13 @@ import { CertificateCorrectionRequestsController } from './certificate-correctio
     TemplateConfigService,
     LaborCertificatePdfService,
     LaborOracleIntegrationService,
+    LaborFunctionsService,
   ],
   exports: [
     CertificatesService,
     TemplateConfigService,
     LaborOracleIntegrationService,
+    LaborFunctionsService,
   ],
 })
 export class CertificatesModule {}
