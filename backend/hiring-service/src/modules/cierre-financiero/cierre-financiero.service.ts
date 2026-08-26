@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import {
   CierreFinanciero,
@@ -306,7 +306,9 @@ export class CierreFinancieroService {
 
     // Lo tramitado y no lo cobrado: el RP se libera contra la plata que salió.
     const valorPagado = pagos.reduce((total, p) => total + Number(p.valor), 0);
-    return saldoNoComprometido(Number(rp.valor ?? 0), valorPagado);
+    // Contra el respaldo total, adiciones incluidas, y no solo contra el RP al
+    // que apunta el cierre.
+    return saldoNoComprometido(await this.respaldoTotal(contrato.id, em), valorPagado);
   }
 
   private porQueNoPuede(hayLiquidacion: boolean, hayRp: boolean, hayCierre: boolean) {
@@ -323,11 +325,33 @@ export class CierreFinancieroService {
       .findOne({ where: { contratoId, estado: 'VIGENTE' } });
   }
 
+  /**
+   * El RP del contrato, que es al que apunta el cierre.
+   *
+   * `modificacionId` nulo: desde EFDS-1176 una adición aprobada trae su propio
+   * RP, y sin el filtro el cierre podría quedar apuntando al de la adición.
+   */
   private rpExpedido(contratoId: string, em?: EntityManager) {
     const manager = em ?? this.dataSource.manager;
     return manager
       .getRepository(RegistroPresupuestal)
-      .findOne({ where: { contratoId, estado: 'EXPEDIDO' } });
+      .findOne({ where: { contratoId, estado: 'EXPEDIDO', modificacionId: IsNull() } });
+  }
+
+  /**
+   * El respaldo presupuestal total del contrato.
+   *
+   * Suma el RP del contrato y los de cada adición aprobada (EFDS-1176). Liberar
+   * solo contra el primero dejaría comprometido el saldo del segundo, que es
+   * plata de la entidad amarrada a un contrato que ya terminó.
+   */
+  private async respaldoTotal(contratoId: string, em?: EntityManager) {
+    const manager = em ?? this.dataSource.manager;
+    const expedidos = await manager
+      .getRepository(RegistroPresupuestal)
+      .find({ where: { contratoId, estado: 'EXPEDIDO' } });
+
+    return expedidos.reduce((total, rp) => total + Number(rp.valor ?? 0), 0);
   }
 
   cierreVigente(contratoId: string, em?: EntityManager) {

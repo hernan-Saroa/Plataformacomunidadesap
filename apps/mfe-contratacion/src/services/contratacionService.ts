@@ -43,6 +43,10 @@ import {
   EstadoCierreFinanciero,
   EstadoArchivoExpediente,
   EstadoCierreDefinitivo,
+  EstadoModificaciones,
+  DatosAdicion,
+  DatosAprobacionModificacion,
+  DatosRespaldoAdicion,
   DatosCierreDefinitivo,
   DatosPublicacionActa,
   DatosArchivoExpediente,
@@ -875,6 +879,123 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
+
+  // ---------------- etapa 9 · modificaciones contractuales (9.5) ------------
+
+  /** El tope, cuanto cabe todavia y las modificaciones con su respaldo. */
+  modificaciones: (procesoId: string) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones`),
+
+  /** Registra la adicion en tramite; todavia no toca el valor del contrato. */
+  solicitarAdicion: (procesoId: string, datos: DatosAdicion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/adiciones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Solicita el CDP o el RP que respalda la adicion. */
+  solicitarRespaldoAdicion: (
+    procesoId: string,
+    modificacionId: string,
+    tipo: 'CDP' | 'RP',
+    rubro: string,
+  ) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}`,
+      { method: 'POST', body: JSON.stringify({ rubro }) },
+    ),
+
+  /** La Financiera confirma que hay disponibilidad. */
+  verificarRespaldoAdicion: (procesoId: string, modificacionId: string, tipo: 'CDP' | 'RP') =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}/verificar`,
+      { method: 'POST' },
+    ),
+
+  /** La Financiera expide el certificado o el compromiso. */
+  expedirRespaldoAdicion: (
+    procesoId: string,
+    modificacionId: string,
+    tipo: 'CDP' | 'RP',
+    datos: DatosRespaldoAdicion,
+  ) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}/expedir`,
+      { method: 'POST', body: JSON.stringify(datos) },
+    ),
+
+  /** No hay disponibilidad en el rubro; se puede volver a solicitar. */
+  rechazarRespaldoAdicion: (
+    procesoId: string,
+    modificacionId: string,
+    tipo: 'CDP' | 'RP',
+    observaciones: string,
+  ) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}/rechazar`,
+      { method: 'POST', body: JSON.stringify({ observaciones }) },
+    ),
+
+  /**
+   * Aprueba la modificacion y aumenta el valor del contrato.
+   *
+   * El acto firmado es obligatorio: aprobar sin documento dejaria al expediente
+   * afirmando algo que no puede probar.
+   */
+  aprobarModificacion: (
+    procesoId: string,
+    modificacionId: string,
+    datos: DatosAprobacionModificacion,
+    acto: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/aprobar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Deja sin curso una modificacion en tramite. */
+  rechazarModificacion: (procesoId: string, modificacionId: string, motivo: string) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/rechazar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Revoca una aprobada y devuelve el valor del contrato. */
+  revocarModificacion: (procesoId: string, modificacionId: string, motivo: string) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/revocar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Registra la publicacion de la modificacion en SECOP II (RF-MOD-05). */
+  publicarModificacion: (
+    procesoId: string,
+    modificacionId: string,
+    datos: { fechaPublicacion: string; secopNumero?: string; secopUrl?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/publicar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
 

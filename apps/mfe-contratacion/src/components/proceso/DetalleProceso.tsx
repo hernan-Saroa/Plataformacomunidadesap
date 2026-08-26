@@ -28,6 +28,7 @@ import { PanelInformeFinal } from '../informe-final/PanelInformeFinal';
 import { PanelLiquidacion } from '../liquidacion/PanelLiquidacion';
 import { PanelCierreFinanciero } from '../cierre-financiero/PanelCierreFinanciero';
 import { PanelArchivoExpediente } from '../archivo-expediente/PanelArchivoExpediente';
+import { PanelModificaciones } from '../modificaciones/PanelModificaciones';
 import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
@@ -137,7 +138,15 @@ const NUMERALES_ETAPA_8 = [
 const NUMERAL_ACTA_INICIO = '9.1';
 /** Tramite de pagos del contrato (EFDS-1170). */
 const NUMERAL_PAGOS = '9.4';
-const NUMERALES_ETAPA_9 = [NUMERAL_ACTA_INICIO, NUMERAL_PAGOS];
+/**
+ * Modificaciones contractuales (EFDS-1176).
+ *
+ * La matriz si le da numeral a este bloque, a diferencia de la declaratoria
+ * desierta y del cierre definitivo. Crecera con EFDS-1177 y EFDS-1178, que
+ * traen la prorroga, la cesion, el aclaratorio y la suspension al mismo panel.
+ */
+const NUMERAL_MODIFICACIONES = '9.5';
+const NUMERALES_ETAPA_9 = [NUMERAL_ACTA_INICIO, NUMERAL_PAGOS, NUMERAL_MODIFICACIONES];
 
 /**
  * Informe final de ejecucion (EFDS-1171), primera actividad de la etapa 10.
@@ -512,6 +521,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ) : actividadSeleccionada?.numeral === NUMERAL_INFORME_FINAL ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelInformeFinal
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelModificaciones
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
