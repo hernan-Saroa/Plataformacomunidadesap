@@ -80,6 +80,7 @@ export class Cdp {
 
   @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'now()' })
   updatedAt: Date;
+
   /**
    * La adición que este CDP respalda; nulo si es el CDP del proceso (EFDS-1176).
    *

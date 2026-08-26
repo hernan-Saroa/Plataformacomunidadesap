@@ -84,6 +84,7 @@ export class RegistroPresupuestal {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
   /**
    * La adición que este RP compromete; nulo si es el RP del contrato (EFDS-1176).
    *

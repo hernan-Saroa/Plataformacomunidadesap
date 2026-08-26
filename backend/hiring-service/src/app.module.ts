@@ -33,6 +33,7 @@ import { LiquidacionModule } from './modules/liquidacion/liquidacion.module';
 import { CierreFinancieroModule } from './modules/cierre-financiero/cierre-financiero.module';
 import { ArchivoExpedienteModule } from './modules/archivo-expediente/archivo-expediente.module';
 import { CierreDefinitivoModule } from './modules/cierre-definitivo/cierre-definitivo.module';
+import { ModificacionesModule } from './modules/modificaciones/modificaciones.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -157,6 +158,7 @@ import {
     CierreFinancieroModule,
     ArchivoExpedienteModule,
     CierreDefinitivoModule,
+    ModificacionesModule,
   ],
   controllers: [HealthController],
   providers: [
