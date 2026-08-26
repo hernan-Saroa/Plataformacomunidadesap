@@ -33,7 +33,11 @@ import {
   Trash2,
   FileCheck2,
   Download,
-  BarChart3
+  BarChart3,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  RotateCcw
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -73,6 +77,45 @@ type ReviewSupportPreview = {
 
 type ReviewRequestsScope = 'all' | 'mine';
 type MyReviewView = 'pending' | 'reviewed';
+type ReviewRequestSortField =
+  | 'requester'
+  | 'document'
+  | 'createdAt'
+  | 'status'
+  | 'time';
+type SortDirection = 'asc' | 'desc';
+
+type ReviewRequestSortConfig = {
+  field: ReviewRequestSortField;
+  direction: SortDirection;
+};
+
+const DEFAULT_REQUEST_SORT: ReviewRequestSortConfig = {
+  field: 'createdAt',
+  direction: 'desc',
+};
+
+const DEFAULT_SORT_DIRECTIONS: Record<ReviewRequestSortField, SortDirection> = {
+  requester: 'asc',
+  document: 'asc',
+  createdAt: 'desc',
+  status: 'asc',
+  time: 'asc',
+};
+
+const REQUEST_STATUS_SORT_ORDER: Record<ReviewRequest['status'], number> = {
+  expired: 0,
+  pending: 1,
+  under_review: 2,
+  approved: 3,
+  rejected: 4,
+  duplicate: 5,
+};
+
+const requestSortCollator = new Intl.Collator('es', {
+  numeric: true,
+  sensitivity: 'base',
+});
 
 interface ReviewRequestsModuleProps {
   scope?: ReviewRequestsScope;
@@ -88,6 +131,8 @@ export function ReviewRequestsModule({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [timeNow, setTimeNow] = useState(() => Date.now());
+  const [sortConfig, setSortConfig] =
+    useState<ReviewRequestSortConfig>(DEFAULT_REQUEST_SORT);
   
   // Estados para modal de revisión
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -1445,10 +1490,188 @@ export function ReviewRequestsModule({
     [myReviewedRequests],
   );
 
-  // Filtros
-  const filteredRequests = useMemo(
-    () =>
-      scopedRequests.filter((request) => {
+  const handleSortChange = (field: ReviewRequestSortField) => {
+    setSortConfig((current) => ({
+      field,
+      direction:
+        current.field === field
+          ? current.direction === 'asc'
+            ? 'desc'
+            : 'asc'
+          : DEFAULT_SORT_DIRECTIONS[field],
+    }));
+    setCurrentPage(1);
+  };
+
+  const resetRequestSort = () => {
+    setSortConfig({ ...DEFAULT_REQUEST_SORT });
+    setCurrentPage(1);
+  };
+
+  const isDefaultOrder =
+    sortConfig.field === DEFAULT_REQUEST_SORT.field &&
+    sortConfig.direction === DEFAULT_REQUEST_SORT.direction;
+
+  const getRequesterSortName = (request: ReviewRequest) =>
+    request.requester.type === 'empresa' && request.requester.contactPerson
+      ? request.requester.contactPerson
+      : request.requester.name;
+
+  const compareNullableNumbers = (
+    first: number | null,
+    second: number | null,
+    direction: SortDirection,
+  ) => {
+    if (first === null && second === null) return 0;
+    if (first === null) return 1;
+    if (second === null) return -1;
+    return (first - second) * (direction === 'asc' ? 1 : -1);
+  };
+
+  const compareRequests = (first: ReviewRequest, second: ReviewRequest) => {
+    const directionFactor = sortConfig.direction === 'asc' ? 1 : -1;
+    let comparison = 0;
+
+    switch (sortConfig.field) {
+      case 'requester':
+        comparison = requestSortCollator.compare(
+          getRequesterSortName(first),
+          getRequesterSortName(second),
+        ) * directionFactor;
+        break;
+      case 'document':
+        if (!first.graduateDocumentNumber && !second.graduateDocumentNumber) {
+          comparison = 0;
+        } else if (!first.graduateDocumentNumber) {
+          comparison = 1;
+        } else if (!second.graduateDocumentNumber) {
+          comparison = -1;
+        } else {
+          comparison =
+            requestSortCollator.compare(
+              first.graduateDocumentNumber,
+              second.graduateDocumentNumber,
+            ) * directionFactor;
+        }
+        break;
+      case 'createdAt':
+        comparison = compareNullableNumbers(
+          parseDateSafe(first.createdAt)?.getTime() ?? null,
+          parseDateSafe(second.createdAt)?.getTime() ?? null,
+          sortConfig.direction,
+        );
+        break;
+      case 'status':
+        comparison =
+          (REQUEST_STATUS_SORT_ORDER[first.status] -
+            REQUEST_STATUS_SORT_ORDER[second.status]) *
+          directionFactor;
+        break;
+      case 'time': {
+        // En sentido ascendente las expiradas aparecen primero; las demás se
+        // ordenan por el tiempo que falta para completar los 15 días hábiles.
+        comparison =
+          (Number(first.status !== 'expired') -
+            Number(second.status !== 'expired')) *
+          directionFactor;
+
+        if (comparison === 0) {
+          const firstDeadline = getManualReviewExpirationDate(first.createdAt);
+          const secondDeadline = getManualReviewExpirationDate(second.createdAt);
+          comparison = compareNullableNumbers(
+            firstDeadline ? firstDeadline.getTime() - timeNow : null,
+            secondDeadline ? secondDeadline.getTime() - timeNow : null,
+            sortConfig.direction,
+          );
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    return (
+      comparison ||
+      requestSortCollator.compare(first.requestNumber, second.requestNumber)
+    );
+  };
+
+  const getSortDescription = (
+    field: ReviewRequestSortField,
+    direction: SortDirection,
+  ) => {
+    const descriptions: Record<
+      ReviewRequestSortField,
+      Record<SortDirection, string>
+    > = {
+      requester: { asc: 'A a Z', desc: 'Z a A' },
+      document: { asc: 'menor a mayor', desc: 'mayor a menor' },
+      createdAt: {
+        asc: 'más antiguas primero',
+        desc: 'más recientes primero',
+      },
+      status: {
+        asc: 'expiradas primero',
+        desc: 'expiradas al final',
+      },
+      time: {
+        asc: 'menos tiempo restante primero',
+        desc: 'más tiempo restante primero',
+      },
+    };
+
+    return descriptions[field][direction];
+  };
+
+  const renderSortableHeader = (
+    label: string,
+    field: ReviewRequestSortField,
+  ) => {
+    const isActive = sortConfig.field === field;
+    const nextDirection = isActive
+      ? sortConfig.direction === 'asc'
+        ? 'desc'
+        : 'asc'
+      : DEFAULT_SORT_DIRECTIONS[field];
+    const ActiveIcon = sortConfig.direction === 'asc' ? ArrowUp : ArrowDown;
+
+    return (
+      <button
+        type="button"
+        onClick={() => handleSortChange(field)}
+        className={`group -ml-2 inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-1 ${
+          isActive
+            ? 'bg-blue-50 text-[#003DA5]'
+            : 'hover:bg-gray-100 hover:text-gray-900'
+        }`}
+        aria-label={`${label}. ${
+          isActive
+            ? `Orden actual: ${getSortDescription(field, sortConfig.direction)}. `
+            : ''
+        }Ordenar ${getSortDescription(field, nextDirection)}.`}
+        title={`${
+          isActive
+            ? `Orden actual: ${getSortDescription(field, sortConfig.direction)}. `
+            : ''
+        }Clic para ordenar ${getSortDescription(field, nextDirection)}.`}
+      >
+        <span className="truncate">{label}</span>
+        {isActive ? (
+          <ActiveIcon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+        ) : (
+          <ArrowUpDown
+            className="h-3.5 w-3.5 flex-shrink-0 text-gray-400 transition-colors group-hover:text-gray-700"
+            aria-hidden="true"
+          />
+        )}
+      </button>
+    );
+  };
+
+  // Primero se filtra y luego se ordena el conjunto completo. La paginación
+  // ocurre al final para que el orden no se limite a la página visible.
+  const filteredRequests = useMemo(() => {
+    const matchingRequests = scopedRequests.filter((request) => {
         const matchesSearch =
           request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
           request.graduateDocumentNumber.includes(searchQuery) ||
@@ -1461,9 +1684,19 @@ export function ReviewRequestsModule({
           statusFilter === 'all' || request.status === statusFilter;
 
         return matchesSearch && matchesStatus;
-      }),
-    [scopedRequests, searchQuery, statusFilter],
-  );
+      });
+
+    return isMyReviewsScope
+      ? matchingRequests
+      : matchingRequests.sort(compareRequests);
+  }, [
+    scopedRequests,
+    searchQuery,
+    statusFilter,
+    sortConfig,
+    timeNow,
+    isMyReviewsScope,
+  ]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -2385,6 +2618,27 @@ export function ReviewRequestsModule({
               <option value="expired">Expiradas</option>
             </select>
 
+            {!isMyReviewsScope && (
+              <button
+                type="button"
+                onClick={resetRequestSort}
+                disabled={isDefaultOrder}
+                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5] focus-visible:ring-offset-1 ${
+                  isDefaultOrder
+                    ? 'cursor-default border-gray-200 bg-gray-50 text-gray-400'
+                    : 'border-blue-200 bg-blue-50 text-[#003DA5] hover:border-blue-300 hover:bg-blue-100'
+                }`}
+                title={
+                  isDefaultOrder
+                    ? 'Ya se está usando el orden original: más recientes primero'
+                    : 'Restablecer el orden original por fecha de creación'
+                }
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Restablecer orden
+              </button>
+            )}
+
             {hasActiveFilters && (
               <button
                 onClick={clearAllFilters}
@@ -2477,11 +2731,86 @@ export function ReviewRequestsModule({
             {/* Header de Tabla */}
             <div className="bg-white rounded-t-xl border border-[#E5E7EB] border-b-0">
               <div className="grid grid-cols-12 gap-4 p-4 text-xs font-semibold" style={{ color: '#6B7280' }}>
-                <div className="col-span-3">SOLICITUD / SOLICITANTE</div>
-                <div className="col-span-2">GRADUADO BUSCADO</div>
-                <div className="col-span-2">FECHA SOLICITUD</div>
-                <div className="col-span-2">ESTADO</div>
-                <div className="col-span-2">TIEMPO</div>
+                {isMyReviewsScope ? (
+                  <>
+                    <div className="col-span-3">SOLICITUD / SOLICITANTE</div>
+                    <div className="col-span-2">GRADUADO BUSCADO</div>
+                    <div className="col-span-2">FECHA SOLICITUD</div>
+                    <div className="col-span-2">ESTADO</div>
+                    <div className="col-span-2">TIEMPO</div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className="col-span-3"
+                      role="columnheader"
+                      aria-sort={
+                        sortConfig.field === 'requester'
+                          ? sortConfig.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      {renderSortableHeader(
+                        'SOLICITUD / SOLICITANTE',
+                        'requester',
+                      )}
+                    </div>
+                    <div
+                      className="col-span-2"
+                      role="columnheader"
+                      aria-sort={
+                        sortConfig.field === 'document'
+                          ? sortConfig.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      {renderSortableHeader('GRADUADO BUSCADO', 'document')}
+                    </div>
+                    <div
+                      className="col-span-2"
+                      role="columnheader"
+                      aria-sort={
+                        sortConfig.field === 'createdAt'
+                          ? sortConfig.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      {renderSortableHeader('FECHA SOLICITUD', 'createdAt')}
+                    </div>
+                    <div
+                      className="col-span-2"
+                      role="columnheader"
+                      aria-sort={
+                        sortConfig.field === 'status'
+                          ? sortConfig.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      {renderSortableHeader('ESTADO', 'status')}
+                    </div>
+                    <div
+                      className="col-span-2"
+                      role="columnheader"
+                      aria-sort={
+                        sortConfig.field === 'time'
+                          ? sortConfig.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      {renderSortableHeader('TIEMPO', 'time')}
+                    </div>
+                  </>
+                )}
                 <div className="col-span-1 text-right">ACCIONES</div>
               </div>
             </div>
