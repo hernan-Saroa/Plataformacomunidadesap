@@ -27,7 +27,9 @@ export type AccionTraza =
   | 'FIRMAR'
   | 'LEGALIZAR'
   // Ejecución y supervisión (etapa 9).
-  | 'INICIAR';
+  | 'INICIAR'
+  // Presunto incumplimiento (transversal, contrato en ejecución).
+  | 'REPORTAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {
