@@ -1,0 +1,1098 @@
+.graduate-programs-trigger {
+  display: inline-flex !important;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px !important;
+  border: 2px solid #003da5 !important;
+  border-radius: 12px;
+  background: #ffffff !important;
+  color: #003da5 !important;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+  font-size: 14px !important;
+  font-weight: 650;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.graduate-programs-trigger svg {
+  width: 16px !important;
+  height: 16px !important;
+  flex: 0 0 auto;
+}
+
+@media (hover: hover) {
+  .graduate-programs-trigger:hover {
+    border-color: #003da5 !important;
+    background: #003da5 !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 16px rgb(0 61 165 / 20%);
+    transform: translateY(-1px);
+  }
+}
+
+.graduate-programs-trigger:active {
+  background: #002d7a !important;
+  color: #ffffff !important;
+  transform: translateY(0);
+}
+
+.graduate-programs-trigger:focus-visible,
+.graduate-programs-modal button:focus-visible,
+.graduate-programs-modal input:focus-visible,
+.graduate-programs-delete-dialog button:focus-visible {
+  outline: 3px solid rgb(37 99 235 / 28%) !important;
+  outline-offset: 2px;
+}
+
+.graduate-programs-modal {
+  display: grid !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: min(860px, calc(100vw - 64px)) !important;
+  max-width: 860px !important;
+  max-height: min(720px, calc(100dvh - 64px)) !important;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 1px solid #dbe3ee !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  box-shadow:
+    0 24px 60px rgb(15 23 42 / 20%),
+    0 4px 16px rgb(15 23 42 / 8%) !important;
+  transform: translateY(-50%) !important;
+}
+
+.graduate-programs-modal [data-slot="dialog-close"] {
+  top: 18px !important;
+  right: 18px !important;
+  display: inline-flex;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border: 1px solid transparent;
+  border-radius: 9px !important;
+  background: transparent !important;
+  color: #64748b;
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal [data-slot="dialog-close"]:hover {
+    border-color: #dbe3ee;
+    background: #f1f5f9 !important;
+    color: #0f172a;
+  }
+}
+
+.graduate-programs-modal__header {
+  gap: 8px !important;
+  padding: 19px 64px 17px 24px !important;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #f4f8ff 0%, #ffffff 72%);
+  text-align: left !important;
+}
+
+.graduate-programs-modal__title {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  color: #0f172a !important;
+  font-size: 19px !important;
+  font-weight: 750 !important;
+  line-height: 1.25 !important;
+}
+
+.graduate-programs-modal__title small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+}
+
+.graduate-programs-modal__title-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #bfd4fa;
+  border-radius: 11px;
+  background: #eaf2ff;
+  color: #003da5;
+  box-shadow: 0 4px 10px rgb(0 61 165 / 10%);
+}
+
+.graduate-programs-modal__title-icon svg {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.graduate-programs-modal__description {
+  margin-left: 52px;
+  color: #526175 !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+}
+
+.graduate-programs-modal__body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+  padding: 18px 24px !important;
+  background: #ffffff;
+}
+
+.graduate-programs-modal__create-card {
+  flex: 0 0 auto;
+  padding: 15px;
+  border: 1px solid #cfe0fb;
+  border-radius: 12px;
+  background: #f6f9ff;
+}
+
+.graduate-programs-modal__label {
+  display: block;
+  margin-bottom: 8px;
+  color: #172033;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.graduate-programs-modal__create-row {
+  display: flex;
+  align-items: stretch;
+  gap: 9px;
+}
+
+.graduate-programs-modal__input {
+  min-width: 0;
+  height: 44px !important;
+  flex: 1 1 auto;
+  padding: 10px 12px !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 9px !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font-size: 13px !important;
+}
+
+.graduate-programs-modal__input::placeholder {
+  color: #94a3b8;
+}
+
+.graduate-programs-modal__input[aria-invalid="true"] {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgb(220 38 38 / 8%);
+}
+
+.graduate-programs-modal__add-button {
+  display: inline-flex !important;
+  min-width: 156px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 15px !important;
+  border: 1px solid #003da5 !important;
+  border-radius: 9px;
+  background: #003da5 !important;
+  color: #ffffff !important;
+  font-size: 13px !important;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.graduate-programs-modal__add-button svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal__add-button:hover:not(:disabled) {
+    background: #002d7a !important;
+    box-shadow: 0 5px 13px rgb(0 61 165 / 20%);
+    transform: translateY(-1px);
+  }
+}
+
+.graduate-programs-modal__add-button:disabled {
+  border-color: #cbd5e1 !important;
+  background: #e2e8f0 !important;
+  color: #94a3b8 !important;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.graduate-programs-modal__field-help {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.graduate-programs-modal__field-help p {
+  margin: 0;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+.graduate-programs-modal__field-help p.is-error {
+  color: #b91c1c;
+  font-weight: 650;
+}
+
+.graduate-programs-modal__field-help > span {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.graduate-programs-modal__toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.graduate-programs-modal__summary > p {
+  margin: 0 0 7px;
+  color: #172033;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.graduate-programs-modal__summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.graduate-programs-modal__summary > div span {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.graduate-programs-modal__summary > div strong {
+  color: #003da5;
+  font-weight: 750;
+}
+
+.graduate-programs-modal__search {
+  position: relative;
+  width: min(320px, 43%);
+  flex: 0 0 auto;
+}
+
+.graduate-programs-modal__search > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 11px;
+  width: 16px !important;
+  height: 16px !important;
+  color: #64748b;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.graduate-programs-modal__search input {
+  width: 100%;
+  height: 40px !important;
+  padding: 8px 38px 8px 35px !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 9px !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font-size: 12px !important;
+}
+
+.graduate-programs-modal__clear-search {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: inline-flex !important;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 7px;
+  background: transparent !important;
+  color: #64748b !important;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.graduate-programs-modal__clear-search svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal__clear-search:hover {
+    background: #eef2f7 !important;
+    color: #0f172a !important;
+  }
+}
+
+.graduate-programs-modal__list {
+  min-height: 150px;
+  max-height: min(30vh, 300px);
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #ffffff;
+  scrollbar-color: #b7c5d8 transparent;
+  scrollbar-width: thin;
+}
+
+.graduate-programs-modal__program-row {
+  display: grid;
+  min-height: 63px;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border-bottom: 1px solid #edf1f5;
+  transition: background-color 140ms ease;
+}
+
+.graduate-programs-modal__program-row:last-child {
+  border-bottom: 0;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal__program-row:hover {
+    background: #f8fbff;
+  }
+}
+
+.graduate-programs-modal__program-icon {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dbe7f8;
+  border-radius: 10px;
+  background: #f1f6fd;
+  color: #315b8f;
+}
+
+.graduate-programs-modal__program-icon svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+
+.graduate-programs-modal__program-info {
+  min-width: 0;
+}
+
+.graduate-programs-modal__program-info p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #172033;
+  font-size: 12px !important;
+  font-weight: 680 !important;
+  line-height: 1.35 !important;
+}
+
+.graduate-programs-modal__program-info small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.graduate-programs-modal__program-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.graduate-programs-modal__usage-badge {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.graduate-programs-modal__usage-badge svg {
+  width: 13px !important;
+  height: 13px !important;
+}
+
+.graduate-programs-modal__edit-button {
+  display: inline-flex !important;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 9px !important;
+  border: 1px solid #bfd4fa !important;
+  border-radius: 8px;
+  background: #ffffff !important;
+  color: #0649a8 !important;
+  font-size: 11px !important;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.graduate-programs-modal__edit-button svg,
+.graduate-programs-modal__cancel-edit-button svg,
+.graduate-programs-modal__save-edit-button svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal__edit-button:hover:not(:disabled) {
+    border-color: #8cb3ef !important;
+    background: #eef5ff !important;
+    color: #003da5 !important;
+  }
+}
+
+.graduate-programs-modal__edit-form {
+  display: grid;
+  min-width: 0;
+  grid-column: 2 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.graduate-programs-modal__program-row.is-editing {
+  min-height: 82px;
+  background: #f8fbff;
+}
+
+.graduate-programs-modal__program-row.is-editing
+  .graduate-programs-modal__program-icon {
+  align-self: start;
+  margin-top: 2px;
+}
+
+.graduate-programs-modal__edit-field {
+  min-width: 0;
+}
+
+.graduate-programs-modal__edit-input {
+  width: 100%;
+  height: 39px !important;
+  padding: 8px 10px !important;
+  border: 1px solid #80aef0 !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font-size: 12px !important;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 9%);
+}
+
+.graduate-programs-modal__edit-input[aria-invalid="true"] {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgb(220 38 38 / 8%);
+}
+
+.graduate-programs-modal__edit-help {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.graduate-programs-modal__edit-help > span:last-child {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.graduate-programs-modal__edit-help .is-error {
+  color: #b91c1c;
+  font-weight: 650;
+}
+
+.graduate-programs-modal__edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.graduate-programs-modal__cancel-edit-button,
+.graduate-programs-modal__save-edit-button {
+  display: inline-flex !important;
+  min-height: 39px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px !important;
+  border-radius: 8px;
+  font-size: 11px !important;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.graduate-programs-modal__cancel-edit-button {
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #475569 !important;
+}
+
+.graduate-programs-modal__save-edit-button {
+  border: 1px solid #003da5 !important;
+  background: #003da5 !important;
+  color: #ffffff !important;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal__cancel-edit-button:hover:not(:disabled) {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+
+  .graduate-programs-modal__save-edit-button:hover:not(:disabled) {
+    border-color: #002d7a !important;
+    background: #002d7a !important;
+  }
+}
+
+.graduate-programs-modal__edit-button:disabled,
+.graduate-programs-modal__cancel-edit-button:disabled,
+.graduate-programs-modal__save-edit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.graduate-programs-modal__delete-button {
+  display: inline-flex !important;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 9px !important;
+  border: 1px solid #fecaca !important;
+  border-radius: 8px;
+  background: #ffffff !important;
+  color: #b91c1c !important;
+  font-size: 11px !important;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.graduate-programs-modal__delete-button svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal__delete-button:hover {
+    border-color: #fca5a5 !important;
+    background: #fef2f2 !important;
+    color: #991b1b !important;
+  }
+}
+
+.graduate-programs-modal__empty-state {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 28px;
+  color: #64748b;
+  text-align: center;
+}
+
+.graduate-programs-modal__empty-state > span {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: #eef4ff;
+  color: #315b8f;
+}
+
+.graduate-programs-modal__empty-state svg {
+  width: 19px !important;
+  height: 19px !important;
+}
+
+.graduate-programs-modal__empty-state strong {
+  color: #334155;
+  font-size: 13px;
+}
+
+.graduate-programs-modal__empty-state p {
+  max-width: 320px;
+  margin: 4px 0 0;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+}
+
+.graduate-programs-modal__footer {
+  display: flex !important;
+  padding: 13px 24px !important;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.graduate-programs-modal__close-button {
+  min-height: 38px;
+  padding: 8px 16px !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 9px;
+  background: #ffffff !important;
+  color: #334155 !important;
+  font-size: 12px !important;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .graduate-programs-modal__close-button:hover {
+    border-color: #94a3b8 !important;
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+}
+
+.graduate-programs-modal__confirm-layer {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 45%);
+  backdrop-filter: blur(2px);
+  animation: graduate-programs-confirm-fade 140ms ease-out;
+}
+
+@keyframes graduate-programs-confirm-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.graduate-programs-delete-dialog {
+  display: flex;
+  width: min(460px, 100%);
+  max-width: 460px;
+  max-height: 100%;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgb(15 23 42 / 30%);
+}
+
+.graduate-programs-delete-dialog__title {
+  display: flex !important;
+  align-items: center;
+  gap: 11px;
+  color: #172033 !important;
+  font-size: 17px !important;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.graduate-programs-delete-dialog__title > span:first-child {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.graduate-programs-delete-dialog__title svg {
+  width: 19px !important;
+  height: 19px !important;
+}
+
+.graduate-programs-delete-dialog__description {
+  display: flex !important;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 4px;
+  color: #526175 !important;
+  font-size: 12px !important;
+  line-height: 1.55 !important;
+  text-align: left;
+}
+
+.graduate-programs-delete-dialog__description strong {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 9px;
+  background: #fff7f7;
+  color: #991b1b;
+  overflow-wrap: anywhere;
+}
+
+.graduate-programs-delete-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.graduate-programs-delete-dialog__cancel,
+.graduate-programs-delete-dialog__confirm {
+  display: inline-flex !important;
+  min-height: 40px !important;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 15px !important;
+  border-radius: 9px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+
+.graduate-programs-delete-dialog__cancel {
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+}
+
+.graduate-programs-delete-dialog__confirm {
+  border: 1px solid #dc2626 !important;
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.graduate-programs-delete-dialog__confirm svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+@media (hover: hover) {
+  .graduate-programs-delete-dialog__cancel:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+
+  .graduate-programs-delete-dialog__confirm:hover:not(:disabled) {
+    border-color: #b91c1c !important;
+    background: #b91c1c !important;
+  }
+}
+
+.graduate-programs-delete-dialog__cancel:disabled,
+.graduate-programs-delete-dialog__confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dark .graduate-programs-modal,
+.dark .graduate-programs-delete-dialog {
+  border-color: #334155 !important;
+  background: #111827 !important;
+}
+
+.dark .graduate-programs-trigger {
+  border-color: #60a5fa !important;
+  background: #111827 !important;
+  color: #bfdbfe !important;
+}
+
+@media (hover: hover) {
+  .dark .graduate-programs-trigger:hover {
+    border-color: #3b82f6 !important;
+    background: #1d4ed8 !important;
+    color: #ffffff !important;
+  }
+}
+
+.dark .graduate-programs-modal__header {
+  border-color: #334155;
+  background: linear-gradient(135deg, #14213a 0%, #111827 72%);
+}
+
+.dark .graduate-programs-modal__title,
+.dark .graduate-programs-modal__label,
+.dark .graduate-programs-modal__summary > p,
+.dark .graduate-programs-modal__program-info p,
+.dark .graduate-programs-delete-dialog__title {
+  color: #f8fafc !important;
+}
+
+.dark .graduate-programs-modal__description,
+.dark .graduate-programs-modal__title small,
+.dark .graduate-programs-modal__program-info small,
+.dark .graduate-programs-modal__field-help,
+.dark .graduate-programs-delete-dialog__description {
+  color: #aebcd0 !important;
+}
+
+.dark .graduate-programs-modal__body,
+.dark .graduate-programs-modal__list,
+.dark .graduate-programs-modal__program-row {
+  background: #111827;
+}
+
+.dark .graduate-programs-modal__create-card {
+  border-color: #31517a;
+  background: #172238;
+}
+
+.dark .graduate-programs-modal__input,
+.dark .graduate-programs-modal__search input {
+  border-color: #475569 !important;
+  background: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+.dark .graduate-programs-modal__list,
+.dark .graduate-programs-modal__program-row,
+.dark .graduate-programs-modal__footer {
+  border-color: #334155;
+}
+
+.dark .graduate-programs-modal__footer {
+  background: #0f172a;
+}
+
+.dark .graduate-programs-modal__summary > div span {
+  border-color: #334155;
+  background: #172033;
+  color: #aebcd0;
+}
+
+.dark .graduate-programs-modal__program-icon,
+.dark .graduate-programs-modal__empty-state > span {
+  border-color: #31517a;
+  background: #172238;
+  color: #93c5fd;
+}
+
+.dark .graduate-programs-modal__close-button,
+.dark .graduate-programs-modal__delete-button,
+.dark .graduate-programs-modal__edit-button,
+.dark .graduate-programs-modal__cancel-edit-button {
+  background: #172033 !important;
+}
+
+.dark .graduate-programs-modal__close-button {
+  border-color: #475569 !important;
+  color: #e2e8f0 !important;
+}
+
+.dark .graduate-programs-modal__program-row.is-editing {
+  background: #172238;
+}
+
+.dark .graduate-programs-modal__edit-input {
+  border-color: #4f83c9 !important;
+  background: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+.dark .graduate-programs-modal [data-slot="dialog-close"] {
+  color: #aebcd0;
+}
+
+.dark .graduate-programs-modal__confirm-layer {
+  background: rgb(2 6 23 / 62%);
+}
+
+.dark .graduate-programs-delete-dialog__description strong {
+  border-color: #7f1d1d;
+  background: #2b171c;
+  color: #fecaca;
+}
+
+.dark .graduate-programs-delete-dialog__cancel {
+  border-color: #475569 !important;
+  background: #172033 !important;
+  color: #e2e8f0 !important;
+}
+
+@media (hover: hover) {
+  .dark .graduate-programs-modal__program-row:hover {
+    background: #172238;
+  }
+}
+
+@media (max-width: 640px) {
+  .graduate-programs-modal {
+    top: 50% !important;
+    width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 24px) !important;
+    border-radius: 14px !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .graduate-programs-modal__header {
+    padding: 18px 52px 16px 16px !important;
+  }
+
+  .graduate-programs-modal__title {
+    font-size: 17px !important;
+  }
+
+  .graduate-programs-modal__description {
+    margin-left: 0;
+    font-size: 12px !important;
+  }
+
+  .graduate-programs-modal__body {
+    gap: 15px;
+    padding: 16px !important;
+  }
+
+  .graduate-programs-modal__create-row {
+    flex-direction: column;
+  }
+
+  .graduate-programs-modal__add-button {
+    width: 100%;
+  }
+
+  .graduate-programs-modal__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .graduate-programs-modal__search {
+    width: 100%;
+  }
+
+  .graduate-programs-modal__list {
+    min-height: 170px;
+    max-height: none;
+  }
+
+  .graduate-programs-modal__program-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .graduate-programs-modal__program-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .graduate-programs-modal__program-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .graduate-programs-modal__edit-form {
+    grid-column: 2;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .graduate-programs-modal__edit-actions {
+    justify-content: flex-start;
+  }
+
+  .graduate-programs-modal__footer {
+    padding: 12px 16px !important;
+  }
+
+  .graduate-programs-modal__confirm-layer {
+    padding: 14px;
+  }
+
+  .graduate-programs-delete-dialog {
+    gap: 15px;
+    padding: 18px;
+  }
+
+  .graduate-programs-delete-dialog__footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .graduate-programs-modal__close-button,
+  .graduate-programs-delete-dialog__cancel,
+  .graduate-programs-delete-dialog__confirm {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graduate-programs-trigger,
+  .graduate-programs-modal button,
+  .graduate-programs-modal__program-row {
+    transition: none !important;
+  }
+
+  .graduate-programs-modal__confirm-layer {
+    animation: none !important;
+  }
+}
