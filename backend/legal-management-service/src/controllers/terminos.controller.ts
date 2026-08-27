@@ -29,8 +29,9 @@ export class TerminosController {
         };
         const origenModulo = MODULO_MAP[body.origenModulo] || body.origenModulo || 'MANUAL';
 
-        // Limpiar campos UUID: strings vacías deben ser null para evitar error de Postgres
-        const responsableId = body.responsableId && body.responsableId.trim() !== '' ? body.responsableId : null;
+        // Limpiar campos UUID: strings vacías y el centinela "sin-asignar" del selector
+        // de responsable deben ser null para evitar error de Postgres (columna uuid).
+        const responsableId = body.responsableId && body.responsableId.trim() !== '' && body.responsableId !== 'sin-asignar' ? body.responsableId : null;
         const referenciaId  = body.referenciaId  && body.referenciaId.trim()  !== '' ? body.referenciaId  : null;
 
         const fechaBase = body.fechaBase ? new Date(body.fechaBase) : new Date();
@@ -106,8 +107,8 @@ export class TerminosController {
 
     @Patch(':id')
     async update(@Param('id') id: string, @Body() body: any) {
-        // Limpiar UUIDs vacíos para evitar error de Postgres
-        if (body.responsableId !== undefined && (!body.responsableId || body.responsableId.trim() === '')) {
+        // Limpiar UUIDs vacíos y el centinela "sin-asignar" para evitar error de Postgres
+        if (body.responsableId !== undefined && (!body.responsableId || body.responsableId.trim() === '' || body.responsableId === 'sin-asignar')) {
             body.responsableId = null;
         }
         if (body.referenciaId !== undefined && (!body.referenciaId || body.referenciaId.trim() === '')) {

@@ -8,6 +8,7 @@ import { ProcesoCoactivo } from '../entities/proceso-coactivo.entity';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import { TerminoProcesal } from '../entities/termino-procesal.entity';
 import { TerminosService } from './terminos.service';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 // Construidas con el constructor local (year, monthIndex, day) para que getDay()/setDate()
 // se comporten igual sin importar la zona horaria del runner.
@@ -24,6 +25,7 @@ describe('TerminosService', () => {
     let mockProcesoCoactivoRepo: any;
     let mockActuacionRepo: any;
     let mockDataSource: any;
+    let mockLegalNotifications: any;
     let queryBuilder: any;
 
     beforeEach(async () => {
@@ -42,6 +44,7 @@ describe('TerminosService', () => {
             findOne: jest.fn(),
             save: jest.fn((data: any) => Promise.resolve(data)),
             create: jest.fn((data: any) => data),
+            update: jest.fn().mockResolvedValue(undefined),
             createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
             count: jest.fn(),
         };
@@ -51,6 +54,7 @@ describe('TerminosService', () => {
         mockProcesoCoactivoRepo = { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
         mockActuacionRepo = { find: jest.fn().mockResolvedValue([]) };
         mockDataSource = { query: jest.fn().mockResolvedValue([]) };
+        mockLegalNotifications = { notifyResponsableAsignadoTermino: jest.fn().mockResolvedValue(undefined) };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -62,6 +66,7 @@ describe('TerminosService', () => {
                 { provide: getRepositoryToken(ProcesoCoactivo), useValue: mockProcesoCoactivoRepo },
                 { provide: getRepositoryToken(Actuacion), useValue: mockActuacionRepo },
                 { provide: getDataSourceToken(), useValue: mockDataSource },
+                { provide: LegalNotificationsService, useValue: mockLegalNotifications },
             ],
         }).compile();
 
@@ -222,6 +227,56 @@ describe('TerminosService', () => {
             const r2 = await service.create({ nombreActuacion: 'Dos', origenModulo: 'MANUAL' } as any);
 
             expect(r1.referenciaId).not.toBe(r2.referenciaId);
+        });
+
+        // -------------------------------------------------------------
+        // Bug: "Responsable" seleccionado no se ve al recargar el listado
+        // -------------------------------------------------------------
+        it('debe resolver y persistir responsableNombre a partir de responsableId', async () => {
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-1', public_id: null, nombre: 'Juan Pérez' }]);
+
+            const result = await service.create({
+                nombreActuacion: 'Informe con responsable',
+                origenModulo: 'MANUAL',
+                responsableId: 'resp-1',
+            } as any);
+
+            expect(result.responsableNombre).toBe('Juan Pérez');
+        });
+
+        it('no debe pisar un responsableNombre que ya venga explícito en el payload', async () => {
+            const result = await service.create({
+                nombreActuacion: 'Informe con nombre ya resuelto',
+                origenModulo: 'MANUAL',
+                responsableId: 'resp-1',
+                responsableNombre: 'Nombre Ya Resuelto',
+            } as any);
+
+            expect(mockDataSource.query).not.toHaveBeenCalled();
+            expect(result.responsableNombre).toBe('Nombre Ya Resuelto');
+        });
+
+        it('debe notificar la asignación del responsable cuando el término se crea con responsableId', async () => {
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-1', public_id: null, nombre: 'Juan Pérez' }]);
+
+            const result = await service.create({
+                nombreActuacion: 'Informe con responsable',
+                origenModulo: 'MANUAL',
+                responsableId: 'resp-1',
+                fechaBase: localDate(2026, 1, 1),
+                fechaVencimiento: localDate(2026, 2, 1),
+            } as any);
+
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).toHaveBeenCalledWith(
+                expect.objectContaining({ responsableId: 'resp-1', esReasignacion: false }),
+            );
+            expect(result.responsableNombre).toBe('Juan Pérez');
+        });
+
+        it('no debe notificar nada cuando el término se crea sin responsableId', async () => {
+            await service.create({ nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' } as any);
+
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
         });
     });
 
@@ -433,6 +488,21 @@ describe('TerminosService', () => {
 
             expect(queryBuilder.andWhere).not.toHaveBeenCalled();
         });
+
+        it('debe autocompletar responsableNombre en lote para los términos del listado que lo tengan faltante', async () => {
+            queryBuilder.getMany.mockResolvedValue([
+                { id: 't-1', responsableId: 'resp-1', responsableNombre: null },
+                { id: 't-2', responsableId: 'resp-2', responsableNombre: 'Ya Resuelto' },
+            ]);
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-1', public_id: null, nombre: 'Juan Pérez' }]);
+
+            const result = await service.findAll({});
+
+            expect(result[0].responsableNombre).toBe('Juan Pérez');
+            expect(result[1].responsableNombre).toBe('Ya Resuelto');
+            expect(mockTerminoRepo.update).toHaveBeenCalledWith('t-1', { responsableNombre: 'Juan Pérez' });
+            expect(mockTerminoRepo.update).not.toHaveBeenCalledWith('t-2', expect.anything());
+        });
     });
 
     // ---------------------------------------------------------------------
@@ -540,6 +610,48 @@ describe('TerminosService', () => {
 
             await expect(service.findOne('no-existe')).rejects.toThrow(NotFoundException);
         });
+
+        // -------------------------------------------------------------
+        // Autocorrección en lectura de términos ya guardados sin responsableNombre
+        // (registros previos a este fix, o donde el backfill de create()/update() falló)
+        // -------------------------------------------------------------
+        it('debe resolver y persistir responsableNombre para un término ya existente que tiene responsableId pero no el nombre', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({ id: 'term-legacy', responsableId: 'resp-1', responsableNombre: null });
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-1', public_id: null, nombre: 'Juan Pérez' }]);
+
+            const result = await service.findOne('term-legacy');
+
+            expect(result.responsableNombre).toBe('Juan Pérez');
+            expect(mockTerminoRepo.update).toHaveBeenCalledWith('term-legacy', { responsableNombre: 'Juan Pérez' });
+        });
+
+        it('no debe consultar auth ni intentar persistir nada si el término no tiene responsableId', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({ id: 'term-sin-resp', responsableId: null, responsableNombre: null });
+
+            await service.findOne('term-sin-resp');
+
+            expect(mockDataSource.query).not.toHaveBeenCalled();
+            expect(mockTerminoRepo.update).not.toHaveBeenCalled();
+        });
+
+        it('no debe tocar un término que ya tiene responsableNombre resuelto', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({ id: 'term-ok', responsableId: 'resp-1', responsableNombre: 'Juan Pérez' });
+
+            const result = await service.findOne('term-ok');
+
+            expect(mockDataSource.query).not.toHaveBeenCalled();
+            expect(result.responsableNombre).toBe('Juan Pérez');
+        });
+
+        it('si la resolución en auth no encuentra el id, debe dejar responsableNombre en null sin romper la lectura', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({ id: 'term-huerfano', responsableId: 'resp-inexistente', responsableNombre: null });
+            mockDataSource.query.mockResolvedValue([]);
+
+            const result = await service.findOne('term-huerfano');
+
+            expect(result.responsableNombre).toBeNull();
+            expect(mockTerminoRepo.update).not.toHaveBeenCalled();
+        });
     });
 
     // ---------------------------------------------------------------------
@@ -602,6 +714,69 @@ describe('TerminosService', () => {
 
             const saved = mockTerminoRepo.save.mock.calls[0][0];
             expect(saved.nuevoComentario).toBeUndefined();
+        });
+
+        // -------------------------------------------------------------
+        // Bug: "Responsable" seleccionado no se ve al recargar el listado
+        // -------------------------------------------------------------
+        it('debe resolver responsableNombre al asignar responsableId por primera vez y notificar como asignación nueva', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({
+                id: 't-5', observaciones: null, responsableId: null, responsableNombre: null,
+                nombreActuacion: 'Informe', numeroRadicado: 'RAD-5',
+                fechaBase: localDate(2026, 1, 1), fechaVencimiento: localDate(2026, 2, 1),
+            });
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-1', public_id: null, nombre: 'Juan Pérez' }]);
+
+            const result = await service.update('t-5', { responsableId: 'resp-1' });
+
+            expect(result.responsableNombre).toBe('Juan Pérez');
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).toHaveBeenCalledWith(
+                expect.objectContaining({ responsableId: 'resp-1', esReasignacion: false }),
+            );
+        });
+
+        it('debe resolver el nuevo responsableNombre y notificar como reasignación cuando ya había un responsable distinto', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({
+                id: 't-6', observaciones: null, responsableId: 'resp-anterior', responsableNombre: 'Anterior',
+                nombreActuacion: 'Informe', numeroRadicado: 'RAD-6',
+                fechaBase: localDate(2026, 1, 1), fechaVencimiento: localDate(2026, 2, 1),
+            });
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-2', public_id: null, nombre: 'María Gómez' }]);
+
+            const result = await service.update('t-6', { responsableId: 'resp-2' });
+
+            expect(result.responsableNombre).toBe('María Gómez');
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).toHaveBeenCalledWith(
+                expect.objectContaining({ responsableId: 'resp-2', esReasignacion: true }),
+            );
+        });
+
+        it('debe limpiar responsableNombre a null cuando responsableId se desasigna explícitamente', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({
+                id: 't-7', observaciones: null, responsableId: 'resp-anterior', responsableNombre: 'Anterior',
+            });
+
+            const result = await service.update('t-7', { responsableId: null });
+
+            expect(result.responsableNombre).toBeNull();
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
+
+        it('no debe resolver ni notificar nada cuando el PATCH no toca responsableId', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({ id: 't-8', observaciones: null, responsableId: 'resp-1', responsableNombre: 'Juan Pérez' });
+
+            await service.update('t-8', { recordatorioManualHorasAnticipacion: 48 });
+
+            expect(mockDataSource.query).not.toHaveBeenCalled();
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
+
+        it('no debe notificar de nuevo si responsableId viene igual al que ya tenía', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({ id: 't-9', observaciones: null, responsableId: 'resp-1', responsableNombre: 'Juan Pérez' });
+
+            await service.update('t-9', { responsableId: 'resp-1' });
+
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
         });
     });
 
