@@ -62,6 +62,8 @@ import {
   PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
   PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_REVIEW_PERMISSION,
   PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
+  PTA_COMPONENT_PROGRESS_ORDER,
+  labelDeComponente,
   type PTANivelDocencia,
 } from './shared/ptaComponentPermissions';
 import { getReviewStatusVisual } from './shared/ptaComponentReviewVisuals';
@@ -3693,6 +3695,44 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         {devueltos > 0 && (
                           <div style={{ height: '100%', width: `${Math.round((devueltos / total) * 100)}%`, background: '#EF4444', borderRadius: 4 }} />
                         )}
+                      </div>
+
+                      {/* EFDS-1497: el avance se mostraba solo agregado ("3 / 9
+                          componentes"), sin decir CUÁLES. Se detalla componente por
+                          componente, que es donde Docencia se abre en Pregrado /
+                          Posgrado / Territorial y Extensión en sus cuatro tipos. */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 10 }}>
+                        {PTA_COMPONENT_PROGRESS_ORDER
+                          .filter(k => visibleComponenteKeys.has(k))
+                          .map(k => {
+                            const fila = componentesAprobacionVisibles.find(c => c.componente === k);
+                            const estadoComp = String(fila?.estado || 'pendiente');
+                            const auto = estadoComp === 'aprobado' && fila?.aprobadorNombre === 'Sistema';
+                            const visual = auto
+                              ? { label: 'No aplica', color: '#9CA3AF', bg: '#F9FAFB', borde: '#E5E7EB' }
+                              : estadoComp === 'aprobado'
+                                ? { label: 'Aprobado', color: '#15803D', bg: '#F0FDF4', borde: '#BBF7D0' }
+                                : estadoComp === 'devuelto'
+                                  ? { label: 'Devuelto', color: '#B91C1C', bg: '#FEF2F2', borde: '#FECACA' }
+                                  : { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FEF3C7' };
+                            return (
+                              <div key={k} style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                gap: 8, fontSize: '0.7rem',
+                              }}>
+                                <span style={{ color: '#475569', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {labelDeComponente(k)}
+                                </span>
+                                <span style={{
+                                  flexShrink: 0, padding: '2px 8px', borderRadius: 999,
+                                  background: visual.bg, color: visual.color,
+                                  border: `1px solid ${visual.borde}`, fontWeight: 700, fontSize: '0.64rem',
+                                }}>
+                                  {visual.label}
+                                </span>
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
                   );

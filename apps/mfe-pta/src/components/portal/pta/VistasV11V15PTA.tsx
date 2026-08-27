@@ -12,7 +12,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Calendar, Clock, FileText, FileCheck2, Upload, Download, Trash2,
+  Calendar, Clock, FileText, Upload, Download, Trash2,
   BarChart3, TrendingUp, Target, Award, Shield, Settings,
   Bell, Eye, Palette, Globe, ChevronRight, CheckCircle,
   AlertTriangle, Paperclip, FileImage, File, BookOpen,
@@ -874,75 +874,6 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
           );
         })}
       </div>
-      )}
-
-      {/* Compromiso documental definido en el proyecto de investigación. */}
-      {!seguimientoBloqueado && horasResolucionObjetivo > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 14, flexWrap: 'wrap', marginBottom: 16, padding: '14px 16px',
-          borderRadius: 12, border: `1px solid ${horasResolucionAprobadas >= horasResolucionObjetivo ? '#86EFAC' : '#FED7AA'}`,
-          background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#F0FDF4' : '#FFF7ED',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0, flex: 1 }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#DCFCE7' : '#FFEDD5',
-            }}>
-              <FileCheck2 style={{
-                width: 16, height: 16,
-                color: horasResolucionAprobadas >= horasResolucionObjetivo ? '#15803D' : PTA_COLORS.INVESTIGACION,
-              }} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#111827' }}>
-                Resolución del proyecto de investigación
-              </div>
-              <div style={{
-                marginTop: 2, fontSize: '0.68rem', color: '#64748B',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {[proyectoInvestigacion?.nombre, proyectoInvestigacion?.resolucion_nombre]
-                  .filter(Boolean).join(' · ') || 'Documento de respaldo del proyecto'}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
-                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FFEDD5', color: '#C2410C', fontSize: '0.62rem', fontWeight: 800 }}>
-                  {horasResolucionObjetivo}h del proyecto
-                </span>
-                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#DBEAFE', color: '#1D4ED8', fontSize: '0.62rem', fontWeight: 800 }}>
-                  {horasResolucionAprobadas}h aprobadas
-                </span>
-                {horasResolucionReservadas > horasResolucionAprobadas && (
-                  <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E', fontSize: '0.62rem', fontWeight: 800 }}>
-                    {horasResolucionReservadas - horasResolucionAprobadas}h en revisión
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          {horasResolucionPendientes > 0 ? (
-            <button
-              type="button"
-              onClick={iniciarCargaResolucionProyecto}
-              disabled={horasDisponiblesResolucion <= 0}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px',
-                borderRadius: 8, border: 'none', color: 'white', fontSize: '0.7rem',
-                fontWeight: 800, background: horasDisponiblesResolucion > 0 ? PTA_COLORS.INVESTIGACION : '#9CA3AF',
-                cursor: horasDisponiblesResolucion > 0 ? 'pointer' : 'not-allowed', flexShrink: 0,
-              }}
-            >
-              <Upload style={{ width: 13, height: 13 }} />
-              Adjuntar resolución ({horasDisponiblesResolucion}h)
-            </button>
-          ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#15803D', fontSize: '0.7rem', fontWeight: 800 }}>
-              <CheckCircle2 style={{ width: 14, height: 14 }} />
-              Evidencia registrada
-            </span>
-          )}
-        </div>
       )}
 
       {/* Upload form (modal inline) */}

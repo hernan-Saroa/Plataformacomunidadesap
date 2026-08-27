@@ -44,7 +44,8 @@ import {
   Building2,  // ✅ NUEVO: Para filtro de sedes
   Database,
   FileCheck2,
-  Loader2
+  Loader2,
+  BookOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -68,11 +69,13 @@ import graduadosService, {
   CertificadoGraduado,
   GraduadoArchivo,
   GraduadoData,
+  GraduateProgramCatalogItem,
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
 import { BulkGraduatesUploadModal } from './BulkGraduatesUploadModal';
+import { GraduateProgramsModal } from './GraduateProgramsModal';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { buildServiceAssetUrl } from '../../config/environment';
@@ -114,7 +117,7 @@ type GraduateRow = {
 
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
-const INTEGRATION_PROGRAM_SOURCE_LABEL = 'graduados integrados';
+const PROGRAM_CATALOG_SOURCE_LABEL = 'catálogo de programas de graduados';
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -158,6 +161,10 @@ export function GraduatesManagementModule() {
   const [isDeleteFileModalOpen, setIsDeleteFileModalOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<GraduadoArchivo | null>(null);
   const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
+  const [isProgramsModalOpen, setIsProgramsModalOpen] = useState(false);
+  const [programCatalog, setProgramCatalog] = useState<
+    GraduateProgramCatalogItem[]
+  >([]);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
@@ -843,9 +850,13 @@ export function GraduatesManagementModule() {
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse, programsResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
+          graduadosService.programas.listar().catch((error) => {
+            console.warn('No se pudo cargar el catálogo de programas:', error);
+            return [] as GraduateProgramCatalogItem[];
+          }),
         ]);
 
         const { sedes: estructuraSedesMaestras, seccionales: estructuraSeccionalesMaestras } =
@@ -857,6 +868,7 @@ export function GraduatesManagementModule() {
           setSedesCatalog(estructuraSedes);
           setSeccionalesCatalog(estructuraSeccionales);
           setEstructuraPeriodoCatalogo('catálogo maestro');
+          setProgramCatalog(programsResponse || []);
         }
 
         const seccionalByName = new Map<string, Seccional>();
@@ -1016,23 +1028,24 @@ export function GraduatesManagementModule() {
     };
   }, [graduatesOnly]);
 
-  // Programas provenientes de la integración: se toman de los graduados creados
-  // por ese medio (enrollmentMethod === 'integration'), se descartan los vacíos
-  // y "No especificado", y se muestran sin repetidos. Son la fuente dinámica de
-  // los selects de programa (filtro y edición). En local, donde normalmente no
-  // hay integración, esta lista queda vacía; en los servidores se llena sola.
+  // El catálogo administrable es la fuente principal. Se conserva como respaldo
+  // la derivación desde integraciones para despliegues en transición y para que
+  // ningún valor histórico deje de aparecer en los formularios.
   const integrationProgramOptions = useMemo(
     () =>
       uniqueSortedText(
-        graduatesOnly
-          .filter((graduate) => graduate.enrollmentMethod === 'integration')
-          .flatMap((graduate) => [
-            graduate.programName,
-            graduate.degreeTitle,
-            graduate.program,
-          ]),
+        [
+          ...programCatalog.map((program) => program.name),
+          ...graduatesOnly
+            .filter((graduate) => graduate.enrollmentMethod === 'integration')
+            .flatMap((graduate) => [
+              graduate.programName,
+              graduate.degreeTitle,
+              graduate.program,
+            ]),
+        ],
       ).filter((programa) => normalizeKey(programa) !== 'no especificado'),
-    [graduatesOnly, normalizeKey],
+    [graduatesOnly, normalizeKey, programCatalog],
   );
   const selectedIntegrationProgram = useMemo(
     () =>
@@ -1608,6 +1621,19 @@ export function GraduatesManagementModule() {
     setIsBulkUploadModalOpen(true);
   };
 
+  const refreshProgramCatalog = async () => {
+    const programs = await graduadosService.programas.listar();
+    setProgramCatalog(programs || []);
+  };
+
+  const handleOpenProgramsModal = () => {
+    setIsProgramsModalOpen(true);
+    void refreshProgramCatalog().catch((error) => {
+      console.warn('No se pudo actualizar el catálogo de programas:', error);
+      toast.error('No se pudo actualizar el catálogo de programas');
+    });
+  };
+
   const handleBulkGraduatesImported = (createdGraduates: GraduadoData[]) => {
     if (!createdGraduates.length) return;
 
@@ -1671,6 +1697,9 @@ export function GraduatesManagementModule() {
       return [...newRows, ...prev];
     });
     setCurrentPage(1);
+    void refreshProgramCatalog().catch((error) => {
+      console.warn('No se pudo refrescar el uso de programas:', error);
+    });
   };
 
   // Handlers para confirmar acciones en modales
@@ -1797,6 +1826,7 @@ export function GraduatesManagementModule() {
         email: trimmedEmail,
         idNumber: trimmedDocument,
         programName: trimmedProgram,
+        degreeTitle: trimmedProgram,
         campus: trimmedLocation || undefined,
         seccionalName: effectiveTerritorial,
         numRegistro: cleanNumRegistro,
@@ -1819,6 +1849,8 @@ export function GraduatesManagementModule() {
                 numFolio: cleanNumFolio,
                 numLibro: cleanNumLibro,
                 program: trimmedProgram,
+                programName: trimmedProgram,
+                degreeTitle: trimmedProgram,
                 location: trimmedLocation || graduate.location,
                 territorial: effectiveTerritorial,
                 sourceTerritorial: effectiveTerritorial,
@@ -1829,6 +1861,9 @@ export function GraduatesManagementModule() {
 
       toast.success('Graduado Actualizado', {
         description: `Los datos de ${trimmedFirstName} ${trimmedLastName} han sido actualizados exitosamente.`,
+      });
+      void refreshProgramCatalog().catch((error) => {
+        console.warn('No se pudo refrescar el uso de programas:', error);
       });
       setIsEditModalOpen(false);
     } catch (error: any) {
@@ -1856,6 +1891,9 @@ export function GraduatesManagementModule() {
       await graduadosService.graduados.eliminar(selectedUser.id);
 
       setGraduates((prev) => prev.filter((graduate) => graduate.id !== selectedUser.id));
+      void refreshProgramCatalog().catch((error) => {
+        console.warn('No se pudo refrescar el uso de programas:', error);
+      });
       setExpandedUserId((current) => (current === selectedUser.id ? null : current));
       toast.success('Graduado eliminado', {
         description: `Se eliminó: ${selectedUser.firstName} ${selectedUser.lastName}`,
@@ -2061,8 +2099,15 @@ export function GraduatesManagementModule() {
         programOptions={integrationProgramOptions}
         territorialOptions={territorialOptions}
         sedeTerritorialOptions={bulkSedeTerritorialOptions}
-        programsPeriod={INTEGRATION_PROGRAM_SOURCE_LABEL}
+        programsPeriod={PROGRAM_CATALOG_SOURCE_LABEL}
         structurePeriod={estructuraPeriodoCatalogo}
+      />
+
+      <GraduateProgramsModal
+        open={isProgramsModalOpen}
+        onOpenChange={setIsProgramsModalOpen}
+        programs={programCatalog}
+        onProgramsChange={setProgramCatalog}
       />
 
       {/* Header propio de esta vista (responsive con wrap natural, sin colapsar a iconos/menú) */}
@@ -2087,6 +2132,17 @@ export function GraduatesManagementModule() {
 
         {/* Derecha: acciones — mantienen su etiqueta y hacen wrap cuando falta espacio */}
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 lg:justify-end lg:flex-shrink-0">
+          {canEditGraduates && (
+            <button
+              type="button"
+              onClick={handleOpenProgramsModal}
+              aria-label="Administrar programas académicos"
+              className="graduate-programs-trigger w-full sm:w-auto"
+            >
+              <BookOpen aria-hidden="true" />
+              <span>Programas</span>
+            </button>
+          )}
           {canBulkUploadGraduates && (
             <button
               onClick={handleOpenBulkUploadModal}

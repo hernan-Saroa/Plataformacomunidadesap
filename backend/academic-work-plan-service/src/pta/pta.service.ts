@@ -8216,13 +8216,31 @@ export class PtaService {
     if (pares.length === 0) return null;
     if (auth.isSuperUser) return { pares, propios: pares };
 
-    const territorialesPropias = new Set((auth.territorialIds || []).map((v) => String(v)));
-    if (territorialesPropias.size === 0) {
+    const idsPropios = (auth.territorialIds || []).map((v) => String(v)).filter(Boolean);
+    if (idsPropios.length === 0) {
       throw new ForbiddenException(
         `No tiene una territorial asignada, por lo que no puede ${accion} el componente de Docencia territorial. `
         + 'La territorial se toma de la seccional registrada para la persona.',
       );
     }
+
+    // La territorial del usuario (auth.personas.id_seccional) y la de la asignatura
+    // (territorial_id) no siempre llegan con la misma representación: puede variar
+    // el tipo, el espaciado o venir el nombre en vez del id. Comparar con un
+    // Set.has() sobre la cadena cruda hacía que un aprobador territorial legítimo
+    // no cruzara con NINGÚN par y el backend rechazara la acción con un 403, de
+    // modo que la aprobación territorial no se podía completar. Se comparan tokens
+    // normalizados de id Y de nombre de seccional, por ambos lados.
+    const nombresPorId = await this.resolveNombrePorSeccionalId(
+      Array.from(new Set([...idsPropios, ...pares.map((p) => p.territorialId)])),
+    );
+    const tokensDe = (territorialId: string): string[] => [
+      this.normalizeSeccionalNombre(territorialId),
+      this.normalizeSeccionalNombre(nombresPorId.get(String(territorialId))),
+    ].filter(Boolean);
+    const territorialesPropias = new Set(idsPropios.flatMap(tokensDe));
+    const esTerritorialPropia = (territorialId: string): boolean =>
+      tokensDe(territorialId).some((t) => territorialesPropias.has(t));
 
     const nivelesPropios = new Set(
       accion === 'aprobar' ? (auth.allowedNivelesTerritorialAprobar || []) : (auth.allowedNivelesTerritorialRevisar || []),
@@ -8233,7 +8251,7 @@ export class PtaService {
       );
     }
 
-    const propios = pares.filter((p) => territorialesPropias.has(p.territorialId) && nivelesPropios.has(p.nivel));
+    const propios = pares.filter((p) => esTerritorialPropia(p.territorialId) && nivelesPropios.has(p.nivel));
     if (propios.length === 0) {
       const nombres = await this.resolveNombresSeccionales(Array.from(new Set(pares.map((p) => p.territorialId))));
       throw new ForbiddenException(
@@ -8394,7 +8412,10 @@ export class PtaService {
     const requestedNivel = coalesceString(body?.nivel) as any as PTANivelDocencia | undefined;
     let targets: Array<{ territorialId: string; nivel: PTANivelDocencia }>;
     if (requestedTerritorialId) {
-      const candidatos = propios.filter((p) => p.territorialId === requestedTerritorialId
+      // Mismo criterio tolerante que assertAlcanceTerritorial: el id de territorial
+      // no siempre viaja con idéntica representación entre cliente y backend.
+      const candidatos = propios.filter((p) =>
+        this.normalizeSeccionalNombre(p.territorialId) === this.normalizeSeccionalNombre(requestedTerritorialId)
         && (!requestedNivel || p.nivel === requestedNivel));
       if (candidatos.length === 0) {
         throw new ForbiddenException('No tiene permiso para decidir sobre esta territorial/nivel.');
@@ -8574,7 +8595,10 @@ export class PtaService {
     const requestedNivel = coalesceString(body?.nivel) as any as PTANivelDocencia | undefined;
     let targets: Array<{ territorialId: string; nivel: PTANivelDocencia }>;
     if (requestedTerritorialId) {
-      const candidatos = propios.filter((p) => p.territorialId === requestedTerritorialId
+      // Mismo criterio tolerante que assertAlcanceTerritorial: el id de territorial
+      // no siempre viaja con idéntica representación entre cliente y backend.
+      const candidatos = propios.filter((p) =>
+        this.normalizeSeccionalNombre(p.territorialId) === this.normalizeSeccionalNombre(requestedTerritorialId)
         && (!requestedNivel || p.nivel === requestedNivel));
       if (candidatos.length === 0) {
         throw new ForbiddenException('No tiene permiso para revisar esta territorial/nivel.');
