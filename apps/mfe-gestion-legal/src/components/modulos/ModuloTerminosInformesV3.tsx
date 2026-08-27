@@ -7,6 +7,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ExcelJS from 'exceljs';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
@@ -53,6 +54,23 @@ function nombreLegible(valor?: string | null): string | null {
  * crudo (incluyendo negativos, ej. "-3 días") sin distinguir un vencido de uno
  * próximo a vencer.
  */
+/**
+ * Formatea una fecha de vencimiento como DD/MM/AAAA usando los componentes UTC.
+ *
+ * Los vencimientos se generan/guardan como fecha calendario pura (sin hora
+ * significativa) y llegan del backend como instante UTC-medianoche
+ * (ej. "2026-09-15T00:00:00.000Z"). `toLocaleDateString()` los muestra en la
+ * zona horaria del navegador, así que en Colombia (UTC-5) un vencimiento del
+ * 15 se veía como 14 — un día atrás. Leer los componentes en UTC evita el corrimiento.
+ */
+function formatearFechaVencimiento(fecha: Date | string): string {
+  const d = new Date(fecha);
+  if (isNaN(d.getTime())) return '—';
+  const dia = String(d.getUTCDate()).padStart(2, '0');
+  const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dia}/${mes}/${d.getUTCFullYear()}`;
+}
+
 function formatearDiasRestantes(diasRestantes: number): { texto: string; color: string; bg: string } {
   if (diasRestantes < 0) {
     return { texto: `Vencido hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? 's' : ''}`, color: '#DC2626', bg: '#FEE2E2' };
@@ -115,6 +133,7 @@ export function ModuloTerminosInformesV3() {
   // Estados para Modal de Eliminar
   const [modalEliminarOpen, setModalEliminarOpen] = useState(false);
   const [terminoAEliminar, setTerminoAEliminar] = useState<{ id: string, permanente: boolean } | null>(null);
+  const [modalExportarOpen, setModalExportarOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
 
@@ -458,12 +477,12 @@ export function ModuloTerminosInformesV3() {
 
     autoTable(doc, {
       startY: 26,
-      head: [['ID', 'Asunto', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado']],
+      head: [['ID', 'Tipo de Actividad', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado']],
       body: solicitudesFiltradas.map((s) => [
         s.id,
         s.asunto || 'Sin asunto',
         s.responsable,
-        new Date(s.fechaVencimiento).toLocaleDateString('es-CO'),
+        formatearFechaVencimiento(s.fechaVencimiento),
         formatearDiasRestantes(s.diasRestantes).texto,
         s.etapa,
       ]),
@@ -497,11 +516,73 @@ export function ModuloTerminosInformesV3() {
     return doc;
   };
 
-  const handleExportarCalendario = () => {
+  const handleExportarPDF = () => {
     const doc = construirPdfCalendario();
     if (!doc) return;
-    doc.save(`calendario_vencimientos_${new Date().toISOString().split('T')[0]}.pdf`);
-    toast.success('Calendario exportado exitosamente');
+    doc.save(`terminos_informes_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exportado a PDF exitosamente');
+    setModalExportarOpen(false);
+  };
+
+  /** Construye el libro Excel de lo actualmente filtrado/visible, con las mismas columnas que el PDF. */
+  const construirExcelInformes = async (): Promise<ExcelJS.Workbook | null> => {
+    if (solicitudesFiltradas.length === 0) {
+      toast.error('No hay términos para exportar con los filtros actuales');
+      return null;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Términos e Informes');
+
+    const headers = ['ID', 'Tipo de Actividad', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado'];
+    worksheet.columns = [
+      { width: 16 }, { width: 40 }, { width: 22 }, { width: 14 }, { width: 18 }, { width: 14 }
+    ];
+
+    headers.forEach((header, index) => {
+      const cell = worksheet.getCell(1, index + 1);
+      cell.value = header;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003DA5' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    worksheet.getRow(1).height = 22;
+
+    solicitudesFiltradas.forEach((s, index) => {
+      const row = worksheet.getRow(index + 2);
+      row.getCell(1).value = s.id;
+      row.getCell(2).value = s.asunto || 'Sin asunto';
+      row.getCell(3).value = s.responsable;
+      row.getCell(4).value = formatearFechaVencimiento(s.fechaVencimiento);
+      row.getCell(5).value = formatearDiasRestantes(s.diasRestantes).texto;
+      row.getCell(6).value = s.etapa;
+
+      const fillColor = index % 2 === 0 ? 'FFFFFFFF' : 'FFF5F5F5';
+      for (let col = 1; col <= 6; col++) {
+        row.getCell(col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+      }
+    });
+
+    return workbook;
+  };
+
+  const handleExportarExcel = async () => {
+    const workbook = await construirExcelInformes();
+    if (!workbook) return;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `terminos_informes_${new Date().toISOString().split('T')[0]}.xlsx`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    toast.success('Exportado a Excel exitosamente');
+    setModalExportarOpen(false);
   };
 
   const handleImprimirCalendario = () => {
@@ -538,7 +619,7 @@ export function ModuloTerminosInformesV3() {
             label: 'Exportar',
             labelMobile: 'Exportar',
             icon: <Download className="w-4 h-4" />,
-            onClick: handleExportarCalendario,
+            onClick: () => setModalExportarOpen(true),
             variant: 'outline' as const
           },
           {
@@ -724,6 +805,32 @@ export function ModuloTerminosInformesV3() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Modal Seleccionar Formato de Exportación */}
+      {modalExportarOpen && (
+        <Dialog open={modalExportarOpen} onOpenChange={setModalExportarOpen}>
+          <DialogContent hideCloseButton className="max-w-md">
+            <DialogTitle>Exportar términos e informes</DialogTitle>
+            <DialogDescription>
+              Seleccione el formato en el que desea descargar {solicitudesFiltradas.length} término{solicitudesFiltradas.length === 1 ? '' : 's'}.
+            </DialogDescription>
+
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" onClick={handleExportarPDF} className="flex-1 flex-col h-auto py-4 gap-1">
+                <FileText className="w-6 h-6" />
+                <span className="font-semibold">PDF</span>
+              </Button>
+              <Button variant="outline" onClick={handleExportarExcel} className="flex-1 flex-col h-auto py-4 gap-1">
+                <Download className="w-6 h-6" />
+                <span className="font-semibold">Excel (.xlsx)</span>
+              </Button>
+            </div>
+            <Button variant="outline" onClick={() => setModalExportarOpen(false)} className="w-full">
+              Cancelar
+            </Button>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -803,7 +910,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                   <div>
                     <span className="text-gray-600">Fecha límite:</span>
                     <p className="font-semibold text-gray-900">
-                      {new Date(solicitud.fechaVencimiento).toLocaleDateString()}
+                      {formatearFechaVencimiento(solicitud.fechaVencimiento)}
                     </p>
                   </div>
                 </div>
@@ -980,7 +1087,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Asunto</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Tipo de Actividad</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Responsable</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Fecha Límite</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Días Restantes</th>
@@ -1006,7 +1113,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.responsable}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">
-                    {new Date(solicitud.fechaVencimiento).toLocaleDateString()}
+                    {formatearFechaVencimiento(solicitud.fechaVencimiento)}
                   </td>
                   <td className="px-4 py-3">
                     <BadgeSIGL
