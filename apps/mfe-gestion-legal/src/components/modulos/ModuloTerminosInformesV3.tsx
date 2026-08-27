@@ -936,15 +936,16 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
                   {solicitudesDia.slice(0, 2).map((s, idx) => (
                     <div
                       key={`cal-${s.metadata?.uuid || s.id}-${idx}`}
-                      className="text-[9px] px-1 py-0.5 rounded truncate"
+                      className="text-[9px] leading-tight px-1 py-0.5 rounded truncate"
                       style={{
                         backgroundColor: formatearDiasRestantes(s.diasRestantes).color,
                         color: '#FFFFFF'
                       }}
                       onClick={() => onVerDetalle(s)}
-                      title={formatearDiasRestantes(s.diasRestantes).texto}
+                      title={`${s.id} · ${s.asunto} — ${formatearDiasRestantes(s.diasRestantes).texto}`}
                     >
-                      {s.id}
+                      <span className="font-bold">{s.id}</span>
+                      {s.asunto ? ` · ${s.asunto}` : ''}
                     </div>
                   ))}
                   {solicitudesDia.length > 2 && (

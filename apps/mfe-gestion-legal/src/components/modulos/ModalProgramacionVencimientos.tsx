@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { Repeat, Bell } from 'lucide-react';
 import {
+    HORIZONTE_DURACION_INDEFINIDA_ANIOS,
     NOMBRES_MESES_CORTOS,
     PERIODICIDADES,
     Periodicidad,
@@ -13,6 +14,7 @@ import {
     generarOcurrencias,
     mesesPorDefecto,
 } from '../utils/programacionVencimientos';
+import { fechaLocalYMD } from '../utils/diasHabiles';
 
 interface ModalProgramacionVencimientosProps {
     open: boolean;
@@ -21,29 +23,39 @@ interface ModalProgramacionVencimientosProps {
     onSave: (config: ProgramacionVencimientos) => void;
 }
 
-const DEFAULT_CONFIG: ProgramacionVencimientos = {
-    periodicidad: 'MENSUAL',
-    plazoDesde: 1,
-    plazoHasta: 5,
-    tipoDias: 'HABILES',
-    mesesActivos: mesesPorDefecto('MENSUAL'),
-};
+const DURACIONES_ANIOS = [1, 2, 3, 5];
+
+function defaultConfig(): ProgramacionVencimientos {
+    return {
+        periodicidad: 'MENSUAL',
+        plazoDesde: 1,
+        plazoHasta: 5,
+        tipoDias: 'HABILES',
+        mesesActivos: mesesPorDefecto('MENSUAL'),
+        fechaInicio: fechaLocalYMD(new Date()),
+        duracionAnios: 1,
+    };
+}
 
 export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue, onSave }: ModalProgramacionVencimientosProps) {
-    const [periodicidad, setPeriodicidad] = useState<Periodicidad>(DEFAULT_CONFIG.periodicidad);
-    const [plazoDesde, setPlazoDesde] = useState<number>(DEFAULT_CONFIG.plazoDesde);
-    const [plazoHasta, setPlazoHasta] = useState<number>(DEFAULT_CONFIG.plazoHasta);
-    const [tipoDias, setTipoDias] = useState<TipoDiasPlazo>(DEFAULT_CONFIG.tipoDias);
-    const [mesesActivos, setMesesActivos] = useState<number[]>(DEFAULT_CONFIG.mesesActivos);
+    const [periodicidad, setPeriodicidad] = useState<Periodicidad>('MENSUAL');
+    const [plazoDesde, setPlazoDesde] = useState<number>(1);
+    const [plazoHasta, setPlazoHasta] = useState<number>(5);
+    const [tipoDias, setTipoDias] = useState<TipoDiasPlazo>('HABILES');
+    const [mesesActivos, setMesesActivos] = useState<number[]>(mesesPorDefecto('MENSUAL'));
+    const [fechaInicio, setFechaInicio] = useState<string>(() => fechaLocalYMD(new Date()));
+    const [duracionAnios, setDuracionAnios] = useState<number | null>(1);
 
     useEffect(() => {
         if (!open) return;
-        const base = initialValue || DEFAULT_CONFIG;
+        const base = initialValue || defaultConfig();
         setPeriodicidad(base.periodicidad);
         setPlazoDesde(base.plazoDesde);
         setPlazoHasta(base.plazoHasta);
         setTipoDias(base.tipoDias);
         setMesesActivos(base.mesesActivos);
+        setFechaInicio(base.fechaInicio || fechaLocalYMD(new Date()));
+        setDuracionAnios(base.duracionAnios ?? 1);
     }, [open, initialValue]);
 
     const handlePeriodicidadChange = (val: Periodicidad) => {
@@ -61,7 +73,8 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
     const plazoHastaValido = plazoHasta <= 31;
     const rangoValido = plazoHasta >= plazoDesde;
     const plazoValido = plazoDesdeValido && plazoHastaValido && rangoValido;
-    const puedeGuardar = plazoValido && mesesActivos.length > 0;
+    const fechaInicioValida = !!fechaInicio;
+    const puedeGuardar = plazoValido && mesesActivos.length > 0 && fechaInicioValida;
 
     const plazoError = !plazoDesdeValido
         ? 'El día inicial debe ser al menos 1.'
@@ -71,19 +84,20 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
                 ? 'El día final debe ser mayor o igual al inicial.'
                 : '';
 
+    const configActual: ProgramacionVencimientos = {
+        periodicidad, plazoDesde, plazoHasta, tipoDias, mesesActivos, fechaInicio, duracionAnios
+    };
+
     const ocurrencias = useMemo(() => {
-        if (!plazoValido || mesesActivos.length === 0) return [];
-        return generarOcurrencias({ periodicidad, plazoDesde, plazoHasta, tipoDias, mesesActivos });
-    }, [periodicidad, plazoDesde, plazoHasta, tipoDias, mesesActivos, plazoValido]);
+        if (!plazoValido || mesesActivos.length === 0 || !fechaInicioValida) return [];
+        return generarOcurrencias(configActual);
+    }, [periodicidad, plazoDesde, plazoHasta, tipoDias, mesesActivos, plazoValido, fechaInicio, duracionAnios, fechaInicioValida]);
 
     const tipoDiasLabel = tipoDias === 'HABILES' ? 'hábiles' : 'calendario';
-    const anioActual = new Date().getFullYear();
-    const anioGenerado = ocurrencias[0]?.anio ?? anioActual;
-    const esAnioSiguiente = anioGenerado !== anioActual;
 
     const handleGuardar = () => {
         if (!puedeGuardar) return;
-        onSave({ periodicidad, plazoDesde, plazoHasta, tipoDias, mesesActivos });
+        onSave(configActual);
         onOpenChange(false);
     };
 
@@ -154,6 +168,41 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
                         )}
                     </div>
 
+                    {/* Fecha de inicio y duración */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label className="text-sm font-bold text-gray-700">Empieza a contar desde</Label>
+                            <input
+                                type="date"
+                                value={fechaInicio}
+                                onChange={(e) => setFechaInicio(e.target.value)}
+                                className="w-full border-2 border-gray-300 focus:border-blue-500 rounded-lg px-2 py-1.5 text-sm"
+                            />
+                            <p className="text-xs text-gray-400">Cualquier vencimiento anterior a esta fecha no se genera.</p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-sm font-bold text-gray-700">Duración</Label>
+                            <Select
+                                value={duracionAnios === null ? 'INDEFINIDA' : String(duracionAnios)}
+                                onValueChange={(val: string) => setDuracionAnios(val === 'INDEFINIDA' ? null : Number(val))}
+                            >
+                                <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white z-[9999]">
+                                    {DURACIONES_ANIOS.map((n) => (
+                                        <SelectItem key={n} value={String(n)}>{n} año{n === 1 ? '' : 's'}</SelectItem>
+                                    ))}
+                                    <SelectItem value="INDEFINIDA">Indefinida</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {duracionAnios === null && (
+                                <p className="text-xs text-gray-400">Se generarán vencimientos para los próximos {HORIZONTE_DURACION_INDEFINIDA_ANIOS} años.</p>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Meses de presentación */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -194,7 +243,7 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
                             <Label className="text-sm font-bold text-gray-700">Vista previa · vencimientos generados</Label>
-                            <span className="text-xs font-semibold text-gray-500">{mesesActivos.length} vencimiento{mesesActivos.length === 1 ? '' : 's'} / año</span>
+                            <span className="text-xs font-semibold text-gray-500">{ocurrencias.length} vencimiento{ocurrencias.length === 1 ? '' : 's'} en total</span>
                         </div>
 
                         {ocurrencias.length === 0 ? (
@@ -203,12 +252,7 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
                             </p>
                         ) : (
                             <>
-                                {esAnioSiguiente && (
-                                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                                        Los vencimientos de {anioActual} ya vencieron para esta configuración. Se muestran y se crearán para {anioGenerado}.
-                                    </p>
-                                )}
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
                                     {ocurrencias.map((o) => (
                                         <div
                                             key={`${o.anio}-${o.mes}`}
@@ -222,7 +266,7 @@ export function ModalProgramacionVencimientos({ open, onOpenChange, initialValue
                                         >
                                             <div className="flex items-center justify-between font-bold text-gray-700">
                                                 <span className={o.esPasado ? 'text-gray-400' : ''}>
-                                                    {NOMBRES_MESES_CORTOS[o.mes - 1]}{o.anio !== anioActual ? ` ${o.anio}` : ''}
+                                                    {NOMBRES_MESES_CORTOS[o.mes - 1]} {o.anio}
                                                 </span>
                                                 {o.esProximo && (
                                                     <span className="text-[10px] font-bold text-blue-600 bg-blue-100 rounded-full px-1.5 py-0.5">Próximo</span>
