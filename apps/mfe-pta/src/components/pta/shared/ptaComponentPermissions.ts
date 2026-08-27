@@ -617,3 +617,49 @@ function hasExtensionSectionData(pta: any, sections: string[]): boolean {
   if (sectionMatches) return true;
   return Number(pta?.horas_extension || 0) > 0 && acts.length === 0;
 }
+
+/**
+ * EFDS-1497 — Etiqueta legible de cada componente GRANULAR de aprobación.
+ *
+ * El progreso de aprobación se mostraba solo agregado ("3 / 9 componentes"), sin
+ * decir cuáles: Docencia no se distinguía por Pregrado / Posgrado / Territorial
+ * ni Extensión por tipo. Este mapa es la fuente única de esos rótulos para todas
+ * las vistas que discriminan el avance (backoffice y portal del docente), de modo
+ * que no vuelvan a divergir como pasó con los mapas locales.
+ */
+export const PTA_COMPONENT_LABEL: Record<PTAComponentKey, string> = {
+  academica_pregrado: 'Docencia — Pregrado',
+  academica_posgrado: 'Docencia — Posgrado',
+  academica_territorial: 'Docencia — Territorial',
+  investigacion: 'Investigación',
+  ext_capacitacion: 'Extensión — Capacitación',
+  ext_procesos: 'Extensión — Procesos de Selección',
+  ext_fortalecimiento: 'Extensión — Fortalecimiento',
+  ext_gobierno: 'Extensión — Alto Gobierno',
+  complementarias: 'Complementarias',
+  complementarias_pregrado: 'Complementarias — Pregrado',
+  complementarias_posgrado: 'Complementarias — Posgrado',
+  complementarias_territorial: 'Complementarias — Territorial',
+  complementarias_gestion_profesoral: 'Complementarias — Gestión Profesoral',
+};
+
+/** Orden estable de presentación del avance, agrupado por rótulo visible. */
+export const PTA_COMPONENT_PROGRESS_ORDER: PTAComponentKey[] = [
+  'academica_pregrado',
+  'academica_posgrado',
+  'academica_territorial',
+  'investigacion',
+  'ext_capacitacion',
+  'ext_procesos',
+  'ext_fortalecimiento',
+  'ext_gobierno',
+  'complementarias',
+  'complementarias_pregrado',
+  'complementarias_posgrado',
+  'complementarias_territorial',
+  'complementarias_gestion_profesoral',
+];
+
+export function labelDeComponente(key: string): string {
+  return PTA_COMPONENT_LABEL[key as PTAComponentKey] || key;
+}

@@ -528,7 +528,7 @@ function TarjetaAuditoria({
               </Button>
               
               {/* Editar auditoría */}
-              {auditoria.estado === 'Programa Anual' && puedeEditar && (
+              {(auditoria.estado === 'Programa Anual' || auditoria.estado === 'Planeación') && puedeEditar && (
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
