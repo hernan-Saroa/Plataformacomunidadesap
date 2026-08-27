@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Docker Compose para entorno PROD (Producción)
 # Servidor: https://comunidadesap.esap.edu.co
 # Uso: docker-compose -f docker-compose.prod.yml up -d --build
@@ -58,7 +56,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_prod_2024}
 
       # CORS - Permitir acceso desde el frontend
-      CORS_ORIGIN: ${CORS_ORIGIN:-https://comunidadesap.esap.edu.co}
+      CORS_ORIGIN: ${CORS_ORIGIN:-NOT_DEFINED}
 
       # Rutas internas a otros microservicios (DNS de Docker)
       AUTH_SERVICE_URL: http://auth-service-prod:3001
@@ -72,6 +70,7 @@ services:
       NOTIFICATIONS_SERVICE_URL: http://notifications-service-prod:3009
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service-prod:3010
       AUDIT_SERVICE_URL: http://audit-service-prod:3011
+      HIRING_SERVICE_URL: http://hiring-service-prod:3012
     ports:
       - "3000:3000"
     depends_on:
@@ -86,6 +85,7 @@ services:
       - notifications-service
       - travel-expenses-service
       - audit-service
+      - hiring-service
     networks:
       - superapp-net-prod
     restart: unless-stopped
@@ -207,7 +207,7 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-prod:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-prod:3009
-      PUBLIC_APP_URL: https://comunidadesap.esap.edu.co
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-NOT_DEFINED}
     ports:
       - "3003:3003"
     depends_on:
@@ -252,6 +252,7 @@ services:
       - "3004:3004"
     volumes:
       - ./backend/certification-service/uploads:/app/uploads
+      - ./backend/certification-service/private-uploads:/app/private-uploads
     depends_on:
       db:
         condition: service_healthy
@@ -388,7 +389,6 @@ services:
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_prod_2024}
 
-      
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
@@ -398,7 +398,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-prod:3000
-      CORS_ORIGIN: ${CORS_ORIGIN:-https://comunidadesap.esap.edu.co}
+      CORS_ORIGIN: ${CORS_ORIGIN:-NOT_DEFINED}
     ports:
       - "3008:3008"
     depends_on:
@@ -487,7 +487,7 @@ services:
       - superapp-net-prod
     restart: unless-stopped
 
- # ============ AUDIT SERVICE ============
+  # ============ AUDIT SERVICE ============
   audit-service:
     build:
       context: ./backend/audit-service
@@ -513,7 +513,35 @@ services:
     networks:
       - superapp-net-prod
     restart: unless-stopped
-    
+
+  # ============ HIRING SERVICE ============
+  hiring-service:
+    build:
+      context: ./backend/hiring-service
+      dockerfile: Dockerfile
+    container_name: hiring-service-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3012
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: hiring
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_prod_2024}
+    ports:
+      - "3012:3012"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net-prod
+    restart: unless-stopped
+
   # ============ POSTGRES ============
   db:
     image: postgres:16

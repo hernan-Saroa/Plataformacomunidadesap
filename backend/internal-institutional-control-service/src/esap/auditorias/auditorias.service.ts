@@ -564,18 +564,21 @@ export class AuditoriasService {
     }
 
     if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
-      serialized.equipoAuditores = auditoria.equipoAuditores.map(eq => {
+      serialized.equipoAuditores = auditoria.equipoAuditores
+        .filter(eq => eq.activo !== false)
+        .map(eq => {
         const personaId = eq.personaId ? String(eq.personaId).toLowerCase() : null;
         const nombre = personaId ? namesMap?.get(personaId) : null;
         
         // Si tenemos el nombre resuelto, lo devolvemos como string para el DTO
-        if (nombre) return nombre;
+        // if (nombre) return nombre;
 
         return {
           ...eq,
           // ✅ FIX: id y personaId son UUIDs en la DB — NO convertir con Number() (daría NaN→null)
           id: eq.id ? String(eq.id) : null,
           personaId: eq.personaId ? String(eq.personaId) : null,
+          nombre: nombre || '',
         };
       });
     }

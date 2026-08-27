@@ -657,7 +657,7 @@ export function FormularioProcesoDafpVisual({
           ? 'Moderado'
           : 'Bajo',
       scoreRiesgo: ponderacionFinalDafp,
-      auditable: priorizacionAnos.length > 0,
+      auditable: priorizacionAnos.includes(1),
       horasEstimadas: calcHorasEstimadas(nivelCriticidadDafp, cicloRotacionDafp),
       procesoEspecial: procesoEspecialActivo,
       modoProcesoEspecial: modoEspecialActivo,

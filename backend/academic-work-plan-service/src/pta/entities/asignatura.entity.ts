@@ -18,6 +18,9 @@ export class AsignaturaEntity {
   @Column({ name: 'nombre_base', type: 'varchar', length: 200, nullable: true })
   nombreBase: string | null;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  pensum: string | null;
+
   @Column({ name: 'modalidad_sufijo', type: 'varchar', length: 30, nullable: true })
   modalidadSufijo: string | null;
 
@@ -60,6 +63,12 @@ export class AsignaturaEntity {
 
   @Column({ name: 'horas_fijas_pta', type: 'int', nullable: true })
   horasFijasPta: number | null;
+
+  @Column({ name: 'horas_clase', type: 'int', nullable: true })
+  horasClase: number | null;
+
+  @Column({ name: 'horas_pta', type: 'int', nullable: true })
+  horasPta: number | null;
 
   @Column({ name: 'tipo_asignatura', type: 'varchar', length: 30, default: 'teorica' })
   tipoAsignatura: string;

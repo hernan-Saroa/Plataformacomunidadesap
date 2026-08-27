@@ -881,6 +881,16 @@ export class PtaController {
     return { success: true, data };
   }
 
+  // Desagregado por territorial del componente "academica_territorial": cuando el
+  // PTA tiene asignaturas de 2+ Direcciones Territoriales distintas (ej. Antioquia
+  // y Bolívar), cada una se aprueba/devuelve por separado. Devuelve [] cuando el PTA
+  // no tiene asignaturas territoriales.
+  @Get(':ptaId/aprobacion-territorial')
+  async getAprobacionTerritorial(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getTerritorialApprovalStatus(ptaId);
+    return { success: true, data };
+  }
+
   @Post(':ptaId/aprobar-componente')
   @UseGuards(PtaAuthGuard)
   async aprobarComponente(@Param('ptaId') ptaId: string, @Body() body: any, @Req() req: Request) {
@@ -890,9 +900,28 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Post('aprobar-componentes-lote')
+  @UseGuards(PtaAuthGuard)
+  async aprobarComponentesLote(@Body() body: any, @Req() req: Request) {
+    // Aprobación masiva: mismo criterio de autorización que aprobar-componente,
+    // aplicado individualmente por cada (ptaId, componente) del lote.
+    const data = await this.ptaService.aprobarComponentesLote(body, req.ptaAuth);
+    return { success: true, data };
+  }
+
   @Get(':ptaId/componentes-revision')
   async getComponentesRevision(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getComponentesRevision(ptaId);
+    return { success: true, data };
+  }
+
+  // Desagregado por (territorial, nivel) de la etapa de Revisión del componente
+  // "academica_territorial": mismo criterio que getAprobacionTerritorial, pero
+  // para la revisión (preaprobación). Devuelve [] cuando el PTA no tiene
+  // asignaturas territoriales.
+  @Get(':ptaId/revision-territorial')
+  async getRevisionTerritorial(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getTerritorialReviewStatus(ptaId);
     return { success: true, data };
   }
 

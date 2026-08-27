@@ -40,7 +40,30 @@ export interface ModulesFilters {
   category?: 'backoffice' | 'portal';
   is_active?: boolean;
   search?: string;
+  include_permissions?: boolean;
   include_inactive_permissions?: boolean;
+}
+
+export interface ActiveModuleInfo {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  icon?: string;
+  color?: string;
+  display_orde?: number,
+  category?: string,
+  is_active?: boolean
+}
+
+export interface UpdateModuleDto {
+  name?: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  display_order?: number;
+  category?: 'backoffice' | 'portal';
+  is_active?: boolean;
 }
 
 export interface ModulesStats {
@@ -70,9 +93,39 @@ export const modulesService = {
     if (filters.include_inactive_permissions !== undefined) {
       params.include_inactive_permissions = filters.include_inactive_permissions;
     }
+    if (filters.include_permissions !== undefined) {
+      params.include_permissions = filters.include_permissions;
+    }
 
     const response = await apiClient.get<ModuleWithPermissions[]>(`${SERVICE_PREFIX}/modules`, params);
     return response;
+  },
+
+  /**
+   * Obtener lista de módulos activos (is_active = true) con código, nombre y descripción desde la BD
+   */
+  async getActiveModules(): Promise<ActiveModuleInfo[]> {
+    try {
+      const modules = await this.getModulesWithPermissions({ is_active: true, include_permissions: false });
+      return (modules || []).map((m) => ({
+        code: m.code,
+        name: m.name,
+        description: m.description || '',
+        icon: m.icon,
+        color: m.color,
+      }));
+    } catch (error) {
+      console.warn('No se pudieron obtener los módulos activos de la DB:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Obtener lista de códigos de módulos que están activos (is_active = true) en la base de datos
+   */
+  async getActiveModuleCodes(): Promise<string[]> {
+    const active = await this.getActiveModules();
+    return active.map((m) => m.code);
   },
 
   /**
@@ -80,6 +133,13 @@ export const modulesService = {
    */
   async getStats(): Promise<ModulesStats> {
     return apiClient.get<ModulesStats>(`${SERVICE_PREFIX}/modules/stats`);
+  },
+
+  /**
+   * Actualizar un módulo (Exclusivo para usuarios con rol SUPER_ADMIN)
+   */
+  async updateModule(idOrCode: string, data: UpdateModuleDto): Promise<ModuleWithPermissions> {
+    return apiClient.put<ModuleWithPermissions>(`${SERVICE_PREFIX}/modules/${idOrCode}`, data);
   },
 
   /**

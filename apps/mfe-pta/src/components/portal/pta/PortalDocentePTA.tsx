@@ -18,7 +18,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  FileText, Plus, ChevronLeft, Calendar, Clock, CheckCircle2,
+  FileText, ChevronLeft, Calendar, Clock, CheckCircle2,
   AlertTriangle, Download, Eye, ArrowRight, RotateCcw, XCircle,
   Send, MessageSquare, BarChart3, Zap, Info, Bell,
   MapPin, BookOpen, Printer, Edit3, RefreshCw, Target,
@@ -30,9 +30,11 @@ import {
   agregarComentarioConcertacion, updatePTAStatus,
   getMisSolicitudesPTA, marcarSolicitudLeida,
   getComponentesAprobacion,
+  getAprobacionTerritorial,
   getActivePeriodoAcademico,
   getBancoDocenteById,
 } from '../../../services/api/ptaApi';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
@@ -45,10 +47,16 @@ import { V11CalendarioAcademico, V12AdjuntosDocumentos, V13IndicadoresPersonales
 import { VerificacionQRPublicaPTA } from '../../pta/VerificacionQRPublicaPTA';
 import { CardSkeleton, EmptyStateIllustration } from '../../ui/CardSkeleton';
 import { ReportePTAInstitucional } from './ReportePTAInstitucional';
+import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { ptaHabilitadoParaSeguimiento } from '../../pta/shared/evidenciasJustificacion';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
+import {
+  PTA_COMPLEMENTARIAS_COMPONENT_KEYS,
+  PTA_COMPONENT_PROGRESS_ORDER,
+  labelDeComponente,
+} from '../../pta/shared/ptaComponentPermissions';
 import { formatPtaCompletionPercentage, formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 
 interface PortalDocentePTAProps {
@@ -106,6 +114,38 @@ const getEstadoCfg = (estado: string) => {
   const configured = ESTADO_CONFIG[estado];
   return { ...visual, label: configured?.label || visual.label };
 };
+
+// Etiquetas legibles del componente/sub-componente afectado por un evento del
+// historial (mismo mapa que usa el backoffice en PTADetallePanelBackoffice.tsx,
+// para que el docente vea el mismo detalle que ya ve gestión profesoral).
+const HISTORIAL_COMP_LABELS: Record<string, string> = {
+  docencia: 'Docencia',
+  academica: 'Docencia', // legacy (pre-split)
+  academica_pregrado: 'Docencia (Pregrado)',
+  academica_posgrado: 'Docencia (Posgrado)',
+  academica_territorial: 'Docencia (Territorial)',
+  investigacion: 'Investigación',
+  extension: 'Extensión',
+  ext_capacitacion: 'Ext. Capacitación',
+  ext_procesos: 'Ext. Procesos Selección',
+  ext_fortalecimiento: 'Ext. Fortalecimiento',
+  ext_gobierno: 'Ext. Alto Gobierno',
+  complementarias: 'Complementarias',
+  complementarias_pregrado: 'Complementarias (Pregrado)',
+  complementarias_posgrado: 'Complementarias (Posgrado)',
+  academicas_admin: 'Acad. Admin.',
+};
+
+function parseDetallesTransicion(value: unknown): Record<string, any> {
+  if (value && typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string' || !value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 function timeAgo(d: string): string {
   const now = Date.now();
@@ -285,20 +325,49 @@ function ResolucionChip({ nombre, url }: { nombre?: string; url?: string }) {
 // V08: Component-based approval tracker (Docencia, Inv, Ext, Comp, AADM)
 // ═══════════════════════════════════════════════════════════════════════
 const COMPONENT_STEPS = [
-  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4' },
-  { key: 'investigacion', label: 'Investiga...', icon: FlaskConical, color: '#ED7D31' },
+  { key: 'academica', label: 'Docencia', icon: BookOpen, color: '#4472C4', compKeys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'] },
+  { key: 'investigacion', label: 'Investigación', icon: FlaskConical, color: '#ED7D31' },
   { key: 'extension', label: 'Extensión', icon: Globe, color: '#059669', compKeys: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'] },
   // Complementarias incluye la sub-sección Académico-Administrativa (AADM fusionado).
-  { key: 'complementarias', label: 'Complem...', icon: Briefcase, color: '#FFC000' },
+  // Lista compartida (no una copia literal): con los ámbitos Territorial y
+  // Gestión Profesoral añadidos en EFDS-1353, una copia local queda corta y el
+  // componente se muestra como si no aplicara aunque tenga actividades.
+  { key: 'complementarias', label: 'Complementarias', icon: Briefcase, color: '#D89E00', compKeys: [...PTA_COMPLEMENTARIAS_COMPONENT_KEYS] },
 ];
 
-function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: string; componentesAprobacion?: any[] }) {
+function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }: { estado: string; componentesAprobacion?: any[]; pta?: any }) {
   const isAprobado = estado === 'Aprobado' || estado === 'En Firme' || estado === 'Finalizado';
   const isBorrador = estado === 'Borrador';
 
-  const getStatusForComponent = (compKeys: string[]) => {
+  /**
+   * Fuente de verdad: `componentes_estado` del backend (claves colapsadas
+   * 'academica' / 'investigacion' / 'extension' / 'complementarias'), el mismo
+   * dato que usa el detalle del PTA y el backoffice.
+   *
+   * Antes esta barra agregaba por su cuenta las filas granulares y exigia que
+   * TODAS estuvieran 'aprobado'. Eso ignoraba la regla del backend de que un
+   * sub-componente SIN HORAS no bloquea (estaAprobado): un PTA con Docencia solo
+   * en Sede Central conserva una fila 'academica_territorial' en pendiente, asi
+   * que la barra mostraba "Pendiente" mientras el detalle y el backoffice --que
+   * si aplican esa regla-- mostraban "Aprobado".
+   *
+   * La agregacion granular se conserva como respaldo para payloads sin
+   * `componentes_estado`.
+   */
+  const getStatusForComponent = (compKeys: string[], collapsedKey: string) => {
     if (isAprobado) return 'aprobado';
     if (isBorrador) return 'pendiente';
+
+    const delBackend = Array.isArray(pta?.componentes_estado)
+      ? pta.componentes_estado.find((c: any) => c?.key === collapsedKey)?.estado
+      : undefined;
+    if (delBackend) {
+      if (delBackend === 'aprobado') return 'aprobado';
+      if (delBackend === 'devuelto') return 'devuelto';
+      // 'pendiente', 'en_revision' y 'no_iniciado' se muestran como pendientes.
+      return 'pendiente';
+    }
+
     const approvals = componentesAprobacion.filter(c => compKeys.includes(c.componente));
     if (approvals.length === 0) return 'pendiente';
     if (approvals.some(a => a.estado === 'devuelto')) return 'devuelto';
@@ -310,14 +379,14 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
     <div className="w-full py-2">
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(5, 1fr)',
-        gap: '6px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: '8px',
         width: '100%',
       }}>
         {COMPONENT_STEPS.map(step => {
           const Icon = step.icon;
           const keys = (step as any).compKeys || [step.key];
-          const status = getStatusForComponent(keys);
+          const status = getStatusForComponent(keys, step.key);
 
           let bg = '#FFFBEB';
           let borderColor = '#FEF3C7';
@@ -349,7 +418,7 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                padding: '8px 4px 6px',
+                padding: '10px 8px 8px',
                 borderRadius: '10px',
                 border: `1.5px solid ${borderColor}`,
                 background: bg,
@@ -359,19 +428,19 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
               }}
             >
               <div style={{
-                width: 22,
-                height: 22,
-                borderRadius: 6,
+                width: 26,
+                height: 26,
+                borderRadius: 7,
                 background: iconBg,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <Icon style={{ width: 12, height: 12, color: iconColor }} />
+                <Icon style={{ width: 14, height: 14, color: iconColor }} />
               </div>
               <span style={{
-                fontSize: '0.58rem',
+                fontSize: '0.64rem',
                 fontWeight: 700,
                 color: '#374151',
                 textAlign: 'center',
@@ -384,7 +453,7 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
                 {step.label}
               </span>
               <span style={{
-                fontSize: '0.5rem',
+                fontSize: '0.56rem',
                 fontWeight: 700,
                 color: statusColor,
                 textAlign: 'center',
@@ -396,6 +465,116 @@ function ComponentApprovalBar({ estado, componentesAprobacion = [] }: { estado: 
           );
         })}
       </div>
+
+      {/* EFDS-1497: detalle agrupado por componente para conservar la granularidad
+          sin presentar una lista plana difícil de recorrer. */}
+      {(() => {
+        const detalle = PTA_COMPONENT_PROGRESS_ORDER
+          .map(k => ({ key: k, fila: componentesAprobacion.find(c => c.componente === k) }))
+          .filter(item => !!item.fila);
+        if (detalle.length === 0) return null;
+
+        const grupos = COMPONENT_STEPS
+          .map(step => {
+            const keys = ((step as any).compKeys || [step.key]) as string[];
+            return {
+              ...step,
+              items: detalle.filter(item => keys.includes(item.key)),
+            };
+          })
+          .filter(grupo => grupo.items.length > 0);
+
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8,
+              color: '#64748B', fontSize: '0.62rem', fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+            }}>
+              <span style={{ width: 5, height: 5, borderRadius: 999, background: '#94A3B8' }} />
+              Detalle de aprobación
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+              gap: 8,
+              alignItems: 'stretch',
+            }}>
+              {grupos.map(grupo => {
+                const GroupIcon = grupo.icon;
+                return (
+                  <div key={grupo.key} style={{
+                    border: '1px solid #CBD5E1', borderRadius: 11,
+                    background: '#FFFFFF', overflow: 'hidden', minWidth: 0,
+                    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.12), 0 2px 5px rgba(15, 23, 42, 0.08)',
+                  }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 7,
+                      padding: '8px 10px', borderBottom: '1px solid #EEF2F6',
+                      background: 'white',
+                    }}>
+                      <div style={{
+                        width: 24, height: 24, borderRadius: 7,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: `${grupo.color}14`, flexShrink: 0,
+                      }}>
+                        <GroupIcon style={{ width: 13, height: 13, color: grupo.color }} />
+                      </div>
+                      <span style={{ fontSize: '0.67rem', fontWeight: 800, color: '#334155' }}>
+                        {grupo.label}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', padding: '4px 10px 6px' }}>
+                      {grupo.items.map(({ key, fila }, itemIndex) => {
+                        const estadoComp = isAprobado ? 'aprobado' : String((fila as any)?.estado || 'pendiente');
+                        const auto = estadoComp === 'aprobado' && (fila as any)?.aprobadorNombre === 'Sistema';
+                        const visual = auto
+                          ? { label: 'No aplica', color: '#64748B', bg: '#F1F5F9', borde: '#E2E8F0', punto: '#CBD5E1' }
+                          : estadoComp === 'aprobado'
+                            ? { label: 'Aprobado', color: '#15803D', bg: '#F0FDF4', borde: '#BBF7D0', punto: '#22C55E' }
+                            : estadoComp === 'devuelto'
+                              ? { label: 'Devuelto', color: '#B91C1C', bg: '#FEF2F2', borde: '#FECACA', punto: '#EF4444' }
+                              : { label: 'Pendiente', color: '#B45309', bg: '#FFFBEB', borde: '#FDE68A', punto: '#F59E0B' };
+                        const etiquetaCompleta = labelDeComponente(key);
+                        const separador = etiquetaCompleta.indexOf(' — ');
+                        const etiqueta = separador >= 0
+                          ? etiquetaCompleta.slice(separador + 3)
+                          : (grupo.items.length > 1 ? 'General' : etiquetaCompleta);
+
+                        return (
+                          <div key={key} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                            minHeight: 31, padding: '5px 0',
+                            borderTop: itemIndex > 0 ? '1px solid #EEF2F6' : 'none',
+                          }}>
+                            <span style={{
+                              display: 'flex', alignItems: 'center', gap: 6,
+                              color: '#475569', fontSize: '0.65rem', fontWeight: 600,
+                              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              <span style={{ width: 5, height: 5, borderRadius: 999, background: visual.punto, flexShrink: 0 }} />
+                              {etiqueta}
+                            </span>
+                            <span style={{
+                              flexShrink: 0, padding: '2px 7px', borderRadius: 999,
+                              background: visual.bg, color: visual.color,
+                              border: `1px solid ${visual.borde}`, fontWeight: 700, fontSize: '0.57rem',
+                            }}>
+                              {visual.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -428,7 +607,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   const [showSolicitudModal, setShowSolicitudModal] = useState(false);
   const [todasLasSolicitudes, setTodasLasSolicitudes] = useState<any[]>([]);
   const [componentApprovalsByPta, setComponentApprovalsByPta] = useState<Record<string, any[]>>({});
+  const [aprobacionTerritorialReporte, setAprobacionTerritorialReporte] = useState<any[]>([]);
   const loadPtasRequestRef = useRef(0);
+  const loadSolicitudesRequestRef = useRef(0);
 
   // El portal docente siempre trabaja en el periodo marcado como vigente. Los
   // registros históricos se conservan en memoria para no modificar reglas
@@ -510,22 +691,49 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
   // ═══ Solicitudes PTA — cargar notificaciones resueltas ═══
   const loadSolicitudes = useCallback(async () => {
+    const requestId = ++loadSolicitudesRequestRef.current;
     try {
       const res = await getMisSolicitudesPTA(userPersonId);
+      if (requestId !== loadSolicitudesRequestRef.current) return;
       if (res.success && Array.isArray(res.data)) {
         setTodasLasSolicitudes(res.data);
+      } else {
+        setTodasLasSolicitudes([]);
       }
     } catch (err) {
+      if (requestId !== loadSolicitudesRequestRef.current) return;
+      setTodasLasSolicitudes([]);
       console.log('[Portal] Error loading solicitudes:', err);
     }
   }, [userPersonId]);
 
-  const solicitudesResueltas = useMemo(() =>
-    todasLasSolicitudes.filter(s =>
-      ['aprobado', 'denegado', 'gestionada'].includes(s.estado)
-      && !s.notificacionLeida
-    ),
-  [todasLasSolicitudes]);
+  // El mismo árbol React puede reutilizarse al cambiar de cuenta en el portal.
+  // Invalidar de inmediato la petición anterior evita que sus avisos se pinten
+  // sobre el siguiente docente mientras termina la nueva consulta.
+  useEffect(() => {
+    loadSolicitudesRequestRef.current += 1;
+    setTodasLasSolicitudes([]);
+  }, [userPersonId]);
+
+  const solicitudesResueltas = useMemo(() => {
+    const ptaIdsPropios = new Set(
+      allPtas.map((pta: any) => String(pta?.id || '').trim()).filter(Boolean),
+    );
+
+    return todasLasSolicitudes.filter((solicitud: any) => {
+      if (!['aprobado', 'denegado', 'gestionada'].includes(solicitud?.estado)) return false;
+      if (solicitud?.notificacionLeida) return false;
+
+      // Una resolución de edición solo pertenece al portal que también posee el
+      // PTA asociado. Es una segunda barrera frente a respuestas obsoletas o a
+      // registros históricos inconsistentes; las solicitudes de creación no
+      // tienen ptaId y siguen dependiendo del aislamiento del endpoint.
+      const esEdicion = (solicitud?.tipoSolicitud || 'creacion') === 'edicion_componentes';
+      if (!esEdicion) return true;
+      const ptaId = String(solicitud?.ptaId || '').trim();
+      return Boolean(ptaId && ptaIdsPropios.has(ptaId));
+    });
+  }, [todasLasSolicitudes, allPtas]);
 
   // HU-12 — Versiones del PTA del mismo periodo (R01, R02, …). El docente puede tener
   // hasta 2 PTAs por periodo (el original R01 + el segundo R02 tras solicitud aprobada).
@@ -540,6 +748,19 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         new Date(b.created_at || b.createdAt || 0).getTime());
   }, [ptas, selectedPta]);
 
+  // El detalle actual del API expone `historialEstados`; `historial` se mantiene
+  // como fallback para respuestas legacy. Normalizarlo aquí evita que la traza
+  // exista en base de datos/backoffice pero aparezca vacía en el portal docente.
+  const historialPtaSeleccionado = useMemo(() => {
+    const raw = selectedPta?.historialEstados ?? selectedPta?.historial;
+    if (!Array.isArray(raw)) return [];
+    return [...raw].sort((a: any, b: any) => {
+      const fechaA = new Date(a?.createdAt || a?.created_at || a?.fecha || 0).getTime();
+      const fechaB = new Date(b?.createdAt || b?.created_at || b?.fecha || 0).getTime();
+      return fechaB - fechaA;
+    });
+  }, [selectedPta]);
+
   const handleDismissSolicitud = async (id: string) => {
     await marcarSolicitudLeida(id);
     // Reload locally to remove from resueltas list while keeping the approval in state for unblocking PTA creation
@@ -551,6 +772,21 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
   useEffect(() => {
     if (selectedPtaId) loadPtaDetalle(selectedPtaId);
   }, [selectedPtaId, loadPtaDetalle]);
+
+  // El desglose de Docencia por (territorial, nivel) solo se necesita para
+  // justificar el pie de los reportes (institucional e Imprimir/PDF); se trae
+  // bajo demanda al abrir cualquiera de los dos, no en la carga masiva de `loadPtas`.
+  useEffect(() => {
+    if (!(isReporteOpen || vista === 'v09_imprimir') || !selectedPta?.id) {
+      setAprobacionTerritorialReporte([]);
+      return;
+    }
+    let cancelado = false;
+    getAprobacionTerritorial(selectedPta.id).then(res => {
+      if (!cancelado) setAprobacionTerritorialReporte(res.success && Array.isArray(res.data) ? res.data : []);
+    });
+    return () => { cancelado = true; };
+  }, [isReporteOpen, vista, selectedPta?.id]);
 
   useEffect(() => {
     if (
@@ -733,7 +969,16 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
     return <PTAForm onBack={() => { setVista('v01_dashboard'); setEditPtaId(null); loadPtas(); }} userPersonId={userPersonId} ptaId={editPtaId} />;
   }
   if (vista === 'v09_imprimir' && selectedPtaId) {
-    return <PTAResumenPrint pta={selectedPta} onClose={() => setVista('v01_dashboard')} userPersonId={userPersonId} userName={userName} />;
+    return (
+      <PTAResumenPrint
+        pta={selectedPta}
+        onClose={() => setVista('v01_dashboard')}
+        userPersonId={userPersonId}
+        userName={userName}
+        componentesAprobacion={componentApprovalsByPta[selectedPtaId] || []}
+        aprobacionTerritorial={aprobacionTerritorialReporte}
+      />
+    );
   }
 
   const VISTAS_NAV = [
@@ -793,14 +1038,6 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
         </div>
         <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <PTASyncIndicator syncState={syncState} sistema="portal" compact />
-          {puedeCrearPTA && (
-            <button
-              onClick={() => { setVista('v03_formulario'); setEditPtaId(null); }}
-              className="flex items-center justify-center gap-2 h-10 px-5 sm:px-6 rounded-xl border-none text-white text-[12px] sm:text-[13px] font-extrabold shadow-[0_4px_14px_0_rgba(0,61,165,0.3)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.2)] active:scale-[0.97] transition-all duration-300 cursor-pointer bg-[#003DA5] hover:bg-[#002B75]"
-            >
-              <Plus className="w-4 h-4" /> <span className="hidden xs:inline">Nuevo</span> PTA
-            </button>
-          )}
           {tieneSolicitudPendiente && (
             <span
               className="hidden md:flex items-center justify-center gap-1.5 h-9 px-3 rounded-xl border border-amber-200 text-amber-700 text-[11px] font-bold bg-amber-50"
@@ -908,7 +1145,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                 <EmptyStateIllustration 
                   title="Aún no tienes PTAs registrados"
                   description="No tienes planes de trabajo en tu base de datos para este periodo."
-                  actionText={puedeCrearPTA ? "Crear mi primer PTA" : undefined}
+                  actionText={puedeCrearPTA ? "Crear PTA" : undefined}
                   onAction={puedeCrearPTA ? () => { setVista('v03_formulario'); setEditPtaId(null); } : undefined}
                 />
               ) : (
@@ -1009,6 +1246,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                             <ComponentApprovalBar
                               estado={pta.estado}
                               componentesAprobacion={componentApprovalsByPta[pta.id] || []}
+                              pta={pta}
                             />
                           </div>
 
@@ -1099,8 +1337,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                         <Eye className="w-3 h-3" /> <span className="hidden sm:inline">Revisar</span> propuesta
                       </button>
                     )}
-                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[0.72rem] font-semibold cursor-pointer hover:bg-gray-50 hover:shadow-sm active:scale-[0.97] transition-all">
-                      <Printer className="w-3 h-3" /> <span className="hidden xs:inline">Imprimir</span>
+                    <button onClick={() => navigateToVista('v09_imprimir', selectedPta.id)} title="Descargar PDF" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[0.72rem] font-semibold cursor-pointer hover:bg-gray-50 hover:shadow-sm active:scale-[0.97] transition-all">
+                      <Download className="w-3 h-3" /> <span className="hidden xs:inline">Descargar PDF</span>
                     </button>
                     <button onClick={() => setIsReporteOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-blue-100 bg-blue-50/80 text-[#1E3A8A] text-[0.72rem] font-bold cursor-pointer hover:bg-blue-100 active:scale-[0.97] transition-all">
                       <FileText className="w-3 h-3" /> <span className="hidden sm:inline">Reporte</span>
@@ -1136,6 +1374,18 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                   ))}
                 </div>
               </div>
+
+              <IdentificacionDocentePanel
+                key={selectedPta.id}
+                pta={selectedPta}
+                userPerfil={{
+                  ...docentePerfil,
+                  nombre: docentePerfil?.nombre_completo || userName,
+                  identificacion: docentePerfil?.documento_identidad || userPersonId,
+                  email: docentePerfil?.correo_institucional || docentePerfil?.email || userEmail,
+                }}
+                periodoAcademico={activePeriodoData}
+              />
 
               {/* Distribución por Componente */}
               {selectedPta && (() => {
@@ -1313,13 +1563,14 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       <ItemDetalle key={i} color={PTA_COLORS.DOCENCIA}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{formatPtaAssignmentName(a) || 'Asignatura'}</div>
                             {a.nucleo_tematico && <div style={{ fontSize: '0.64rem', color: '#6B7280', fontWeight: 600, marginTop: 2 }}>{a.nucleo_tematico}</div>}
                           </div>
                           <HorasBadge horas={Number(a.total_horas || a.horas || 0)} color={PTA_COLORS.DOCENCIA} />
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                           <DetalleChip label="Programa" value={a.programa_nombre} />
+                          <DetalleChip label="Pensum" value={formatPtaPensum(a.pensum)} />
                           <DetalleChip icon={MapPin} label="CETAP" value={a.cetap_nombre} color={PTA_COLORS.DOCENCIA} />
                           <DetalleChip label="Territorial" value={a.territorial_nombre} />
                           <DetalleChip label="Modalidad" value={MODALIDAD_LABELS[a.modalidad] || a.modalidad} />
@@ -1575,43 +1826,42 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
               )}
 
               {/* Historial */}
-              {selectedPta.historial?.length > 0 && (
+              {historialPtaSeleccionado.length > 0 && (
                 <div style={{ background: 'white', borderRadius: 14, border: '1px solid #E5E7EB', padding: '18px 22px' }}>
                   <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Clock style={{ width: 15, height: 15, color: '#D97706' }} /> Historial ({selectedPta.historial.length})
+                    <Clock style={{ width: 15, height: 15, color: '#D97706' }} /> Historial ({historialPtaSeleccionado.length})
                   </h4>
                   <div style={{ paddingLeft: 8 }}>
-                    {selectedPta.historial.slice().reverse().map((h: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 6, position: 'relative' }}>
-                        {i < selectedPta.historial.length - 1 && (
-                          <div style={{ position: 'absolute', left: 5, top: 14, bottom: -6, width: 2, background: '#E5E7EB' }} />
-                        )}
-                        <div style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, marginTop: 3, background: i === 0 ? '#003DA5' : '#E5E7EB' }} />
-                        <div>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827' }}>
-                            {h.estado_nuevo || h.accion}
-                            <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6, fontSize: '0.68rem' }}>
-                              {h.fecha ? new Date(h.fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                            </span>
+                    {historialPtaSeleccionado.map((h: any, i: number) => {
+                      const accion = h.tipoAccion || h.tipo_accion || h.accion;
+                      const fecha = h.createdAt || h.created_at || h.fecha;
+                      const comentarios = h.comentarios || h.observaciones;
+                      const actor = h.actorNombre || h.actor_nombre || h.actor || h.actorId || h.actor_id;
+                      const actorRol = h.actorRol || h.actor_rol;
+                      const detalles = parseDetallesTransicion(h.detallesTransicion || h.detalles_transicion);
+                      const componenteLabel = detalles.componente ? (HISTORIAL_COMP_LABELS[detalles.componente] || detalles.componente) : null;
+                      return (
+                        <div key={h.id || i} style={{ display: 'flex', gap: 10, marginBottom: 6, position: 'relative' }}>
+                          {i < historialPtaSeleccionado.length - 1 && (
+                            <div style={{ position: 'absolute', left: 5, top: 14, bottom: -6, width: 2, background: '#E5E7EB' }} />
+                          )}
+                          <div style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, marginTop: 3, background: i === 0 ? '#003DA5' : '#E5E7EB' }} />
+                          <div>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827' }}>
+                              {h.estadoNuevo || h.estado_nuevo || accion || 'Actualización del PTA'}
+                              <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6, fontSize: '0.68rem' }}>
+                                {fecha ? new Date(fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                              </span>
+                            </div>
+                            {accion && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>{String(accion).replace(/_/g, ' ')}</div>}
+                            {componenteLabel && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>Componente: {componenteLabel}</div>}
+                            {comentarios && <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 1 }}>{comentarios}</div>}
+                            {actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {actor}{actorRol ? ` — ${actorRol}` : ''}</div>}
                           </div>
-                          {h.observaciones && <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 1 }}>{h.observaciones}</div>}
-                          {h.actor && <div style={{ fontSize: '0.68rem', color: '#9CA3AF' }}>por {h.actor}</div>}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-
-              {/* ═══ Seguimiento: documentos de soporte (solo cuando Aprobado) ═══ */}
-              {['Aprobado', 'En Firme', 'Finalizado', 'Aprobado DEF'].includes(selectedPta.estado) && (
-                <div style={{ background: 'white', borderRadius: 14, border: '1px solid #BBF7D0', padding: '18px 22px', marginBottom: 14 }}>
-                  <V12AdjuntosDocumentos
-                    ptas={ptas}
-                    userName={userName || 'Docente'}
-                    ptaId={selectedPta.id}
-                    ptaData={selectedPta}
-                  />
                 </div>
               )}
 
@@ -1630,6 +1880,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                   signedAt={selectedPta.signed_at || selectedPta.updated_at}
                   periodoAcademico={activePeriodoData}
                   componentesAprobacion={componentApprovalsByPta[selectedPta.id] || []}
+                  aprobacionTerritorial={aprobacionTerritorialReporte}
                 />,
                 document.body,
               )}

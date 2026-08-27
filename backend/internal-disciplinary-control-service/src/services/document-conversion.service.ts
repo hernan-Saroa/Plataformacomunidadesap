@@ -341,8 +341,9 @@ export class DocumentConversionService {
       this.logger.log(`[Mammoth] HTML content length: ${htmlContent.length}`);
 
       // Mammoth no lee word/header*.xml ni word/footer*.xml (solo word/document.xml),
-      // así que el membrete institucional insertado como encabezado de Word se pierde
-      // en la conversión. Se extrae aparte (imágenes y texto) y se antepone al contenido.
+      // así que el membrete y el pie de página insertados como encabezado/pie de
+      // Word se pierden en la conversión. Se extraen aparte (imágenes y texto) y
+      // se anteponen/adjuntan al contenido.
       const headerContent = await this.extractHeaderContent(inputPath);
       const headerImagesHtml = headerContent.images
         .map(
@@ -354,6 +355,20 @@ export class DocumentConversionService {
         .map(
           (texto) =>
             `<p style="text-align:center; font-size:10pt; margin: 0 0 4pt 0;">${this.escapeHtmlText(texto)}</p>`,
+        )
+        .join('');
+
+      const footerContent = await this.extractFooterContent(inputPath);
+      const footerImagesHtml = footerContent.images
+        .map(
+          (src) =>
+            `<img src="${src}" style="max-width:100%; display:block; margin: 12pt 0 0 0;" />`,
+        )
+        .join('');
+      const footerTextHtml = footerContent.textBlocks
+        .map(
+          (texto) =>
+            `<p style="text-align:center; font-size:10pt; margin: 4pt 0 0 0;">${this.escapeHtmlText(texto)}</p>`,
         )
         .join('');
 
@@ -384,6 +399,8 @@ export class DocumentConversionService {
             ${headerImagesHtml}
             ${headerTextHtml}
             ${htmlContent}
+            ${footerImagesHtml}
+            ${footerTextHtml}
           </div>
         </body>
         </html>
@@ -535,6 +552,107 @@ export class DocumentConversionService {
     } catch (error) {
       this.logger.warn(
         `[Conversion] No se pudo extraer el contenido del encabezado del documento: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { images: [], textBlocks: [] };
+    }
+  }
+
+  private async extractFooterContent(
+    inputPath: string,
+  ): Promise<{ images: string[]; textBlocks: string[] }> {
+    try {
+      const docxBuffer = await fs.readFile(inputPath);
+      const zip = await JSZip.loadAsync(docxBuffer);
+
+      const footerFiles = Object.keys(zip.files).filter((fileName) =>
+        /^word\/footer\d*\.xml$/i.test(fileName),
+      );
+
+      const images: string[] = [];
+      const textBlocks: string[] = [];
+      const seenMediaPaths = new Set<string>();
+      const seenText = new Set<string>();
+
+      for (const footerFile of footerFiles) {
+        const footerXml = await zip.file(footerFile)?.async('string');
+        if (!footerXml) {
+          continue;
+        }
+
+        const relsPath = `word/_rels/${path.basename(footerFile)}.rels`;
+        const relsXml = await zip.file(relsPath)?.async('string');
+
+        const relsMap = new Map<string, string>();
+        if (relsXml) {
+          const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
+          let relMatch: RegExpExecArray | null;
+
+          while ((relMatch = relRegex.exec(relsXml)) !== null) {
+            relsMap.set(relMatch[1], relMatch[2]);
+          }
+
+          const embedRegex = /r:embed="([^"]+)"/g;
+          let embedMatch: RegExpExecArray | null;
+
+          while ((embedMatch = embedRegex.exec(footerXml)) !== null) {
+            const target = relsMap.get(embedMatch[1]);
+            if (!target) {
+              continue;
+            }
+
+            const mediaPath = path.posix.normalize(`word/${target}`);
+            if (seenMediaPaths.has(mediaPath)) {
+              continue;
+            }
+            seenMediaPaths.add(mediaPath);
+
+            const mediaFile = zip.file(mediaPath);
+            if (!mediaFile) {
+              continue;
+            }
+
+            const mimeType = this.getImageMimeType(mediaPath);
+            if (!mimeType) {
+              this.logger.warn(
+                `[Conversion] Imagen de pie de página con formato no soportado para vista web: ${mediaPath}`,
+              );
+              continue;
+            }
+
+            const mediaBuffer = await mediaFile.async('nodebuffer');
+            images.push(`data:${mimeType};base64,${mediaBuffer.toString('base64')}`);
+          }
+        }
+
+        // Igual que con el encabezado, Mammoth no lee el texto del pie de página
+        // (ej. dirección, notas legales, numeración) del word/footer*.xml.
+        const paragraphRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
+        let paragraphMatch: RegExpExecArray | null;
+
+        while ((paragraphMatch = paragraphRegex.exec(footerXml)) !== null) {
+          const paragraphXml = paragraphMatch[1];
+          const textRegex = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+          let textMatch: RegExpExecArray | null;
+          let paragraphText = '';
+
+          while ((textMatch = textRegex.exec(paragraphXml)) !== null) {
+            paragraphText += textMatch[1];
+          }
+
+          const decodedText = this.decodeXmlEntities(paragraphText).trim();
+          if (decodedText && !seenText.has(decodedText)) {
+            seenText.add(decodedText);
+            textBlocks.push(decodedText);
+          }
+        }
+      }
+
+      return { images, textBlocks };
+    } catch (error) {
+      this.logger.warn(
+        `[Conversion] No se pudo extraer el contenido del pie de página del documento: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

@@ -231,7 +231,16 @@ export function UsersPersonsModulePremium() {
           type: role.type,
           code: role.code
         })),
-        location: item.seccional?.ubicacion || item.sede?.ubicacion || 'Sin ubicación',
+        // "Sin ubicación" aparecía incluso con la territorial asignada porque solo
+        // se miraba `ubicacion`, un campo que el backend no envía en seccional/sede:
+        // lo que llega es nomSeccional / nomSede (es lo que muestra la columna
+        // TERRITORIAL). Se usan como respaldo antes de darla por desconocida, y se
+        // prefiere el CETAP (sede) por ser la ubicación más específica.
+        location: item.sede?.ubicacion
+          || item.seccional?.ubicacion
+          || item.sede?.nomSede
+          || item.seccional?.nomSeccional
+          || 'Sin ubicación',
         lastActivity: item.user.updated_at,
         avatar: '',
         person: {

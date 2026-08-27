@@ -721,6 +721,24 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/notas`, { texto });
     }
 
+    // --- REGLAS DE ALERTA DE VENCIMIENTO (TÉRMINOS/INFORMES) ---
+
+    async listarReglasAlertaTerminos(): Promise<any[]> {
+        return apiClient.get(`${SERVICE_PREFIX}/terminos/reglas-alerta`);
+    }
+
+    async crearReglaAlertaTermino(data: { horasAnticipacion: number; descripcion?: string; activa?: boolean }): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/reglas-alerta`, data);
+    }
+
+    async actualizarReglaAlertaTermino(id: string, data: Partial<{ horasAnticipacion: number; descripcion: string; activa: boolean }>): Promise<any> {
+        return apiClient.patch(`${SERVICE_PREFIX}/terminos/reglas-alerta/${id}`, data);
+    }
+
+    async eliminarReglaAlertaTermino(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/terminos/reglas-alerta/${id}`);
+    }
+
 
     // --- TAREAS DE EXPEDIENTE ---
 
@@ -1419,6 +1437,12 @@ export interface CorreoFilters {
     search?: string;
 }
 
+export interface DestinatarioSugerido {
+    name: string;
+    email: string;
+    source: 'contacto' | 'frecuente' | 'directorio';
+}
+
 export interface SendCorreoDto {
     to: string;
     cc?: string[];
@@ -1452,6 +1476,16 @@ export class CorreosJuridicosService {
     /** Buzones de correo configurados en el backend (para saber cuáles sincronizar). */
     async getMailboxes(): Promise<Array<{ buzon: string; address: string }>> {
         return apiClient.get(`${SERVICE_PREFIX}/correos/mailboxes`);
+    }
+
+    /** Sugerencias de destinatarios (contactos, personas frecuentes y directorio institucional) para autocompletar. */
+    async buscarDestinatarios(query: string, buzon?: string): Promise<DestinatarioSugerido[]> {
+        if (query.trim().length < 2) return [];
+        try {
+            return await apiClient.get(`${SERVICE_PREFIX}/correos/destinatarios/buscar`, { q: query, buzon });
+        } catch {
+            return [];
+        }
     }
 
     /**

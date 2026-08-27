@@ -42,11 +42,31 @@ export class CertificateRequest {
   @Column({ length: 255, nullable: true })
   department: string;
 
-  @Column({ length: 255, nullable: true })
+  // The property name is kept as a legacy HTTP/Oracle compatibility alias.
+  @Column({ name: 'position_code', length: 255, nullable: true })
   cod_cargo: string;
 
-  @Column({ length: 255, nullable: true })
+  // The physical PostgreSQL identifier is standardized in English.
+  @Column({ name: 'grade_code', length: 255, nullable: true })
   cod_grade: string;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  base_position_code: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  hierarchical_level: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  position_name: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  organization_department: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  internal_group: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  cost_center: string | null;
 
   @Column({ length: 100, nullable: true })
   campus: string;

@@ -570,7 +570,7 @@ const buildParametersRows = (
       programs.length,
       'TITULO',
       'Copiar un valor del bloque TITULOS_VALIDOS.',
-      'Debe coincidir exactamente con un título o programa proveniente de graduados integrados.',
+      'Debe coincidir exactamente con un programa del catálogo administrado en Gestión de Graduados.',
     ],
     [
       'Territoriales',
@@ -947,7 +947,7 @@ export function BulkGraduatesUploadModal({
     if (!catalogsReady) {
       toast.error('No se puede generar la plantilla', {
         description:
-          'Los catálogos de origen deben tener títulos integrados y relaciones territorial-sede disponibles.',
+          'Los catálogos deben tener programas y relaciones territorial-sede disponibles.',
       });
       return;
     }

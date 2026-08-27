@@ -102,6 +102,7 @@ interface AuditoriaProgramada {
   id: string;
   nombre: string;
   tipo: TipoAuditoria;
+  codigo: string;
   proceso: { nombre: string; codigo?: string };
   fechaInicio: string;
   fechaFin: string;
@@ -1387,6 +1388,7 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
                               }}
                             >
                               <div className="flex flex-col gap-0.5">
+                                <span className="line-clamp-2">{aud.codigo}</span>
                                 <span className="text-[9px] opacity-60 font-mono">#{aud.id.substring(0, 8).toUpperCase()}</span>
                                 <div className="line-clamp-2">{aud.nombre}</div>
                               </div>

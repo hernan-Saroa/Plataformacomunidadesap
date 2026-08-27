@@ -85,20 +85,21 @@ SCRIPT_FAILED=0
 
 for file in $MISSING_FILES; do
   filename=$(basename "$file")
+  relpath=$(echo "$file" | sed "s|^$DB_DIR/||")
 
-  if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
-    echo "Saltando (ya aplicada): $filename"
+  if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$relpath" || echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
+    echo "Saltando (ya aplicada): $relpath"
     continue
   fi
 
   SCRIPT_COUNT=$((SCRIPT_COUNT + 1))
-  echo "[$SCRIPT_COUNT] Ejecutando: $filename"
+  echo "[$SCRIPT_COUNT] Ejecutando: $relpath"
 
   if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$file" 2>&1; then
     echo "    ✓ OK"
     SCRIPT_SUCCESS=$((SCRIPT_SUCCESS + 1))
-    escaped_filename=$(printf "%s" "$filename" | sed "s/'/''/g")
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $DB_SCHEMA.migrations_db_log (filename) VALUES ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+    escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $DB_SCHEMA.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
   else
     echo "    ✗ ERROR"
     SCRIPT_FAILED=$((SCRIPT_FAILED + 1))

@@ -548,9 +548,9 @@ export function ModalExpedienteComunicacion({
                 <div className="p-2 rounded-lg bg-white shadow-sm">
                   <Building2 className="w-5 h-5 text-indigo-600" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xs text-gray-600">Remitente</p>
-                  <p className="text-sm font-bold text-gray-900 truncate">{comunicacion.remitente}</p>
+                  <p className="text-sm font-bold text-gray-900 truncate" title={comunicacion.remitente}>{comunicacion.remitente}</p>
                 </div>
               </div>
 
@@ -619,7 +619,7 @@ export function ModalExpedienteComunicacion({
                       <div className="space-y-3">
                         <div>
                           <p className="text-xs text-gray-600">Remitente</p>
-                          <p className="text-sm font-bold text-gray-900">{comunicacion.remitente}</p>
+                          <p className="text-sm font-bold text-gray-900 break-words">{comunicacion.remitente}</p>
                         </div>
                         {comunicacion.despachoOrigen && (
                           <div>

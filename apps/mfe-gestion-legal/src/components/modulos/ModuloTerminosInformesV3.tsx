@@ -5,10 +5,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, Printer
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -36,6 +38,51 @@ import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipos necesarios
 type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Evita mostrar un UUID crudo como "responsable" cuando el backend no pudo resolver el nombre. */
+function nombreLegible(valor?: string | null): string | null {
+  if (!valor || UUID_REGEX.test(valor)) return null;
+  return valor;
+}
+
+/**
+ * Texto y color de semáforo únicos para "días restantes", reutilizados por las
+ * 3 vistas (Timeline, Calendario, Lista). Antes cada vista mostraba el número
+ * crudo (incluyendo negativos, ej. "-3 días") sin distinguir un vencido de uno
+ * próximo a vencer.
+ */
+function formatearDiasRestantes(diasRestantes: number): { texto: string; color: string; bg: string } {
+  if (diasRestantes < 0) {
+    return { texto: `Vencido hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) !== 1 ? 's' : ''}`, color: '#DC2626', bg: '#FEE2E2' };
+  }
+  if (diasRestantes <= 2) {
+    return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#DC2626', bg: '#FEE2E2' };
+  }
+  if (diasRestantes <= 5) {
+    return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#F59E0B', bg: '#FEF3C7' };
+  }
+  return { texto: `${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`, color: '#10B981', bg: '#D1FAE5' };
+}
+
+/** Agrupa solicitudes por período (mes-año de vencimiento) para "VistaLista". */
+function agruparPorPeriodo(solicitudes: SolicitudInforme[]): Array<{ clave: string; etiqueta: string; items: SolicitudInforme[] }> {
+  const grupos: Record<string, SolicitudInforme[]> = {};
+  for (const s of solicitudes) {
+    const fecha = new Date(s.fechaVencimiento);
+    const clave = isNaN(fecha.getTime()) ? 'sin-fecha' : `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    (grupos[clave] ||= []).push(s);
+  }
+  return Object.entries(grupos)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([clave, items]) => {
+      if (clave === 'sin-fecha') return { clave, etiqueta: 'Sin fecha de vencimiento', items };
+      const [anio, mes] = clave.split('-').map(Number);
+      const etiqueta = new Date(anio, mes - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+      return { clave, etiqueta: etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1), items };
+    });
+}
 
 
 
@@ -145,18 +192,21 @@ export function ModuloTerminosInformesV3() {
         etapa: t.estado as any,
         tipoInforme: t.origenModulo,
         moduloOrigen: t.origenModulo, // Add this for filter compatibility
-        enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
+        enteSolicitante: t.enteSolicitante || (t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema'),
+        destinatario: t.destinatario || '',
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
         descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
 
-        responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
+        responsable: nombreLegible(t.responsableNombre) || nombreLegible(t.responsableId) || 'Sin asignar',
         responsableId: t.responsableId || null, // Preserve UUID for filtering
         fechaSolicitud: new Date(t.fechaBase),
         fechaVencimiento: new Date(t.fechaVencimiento),
         diasTotales: t.diasTermino,
         diasRestantes: t.calculo?.diasRestantes ?? 0,
         datosRequeridos: [],
+        horasAnticipacionAlertaPersonalizada: t.horasAnticipacionAlertaPersonalizada ?? null,
+        recordatorioManualHorasAnticipacion: t.recordatorioManualHorasAnticipacion ?? null,
         metadata: { uuid: t.id } // Store real UUID here
       }));
 
@@ -280,7 +330,7 @@ export function ModuloTerminosInformesV3() {
     }
 
     toast.success('Etapa actualizada', {
-      description: `Solicitud ${id} movida a ${nuevaEtapa}`,
+      description: `Término ${id} movido a ${nuevaEtapa}`,
       icon: <CheckCircle className="w-4 h-4" />
     });
   };
@@ -387,6 +437,79 @@ export function ModuloTerminosInformesV3() {
   const solicitudesUrgentes = solicitudesFiltradas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
   const solicitudesEnTermino = solicitudesFiltradas.filter(s => s.diasRestantes > 5).length;
 
+  /** Construye el PDF del calendario de vencimientos con lo que esté actualmente filtrado/visible. */
+  const construirPdfCalendario = (): jsPDF | null => {
+    if (solicitudesFiltradas.length === 0) {
+      toast.error('No hay términos para exportar con los filtros actuales');
+      return null;
+    }
+
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    doc.setFillColor('#003DA5');
+    doc.rect(0, 0, pageWidth, 20, 'F');
+    doc.setTextColor('#FFFFFF');
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CALENDARIO DE VENCIMIENTOS — TÉRMINOS E INFORMES', pageWidth / 2, 13, { align: 'center' });
+
+    const DIAS_RESTANTES_COL = 4;
+
+    autoTable(doc, {
+      startY: 26,
+      head: [['ID', 'Asunto', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado']],
+      body: solicitudesFiltradas.map((s) => [
+        s.id,
+        s.asunto || 'Sin asunto',
+        s.responsable,
+        new Date(s.fechaVencimiento).toLocaleDateString('es-CO'),
+        formatearDiasRestantes(s.diasRestantes).texto,
+        s.etapa,
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: '#003DA5', textColor: '#FFFFFF', fontStyle: 'bold' },
+      styles: { fontSize: 9, cellPadding: 3 },
+      // Mismo semáforo de colores que ya se usa en pantalla (formatearDiasRestantes),
+      // para que el PDF se lea de un vistazo igual que la vista en vivo.
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.column.index === DIAS_RESTANTES_COL) {
+          const solicitud = solicitudesFiltradas[data.row.index];
+          if (solicitud) {
+            const { color } = formatearDiasRestantes(solicitud.diasRestantes);
+            const [r, g, b] = [color.slice(1, 3), color.slice(3, 5), color.slice(5, 7)].map((h) => parseInt(h, 16));
+            data.cell.styles.textColor = [r, g, b];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      },
+    });
+
+    doc.setFontSize(8);
+    doc.setTextColor('#999999');
+    doc.text(
+      `Generado: ${new Date().toLocaleString('es-CO')} — ${solicitudesFiltradas.length} término(s)`,
+      pageWidth / 2,
+      doc.internal.pageSize.getHeight() - 8,
+      { align: 'center' },
+    );
+
+    return doc;
+  };
+
+  const handleExportarCalendario = () => {
+    const doc = construirPdfCalendario();
+    if (!doc) return;
+    doc.save(`calendario_vencimientos_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Calendario exportado exitosamente');
+  };
+
+  const handleImprimirCalendario = () => {
+    const doc = construirPdfCalendario();
+    if (!doc) return;
+    window.open(doc.output('bloburl'), '_blank');
+  };
+
   return (
     <div className="space-y-4">
       {/* Header con ModuleHeader */}
@@ -403,15 +526,29 @@ export function ModuloTerminosInformesV3() {
             { label: 'Archivados', icon: <FileText className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={canModifyTerminos ? [
-          {
-            label: 'Nueva Solicitud',
+        buttons={[
+          ...(canModifyTerminos ? [{
+            label: 'Nuevo Informe',
             labelMobile: 'Nuevo',
             icon: <Plus className="w-4 h-4" />,
             onClick: () => setModalNuevaSolicitudOpen(true),
-            variant: 'primary'
+            variant: 'primary' as const
+          }] : []),
+          {
+            label: 'Exportar',
+            labelMobile: 'Exportar',
+            icon: <Download className="w-4 h-4" />,
+            onClick: handleExportarCalendario,
+            variant: 'outline' as const
+          },
+          {
+            label: 'Imprimir',
+            labelMobile: 'Imprimir',
+            icon: <Printer className="w-4 h-4" />,
+            onClick: handleImprimirCalendario,
+            variant: 'outline' as const
           }
-        ] : []}
+        ]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"
@@ -519,7 +656,7 @@ export function ModuloTerminosInformesV3() {
         />
       )}
 
-      {/* Modal Nueva Solicitud */}
+      {/* Modal Nuevo Informe */}
       <ModalNuevoTermino
         open={modalNuevaSolicitudOpen}
         onOpenChange={setModalNuevaSolicitudOpen}
@@ -619,15 +756,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
       <div className="space-y-4">
         {solicitudesOrdenadas.map((solicitud, index) => {
           const diasRestantes = solicitud.diasRestantes;
-          let semaforoColor = '#10B981';
-          let semaforoBg = '#D1FAE5';
-          if (diasRestantes <= 2) {
-            semaforoColor = '#DC2626';
-            semaforoBg = '#FEE2E2';
-          } else if (diasRestantes <= 5) {
-            semaforoColor = '#F59E0B';
-            semaforoBg = '#FEF3C7';
-          }
+          const { texto: textoDias, color: semaforoColor, bg: semaforoBg } = formatearDiasRestantes(diasRestantes);
 
           return (
             <motion.div
@@ -662,7 +791,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                     className="text-xs font-bold flex-shrink-0"
                     style={{ backgroundColor: semaforoColor, color: '#FFFFFF' }}
                   >
-                    {diasRestantes} día{diasRestantes !== 1 ? 's' : ''}
+                    {textoDias}
                   </BadgeSIGL>
                 </div>
 
@@ -809,10 +938,11 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
                       key={`cal-${s.metadata?.uuid || s.id}-${idx}`}
                       className="text-[9px] px-1 py-0.5 rounded truncate"
                       style={{
-                        backgroundColor: s.diasRestantes <= 2 ? '#DC2626' : s.diasRestantes <= 5 ? '#F59E0B' : '#10B981',
+                        backgroundColor: formatearDiasRestantes(s.diasRestantes).color,
                         color: '#FFFFFF'
                       }}
                       onClick={() => onVerDetalle(s)}
+                      title={formatearDiasRestantes(s.diasRestantes).texto}
                     >
                       {s.id}
                     </div>
@@ -840,6 +970,8 @@ interface VistaListaProps {
 }
 
 function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
+  const grupos = agruparPorPeriodo(solicitudes);
+
   return (
     <CardSIGL className="bg-white border border-gray-200">
       <div className="overflow-x-auto">
@@ -855,11 +987,17 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Acciones</th>
             </tr>
           </thead>
-          <tbody>
-            {solicitudes.map((solicitud, index) => {
-              const semaforoColor = solicitud.diasRestantes <= 2 ? '#DC2626' : solicitud.diasRestantes <= 5 ? '#F59E0B' : '#10B981';
+          {grupos.map((grupo) => (
+            <tbody key={grupo.clave}>
+              <tr className="bg-blue-50">
+                <td colSpan={7} className="px-4 py-2 text-xs font-bold uppercase tracking-wide" style={{ color: '#003DA5' }}>
+                  📅 {grupo.etiqueta} ({grupo.items.length})
+                </td>
+              </tr>
+              {grupo.items.map((solicitud, index) => {
+                const { texto: textoDias, color: semaforoColor } = formatearDiasRestantes(solicitud.diasRestantes);
 
-              return (
+                return (
                 <tr key={solicitud.metadata?.uuid || `${solicitud.id}-${index}`} className="border-t border-gray-200 hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{solicitud.id}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
@@ -874,7 +1012,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                       className="text-xs font-bold"
                       style={{ backgroundColor: semaforoColor, color: '#FFFFFF' }}
                     >
-                      {solicitud.diasRestantes} día{solicitud.diasRestantes !== 1 ? 's' : ''}
+                      {textoDias}
                     </BadgeSIGL>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.etapa}</td>
@@ -919,9 +1057,10 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                     </div>
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
+                );
+              })}
+            </tbody>
+          ))}
         </table>
       </div>
     </CardSIGL>

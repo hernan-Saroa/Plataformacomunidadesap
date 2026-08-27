@@ -86,6 +86,26 @@ const getRuntimePublicBaseUrl = () =>
     ? window.location.origin
     : getPublicBaseUrl();
 
+const GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT =
+  'esap:graduate-program-catalog-changed';
+
+const uniqueProgramNames = (values: Array<string | null | undefined>) => {
+  const byKey = new Map<string, string>();
+  values.forEach((value) => {
+    const name = String(value || '').trim().replace(/\s+/g, ' ');
+    const key = name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    if (key && !byKey.has(key)) byKey.set(key, name);
+  });
+  return Array.from(byKey.values()).sort((first, second) =>
+    first.localeCompare(second, 'es', { sensitivity: 'base' }),
+  );
+};
+
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
   id: string;
@@ -307,19 +327,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     numFolio: '',
     numLibro: '',
   });
-  const PROGRAMAS_APROBACION = [
-    'ADMINISTRACIÓN PÚBLICA',
-    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
-    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
-    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
-    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
-    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
-    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
-    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
-    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
-    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
-    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
-  ];
+  const [programCatalogOptions, setProgramCatalogOptions] = useState<string[]>([]);
 
   const mapStatus = (status: CertificadoGraduado['status']): CertificateRecord['status'] => {
     if (status === 'REVOKED') return 'revoked';
@@ -751,7 +759,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       fullName: cert.graduate.fullName || '',
       idNumber: cert.graduate.document || '',
       email: cert.graduate.email || '',
-      programName: PROGRAMAS_APROBACION.includes(initialProgram) ? initialProgram : '',
+      programName: initialProgram,
       graduationDate: cert.graduate.graduationDate?.slice(0, 10) || '',
       diplomaNumber: cert.diplomaNumber || '',
       actaNumber: cert.actaNumber || '',
@@ -787,9 +795,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         email: graduate.email || prev.email,
         campus: graduate.campus || prev.campus,
         seccionalName: graduate.seccionalName || prev.seccionalName,
-        programName: PROGRAMAS_APROBACION.includes((graduate.programName || '').trim())
-          ? (graduate.programName || '').trim()
-          : prev.programName,
+        programName: (graduate.programName || '').trim() || prev.programName,
         graduationDate: graduate.graduationDate?.toString().slice(0, 10) || prev.graduationDate,
         numRegistro: sanitizeRegistroDigits(graduate.numRegistro),
         numFolio: sanitizeRegistroDigits(graduate.numFolio),
@@ -1259,7 +1265,46 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     };
   }, [certificates]);
 
-  const programNameOptions = useMemo(() => PROGRAMAS_APROBACION, []);
+  const programNameOptions = useMemo(
+    () =>
+      uniqueProgramNames([
+        editCertificateForm.programName,
+        ...programCatalogOptions,
+      ]),
+    [editCertificateForm.programName, programCatalogOptions],
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProgramCatalog = async () => {
+      try {
+        const programs = await graduadosService.programas.listarOpciones();
+        if (isMounted) {
+          setProgramCatalogOptions(
+            uniqueProgramNames(programs || []),
+          );
+        }
+      } catch (error) {
+        console.warn('No se pudo cargar el catálogo de programas:', error);
+      }
+    };
+
+    void loadProgramCatalog();
+    const refreshProgramCatalog = () => void loadProgramCatalog();
+    window.addEventListener(
+      GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT,
+      refreshProgramCatalog,
+    );
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener(
+        GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT,
+        refreshProgramCatalog,
+      );
+    };
+  }, []);
 
   const filteredCertificates = useMemo(() => {
     return certificates.filter(cert => {

@@ -10,20 +10,68 @@
  * el layout crítico va con estilos inline y la impresión se aísla con el
  * bloque @media print del render.
  */
-import React from 'react';
-import { Printer, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
+import { Printer, Download, X, ShieldCheck, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 
 interface PTAResumenPrintProps {
   pta: any;
   onClose: () => void;
   userPersonId: string;
   userName?: string;
+  /** Registros reales de aprobación por componente (getComponentesAprobacion). Opcional. */
+  componentesAprobacion?: any[];
+  /** Desglose por (territorial, nivel) de Docencia Territorial (getAprobacionTerritorial). Opcional. */
+  aprobacionTerritorial?: any[];
 }
+
+function fmtFechaHora(v?: string | null): string | null {
+  if (!v || typeof v !== 'string') return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('es-CO');
+}
+
+// Mismas claves de sub-componente que usa el reporte institucional, para que
+// el docente vea el mismo detalle de "quién aprobó qué y cuándo" en ambos PDF.
+const SUBCOMP_LABELS: Record<string, string> = {
+  academica_pregrado: 'Docencia (Pregrado)',
+  academica_posgrado: 'Docencia (Posgrado)',
+  academica_territorial: 'Docencia (Territorial)',
+  investigacion: 'Investigación',
+  ext_capacitacion: 'Extensión — Capacitación',
+  ext_procesos: 'Extensión — Procesos de Selección',
+  ext_fortalecimiento: 'Extensión — Fortalecimiento',
+  ext_gobierno: 'Extensión — Alto Gobierno',
+  complementarias: 'Complementarias',
+  complementarias_pregrado: 'Complementarias (Pregrado)',
+  complementarias_posgrado: 'Complementarias (Posgrado)',
+  complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
+};
+
+/**
+ * Nombre a mostrar como responsable de la aprobación.
+ *
+ * El backend auto-aprueba con aprobadorNombre='Sistema' los componentes que no
+ * tienen actividades, para no bloquear el flujo. Mostrar "Sistema" en el detalle
+ * hacía parecer que alguien lo avaló; para el lector no está aprobado por nadie,
+ * así que se rotula como pendiente.
+ */
+const NOMBRE_APROBADOR_AUTOMATICO = 'Sistema';
+function nombreAprobadorVisible(nombre?: string | null): string | null {
+  if (!nombre) return null;
+  return nombre === NOMBRE_APROBADOR_AUTOMATICO ? 'Pendiente' : nombre;
+}
+const coarseKeyDe = (key: string): string => {
+  if (key.startsWith('academica')) return 'academica';
+  if (key.startsWith('ext_')) return 'extension';
+  if (key.startsWith('complementarias')) return 'complementarias';
+  return key;
+};
 
 // ── Etiquetas y helpers ─────────────────────────────────────────────────
 
@@ -77,6 +125,15 @@ function estadoComp(pta: any, key: string): string | null {
   return arr.find((c: any) => c?.key === key)?.estado || null;
 }
 
+/** Horas ya aprobadas de un componente (mismo criterio que ReportePTAInstitucional). */
+function horasAprobadasComp(pta: any, key: string, horasTotales: number): number {
+  if (['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado)) return horasTotales;
+  if (pta?.estado === 'Borrador') return 0;
+  const arr = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
+  const horasAprobadas = Number(arr.find((c: any) => c?.key === key)?.horas_aprobadas) || 0;
+  return Math.min(horasAprobadas, horasTotales);
+}
+
 const ESTADO_COMP_CFG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
   aprobado: { label: 'Aprobado', color: '#047857', bg: '#D1FAE5', icon: CheckCircle2 },
   devuelto: { label: 'Devuelto', color: '#B91C1C', bg: '#FEE2E2', icon: RotateCcw },
@@ -127,7 +184,7 @@ const TDC: React.CSSProperties = { ...TD, textAlign: 'center', whiteSpace: 'nowr
 const SUB: React.CSSProperties = { fontSize: '0.62rem', color: '#9CA3AF', marginTop: 2 };
 const zebra = (i: number): React.CSSProperties => ({ background: i % 2 === 1 ? '#FAFAFA' : '#fff' });
 
-export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTAResumenPrintProps) {
+export function PTAResumenPrint({ pta, onClose, userPersonId, userName, componentesAprobacion = [], aprobacionTerritorial = [] }: PTAResumenPrintProps) {
   const handlePrint = () => window.print();
 
   const today = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -181,7 +238,41 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
     { key: 'investigacion', label: 'Investigación', horas: horasInv, color: PTA_COLORS.INVESTIGACION },
     { key: 'extension', label: 'Extensión Académica', horas: horasExt, color: PTA_COLORS.EXTENSION },
     { key: 'complementarias', label: 'Actividades Complementarias', horas: horasComp, color: '#A16207' },
-  ];
+  ].map(c => {
+    const aprobadas = horasAprobadasComp(pta, c.key, c.horas);
+    return { ...c, aprobadas, pendientes: Math.max(c.horas - aprobadas, 0), pctAprob: c.horas > 0 ? Math.round((aprobadas / c.horas) * 100) : 0 };
+  });
+  const totalAprobadas = resumenComponentes.reduce((s, c) => s + c.aprobadas, 0);
+  const pctAprobGlobal = horasProg > 0 ? Math.min(Math.round((totalAprobadas / horasProg) * 100), 100) : 0;
+
+  // ── Detalle de quién aprobó cada sub-componente/territorial y cuándo ──
+  const detalleAprobacion = (componentesAprobacion || [])
+    .filter((r: any) => r && (r.componente || r.key))
+    .map((r: any) => {
+      const key = String(r.componente || r.key || '');
+      const fecha = r.fecha_aprobacion || r.fechaAprobacion;
+      return {
+        key,
+        label: SUBCOMP_LABELS[key] || key,
+        aprobador: nombreAprobadorVisible(r.aprobador_nombre || r.aprobadorNombre),
+        fecha: fmtFechaHora(fecha ? String(fecha) : null),
+        fechaOrden: fecha ? String(fecha) : '',
+      };
+    })
+    .filter(r => r.aprobador && r.fecha && resumenComponentes.some(c => c.key === coarseKeyDe(r.key)));
+  const detalleTerritorialDoc = resumenComponentes.some(c => c.key === 'academica')
+    ? (aprobacionTerritorial || [])
+      .filter((t: any) => t && t.estado === 'aprobado' && t.actorNombre && t.fechaDecision)
+      .map((t: any) => ({
+        key: 'academica_territorial',
+        label: `Docencia Territorial — ${t.territorialNombre || 'Territorial'} (${t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado'})`,
+        aprobador: t.actorNombre,
+        fecha: fmtFechaHora(String(t.fechaDecision)),
+        fechaOrden: String(t.fechaDecision),
+      }))
+    : [];
+  const detalleAprobacionCompleto = [...detalleAprobacion, ...detalleTerritorialDoc]
+    .sort((a, b) => b.fechaOrden.localeCompare(a.fechaOrden));
 
   return (
     <AnimatePresence>
@@ -221,7 +312,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                 onClick={handlePrint}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: '#fff', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
               >
-                <Printer size={14} /> Imprimir / PDF
+                <Download size={14} /> Descargar PDF
               </button>
               <button
                 onClick={onClose}
@@ -259,7 +350,10 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
             <div style={{ marginBottom: 24 }}>
               <TituloSeccion num={numDe('info')} titulo="Información del Docente" color="#003DA5" />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px 16px', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px' }}>
-                <Dato label="Nombre" value={userName || pta?.docente_nombre} />
+                {/* Mismas variantes de nombre que ReportePTAInstitucional: según el
+                    origen del DTO el campo llega como docente_nombre, nombre_docente
+                    o anidado en `docente`, y con una sola alternativa quedaba vacío. */}
+                <Dato label="Nombre" value={userName || pta?.docente_nombre || pta?.nombre_docente || pta?.docenteNombre || pta?.docente?.nombre_completo || pta?.docente?.nombre} />
                 <Dato label="Identificación (ID)" value={userPersonId} />
                 <Dato label="Dedicación" value={pta?.dedicacion} />
                 <Dato label="Tipo de Vinculación" value={pta?.tipo_vinculacion} />
@@ -281,6 +375,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                     <tr>
                       <th style={TH}>Asignatura</th>
                       <th style={TH}>Programa / CETAP</th>
+                      <th style={TH}>Pensum</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Créd.</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Est.</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Hrs/Sem</th>
@@ -294,7 +389,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                       return (
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
-                            <div style={{ fontWeight: 700 }}>{a.nombre || a.asignatura_nombre || 'Asignatura'}</div>
+                            <div style={{ fontWeight: 700 }}>{formatPtaAssignmentName(a) || 'Asignatura'}</div>
                             {a.nucleo_tematico && <div style={SUB}>{a.nucleo_tematico}{a.semestre ? ` · ${a.semestre}` : ''}{a.modalidad ? ` · ${String(a.modalidad).charAt(0) + String(a.modalidad).slice(1).toLowerCase()}` : ''}</div>}
                             <HierarchySelectionSummary activity={a} accent={PTA_COLORS.DOCENCIA} compact className="mt-1" />
                           </td>
@@ -302,6 +397,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                             {a.programa_nombre_completo || a.programa_nombre || a.programa || '—'}
                             {a.cetap_nombre && <div style={SUB}>CETAP {a.cetap_nombre}{a.territorial_nombre ? ` · ${a.territorial_nombre}` : ''}</div>}
                           </td>
+                          <td style={TD}>{formatPtaPensum(a.pensum)}</td>
                           <td style={TDC}>{a.creditos || '-'}</td>
                           <td style={TDC}>{a.total_estudiantes || '-'}</td>
                           <td style={TDC}>{(totalHoras / semanas).toFixed(1)}</td>
@@ -310,11 +406,11 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                         </tr>
                       );
                     }) : (
-                      <tr><td colSpan={7} style={{ ...TDC, color: '#9CA3AF', padding: 16 }}>No se registraron asignaturas en este componente.</td></tr>
+                      <tr><td colSpan={8} style={{ ...TDC, color: '#9CA3AF', padding: 16 }}>No se registraron asignaturas en este componente.</td></tr>
                     )}
                     {asigs.length > 0 && (
                       <tr>
-                        <td colSpan={6} style={{ ...TD, fontWeight: 800, textAlign: 'right', background: '#F9FAFB' }}>TOTAL DOCENCIA</td>
+                        <td colSpan={7} style={{ ...TD, fontWeight: 800, textAlign: 'right', background: '#F9FAFB' }}>TOTAL DOCENCIA</td>
                         <td style={{ ...TDC, fontWeight: 900, background: '#F9FAFB', color: PTA_COLORS.DOCENCIA }}>{horasDoc}</td>
                       </tr>
                     )}
@@ -456,12 +552,15 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
             <div style={{ marginBottom: 24 }}>
               <TituloSeccion num={numDe('resumen')} titulo="Resumen de Horas y Aprobación" color="#111827" />
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
                   <thead>
                     <tr>
                       <th style={TH}>Componente</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Estado de Aprobación</th>
                       <th style={{ ...TH, textAlign: 'center' }}>Horas</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>Horas Aprobadas</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>Horas Pendientes</th>
+                      <th style={{ ...TH, textAlign: 'center' }}>% Aprobación</th>
                       <th style={{ ...TH, textAlign: 'center' }}>% del PTA</th>
                     </tr>
                   </thead>
@@ -471,6 +570,9 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                         <td style={{ ...TD, fontWeight: 700, borderLeft: `4px solid ${c.color}` }}>{c.label}</td>
                         <td style={TDC}>{c.horas > 0 ? <ChipEstadoComp estado={estadoComp(pta, c.key)} /> : <span style={{ color: '#9CA3AF', fontSize: '0.66rem' }}>Sin horas</span>}</td>
                         <td style={{ ...TDC, fontWeight: 800 }}>{c.horas}</td>
+                        <td style={{ ...TDC, background: '#F0FDF4' }}>{c.aprobadas}</td>
+                        <td style={{ ...TDC, background: '#FEF9C3' }}>{c.pendientes}</td>
+                        <td style={TDC}>{c.pctAprob}%</td>
                         <td style={TDC}>{pctDe(c.horas)}%</td>
                       </tr>
                     ))}
@@ -478,11 +580,29 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userName }: PTARes
                       <td style={{ ...TD, fontWeight: 900, background: '#F3F4F6' }}>TOTAL PROGRAMADO</td>
                       <td style={{ ...TDC, background: '#F3F4F6', fontSize: '0.66rem', color: '#6B7280', fontWeight: 700 }}>{horasDisp} h disponibles</td>
                       <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasProg}</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{totalAprobadas}</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{Math.max(horasProg - totalAprobadas, 0)}</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{pctAprobGlobal}%</td>
                       <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{formatPtaCompletionPercentage(horasProg, horasDisp)}% de carga</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
+              {detalleAprobacion.length > 0 || detalleTerritorialDoc.length > 0 ? (
+                <div style={{ marginTop: 14, border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#374151', textTransform: 'uppercase', marginBottom: 8 }}>
+                    Detalle de Aprobación
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                    {detalleAprobacionCompleto.map((d, i) => (
+                      <div key={`${d.key}-${i}`} style={{ minWidth: 170 }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#111827' }}>{d.label}</div>
+                        <div style={{ fontSize: '0.66rem', color: '#6B7280' }}>{d.aprobador} · {d.fecha}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* Firmas */}

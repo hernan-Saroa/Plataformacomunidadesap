@@ -86,7 +86,7 @@ export interface NuevoTipoAutoData
 interface ModalNuevoTipoAutoProps {
   isOpen: boolean;
   onClose: () => void;
-  onGuardar: (data: NuevoTipoAutoData) => void;
+  onGuardar: (data: NuevoTipoAutoData) => boolean | void | Promise<boolean | void>;
   tipoEdicion?: TipoAuto | null;
 }
 
@@ -219,7 +219,11 @@ export function ModalNuevoTipoAuto({
 
       };
 
-      onGuardar(data);
+      const resultado = await onGuardar(data);
+
+      if (resultado === false) {
+        return;
+      }
 
       toast.success(tipoEdicion ? 'Tipo de auto actualizado' : 'Tipo de auto creado', {
         description: formData.nombre,

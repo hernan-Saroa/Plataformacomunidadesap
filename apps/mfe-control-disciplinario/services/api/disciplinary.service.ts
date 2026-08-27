@@ -765,10 +765,99 @@ class DisciplinaryService {
         proceso: { id: string; radicadoProceso: string };
         documentos: any[]; // El backend devuelve el formato completo ya mapeado
     }> {
-        return apiClient.get<{
+        const response = await apiClient.get<{
             proceso: { id: string; radicadoProceso: string };
             documentos: any[];
         }>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`);
+
+        // El endpoint de documentos del expediente solo devuelve autos ya
+        // APROBADO/FIRMADO/NOTIFICADO/DEVUELTO_* (filtro pensado para Expediente
+        // Electrónico). Se complementa aquí con los autos en BORRADOR/REVISION_JEFE
+        // para que la vista de Autos del proceso los siga mostrando.
+        const documentosBase = Array.isArray(response?.documentos)
+            ? response.documentos
+            : [];
+
+        try {
+            const autos = await this.getAutosByProceso(processId);
+            const documentosPorId = new Map<string, any>(
+                documentosBase.map((documento: any) => [documento.id, documento]),
+            );
+
+            for (const auto of autos || []) {
+                if (!documentosPorId.has(auto.id)) {
+                    documentosPorId.set(
+                        auto.id,
+                        this.mapAutoToExpedienteDocumento(auto, processId),
+                    );
+                }
+            }
+
+            const documentos = Array.from(documentosPorId.values()).sort((a: any, b: any) => {
+                const fechaA = new Date(a?.fechaCarga || 0).getTime();
+                const fechaB = new Date(b?.fechaCarga || 0).getTime();
+                return fechaB - fechaA;
+            });
+
+            return {
+                ...response,
+                documentos,
+            };
+        } catch (error) {
+            console.warn('getDocumentosExpediente: no se pudieron complementar los autos reales', error);
+            return response;
+        }
+    }
+
+    private formatExpedienteFileSize(bytes: number): string {
+        if (bytes >= 1024 * 1024) {
+            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        }
+
+        return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    }
+
+    private mapAutoToExpedienteDocumento(auto: any, processId: string): any {
+        const sizeBytes = auto.documentSize || new TextEncoder().encode(auto.contenido || '').length;
+        const tamano = this.formatExpedienteFileSize(sizeBytes);
+
+        return {
+            id: auto.id,
+            nombre: `${auto.tipo || 'Auto'} ${auto.numero || ''}`.trim(),
+            archivoNombre: auto.documentName || `Auto-${auto.numero || 'borrador'}.${auto.documentUrl ? 'pdf' : 'html'}`,
+            tipo: 'auto',
+            etapa: auto.process?.etapaActual || auto.process?.currentKanbanStage || auto.etapaDestino || 'Sin etapa',
+            version: auto.currentVersion || 1,
+            tamano,
+            tamaño: tamano,
+            fechaCarga: auto.createdAt || new Date().toISOString(),
+            usuarioCarga: auto.createdBy || 'Sistema',
+            descripcion: auto.comentarios || '',
+            url: auto.documentUrl || null,
+            urlExterna: null,
+            downloadUrl: auto.documentUrl || `/disciplinary-autos/${auto.id}/pdf`,
+            processId,
+            fileType: auto.documentUrl ? (auto.documentType || 'application/pdf') : 'text/html',
+            fileSize: auto.documentSize || sizeBytes,
+            versiones: [
+                {
+                    numero: auto.currentVersion || 1,
+                    fecha: auto.updatedAt || auto.createdAt || new Date().toISOString(),
+                    usuario: auto.createdBy || 'Sistema',
+                    cambios: 'Versión actual',
+                    tamaño: tamano,
+                    downloadUrl: auto.documentUrl || `/disciplinary-autos/${auto.id}/pdf`,
+                },
+            ],
+            metadatos: {
+                firmado: auto.estado === 'FIRMADO' || auto.estado === 'NOTIFICADO',
+                notificado: auto.estado === 'NOTIFICADO',
+                esAutoDigital: true,
+                estado: auto.estado,
+                tipoAuto: auto.tipo,
+                numero: auto.numero,
+            },
+        };
     }
 
     /**

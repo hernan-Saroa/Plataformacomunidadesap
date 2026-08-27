@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
@@ -9,7 +9,17 @@ import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase } from 'lucide-react';
+import { ModalProgramacionVencimientos } from './ModalProgramacionVencimientos';
+import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase, Repeat, X, Send, Scale, Trash2, Building, Clock } from 'lucide-react';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import {
+    NOMBRES_MESES,
+    ProgramacionVencimientos,
+    generarOcurrencias,
+    ocurrenciasFuturas,
+    resumenProgramacion,
+} from '../utils/programacionVencimientos';
+import { fechaLocalYMD } from '../utils/diasHabiles';
 
 interface ModalNuevoTerminoProps {
     open: boolean;
@@ -31,20 +41,71 @@ const PRIORIDADES = [
     { value: 'BAJA', label: 'Baja', color: '#10B981', bg: '#D1FAE5' },
 ];
 
+const DESTINATARIO_OTRO = '__OTRO__';
+const ENTE_SOLICITANTE_OTRO = '__OTRO__';
+
+interface FuenteNormativaEntry {
+    id: string;
+    tipo: string;
+    cita: string;
+    actualizacionPeriodica: boolean;
+    mesRecordatorio: string;
+}
+
+const nuevaFuenteNormativa = (): FuenteNormativaEntry => ({
+    id: `fn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    tipo: '',
+    cita: '',
+    actualizacionPeriodica: false,
+    mesRecordatorio: ''
+});
+
 export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoTerminoProps) {
+    const { getDestinatariosInformeActivos, getEntesSolicitantesInformeActivos, getTiposFuenteNormativaActivos } = useConfiguracionesSIGL();
+    const destinatariosDisponibles = getDestinatariosInformeActivos();
+    const entesSolicitantesDisponibles = getEntesSolicitantesInformeActivos();
+    const tiposFuenteNormativaDisponibles = getTiposFuenteNormativaActivos();
     const [loading, setLoading] = useState(false);
     const [profesionales, setProfesionales] = useState<any[]>([]);
-    const [procesosModulo, setProcesosModulo] = useState<any[]>([]);
-    const [loadingProcesos, setLoadingProcesos] = useState(false);
+    const [programacion, setProgramacion] = useState<ProgramacionVencimientos | null>(null);
+    const [modalProgramacionOpen, setModalProgramacionOpen] = useState(false);
     const [formData, setFormData] = useState({
         nombreActuacion: '',
         fechaVencimiento: '',
         prioridad: 'MEDIA',
         observaciones: '',
-        numeroRadicado: '',
         responsableId: '',
-        origenModulo: ''
+        origenModulo: '',
+        destinatario: '',
+        enteSolicitante: '',
+        tipoDias: 'CALENDARIO'
     });
+    const [destinatarioOtro, setDestinatarioOtro] = useState('');
+    const [enteSolicitanteOtro, setEnteSolicitanteOtro] = useState('');
+    const [fuentesNormativas, setFuentesNormativas] = useState<FuenteNormativaEntry[]>([nuevaFuenteNormativa()]);
+
+    const resetForm = () => {
+        setFormData({
+            nombreActuacion: '',
+            fechaVencimiento: '',
+            prioridad: 'MEDIA',
+            observaciones: '',
+            responsableId: '',
+            origenModulo: '',
+            destinatario: '',
+            enteSolicitante: '',
+            tipoDias: 'CALENDARIO'
+        });
+        setDestinatarioOtro('');
+        setEnteSolicitanteOtro('');
+        setFuentesNormativas([nuevaFuenteNormativa()]);
+        setProgramacion(null);
+    };
+
+    const vencimientosProgramados = useMemo(() => {
+        if (!programacion) return 0;
+        return ocurrenciasFuturas(generarOcurrencias(programacion)).length;
+    }, [programacion]);
 
     // Cargar profesionales
     useEffect(() => {
@@ -57,49 +118,86 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         }
     }, [open]);
 
-    // Cargar procesos del módulo seleccionado
-    useEffect(() => {
-        if (!open || !formData.origenModulo) {
-            setProcesosModulo([]);
-            return;
-        }
-        const loadProcesos = async () => {
-            setLoadingProcesos(true);
-            try {
-                let data: any[] = [];
-                if (formData.origenModulo === 'JUZGAMIENTO') {
-                    data = await legalService.getJuzgamientoProcesos();
-                } else if (formData.origenModulo === 'DEFENSA_JUDICIAL') {
-                    const raw = await legalService.getExpedientes({ estado: 'ACTIVO' });
-                    data = Array.isArray(raw) ? raw : [];
-                } else if (formData.origenModulo === 'ASESORIA') {
-                    data = await legalService.getConsultasJuridicas();
-                } else if (formData.origenModulo === 'ORGANOS_CONTROL') {
-                    data = await legalService.getRequerimientosOC();
-                } else if (formData.origenModulo === 'PROCESOS_COACTIVOS') {
-                    data = await legalService.getProcesosCoactivos();
-                }
-                setProcesosModulo(Array.isArray(data) ? data : []);
-            } catch {
-                setProcesosModulo([]);
-            } finally {
-                setLoadingProcesos(false);
-            }
-        };
-        loadProcesos();
-    }, [open, formData.origenModulo]);
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.nombreActuacion.trim() || !formData.fechaVencimiento) {
+        if (!formData.nombreActuacion.trim() || (!formData.fechaVencimiento && !programacion)) {
             toast.error('Complete los campos obligatorios');
             return;
         }
-        setLoading(true);
 
+        const destinatarioFinal = formData.destinatario === DESTINATARIO_OTRO
+            ? destinatarioOtro.trim()
+            : formData.destinatario;
+
+        const enteSolicitanteFinal = formData.enteSolicitante === ENTE_SOLICITANTE_OTRO
+            ? enteSolicitanteOtro.trim()
+            : formData.enteSolicitante;
+
+        const fundamentoNormativo = fuentesNormativas
+            .filter(f => f.tipo || f.cita)
+            .map(f => ({
+                tipo: f.tipo,
+                cita: f.cita,
+                actualizacionPeriodica: f.actualizacionPeriodica,
+                mesRecordatorio: f.actualizacionPeriodica && f.mesRecordatorio ? Number(f.mesRecordatorio) : undefined
+            }));
+
+        if (programacion) {
+            const ocurrencias = ocurrenciasFuturas(generarOcurrencias(programacion));
+            if (ocurrencias.length === 0) {
+                toast.error('Todos los vencimientos de la programación ya vencieron. Ajuste el plazo o la periodicidad.');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const resultados = await Promise.allSettled(
+                    ocurrencias.map((o) =>
+                        legalService.createTerminoManual({
+                            ...formData,
+                            destinatario: destinatarioFinal,
+                            enteSolicitante: enteSolicitanteFinal,
+                            fundamentoNormativo,
+                            nombreActuacion: `${formData.nombreActuacion} — ${NOMBRES_MESES[o.mes - 1]} ${o.anio}`,
+                            fechaBase: fechaLocalYMD(o.fechaInicio),
+                            fechaVencimiento: fechaLocalYMD(o.fechaVencimiento),
+                            diasTermino: Math.max(1, programacion.plazoHasta - programacion.plazoDesde + 1),
+                            tipoDias: programacion.tipoDias,
+                            observaciones: [formData.observaciones, `Programación: ${resumenProgramacion(programacion)}`].filter(Boolean).join(' · '),
+                            responsableId: formData.responsableId || null
+                        })
+                    )
+                );
+
+                const exitosos = resultados.filter((r) => r.status === 'fulfilled').length;
+                const fallidos = resultados.length - exitosos;
+
+                if (exitosos > 0) {
+                    toast.success(`Programación creada: ${exitosos} vencimiento${exitosos === 1 ? '' : 's'} generado${exitosos === 1 ? '' : 's'}`, {
+                        description: fallidos > 0 ? `${fallidos} no se pudieron crear` : undefined
+                    });
+                    onSuccess();
+                    onOpenChange(false);
+                    resetForm();
+                } else {
+                    toast.error('No se pudo crear la programación de vencimientos');
+                }
+            } catch (error) {
+                console.error('Error creando programación de términos:', error);
+                toast.error('Error al crear la programación de vencimientos');
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        setLoading(true);
         try {
             await legalService.createTerminoManual({
                 ...formData,
+                destinatario: destinatarioFinal,
+                enteSolicitante: enteSolicitanteFinal,
+                fundamentoNormativo,
                 responsableId: formData.responsableId || null
             });
             toast.success('Término creado exitosamente', {
@@ -107,15 +205,7 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
             });
             onSuccess();
             onOpenChange(false);
-            setFormData({
-                nombreActuacion: '',
-                fechaVencimiento: '',
-                prioridad: 'MEDIA',
-                observaciones: '',
-                numeroRadicado: '',
-                responsableId: '',
-                origenModulo: ''
-            });
+            resetForm();
         } catch (error) {
             console.error('Error creando término:', error);
             toast.error('Error al crear el término');
@@ -127,11 +217,11 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent hideCloseButton className="flex flex-col p-0 overflow-hidden" style={{ width: '660px', maxWidth: '90vw', minHeight: '580px', maxHeight: '88vh' }}>
-                <DialogTitle className="sr-only">Nueva Solicitud / Término</DialogTitle>
-                <DialogDescription className="sr-only">Formulario para crear un nuevo término o solicitud de informe</DialogDescription>
+                <DialogTitle className="sr-only">Nuevo Informe</DialogTitle>
+                <DialogDescription className="sr-only">Formulario para registrar un nuevo informe o término</DialogDescription>
 
                 <ModalHeaderClean
-                    titulo="Nueva Solicitud / Término"
+                    titulo="Nuevo Informe"
                     subtitulo="Complete los datos para registrar un nuevo plazo"
                     icono={Plus}
                     colorIcono="blue"
@@ -160,32 +250,6 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                         </Select>
                     </div>
 
-                    {/* Proceso del módulo */}
-                    {formData.origenModulo && (
-                        <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-                                <Briefcase className="w-4 h-4" />
-                                Proceso Vinculado (Opcional)
-                            </Label>
-                            <Select
-                                value={formData.numeroRadicado}
-                                onValueChange={(val: string) => setFormData({ ...formData, numeroRadicado: val === 'ninguno' ? '' : val })}
-                            >
-                                <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
-                                    <SelectValue placeholder={loadingProcesos ? 'Cargando...' : 'Seleccione un proceso...'} />
-                                </SelectTrigger>
-                                <SelectContent className="bg-white max-h-[200px] z-[9999]">
-                                    <SelectItem value="ninguno">Sin vincular</SelectItem>
-                                    {procesosModulo.map((p: any) => (
-                                        <SelectItem key={p.id || p.radicado} value={p.radicado || p.id}>
-                                            {p.radicado || p.id} — {p.investigado || p.demandante || p.disciplinado || p.solicitante || 'N/A'}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
-
                     {/* Nombre de la actuación */}
                     <div className="space-y-2">
                         <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
@@ -201,21 +265,223 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                         />
                     </div>
 
+                    {/* Ente solicitante del informe */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Building className="w-4 h-4" />
+                            Ente Solicitante
+                        </Label>
+                        <Select
+                            value={formData.enteSolicitante}
+                            onValueChange={(val: string) => setFormData({ ...formData, enteSolicitante: val })}
+                        >
+                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                <SelectValue placeholder="Seleccione el ente o persona solicitante..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white max-h-[200px] z-[9999]">
+                                {entesSolicitantesDisponibles.map((e) => (
+                                    <SelectItem key={e.id} value={e.nombre}>{e.nombre}</SelectItem>
+                                ))}
+                                <SelectItem value={ENTE_SOLICITANTE_OTRO}>Otro (especificar)...</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {formData.enteSolicitante === ENTE_SOLICITANTE_OTRO && (
+                            <Input
+                                placeholder="Especifique el ente o persona solicitante..."
+                                value={enteSolicitanteOtro}
+                                onChange={(e) => setEnteSolicitanteOtro(e.target.value)}
+                                className="border-2 border-gray-300 focus:border-blue-500"
+                            />
+                        )}
+                    </div>
+
+                    {/* Destinatario del informe */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Send className="w-4 h-4" />
+                            Destinatario del Informe
+                        </Label>
+                        <Select
+                            value={formData.destinatario}
+                            onValueChange={(val: string) => setFormData({ ...formData, destinatario: val })}
+                        >
+                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                <SelectValue placeholder="Seleccione entidad o dependencia receptora..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white max-h-[200px] z-[9999]">
+                                {destinatariosDisponibles.map((d) => (
+                                    <SelectItem key={d.id} value={d.nombre}>{d.nombre}</SelectItem>
+                                ))}
+                                <SelectItem value={DESTINATARIO_OTRO}>Otro (especificar)...</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {formData.destinatario === DESTINATARIO_OTRO && (
+                            <Input
+                                placeholder="Especifique la entidad o dependencia receptora..."
+                                value={destinatarioOtro}
+                                onChange={(e) => setDestinatarioOtro(e.target.value)}
+                                className="border-2 border-gray-300 focus:border-blue-500"
+                            />
+                        )}
+                    </div>
+
+                    {/* Fuente normativa */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Scale className="w-4 h-4" />
+                            Fuente Normativa
+                        </Label>
+
+                        <div className="space-y-3">
+                            {fuentesNormativas.map((fuente, index) => (
+                                <div key={fuente.id} className="p-3 border-2 border-gray-200 rounded-lg space-y-3 bg-gray-50">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-gray-600">Fuente {index + 1}</span>
+                                        {fuentesNormativas.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setFuentesNormativas(fuentesNormativas.filter(f => f.id !== fuente.id))}
+                                                className="text-red-500 hover:bg-red-50 p-1 rounded"
+                                                title="Eliminar fuente"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs font-semibold text-gray-600">Tipo</Label>
+                                            <Select
+                                                value={fuente.tipo}
+                                                onValueChange={(val: string) => setFuentesNormativas(
+                                                    fuentesNormativas.map(f => f.id === fuente.id ? { ...f, tipo: val } : f)
+                                                )}
+                                            >
+                                                <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500 bg-white">
+                                                    <SelectValue placeholder="Seleccione tipo..." />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-white max-h-[200px] z-[9999]">
+                                                    {tiposFuenteNormativaDisponibles.map((t) => (
+                                                        <SelectItem key={t.id} value={t.nombre}>{t.nombre}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <Label className="text-xs font-semibold text-gray-600">Número / Cita</Label>
+                                            <Input
+                                                placeholder="Ej: Ley 1955 de 2019, Art. 12..."
+                                                value={fuente.cita}
+                                                onChange={(e) => setFuentesNormativas(
+                                                    fuentesNormativas.map(f => f.id === fuente.id ? { ...f, cita: e.target.value } : f)
+                                                )}
+                                                className="border-2 border-gray-300 focus:border-blue-500 bg-white"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <label className="flex items-start gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={fuente.actualizacionPeriodica}
+                                            onChange={(e) => setFuentesNormativas(
+                                                fuentesNormativas.map(f => f.id === fuente.id
+                                                    ? { ...f, actualizacionPeriodica: e.target.checked, mesRecordatorio: e.target.checked ? f.mesRecordatorio : '' }
+                                                    : f)
+                                            )}
+                                            className="w-4 h-4 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-xs text-gray-600">
+                                            La norma se actualiza periódicamente — recordar revisar la versión vigente cada año
+                                        </span>
+                                    </label>
+
+                                    {fuente.actualizacionPeriodica && (
+                                        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                                            <Calendar className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                            <span className="text-xs font-semibold text-blue-700 whitespace-nowrap">Recordatorio anual de revisión en</span>
+                                            <Select
+                                                value={fuente.mesRecordatorio}
+                                                onValueChange={(val: string) => setFuentesNormativas(
+                                                    fuentesNormativas.map(f => f.id === fuente.id ? { ...f, mesRecordatorio: val } : f)
+                                                )}
+                                            >
+                                                <SelectTrigger className="w-full border-2 border-blue-300 focus:border-blue-500 bg-white h-8 text-xs">
+                                                    <SelectValue placeholder="Mes..." />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-white max-h-[200px] z-[9999]">
+                                                    {NOMBRES_MESES.map((mes, i) => (
+                                                        <SelectItem key={mes} value={String(i + 1)}>{mes}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
+
+                                    <div className="bg-gray-100 rounded-lg px-3 py-2">
+                                        <span className="text-[11px] font-semibold text-gray-500 block mb-0.5">Cita generada</span>
+                                        <span className="text-xs text-gray-700">
+                                            {fuente.tipo || fuente.cita
+                                                ? [fuente.tipo, fuente.cita].filter(Boolean).join(' — ')
+                                                : '—'}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setFuentesNormativas([...fuentesNormativas, nuevaFuenteNormativa()])}
+                            className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                            Agregar fuente
+                        </button>
+                    </div>
+
                     {/* Fecha y Prioridad en grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-                                <Calendar className="w-4 h-4" />
-                                Fecha de Vencimiento *
-                            </Label>
-                            <Input
-                                type="date"
-                                value={formData.fechaVencimiento}
-                                onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
-                                className="border-2 border-gray-300 focus:border-blue-500"
-                                min={new Date().toISOString().split('T')[0]}
-                                required
-                            />
+                            <div className="flex items-center justify-between">
+                                <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                                    <Calendar className="w-4 h-4" />
+                                    Fecha de Vencimiento *
+                                </Label>
+                                <button
+                                    type="button"
+                                    onClick={() => setModalProgramacionOpen(true)}
+                                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                >
+                                    <Repeat className="w-3.5 h-3.5" />
+                                    {programacion ? 'Editar' : 'Programar periodicidad'}
+                                </button>
+                            </div>
+
+                            {programacion ? (
+                                <div className="flex items-center justify-between gap-2 border-2 border-blue-200 bg-blue-50 rounded-lg px-3 py-2">
+                                    <span className="text-xs font-semibold text-blue-700">{resumenProgramacion(programacion)}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setProgramacion(null)}
+                                        className="text-blue-400 hover:text-blue-600"
+                                        title="Quitar programación"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <Input
+                                    type="date"
+                                    value={formData.fechaVencimiento}
+                                    onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
+                                    className="border-2 border-gray-300 focus:border-blue-500"
+                                    min={new Date().toISOString().split('T')[0]}
+                                    required
+                                />
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -245,6 +511,27 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                                 ))}
                             </div>
                         </div>
+                    </div>
+
+                    {/* Unidad del plazo */}
+                    <div className="space-y-2">
+                        <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                            <Clock className="w-4 h-4" />
+                            Unidad del Plazo
+                        </Label>
+                        <Select
+                            value={formData.tipoDias}
+                            onValueChange={(val: string) => setFormData({ ...formData, tipoDias: val })}
+                        >
+                            <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white z-[9999]">
+                                <SelectItem value="CALENDARIO">Días calendario</SelectItem>
+                                <SelectItem value="HABILES">Días hábiles</SelectItem>
+                                <SelectItem value="HORAS">Horas</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* Responsable */}
@@ -297,18 +584,29 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
                     <button
                         type="button"
                         onClick={(e) => handleSubmit(e as any)}
-                        disabled={loading || !formData.nombreActuacion.trim() || !formData.fechaVencimiento}
+                        disabled={loading || !formData.nombreActuacion.trim() || (programacion ? vencimientosProgramados === 0 : !formData.fechaVencimiento)}
                         className={`flex items-center gap-2 px-5 py-2 text-sm font-bold text-white rounded-lg transition-all ${
-                            loading || !formData.nombreActuacion.trim() || !formData.fechaVencimiento
+                            loading || !formData.nombreActuacion.trim() || (programacion ? vencimientosProgramados === 0 : !formData.fechaVencimiento)
                                 ? 'opacity-50 cursor-not-allowed'
                                 : 'hover:shadow-lg'
                         }`}
-                        style={{ background: (loading || !formData.nombreActuacion.trim() || !formData.fechaVencimiento) ? '#9CA3AF' : '#003DA5' }}
+                        style={{ background: (loading || !formData.nombreActuacion.trim() || (programacion ? vencimientosProgramados === 0 : !formData.fechaVencimiento)) ? '#9CA3AF' : '#003DA5' }}
                     >
-                        {loading ? 'Guardando...' : 'Crear Solicitud'}
+                        {loading
+                            ? 'Guardando...'
+                            : programacion
+                                ? `Crear Programación (${vencimientosProgramados} vencimiento${vencimientosProgramados === 1 ? '' : 's'})`
+                                : 'Crear Informe'}
                     </button>
                 </div>
             </DialogContent>
+
+            <ModalProgramacionVencimientos
+                open={modalProgramacionOpen}
+                onOpenChange={setModalProgramacionOpen}
+                initialValue={programacion}
+                onSave={(config) => setProgramacion(config)}
+            />
         </Dialog>
     );
 }

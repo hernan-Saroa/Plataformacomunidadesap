@@ -56,6 +56,7 @@ declare module 'certificados_laborales/Router' {
   interface CertificadosLaboralesRouterProps {
     userRoles: string[];
     userEmail: string;
+    userPermissions?: string[];
   }
   const Module: React.ComponentType<CertificadosLaboralesRouterProps>;
   export { Module as CertificadosLaboralesRouter };
@@ -96,5 +97,17 @@ declare module 'pta/Module' {
 declare module 'pta/Portal' {
   const Module: React.ComponentType<any>;
   export { Module as PTAPortalModule };
+  export default Module;
+}
+
+declare module 'contratacion/Module' {
+  const Module: React.ComponentType;
+  export { Module as ContratacionModulePremium };
+  export default Module;
+}
+
+declare module 'viaticos/Module' {
+  const Module: React.ComponentType;
+  export { Module as ViaticosModulePremium };
   export default Module;
 }

@@ -9,7 +9,9 @@ import {
   Bell, 
   Code,
   ChevronLeft,
-  Settings
+  Settings,
+  ClipboardCheck,
+  BookOpenCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -21,7 +23,8 @@ import { GeneradorReportes } from './GeneradorReportes';
 import { NotificacionesValidacion } from './NotificacionesValidacion';
 import { APIDocumentacion } from './APIDocumentacion';
 import { ConfiguracionPlantilla } from './ConfiguracionPlantilla';
-import { Button } from '@esap-mfe/shared-ui/button';
+import { CertificateCorrectionRequests } from './CertificateCorrectionRequests';
+import { LaborFunctionsManager } from './LaborFunctionsManager';
 
 type Vista = 
   | 'dashboard' 
@@ -31,7 +34,9 @@ type Vista =
   | 'reportes' 
   | 'notificaciones' 
   | 'api-docs'
-  | 'configuracion-plantilla';
+  | 'configuracion-plantilla'
+  | 'solicitudes-correccion'
+  | 'funciones-laborales';
 
 interface MenuOption {
   id: Vista;
@@ -47,7 +52,7 @@ interface CertificadosLaboralesRouterProps {
   userPermissions?: string[];
 }
 
-export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPermissions = [] }: CertificadosLaboralesRouterProps) {
+export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }: CertificadosLaboralesRouterProps) {
   const [vistaActual, setVistaActual] = useState<Vista>('dashboard');
 
   const hasCertPerm = useMemo(() => (suffix: string) =>
@@ -57,13 +62,34 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
 
   const canManageTemplate = useMemo(() => hasCertPerm('template.manage'), [hasCertPerm]);
   const canEditPrima = useMemo(() => hasCertPerm('config.edit'), [hasCertPerm]);
+  const canManageFunctions = useMemo(() => hasCertPerm('functions.manage'), [hasCertPerm]);
   const canExportReport = useMemo(() => hasCertPerm('export.report'), [hasCertPerm]);
   const canDeliver = useMemo(() => hasCertPerm('certificate.deliver'), [hasCertPerm]);
   const canVerify = useMemo(() => hasCertPerm('certificate.verify'), [hasCertPerm]);
+  const canManageCorrections = useMemo(() => hasCertPerm('correction.manage'), [hasCertPerm]);
 
   const handleNavigate = (vista: Vista) => {
+    if (vista === 'solicitudes-correccion' && !canManageCorrections) {
+      toast.error('No tienes permiso para aprobar solicitudes de corrección.');
+      return;
+    }
+    if (vista === 'funciones-laborales' && !canManageFunctions) {
+      toast.error('No tienes permiso para gestionar las funciones laborales.');
+      return;
+    }
     setVistaActual(vista);
   };
+
+  useEffect(() => {
+    const lostCorrectionAccess =
+      vistaActual === 'solicitudes-correccion' && !canManageCorrections;
+    const lostFunctionsAccess =
+      vistaActual === 'funciones-laborales' && !canManageFunctions;
+
+    if (lostCorrectionAccess || lostFunctionsAccess) {
+      setVistaActual('dashboard');
+    }
+  }, [canManageCorrections, canManageFunctions, vistaActual]);
 
   useEffect(() => {
     const lastPublished = localStorage.getItem('cert-template-last-published');
@@ -133,6 +159,20 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
       icon: <Settings className="w-5 h-5" />,
       description: 'Configuración de la plantilla de certificados',
       color: '#FF9900'
+    },
+    {
+      id: 'solicitudes-correccion',
+      label: 'Solicitudes de corrección',
+      icon: <ClipboardCheck className="w-5 h-5" />,
+      description: 'Revisión y respuesta de correcciones',
+      color: '#F59E0B'
+    },
+    {
+      id: 'funciones-laborales',
+      label: 'Funciones laborales',
+      icon: <BookOpenCheck className="w-5 h-5" />,
+      description: 'Matriz normalizada de funciones por cargo',
+      color: '#0F766E'
     }
   ];
 
@@ -140,16 +180,25 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
   if (vistaActual !== 'dashboard') {
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Botón Volver - Mobile optimized */}
-        <div className="bg-white border-b px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
-          <Button
-            variant="ghost"
+        {/* Navegación de regreso - Mobile optimized */}
+        <div className="certificate-subview-navigation sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-6 sm:py-4">
+          <motion.button
+            type="button"
             onClick={() => setVistaActual('dashboard')}
-            className="hover:bg-gray-100 min-h-[44px]"
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 430, damping: 25 }}
+            className="certificate-dashboard-back"
+            aria-label="Volver al dashboard de certificados laborales"
           >
-            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-            <span className="text-sm sm:text-base">Volver al Dashboard</span>
-          </Button>
+            <span className="certificate-dashboard-back__icon" aria-hidden="true">
+              <ChevronLeft className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 text-left">
+              <span className="certificate-dashboard-back__label">Volver al dashboard</span>
+              <span className="certificate-dashboard-back__subtitle">Certificados laborales</span>
+            </span>
+          </motion.button>
         </div>
 
         {/* Contenido de la vista */}
@@ -171,8 +220,14 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
             {vistaActual === 'configuracion-plantilla' && (
               <ConfiguracionPlantilla 
                 canEdit={canManageTemplate}
-                currentUserEmail={userEmail}
+                currentUserEmail={userEmail || ''}
               />
+            )}
+            {vistaActual === 'solicitudes-correccion' && canManageCorrections && (
+              <CertificateCorrectionRequests canResend={canDeliver} />
+            )}
+            {vistaActual === 'funciones-laborales' && canManageFunctions && (
+              <LaborFunctionsManager />
             )}
           </motion.div>
         </AnimatePresence>
@@ -185,12 +240,14 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
     <>
     <Toaster position="bottom-right" richColors />
     <CertificadosLaboralesDashboard
-      onNavigate={handleNavigate}
+      onNavigate={(vista) => handleNavigate(vista as Vista)}
       canManageTemplates={canManageTemplate}
       canEditPrima={canEditPrima}
+      canManageFunctions={canManageFunctions}
       canExportReport={canExportReport}
       canDeliver={canDeliver}
       canVerify={canVerify}
+      canManageCorrections={canManageCorrections}
     />
     </>
   );

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UploadedFile, UseInterceptors, UseGuards, Logger } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, UploadedFile, UseInterceptors, UseGuards, Logger } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage, diskStorage } from 'multer';
 import { extname } from 'path';
@@ -9,11 +9,17 @@ import { BancoDocentesService } from './banco-docentes.service';
 import { DocumentTypeValidatorService } from './document-type-validator.service';
 import { sanitizeDeepStrings } from '../utils/text-sanitizer';
 import { Public } from '../../auth/public.decorator';
-import { RolesGuard } from '../../auth/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
+import {
+  canViewRundSensitiveData,
+  findRundSensitiveFields,
+  getRequestRoleCodes,
+  protectRundSensitiveData,
+} from './banco-docentes-sensitive-data';
 
 @Controller(['banco-docentes', 'pta/banco-docentes'])
-@UseGuards(RolesGuard)
+@UseGuards(BancoDocentesRolesGuard)
 export class BancoDocentesController {
   private readonly logger = new Logger(BancoDocentesController.name);
 
@@ -22,7 +28,55 @@ export class BancoDocentesController {
     private readonly docTypeValidator: DocumentTypeValidatorService,
   ) { }
 
+  private requestActor(req: any): { actorId: string; roles: string[]; ip?: string; fullAccess: boolean } {
+    const roles = getRequestRoleCodes(req?.user);
+    const forwarded = req?.headers?.['x-forwarded-for'];
+    const ip = String(Array.isArray(forwarded) ? forwarded[0] : forwarded || req?.ip || req?.socket?.remoteAddress || '')
+      .split(',')[0]
+      .trim() || undefined;
+    return {
+      actorId: String(req?.user?.userId || req?.user?.email || req?.user?.username || 'SISTEMA'),
+      roles,
+      ip,
+      fullAccess: canViewRundSensitiveData(req?.user),
+    };
+  }
+
+  private async protectSensitiveResponse<T>(payload: T, req: any, endpoint: string): Promise<T> {
+    const context = this.requestActor(req);
+    const records = Array.isArray(payload) ? payload : [payload];
+    await this.service.logSensitiveDataAccess(records
+      .filter(Boolean)
+      .map((record: any) => ({
+        docenteId: String(record?.docente_id || record?.docenteId || record?.id || ''),
+        actorId: context.actorId,
+        roles: context.roles,
+        fields: findRundSensitiveFields(record),
+        endpoint,
+        fullAccess: context.fullAccess,
+        ip: context.ip,
+      })));
+
+    if (Array.isArray(payload)) {
+      return payload.map((record: any) => protectRundSensitiveData(record, context.fullAccess)) as T;
+    }
+    return protectRundSensitiveData(payload, context.fullAccess);
+  }
+
+  private async assertOwnProfileForDocente(docenteId: string, periodoCarga: string | undefined, req: any): Promise<void> {
+    const roles = getRequestRoleCodes(req?.user);
+    const isDocente = roles.includes('DOCENTE');
+    const canReadOtherProfiles = roles.some((role) => ['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN'].includes(role));
+    if (!isDocente || canReadOtherProfiles) return;
+
+    const authenticatedProfile = await this.service.getById(String(req?.user?.userId || ''), periodoCarga);
+    if (!authenticatedProfile?.docente_id || authenticatedProfile.docente_id !== docenteId) {
+      throw new ForbiddenException('El docente solo puede consultar su propio perfil RUND.');
+    }
+  }
+
   @Get()
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   async list(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
@@ -32,6 +86,7 @@ export class BancoDocentesController {
     @Query('periodoCarga') periodoCarga?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Req() req?: any,
   ) {
     const result = await this.service.list({
       territorial,
@@ -45,7 +100,8 @@ export class BancoDocentesController {
     });
     // Devolvemos items + paginación en el nivel raíz (sin wrapper "data")
     // para que el apiClient del shell no desenvuelva y descarte total/pages.
-    return { success: true, items: result.data, total: result.total, page: result.page, pages: result.pages, limit: result.limit };
+    const items = await this.protectSensitiveResponse(result.data, req, 'BANCO_DOCENTES_LISTADO');
+    return { success: true, items, total: result.total, page: result.page, pages: result.pages, limit: result.limit };
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -54,6 +110,7 @@ export class BancoDocentesController {
   // ═══════════════════════════════════════════════════════════════════
 
   @Get('stats')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   async stats(
     @Query('territorial') territorial?: string,
     @Query('dedicacion') dedicacion?: string,
@@ -79,9 +136,14 @@ export class BancoDocentesController {
 
   /** BR-052 — Validar unicidad de documento y correo */
   @Post('validar-unicidad')
-  async validarUnicidad(@Body() body: { documentNumber: string; correoInstitucional: string; excludeDocenteId?: string }) {
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async validarUnicidad(
+    @Body() body: { documentNumber: string; correoInstitucional: string; excludeDocenteId?: string },
+    @Req() req: any,
+  ) {
     const result = await this.service.validarUnicidad(body.documentNumber, body.correoInstitucional, body.excludeDocenteId);
-    return { success: true, data: result };
+    const duplicados = await this.protectSensitiveResponse(result.duplicados, req, 'VALIDAR_UNICIDAD_RUND');
+    return { success: true, data: { ...result, duplicados } };
   }
 
   /**
@@ -111,28 +173,36 @@ export class BancoDocentesController {
 
 
 
-  /** §6.3 / BR-059 — Tarjeta RUND por persona (para Carpeta Digital)
-   *  @Public() igual que su gemelo `:id/tarjeta-rund` (solo lectura). El RolesGuard
-   *  hacía match EXACTO del code del rol; en QA el rol del docente llega con otro
-   *  casing (p. ej. "Docente") y devolvía 403, ocultando la carpeta RUND. El dato
-   *  ya es accesible públicamente vía el endpoint por-id, así que no hay regresión. */
+  /** §6.3 / BR-059 — Tarjeta RUND por persona (para Carpeta Digital).
+   *  Requiere autenticación y limita al docente a consultar su propio perfil. */
   @Get('by-persona/:personaId/tarjeta-rund')
-  @Public()
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   async getTarjetaRUNDByPersona(
     @Param('personaId') personaId: string,
     @Query('periodoCarga') periodoCarga?: string,
+    @Req() req?: any,
   ) {
     const result = await this.service.getTarjetaRUNDByPersona(personaId, periodoCarga);
     if (!result) return { success: false, data: null, message: 'No es docente RUND' };
-    return { success: true, data: result };
+    await this.assertOwnProfileForDocente(String(result.docenteId || ''), periodoCarga, req);
+    return { success: true, data: await this.protectSensitiveResponse(result, req, 'TARJETA_RUND_POR_PERSONA') };
   }
 
   /** BR-053 — Detectar posible duplicado por nombre + fecha nacimiento */
   @Post('detectar-duplicado')
-  async detectarDuplicado(@Body() body: { nombreCompleto: string; fechaNacimiento: string }) {
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async detectarDuplicado(
+    @Body() body: { nombreCompleto: string; fechaNacimiento: string },
+    @Req() req: any,
+  ) {
     const fecha = body.fechaNacimiento ? new Date(body.fechaNacimiento) : null;
     const result = await this.service.detectarPosibleDuplicado(body.nombreCompleto, fecha);
-    return { success: true, data: result };
+    const posiblesDuplicados = await this.protectSensitiveResponse(
+      result.posiblesDuplicados,
+      req,
+      'DETECTAR_DUPLICADO_RUND',
+    );
+    return { success: true, data: { ...result, posiblesDuplicados } };
   }
 
   @Post('invitaciones')
@@ -143,6 +213,7 @@ export class BancoDocentesController {
   }
 
   @Post('bulk')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async bulkUpload(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -328,25 +399,65 @@ export class BancoDocentesController {
   }
 
   @Get(':id')
-  async getById(@Param('id') id: string, @Query('periodoCarga') periodoCarga?: string) {
-    return { success: true, data: await this.service.getById(id, periodoCarga) };
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async getById(
+    @Param('id') id: string,
+    @Query('periodoCarga') periodoCarga: string | undefined,
+    @Req() req: any,
+  ) {
+    const data = await this.service.getById(id, periodoCarga);
+    const roleCodes = getRequestRoleCodes(req?.user);
+    const managementRoles = new Set(['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN']);
+    const isManager = roleCodes.some((role: string) => managementRoles.has(role));
+    if (!isManager && roleCodes.includes('DOCENTE')) {
+      const authenticatedProfile = await this.service.getById(String(req?.user?.userId || ''), periodoCarga);
+      if (!data?.persona_id || data.persona_id !== authenticatedProfile?.persona_id) {
+        throw new ForbiddenException('El docente solo puede consultar su propio perfil RUND.');
+      }
+    }
+    return { success: true, data: await this.protectSensitiveResponse(data, req, 'PERFIL_RUND_POR_ID') };
   }
 
   @Post()
-  async create(@Body() body: any) {
-    const result = await this.service.upsertDocente(body, { rejectExisting: true });
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async create(@Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
+    const result = await this.service.upsertDocente(
+      { ...body, actorId, cargadoPor: actorId, canal_origen: 'MODAL' },
+      { rejectExisting: true },
+    );
+    await this.service.logAudit({
+      docenteId: result.docenteId,
+      bloque: 'GENERAL',
+      accion: 'CREAR',
+      actorId,
+      canalOrigen: 'MODAL',
+      metadata: { periodoCarga: body.periodoCarga || body.periodo_carga || null },
+    });
     return { success: true, data: result };
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: any) {
-    const result = await this.service.updateDocente(id, body);
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
+    const result = await this.service.updateDocente(id, { ...body, actorId, cargadoPor: actorId });
+    return { success: true, data: result };
+  }
+
+  @Put(':id/estado')
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async cambiarEstado(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body.actorId || body.cargadoPor || 'SISTEMA';
+    const result = await this.service.cambiarEstado(id, { ...body, actorId });
     return { success: true, data: result };
   }
 
   @Delete(':id')
-  async toggleEstado(@Param('id') id: string) {
-    const result = await this.service.toggleEstado(id);
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async toggleEstado(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const actorId = req?.user?.userId || req?.user?.email || body?.actorId || body?.cargadoPor || 'SISTEMA';
+    const result = await this.service.cambiarEstado(id, { ...(body || {}), actorId });
     return { success: true, data: result };
   }
 
@@ -417,6 +528,18 @@ export class BancoDocentesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     try {
+      if (['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(body.tipoSoporte)) {
+        const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+        if (!file) {
+          throw new BadRequestException('La gestion del perfil requiere un archivo de soporte.');
+        }
+        if (!allowedMimeTypes.has(file.mimetype) || file.size > 10 * 1024 * 1024) {
+          if ((file as any).path && fs.existsSync((file as any).path)) {
+            fs.unlinkSync((file as any).path);
+          }
+          throw new BadRequestException('El soporte del perfil debe ser PDF, JPG o PNG y pesar maximo 10 MB.');
+        }
+      }
       let validacionTipo: any = undefined;
       if (file) {
         body.nombreArchivo = file.originalname;
@@ -459,19 +582,21 @@ export class BancoDocentesController {
 
   /** §6.3 / BR-059 — Tarjeta RUND para Carpeta Digital */
   @Get(':id/tarjeta-rund')
-  @Public()
-  async getTarjetaRUND(@Param('id') id: string) {
+  @Roles('DOCENTE', 'GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
+  async getTarjetaRUND(@Param('id') id: string, @Req() req: any) {
     try {
       const result = await this.service.getTarjetaRUND(id);
-      return { success: true, data: result };
+      await this.assertOwnProfileForDocente(String(result.docenteId || ''), result.periodoCarga, req);
+      return { success: true, data: await this.protectSensitiveResponse(result, req, 'TARJETA_RUND_POR_ID') };
     } catch (e: any) {
+      if (e instanceof ForbiddenException) throw e;
       return { success: false, data: null, message: e.message };
     }
   }
 
   /** BR-056 — Log inmutable de auditoría del docente */
   @Get(':id/auditoria')
-  @Public()
+  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
   async getAuditoria(@Param('id') id: string) {
     try {
       const result = await this.service.getAuditoria(id);

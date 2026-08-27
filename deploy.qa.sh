@@ -2,7 +2,6 @@
 
 # =====================================================
 # Script de Despliegue para ESAP SuperApp - ENTORNO QA
-# Servidor: http://135.237.81.133
 # Uso: ./deploy.qa.sh [comando]
 # =====================================================
 
@@ -47,7 +46,7 @@ fi
 
 COMPOSE_FILE_ENV="docker-compose.qa.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
-SERVER_URL_ENV="http://135.237.81.133"
+SERVER_URL_ENV="${SERVER_URL_ENV:-NOT_DEFINED}"
 ENV_FILE=".env.qa"
 ENV_NETWORK_KEY="superapp-net-qa"
 ENV_CONTAINER_SUFFIX="-qa"
@@ -70,6 +69,8 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-control-disciplinario
     frontend-mfe-gestion-legal
     frontend-mfe-pta
+    frontend-mfe-contratacion
+    frontend-mfe-viaticos
 )
 FRONTEND_MFE_APP_SERVICES=(
     frontend-shell
@@ -86,6 +87,8 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-control-disciplinario
     frontend-mfe-gestion-legal
     frontend-mfe-pta
+    frontend-mfe-contratacion
+    frontend-mfe-viaticos
 )
 BACKEND_ENV_SERVICES=(
     api-gateway
@@ -100,6 +103,7 @@ BACKEND_ENV_SERVICES=(
     notifications-service
     travel-expenses-service
     audit-service
+    hiring-service
 )
 
 compose_env() {
@@ -373,6 +377,14 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-pta"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-contratacion/*)
+                service_name="frontend-mfe-contratacion"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-viaticos/*)
+                service_name="frontend-mfe-viaticos"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/shell/*)
                 service_name="frontend-shell"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -448,6 +460,8 @@ resolve_mfe_service() {
         control-disciplinario|mfe-control-disciplinario|frontend-mfe-control-disciplinario) echo "frontend-mfe-control-disciplinario" ;;
         gestion-legal|mfe-gestion-legal|frontend-mfe-gestion-legal) echo "frontend-mfe-gestion-legal" ;;
         pta|mfe-pta|frontend-mfe-pta) echo "frontend-mfe-pta" ;;
+        contratacion|mfe-contratacion|frontend-mfe-contratacion) echo "frontend-mfe-contratacion" ;;
+        viaticos|mfe-viaticos|frontend-mfe-viaticos) echo "frontend-mfe-viaticos" ;;
         *) return 1 ;;
     esac
 }
@@ -501,8 +515,8 @@ cmd_up() {
 
     echo ""
     echo -e "${YELLOW}URLs de acceso (QA):${NC}"
-    echo "  Frontend:    http://135.237.81.133"
-    echo "  API Gateway: http://135.237.81.133/services"
+    echo "  Frontend:    ${SERVER_URL_ENV}"
+    echo "  API Gateway: ${SERVER_URL_ENV}/services"
     echo ""
 }
 
@@ -682,27 +696,27 @@ cmd_up_mfe() {
         exit 1
     fi
     echo -e "${GREEN}Iniciando frontend desacoplado QA...${NC}"
-    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE QA iniciado exitosamente${NC}"
 }
 
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado QA...${NC}"
-    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_env_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     echo -e "${GREEN}Frontend MFE QA detenido${NC}"
 }
 
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado QA...${NC}"
-    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE QA reiniciado${NC}"
 }
 
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado QA:${NC}"
-    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_env_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
 }
 
 cmd_logs_mfe() {
@@ -716,7 +730,7 @@ cmd_logs_mfe() {
         compose_env_mfe logs -f "$resolved_service"
         return
     fi
-    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_env_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
 }
 
 cmd_rebuild_mfe() {
@@ -759,6 +773,8 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-control-disciplinario"
         "frontend-mfe-gestion-legal"
         "frontend-mfe-pta"
+        "frontend-mfe-contratacion"
+        "frontend-mfe-viaticos"
     )
     echo -e "${GREEN}Selecciona un servicio frontend MFE QA para rebuild:${NC}"
     PS3="Ingresa el número (o Ctrl+C para cancelar): "
@@ -845,8 +861,8 @@ cmd_db_migrate() {
         return 0
     fi
 
-    # Verificar si hay archivos SQL en la carpeta
-    if [ -z "$(ls -A ./db/migrations/*.sql 2>/dev/null)" ]; then
+    # Verificar si hay archivos SQL en la carpeta (incluyendo subcarpetas, excluyendo 'old' y 'archive')
+    if [ -z "$(find ./db/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null)" ]; then
         echo -e "${YELLOW}No hay archivos de migración en db/migrations${NC}"
         return 0
     fi
@@ -855,8 +871,8 @@ cmd_db_migrate() {
     echo -e "${YELLOW}Copiando migraciones al contenedor...${NC}"
     docker cp ./db/migrations superapp-db-qa:/tmp/migrations
 
-    # Obtener lista de archivos SQL ordenados (usar shell en el contenedor para expandir el wildcard)
-    MIGRATION_FILES=$(docker exec superapp-db-qa sh -c "ls -1 /tmp/migrations/*.sql 2>/dev/null | sort")
+    # Obtener lista de archivos SQL ordenados recursivamente (excluyendo la carpeta 'old' y 'archive')
+    MIGRATION_FILES=$(docker exec superapp-db-qa sh -c "find /tmp/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null | sort")
 
     if [ -z "$MIGRATION_FILES" ]; then
         echo -e "${YELLOW}No se encontraron archivos de migración${NC}"
@@ -874,23 +890,24 @@ cmd_db_migrate() {
     # Ejecutar cada migración
     for file in $MIGRATION_FILES; do
         filename=$(basename "$file")
+        relpath=$(echo "$file" | sed 's|^/tmp/migrations/||')
 
-        # Saltar migraciones ya aplicadas
-        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
-            echo -e "${YELLOW}Saltando (ya aplicada): $filename${NC}"
+        # Saltar migraciones ya aplicadas (buscando por ruta relativa o por nombre de archivo)
+        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$relpath" || echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
+            echo -e "${YELLOW}Saltando (ya aplicada): $relpath${NC}"
             continue
         fi
 
         MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
-        echo -e "${CYAN}Ejecutando migración: $filename${NC}"
+        echo -e "${CYAN}Ejecutando migración: $relpath${NC}"
 
         if docker exec superapp-db-qa psql -U postgres -d esap_db -f "$file" 2>&1; then
-            echo -e "${GREEN}✓ $filename ejecutado exitosamente${NC}"
+            echo -e "${GREEN}✓ $relpath ejecutado exitosamente${NC}"
             MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
-            escaped_filename=$(printf "%s" "$filename" | sed "s/'/''/g")
-            docker exec superapp-db-qa psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+            escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
+            docker exec superapp-db-qa psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
         else
-            echo -e "${RED}✗ Error ejecutando $filename${NC}"
+            echo -e "${RED}✗ Error ejecutando $relpath${NC}"
             MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
         fi
     done

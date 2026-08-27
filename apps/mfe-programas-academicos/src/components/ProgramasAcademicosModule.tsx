@@ -877,10 +877,13 @@ export function ProgramasAcademicosModule() {
                                       Información Académica
                                     </h4>
                                     <div className="space-y-2 text-sm">
+                                      <p className="text-gray-700"><span className="font-semibold">Código:</span> <span className="font-mono text-xs">{programa.codigo}</span></p>
+                                      <p className="text-gray-700"><span className="font-semibold">Nombre corto:</span> {programa.nombre_corto || programa.nombreCorto || 'N/A'}</p>
+                                      <p className="text-gray-700"><span className="font-semibold">Nombre origen Excel:</span> {programa.nombreExcel || programa.descripcion || 'N/A'}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Duración:</span> {programa.duracionSemestres} semestres ({programa.creditos} créditos)</p>
                                       <p className="text-gray-700"><span className="font-semibold">Jornada:</span> {programa.jornada}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Modalidad Principal:</span> <span className="capitalize">{programa.modalidad || 'Presencial'}</span></p>
-                                      <p className="text-gray-700"><span className="font-semibold">Facultad:</span> {programa.facultad}</p>
+                                      <p className="text-gray-700"><span className="font-semibold">Facultad:</span> {programa.nombre_facultad || programa.facultad} {programa.codigo_facultad && <span className="font-mono text-xs text-gray-400">({programa.codigo_facultad})</span>}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Costo matrícula:</span> ${(programa.costoMatricula || 0).toLocaleString()}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Docentes:</span> {programa.docentesAsignados}</p>
                                     </div>
@@ -927,6 +930,10 @@ export function ProgramasAcademicosModule() {
                                       <span className="font-semibold">Tipo Programa:</span>{' '}
                                       <span className="capitalize">{programa.tipo_programa || programa.nivelFormacion || 'N/A'}</span>
                                     </p>
+                                    <p className="text-gray-700">
+                                      <span className="font-semibold">Referencia horas PTA:</span>{' '}
+                                      {programa.horas_pta_referencia_circular003 || 'No registrada'}
+                                    </p>
                                     {programa.categoria_horas_circular003 === 'pregrado_sede_central' ? (
                                       <>
                                         <p className="text-gray-700">
@@ -935,7 +942,7 @@ export function ProgramasAcademicosModule() {
                                         </p>
                                         <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mt-1">
                                           <p className="text-xs font-bold text-orange-800">
-                                            Fórmula: {programa.horas_pregrado_central || 64}h × 3 (Criterio 1+2) = <span className="text-orange-900 text-sm">{(programa.horas_pregrado_central || 64) * 3}h PTA</span>
+                                            Fórmula: {programa.formula_calculo_horas || `${programa.horas_pregrado_central || 64}h × 3 (Criterio 1+2)`}
                                           </p>
                                           <p className="text-[10px] text-orange-600 mt-0.5">Bloque fijo — independiente del número de créditos</p>
                                         </div>
@@ -947,7 +954,7 @@ export function ProgramasAcademicosModule() {
                                         </p>
                                         <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mt-1">
                                           <p className="text-xs font-bold text-blue-800">
-                                            Fórmula: Créditos × {programa.horas_base_por_credito || programa.horasBasePorCredito || '?'}h × 3 (Criterio 1+2)
+                                            Fórmula: {programa.formula_calculo_horas || `Créditos × ${programa.horas_base_por_credito || programa.horasBasePorCredito || '?'}h × 3 (Criterio 1+2)`}
                                           </p>
                                           <p className="text-[10px] text-blue-600 mt-0.5">
                                             Ejemplo: 3 Cr × {programa.horas_base_por_credito || programa.horasBasePorCredito || '?'} × 3 = {3 * (programa.horas_base_por_credito || programa.horasBasePorCredito || 0) * 3}h PTA
@@ -1079,10 +1086,13 @@ export function ProgramasAcademicosModule() {
                             Información Académica
                           </h4>
                           <div className="space-y-1.5 text-xs text-gray-700">
+                            <p><span className="font-semibold text-gray-900">Código:</span> <span className="font-mono">{programa.codigo}</span></p>
+                            <p><span className="font-semibold text-gray-900">Nombre corto:</span> {programa.nombre_corto || programa.nombreCorto || 'N/A'}</p>
+                            <p><span className="font-semibold text-gray-900">Origen Excel:</span> {programa.nombreExcel || programa.descripcion || 'N/A'}</p>
                             <p><span className="font-semibold text-gray-900">Duración:</span> {programa.duracionSemestres} semestres</p>
                             <p><span className="font-semibold text-gray-900">Jornada:</span> {programa.jornada}</p>
                             <p><span className="font-semibold text-gray-900">Modalidad Principal:</span> <span className="capitalize">{programa.modalidad || 'Presencial'}</span></p>
-                            <p><span className="font-semibold text-gray-900">Facultad:</span> {programa.facultad}</p>
+                            <p><span className="font-semibold text-gray-900">Facultad:</span> {programa.nombre_facultad || programa.facultad} {programa.codigo_facultad ? `(${programa.codigo_facultad})` : ''}</p>
                             <p><span className="font-semibold text-gray-900">Costo:</span> ${(programa.costoMatricula || 0).toLocaleString()} COP</p>
                           </div>
                         </div>
@@ -1095,16 +1105,18 @@ export function ProgramasAcademicosModule() {
                           </h4>
                           <div className="space-y-1.5 text-xs text-gray-700">
                             <p><span className="font-semibold text-gray-900">Categoría:</span> {programa.descripcion_categoria_circular003 || programa.categoria_horas_circular003 || 'Sin categorizar'}</p>
+                            <p><span className="font-semibold text-gray-900">Tipo:</span> <span className="capitalize">{programa.tipo_programa || programa.nivelFormacion || 'N/A'}</span></p>
+                            <p><span className="font-semibold text-gray-900">Referencia PTA:</span> {programa.horas_pta_referencia_circular003 || 'No registrada'}</p>
                             {programa.categoria_horas_circular003 === 'pregrado_sede_central' ? (
                               <div className="bg-orange-50 border border-orange-200 rounded-lg px-2 py-1.5">
                                 <p className="text-[10px] font-bold text-orange-800">
-                                  Bloque fijo: {programa.horas_pregrado_central || 64}h × 3 = {(programa.horas_pregrado_central || 64) * 3}h PTA
+                                  Fórmula: {programa.formula_calculo_horas || `${programa.horas_pregrado_central || 64}h × 3 = ${(programa.horas_pregrado_central || 64) * 3}h PTA`}
                                 </p>
                               </div>
                             ) : (
                               <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5">
                                 <p className="text-[10px] font-bold text-blue-800">
-                                  Cr × {programa.horas_base_por_credito || programa.horasBasePorCredito || '?'}h × 3 = horas PTA
+                                  Fórmula: {programa.formula_calculo_horas || `Cr × ${programa.horas_base_por_credito || programa.horasBasePorCredito || '?'}h × 3 = horas PTA`}
                                 </p>
                               </div>
                             )}

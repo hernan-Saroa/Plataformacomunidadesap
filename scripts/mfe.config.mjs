@@ -29,6 +29,8 @@ export const remoteApps = [
   { workspace: '@esap-mfe/control-disciplinario', appDir: 'mfe-control-disciplinario', federationName: 'control_disciplinario', devPort: 3111, serviceName: 'frontend-mfe-control-disciplinario' },
   { workspace: '@esap-mfe/gestion-legal', appDir: 'mfe-gestion-legal', federationName: 'gestion_legal', devPort: 3112, serviceName: 'frontend-mfe-gestion-legal' },
   { workspace: '@esap-mfe/pta', appDir: 'mfe-pta', federationName: 'pta', devPort: 3113, serviceName: 'frontend-mfe-pta' },
+  { workspace: '@esap-mfe/contratacion', appDir: 'mfe-contratacion', federationName: 'contratacion', devPort: 3114, serviceName: 'frontend-mfe-contratacion' },
+  { workspace: '@esap-mfe/viaticos', appDir: 'mfe-viaticos', federationName: 'viaticos', devPort: 3115, serviceName: 'frontend-mfe-viaticos' },
 ];
 
 export const frontendApps = [shellApp, ...remoteApps];

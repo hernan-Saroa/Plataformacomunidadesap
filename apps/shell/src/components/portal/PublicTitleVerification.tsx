@@ -844,6 +844,13 @@ export function PublicTitleVerification({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Cuando ya se abrió el flujo de revisión manual, el único envío válido
+    // es el botón del propio panel. Esto también evita que Enter vuelva a
+    // ejecutar la búsqueda y elimine el PDF que el usuario ya seleccionó.
+    if (showManualReviewDialog) {
+      return;
+    }
+
     const validationError = validateRequestForm();
     if (validationError) {
       toast.error(validationError);
@@ -2601,7 +2608,13 @@ export function PublicTitleVerification({
                         isGenerating ||
                         isConfirmingSelection ||
                         !acceptedTerms ||
-                        hasPendingMatchSuggestions
+                        hasPendingMatchSuggestions ||
+                        showManualReviewDialog
+                      }
+                      title={
+                        showManualReviewDialog
+                          ? "Complete la solicitud desde el panel de revisión manual"
+                          : undefined
                       }
                       className="flex-1 h-10 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -2636,6 +2649,13 @@ export function PublicTitleVerification({
                     <p className="text-xs text-blue-700 text-center">
                       <Shield className="w-3 h-3 inline-block mr-1" />
                       Resuelva las coincidencias encontradas mediante las acciones superiores.
+                    </p>
+                  )}
+
+                  {showManualReviewDialog && (
+                    <p className="text-xs text-amber-700 text-center">
+                      <AlertCircle className="w-3 h-3 inline-block mr-1" />
+                      Complete el proceso con el botón “Enviar solicitud de revisión” del panel superior.
                     </p>
                   )}
 

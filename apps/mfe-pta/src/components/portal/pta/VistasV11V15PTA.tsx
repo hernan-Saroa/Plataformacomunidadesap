@@ -12,7 +12,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Calendar, Clock, FileText, FileCheck2, Upload, Download, Trash2,
+  Calendar, Clock, FileText, Upload, Download, Trash2,
   BarChart3, TrendingUp, Target, Award, Shield, Settings,
   Bell, Eye, Palette, Globe, ChevronRight, CheckCircle,
   AlertTriangle, Paperclip, FileImage, File, BookOpen,
@@ -27,6 +27,7 @@ import {
   registrarEvidenciaPTA, getEvidenciasPTA, eliminarEvidenciaPTA, uploadEvidenciaFile,
 } from '../../../services/api/ptaApi';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../../utils/officePreview';
 
 // ═══ V11: Calendario Académico Personal ══════════════════════════════
 
@@ -375,7 +376,31 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ url: string; nombre: string; tipo: string } | null>(null);
+  // HTML del documento de Office convertido en el navegador (null = cargando).
+  const [officeHtml, setOfficeHtml] = useState<string | null>(null);
+  const [officeError, setOfficeError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Convierte el adjunto al abrir la previsualización. El flag `cancelado` evita
+  // pintar el resultado de un documento que el usuario ya cerró (o cambió por otro).
+  useEffect(() => {
+    if (!previewFile || !puedePrevisualizarOffice(previewFile.nombre)) {
+      setOfficeHtml(null);
+      setOfficeError('');
+      return;
+    }
+    let cancelado = false;
+    setOfficeHtml(null);
+    setOfficeError('');
+    cargarPreviewOffice(previewFile.url, previewFile.nombre)
+      .then(res => { if (!cancelado) setOfficeHtml(res.html); })
+      .catch(err => {
+        if (cancelado) return;
+        console.error('[mfe-pta] No se pudo previsualizar el documento:', err);
+        setOfficeError(err?.message || 'No se pudo previsualizar este documento.');
+      });
+    return () => { cancelado = true; };
+  }, [previewFile?.url, previewFile?.nombre]);
 
   // Botones Ver/Descargar por archivo (mismo patrón que el Seguimiento del backoffice).
   const renderBotonesArchivo = (ev: any, compacto = false) => {
@@ -851,75 +876,6 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
       </div>
       )}
 
-      {/* Compromiso documental definido en el proyecto de investigación. */}
-      {!seguimientoBloqueado && horasResolucionObjetivo > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 14, flexWrap: 'wrap', marginBottom: 16, padding: '14px 16px',
-          borderRadius: 12, border: `1px solid ${horasResolucionAprobadas >= horasResolucionObjetivo ? '#86EFAC' : '#FED7AA'}`,
-          background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#F0FDF4' : '#FFF7ED',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0, flex: 1 }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: horasResolucionAprobadas >= horasResolucionObjetivo ? '#DCFCE7' : '#FFEDD5',
-            }}>
-              <FileCheck2 style={{
-                width: 16, height: 16,
-                color: horasResolucionAprobadas >= horasResolucionObjetivo ? '#15803D' : PTA_COLORS.INVESTIGACION,
-              }} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#111827' }}>
-                Resolución del proyecto de investigación
-              </div>
-              <div style={{
-                marginTop: 2, fontSize: '0.68rem', color: '#64748B',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {[proyectoInvestigacion?.nombre, proyectoInvestigacion?.resolucion_nombre]
-                  .filter(Boolean).join(' · ') || 'Documento de respaldo del proyecto'}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 7 }}>
-                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FFEDD5', color: '#C2410C', fontSize: '0.62rem', fontWeight: 800 }}>
-                  {horasResolucionObjetivo}h del proyecto
-                </span>
-                <span style={{ padding: '2px 8px', borderRadius: 999, background: '#DBEAFE', color: '#1D4ED8', fontSize: '0.62rem', fontWeight: 800 }}>
-                  {horasResolucionAprobadas}h aprobadas
-                </span>
-                {horasResolucionReservadas > horasResolucionAprobadas && (
-                  <span style={{ padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E', fontSize: '0.62rem', fontWeight: 800 }}>
-                    {horasResolucionReservadas - horasResolucionAprobadas}h en revisión
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          {horasResolucionPendientes > 0 ? (
-            <button
-              type="button"
-              onClick={iniciarCargaResolucionProyecto}
-              disabled={horasDisponiblesResolucion <= 0}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px',
-                borderRadius: 8, border: 'none', color: 'white', fontSize: '0.7rem',
-                fontWeight: 800, background: horasDisponiblesResolucion > 0 ? PTA_COLORS.INVESTIGACION : '#9CA3AF',
-                cursor: horasDisponiblesResolucion > 0 ? 'pointer' : 'not-allowed', flexShrink: 0,
-              }}
-            >
-              <Upload style={{ width: 13, height: 13 }} />
-              Adjuntar resolución ({horasDisponiblesResolucion}h)
-            </button>
-          ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#15803D', fontSize: '0.7rem', fontWeight: 800 }}>
-              <CheckCircle2 style={{ width: 14, height: 14 }} />
-              Evidencia registrada
-            </span>
-          )}
-        </div>
-      )}
-
       {/* Upload form (modal inline) */}
       <AnimatePresence>
         {showForm && (
@@ -1239,6 +1195,27 @@ export function V12AdjuntosDocumentos({ ptas, userName, ptaId: ptaIdProp, ptaDat
                 <img src={previewFile.url} alt={previewFile.nombre} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, objectFit: 'contain' }} />
               ) : previewFile.tipo === 'pdf' ? (
                 <iframe src={previewFile.url} title={previewFile.nombre} style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 8 }} />
+              ) : puedePrevisualizarOffice(previewFile.nombre) ? (
+                /* Word/Excel: se convierten a HTML en el navegador (ver
+                   utils/officePreview). No se usa el visor de Microsoft porque
+                   descarga el archivo desde sus servidores y no puede alcanzar
+                   un despliegue interno. */
+                officeError ? (
+                  <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
+                    <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />
+                    <p style={{ fontSize: '0.85rem', color: '#B91C1C' }}>{officeError}</p>
+                    <a href={previewFile.url} download={previewFile.nombre} target="_blank" rel="noopener noreferrer" style={{ color: '#003DA5', fontWeight: 600, fontSize: '0.85rem' }}>Descargar archivo</a>
+                  </div>
+                ) : officeHtml === null ? (
+                  <div style={{ textAlign: 'center', color: '#6B7280', padding: 24 }}>
+                    <p style={{ fontSize: '0.85rem' }}>Cargando documento…</p>
+                  </div>
+                ) : (
+                  <div style={{ width: '100%', maxHeight: '70vh', overflow: 'auto', background: 'white', borderRadius: 8, padding: 20, textAlign: 'left' }}>
+                    <style>{ESTILOS_PREVIEW_OFFICE}</style>
+                    <div className="pta-office-preview" dangerouslySetInnerHTML={{ __html: officeHtml }} />
+                  </div>
+                )
               ) : (
                 <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
                   <FileText style={{ width: 48, height: 48, margin: '0 auto 12px', color: '#D1D5DB' }} />

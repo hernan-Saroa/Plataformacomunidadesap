@@ -3,12 +3,22 @@
  * Sistema centralizado para gestionar notificaciones desde cualquier módulo
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode, useRef } from 'react';
 import { notificationsService, Notification as ApiNotification } from '../../services/api/notificationsService';
 import { authService } from '../../services/api/authService';
 import { API_MODE } from '../../config/environment';
 
 const REMOTE_NOTIFICATIONS_ENABLED = true;
+
+// Categorías de notificación propias de cada módulo. Un módulo que aparece aquí
+// solo ve notificaciones cuya categoria esté en su lista (evita que notificaciones
+// de otro módulo -p.ej. datos históricos de un módulo que ya no genera notificaciones-
+// se mezclen en la campanita). Los módulos que no aparecen no se filtran.
+const MODULE_NOTIFICATION_CATEGORIAS: Record<string, string[]> = {
+  'control-disciplinario': ['DISCIPLINARIO'],
+  'pta': ['PTA'],
+  'gestion-legal': ['ENVIADO', 'REENVIO', 'RESPUESTA'],
+};
 
 // ============ TIPOS ============
 
@@ -63,6 +73,7 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 
 interface NotificationsProviderProps {
   children: ReactNode;
+  currentModule?: string;
 }
 
 function mapApiNotification(n: ApiNotification): GlobalNotification {
@@ -90,8 +101,15 @@ function mapApiNotification(n: ApiNotification): GlobalNotification {
   };
 }
 
-export function NotificationsProvider({ children }: NotificationsProviderProps) {
+export function NotificationsProvider({ children, currentModule }: NotificationsProviderProps) {
   const [notifications, setNotifications] = useState<GlobalNotification[]>([]);
+
+  // Filtra por la categoría propia del módulo activo (si tiene una lista registrada).
+  const visibleNotifications = useMemo(() => {
+    const allowedCategorias = currentModule ? MODULE_NOTIFICATION_CATEGORIAS[currentModule] : undefined;
+    if (!allowedCategorias) return notifications;
+    return notifications.filter(n => allowedCategorias.includes(n.categoria));
+  }, [notifications, currentModule]);
 
   // Agregar una notificación
   const addNotification = useCallback((
@@ -270,10 +288,10 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
   }, []);
 
   // Contador de no leídas
-  const unreadCount = notifications.filter(n => !n.leida && !n.archivada).length;
+  const unreadCount = visibleNotifications.filter(n => !n.leida && !n.archivada).length;
 
   const value: NotificationsContextType = {
-    notifications,
+    notifications: visibleNotifications,
     addNotification,
     addNotifications,
     markAsRead,

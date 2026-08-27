@@ -2,7 +2,6 @@
 
 # =====================================================
 # Script de Despliegue para ESAP SuperApp - ENTORNO DEV
-# Servidor: http://4.156.71.181
 # Uso: ./deploy.dev.sh [comando]
 # =====================================================
 
@@ -46,7 +45,7 @@ fi
 
 COMPOSE_FILE_DEV="docker-compose.dev.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
-SERVER_URL_DEV="http://4.156.71.181"
+SERVER_URL_ENV="${SERVER_URL_ENV:-NOT_DEFINED}"
 export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
 export COMPOSE_DOCKER_CLI_BUILD="${COMPOSE_DOCKER_CLI_BUILD:-1}"
 FRONTEND_NGINX_CONTAINERS="${FRONTEND_NGINX_CONTAINERS:-superapp-frontend-dev superapp-frontend}"
@@ -66,6 +65,8 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-control-disciplinario
     frontend-mfe-gestion-legal
     frontend-mfe-pta
+    frontend-mfe-contratacion
+    frontend-mfe-viaticos
 )
 FRONTEND_MFE_APP_SERVICES=(
     frontend-shell
@@ -82,6 +83,8 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-control-disciplinario
     frontend-mfe-gestion-legal
     frontend-mfe-pta
+    frontend-mfe-contratacion
+    frontend-mfe-viaticos
 )
 BACKEND_DEV_SERVICES=(
     api-gateway
@@ -96,6 +99,7 @@ BACKEND_DEV_SERVICES=(
     notifications-service
     travel-expenses-service
     audit-service
+    hiring-service
 )
 
 compose_dev() {
@@ -107,8 +111,8 @@ compose_dev_mfe() {
     FRONTEND_APP_DOCKERFILE="${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}" \
     FRONTEND_NETWORK_KEY="superapp-net" \
     FRONTEND_CONTAINER_SUFFIX="-dev" \
-    FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_DEV/services}" \
-    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_DEV:9000}" \
+    FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
+    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
     ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
     docker compose -f "$COMPOSE_FILE_DEV" -f "$COMPOSE_FILE_MFE" --env-file .env.dev "$@"
 }
@@ -237,8 +241,8 @@ build_frontend_assets_once() {
     echo -e "${YELLOW}Paralelismo configurable con FRONTEND_BUILD_PARALLELISM, actual: ${FRONTEND_BUILD_PARALLELISM:-2}${NC}"
     PUPPETEER_SKIP_DOWNLOAD=1 \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_DEV/services}" \
-    VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_DEV:9000}" \
+    VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
+    VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
     VITE_LOGIN_OPTIONS="${VITE_LOGIN_OPTIONS:-both}" \
     ESAP_BUILD_DATE="${ESAP_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
     FRONTEND_BUILD_PARALLELISM="${FRONTEND_BUILD_PARALLELISM:-2}" \
@@ -369,6 +373,14 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-pta"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-contratacion/*)
+                service_name="frontend-mfe-contratacion"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
+            apps/mfe-viaticos/*)
+                service_name="frontend-mfe-viaticos"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/shell/*)
                 service_name="frontend-shell"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -476,6 +488,12 @@ resolve_mfe_service() {
         pta|mfe-pta|frontend-mfe-pta)
             echo "frontend-mfe-pta"
             ;;
+        contratacion|mfe-contratacion|frontend-mfe-contratacion)
+            echo "frontend-mfe-contratacion"
+            ;;
+        viaticos|mfe-viaticos|frontend-mfe-viaticos)
+            echo "frontend-mfe-viaticos"
+            ;;
         *)
             return 1
             ;;
@@ -533,8 +551,8 @@ cmd_up() {
 
     echo ""
     echo -e "${YELLOW}URLs de acceso:${NC}"
-    echo "  Frontend:    http://4.156.71.181"
-    echo "  API Gateway: http://4.156.71.181/services"
+    echo "  Frontend:    ${SERVER_URL_ENV}"
+    echo "  API Gateway: ${SERVER_URL_ENV}/services"
     echo ""
 }
 
@@ -720,30 +738,30 @@ cmd_up_mfe() {
     fi
 
     echo -e "${GREEN}Iniciando frontend desacoplado (gateway + shell + MFEs)...${NC}"
-    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE iniciado exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos del frontend, usa ./deploy.dev.sh rebuild-mfe <app>${NC}"
     echo ""
     echo -e "${YELLOW}URLs de acceso:${NC}"
-    echo "  Gateway:     ${SERVER_URL_DEV}"
-    echo "  Shell:       ${SERVER_URL_DEV}/"
-    echo "  Auditoría:   ${SERVER_URL_DEV}/remotes/mfe-auditoria/"
-    echo "  Reportes:    ${SERVER_URL_DEV}/remotes/mfe-reportes/"
+    echo "  Gateway:     ${SERVER_URL_ENV}"
+    echo "  Shell:       ${SERVER_URL_ENV}/"
+    echo "  Auditoría:   ${SERVER_URL_ENV}/remotes/mfe-auditoria/"
+    echo "  Reportes:    ${SERVER_URL_ENV}/remotes/mfe-reportes/"
     echo ""
 }
 
 # Comando: down-mfe
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado...${NC}"
-    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     echo -e "${GREEN}Frontend MFE detenido${NC}"
 }
 
 # Comando: restart-mfe
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado...${NC}"
-    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE reiniciado${NC}"
 }
@@ -751,7 +769,7 @@ cmd_restart_mfe() {
 # Comando: status-mfe
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado:${NC}"
-    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
 }
 
 # Comando: logs-mfe
@@ -762,14 +780,14 @@ cmd_logs_mfe() {
         local resolved_service
         if ! resolved_service=$(resolve_mfe_service "$input_service"); then
             echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
-            echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas${NC}"
+            echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas, contratacion${NC}"
             exit 1
         fi
         compose_dev_mfe logs -f "$resolved_service"
         return
     fi
 
-    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
+    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion
 }
 
 # Comando: rebuild-mfe
@@ -783,12 +801,13 @@ cmd_rebuild_mfe() {
         echo -e "${YELLOW}  $0 rebuild-mfe shell${NC}"
         echo -e "${YELLOW}  $0 rebuild-mfe auditoria${NC}"
         echo -e "${YELLOW}  $0 rebuild-mfe reportes${NC}"
+        echo -e "${YELLOW}  $0 rebuild-mfe contratacion${NC}"
         exit 1
     fi
 
     if ! resolved_service=$(resolve_mfe_service "$input_service"); then
         echo -e "${RED}Servicio MFE no reconocido: ${input_service}${NC}"
-        echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas${NC}"
+        echo -e "${YELLOW}Usa nombres como: gateway, shell, auditoria, reportes, gestion-personas, contratacion${NC}"
         exit 1
     fi
 
@@ -822,6 +841,8 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-control-disciplinario"
         "frontend-mfe-gestion-legal"
         "frontend-mfe-pta"
+        "frontend-mfe-contratacion"
+        "frontend-mfe-viaticos"
     )
 
     echo ""
@@ -913,8 +934,8 @@ cmd_db_migrate() {
     echo -e "${YELLOW}Copiando migraciones al contenedor...${NC}"
     docker cp ./db/migrations superapp-db:/tmp/migrations
 
-    # Obtener lista de archivos SQL ordenados (usar shell en el contenedor para expandir el wildcard)
-    MIGRATION_FILES=$(docker exec superapp-db sh -c "ls -1 /tmp/migrations/*.sql 2>/dev/null | sort")
+    # Obtener lista de archivos SQL ordenados recursivamente (excluyendo la carpeta 'old' y 'archive')
+    MIGRATION_FILES=$(docker exec superapp-db sh -c "find /tmp/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null | sort")
 
     if [ -z "$MIGRATION_FILES" ]; then
         echo -e "${YELLOW}No hay archivos de migración para ejecutar${NC}"
@@ -932,23 +953,24 @@ cmd_db_migrate() {
 
     for file in $MIGRATION_FILES; do
         filename=$(basename "$file")
+        relpath=$(echo "$file" | sed 's|^/tmp/migrations/||')
 
-        # Saltar migraciones ya aplicadas
-        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
-            echo -e "${YELLOW}Saltando (ya aplicada): $filename${NC}"
+        # Saltar migraciones ya aplicadas (buscando por ruta relativa o por nombre de archivo)
+        if echo "$MIGRATIONS_APPLIED" | grep -Fxq "$relpath" || echo "$MIGRATIONS_APPLIED" | grep -Fxq "$filename"; then
+            echo -e "${YELLOW}Saltando (ya aplicada): $relpath${NC}"
             continue
         fi
 
         MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
 
-        echo -e "${YELLOW}[$MIGRATION_COUNT] Ejecutando: $filename${NC}"
+        echo -e "${YELLOW}[$MIGRATION_COUNT] Ejecutando: $relpath${NC}"
 
         # Ejecutar migración
         if docker exec superapp-db psql -U postgres -d esap_db -f "$file" 2>&1; then
             echo -e "${GREEN}    ✓ OK${NC}"
             MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
-            escaped_filename=$(printf "%s" "$filename" | sed "s/'/''/g")
-            docker exec superapp-db psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+            escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
+            docker exec superapp-db psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
         else
             echo -e "${RED}    ✗ ERROR${NC}"
             MIGRATION_FAILED=$((MIGRATION_FAILED + 1))

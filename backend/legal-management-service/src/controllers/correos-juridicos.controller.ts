@@ -50,6 +50,18 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Sugerencias de destinatarios para autocompletar "Para/CC/CCO" a partir de
+     * contactos, personas frecuentes y el directorio institucional de Outlook.
+     */
+    @Get('destinatarios/buscar')
+    async buscarDestinatarios(
+        @Query('q') q?: string,
+        @Query('buzon') buzon?: string,
+    ) {
+        return this.correosService.buscarDestinatarios(q || '', buzon);
+    }
+
+    /**
      * Reclassify ALL emails with updated heuristics
      */
     @Post('reclassify-all')
@@ -322,10 +334,16 @@ export class CorreosJuridicosController {
     @HttpCode(HttpStatus.OK)
     async replyEmail(
         @Param('id') id: string,
-        @Body() body: { body: string; attachments?: { name: string; contentBytes: string; contentType: string }[] },
+        @Body() body: {
+            body: string;
+            attachments?: { name: string; contentBytes: string; contentType: string }[];
+            to?: string | string[];
+            cc?: string[];
+            bcc?: string[];
+        },
         @Req() req: any,
     ): Promise<{ success: boolean }> {
-        const result = await this.correosService.replyEmail(id, body.body, body.attachments, req);
+        const result = await this.correosService.replyEmail(id, body.body, body.attachments, req, body.to, body.cc, body.bcc);
         return { success: result.success };
     }
 
@@ -339,9 +357,11 @@ export class CorreosJuridicosController {
     async forwardEmail(
         @Param('id') id: string,
         @Body() body: {
-            to: string;
+            to: string | string[];
             comment: string;
             attachments?: { name: string; contentBytes: string; contentType: string }[];
+            cc?: string[];
+            bcc?: string[];
         },
         @Req() req: any,
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
@@ -351,6 +371,8 @@ export class CorreosJuridicosController {
             body.comment || '',
             body.attachments,
             req,
+            body.cc,
+            body.bcc,
         );
         return { success: result.success, correo: result.correo };
     }
