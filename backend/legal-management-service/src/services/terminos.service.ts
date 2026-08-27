@@ -8,6 +8,7 @@ import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import type { LegalAccess } from '../auth/legal-access';
 import { ProcesoCoactivo } from '../entities/proceso-coactivo.entity';
 import { Actuacion } from '../entities/actuacion.entity';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class TerminosService {
@@ -28,6 +29,7 @@ export class TerminosService {
         private actuacionRepository: Repository<Actuacion>,
         @InjectDataSource()
         private readonly dataSource: DataSource,
+        private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
     /** Resuelve nombres reales de usuario (auth.user/personas) a partir de ids, para no exponer UUIDs crudos como "responsable". */
@@ -58,6 +60,63 @@ export class TerminosService {
             this.logger.warn(`No se pudieron resolver nombres desde auth: ${(error as any)?.message || error}`);
             return new Map();
         }
+    }
+
+    /** Resuelve responsableNombre a partir de responsableId cuando el caller no lo mandó ya resuelto. */
+    private async backfillResponsableNombre(data: { responsableId?: string | null; responsableNombre?: string | null }): Promise<void> {
+        if (!data.responsableId || data.responsableNombre) return;
+        const nombres = await this.resolveNombresDesdeAuth([data.responsableId]);
+        data.responsableNombre = nombres.get(data.responsableId) || null;
+    }
+
+    /**
+     * Autocorrección en lectura: cualquier término con responsableId pero sin responsableNombre
+     * (registros guardados antes de este fix, o casos donde la resolución en create()/update()
+     * falló por un error transitorio de BD) se resuelve aquí y se persiste en segundo plano, para
+     * que quede corregido de forma permanente sin depender de que alguien vuelva a editar el
+     * término. Sin esto, un término ya roto en BD seguiría mostrando "Sin asignar" para siempre.
+     */
+    private async autocompletarResponsables(terminos: TerminoProcesal[]): Promise<void> {
+        const pendientes = terminos.filter((t) => t.responsableId && !t.responsableNombre);
+        if (pendientes.length === 0) return;
+
+        const nombres = await this.resolveNombresDesdeAuth(pendientes.map((t) => t.responsableId));
+        const actualizaciones: Promise<any>[] = [];
+
+        for (const termino of pendientes) {
+            const nombre = nombres.get(termino.responsableId as string);
+            if (nombre) {
+                termino.responsableNombre = nombre;
+                actualizaciones.push(this.terminoRepository.update(termino.id, { responsableNombre: nombre }));
+            }
+        }
+
+        if (actualizaciones.length > 0) {
+            Promise.all(actualizaciones).catch((err) =>
+                this.logger.warn(`No se pudo persistir el autocompletado de responsables: ${err?.message}`),
+            );
+        }
+    }
+
+    /** Extrae la línea "Programación: ..." que ModalNuevoTermino agrega a observaciones al crear vencimientos recurrentes. */
+    private extraerPeriodicidadTexto(observaciones?: string | null): string | undefined {
+        const match = observaciones?.match(/Programación: ([^\n·]+(?:·[^\n]+)?)/);
+        return match ? match[1].trim() : undefined;
+    }
+
+    /** Dispara (sin bloquear el flujo) la notificación de asignación cuando un término queda con responsable nuevo o reasignado. */
+    private notificarAsignacionResponsable(termino: TerminoProcesal, esReasignacion: boolean): void {
+        if (!termino.responsableId) return;
+        this.legalNotifications.notifyResponsableAsignadoTermino({
+            terminoId: termino.id,
+            responsableId: termino.responsableId,
+            nombreActuacion: termino.nombreActuacion,
+            numeroRadicado: termino.numeroRadicado,
+            fechaBase: termino.fechaBase,
+            fechaVencimiento: termino.fechaVencimiento,
+            periodicidadTexto: this.extraerPeriodicidadTexto(termino.observaciones),
+            esReasignacion,
+        }).catch((err) => this.logger.warn(`No se pudo notificar asignación de responsable del término ${termino.id}: ${err?.message}`));
     }
 
     async create(data: Partial<TerminoProcesal>): Promise<TerminoProcesal> {
@@ -113,8 +172,12 @@ export class TerminosService {
             data.referenciaId = this.generateUuidV4();
         }
 
+        await this.backfillResponsableNombre(data);
+
         const termino = this.terminoRepository.create(data);
-        return this.terminoRepository.save(termino);
+        const guardado = await this.terminoRepository.save(termino);
+        this.notificarAsignacionResponsable(guardado, false);
+        return guardado;
     }
 
     private generateUuidV4(): string {
@@ -137,7 +200,7 @@ export class TerminosService {
         diasTermino: number,
         responsableId?: string,
         responsableNombre?: string,
-        tipoDias: 'HABILES' | 'CALENDARIO' = 'HABILES',
+        tipoDias: 'HABILES' | 'CALENDARIO' | 'HORAS' = 'HABILES',
         fechaVencimientoExplicita?: Date,
         observaciones?: string
     ): Promise<TerminoProcesal> {
@@ -150,6 +213,8 @@ export class TerminosService {
             vencimiento = new Date(fechaBase);
             if (tipoDias === 'CALENDARIO') {
                 vencimiento.setDate(vencimiento.getDate() + safeDias);
+            } else if (tipoDias === 'HORAS') {
+                vencimiento.setHours(vencimiento.getHours() + safeDias);
             } else {
                 let daysAdded = 0;
                 while (daysAdded < safeDias) {
@@ -239,7 +304,9 @@ export class TerminosService {
 
         query.orderBy('termino.fechaVencimiento', 'ASC');
 
-        return query.getMany();
+        const terminos = await query.getMany();
+        await this.autocompletarResponsables(terminos);
+        return terminos;
     }
 
     async getCalendario(start: string, end: string, filtros: { responsableId?: string; responsableKeys?: string[] } | string = {}): Promise<any[]> {
@@ -315,6 +382,7 @@ export class TerminosService {
     async findOne(id: string): Promise<TerminoProcesal> {
         const termino = await this.terminoRepository.findOne({ where: { id } });
         if (!termino) throw new NotFoundException('Término no encontrado');
+        await this.autocompletarResponsables([termino]);
         return termino;
     }
 
@@ -330,11 +398,28 @@ export class TerminosService {
 
         // Ya no dejamos que sobrescriban observaciones por completo si viene el comentario
         if (data.observaciones && data.nuevoComentario) {
-            delete data.observaciones; 
+            delete data.observaciones;
+        }
+
+        const responsableCambio = 'responsableId' in data && data.responsableId !== termino.responsableId;
+        const habiaResponsablePrevio = !!termino.responsableId;
+
+        if (responsableCambio) {
+            if (data.responsableId && !data.responsableNombre) {
+                await this.backfillResponsableNombre(data);
+            } else if (!data.responsableId) {
+                data.responsableNombre = null;
+            }
         }
 
         Object.assign(termino, data);
-        return this.terminoRepository.save(termino);
+        const guardado = await this.terminoRepository.save(termino);
+
+        if (responsableCambio && guardado.responsableId) {
+            this.notificarAsignacionResponsable(guardado, habiaResponsablePrevio);
+        }
+
+        return guardado;
     }
 
     async remove(id: string): Promise<void> {
@@ -359,13 +444,13 @@ export class TerminosService {
 
             // Header
             doc.fontSize(16).font('Helvetica-Bold').text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', { align: 'center' });
-            doc.fontSize(14).text('SOLICITUD DE INFORME', { align: 'center' });
+            doc.fontSize(14).text('TÉRMINO / INFORME', { align: 'center' });
             doc.moveDown(2);
 
             // General Info
             doc.fontSize(12).font('Helvetica-Bold').text('INFORMACIÓN GENERAL').moveDown(0.5);
             doc.font('Helvetica').fontSize(10);
-            doc.text(`ID Solicitud: ${termino.id}`);
+            doc.text(`ID Término: ${termino.id}`);
             doc.text(`Radicado: ${termino.numeroRadicado || 'N/A'}`);
             doc.text(`Módulo Origen: ${termino.origenModulo}`);
             doc.text(`Estado: ${termino.estado}`);
@@ -778,7 +863,7 @@ export class TerminosService {
                     req.plazoOtorgado || 0,
                     responsableUUID,
                     responsableNombre,
-                    req.unidadTiempo === 'DIAS_CALENDARIO' ? 'CALENDARIO' : 'HABILES', // Map unit time
+                    req.unidadTiempo === 'DIAS_CALENDARIO' ? 'CALENDARIO' : req.unidadTiempo === 'HORAS' ? 'HORAS' : 'HABILES', // Map unit time
                     req.fechaVencimiento,
                     `[OC] ${req.asunto}. ${descripcion}`
                 );

@@ -13,6 +13,8 @@ import { Evidencia } from './entities/evidencia.entity';
 import { Acta } from './entities/acta.entity';
 import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { ReglaAlertaTermino } from './entities/regla-alerta-termino.entity';
+import { AlertaTerminoEnviada } from './entities/alerta-termino-enviada.entity';
 import { Actor } from './entities/actor.entity';
 
 // Órganos de Control - Nuevo módulo
@@ -88,6 +90,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     entities: [
         Expediente, Actuacion, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
+        ReglaAlertaTermino, AlertaTerminoEnviada,
         Actor,
         // Órganos de Control
         OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo, TipoRequerimientoOC,

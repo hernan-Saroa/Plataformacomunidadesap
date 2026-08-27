@@ -63,6 +63,60 @@ describe('LaborCertificatePdfService', () => {
     expect(content).toContain('21 de agosto de 2026');
   });
 
+  it('reserva la paginación sin forzar una segunda hoja vacía', () => {
+    const html = service['buildHtml']({
+      certificate: {
+        certificate_number: 'CERT-MARGENES',
+      } as Certificate,
+      contentHtml: '<p>Contenido de prueba.</p>',
+      cargoTitle: 'DIRECCIÓN DE TALENTO HUMANO',
+      typographyFont: 'Arial',
+      signerName: 'FIRMANTE PRUEBA',
+    });
+
+    expect(html).toContain('@page { size: Letter; margin: 40px 0 56px 0; }');
+    expect(html).toContain('@page :first { margin: 0 0 56px 0; }');
+    expect(html).toContain('min-height: 1000px;');
+    expect(html).toContain('padding: 72px 72px 0 72px;');
+    expect(html).toContain('height: 172px;');
+    expect(html).not.toContain('multi-page-certificate');
+    expect(html).toMatch(/\.footer-left\s*\{[\s\S]*?bottom: 40px;/);
+    expect(html).toMatch(/\.footer-right\s*\{[\s\S]*?bottom: 40px;/);
+  });
+
+  it('mantiene fecha de expedición, firma y reserva del pie en un bloque indivisible', () => {
+    const contentHtml = [
+      '<p>Las funciones asociadas al cargo son:</p>',
+      '<p>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a).</p>',
+    ].join('');
+    const parts = service['splitCertificateClosingContent'](contentHtml);
+    const html = service['buildHtml']({
+      certificate: { certificate_number: 'CERT-CIERRE' } as Certificate,
+      contentHtml,
+      cargoTitle: 'DIRECCIÓN DE TALENTO HUMANO',
+      typographyFont: 'Arial',
+      signerName: 'FIRMANTE PRUEBA',
+    });
+
+    expect(parts.bodyHtml).toContain('Las funciones asociadas');
+    expect(parts.bodyHtml).not.toContain('Se expide');
+    expect(parts.closingHtml).toContain('Se expide');
+    expect(html).toMatch(
+      /certificate-closing-block[\s\S]*certificate-issue-block[\s\S]*Se expide[\s\S]*certificate-signature-block[\s\S]*FIRMANTE PRUEBA[\s\S]*certificate-final-footer-reserve/,
+    );
+    expect(html).toMatch(/\.certificate-closing-block\s*\{[\s\S]*?padding-top: 28px;/);
+    expect(html).toMatch(/\.certificate-closing-block\s*\{[\s\S]*?page-break-inside: avoid;[\s\S]*?break-inside: avoid;/);
+  });
+
+  it('numera cada hoja sin repetir el nombre ni el número del certificado', () => {
+    const footer = service['buildPageFooterTemplate']();
+
+    expect(footer).toContain('Página <span class="pageNumber"></span> de');
+    expect(footer).toContain('<span class="totalPages"></span>');
+    expect(footer).not.toContain('Certificado laboral');
+    expect(footer).not.toContain('CERT-084');
+  });
+
   it('identifica y resalta solo las variables utilizadas por la plantilla de revisión', () => {
     let variables: Array<{ code: string; value: string; source_fields: string[] }> = [];
     const content = service['buildCertificateContent']({
@@ -510,4 +564,103 @@ describe('LaborCertificatePdfService', () => {
       expect(bonusNumber).toBeLessThan(bonusWords);
     },
   );
+
+  it.each(['administrador', 'docente'] as const)(
+    'ubica salario, prima y funciones en ese orden para la plantilla %s',
+    (templateType) => {
+      const content = service['buildCertificateContent']({
+        certificate: {
+          monthly_salary: 1000000,
+          technical_bonus: 100000,
+          include_salary: true,
+          include_technical_bonus: true,
+          include_functions: true,
+          functions_snapshot: {
+            functions: [
+              { ordinal: 2, description: 'Segunda funcion laboral.' },
+              { ordinal: 1, description: 'Primera funcion <segura>.' },
+              { ordinal: 3, description: 'Primera funcion <segura>.' },
+            ],
+          },
+        } as unknown as Certificate,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: true,
+        includeFunctions: true,
+        templateHtml:
+          '<p>Asignacion salarial [SALARIO] [SALARIO_LETRAS] pesos.</p><p>Se expide a solicitud.</p>',
+      });
+
+      const salaryIndex = content.indexOf('Asignacion salarial');
+      const bonusIndex = content.indexOf('Percibe una');
+      const functionsIndex = content.indexOf('Las funciones asociadas al cargo son:');
+      const issueIndex = content.indexOf('Se expide');
+
+      expect(salaryIndex).toBeGreaterThan(-1);
+      expect(bonusIndex).toBeGreaterThan(salaryIndex);
+      expect(functionsIndex).toBeGreaterThan(bonusIndex);
+      expect(issueIndex).toBeGreaterThan(functionsIndex);
+      expect(content).toContain('<ul class="labor-functions-list">');
+      expect(content.match(/class="labor-function-item"/g)).toHaveLength(2);
+      expect(content.indexOf('Primera funcion &lt;segura&gt;.')).toBeLessThan(
+        content.indexOf('Segunda funcion laboral.'),
+      );
+      expect(content).not.toContain('Primera funcion <segura>.');
+    },
+  );
+
+  it('no muestra funciones si el certificado no las solicito', () => {
+    const content = service['buildCertificateContent']({
+      certificate: {
+        include_functions: false,
+        functions_snapshot: {
+          functions: [{ ordinal: 1, description: 'Funcion reservada.' }],
+        },
+      } as unknown as Certificate,
+      templateType: 'administrador',
+      includeSalary: false,
+      includeTechnicalBonus: false,
+      includeFunctions: false,
+      templateHtml: '<p>Informacion laboral.</p><p>Se expide a solicitud.</p>',
+    });
+
+    expect(content).not.toContain('labor-functions-section');
+    expect(content).not.toContain('Funcion reservada');
+  });
+
+  it('expone y resalta las funciones en la vista previa de correcciones', async () => {
+    const preview = await service.buildCertificatePreview({
+      certificate_number: 'CERT-FUNCIONES',
+      include_salary: false,
+      include_technical_bonus: false,
+      include_functions: true,
+      functions_snapshot: {
+        functions: [{ ordinal: 1, description: 'Orientar procesos institucionales.' }],
+      },
+      template_type: 'administrador',
+      template_snapshot: {
+        templateType: 'administrador',
+        version: 'prueba-funciones',
+        cargoTitle: 'DIRECCION DE TALENTO HUMANO',
+        certificateContentHtml: '<p>Informacion laboral.</p><p>Se expide a solicitud.</p>',
+        typography: { font: 'Arial' },
+        firmante: { nombreCompleto: 'FIRMANTE PRUEBA', cargo: 'Directora' },
+      },
+    } as unknown as Certificate);
+
+    const functionsVariable = preview.template_variables.find(
+      (variable) => variable.code === '[FUNCIONES]',
+    );
+    expect(functionsVariable?.source_fields).toEqual([
+      'functions_snapshot',
+      'include_functions',
+    ]);
+    expect(functionsVariable?.value).toContain('Orientar procesos institucionales.');
+    expect(preview.content_html).toContain(
+      '<mark class="labor-function-preview-highlight">Orientar procesos institucionales.</mark>',
+    );
+    expect(preview.body_content_html).toContain('Orientar procesos institucionales.');
+    expect(preview.body_content_html).not.toContain('Se expide');
+    expect(preview.closing_content_html).toContain('Se expide a solicitud.');
+  });
 });
