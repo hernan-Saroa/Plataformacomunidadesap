@@ -44,6 +44,15 @@ export interface GraduadoData {
   updatedAt?: string;
 }
 
+export interface GraduateProgramCatalogItem {
+  id: string;
+  name: string;
+  usageCount: number;
+  canDelete: boolean;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
 /**
  * Interface: Solicitud de certificado de graduado
  */
@@ -94,7 +103,8 @@ export interface SolicitudCertificadoGraduado {
     | "HEAD_OBSERVATION"
     | string
     | null;
-  reviewRecommendation?: "APPROVED" | "REJECTED" | "OBSERVATION" | string | null;
+  reviewRecommendation?:
+    "APPROVED" | "REJECTED" | "OBSERVATION" | string | null;
   reviewRecommendationReason?: string | null;
   reviewPayload?: Record<string, unknown> | null;
   reviewSubmittedAt?: string | null;
@@ -377,6 +387,40 @@ export interface GraduadoArchivo {
  * Servicio de Certificados de Graduados
  */
 const graduadosService = {
+  programas: {
+    listar: async (): Promise<GraduateProgramCatalogItem[]> => {
+      return await apiClient.get(`${SERVICE_PREFIX}/graduate-programs`);
+    },
+
+    listarOpciones: async (): Promise<string[]> => {
+      return await apiClient.get(`${SERVICE_PREFIX}/graduate-programs/options`);
+    },
+
+    crear: async (name: string): Promise<GraduateProgramCatalogItem> => {
+      return await apiClient.post(`${SERVICE_PREFIX}/graduate-programs`, {
+        name,
+      });
+    },
+
+    editar: async (
+      id: string,
+      name: string,
+    ): Promise<GraduateProgramCatalogItem> => {
+      return await apiClient.patch(
+        `${SERVICE_PREFIX}/graduate-programs/${id}`,
+        {
+          name,
+        },
+      );
+    },
+
+    eliminar: async (id: string): Promise<{ message: string; id: string }> => {
+      return await apiClient.delete(
+        `${SERVICE_PREFIX}/graduate-programs/${id}`,
+      );
+    },
+  },
+
   /**
    * Autoservicio - Endpoints públicos para graduados
    */
@@ -901,12 +945,13 @@ const graduadosService = {
    * Administración de graduados (requiere autenticación)
    */
   plantilla: {
-    obtenerConfiguracion: async (): Promise<GraduationCertificateTemplateConfig> => {
-      const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/template-config`,
-      );
-      return response;
-    },
+    obtenerConfiguracion:
+      async (): Promise<GraduationCertificateTemplateConfig> => {
+        const response = await apiClient.get(
+          `${SERVICE_PREFIX}/certificates/template-config`,
+        );
+        return response;
+      },
 
     actualizarTextos: async (
       payload: Partial<GraduationCertificateTemplateTexts> & {

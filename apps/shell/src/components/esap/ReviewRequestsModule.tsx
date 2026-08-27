@@ -55,6 +55,8 @@ import type { Seccional, Sede } from '../../services/api/types';
 
 const ESTRUCTURA_PERIOD_STORAGE_KEY = 'esap.periodo.estructura-organizacional';
 const CATALOG_PERIOD_CHANGE_EVENT = 'esap:academic-catalog-period-changed';
+const GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT =
+  'esap:graduate-program-catalog-changed';
 
 type ApprovalForm = {
   fullName: string;
@@ -154,10 +156,8 @@ export function ReviewRequestsModule({
     numLibro: '',
   });
   const [existingGraduatePrograms, setExistingGraduatePrograms] = useState<string[]>([]);
-  // Programas que llegan por integración (graduados creados por ese medio en
-  // Verificación de títulos). Son la fuente del select de programa de este modal.
-  const [integrationProgramOptions, setIntegrationProgramOptions] = useState<string[]>([]);
-  const [isLoadingIntegrationPrograms, setIsLoadingIntegrationPrograms] = useState(true);
+  const [programCatalogOptions, setProgramCatalogOptions] = useState<string[]>([]);
+  const [isLoadingProgramCatalog, setIsLoadingProgramCatalog] = useState(true);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [catalogRefreshToken, setCatalogRefreshToken] = useState(0);
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
@@ -353,22 +353,6 @@ export function ReviewRequestsModule({
       normalized === 'no especificado' ||
       normalized === 'sin programa'
     );
-  };
-
-  // Un graduado proviene de integracion cuando no fue creado manualmente ni
-  // por carga masiva ni por una solicitud de revision. El texto exacto del
-  // origen puede cambiar entre local, API y vistas de servidores.
-  const isIntegrationSource = (createdBy?: string | null) => {
-    const normalized = normalizeKey(createdBy || '');
-    if (
-      normalized.startsWith('bulk_upload') ||
-      normalized.includes('manual_review') ||
-      normalized.includes('revision') ||
-      normalized.includes('manual')
-    ) {
-      return false;
-    }
-    return true;
   };
 
   const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
@@ -1096,45 +1080,55 @@ export function ReviewRequestsModule({
     loadRequests();
   }, []);
 
-  // Carga los programas que traen los graduados integrados desde Registro
-  // Académico, sin repetidos, para ofrecerlos en el select de programa.
+  // El catálogo central alimenta el formulario de revisión y se vuelve a
+  // consultar cada vez que se refrescan los catálogos de la vista.
   useEffect(() => {
     let isMounted = true;
 
-    const loadIntegrationPrograms = async () => {
-      setIsLoadingIntegrationPrograms(true);
+    const loadProgramCatalog = async () => {
+      setIsLoadingProgramCatalog(true);
       try {
-        const graduados =
-          await graduadosService.graduados.listarRegistroAcademico();
+        const programs = await graduadosService.programas.listarOpciones();
         if (!isMounted) return;
 
-        const programas = (graduados || [])
-          .filter((graduado) => isIntegrationSource(graduado?.createdBy))
-          .flatMap((graduado) => [
-            normalizeName(graduado?.programName),
-            normalizeName(graduado?.degreeTitle),
-          ])
+        const programNames = (programs || [])
+          .map((program) => normalizeName(program))
           .filter((programa) => !!programa && !isUnavailableCatalogValue(programa));
 
-        const unicos = Array.from(
+        const uniquePrograms = Array.from(
           new Map(
-            programas.map((programa) => [normalizeKey(programa), programa]),
+            programNames.map((programa) => [normalizeKey(programa), programa]),
           ).values(),
         ).sort((a, b) => a.localeCompare(b, 'es'));
 
-        setIntegrationProgramOptions(unicos);
+        setProgramCatalogOptions(uniquePrograms);
       } catch (error) {
-        console.warn(
-          'No se pudieron cargar los programas de los graduados integrados:',
-          error,
-        );
-        if (isMounted) setIntegrationProgramOptions([]);
+        console.warn('No se pudo cargar el catálogo de programas:', error);
+        try {
+          const graduates =
+            await graduadosService.graduados.listarRegistroAcademico();
+          if (!isMounted) return;
+          setProgramCatalogOptions(
+            uniqueSortedNames(
+              (graduates || []).flatMap((graduate) => [
+                graduate.programName,
+                graduate.degreeTitle,
+              ]),
+            ),
+          );
+        } catch (fallbackError) {
+          console.warn(
+            'Tampoco se pudo reconstruir la lista desde graduados:',
+            fallbackError,
+          );
+          if (isMounted) setProgramCatalogOptions([]);
+        }
       } finally {
-        if (isMounted) setIsLoadingIntegrationPrograms(false);
+        if (isMounted) setIsLoadingProgramCatalog(false);
       }
     };
 
-    loadIntegrationPrograms();
+    loadProgramCatalog();
 
     return () => {
       isMounted = false;
@@ -1251,10 +1245,18 @@ export function ReviewRequestsModule({
     };
 
     window.addEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+    window.addEventListener(
+      GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT,
+      refreshCatalogs,
+    );
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
       window.removeEventListener(CATALOG_PERIOD_CHANGE_EVENT, refreshCatalogs);
+      window.removeEventListener(
+        GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT,
+        refreshCatalogs,
+      );
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
@@ -1265,9 +1267,9 @@ export function ReviewRequestsModule({
         ? ''
         : normalizeName(approvalForm.programName);
 
-      return uniqueSortedNames([currentProgram, ...integrationProgramOptions]);
+      return uniqueSortedNames([currentProgram, ...programCatalogOptions]);
     },
-    [approvalForm.programName, integrationProgramOptions],
+    [approvalForm.programName, programCatalogOptions],
   );
   const selectedProgramAlreadyExists = useMemo(
     () => programAlreadyExistsForGraduate(approvalForm.programName),
@@ -3782,10 +3784,10 @@ export function ReviewRequestsModule({
                           ? 'border-red-300 bg-red-50 focus:border-red-500'
                           : 'border-gray-300'
                       }`}
-                      disabled={isLoadingApprovalData || isLoadingIntegrationPrograms}
+                      disabled={isLoadingApprovalData || isLoadingProgramCatalog}
                     >
                       <option value="">
-                        {isLoadingIntegrationPrograms ? 'Cargando programas...' : 'Seleccionar programa'}
+                        {isLoadingProgramCatalog ? 'Cargando programas...' : 'Seleccionar programa'}
                       </option>
                       {programNameOptions.map((programa) => {
                         const alreadyExists = programAlreadyExistsForGraduate(programa);
