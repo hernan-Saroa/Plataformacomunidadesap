@@ -157,6 +157,24 @@ export class GraduationCertificatesService {
     return 'http://notifications-service:3009';
   }
 
+  private resolveGraduateEmailForRequest(
+    graduate: Graduate | null,
+    requesterType: string,
+    requesterEmail?: string,
+    providedGraduateEmail?: string,
+  ): string | undefined {
+    const registeredGraduateEmail = (graduate?.email || '').trim();
+    if (registeredGraduateEmail) {
+      return registeredGraduateEmail;
+    }
+
+    if (requesterType !== 'GRADUATE') {
+      return undefined;
+    }
+
+    return (providedGraduateEmail || requesterEmail || '').trim() || undefined;
+  }
+
   private toNullableText(value: unknown): string | null {
     if (value === null || value === undefined) return null;
     const text = String(value).trim();
@@ -1202,12 +1220,12 @@ export class GraduationCertificatesService {
       : undefined;
     const idIssueDate =
       requestGraduate?.idIssueDate ?? parsedIssueDate ?? undefined;
-    const graduateEmailForRequest = shouldCreateManualReview
-      ? normalizedRequesterType === 'GRADUATE'
-        ? (dto.graduateEmail || requesterEmail || dto.requesterEmail || '').trim() ||
-          undefined
-        : undefined
-      : requestGraduate?.email;
+    const graduateEmailForRequest = this.resolveGraduateEmailForRequest(
+      graduate,
+      normalizedRequesterType,
+      requesterEmail || dto.requesterEmail,
+      dto.graduateEmail,
+    );
 
     const requestPayload: DeepPartial<GraduationCertificateRequest> = {
       requestNumber,
@@ -1297,39 +1315,7 @@ export class GraduationCertificatesService {
       );
     }
 
-    if (normalizedRequesterType === 'COMPANY') {
-      const graduateEmail = (
-        graduate?.email ||
-        request.graduateEmail ||
-        ''
-      ).trim();
-      if (!graduateEmail) {
-        this.logger.warn(
-          `Solicitud ${request.requestNumber}: no se pudo notificar al graduado porque no tiene email registrado`,
-        );
-      } else {
-        try {
-          await this.sendGraduateCompanyNotificationEmail({
-            graduateEmail,
-            graduateName: graduate?.fullName || request.fullName,
-            companyName:
-              companyName ||
-              request.companyName ||
-              requesterName ||
-              'Empresa solicitante',
-            companyNit: companyNit || request.companyNit,
-            contactPerson: contactPerson || 'No informado',
-            contactEmail: requesterEmail || dto.requesterEmail,
-            requestDate: request.requestDate || new Date(),
-            certificateNumber: certificate.certificateNumber,
-          });
-        } catch (error) {
-          this.logger.warn(
-            `Solicitud ${request.requestNumber}: no se pudo enviar la notificacion al graduado: ${error?.message || error}`,
-          );
-        }
-      }
-    }
+    await this.notifyGraduateAboutCompanyRequest(request, certificate, graduate);
 
     if (normalizedRequesterType === 'GRADUATE') {
       try {
@@ -3316,6 +3302,48 @@ export class GraduationCertificatesService {
     }
 
     this.logger.log(`Notificacion enviada al graduado ${graduateEmail}`);
+  }
+
+  private async notifyGraduateAboutCompanyRequest(
+    request: GraduationCertificateRequest,
+    certificate: GraduationCertificate,
+    graduate?: Graduate | null,
+  ): Promise<void> {
+    if (request.requesterType !== 'COMPANY') {
+      return;
+    }
+
+    const graduateEmail = (
+      graduate?.email ||
+      request.graduate?.email ||
+      request.graduateEmail ||
+      ''
+    ).trim();
+    if (!graduateEmail) {
+      this.logger.warn(
+        `Solicitud ${request.requestNumber}: no se pudo notificar al graduado porque no tiene email registrado`,
+      );
+      return;
+    }
+
+    try {
+      await this.sendGraduateCompanyNotificationEmail({
+        graduateEmail,
+        graduateName:
+          graduate?.fullName || request.graduate?.fullName || request.fullName,
+        companyName:
+          request.companyName || request.requesterName || 'Empresa solicitante',
+        companyNit: request.companyNit,
+        contactPerson: request.contactPerson || 'No informado',
+        contactEmail: request.requesterEmail,
+        requestDate: request.requestDate || new Date(),
+        certificateNumber: certificate.certificateNumber,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Solicitud ${request.requestNumber}: no se pudo enviar la notificacion al graduado: ${error?.message || error}`,
+      );
+    }
   }
 
   private async sendGraduateOwnerNotificationEmail(data: {
@@ -6021,6 +6049,8 @@ export class GraduationCertificatesService {
         );
       }
     }
+
+    await this.notifyGraduateAboutCompanyRequest(request, certificate, graduate);
 
     return {
       request,
