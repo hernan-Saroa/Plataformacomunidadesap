@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
 import { ActaInicio } from '../../entities/acta-inicio.entity';
-import { Contrato, EstadoContrato } from '../../entities/contrato.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -15,26 +15,25 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { AnularActaInicioDto, SuscribirActaInicioDto } from './dto/acta-inicio.dto';
+import { SuscribirActaInicioDto } from './dto/acta-inicio.dto';
 
-/** Actividad 9.1 de la matriz: la reunión y el acta de inicio. */
+/** Actividad 9.1 de la matriz: la reunión de inicio. */
 export const NUMERAL_ACTA_INICIO = '9.1';
 
 /**
- * Si el contrato admite que se le suscriba acta de inicio.
+ * Si el contrato admite que se le registre la reunión de inicio.
  *
- * Aquí la historia y la matriz coinciden, a diferencia de lo que pasó con la
- * designación del supervisor (EFDS-1165): la 9.1 va después de toda la etapa 8,
- * y EFDS-1167 pide «un contrato legalizado con supervisor designado». Así que
- * se exige la legalización sin desviación que anotar.
+ * La historia pide «un contrato legalizado con supervisor designado»: no se
+ * arranca la ejecución de un contrato al que le faltan las coberturas, ni sin
+ * alguien que la vigile. El supervisor lo comprueba el servicio, porque no se
+ * deduce del estado.
  *
- * `EJECUCION` también la admite: es el estado en el que queda tras suscribir, y
- * devolver `false` haría que anular un acta para rehacerla no tuviera salida.
- *
- * Función pura para poder probar la regla sin base de datos.
+ * Se admite también EJECUCION para que la regla no se contradiga consigo misma
+ * al consultarla después de haber arrancado: el contrato sigue cumpliendo la
+ * condición que lo llevó ahí.
  */
-export function admiteActaInicio(estado: EstadoContrato): boolean {
-  return estado === 'LEGALIZADO' || estado === 'EJECUCION';
+export function admiteInicio(estado: EstadoContrato): boolean {
+  return alMenos(estado, 'LEGALIZADO');
 }
 
 interface ArchivoCargado {
@@ -45,19 +44,14 @@ interface ArchivoCargado {
 }
 
 /**
- * Reunión y acta de inicio del contrato — actividad 9.1 (EFDS-1167, RF-EJE-01).
+ * Reunión y acta de inicio del contrato — actividad 9.1 (EFDS-1167).
  *
- * Donde el contrato deja de tramitarse y empieza a cumplirse. La plataforma no
- * celebra la reunión: registra que ocurrió, guarda el acta que la prueba y fija
- * desde cuándo corre el plazo.
- *
- * **Queda una tensión anotada**: la matriz describe la 9.1 con un «acta de
- * inicio firmada por ambas partes, **si fue pactada en el contrato**», y repite
- * la salvedad en la 8.7 («cuando aplique»). El módulo no sabe hoy si un
- * contrato la pactó —la tipología no lo registra— y EFDS-1167 no contempla el
- * caso, así que el acta se exige siempre. Si Contratación confirma que hay
- * contratos que arrancan sin acta, lo que falta es dónde se pacta, no esta
- * actividad.
+ * Lo que arranca la ejecución es la reunión, no el papel. La matriz describe el
+ * acta como «firmada por ambas partes, si fue pactada en el contrato», así que
+ * hay contratos que empiezan sin ella; exigirla siempre bloquearía a los que la
+ * ley no obliga a suscribirla, y no exigirla nunca dejaría arrancar sin soporte
+ * a los que sí la pactaron. Se registra la reunión siempre y el acta cuando el
+ * contrato la pactó.
  */
 @Injectable()
 export class ActaInicioService {
@@ -70,91 +64,68 @@ export class ActaInicioService {
 
     if (!contrato) {
       return {
-        admiteActa: false,
-        motivoNoAdmite: 'el proceso todavía no tiene contrato generado',
-        contrato: null,
-        supervisor: null,
+        puedeIniciar: false,
+        motivoNoPuede: 'el proceso todavía no tiene contrato generado',
         acta: null,
-        puedeSuscribir: false,
-        historial: [] as unknown[],
+        supervisor: null,
       };
     }
 
-    const admite = admiteActaInicio(contrato.estado);
+    const legalizado = admiteInicio(contrato.estado);
     const supervisor = await this.supervisorVigente(contrato.id);
-    const vigente = await this.actaVigente(contrato.id);
+    const acta = await this.dataSource
+      .getRepository(ActaInicio)
+      .findOne({ where: { contratoId: contrato.id } });
 
-    const acta = vigente
+    const documento = acta?.actaDocumentoId
       ? await this.dataSource
           .getRepository(Documento)
-          .findOne({ where: { id: vigente.actaDocumentoId } })
+          .findOne({ where: { id: acta.actaDocumentoId } })
       : null;
 
-    // El historial conserva las anuladas: son las que explican que un contrato
-    // tenga dos fechas de inicio.
-    const todas = await this.dataSource.getRepository(ActaInicio).find({
-      where: { contratoId: contrato.id },
-      order: { createdAt: 'DESC' },
-    });
-
     return {
-      admiteActa: admite,
-      motivoNoAdmite: admite ? null : this.porQueNoAdmite(contrato.estado),
+      // Las dos condiciones por separado: la pantalla necesita decir cuál
+      // falta, no solo que no se puede.
+      legalizado,
+      tieneSupervisor: !!supervisor,
+      puedeIniciar: legalizado && !!supervisor && !acta,
+      motivoNoPuede: this.motivoNoPuede(contrato.estado, !!supervisor, !!acta),
       contrato: {
         numero: contrato.numero,
         objeto: contrato.objeto,
-        estado: contrato.estado,
-        plazoDias: contrato.plazoDias,
-        enEjecucionAt: contrato.enEjecucionAt,
+        enEjecucion: contrato.estado === 'EJECUCION',
+        ejecucionDesde: contrato.ejecucionDesde,
       },
-      // Sin supervisor no se suscribe: es él quien responde por la ejecución
-      // que arranca, y la pantalla tiene que decir qué falta.
       supervisor: supervisor
-        ? { nombre: supervisor.nombre, cargo: supervisor.cargo, personaId: supervisor.personaId }
+        ? { nombre: supervisor.nombre, cargo: supervisor.cargo }
         : null,
-      puedeSuscribir: admite && !!supervisor && !vigente,
-      motivoNoSuscribe: this.porQueNoSuscribe(admite, !!supervisor, !!vigente),
-      acta: vigente
+      acta: acta
         ? {
-            id: vigente.id,
-            fechaReunion: vigente.fechaReunion,
-            fechaInicio: vigente.fechaInicio,
-            // Derivada y no almacenada: si mañana una prórroga mueve el plazo,
-            // guardar la fecha de terminación obligaría a recalcularla aquí.
-            fechaTerminacionEstimada: this.terminacion(vigente.fechaInicio, contrato.plazoDias),
-            asistentes: vigente.asistentes,
-            compromisos: vigente.compromisos,
-            suscritaPor: vigente.suscritaPor,
-            documento: acta
-              ? { nombre: acta.archivoNombreOriginal ?? acta.nombre, url: acta.archivoUrl }
+            id: acta.id,
+            fechaInicio: acta.fechaInicio,
+            temasTratados: acta.temasTratados,
+            asistentes: acta.asistentes,
+            actaPactada: acta.actaPactada,
+            registradoPor: acta.registradoPor,
+            createdAt: acta.createdAt,
+            documento: documento
+              ? {
+                  nombre: documento.archivoNombreOriginal ?? documento.nombre,
+                  url: documento.archivoUrl,
+                }
               : null,
           }
         : null,
-      historial: todas
-        .filter((a) => a.estado === 'ANULADA')
-        .map((a) => ({
-          fechaReunion: a.fechaReunion,
-          fechaInicio: a.fechaInicio,
-          anuladaAt: a.anuladaAt,
-          anuladaPor: a.anuladaPor,
-          motivoAnulacion: a.motivoAnulacion,
-        })),
     };
   }
 
-  // ---------------------------------------------------------- suscripción --
+  // --------------------------------------------------------------- inicio --
 
-  /**
-   * Suscribe el acta y deja el contrato en ejecución.
-   *
-   * Las dos cosas en la misma transacción: un acta suscrita sobre un contrato
-   * que sigue figurando legalizado sería un expediente que se contradice.
-   */
   async suscribir(
     procesoId: string,
     dto: SuscribirActaInicioDto,
-    acta: ArchivoCargado,
-    hash: string,
+    archivo: ArchivoCargado | null,
+    hash: string | null,
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
@@ -163,162 +134,124 @@ export class ActaInicioService {
       const supervisor = await this.supervisorVigente(contrato.id, em);
       if (!supervisor) {
         throw new ConflictException(
-          'El contrato no tiene supervisor designado: no hay quien responda por la ejecución que empieza',
+          'El contrato no tiene supervisor designado: la ejecución no arranca sin quien la vigile',
         );
       }
 
-      if (await this.actaVigente(contrato.id, em)) {
-        throw new ConflictException(
-          'El contrato ya tiene acta de inicio: para rehacerla se anula la vigente y se suscribe otra',
+      const existente = await em
+        .getRepository(ActaInicio)
+        .findOne({ where: { contratoId: contrato.id } });
+      if (existente) {
+        throw new ConflictException('El contrato ya tiene registrada su reunión de inicio');
+      }
+
+      this.validarFecha(dto.fechaInicio);
+
+      // Por defecto se da por pactada: es lo habitual, y suponer lo contrario
+      // dejaría arrancar sin acta a quien sí debía suscribirla.
+      const pactada = dto.actaPactada ?? true;
+      if (pactada && !archivo) {
+        throw new BadRequestException(
+          'Adjunta el acta firmada por ambas partes, o indica que el contrato no la pactó',
         );
       }
 
-      this.validarFechas(dto.fechaReunion, dto.fechaInicio);
+      let documentoId: string | null = null;
+      if (archivo && hash) {
+        const expediente = await em.findOne(Expediente, { where: { procesoId } });
+        if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
-      const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+        const doc = await this.guardarDocumento(
+          em,
+          expediente.id,
+          `Contrato ${contrato.numero} · acta de inicio`,
+          archivo,
+          hash,
+          acceso,
+        );
+        documentoId = doc.id;
+      }
 
-      const doc = await this.guardarDocumento(
-        em,
-        expediente.id,
-        `Contrato ${contrato.numero} · acta de inicio`,
-        acta,
-        hash,
-        acceso,
-      );
-
-      const registro = await em.save(
+      const acta = await em.save(
         em.create(ActaInicio, {
           contratoId: contrato.id,
-          actaDocumentoId: doc.id,
-          fechaReunion: dto.fechaReunion,
           fechaInicio: dto.fechaInicio,
-          asistentes: dto.asistentes ?? null,
-          compromisos: dto.compromisos ?? null,
-          suscritaPor: acceso.userName,
-          estado: 'VIGENTE' as const,
+          temasTratados: dto.temasTratados.trim(),
+          asistentes: dto.asistentes?.trim() || null,
+          actaDocumentoId: documentoId,
+          actaPactada: pactada,
+          registradoPor: acceso.userName,
         } as Partial<ActaInicio>),
       );
 
+      // El estado no lo declara nadie: se deriva de que la reunión existe, como
+      // el perfeccionamiento se deriva de las firmas.
       contrato.estado = 'EJECUCION';
-      contrato.enEjecucionAt = new Date();
+      contrato.ejecucionDesde = dto.fechaInicio;
       await em.save(contrato);
 
       await this.marcarActividad(em, procesoId, contrato.id, acceso);
 
-      await this.traza(em, procesoId, registro.id, 'INICIAR', acceso, {
+      await this.traza(em, procesoId, acta.id, 'INICIAR', acceso, {
         actividad: NUMERAL_ACTA_INICIO,
         contrato: contrato.numero,
-        supervisor: supervisor.nombre,
-        fechaReunion: dto.fechaReunion,
         fechaInicio: dto.fechaInicio,
+        actaPactada: pactada,
+        supervisor: supervisor.nombre,
       });
     });
 
     return this.estado(procesoId, acceso);
   }
 
-  /**
-   * Anula el acta vigente y devuelve el contrato a legalizado.
-   *
-   * No se borra: fijó la fecha desde la que corrió el plazo, y pudo haber
-   * pagos y entregables contados desde ahí. El contrato vuelve a legalizado
-   * porque dejar EJECUCION sin acta que lo sostenga es afirmar que se ejecuta
-   * algo que nunca arrancó.
-   */
-  async anular(procesoId: string, dto: AnularActaInicioDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      const contrato = await this.exigirContrato(em, procesoId);
-      const vigente = await this.actaVigente(contrato.id, em);
-      if (!vigente) throw new NotFoundException('El contrato no tiene acta de inicio vigente');
+  // ------------------------------------------- lo que consumen otras --
 
-      vigente.estado = 'ANULADA';
-      vigente.anuladaAt = new Date();
-      vigente.anuladaPor = acceso.userName;
-      vigente.motivoAnulacion = dto.motivo;
-      await em.save(vigente);
-
-      contrato.estado = 'LEGALIZADO';
-      contrato.enEjecucionAt = null;
-      await em.save(contrato);
-
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
-
-      await this.traza(em, procesoId, vigente.id, 'ANULAR', acceso, {
-        actividad: NUMERAL_ACTA_INICIO,
-        contrato: contrato.numero,
-        fechaInicio: vigente.fechaInicio,
-        motivo: dto.motivo,
-      });
-    });
-
-    return this.estado(procesoId, acceso);
-  }
-
-  // ----------------------------------------------- lo que consumen otras --
-
-  /**
-   * El acta vigente del contrato, o nula si no hay.
-   *
-   * La consultará el trámite de pagos (EFDS-1170) para saber desde cuándo se
-   * puede cobrar: no hay factura anterior al inicio de la ejecución.
-   */
-  actaVigente(contratoId: string, em?: EntityManager) {
-    const manager = em ?? this.dataSource.manager;
-    return manager
-      .getRepository(ActaInicio)
-      .findOne({ where: { contratoId, estado: 'VIGENTE' } });
+  /** Si el contrato ya arrancó, para las actividades que lo exigen (9.2, 9.3). */
+  async enEjecucion(procesoId: string, em?: EntityManager): Promise<boolean> {
+    const contrato = await this.contratoDelProceso(em ?? this.dataSource.manager, procesoId);
+    return contrato?.estado === 'EJECUCION';
   }
 
   // ----------------------------------------------------------- auxiliares --
 
-  /** Hoy en Bogotá, que es la zona en la que se cuentan las fechas. */
-  private hoy(): string {
-    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
-  }
-
-  /**
-   * La reunión ya ocurrió; el inicio puede pactarse hacia adelante.
-   *
-   * Son dos reglas distintas y por eso no comparten mensaje: registrar una
-   * reunión futura es documentar algo que no pasó, mientras que pactar que la
-   * ejecución empiece el primero del mes entrante es corriente.
-   */
-  private validarFechas(fechaReunion: string, fechaInicio: string) {
-    if (fechaReunion > this.hoy()) {
-      throw new BadRequestException(
-        'La fecha de la reunión no puede ser futura: es la de una reunión que ya se celebró',
-      );
+  /** Por qué no se puede todavía, dicho por el servidor y no deducido en pantalla. */
+  private motivoNoPuede(
+    estado: EstadoContrato,
+    tieneSupervisor: boolean,
+    yaIniciado: boolean,
+  ): string | null {
+    if (yaIniciado) return null;
+    if (!admiteInicio(estado)) {
+      return estado === 'PERFECCIONADO'
+        ? 'al contrato le faltan las garantías o la ARL'
+        : 'el contrato todavía no lo han firmado las dos partes';
     }
-
-    if (fechaInicio < fechaReunion) {
-      throw new BadRequestException(
-        'La ejecución no puede empezar antes de la reunión que la acordó',
-      );
-    }
-  }
-
-  /** Cuándo termina el plazo, si el contrato lo tiene definido. */
-  private terminacion(fechaInicio: string, plazoDias: number | null): string | null {
-    if (plazoDias === null) return null;
-    const fecha = new Date(`${fechaInicio}T00:00:00-05:00`);
-    fecha.setDate(fecha.getDate() + plazoDias);
-    return fecha.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
-  }
-
-  private porQueNoAdmite(estado: EstadoContrato): string {
-    if (estado === 'RECHAZADO') return 'el proponente rechazó la minuta y no hay contrato que iniciar';
-    if (estado === 'GENERADO' || estado === 'ACEPTADO') {
-      return 'el contrato todavía no lo han firmado las dos partes';
-    }
-    return 'el contrato todavía no está legalizado: faltan las garantías o la ARL';
-  }
-
-  private porQueNoSuscribe(admite: boolean, haySupervisor: boolean, hayActa: boolean) {
-    if (!admite) return null;
-    if (!haySupervisor) return 'falta designar el supervisor del contrato (8.2)';
-    if (hayActa) return 'el contrato ya tiene acta de inicio vigente';
+    if (!tieneSupervisor) return 'el contrato todavía no tiene supervisor designado';
     return null;
+  }
+
+  /** La reunión ya ocurrió; no se arranca la ejecución hacia el futuro. */
+  private validarFecha(fecha: string) {
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+
+    if (fecha > hoy) {
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser posterior a hoy: es la de la reunión ya celebrada',
+      );
+    }
+  }
+
+  private async exigirContratoLegalizado(em: EntityManager, procesoId: string) {
+    const contrato = await this.contratoDelProceso(em, procesoId, true);
+    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
+
+    if (!admiteInicio(contrato.estado)) {
+      throw new ConflictException(
+        'El contrato todavía no está legalizado: la ejecución empieza con las coberturas en firme',
+      );
+    }
+
+    return contrato;
   }
 
   private supervisorVigente(contratoId: string, em?: EntityManager) {
@@ -329,46 +262,34 @@ export class ActaInicioService {
   }
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {
-    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
-    if (!proceso) throw new NotFoundException('El proceso no existe');
+    await this.exigirProceso(em, procesoId);
 
     const consulta = em
       .getRepository(Contrato)
       .createQueryBuilder('c')
       .where('c.proceso_id = :procesoId', { procesoId })
-      .andWhere("c.estado <> 'RECHAZADO'");
+      .andWhere("c.estado <> 'RECHAZADO'")
+      .orderBy('c.created_at', 'DESC');
 
-    // Dentro de la transacción se bloquea la fila, con el criterio de la 8.2:
-    // dos suscripciones simultáneas leerían ambas «no hay acta» y el índice
-    // parcial rechazaría la segunda con un error de llave, no de negocio.
+    // Dentro de la transacción se bloquea la fila: dos registros simultáneos
+    // leerían ambos «sin reunión de inicio» y el índice único rechazaría el
+    // segundo con un error de llave, no de negocio.
     if (bloquear) consulta.setLock('pessimistic_write');
 
     return consulta.getOne();
   }
 
-  private async exigirContrato(em: EntityManager, procesoId: string) {
-    const contrato = await this.contratoDelProceso(em, procesoId, true);
-    if (!contrato) throw new NotFoundException('El proceso no tiene contrato generado');
-    return contrato;
-  }
-
-  private async exigirContratoLegalizado(em: EntityManager, procesoId: string) {
-    const contrato = await this.exigirContrato(em, procesoId);
-
-    if (!admiteActaInicio(contrato.estado)) {
-      throw new ConflictException(
-        `No se puede suscribir el acta de inicio: ${this.porQueNoAdmite(contrato.estado)}`,
-      );
-    }
-
-    return contrato;
+  private async exigirProceso(em: EntityManager, procesoId: string) {
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    if (!proceso) throw new NotFoundException('El proceso no existe');
+    return proceso;
   }
 
   /**
-   * La actividad se cumple cuando hay acta vigente.
+   * La actividad se cumple cuando la reunión está registrada.
    *
-   * Al anular vuelve a quedar en curso: el contrato deja de estar en ejecución
-   * hasta que se suscriba otra, y el riel tiene que decirlo.
+   * No hay vuelta atrás como en la supervisión: la ejecución empieza una vez y
+   * la reunión no se «desconvoca».
    */
   private async marcarActividad(
     em: EntityManager,
@@ -376,7 +297,9 @@ export class ActaInicioService {
     contratoId: string,
     acceso: HiringAccess,
   ) {
-    const cumplida = !!(await this.actaVigente(contratoId, em));
+    const cumplida = !!(await em
+      .getRepository(ActaInicio)
+      .findOne({ where: { contratoId } }));
     const estado = cumplida ? 'APROBADO' : 'BORRADOR';
 
     const actividad = await em.getRepository(ProcesoActividad).findOne({

@@ -3,7 +3,7 @@ import { BellRing, Check, Eye, Paperclip, Undo2, UserCheck } from 'lucide-react'
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DatosSupervisor, EstadoSupervision, Persona } from '../../types';
+import { DatosReasignacion, DatosSupervisor, EstadoSupervision, Persona } from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -42,9 +42,11 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
   const [guardando, setGuardando] = useState(false);
 
   const [designando, setDesignando] = useState(false);
+  const [reasignando, setReasignando] = useState(false);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [datos, setDatos] = useState(VACIO);
   const [acto, setActo] = useState<File | null>(null);
+  const [motivo, setMotivo] = useState('');
 
   const leer = () =>
     contratacionService
@@ -65,7 +67,9 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
     setPersona(null);
     setDatos(VACIO);
     setActo(null);
+    setMotivo('');
     setDesignando(false);
+    setReasignando(false);
   };
 
   const designar = async () => {
@@ -92,14 +96,29 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
     }
   };
 
-  const relevar = async () => {
-    const motivo = window.prompt('¿Por qué se releva al supervisor?')?.trim();
-    if (!motivo) return;
+  /**
+   * Actividad 9.3 · Reasignación de la supervisión (EFDS-1169).
+   *
+   * Releva y designa en un solo acto: hacerlo en dos dejaría el contrato sin
+   * quien lo vigile mientras tanto.
+   */
+  const reasignar = async () => {
+    if (!persona || !acto) return;
+
+    const cuerpo: DatosReasignacion = {
+      personaId: persona.id,
+      nombre: persona.nombre,
+      fechaDesignacion: datos.fechaDesignacion,
+      motivo: motivo.trim(),
+      ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
+      ...(persona.email ? { email: persona.email } : {}),
+    };
 
     setGuardando(true);
     try {
-      setEstado(await contratacionService.relevarSupervisor(procesoId, motivo));
-      toast.success('Supervisor relevado; el contrato queda sin quien lo vigile');
+      setEstado(await contratacionService.reasignarSupervisor(procesoId, cuerpo, acto));
+      limpiar();
+      toast.success('Supervisión reasignada; queda avisarle al nuevo supervisor');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -224,14 +243,113 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             </Aviso>
           )}
 
-          <BotonSecundario
-            icono={<Undo2 className="w-3.5 h-3.5" />}
-            disabled={guardando}
-            onClick={relevar}
-          >
-            Relevar al supervisor
-          </BotonSecundario>
+          {/* Reasignar y no relevar: el contrato no puede quedar sin quien lo
+              vigile mientras se busca sustituto, así que el cambio es un solo
+              acto (EFDS-1169, actividad 9.3). */}
+          {!reasignando ? (
+            <BotonSecundario
+              icono={<Undo2 className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={() => setReasignando(true)}
+            >
+              Reasignar la supervisión
+            </BotonSecundario>
+          ) : null}
         </>
+      ) : null}
+
+      {reasignando && estado.supervisor ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/40 px-3.5 py-3 space-y-3">
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">
+            Reasignar la supervisión
+          </p>
+          <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+            {estado.supervisor.nombre} queda relevado y el nuevo supervisor toma su lugar en el
+            mismo acto.
+          </p>
+
+          <div>
+            <label htmlFor="rea-persona" className="block text-xs font-bold text-gray-600 mb-1.5">
+              Nuevo supervisor <span className="text-red-600">*</span>
+            </label>
+            <SelectorPersona
+              id="rea-persona"
+              value={persona?.nombre ?? ''}
+              onChange={(nombre) => {
+                if (!nombre) setPersona(null);
+              }}
+              onSeleccionar={(elegida) => setPersona(elegida)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label htmlFor="rea-cargo" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Cargo
+              </label>
+              <input
+                id="rea-cargo"
+                type="text"
+                value={datos.cargo}
+                onChange={(e) => setDatos((p) => ({ ...p, cargo: e.target.value }))}
+                placeholder="Profesional especializado"
+                className={campo}
+              />
+            </div>
+            <div>
+              <label htmlFor="rea-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Fecha del acto <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="rea-fecha"
+                type="date"
+                value={datos.fechaDesignacion}
+                max={hoyEnBogota()}
+                onChange={(e) => setDatos((p) => ({ ...p, fechaDesignacion: e.target.value }))}
+                className={campo}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="rea-motivo" className="block text-xs font-bold text-gray-600 mb-1.5">
+              Por qué se cambia <span className="text-red-600">*</span>
+            </label>
+            <textarea
+              id="rea-motivo"
+              rows={2}
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="El motivo queda en el expediente junto al supervisor relevado"
+              className={campo}
+            />
+          </div>
+
+          <SelectorArchivo
+            id="rea-acto"
+            etiqueta="Acto de reasignación"
+            ayuda="El acto administrativo del Ordenador del Gasto"
+            archivo={acto}
+            onElegir={setActo}
+          />
+
+          <div className="flex items-center gap-2 pt-1">
+            <Boton
+              icono={<UserCheck className="w-3.5 h-3.5" />}
+              disabled={!persona || !acto || motivo.trim().length < 10 || guardando}
+              onClick={reasignar}
+            >
+              {guardando ? 'Reasignando…' : 'Reasignar'}
+            </Boton>
+            <button
+              type="button"
+              onClick={limpiar}
+              className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {/* Quien vigiló antes se conserva: respondió por ese periodo. */}

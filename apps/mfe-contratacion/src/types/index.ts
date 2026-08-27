@@ -1609,6 +1609,11 @@ export interface DatosSupervisor {
   fechaDesignacion: string;
 }
 
+/** Relevar al supervisor vigente y designar al nuevo en un solo acto (EFDS-1169). */
+export interface DatosReasignacion extends DatosSupervisor {
+  motivo: string;
+}
+
 // ---------------------- etapa 8 · registro presupuestal (8.3) --------------
 
 /** Mismo ciclo que el CDP: es el mismo tramite en otro momento. */
@@ -1690,57 +1695,107 @@ export interface DatosPublicacionContrato {
   secopUrl?: string;
 }
 
-// ------------------------- etapa 9 · acta de inicio (9.1) ------------------
+// ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
 
-/** Un acta que se anulo, con el motivo que lo explica. */
-export interface ActaInicioAnulada {
-  fechaReunion: string;
-  fechaInicio: string;
-  anuladaAt: string | null;
-  anuladaPor: string | null;
-  motivoAnulacion: string | null;
-}
-
-export interface ActaInicioVigente {
+/** La reunión que da comienzo formal a la ejecución (EFDS-1167). */
+export interface ReunionDeInicio {
   id: string;
-  fechaReunion: string;
-  /** Desde cuando corre el plazo; puede ser posterior a la reunion. */
   fechaInicio: string;
-  /** Derivada del plazo del contrato. Nula si el contrato no lo fijo. */
-  fechaTerminacionEstimada: string | null;
+  temasTratados: string;
   asistentes: string | null;
-  compromisos: string | null;
-  suscritaPor: string | null;
-  documento: { nombre: string; url: string } | null;
+  /** Si el contrato la pactó; de eso dependía que el acta fuera exigible. */
+  actaPactada: boolean;
+  registradoPor: string | null;
+  createdAt: string;
+  documento: { nombre: string; url: string | null } | null;
 }
 
 export interface EstadoActaInicio {
-  /** Si el contrato ya esta legalizado; el acta va despues de toda la etapa 8. */
-  admiteActa: boolean;
-  motivoNoAdmite: string | null;
+  /** El contrato tiene sus coberturas en firme. */
+  legalizado: boolean;
+  tieneSupervisor: boolean;
+  puedeIniciar: boolean;
+  /** Qué falta, dicho por el servidor y no deducido en pantalla. */
+  motivoNoPuede: string | null;
+  contrato?: {
+    numero: string;
+    objeto: string;
+    enEjecucion: boolean;
+    ejecucionDesde: string | null;
+  };
+  supervisor: { nombre: string; cargo: string | null } | null;
+  acta: ReunionDeInicio | null;
+}
+
+/** Lo que la pantalla envia al registrar la reunion. */
+export interface DatosActaInicio {
+  fechaInicio: string;
+  temasTratados: string;
+  asistentes?: string;
+  actaPactada?: boolean;
+}
+
+// ---------------------- etapa 9 · seguimiento de la ejecución (9.2) -------
+
+export type TipoSeguimiento = 'INFORME' | 'ACTA' | 'SOPORTE';
+
+/** Un soporte de la ejecución con el periodo que cubre (EFDS-1168). */
+export interface SoporteSeguimiento {
+  id: string;
+  tipo: TipoSeguimiento;
+  descripcion: string;
+  fechaSoporte: string;
+  periodoDesde: string | null;
+  periodoHasta: string | null;
+  registradoPor: string | null;
+  createdAt: string;
+  documento: { nombre: string; url: string | null } | null;
+}
+
+export interface EstadoSeguimiento {
+  enEjecucion: boolean;
+  puedeCargar: boolean;
+  /** Qué falta, dicho por el servidor y no deducido en pantalla. */
+  motivoNoPuede: string | null;
   contrato: {
     numero: string;
     objeto: string;
     estado: string;
-    plazoDias: number | null;
-    enEjecucionAt: string | null;
+    valor: number | null;
+    ejecucionDesde: string | null;
+    perfeccionadoAt: string | null;
+    legalizadoAt: string | null;
   } | null;
-  /** Sin supervisor no se suscribe: es quien responde por la ejecucion. */
-  supervisor: { nombre: string; cargo: string | null; personaId: string } | null;
-  puedeSuscribir: boolean;
-  /** Cual de las dos condiciones falta, para decirlo en vez de un boton apagado. */
-  motivoNoSuscribe?: string | null;
-  acta: ActaInicioVigente | null;
-  historial: ActaInicioAnulada[];
+  /** Quién responde por qué, que es el segundo criterio de la historia. */
+  responsables: {
+    contratista: { nombre: string; tipo: string };
+    supervisor: {
+      nombre: string;
+      cargo: string | null;
+      email: string | null;
+      desde: string;
+    } | null;
+    inicioRegistradoPor: string | null;
+  } | null;
+  soportes: SoporteSeguimiento[];
+  resumen?: {
+    total: number;
+    informes: number;
+    actas: number;
+    /** Desde cuándo no se reporta nada. */
+    ultimoSoporte: string | null;
+  };
 }
 
-/** Lo que la pantalla envia al suscribir el acta. */
-export interface DatosActaInicio {
-  fechaReunion: string;
-  fechaInicio: string;
-  asistentes?: string;
-  compromisos?: string;
+/** Lo que la pantalla envia al cargar un soporte. */
+export interface DatosSeguimiento {
+  tipo: TipoSeguimiento;
+  descripcion: string;
+  fechaSoporte: string;
+  periodoDesde?: string;
+  periodoHasta?: string;
 }
+
 
 // ----------------------- etapa 9 · tramite de pagos (9.4) ------------------
 

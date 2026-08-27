@@ -364,7 +364,7 @@ export class LiquidacionService {
   ): Promise<VentanaLiquidacion | null> {
     const acta = await em
       .getRepository(ActaInicio)
-      .findOne({ where: { contratoId: contrato.id, estado: 'VIGENTE' } });
+      .findOne({ where: { contratoId: contrato.id } });
 
     if (!acta || contrato.plazoDias === null) return null;
 

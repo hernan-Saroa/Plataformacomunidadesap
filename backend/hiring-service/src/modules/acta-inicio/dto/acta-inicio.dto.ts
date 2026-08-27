@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsNotEmpty,
   IsOptional,
@@ -8,48 +10,50 @@ import {
   MinLength,
 } from 'class-validator';
 
-/**
- * Suscripcion del acta de inicio (EFDS-1167).
- *
- * Viaja como multipart porque lleva el acta adjunta: sin ella hubo una reunion,
- * no un inicio.
- */
+/** Registro de la reunion de inicio y su acta (EFDS-1167, actividad 9.1). */
 export class SuscribirActaInicioDto {
-  /** Cuando se reunieron las partes. */
+  /** La de la reunion, no la del registro: es cuando arranco la ejecucion. */
   @ApiProperty({ description: 'Fecha de la reunion de inicio (YYYY-MM-DD)' })
-  @IsDateString({}, { message: 'La fecha de la reunion debe tener el formato YYYY-MM-DD' })
-  fechaReunion: string;
-
-  /**
-   * Desde cuando corre el plazo. Va aparte de la reunion porque el acta puede
-   * pactar que la ejecucion empiece otro dia.
-   */
-  @ApiProperty({ description: 'Fecha desde la que corre el plazo (YYYY-MM-DD)' })
   @IsDateString({}, { message: 'La fecha de inicio debe tener el formato YYYY-MM-DD' })
   fechaInicio: string;
 
-  /** La matriz pide en 9.1 constancia de quienes socializaron el alcance. */
-  @ApiPropertyOptional({ description: 'Quienes asistieron a la reunion' })
+  @ApiProperty({ description: 'Alcance, cronograma y entregables socializados' })
+  @IsString()
+  @IsNotEmpty({ message: 'Registra que se socializo en la reunion de inicio' })
+  @MinLength(10, {
+    message: 'Describe los temas tratados: alcance, cronograma y entregables',
+  })
+  @MaxLength(4000)
+  temasTratados: string;
+
+  @ApiPropertyOptional({ description: 'Quienes asistieron por cada parte' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   asistentes?: string;
 
-  @ApiPropertyOptional({ description: 'Alcance, cronograma y entregables acordados' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(4000)
-  compromisos?: string;
-}
-
-/** Anulacion del acta vigente para suscribir otra. */
-export class AnularActaInicioDto {
-  @ApiProperty({ description: 'Por que se anula el acta' })
-  @IsString()
-  @IsNotEmpty({ message: 'Explica por que se anula el acta de inicio' })
-  @MinLength(10, {
-    message: 'El acta fijo la fecha desde la que corre el plazo: sustenta por que se anula',
+  /**
+   * Si el contrato pacto acta de inicio.
+   *
+   * La matriz describe el acta como «firmada por ambas partes, si fue pactada
+   * en el contrato»: hay contratos que arrancan sin ella. Cuando se pacto, el
+   * documento es obligatorio y el servicio lo exige.
+   *
+   * Llega como texto porque el formulario viaja en multipart junto al archivo,
+   * y sin el Transform la validacion recibiria la cadena "false" —que es
+   * verdadera— y daria por pactada un acta que no lo esta.
+   */
+  @ApiPropertyOptional({
+    description: 'Si el contrato pacto acta de inicio; por defecto si',
+    default: true,
   })
-  @MaxLength(1000)
-  motivo: string;
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    if (value === 'false' || value === '0') return false;
+    if (value === 'true' || value === '1') return true;
+    return value;
+  })
+  @IsBoolean({ message: 'Indica con si o no si el contrato pacto acta de inicio' })
+  actaPactada?: boolean;
 }

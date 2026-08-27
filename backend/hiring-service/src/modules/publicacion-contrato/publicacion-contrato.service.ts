@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
 import {
   DestinoPublicacion,
   PlazoPublicacionContrato,
@@ -52,7 +52,7 @@ export const NUMERAL_PUBLICACION_CONTRATO = '8.8';
  * etapa 9. Cuando existan, esta regla tendrá que mirarlas.
  */
 export function admitePublicacion(estado: EstadoContrato): boolean {
-  return estado === 'LEGALIZADO';
+  return alMenos(estado, 'LEGALIZADO');
 }
 
 interface ArchivoCargado {

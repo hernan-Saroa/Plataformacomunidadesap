@@ -671,14 +671,14 @@ export class PagosService {
     const manager = em ?? this.dataSource.manager;
     return manager
       .getRepository(SupervisionContrato)
-      .findOne({ where: { contratoId, estado: 'VIGENTE' } });
+      .findOne({ where: { contratoId } });
   }
 
   private actaVigente(contratoId: string, em?: EntityManager) {
     const manager = em ?? this.dataSource.manager;
     return manager
       .getRepository(ActaInicio)
-      .findOne({ where: { contratoId, estado: 'VIGENTE' } });
+      .findOne({ where: { contratoId } });
   }
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {

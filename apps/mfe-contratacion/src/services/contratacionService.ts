@@ -32,6 +32,9 @@ import {
   DatosSupervisor,
   EstadoActaInicio,
   DatosActaInicio,
+  DatosReasignacion,
+  EstadoSeguimiento,
+  DatosSeguimiento,
   EstadoPagos,
   DatosPago,
   TipoSoportePago,
@@ -548,6 +551,26 @@ export const contratacionService = {
       body: JSON.stringify({ motivo }),
     }),
 
+
+  /**
+   * Reasigna la supervisión: releva al vigente y designa al nuevo de una vez
+   * (EFDS-1169). En dos pasos el contrato quedaría sin quien lo vigile.
+   */
+  reasignarSupervisor: (procesoId: string, datos: DatosReasignacion, acto: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/reasignar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
   /** Deja constancia de que se le comunicó la designación (matriz 8.2). */
   avisarSupervisor: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
@@ -555,21 +578,21 @@ export const contratacionService = {
       body: JSON.stringify({}),
     }),
 
-  // ----------------------------- etapa 9 · acta de inicio (9.1) -------------
+  // ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
 
-  /** Si el contrato admite acta, quien lo supervisa y el acta vigente. */
+  /** Si el contrato puede arrancar, qué le falta, y la reunión ya registrada. */
   actaInicio: (procesoId: string) =>
     pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`),
 
   /**
-   * Suscribe el acta y deja el contrato en ejecucion.
+   * Registra la reunión de inicio y deja el contrato en ejecución.
    *
-   * Viaja como multipart porque lleva el acta firmada: sin ella hubo una
-   * reunion, no un inicio.
+   * El acta va aparte porque puede no existir: la matriz la describe como
+   * «firmada por ambas partes, si fue pactada en el contrato».
    */
-  suscribirActaInicio: (procesoId: string, datos: DatosActaInicio, acta: File) => {
+  suscribirActaInicio: (procesoId: string, datos: DatosActaInicio, acta?: File | null) => {
     const cuerpo = new FormData();
-    cuerpo.append('file', acta);
+    if (acta) cuerpo.append('file', acta);
 
     for (const [clave, valor] of Object.entries(datos)) {
       if (valor !== undefined && valor !== null && valor !== '') {
@@ -583,12 +606,28 @@ export const contratacionService = {
     });
   },
 
-  /** Anula el acta vigente; el contrato vuelve a legalizado. */
-  anularActaInicio: (procesoId: string, motivo: string) =>
-    pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio/anular`, {
+  // ------------------- etapa 9 · seguimiento de la ejecución (9.2) ---------
+
+  /** Estado del contrato en ejecución, sus responsables y los soportes. */
+  seguimiento: (procesoId: string) =>
+    pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`),
+
+  /** Carga un informe, acta o soporte de la ejecución al expediente. */
+  cargarSeguimiento: (procesoId: string, datos: DatosSeguimiento, soporte: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`, {
       method: 'POST',
-      body: JSON.stringify({ motivo }),
-    }),
+      body: cuerpo,
+    });
+  },
 
   // --------------------------- etapa 9 · tramite de pagos (9.4) -------------
 

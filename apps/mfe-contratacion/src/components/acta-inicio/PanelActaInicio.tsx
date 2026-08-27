@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarCheck, Paperclip, PlayCircle, Undo2, Users } from 'lucide-react';
+import { CalendarCheck, Eye, Paperclip, PlayCircle, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -8,7 +8,6 @@ import {
   Aviso,
   Ayuda,
   Boton,
-  BotonSecundario,
   campo,
   Marco,
   Pendiente,
@@ -23,19 +22,19 @@ interface Props {
 }
 
 const VACIO = {
-  fechaReunion: hoyEnBogota(),
   fechaInicio: hoyEnBogota(),
+  temasTratados: '',
   asistentes: '',
-  compromisos: '',
+  actaPactada: true,
 };
 
 /**
  * Actividad 9.1 · Reunión y acta de inicio (EFDS-1167).
  *
- * Donde el contrato deja de tramitarse y empieza a cumplirse. La pantalla
- * insiste en separar dos fechas que es fácil confundir: cuándo se reunieron y
- * desde cuándo corre el plazo. No siempre son la misma, y la segunda es la que
- * cuenta para los pagos y los entregables.
+ * Lo que arranca la ejecución es la reunión, no el papel: la matriz describe el
+ * acta como «firmada por ambas partes, si fue pactada en el contrato». Por eso
+ * el acta se pide solo cuando el contrato la pactó, y la casilla es lo primero
+ * que se decide en el formulario.
  */
 export function PanelActaInicio({ procesoId, onCambio }: Props) {
   const [estado, setEstado] = useState<EstadoActaInicio | null>(null);
@@ -43,7 +42,7 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
-  const [suscribiendo, setSuscribiendo] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
   const [datos, setDatos] = useState(VACIO);
   const [acta, setActa] = useState<File | null>(null);
 
@@ -65,40 +64,22 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
   const limpiar = () => {
     setDatos(VACIO);
     setActa(null);
-    setSuscribiendo(false);
+    setRegistrando(false);
   };
 
   const suscribir = async () => {
-    if (!acta) return;
-
     const cuerpo: DatosActaInicio = {
-      fechaReunion: datos.fechaReunion,
       fechaInicio: datos.fechaInicio,
+      temasTratados: datos.temasTratados.trim(),
+      actaPactada: datos.actaPactada,
       ...(datos.asistentes.trim() ? { asistentes: datos.asistentes.trim() } : {}),
-      ...(datos.compromisos.trim() ? { compromisos: datos.compromisos.trim() } : {}),
     };
 
     setGuardando(true);
     try {
       setEstado(await contratacionService.suscribirActaInicio(procesoId, cuerpo, acta));
       limpiar();
-      toast.success('Acta suscrita; el contrato queda en ejecución');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const anular = async () => {
-    const motivo = window.prompt('¿Por qué se anula el acta de inicio?')?.trim();
-    if (!motivo) return;
-
-    setGuardando(true);
-    try {
-      setEstado(await contratacionService.anularActaInicio(procesoId, motivo));
-      toast.success('Acta anulada; el contrato vuelve a legalizado');
+      toast.success('Reunión de inicio registrada; el contrato queda en ejecución');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -110,7 +91,7 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
   if (cargando) {
     return (
       <Marco>
-        <p className="text-[11.5px] text-slate-400 m-0">Cargando el inicio de la ejecución…</p>
+        <p className="text-[11.5px] text-slate-400 m-0">Cargando la reunión de inicio…</p>
       </Marco>
     );
   }
@@ -125,32 +106,36 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
     );
   }
 
-  const completo = acta && datos.fechaReunion && datos.fechaInicio;
+  // Con acta pactada el documento es obligatorio; sin pactar, basta la reunión.
+  const completo =
+    datos.fechaInicio &&
+    datos.temasTratados.trim().length >= 10 &&
+    (!datos.actaPactada || !!acta);
 
   return (
     <Marco>
-      <Titulo>Reunión y acta de inicio</Titulo>
+      <Titulo>Reunión de inicio</Titulo>
       <Ayuda>
-        Las partes se reúnen, socializan alcance, cronograma y entregables, y suscriben el acta que
-        da comienzo formal a la ejecución del contrato.
+        Las partes socializan alcance, cronograma y entregables. Con la reunión registrada el
+        contrato queda en ejecución y empieza a correr su plazo.
       </Ayuda>
 
-      {/* Qué falta, en vez de un botón apagado sin explicar. Son dos requisitos
-          distintos —la legalización y el supervisor— y conviene decir cuál. */}
-      {!estado.admiteActa ? (
+      {/* Qué falta y en qué paso se resuelve, en vez de un botón apagado. */}
+      {!estado.acta && estado.motivoNoPuede ? (
         <Pendiente
-          falta="8.4"
-          texto={`El acta se suscribe sobre un contrato legalizado: ${
-            estado.motivoNoAdmite ?? 'todavía no lo está'
-          }.`}
+          falta={estado.legalizado ? '8.2' : '8.5'}
+          texto={`La ejecución empieza sobre un contrato legalizado y con supervisor: ${estado.motivoNoPuede}.`}
         />
       ) : null}
 
-      {estado.admiteActa && !estado.supervisor ? (
-        <Pendiente
-          falta="8.2"
-          texto="Falta designar el supervisor del contrato: es quien responde por la ejecución que empieza."
-        />
+      {estado.supervisor ? (
+        <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-2.5 flex items-start gap-2.5">
+          <Eye className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+          <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+            Supervisa {estado.supervisor.nombre}
+            {estado.supervisor.cargo ? ` · ${estado.supervisor.cargo}` : ''}
+          </p>
+        </div>
       ) : null}
 
       {estado.acta ? (
@@ -162,12 +147,12 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
                 <p className="text-[12.5px] font-bold text-emerald-900 m-0">
                   En ejecución desde el {fechaLarga(estado.acta.fechaInicio)}
                 </p>
-                <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed break-words">
-                  Reunión del {fechaLarga(estado.acta.fechaReunion)}
-                  {estado.acta.suscritaPor ? ` · suscrita por ${estado.acta.suscritaPor}` : ''}
-                  {estado.acta.fechaTerminacionEstimada
-                    ? ` · termina el ${fechaLarga(estado.acta.fechaTerminacionEstimada)}`
-                    : ''}
+                <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
+                  {estado.acta.actaPactada
+                    ? 'Con acta firmada por ambas partes'
+                    : 'El contrato no pactó acta de inicio'}
+                  {estado.acta.registradoPor ? ` · registró ${estado.acta.registradoPor}` : ''}
+                  {estado.acta.createdAt ? ` el ${momento(estado.acta.createdAt)}` : ''}
                 </p>
                 {estado.acta.documento?.url ? (
                   <a
@@ -184,116 +169,62 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
             </div>
           </div>
 
-          {estado.acta.asistentes || estado.acta.compromisos ? (
-            <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2">
-              {estado.acta.asistentes ? (
-                <div>
-                  <p className="text-[12.5px] font-bold text-slate-800 m-0">Asistentes</p>
-                  <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed whitespace-pre-line break-words">
-                    {estado.acta.asistentes}
-                  </p>
-                </div>
-              ) : null}
-              {estado.acta.compromisos ? (
-                <div>
-                  <p className="text-[12.5px] font-bold text-slate-800 m-0">
-                    Alcance y compromisos
-                  </p>
-                  <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed whitespace-pre-line break-words">
-                    {estado.acta.compromisos}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          <BotonSecundario
-            icono={<Undo2 className="w-3.5 h-3.5" />}
-            disabled={guardando}
-            onClick={anular}
-          >
-            Anular el acta
-          </BotonSecundario>
+          <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2">
+            <p className="text-[12.5px] font-bold text-slate-800 m-0">Lo que se socializó</p>
+            <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed whitespace-pre-line">
+              {estado.acta.temasTratados}
+            </p>
+            {estado.acta.asistentes ? (
+              <div className="flex items-start gap-2 pt-1 border-t border-gray-100">
+                <Users className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                <p className="text-[11.5px] text-slate-500 m-0 leading-relaxed">
+                  {estado.acta.asistentes}
+                </p>
+              </div>
+            ) : null}
+          </div>
         </>
       ) : null}
 
-      {/* Las anuladas se conservan: son las que explican que un contrato tenga
-          dos fechas de inicio distintas. */}
-      {estado.historial.length > 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Actas anuladas</p>
-          {estado.historial.map((a, indice) => (
-            <div key={`${a.fechaInicio}-${indice}`} className="border-l-2 border-slate-200 pl-2.5">
-              <p className="text-[11.5px] font-bold text-slate-700 m-0">
-                Inicio del {fechaLarga(a.fechaInicio)}
-              </p>
-              <p className="text-[11px] text-slate-500 m-0 mt-0.5 leading-relaxed break-words">
-                Anulada {a.anuladaAt ? `el ${momento(a.anuladaAt)}` : ''}
-                {a.anuladaPor ? ` por ${a.anuladaPor}` : ''}
-                {a.motivoAnulacion ? ` · ${a.motivoAnulacion}` : ''}
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {estado.puedeSuscribir && !suscribiendo ? (
-        <Boton icono={<PlayCircle className="w-3.5 h-3.5" />} onClick={() => setSuscribiendo(true)}>
-          Suscribir el acta de inicio
+      {estado.puedeIniciar && !registrando ? (
+        <Boton
+          icono={<CalendarCheck className="w-3.5 h-3.5" />}
+          onClick={() => setRegistrando(true)}
+        >
+          Registrar reunión de inicio
         </Boton>
       ) : null}
 
-      {estado.puedeSuscribir && suscribiendo ? (
+      {estado.puedeIniciar && registrando ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Acta de inicio</p>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Reunión celebrada</p>
 
-          {estado.supervisor ? (
-            <div className="flex items-start gap-2 text-[11.5px] text-slate-600">
-              <Users className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
-              <span className="break-words">
-                Supervisa {estado.supervisor.nombre}
-                {estado.supervisor.cargo ? ` · ${estado.supervisor.cargo}` : ''}
-              </span>
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <div>
-              <label htmlFor="acta-reunion" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Fecha de la reunión <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="acta-reunion"
-                type="date"
-                value={datos.fechaReunion}
-                max={hoyEnBogota()}
-                onChange={(e) => setDatos((p) => ({ ...p, fechaReunion: e.target.value }))}
-                className={campo}
-              />
-            </div>
-            <div>
-              <label htmlFor="acta-inicio" className="block text-xs font-bold text-gray-600 mb-1.5">
-                Inicio de la ejecución <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="acta-inicio"
-                type="date"
-                value={datos.fechaInicio}
-                min={datos.fechaReunion}
-                onChange={(e) => setDatos((p) => ({ ...p, fechaInicio: e.target.value }))}
-                className={campo}
-              />
-            </div>
+          <div>
+            <label htmlFor="acta-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
+              Fecha de la reunión <span className="text-red-600">*</span>
+            </label>
+            <input
+              id="acta-fecha"
+              type="date"
+              value={datos.fechaInicio}
+              max={hoyEnBogota()}
+              onChange={(e) => setDatos((p) => ({ ...p, fechaInicio: e.target.value }))}
+              className={campo}
+            />
           </div>
 
-          {/* Se dice antes de que se equivoquen: la reunión ya pasó, el inicio
-              puede pactarse hacia adelante. */}
-          <div className="flex items-start gap-2 text-[11px] text-slate-500">
-            <CalendarCheck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" />
-            <span>
-              Desde la fecha de inicio corre el plazo del contrato. Puede ser posterior a la reunión
-              si así se pactó en el acta.
-            </span>
+          <div>
+            <label htmlFor="acta-temas" className="block text-xs font-bold text-gray-600 mb-1.5">
+              Qué se socializó <span className="text-red-600">*</span>
+            </label>
+            <textarea
+              id="acta-temas"
+              rows={4}
+              value={datos.temasTratados}
+              onChange={(e) => setDatos((p) => ({ ...p, temasTratados: e.target.value }))}
+              placeholder="Alcance, cronograma y entregables acordados con el contratista"
+              className={campo}
+            />
           </div>
 
           <div>
@@ -303,56 +234,65 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
             >
               Asistentes
             </label>
-            <textarea
+            <input
               id="acta-asistentes"
-              rows={2}
+              type="text"
               value={datos.asistentes}
               onChange={(e) => setDatos((p) => ({ ...p, asistentes: e.target.value }))}
-              placeholder="Quiénes participaron por la entidad y por el contratista"
+              placeholder="Por la entidad y por el contratista"
               className={campo}
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="acta-compromisos"
-              className="block text-xs font-bold text-gray-600 mb-1.5"
-            >
-              Alcance y compromisos
-            </label>
-            <textarea
-              id="acta-compromisos"
-              rows={3}
-              value={datos.compromisos}
-              onChange={(e) => setDatos((p) => ({ ...p, compromisos: e.target.value }))}
-              placeholder="Alcance, cronograma y entregables socializados en la reunión"
-              className={campo}
+          {/* Se decide antes de pedir el archivo: de esta casilla depende que el
+              acta sea exigible, y preguntarla después dejaría al usuario
+              buscando un documento que quizá no existe. */}
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={datos.actaPactada}
+              onChange={(e) => {
+                const pactada = e.target.checked;
+                setDatos((p) => ({ ...p, actaPactada: pactada }));
+                if (!pactada) setActa(null);
+              }}
+              className="mt-0.5 w-3.5 h-3.5 accent-[#003DA5]"
             />
-          </div>
+            <span className="text-[11.5px] text-slate-600 leading-relaxed">
+              El contrato pactó acta de inicio firmada por ambas partes
+            </span>
+          </label>
 
-          <SelectorArchivo
-            id="acta-archivo"
-            etiqueta="Acta firmada"
-            ayuda="El acta suscrita por las dos partes."
-            archivo={acta}
-            onElegir={setActa}
-          />
+          {datos.actaPactada ? (
+            <SelectorArchivo
+              id="acta-archivo"
+              etiqueta="Acta firmada"
+              ayuda="La suscrita por la entidad y el contratista"
+              archivo={acta}
+              onElegir={setActa}
+            />
+          ) : (
+            <Aviso tono="aviso" titulo="Sin acta de inicio">
+              La reunión queda registrada como soporte del arranque. Marca la casilla si el
+              contrato sí la pactó.
+            </Aviso>
+          )}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex items-center gap-2 pt-1">
             <Boton
-              icono={<PlayCircle className="w-3.5 h-3.5" />}
-              disabled={guardando || !completo}
+              icono={<CalendarCheck className="w-3.5 h-3.5" />}
+              disabled={!completo || guardando}
               onClick={suscribir}
             >
-              Suscribir
+              {guardando ? 'Registrando…' : 'Registrar e iniciar ejecución'}
             </Boton>
-            <BotonSecundario
-              icono={<Undo2 className="w-3.5 h-3.5" />}
-              disabled={guardando}
+            <button
+              type="button"
               onClick={limpiar}
+              className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700"
             >
               Cancelar
-            </BotonSecundario>
+            </button>
           </div>
         </div>
       ) : null}

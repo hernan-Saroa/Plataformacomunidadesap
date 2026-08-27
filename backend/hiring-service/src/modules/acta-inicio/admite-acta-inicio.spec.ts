@@ -1,5 +1,5 @@
 import { EstadoContrato } from '../../entities/contrato.entity';
-import { admiteActaInicio } from './acta-inicio.service';
+import { admiteInicio } from './acta-inicio.service';
 
 /**
  * La regla de entrada de la etapa 9 (EFDS-1167).
@@ -8,29 +8,36 @@ import { admiteActaInicio } from './acta-inicio.service';
  * contrato puede empezar a ejecutarse, y equivocarla no falla: deja arrancar
  * un contrato al que todavía le faltan las garantías.
  */
-describe('admiteActaInicio · qué contrato puede empezar a ejecutarse', () => {
+describe('admiteInicio · qué contrato puede empezar a ejecutarse', () => {
   it('exige que el contrato esté legalizado', () => {
-    expect(admiteActaInicio('LEGALIZADO')).toBe(true);
+    expect(admiteInicio('LEGALIZADO')).toBe(true);
   });
 
   it('no basta con que las dos partes lo hayan firmado', () => {
-    // Perfeccionado es firmado; legalizado es firmado *y* amparado. El acta va
-    // después de las garantías y la ARL, no entre una cosa y la otra.
-    expect(admiteActaInicio('PERFECCIONADO')).toBe(false);
+    // Perfeccionado es firmado; legalizado es firmado *y* amparado. La reunión
+    // de inicio va después de las garantías y la ARL, no entre una cosa y otra.
+    expect(admiteInicio('PERFECCIONADO')).toBe(false);
   });
 
-  it('admite el que ya está en ejecución, para poder rehacer su acta', () => {
-    // Si devolviera false, anular un acta equivocada dejaría al contrato sin
-    // salida: no podría suscribirse la corregida.
-    expect(admiteActaInicio('EJECUCION')).toBe(true);
+  it('admite el que ya está en ejecución', () => {
+    expect(admiteInicio('EJECUCION')).toBe(true);
   });
 
   it('rechaza los estados anteriores a la firma', () => {
     const previos: EstadoContrato[] = ['GENERADO', 'ACEPTADO'];
-    expect(previos.map(admiteActaInicio)).toEqual([false, false]);
+    expect(previos.map((e) => admiteInicio(e))).toEqual([false, false]);
   });
 
   it('rechaza el contrato que el proponente no aceptó', () => {
-    expect(admiteActaInicio('RECHAZADO')).toBe(false);
+    expect(admiteInicio('RECHAZADO')).toBe(false);
+  });
+
+  it('los desenlaces de la etapa 10 siguen contando como legalizados', () => {
+    // `alMenos` mide qué tan avanzado está el contrato, y liquidado o cerrado
+    // están *después* de legalizado: la escala no miente. Lo que impide que un
+    // contrato liquidado estrene reunión de inicio no es esta regla, es el
+    // índice único `uq_acta_inicio_contrato`, que ya tiene la suya.
+    const desenlaces: EstadoContrato[] = ['LIQUIDADO', 'CERRADO'];
+    expect(desenlaces.map((e) => admiteInicio(e))).toEqual([true, true]);
   });
 });

@@ -43,8 +43,9 @@ export type AccionTraza =
   | 'ACEPTAR'
   | 'FIRMAR'
   | 'LEGALIZAR'
-  // Acta de inicio (etapa 9). Acción propia y no reuso de FIRMAR: lo que el
-  // acta hace no es firmar un documento más, es poner el contrato a correr.
+  // Ejecución y supervisión (etapa 9). Acción propia y no reuso de FIRMAR: lo
+  // que el acta hace no es firmar un documento más, es poner el contrato a
+  // correr.
   | 'INICIAR'
   // Cierre del expediente (etapa 10, EFDS-1174).
   | 'ARCHIVAR'

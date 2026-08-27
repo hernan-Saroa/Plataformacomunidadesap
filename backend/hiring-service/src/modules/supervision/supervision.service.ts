@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -14,7 +14,11 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { DesignarSupervisorDto, RelevarSupervisorDto } from './dto/supervision.dto';
+import {
+  DesignarSupervisorDto,
+  ReasignarSupervisorDto,
+  RelevarSupervisorDto,
+} from './dto/supervision.dto';
 
 /** Actividad 8.2 de la matriz: la designación del supervisor. */
 export const NUMERAL_SUPERVISOR = '8.2';
@@ -39,7 +43,7 @@ export const NUMERAL_SUPERVISOR = '8.2';
  * fuentes corrige. Función pura para poder probar la regla sin base de datos.
  */
 export function admiteSupervisor(estado: EstadoContrato): boolean {
-  return estado === 'PERFECCIONADO' || estado === 'LEGALIZADO';
+  return alMenos(estado, 'PERFECCIONADO');
 }
 
 interface ArchivoCargado {
@@ -214,6 +218,99 @@ export class SupervisionService {
         contrato: contrato.numero,
         supervisor: vigente.nombre,
         motivo: dto.motivo,
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Reasigna la supervisión: releva al vigente y designa al nuevo (EFDS-1169).
+   *
+   * En un solo acto y no en dos pasos. Relevar y designar por separado deja el
+   * contrato sin quien lo vigile entre una cosa y otra, y si el segundo paso
+   * falla queda así indefinidamente. La historia habla de «reasignar», que es
+   * un cambio de responsable, no una baja seguida de un alta.
+   *
+   * El acto administrativo es obligatorio, igual que en la designación: el
+   * criterio dice «reasigna el supervisor por acto administrativo», y sin él
+   * habría un cambio de nombre sin nada que lo respalde.
+   *
+   * Sobre cuándo puede hacerse: el criterio dice «dado un contrato en
+   * ejecución», pero la historia y la matriz (9.3) dicen «en cualquier
+   * momento». Se sigue la matriz —como en 8.2— y basta con que haya supervisor
+   * designado: si el titular se va entre la designación y el acta de inicio,
+   * exigir la ejecución dejaría el contrato con un supervisor que ya no está.
+   */
+  async reasignar(
+    procesoId: string,
+    dto: ReasignarSupervisorDto,
+    acto: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const contrato = await this.exigirContratoSuscrito(em, procesoId);
+
+      const vigente = await this.supervisorVigente(contrato.id, em);
+      if (!vigente) {
+        throw new NotFoundException(
+          'El contrato no tiene supervisor designado: no hay a quién reasignar, se designa uno',
+        );
+      }
+
+      if (vigente.personaId === dto.personaId) {
+        throw new ConflictException(
+          'Esa persona ya es el supervisor del contrato: reasignar exige designar a otra',
+        );
+      }
+
+      this.validarFecha(dto.fechaDesignacion);
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · reasignación de supervisor`,
+        acto,
+        hash,
+        acceso,
+      );
+
+      // El anterior no se borra: respondió por su periodo, y el expediente
+      // conserva los dos actos con el motivo del cambio.
+      vigente.estado = 'RELEVADO';
+      vigente.relevadoAt = new Date();
+      vigente.relevadoPor = acceso.userName;
+      vigente.motivoRelevo = dto.motivo;
+      await em.save(vigente);
+
+      const nueva = await em.save(
+        em.create(SupervisionContrato, {
+          contratoId: contrato.id,
+          actoDocumentoId: doc.id,
+          fechaDesignacion: dto.fechaDesignacion,
+          personaId: dto.personaId,
+          nombre: dto.nombre,
+          cargo: dto.cargo ?? null,
+          email: dto.email ?? null,
+          designadoPor: acceso.userName,
+          estado: 'VIGENTE' as const,
+        } as Partial<SupervisionContrato>),
+      );
+
+      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+
+      await this.traza(em, procesoId, nueva.id, 'DESIGNAR', acceso, {
+        actividad: NUMERAL_SUPERVISOR,
+        contrato: contrato.numero,
+        reasignacion: true,
+        supervisorAnterior: vigente.nombre,
+        supervisor: dto.nombre,
+        motivo: dto.motivo,
+        fechaDesignacion: dto.fechaDesignacion,
       });
     });
 

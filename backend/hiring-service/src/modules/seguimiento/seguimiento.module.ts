@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { ActaInicioService } from './acta-inicio.service';
-import { ActaInicioController } from './acta-inicio.controller';
+import { SeguimientoService } from './seguimiento.service';
+import { SeguimientoController } from './seguimiento.controller';
 
 import { Contrato } from '../../entities/contrato.entity';
-import { ActaInicio } from '../../entities/acta-inicio.entity';
+import { SeguimientoContrato } from '../../entities/seguimiento-contrato.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
+import { ActaInicio } from '../../entities/acta-inicio.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -17,8 +18,9 @@ import { Expediente } from '../../entities/expediente.entity';
   imports: [
     TypeOrmModule.forFeature([
       Contrato,
-      ActaInicio,
+      SeguimientoContrato,
       SupervisionContrato,
+      ActaInicio,
       Proceso,
       ProcesoActividad,
       Trazabilidad,
@@ -26,10 +28,10 @@ import { Expediente } from '../../entities/expediente.entity';
       Expediente,
     ]),
   ],
-  controllers: [ActaInicioController],
-  providers: [ActaInicioService],
-  // El seguimiento (EFDS-1168) y la reasignación (EFDS-1169) preguntarán aquí
-  // si el contrato ya arrancó: las dos ocurren durante la ejecución.
-  exports: [ActaInicioService],
+  controllers: [SeguimientoController],
+  providers: [SeguimientoService],
+  // La liquidación (etapa 10) preguntará aquí qué se ejecutó y con qué
+  // soportes para poder cerrar el contrato.
+  exports: [SeguimientoService],
 })
-export class ActaInicioModule {}
+export class SeguimientoModule {}

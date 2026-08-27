@@ -14,12 +14,13 @@ import {
  * genera otra, y las dos quedan en el expediente. Un contrato rechazado existió
  * y es lo que explica que un proceso tenga dos minutas.
  *
- * `PERFECCIONADO` lo deriva el servicio al comprobar que ya están las dos
- * firmas (EFDS-1162); no lo declara quien firma.
+ * Ninguno de los tres últimos se declara: los deriva el servicio de hechos que
+ * ya ocurrieron. `PERFECCIONADO` de que estén las dos firmas (EFDS-1162),
+ * `LEGALIZADO` de que las garantías y la ARL estén aprobadas (EFDS-1164), y
+ * `EJECUCION` de que se haya celebrado la reunión de inicio (EFDS-1167).
  *
- * `EJECUCION` lo deriva igual el servicio, al suscribirse el acta de inicio
- * (EFDS-1167): es el estado donde el contrato deja de tramitarse y empieza a
- * cumplirse, y donde lo toma la etapa 9.
+ * En `EJECUCION` el contrato deja de tramitarse y empieza a cumplirse: es donde
+ * lo toma la etapa 9.
  */
 export type EstadoContrato =
   | 'GENERADO'
@@ -36,6 +37,41 @@ export type EstadoContrato =
   // camino lleva a ellos. Entran con EFDS-1177 y EFDS-1178.
   | 'LIQUIDADO'
   | 'CERRADO';
+
+/**
+ * Qué tan avanzado está el contrato, para poder preguntar «al menos» en vez de
+ * enumerar estados.
+ *
+ * Los estados son acumulativos: quien está en ejecución ya pasó por legalizado,
+ * y quien está legalizado ya estaba perfeccionado. Las reglas que los
+ * enumeraban una a una —`estado === 'PERFECCIONADO' || estado ===
+ * 'LEGALIZADO'`— había que corregirlas cada vez que aparecía un estado nuevo, y
+ * olvidarse de una sola dejaba de admitir un contrato más avanzado que el
+ * exigido: al añadir EJECUCION, seis reglas habrían dejado de reconocer
+ * contratos ya legalizados.
+ *
+ * RECHAZADO queda fuera del orden a propósito: no es una fase menos avanzada,
+ * es una minuta que no prosperó y no llega a ninguna parte.
+ */
+const AVANCE: Record<EstadoContrato, number> = {
+  RECHAZADO: -1,
+  GENERADO: 0,
+  ACEPTADO: 1,
+  PERFECCIONADO: 2,
+  LEGALIZADO: 3,
+  EJECUCION: 4,
+  // Los dos de la etapa 10 continuan el orden: un contrato liquidado ya paso
+  // por la ejecucion, y uno cerrado por la liquidacion.
+  LIQUIDADO: 5,
+  CERRADO: 6,
+};
+
+/** Si el contrato alcanzó ese punto de su ciclo, o uno posterior. */
+export function alMenos(estado: EstadoContrato, minimo: EstadoContrato): boolean {
+  const actual = AVANCE[estado];
+  // Una minuta rechazada no alcanza ningún punto, ni siquiera los anteriores.
+  return actual >= 0 && actual >= AVANCE[minimo];
+}
 
 /** Determina si la legalización exigirá ARL (EFDS-1164, criterio 2). */
 export type TipoPersona = 'NATURAL' | 'JURIDICA';
@@ -149,14 +185,13 @@ export class Contrato {
   legalizadoAt: Date | null;
 
   /**
-   * Cuándo empezó a ejecutarse (EFDS-1167).
+   * Desde cuándo está en ejecución (EFDS-1167).
    *
-   * Columna propia y no derivada del acta vigente porque es la pregunta que
-   * hace cada consulta de la etapa 9 —¿este contrato está corriendo?— y
-   * resolverla con un join a cada paso es gratuito de evitar.
+   * Es la fecha de la reunión de inicio, no la del registro: el contrato
+   * empezó el día que las partes se sentaron, aunque se anotara después.
    */
-  @Column({ name: 'en_ejecucion_at', type: 'timestamptz', nullable: true })
-  enEjecucionAt: Date | null;
+  @Column({ name: 'ejecucion_desde', type: 'date', nullable: true })
+  ejecucionDesde: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

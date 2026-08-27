@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { Contrato, EstadoContrato, TipoPersona } from '../../entities/contrato.entity';
+import { alMenos, Contrato, EstadoContrato, TipoPersona } from '../../entities/contrato.entity';
 import { Garantia } from '../../entities/garantia.entity';
 import { Amparo, TipoAmparo } from '../../entities/amparo.entity';
 import { AfiliacionArl } from '../../entities/afiliacion-arl.entity';
@@ -39,7 +39,7 @@ export const NUMERAL_ARL = '8.5';
  * que todavía no existe.
  */
 export function admiteLegalizacion(estado: EstadoContrato): boolean {
-  return estado === 'PERFECCIONADO' || estado === 'LEGALIZADO';
+  return alMenos(estado, 'PERFECCIONADO');
 }
 
 /**
@@ -201,7 +201,7 @@ export class LegalizacionService {
             registradaPor: arl.registradaPor,
           }
         : null,
-      legalizado: contrato.estado === 'LEGALIZADO',
+      legalizado: alMenos(contrato.estado, 'LEGALIZADO'),
       pendientes: suscrito ? pendientesDeLegalizacion(panorama) : [],
       puedeCargar,
       puedeAprobar,
@@ -492,13 +492,21 @@ export class LegalizacionService {
       arlRegistrada: !!arl,
     });
 
-    if (legalizado && contrato.estado !== 'LEGALIZADO') {
+    // Se compara con `alMenos` y no por igualdad: un contrato ya en ejecución
+    // cumple la legalización de sobra, y volver a marcarlo LEGALIZADO al
+    // aprobar otra garantía lo haría retroceder de etapa.
+    if (legalizado && !alMenos(contrato.estado, 'LEGALIZADO')) {
       contrato.estado = 'LEGALIZADO';
       contrato.legalizadoAt = new Date();
       await em.save(contrato);
     } else if (!legalizado && contrato.estado === 'LEGALIZADO') {
       // Devolver una garantía ya aprobada deshace la legalización: el contrato
       // vuelve a estar suscrito pero sin las coberturas en firme.
+      //
+      // Solo desde LEGALIZADO: si ya arrancó la ejecución, deshacerla por una
+      // garantía devuelta dejaría un contrato ejecutándose que el sistema dice
+      // que no ha empezado. Ahí el problema se resuelve fuera, no cambiando el
+      // estado por debajo.
       contrato.estado = 'PERFECCIONADO';
       contrato.legalizadoAt = null;
       await em.save(contrato);

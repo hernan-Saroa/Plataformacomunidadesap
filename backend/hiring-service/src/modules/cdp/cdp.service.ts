@@ -9,7 +9,6 @@ import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
-import { ETAPA_EJECUCION } from '../../entities/acta-inicio.entity';
 import { ETAPA_LIQUIDACION } from '../../entities/informe-final.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -80,6 +79,13 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  */
 export const ETAPA_ADJUDICACION = 7;
 export const ETAPA_LEGALIZACION = 8;
+
+/**
+ * La 9 entra con EFDS-1167: la reunión de inicio (9.1) da comienzo a la
+ * ejecución, y sin la etapa en esta lista el riel no la devolvería y la
+ * actividad quedaría construida pero inalcanzable desde la pantalla.
+ */
+export const ETAPA_EJECUCION = 9;
 
 export const ETAPAS_ENTREGADAS = [
   3,

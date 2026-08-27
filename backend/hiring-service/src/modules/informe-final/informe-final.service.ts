@@ -355,7 +355,7 @@ export class InformeFinalService {
     const valorPagado = tramitados.reduce((total, p) => total + Number(p.valor), 0);
     const acta = await em
       .getRepository(ActaInicio)
-      .findOne({ where: { contratoId: contrato.id, estado: 'VIGENTE' } });
+      .findOne({ where: { contratoId: contrato.id } });
 
     return {
       valorContrato: contrato.valor,

@@ -34,6 +34,9 @@ import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
 import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
+import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
+import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
+import { DocumentosActividad } from '../shared/DocumentosActividad';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -115,27 +118,15 @@ const NUMERAL_GARANTIAS = '8.4';
 /** Registro de la ARL para contratistas persona natural (EFDS-1164). */
 const NUMERAL_ARL = '8.5';
 
-/** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
 /** Publicación del contrato dentro del plazo legal (EFDS-1166). */
 const NUMERAL_PUBLICACION_CONTRATO = '8.8';
 
-const NUMERALES_ETAPA_8 = [
-  NUMERAL_CONTRATO,
-  NUMERAL_SUPERVISOR,
-  NUMERAL_RP,
-  NUMERAL_GARANTIAS,
-  NUMERAL_ARL,
-  NUMERAL_PUBLICACION_CONTRATO,
-];
-
-/**
- * Reunión y acta de inicio (EFDS-1167), primera actividad de la etapa 9.
- *
- * Lista propia con un solo elemento, por lo mismo que las anteriores: la etapa
- * 9 es otra, y meterla en la de la 8 haría que el nombre dejara de decir la
- * verdad. Crecerá con EFDS-1168 a EFDS-1170.
- */
+/** Reunión de inicio que da comienzo a la ejecución (EFDS-1167). */
 const NUMERAL_ACTA_INICIO = '9.1';
+
+/** Seguimiento de la ejecución del contrato (EFDS-1168). */
+const NUMERAL_SEGUIMIENTO = '9.2';
+
 /** Tramite de pagos del contrato (EFDS-1170). */
 const NUMERAL_PAGOS = '9.4';
 /**
@@ -146,7 +137,12 @@ const NUMERAL_PAGOS = '9.4';
  * traen la prorroga, la cesion, el aclaratorio y la suspension al mismo panel.
  */
 const NUMERAL_MODIFICACIONES = '9.5';
-const NUMERALES_ETAPA_9 = [NUMERAL_ACTA_INICIO, NUMERAL_PAGOS, NUMERAL_MODIFICACIONES];
+const NUMERALES_ETAPA_9 = [
+  NUMERAL_ACTA_INICIO,
+  NUMERAL_SEGUIMIENTO,
+  NUMERAL_PAGOS,
+  NUMERAL_MODIFICACIONES,
+];
 
 /**
  * Informe final de ejecucion (EFDS-1171), primera actividad de la etapa 10.
@@ -567,6 +563,20 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelActaInicio
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelSeguimiento
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
             actividadSeleccionada?.numeral === NUMERAL_ARL ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -655,6 +665,19 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               </p>
             </div>
           )}
+
+          {/* Los documentos que la actividad dejó en el expediente.
+              Va aquí y no dentro de cada panel porque los quince paneles no
+              conocen su propio numeral, y este sitio sí sabe cuál está abierta:
+              montarlo una vez evita repetirlo en todos y que se olvide en los
+              que vengan después. */}
+          {actividadSeleccionada ? (
+            <DocumentosActividad
+              procesoId={procesoId}
+              numeral={actividadSeleccionada.numeral}
+              recargarToken={tokenExpediente}
+            />
+          ) : null}
         </div>
 
         {expedienteAbierto && (

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -17,54 +16,55 @@ import { join } from 'path';
 import { unlink } from 'fs/promises';
 
 import { ActaInicioService } from './acta-inicio.service';
-import { AnularActaInicioDto, SuscribirActaInicioDto } from './dto/acta-inicio.dto';
-import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
+import { SuscribirActaInicioDto } from './dto/acta-inicio.dto';
+import { PermisosGuard } from '../../auth/permisos.guard';
+import { Permisos } from '../../auth/permisos.decorator';
 import {
-  getHiringAccess,
-  ROLES_ACTA_INICIO,
-  ROLES_LECTURA_EJECUCION,
-} from '../../auth/hiring-access';
+  PERMISO_ACTA_INICIO_SUSCRIBIR,
+  PERMISO_SEGUIMIENTO_VER,
+} from '../../auth/permisos';
+import { getHiringAccess } from '../../auth/hiring-access';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
  * Reunión y acta de inicio — actividad 9.1 (EFDS-1167).
  *
- * Donde el contrato deja de tramitarse y empieza a cumplirse. La plataforma no
- * celebra la reunión: registra que ocurrió y guarda el acta que la prueba.
+ * Los endpoints declaran permisos y no roles: los roles los crea y renombra el
+ * administrador desde la plataforma, así que nombrarlos aquí ataría el módulo a
+ * una configuración que puede cambiar mañana.
  */
-@ApiTags('Etapa 9 · Acta de inicio')
+@ApiTags('Etapa 9 · Reunión y acta de inicio')
 @Controller('procesos/:id/acta-inicio')
 export class ActaInicioController {
   constructor(private readonly service: ActaInicioService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_EJECUCION)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_SEGUIMIENTO_VER)
   @ApiOperation({
-    summary: 'Estado del inicio de la ejecución',
+    summary: 'Reunión de inicio del contrato',
     description:
-      'Si el contrato admite acta, quién lo supervisa, el acta vigente con su fecha de inicio y las que se anularon antes.',
+      'Si el contrato puede arrancar, qué le falta, y la reunión registrada con su acta.',
   })
   estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.estado(procesoId, getHiringAccess(req));
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ACTA_INICIO)
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_ACTA_INICIO_SUSCRIBIR)
   @UseInterceptors(
     FileInterceptor(
       'file',
-      // Solo ofimáticos: el acta la firman las partes, no es una captura.
+      // Solo ofimáticos: el acta es un documento firmado por las dos partes.
       opcionesDeCarga(MIME_DOCUMENTOS, 'El acta de inicio se carga en PDF, Word o Excel'),
     ),
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 9.1 · Suscribir el acta de inicio',
+    summary: 'Actividad 9.1 · Registrar la reunión de inicio',
     description:
-      'Sobre un contrato legalizado y con supervisor designado. Deja el contrato en ejecución desde la fecha que fije el acta.',
+      'Con el acta firmada cuando el contrato la pactó. Deja el contrato en ejecución.',
   })
   async suscribir(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -72,10 +72,11 @@ export class ActaInicioController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
+    // El archivo puede faltar legítimamente: la matriz admite contratos sin
+    // acta pactada. Si hacía falta lo dice el servicio, que es quien sabe si el
+    // contrato la pactó.
     if (!file) {
-      throw new BadRequestException(
-        'Adjunta el acta firmada: sin ella hubo una reunión, no un inicio',
-      );
+      return this.service.suscribir(procesoId, dto, null, null, getHiringAccess(req));
     }
 
     const ruta = join(STORAGE_PATH, file.filename);
@@ -91,21 +92,5 @@ export class ActaInicioController {
       await unlink(ruta).catch(() => undefined);
       throw error;
     }
-  }
-
-  @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ACTA_INICIO)
-  @ApiOperation({
-    summary: 'Anular el acta vigente',
-    description:
-      'El contrato vuelve a legalizado y el acta queda en el expediente con su motivo: fijó la fecha desde la que corrió el plazo.',
-  })
-  anular(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: AnularActaInicioDto,
-    @Req() req: any,
-  ) {
-    return this.service.anular(procesoId, dto, getHiringAccess(req));
   }
 }
