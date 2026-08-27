@@ -1,5 +1,7 @@
 import {
   PERMISO_ACTA_INICIO_SUSCRIBIR,
+  PERMISO_INCUMPLIMIENTO_REPORTAR,
+  PERMISO_INCUMPLIMIENTO_VER,
   PERMISO_SUPERVISION_REASIGNAR,
   permisosDelUsuario,
   tienePermiso,
@@ -68,5 +70,42 @@ describe('tienePermiso', () => {
 
     expect(tienePermiso(ordenador, PERMISO_SUPERVISION_REASIGNAR)).toBe(true);
     expect(tienePermiso(ordenador, 'contratacion.seguimiento.cargar')).toBe(false);
+  });
+});
+
+/**
+ * RF-INC-01 le encarga el reporte al supervisor, y estas pruebas fijan que sea
+ * él y nadie más quien lo tenga: es la lista más estrecha del bloque, porque
+ * quien vigila la ejecución día a día es el único en condiciones de afirmar
+ * que algo se incumplió.
+ */
+describe('permisos del presunto incumplimiento', () => {
+  it('el supervisor puede reportar', () => {
+    expect(tienePermiso({ roles: ['SUPERVISOR_CONTRATO'] }, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(
+      true,
+    );
+  });
+
+  it('el gestor de contratación no reporta, aunque lleve el expediente', () => {
+    // Lleva el expediente pero no vigila la obra: no ha visto el hecho.
+    const gestor = { roles: ['GESTOR_CONTRATACION'] };
+
+    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(false);
+    // Consultarlo sí, que es lo que necesita para tramitarlo.
+    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
+  });
+
+  it('el ordenador del gasto tampoco reporta', () => {
+    // Designa al supervisor, pero no hace la vigilancia él mismo.
+    expect(tienePermiso({ roles: ['ORDENADOR_GASTO'] }, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(
+      false,
+    );
+  });
+
+  it('el revisor consulta pero no reporta', () => {
+    const revisor = { roles: ['REVISOR_CONTRATACION'] };
+
+    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
+    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(false);
   });
 });
