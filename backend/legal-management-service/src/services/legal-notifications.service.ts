@@ -105,6 +105,58 @@ function buildTerminoVencimientoEmailHtml(nombreActuacion: string, radicado: str
   `;
 }
 
+/** Escapa caracteres HTML especiales en texto de usuario (nombreActuacion, radicado, periodicidad) antes de interpolarlo en el correo. */
+function escapeHtml(texto: string): string {
+  return texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Cuerpo HTML del correo que avisa al responsable recién asignado (o reasignado) a un
+ * término/informe, con las fechas clave y, si aplica, la periodicidad configurada.
+ */
+function buildTerminoAsignacionEmailHtml(params: {
+  nombreActuacion: string;
+  radicado: string | null;
+  fechaBase: Date;
+  fechaVencimiento: Date;
+  periodicidadTexto?: string;
+  esReasignacion?: boolean;
+  url: string;
+}): string {
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:3000'}${params.url}`;
+  const fmt = (d: Date) => new Date(d).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+  const accion = params.esReasignacion ? 'reasignado(a)' : 'asignado(a)';
+  const nombreActuacion = escapeHtml(params.nombreActuacion);
+  const radicado = params.radicado ? escapeHtml(params.radicado) : null;
+  const periodicidadTexto = params.periodicidadTexto ? escapeHtml(params.periodicidadTexto) : null;
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #0891B2; border-bottom: 2px solid #0891B2; padding-bottom: 10px;">Nuevo Término/Informe Asignado</h2>
+      <p>Estimado(a) funcionario(a),</p>
+      <p>Ha sido ${accion} como responsable del término <strong>${radicado ? `${radicado} — ` : ''}${nombreActuacion}</strong>.</p>
+      <ul style="line-height: 1.8;">
+        <li><strong>Fecha de inicio:</strong> ${fmt(params.fechaBase)}</li>
+        <li><strong>Fecha de vencimiento:</strong> ${fmt(params.fechaVencimiento)}</li>
+        ${periodicidadTexto ? `<li><strong>Periodicidad:</strong> ${periodicidadTexto}</li>` : ''}
+      </ul>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${link}"
+           style="background-color: #0891B2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+          Ver Término
+        </a>
+      </div>
+      <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+        Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+      </p>
+    </div>
+  `;
+}
+
 /**
  * Cuerpo HTML del correo que avisa al aprobador de la nueva etapa que hay una firma pendiente.
  */
@@ -686,6 +738,72 @@ export class LegalNotificationsService {
       await this.notificationClient.notifyByRole(ROLE_JEFE, basePayload);
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar modificación de provisión del riesgo ${params.codigo}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notifica al responsable de un término/informe que fue asignado o reasignado, incluyendo
+   * fecha de inicio, fecha de vencimiento y periodicidad (si el término forma parte de una
+   * programación recurrente). Se dispara una única vez por asignación/reasignación — las
+   * alertas de vencimiento periódicas (una por cada ocurrencia futura ya creada) las cubre
+   * por separado `notifyTerminoProximoAVencer` vía el scheduler de alertas.
+   */
+  async notifyResponsableAsignadoTermino(params: {
+    terminoId: string;
+    responsableId: string;
+    nombreActuacion: string;
+    numeroRadicado?: string | null;
+    fechaBase: Date;
+    fechaVencimiento: Date;
+    periodicidadTexto?: string;
+    esReasignacion?: boolean;
+  }): Promise<void> {
+    const meta = MODULE_META.TERMINOS_INFORMES;
+    const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
+    const accion = params.esReasignacion ? 'reasignado' : 'asignado';
+    this.logger.log(`[NOTIFY] Responsable ${accion} a término — id=${params.terminoId} radicado=${params.numeroRadicado || 'N/A'} responsableId=${params.responsableId}`);
+
+    const dto = {
+      tipo_notificacion: params.esReasignacion ? 'TERMINO_REASIGNADO' : 'TERMINO_ASIGNADO',
+      titulo: `Término ${accion} en ${meta.label}`,
+      mensaje: `Se te ${accion} el término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''}.`,
+      descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${accion}`,
+      icono: meta.icon,
+      color: meta.color,
+      prioridad: 'Alta' as const,
+      categoria: meta.categoria,
+      tiene_accion: true,
+      texto_boton_accion: 'Ver término',
+      url_accion: url,
+      datos_adicionales: {
+        modulo: 'TERMINOS_INFORMES',
+        terminoId: params.terminoId,
+        numeroRadicado: params.numeroRadicado,
+        fechaBase: params.fechaBase,
+        fechaVencimiento: params.fechaVencimiento,
+        periodicidadTexto: params.periodicidadTexto,
+        esReasignacion: params.esReasignacion ?? false,
+      },
+    };
+
+    try {
+      await this.notificationClient.notifyUserById(params.responsableId, dto);
+      const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
+      if (detail?.email) {
+        const emailSubject = `Término ${accion} — ${params.numeroRadicado || params.nombreActuacion}`;
+        const emailHtml = buildTerminoAsignacionEmailHtml({
+          nombreActuacion: params.nombreActuacion,
+          radicado: params.numeroRadicado ?? null,
+          fechaBase: params.fechaBase,
+          fechaVencimiento: params.fechaVencimiento,
+          periodicidadTexto: params.periodicidadTexto,
+          esReasignacion: params.esReasignacion,
+          url,
+        });
+        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar asignación de responsable del término ${params.terminoId}: ${err?.message}`);
     }
   }
 

@@ -104,6 +104,18 @@ describe('TerminosController', () => {
             );
         });
 
+        it('debe convertir el centinela "sin-asignar" del selector de responsable a null', async () => {
+            await controller.createManual({
+                nombreActuacion: 'Con centinela sin-asignar',
+                fechaVencimiento: '2026-12-31',
+                responsableId: 'sin-asignar',
+            });
+
+            expect(mockTerminosService.create).toHaveBeenCalledWith(
+                expect.objectContaining({ responsableId: null }),
+            );
+        });
+
         it('debe conservar responsableId y referenciaId cuando vienen con un valor real', async () => {
             await controller.createManual({
                 nombreActuacion: 'Con ids reales',
@@ -312,6 +324,12 @@ describe('TerminosController', () => {
             const sent = mockTerminosService.update.mock.calls[0][1];
             expect('responsableId' in sent).toBe(false);
             expect('referenciaId' in sent).toBe(false);
+        });
+
+        it('debe convertir el centinela "sin-asignar" a null antes de actualizar', async () => {
+            await controller.update('term-1', { responsableId: 'sin-asignar' });
+
+            expect(mockTerminosService.update).toHaveBeenCalledWith('term-1', expect.objectContaining({ responsableId: null }));
         });
 
         it('debe conservar responsableId/referenciaId con valor real sin transformarlos', async () => {
