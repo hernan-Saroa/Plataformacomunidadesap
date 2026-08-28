@@ -47,6 +47,7 @@ import {
   SolicitarReanudacionDto,
   SolicitarRespaldoDto,
   SolicitarSuspensionDto,
+  SolicitarTerminacionDto,
 } from './dto/modificaciones.dto';
 
 export { NUMERAL_MODIFICACIONES, margenDeAdicion };
@@ -66,12 +67,13 @@ interface ArchivoCargado {
  * Si el estado del contrato admite modificaciones, sea cual sea el tipo.
  *
  * En ejecución, que es lo que dice el criterio de la historia, **y suspendido**
- * desde EFDS-1178: un contrato en pausa tiene que poder reanudarse, y reanudar
- * es una modificación. Qué tipo cabe en cada caso lo decide
+ * desde EFDS-1178: un contrato en pausa tiene que poder reanudarse o terminarse,
+ * y las dos cosas son modificaciones. Qué tipo cabe en cada caso lo decide
  * `porQueNoAdmiteTipo`, que además mira si hay una suspensión sin levantar.
  *
- * No liquidado: el acta cierra las cuentas del contrato, y modificarlo después
- * sería cambiar algo que las partes ya dieron por terminado.
+ * Ni terminado ni liquidado: el acta cierra las cuentas del contrato y la
+ * terminación cierra su ejecución, y en los dos casos lo que sigue no es
+ * modificarlo.
  *
  * Función pura para poder probar la regla sin base de datos.
  */
@@ -82,8 +84,9 @@ export function admiteModificacion(estado: EstadoContrato): boolean {
 /**
  * Modificaciones contractuales — actividad 9.5 (EFDS-1176, RF-MOD-01 y RF-MOD-05).
  *
- * Hoy solo la adición en dinero tiene trámite; la prórroga (EFDS-1177) y la
- * cesión, el aclaratorio y la suspensión (EFDS-1178) cuelgan de la misma tabla.
+ * Los siete tipos de la matriz cuelgan de la misma tabla: la adición en dinero
+ * (EFDS-1176), la prórroga (EFDS-1177) y la cesión, el aclaratorio, la
+ * suspensión/reanudación y la terminación anticipada (EFDS-1178).
  *
  * **El trámite tiene dos momentos a propósito.** La adición se solicita y queda
  * EN_TRAMITE; aprobarla exige el CDP y el RP expedidos. Sin ese estado
@@ -346,6 +349,32 @@ export class ModificacionesService {
     return this.crear(procesoId, 'ACLARATORIO', acceso, dto.justificacion, {}, {});
   }
 
+  /**
+   * Registra la terminación anticipada en trámite.
+   *
+   * El contrato solo queda TERMINADO al aprobarla, con el acta o la resolución
+   * adjunta: es el mismo criterio de los demás tipos, y aquí importa más,
+   * porque terminar es lo único que no se deshace reanudando.
+   */
+  async solicitarTerminacion(
+    procesoId: string,
+    dto: SolicitarTerminacionDto,
+    acceso: HiringAccess,
+  ) {
+    // La fecha es la del hecho: un contrato no deja de ejecutarse en el futuro,
+    // y el informe final y la liquidación se cuentan contra ella.
+    this.validarFecha(dto.terminacionEl);
+
+    return this.crear(
+      procesoId,
+      'TERMINACION_ANTICIPADA',
+      acceso,
+      dto.justificacion,
+      { terminacionCausal: dto.terminacionCausal, terminacionEl: dto.terminacionEl },
+      { causal: dto.terminacionCausal, terminacionEl: dto.terminacionEl },
+    );
+  }
+
   /** Registra la suspensión en trámite. El contrato se pausa al aprobarla. */
   async solicitarSuspension(procesoId: string, dto: SolicitarSuspensionDto, acceso: HiringAccess) {
     if (dto.suspensionHasta && dto.suspensionHasta < dto.suspensionDesde) {
@@ -597,6 +626,20 @@ export class ModificacionesService {
         };
       }
 
+      case 'TERMINACION_ANTICIPADA': {
+        // Se guarda de dónde venía: un contrato suspendido puede terminarse, y
+        // revocar la terminación tiene que devolverlo a la pausa en la que
+        // estaba, no a una ejecución que no se había retomado.
+        modificacion.estadoContratoAntes = contrato.estado;
+        contrato.estado = 'TERMINADO';
+
+        return {
+          causal: modificacion.terminacionCausal,
+          terminacionEl: modificacion.terminacionEl,
+          estadoAntes: modificacion.estadoContratoAntes,
+        };
+      }
+
       case 'REANUDACION': {
         const suspension = await em.getRepository(ModificacionContrato).findOne({
           where: { id: modificacion.reanudaModificacionId as string },
@@ -632,7 +675,14 @@ export class ModificacionesService {
     }
   }
 
-  /** Deja sin curso una modificación en trámite. */
+  /**
+   * Deja sin curso una modificación en trámite.
+   *
+   * No exige que el contrato siga admitiendo modificaciones, a diferencia de
+   * aprobar: rechazar es justamente cómo se cierra un trámite que ya no
+   * procede, y si terminar el contrato dejara sus solicitudes pendientes
+   * atrapadas, el expediente quedaría con adiciones en trámite para siempre.
+   */
   async rechazar(
     procesoId: string,
     modificacionId: string,
@@ -640,7 +690,18 @@ export class ModificacionesService {
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
-      const { contrato, modificacion } = await this.exigirEnTramite(em, procesoId, modificacionId);
+      const contrato = await this.exigirContrato(em, procesoId);
+
+      const modificacion = await em
+        .getRepository(ModificacionContrato)
+        .findOne({ where: { id: modificacionId, contratoId: contrato.id } });
+
+      if (!modificacion) throw new NotFoundException('La modificación no existe');
+      if (modificacion.estado !== 'EN_TRAMITE') {
+        throw new ConflictException(
+          `La modificación está ${modificacion.estado.toLowerCase().replace('_', ' ')} y ya no se puede rechazar`,
+        );
+      }
 
       modificacion.estado = 'RECHAZADA';
       modificacion.motivoRevocacion = dto.motivo;
@@ -755,6 +816,14 @@ export class ModificacionesService {
         // Revocar la suspensión es decir que nunca debió pausarse.
         contrato.estado = 'EJECUCION';
         return { suspensionDesde: modificacion.suspensionDesde };
+      }
+
+      case 'TERMINACION_ANTICIPADA': {
+        // Vuelve al estado guardado y no a EJECUCION a secas: si el contrato
+        // estaba suspendido cuando se terminó, sigue suspendido.
+        const vuelveA = (modificacion.estadoContratoAntes as EstadoContrato) ?? 'EJECUCION';
+        contrato.estado = vuelveA;
+        return { terminacionEl: modificacion.terminacionEl, vuelveA };
       }
 
       default:
@@ -1002,6 +1071,9 @@ export class ModificacionesService {
       suspensionHasta: m.suspensionHasta,
       reanudaModificacionId: m.reanudaModificacionId,
       reanudadaEl: m.reanudadaEl,
+      terminacionCausal: m.terminacionCausal,
+      terminacionEl: m.terminacionEl,
+      estadoContratoAntes: m.estadoContratoAntes,
       cedenteNombre: m.cedenteNombre,
       cedenteDocumento: m.cedenteDocumento,
       cesionarioNombre: m.cesionarioNombre,
@@ -1075,6 +1147,9 @@ export class ModificacionesService {
   private porQueNoAdmite(estado: EstadoContrato): string {
     if (estado === 'LIQUIDADO' || estado === 'CERRADO') {
       return 'el contrato ya está liquidado: modificarlo cambiaría algo que las partes dieron por terminado';
+    }
+    if (estado === 'TERMINADO') {
+      return 'el contrato está terminado anticipadamente: lo que queda es liquidar lo ejecutado';
     }
     return 'el contrato todavía no está en ejecución: falta el acta de inicio (9.1)';
   }

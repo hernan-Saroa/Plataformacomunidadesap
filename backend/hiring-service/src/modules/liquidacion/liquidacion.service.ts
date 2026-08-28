@@ -22,6 +22,7 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AnularLiquidacionDto, LiquidarDto } from './dto/liquidacion.dto';
+import { estadoDeEjecucion } from '../modificaciones/estado-de-ejecucion';
 import {
   alertaDelPlazo,
   MESES_BILATERAL,
@@ -49,8 +50,10 @@ const PENDIENTES: EstadoPago[] = ['RADICADO', 'AVALADO', 'DEVUELTO'];
  */
 // SUSPENDIDO tampoco (EFDS-1178): un contrato detenido no terminó, y liquidar
 // lo que sigue vivo cerraría cuentas que aún se pueden mover. Se reanuda primero.
+// TERMINADO sí: liquidar lo ejecutado es precisamente lo que sigue a una
+// terminación anticipada.
 export function admiteLiquidacion(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION' || estado === 'LIQUIDADO';
+  return estado === 'EJECUCION' || estado === 'TERMINADO' || estado === 'LIQUIDADO';
 }
 
 interface ArchivoCargado {
@@ -314,9 +317,12 @@ export class LiquidacionService {
       acta.motivoAnulacion = dto.motivo;
       await em.save(acta);
 
-      // Sin acta vigente el contrato ya no está liquidado: vuelve a ejecución,
-      // que es de donde salió (EFDS-1175).
-      contrato.estado = 'EJECUCION';
+      // Sin acta vigente el contrato ya no está liquidado: vuelve a donde
+      // salió (EFDS-1175). Cuál es ese sitio se deriva de sus modificaciones y
+      // no se da por hecho: desde EFDS-1178 el contrato pudo llegar a la
+      // liquidación terminado anticipadamente, y devolverlo a EJECUCION
+      // resucitaría una ejecución que ya se había acabado.
+      contrato.estado = await estadoDeEjecucion(em, contrato.id);
       await em.save(contrato);
 
       await this.marcarActividad(em, procesoId, contrato.id, acceso);

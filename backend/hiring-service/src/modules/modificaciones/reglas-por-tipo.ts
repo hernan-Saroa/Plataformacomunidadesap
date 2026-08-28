@@ -1,13 +1,15 @@
 import { EstadoContrato } from '../../entities/contrato.entity';
-import { TipoModificacion } from '../../entities/modificacion-contrato.entity';
+import {
+  CausalTerminacion,
+  TipoModificacion,
+} from '../../entities/modificacion-contrato.entity';
 
 /**
- * Los tipos que tienen trámite en la plataforma.
+ * Los tipos que tienen trámite en la plataforma: los siete de la matriz.
  *
- * La matriz lista siete. Falta `TERMINACION_ANTICIPADA`: EFDS-1178 la nombra en
- * su bloque pero pide confirmar si va en esa historia o en otra, y con ella
- * tendría que llegar el estado TERMINADO del contrato. No se decide por cuenta
- * propia.
+ * El orden es el del panel, y no es alfabético: primero lo que alarga o
+ * aumenta el contrato, después lo que cambia de partes o lo precisa, y al final
+ * lo que lo detiene y lo termina.
  */
 export const TIPOS_CON_TRAMITE: TipoModificacion[] = [
   'ADICION',
@@ -16,7 +18,14 @@ export const TIPOS_CON_TRAMITE: TipoModificacion[] = [
   'ACLARATORIO',
   'SUSPENSION',
   'REANUDACION',
+  'TERMINACION_ANTICIPADA',
 ];
+
+/** Cómo se nombra cada causal de terminación cuando hay que decírsela al usuario. */
+export const NOMBRE_CAUSAL: Record<CausalTerminacion, string> = {
+  MUTUO_ACUERDO: 'por mutuo acuerdo',
+  UNILATERAL: 'por decisión unilateral motivada',
+};
 
 /** Cómo se nombra cada tipo cuando hay que decírselo al usuario. */
 export const NOMBRE_TIPO: Record<TipoModificacion, string> = {
@@ -60,14 +69,22 @@ export function porQueNoAdmiteTipo(
     return 'el contrato ya está liquidado: modificarlo cambiaría algo que las partes dieron por terminado';
   }
 
+  // Un contrato terminado no se modifica: lo que queda por hacer es liquidar lo
+  // que alcanzó a ejecutarse. Si la terminación no debió darse, se revoca.
+  if (estado === 'TERMINADO') {
+    return 'el contrato está terminado anticipadamente: ya no hay ejecución que modificar';
+  }
+
   if (estado !== 'EJECUCION' && estado !== 'SUSPENDIDO') {
     return 'el contrato todavía no está en ejecución: falta el acta de inicio (9.1)';
   }
 
-  // Reanudar es lo único que un contrato suspendido puede hacer. Dejarlo
-  // adicionar o ceder mientras está en pausa daría por vivo lo que está
-  // detenido, y el acto que lo reanuda es justamente el que falta.
-  if (suspendido && tipo !== 'REANUDACION') {
+  // De un contrato suspendido solo se sale reanudándolo o terminándolo.
+  // Adicionarlo o cederlo mientras está en pausa daría por vivo lo que está
+  // detenido; terminarlo, en cambio, es el desenlace típico de una suspensión
+  // cuya causa no se supera, y obligar a reanudar un día para terminar al
+  // siguiente dejaría en el expediente una ejecución que nunca se retomó.
+  if (suspendido && tipo !== 'REANUDACION' && tipo !== 'TERMINACION_ANTICIPADA') {
     return 'el contrato está suspendido: primero hay que reanudarlo';
   }
 

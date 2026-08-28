@@ -15,6 +15,7 @@ import {
   DatosAdicion,
   EstadoModificaciones,
   MargenDeAdicion,
+  CausalTerminacion,
   ModificacionRegistrada,
   RespaldoDeAdicion,
   TipoModificacion,
@@ -46,6 +47,11 @@ const pesos = (valor: number | null | undefined) =>
         maximumFractionDigits: 0,
       }).format(valor);
 
+const NOMBRE_CAUSAL: Record<CausalTerminacion, string> = {
+  MUTUO_ACUERDO: 'por mutuo acuerdo',
+  UNILATERAL: 'por decisión unilateral motivada',
+};
+
 const NOMBRE_TIPO: Record<string, string> = {
   ADICION: 'Adición en dinero',
   PRORROGA: 'Prórroga',
@@ -70,15 +76,17 @@ const VACIO = {
   suspensionDesde: hoyEnBogota(),
   suspensionHasta: '',
   reanudadaEl: hoyEnBogota(),
+  // terminacion anticipada
+  terminacionCausal: 'MUTUO_ACUERDO' as CausalTerminacion,
+  terminacionEl: hoyEnBogota(),
 };
 const APROBACION_VACIA = { numero: '', fechaSuscripcion: hoyEnBogota() };
 
 /**
  * Actividad 9.5 · Modificaciones contractuales (EFDS-1176 a EFDS-1178).
  *
- * Seis de los siete tipos de la matriz cuelgan de un mismo listado: adición,
- * prórroga, cesión, aclaratorio, suspensión y reanudación. Falta la
- * terminación anticipada, que EFDS-1178 dejó por confirmar.
+ * Los siete tipos de la matriz cuelgan de un mismo listado: adición, prórroga,
+ * cesión, aclaratorio, suspensión, reanudación y terminación anticipada.
  *
  * **Qué tipo cabe ahora lo decide el servidor**, no la pantalla: un contrato
  * suspendido solo admite reanudarse, y esa regla vive en un sitio. Aquí solo se
@@ -167,6 +175,12 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
           reanudadaEl: datos.reanudadaEl,
           justificacion,
         }),
+      TERMINACION_ANTICIPADA: () =>
+        contratacionService.solicitarTerminacion(procesoId, {
+          terminacionCausal: datos.terminacionCausal,
+          terminacionEl: datos.terminacionEl,
+          justificacion,
+        }),
     };
 
     const ok = await conError(envios[tipoNuevo], `${NOMBRE_TIPO[tipoNuevo]} registrada en trámite`);
@@ -195,6 +209,8 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
         );
       case 'REANUDACION':
         return !!datos.reanudadaEl;
+      case 'TERMINACION_ANTICIPADA':
+        return !!datos.terminacionEl && datos.terminacionEl <= hoyEnBogota();
       default:
         return true;
     }
@@ -266,9 +282,9 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Modificaciones contractuales</Titulo>
       <Ayuda>
-        En ejecución, el contrato puede adicionarse, prorrogarse, cederse, aclararse o
-        suspenderse. Solo la adición aumenta el presupuesto y por eso es la única que exige un CDP
-        y un RP nuevos. Todas se publican en SECOP II.
+        En ejecución, el contrato puede adicionarse, prorrogarse, cederse, aclararse,
+        suspenderse y terminarse antes de tiempo. Solo la adición aumenta el presupuesto y por eso
+        es la única que exige un CDP y un RP nuevos. Todas se publican en SECOP II.
       </Ayuda>
 
       {/* Que el contrato esté detenido manda sobre todo lo demás, así que se
@@ -281,8 +297,8 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
           {estado.suspension.hastaPrevista
             ? `Prevista hasta el ${fechaLarga(estado.suspension.hastaPrevista)}. `
             : 'Sin fecha prevista de reanudación. '}
-          Mientras dure no admite pagos ni liquidación, y la única modificación posible es
-          reanudarlo.
+          Mientras dure no admite pagos ni liquidación, y lo único que cabe es reanudarlo o
+          terminarlo anticipadamente.
         </Aviso>
       ) : null}
 
@@ -504,6 +520,51 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
             </div>
           ) : null}
 
+          {tipoNuevo === 'TERMINACION_ANTICIPADA' ? (
+            <>
+              <div>
+                <label htmlFor="te-causal" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Causal <span className="text-red-600">*</span>
+                </label>
+                <select
+                  id="te-causal"
+                  value={datos.terminacionCausal}
+                  onChange={(e) =>
+                    setDatos((p) => ({
+                      ...p,
+                      terminacionCausal: e.target.value as CausalTerminacion,
+                    }))
+                  }
+                  className={campo}
+                >
+                  <option value="MUTUO_ACUERDO">Mutuo acuerdo</option>
+                  <option value="UNILATERAL">Decisión unilateral motivada</option>
+                </select>
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  Terminar por incumplimiento no se registra aquí: eso es el proceso
+                  sancionatorio, con su propia reserva legal.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="te-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Deja de ejecutarse el <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="te-fecha"
+                  type="date"
+                  max={hoyEnBogota()}
+                  value={datos.terminacionEl}
+                  onChange={(e) => setDatos((p) => ({ ...p, terminacionEl: e.target.value }))}
+                  className={campo}
+                />
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  Es la fecha del hecho, no la de la firma. Al aprobarse, lo que sigue es el
+                  informe final y la liquidación de lo ejecutado.
+                </p>
+              </div>
+            </>
+          ) : null}
+
           {tipoNuevo === 'ACLARATORIO' ? (
             <p className="text-[11px] text-slate-500 m-0 leading-relaxed">
               El aclaratorio precisa lo que el contrato ya dice: no cambia plazo, valor ni partes.
@@ -627,10 +688,18 @@ function Modificacion({
 
   // Qué falta para poder aprobar, dicho en palabras: es lo que el gestor
   // necesita para saber a quién pedirle qué.
-  const faltantes = [
-    m.cdp?.estado === 'EXPEDIDO' ? null : 'el CDP',
-    m.rp?.estado === 'EXPEDIDO' ? null : 'el RP',
-  ].filter(Boolean) as string[];
+  //
+  // **Solo la adición compromete presupuesto.** Pedírselo a los demás tipos
+  // dejaba su botón de aprobar apagado para siempre, esperando un CDP que nadie
+  // iba a tramitar: la prórroga no toca el presupuesto y el aclaratorio no
+  // cambia nada.
+  const faltantes =
+    m.tipo === 'ADICION'
+      ? ([
+          m.cdp?.estado === 'EXPEDIDO' ? null : 'el CDP',
+          m.rp?.estado === 'EXPEDIDO' ? null : 'el RP',
+        ].filter(Boolean) as string[])
+      : [];
 
   return (
     <div
@@ -668,6 +737,15 @@ function Modificacion({
       {aprobada && m.valorContratoAntes != null ? (
         <p className="text-[11.5px] text-emerald-900 m-0 tabular-nums">
           El contrato pasó de {pesos(m.valorContratoAntes)} a {pesos(m.valorContratoDespues)}.
+        </p>
+      ) : null}
+
+      {m.tipo === 'TERMINACION_ANTICIPADA' && m.terminacionEl ? (
+        <p
+          className={`text-[11.5px] m-0 ${aprobada ? 'text-emerald-900' : 'text-slate-600'}`}
+        >
+          Deja de ejecutarse el {fechaLarga(m.terminacionEl)}
+          {m.terminacionCausal ? ` · ${NOMBRE_CAUSAL[m.terminacionCausal]}` : ''}.
         </p>
       ) : null}
 
@@ -769,9 +847,7 @@ function Modificacion({
             onElegir={onActo}
           />
 
-          <p className="text-[11.5px] text-slate-600 m-0">
-            Al aprobar, el valor del contrato aumenta en {pesos(m.valorAdicionado)}.
-          </p>
+          <p className="text-[11.5px] text-slate-600 m-0">{queHaceAlAprobar(m)}</p>
 
           <div className="flex flex-wrap gap-2">
             <Boton
@@ -803,6 +879,33 @@ function Modificacion({
       ) : null}
     </div>
   );
+}
+
+/**
+ * Qué le hace al contrato aprobar esta modificación, dicho antes de firmarla.
+ *
+ * Una frase por tipo y no la de la adición para todos: lo que el gestor está a
+ * punto de hacer cambia por completo según el tipo, y anunciarle un aumento de
+ * valor cuando lo que va a hacer es detener el contrato es peor que no decir
+ * nada.
+ */
+function queHaceAlAprobar(m: ModificacionRegistrada): string {
+  switch (m.tipo) {
+    case 'ADICION':
+      return `Al aprobar, el valor del contrato aumenta en ${pesos(m.valorAdicionado)}.`;
+    case 'PRORROGA':
+      return `Al aprobar, el plazo del contrato crece en ${m.diasProrroga ?? 0} días.`;
+    case 'CESION':
+      return `Al aprobar, el contratista pasa a ser ${m.cesionarioNombre ?? 'el cesionario'}.`;
+    case 'SUSPENSION':
+      return 'Al aprobar, el contrato queda suspendido: no admite pagos ni liquidación hasta que se reanude.';
+    case 'REANUDACION':
+      return 'Al aprobar, el contrato vuelve a ejecución y se le devuelven al plazo los días que estuvo detenido.';
+    case 'TERMINACION_ANTICIPADA':
+      return 'Al aprobar, el contrato queda terminado: lo que sigue es el informe final y la liquidación de lo ejecutado.';
+    default:
+      return 'Al aprobar queda el acto en el expediente; el contrato no cambia.';
+  }
 }
 
 /**

@@ -10,12 +10,11 @@ const aNumero = {
 export const NUMERAL_MODIFICACIONES = '9.5';
 
 /**
- * Los siete tipos que lista la matriz.
+ * Los siete tipos que lista la matriz, todos con trámite desde EFDS-1178.
  *
- * Solo `ADICION` tiene trámite hoy (EFDS-1176). Los demás se declaran para que
- * EFDS-1177 —prórroga— y EFDS-1178 —cesión, aclaratorio y suspensión— no tengan
- * que migrar el CHECK ni reinventar los códigos. `TERMINACION_ANTICIPADA`
- * aparece en la matriz y todavía no tiene historia asignada.
+ * Llegaron en tres tandas sobre la misma tabla: la adición (EFDS-1176), la
+ * prórroga (EFDS-1177) y las cuatro de la cesión, el aclaratorio y la
+ * suspensión/reanudación, más la terminación anticipada, que cierra el bloque.
  */
 export type TipoModificacion =
   | 'ADICION'
@@ -25,6 +24,14 @@ export type TipoModificacion =
   | 'SUSPENSION'
   | 'REANUDACION'
   | 'TERMINACION_ANTICIPADA';
+
+/**
+ * Por qué se termina el contrato antes de tiempo.
+ *
+ * Las dos que define la fuente: «finalización anticipada del contrato por mutuo
+ * acuerdo o decisión unilateral motivada».
+ */
+export type CausalTerminacion = 'MUTUO_ACUERDO' | 'UNILATERAL';
 
 /**
  * El ciclo de una modificación.
@@ -155,6 +162,33 @@ export class ModificacionContrato {
 
   @Column({ name: 'cesionario_tipo', length: 20, nullable: true })
   cesionarioTipo: string | null;
+
+  // ---------------------------- terminacion anticipada (EFDS-1178) --
+
+  /**
+   * Por que se termina antes de tiempo.
+   *
+   * Las dos causales salen de la fuente —«por mutuo acuerdo o decision
+   * unilateral motivada»—, no del equipo. El incumplimiento no esta aqui: es el
+   * proceso sancionatorio de EFDS-1181, con su propio tramite.
+   */
+  @Column({ name: 'terminacion_causal', length: 20, nullable: true })
+  terminacionCausal: CausalTerminacion | null;
+
+  /** Desde cuando el contrato deja de ejecutarse; no es la fecha de la firma. */
+  @Column({ name: 'terminacion_el', type: 'date', nullable: true })
+  terminacionEl: string | null;
+
+  /**
+   * El estado que el contrato tenia antes.
+   *
+   * Mismo criterio que el valor y el plazo «antes»: revocar devuelve lo
+   * guardado y no lo deducido. Un contrato suspendido puede terminarse —es el
+   * desenlace tipico de una suspension que no se supera— y revocar eso tiene que
+   * devolverlo a SUSPENDIDO, no a EJECUCION.
+   */
+  @Column({ name: 'estado_contrato_antes', length: 20, nullable: true })
+  estadoContratoAntes: string | null;
 
   @Column({ name: 'solicitada_por', length: 200, nullable: true })
   solicitadaPor: string | null;

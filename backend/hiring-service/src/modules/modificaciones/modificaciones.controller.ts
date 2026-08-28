@@ -30,6 +30,7 @@ import {
   SolicitarProrrogaDto,
   SolicitarReanudacionDto,
   SolicitarSuspensionDto,
+  SolicitarTerminacionDto,
   SolicitarRespaldoDto,
 } from './dto/modificaciones.dto';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -163,6 +164,22 @@ export class ModificacionesController {
     @Req() req: any,
   ) {
     return this.service.solicitarReanudacion(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('terminaciones')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_MODIFICACIONES)
+  @ApiOperation({
+    summary: 'Actividad 9.5 · Terminar el contrato anticipadamente',
+    description:
+      'Por mutuo acuerdo o por decisión unilateral motivada. Al aprobarla el contrato queda TERMINADO y lo que sigue es liquidar lo ejecutado. Terminar por incumplimiento no es esto: es el proceso sancionatorio.',
+  })
+  solicitarTerminacion(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarTerminacionDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarTerminacion(procesoId, dto, getHiringAccess(req));
   }
 
   // ------------------------------------------- el CDP y el RP de la adición --

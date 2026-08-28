@@ -21,4 +21,11 @@ describe('admiteInformeFinal · qué contrato puede cerrar su ejecución', () =>
     const previos: EstadoContrato[] = ['GENERADO', 'ACEPTADO', 'RECHAZADO', 'PERFECCIONADO'];
     expect(previos.map(admiteInformeFinal)).toEqual([false, false, false, false]);
   });
+
+  it('el detenido todavía no informa, el terminado con más razón que ninguno', () => {
+    // El informe habla de un contrato que va a terminar: el suspendido no sabe
+    // cuándo lo hará, y el terminado ya no va a ejecutar nada más.
+    expect(admiteInformeFinal('SUSPENDIDO')).toBe(false);
+    expect(admiteInformeFinal('TERMINADO')).toBe(true);
+  });
 });

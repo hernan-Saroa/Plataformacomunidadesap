@@ -49,9 +49,11 @@ const PENDIENTES: EstadoPago[] = ['RADICADO', 'AVALADO', 'DEVUELTO'];
  * Función pura para poder probar la regla sin base de datos.
  */
 // SUSPENDIDO no (EFDS-1178): el informe habla de un contrato que va a terminar,
-// y el que está detenido todavía no sabe cuándo lo hará.
+// y el que está detenido todavía no sabe cuándo lo hará. TERMINADO sí, y con más
+// razón que ninguno: el contrato que se terminó antes de tiempo ya no va a
+// ejecutar nada más, y el informe final es el paso que sigue.
 export function admiteInformeFinal(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION' || estado === 'LIQUIDADO';
+  return estado === 'EJECUCION' || estado === 'TERMINADO' || estado === 'LIQUIDADO';
 }
 
 interface ArchivoCargado {

@@ -112,6 +112,28 @@ export class SolicitarSuspensionDto extends ConJustificacion {
   suspensionHasta?: string;
 }
 
+/**
+ * Solicitud de terminacion anticipada (EFDS-1178, RF-MOD-03).
+ *
+ * Las dos causales salen de la fuente: «finalizacion anticipada del contrato
+ * por mutuo acuerdo o decision unilateral motivada». Terminar por
+ * incumplimiento no esta aqui: es el proceso sancionatorio (EFDS-1181).
+ */
+export class SolicitarTerminacionDto extends ConJustificacion {
+  @ApiProperty({
+    description: 'Por que se termina antes de tiempo',
+    enum: ['MUTUO_ACUERDO', 'UNILATERAL'],
+  })
+  @IsIn(['MUTUO_ACUERDO', 'UNILATERAL'], {
+    message: 'La terminacion anticipada es por mutuo acuerdo o por decision unilateral motivada',
+  })
+  terminacionCausal: 'MUTUO_ACUERDO' | 'UNILATERAL';
+
+  @ApiProperty({ description: 'Desde cuando el contrato deja de ejecutarse', example: '2026-09-30' })
+  @IsDateString({}, { message: 'La fecha de terminacion va en formato AAAA-MM-DD' })
+  terminacionEl: string;
+}
+
 /** Solicitud de reanudacion de una suspension vigente (EFDS-1178). */
 export class SolicitarReanudacionDto extends ConJustificacion {
   @ApiProperty({ description: 'Desde cuando el contrato vuelve a correr', example: '2026-10-01' })

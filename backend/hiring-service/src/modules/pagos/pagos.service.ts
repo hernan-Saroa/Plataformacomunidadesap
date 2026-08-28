@@ -69,10 +69,15 @@ const EN_FEMENINO: Record<EstadoPago, string> = {
  * lo dice— y por eso se enumera en vez de usar `alMenos`, que lo dejaría entrar
  * sin que nadie lo hubiera decidido.
  *
+ * **TERMINADO sí entra** (EFDS-1178): el contrato terminado antes de tiempo dejó
+ * de ejecutarse, pero lo que alcanzó a ejecutarse se paga, y es justamente la
+ * liquidación posterior la que lo salda. Excluirlo cuando LIQUIDADO —que es más
+ * final— sí admite pagos sería incoherente.
+ *
  * Función pura para poder probar la regla sin base de datos.
  */
 export function admitePagos(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION' || estado === 'LIQUIDADO';
+  return estado === 'EJECUCION' || estado === 'TERMINADO' || estado === 'LIQUIDADO';
 }
 
 /**

@@ -55,6 +55,7 @@ import {
   DatosProrroga,
   DatosReanudacion,
   DatosSuspension,
+  DatosTerminacion,
   DatosAprobacionModificacion,
   DatosRespaldoAdicion,
   DatosCierreDefinitivo,
@@ -973,6 +974,18 @@ export const contratacionService = {
   /** Levanta la suspension vigente; el servidor sabe cual es. */
   solicitarReanudacion: (procesoId: string, datos: DatosReanudacion) =>
     pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/reanudaciones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /**
+   * Termina el contrato antes de tiempo (EFDS-1178).
+   *
+   * Queda EN_TRAMITE como los demas tipos: el contrato solo pasa a TERMINADO
+   * cuando se aprueba con el acta o la resolucion adjunta.
+   */
+  solicitarTerminacion: (procesoId: string, datos: DatosTerminacion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/terminaciones`, {
       method: 'POST',
       body: JSON.stringify(datos),
     }),

@@ -2267,7 +2267,7 @@ export interface DatosRegistroActividad {
 
 // ------------------ etapa 9 · modificaciones contractuales (9.5) -----------
 
-/** Los siete tipos que lista la matriz; hoy solo ADICION tiene tramite. */
+/** Los siete tipos que lista la matriz, todos con tramite desde EFDS-1178. */
 export type TipoModificacion =
   | 'ADICION'
   | 'PRORROGA'
@@ -2278,6 +2278,14 @@ export type TipoModificacion =
   | 'TERMINACION_ANTICIPADA';
 
 export type EstadoModificacion = 'EN_TRAMITE' | 'APROBADA' | 'RECHAZADA' | 'REVOCADA';
+
+/**
+ * Por que se termina el contrato antes de tiempo.
+ *
+ * Las dos que define la fuente: «por mutuo acuerdo o decision unilateral
+ * motivada». El incumplimiento no esta aqui: es el proceso sancionatorio.
+ */
+export type CausalTerminacion = 'MUTUO_ACUERDO' | 'UNILATERAL';
 
 /** El CDP o el RP que respalda una adicion, con su estado del ciclo. */
 export interface RespaldoDeAdicion {
@@ -2315,6 +2323,10 @@ export interface ModificacionRegistrada {
   suspensionHasta: string | null;
   reanudaModificacionId: string | null;
   reanudadaEl: string | null;
+  terminacionCausal: CausalTerminacion | null;
+  terminacionEl: string | null;
+  /** El estado al que vuelve el contrato si la terminacion se revoca. */
+  estadoContratoAntes: string | null;
   cedenteNombre: string | null;
   cedenteDocumento: string | null;
   cesionarioNombre: string | null;
@@ -2411,6 +2423,14 @@ export interface DatosSuspension {
 /** Lo que la pantalla envia al reanudar (EFDS-1178). */
 export interface DatosReanudacion {
   reanudadaEl: string;
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al terminar el contrato anticipadamente (EFDS-1178). */
+export interface DatosTerminacion {
+  terminacionCausal: CausalTerminacion;
+  /** Desde cuando deja de ejecutarse; no es la fecha de la firma. */
+  terminacionEl: string;
   justificacion: string;
 }
 

@@ -23,6 +23,13 @@ describe('admitePagos · qué contrato puede recibir cuentas de cobro', () => {
     const previos: EstadoContrato[] = ['GENERADO', 'ACEPTADO', 'RECHAZADO', 'PERFECCIONADO'];
     expect(previos.map(admitePagos)).toEqual([false, false, false, false]);
   });
+
+  it('el contrato detenido no cobra, el terminado sí', () => {
+    // Mientras está suspendido no hay prestación que cobrar; el que se terminó
+    // antes de tiempo sí ejecutó, y eso se paga y se salda en la liquidación.
+    expect(admitePagos('SUSPENDIDO')).toBe(false);
+    expect(admitePagos('TERMINADO')).toBe(true);
+  });
 });
 
 describe('cobradoCabeEnElContrato · el aviso por exceso', () => {

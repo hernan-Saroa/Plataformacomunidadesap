@@ -23,15 +23,22 @@ describe('porQueNoAdmiteTipo · qué modificación cabe ahora', () => {
     }
   });
 
-  it('el contrato suspendido solo admite reanudar', () => {
+  it('el contrato suspendido solo admite reanudar o terminarse', () => {
     for (const tipo of TIPOS_CON_TRAMITE) {
       const motivo = porQueNoAdmiteTipo(suspendido, tipo);
-      if (tipo === 'REANUDACION') {
+      if (tipo === 'REANUDACION' || tipo === 'TERMINACION_ANTICIPADA') {
         expect(motivo).toBeNull();
       } else {
         expect(motivo).toMatch(/está suspendido/i);
       }
     }
+  });
+
+  it('deja terminar un contrato en pausa sin obligar a reanudarlo antes', () => {
+    // Es el desenlace típico de una suspensión cuya causa no se supera:
+    // reanudar un día para terminar al siguiente dejaría en el expediente una
+    // ejecución que nunca se retomó.
+    expect(porQueNoAdmiteTipo(suspendido, 'TERMINACION_ANTICIPADA')).toBeNull();
   });
 
   it('no deja adicionar un contrato en pausa', () => {
@@ -56,12 +63,19 @@ describe('porQueNoAdmiteTipo · qué modificación cabe ahora', () => {
     }
   });
 
-  it('la terminación anticipada todavía no tiene trámite', () => {
-    // EFDS-1178 pide confirmar si va en esa historia o en otra, y con ella
-    // llegaría el estado TERMINADO. Se dice, en vez de fallar de otra forma.
-    expect(porQueNoAdmiteTipo(enEjecucion, 'TERMINACION_ANTICIPADA' as TipoModificacion)).toMatch(
-      /todavía no tiene trámite/i,
-    );
+  it('los siete tipos de la matriz tienen trámite', () => {
+    expect(TIPOS_CON_TRAMITE).toHaveLength(7);
+    expect(TIPOS_CON_TRAMITE).toContain('TERMINACION_ANTICIPADA' as TipoModificacion);
+  });
+
+  it('un contrato terminado ya no se modifica', () => {
+    // Lo que queda por hacer es liquidar lo ejecutado. Si la terminación no
+    // debió darse, el camino es revocarla, no modificar por encima de ella.
+    for (const tipo of TIPOS_CON_TRAMITE) {
+      expect(porQueNoAdmiteTipo({ estado: 'TERMINADO', suspendido: false }, tipo)).toMatch(
+        /terminado anticipadamente/i,
+      );
+    }
   });
 
   it('el estado manda sobre el tipo: liquidado no admite ni reanudar', () => {

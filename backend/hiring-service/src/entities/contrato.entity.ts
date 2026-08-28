@@ -30,12 +30,15 @@ export type EstadoContrato =
   | 'LEGALIZADO'
   | 'EJECUCION'
   // Ejecucion en pausa (EFDS-1178). La suspension no retrocede el contrato: lo
-  // detiene. Mientras dure no admite pagos ni liquidacion, y de ahi solo se sale
-  // reanudando.
-  //
-  // RF-SIS-01 nombra ademas TERMINADO; sigue fuera porque nadie lo escribe: la
-  // terminacion anticipada quedo por confirmar en EFDS-1178.
+  // detiene. Mientras dure no admite pagos ni liquidacion, y de ahi se sale
+  // reanudando o terminando anticipadamente.
   | 'SUSPENDIDO'
+  // Ejecucion acabada antes de tiempo (EFDS-1178): por mutuo acuerdo o por
+  // decision unilateral motivada. No es un desenlace, es una parada: lo que
+  // sigue es el informe final y la liquidacion de lo ejecutado.
+  //
+  // Con el, el ciclo que pedia RF-SIS-01 queda completo.
+  | 'TERMINADO'
   // Los dos desenlaces de la etapa 10 (EFDS-1175). Son hechos distintos: el
   // acta de liquidacion produce el primero y el vencimiento de los amparos de
   // estabilidad y calidad, el segundo.
@@ -72,6 +75,11 @@ const AVANCE: Record<EstadoContrato, number> = {
   // y `admiteInformeFinal` enumeran estados uno por uno y dejan SUSPENDIDO
   // fuera. Esta escala responde «que tan avanzado esta», no «que puede hacer».
   SUSPENDIDO: 4,
+  // La terminacion anticipada tampoco avanza: el contrato llego hasta la
+  // ejecucion y ahi paro antes de tiempo. Comparte escalon por lo mismo que la
+  // suspension, y lo que la terminacion impide —modificarlo otra vez— se decide
+  // en `porQueNoAdmiteTipo`, no aqui.
+  TERMINADO: 4,
   // Los dos de la etapa 10 continuan el orden: un contrato liquidado ya paso
   // por la ejecucion, y uno cerrado por la liquidacion.
   LIQUIDADO: 5,
