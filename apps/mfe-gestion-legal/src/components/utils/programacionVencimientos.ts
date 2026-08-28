@@ -11,12 +11,23 @@ import { esDiaHabil } from './diasHabiles';
 export type Periodicidad = 'MENSUAL' | 'TRIMESTRAL' | 'SEMESTRAL' | 'ANUAL' | 'PERSONALIZADA';
 export type TipoDiasPlazo = 'CALENDARIO' | 'HABILES';
 
+// Cuántos años hacia adelante se generan cuando la duración se deja "Indefinida".
+// No es posible generar vencimientos realmente infinitos (cada ocurrencia crea un
+// registro), así que se usa un horizonte fijo que cubre varios años por adelantado.
+export const HORIZONTE_DURACION_INDEFINIDA_ANIOS = 5;
+
 export interface ProgramacionVencimientos {
     periodicidad: Periodicidad;
     plazoDesde: number;
     plazoHasta: number;
     tipoDias: TipoDiasPlazo;
     mesesActivos: number[]; // 1 (Ene) .. 12 (Dic)
+    // Fecha (YYYY-MM-DD) desde la cual empieza a contar la periodicidad. Cualquier
+    // ocurrencia anterior a esta fecha se descarta, sin importar el año en que caiga.
+    fechaInicio: string;
+    // Cuántos años (a partir del año de fechaInicio) se generan vencimientos.
+    // null = "Indefinida" (usa HORIZONTE_DURACION_INDEFINIDA_ANIOS).
+    duracionAnios: number | null;
 }
 
 export interface OcurrenciaVencimiento {
@@ -114,26 +125,37 @@ function generarOcurrenciasParaAnio(config: ProgramacionVencimientos, anio: numb
 }
 
 /**
- * Genera los vencimientos (uno por mes activo) para el año indicado,
- * marcando cuáles ya pasaron y cuál es el próximo a vencer.
+ * Genera los vencimientos (uno por mes activo, por cada año cubierto) a partir de
+ * `fechaInicio` y durante `duracionAnios` años (u HORIZONTE_DURACION_INDEFINIDA_ANIOS
+ * si la duración es indefinida), marcando cuáles ya pasaron y cuál es el próximo a vencer.
  *
- * Si TODAS las ocurrencias del año de referencia ya vencieron (por ejemplo,
- * una periodicidad Anual/Semestral cuyo(s) mes(es) configurado(s) ya pasaron
- * este año), se generan en su lugar las ocurrencias del año siguiente, de modo
- * que siempre haya al menos un vencimiento futuro disponible para crear.
+ * Cualquier ocurrencia cuya fecha de vencimiento caiga antes de `fechaInicio` se descarta,
+ * de modo que la periodicidad realmente empiece a contar desde la fecha configurada (por
+ * ejemplo, "bimestral empezando en 2 meses" en vez de asumir el próximo período natural).
  */
-export function generarOcurrencias(config: ProgramacionVencimientos, anio: number = new Date().getFullYear()): OcurrenciaVencimiento[] {
+export function generarOcurrencias(config: ProgramacionVencimientos): OcurrenciaVencimiento[] {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
-    if (config.mesesActivos.length === 0) return [];
+    if (config.mesesActivos.length === 0 || !config.fechaInicio) return [];
 
-    const ocurrenciasAnioActual = generarOcurrenciasParaAnio(config, anio, hoy);
-    if (ocurrenciasAnioActual.some((o) => !o.esPasado)) {
-        return ocurrenciasAnioActual;
+    const inicio = new Date(`${config.fechaInicio}T00:00:00`);
+    if (Number.isNaN(inicio.getTime())) return [];
+    const anioInicio = inicio.getFullYear();
+    const anios = config.duracionAnios && config.duracionAnios > 0 ? config.duracionAnios : HORIZONTE_DURACION_INDEFINIDA_ANIOS;
+
+    let ocurrencias: OcurrenciaVencimiento[] = [];
+    for (let i = 0; i < anios; i++) {
+        ocurrencias = ocurrencias.concat(generarOcurrenciasParaAnio(config, anioInicio + i, hoy));
     }
 
-    return generarOcurrenciasParaAnio(config, anio + 1, hoy);
+    ocurrencias = ocurrencias.filter((o) => o.fechaVencimiento >= inicio);
+
+    ocurrencias.forEach((o) => { o.esProximo = false; });
+    const proximo = ocurrencias.find((o) => !o.esPasado);
+    if (proximo) proximo.esProximo = true;
+
+    return ocurrencias;
 }
 
 /** Sólo las ocurrencias que aún no han vencido (las únicas que tiene sentido crear) */
@@ -146,8 +168,14 @@ export function etiquetaPlazo(config: ProgramacionVencimientos): string {
     return `días ${String(config.plazoDesde).padStart(2, '0')}-${String(config.plazoHasta).padStart(2, '0')} ${tipo}`;
 }
 
+export function etiquetaDuracion(config: ProgramacionVencimientos): string {
+    if (!config.duracionAnios) return 'indefinida';
+    return `${config.duracionAnios} año${config.duracionAnios === 1 ? '' : 's'}`;
+}
+
 export function resumenProgramacion(config: ProgramacionVencimientos): string {
     const label = PERIODICIDADES.find((p) => p.value === config.periodicidad)?.label || config.periodicidad;
     const n = config.mesesActivos.length;
-    return `${label} · ${n} vencimiento${n === 1 ? '' : 's'}/año · ${etiquetaPlazo(config)}`;
+    const desde = config.fechaInicio ? ` · desde ${config.fechaInicio}` : '';
+    return `${label} · ${n} vencimiento${n === 1 ? '' : 's'}/año · ${etiquetaPlazo(config)}${desde} · duración ${etiquetaDuracion(config)}`;
 }

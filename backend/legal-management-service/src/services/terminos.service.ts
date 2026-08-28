@@ -9,6 +9,7 @@ import type { LegalAccess } from '../auth/legal-access';
 import { ProcesoCoactivo } from '../entities/proceso-coactivo.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { LegalNotificationsService } from './legal-notifications.service';
+import { SequenceService } from './sequence.service';
 
 @Injectable()
 export class TerminosService {
@@ -30,6 +31,7 @@ export class TerminosService {
         @InjectDataSource()
         private readonly dataSource: DataSource,
         private readonly legalNotifications: LegalNotificationsService,
+        private readonly sequenceService: SequenceService,
     ) { }
 
     /** Resuelve nombres reales de usuario (auth.user/personas) a partir de ids, para no exponer UUIDs crudos como "responsable". */
@@ -170,6 +172,14 @@ export class TerminosService {
         // queda creado pero sin link directo (queda solo el numeroRadicado como referencia textual).
         if (!data.referenciaId) {
             data.referenciaId = this.generateUuidV4();
+        }
+
+        // Los términos creados desde otros módulos (createAutomatico) ya traen su propio
+        // radicado (expediente, consulta, etc.). Los términos manuales de este submódulo no
+        // tienen radicado propio, así que se les asigna un consecutivo legible para poder
+        // identificarlos en listados y calendario en vez de mostrar el UUID crudo.
+        if (!data.numeroRadicado) {
+            data.numeroRadicado = await this.sequenceService.generateRadicado('TERM');
         }
 
         await this.backfillResponsableNombre(data);

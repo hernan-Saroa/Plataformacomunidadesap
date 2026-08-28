@@ -75,6 +75,9 @@ import { OficioEnviado } from './entities/oficio-enviado.entity';
 // Plantillas de Documentos
 import { PlantillaDocumento } from './entities/plantilla-documento.entity';
 
+// Consecutivos (radicados autogenerados)
+import { Sequence } from './entities/sequence.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -119,7 +122,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Oficios Enviados
         OficioEnviado,
         // Plantillas de Documentos
-        PlantillaDocumento
+        PlantillaDocumento,
+        // Consecutivos
+        Sequence
     ],
     synchronize: process.env.TYPEORM_SYNC === 'true',
     logging: ['error'], // Solo mostrar errores, no queries
