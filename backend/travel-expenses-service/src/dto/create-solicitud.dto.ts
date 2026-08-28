@@ -1,4 +1,4 @@
-import { IsString, Length, IsBoolean, IsIn, IsOptional } from 'class-validator';
+import { IsString, Length, IsBoolean, IsIn, IsOptional, IsNumber, IsInt, Min } from 'class-validator';
 
 export class CreateSolicitudDto {
   @IsString()
@@ -29,6 +29,21 @@ export class CreateSolicitudDto {
 
   @IsBoolean()
   requiereTiquetes: boolean;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  montoViaticos?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  montoGastosViaje?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  diasComision?: number;
 
   @IsString()
   comisionadoId: string;

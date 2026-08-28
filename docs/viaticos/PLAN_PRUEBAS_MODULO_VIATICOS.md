@@ -1,8 +1,8 @@
 # Plan de Pruebas — Módulo de Viáticos y Gastos de Viaje
 
-> **Estado:** Ejecutado — 35/35 pruebas en verde
-> **Frontend:** 23 pruebas (Vitest) · **Backend:** 12 pruebas (Jest)
-> **Última ejecución:** 2026-08-27
+> **Estado:** Ejecutado — 41/41 pruebas en verde
+> **Frontend:** 27 pruebas (Vitest) · **Backend:** 14 pruebas (Jest)
+> **Última ejecución:** 2026-08-28
 
 ---
 
@@ -50,11 +50,15 @@ Suite: [`ViaticosModulePremium.test.tsx`](../../apps/mfe-viaticos/src/components
 | F16 | Fecha fin anterior a inicio   | Error "Debe ser posterior o igual a fecha inicio"                            |
 | F17 | Fechas ausentes               | Error "Debe indicar las fechas de inicio y fin"                              |
 | F18 | Envío exitoso                 | `crearSolicitudComision` invocado                                            |
-| F19 | Payload alineado al DTO       | Payload snake_case con los 12 campos correctos                               |
+| F19 | Payload alineado al DTO       | Payload camelCase con montos y días correctos                                |
 | F20 | Reinicio del formulario       | Al reabrir, el documento está vacío                                          |
 | F21 | Cierre del modal              | El modal desaparece al cancelar                                              |
 | F22 | Detalle de solicitud          | Se muestra "Ver Detalle" con justificación                                   |
 | F23 | Navegación de secciones       | Sección "Reserva y Emisión de Pasajes" al navegar                            |
+| F24 | Aviso SIIF en la descripción  | Se muestra la restricción SIIF                                               |
+| F25 | Documento solo números        | `abc101928` → `101928`                                                       |
+| F26 | Ciudades en cascada           | Departamento habilita y filtra las ciudades                                  |
+| F27 | Monetarios y numéricos        | Viáticos se formatean `$560.000`; días rechaza texto                         |
 
 ---
 
@@ -79,6 +83,8 @@ Suites:
 | B10 | `subirDocumento` exitoso                         | Documento guardado                         |
 | B11 | `AppController.getHello()`                       | Mensaje de estado del microservicio        |
 | B12 | `AppController` (suite)                          | Compila y ejecuta correctamente            |
+| B13 | `obtenerSolicitudes` con datos                   | Retorna lista con datos del comisionado    |
+| B14 | `obtenerSolicitudes` sin datos                   | Retorna `[]`                               |
 
 ---
 
@@ -87,23 +93,27 @@ Suites:
 ```
 Frontend (Vitest)
   Test Files  1 passed (1)
-  Tests       23 passed (23)
+  Tests       27 passed (27)
 
 Backend (Jest)
   Test Suites 2 passed (2)
-  Tests       12 passed (12)
+  Tests       14 passed (14)
 ```
 
 ---
 
 ## 5. Notas
 
-- **Sanitización:** el frontend replica la política del backend
+- **Contrato de API:** el frontend usa **camelCase** (idéntico al DTO backend
+  `CreateSolicitudDto` y a la serialización de las entidades). Las rutas pasan
+  por el API Gateway con el prefijo `/viaticos/api/v1/...`.
+- **Sanitización / SIIF:** el frontend replica la política del backend
   ([`sanitize.util.ts`](../../backend/travel-expenses-service/src/common/sanitize.util.ts)):
   **normaliza las tildes conservando la letra base** (`gestión` → `gestion`),
   reemplaza `ñ` → `n`, elimina caracteres especiales y limita a 250 caracteres.
-  El frontend conserva los espacios entre palabras al escribir y recorta al
-  construir el payload.
+  Bajo el campo se muestra el aviso de restricción SIIF.
+- **Selectores y campos:** departamento → ciudad en cascada; campos monetarios
+  con formato `$`; campos numéricos que rechazan texto (`soloNumeros`).
 - **Validación de fechas:** se valida tanto en el frontend (feedback inmediato)
   como en el backend (defensa en profundidad).
 - **Habeas Data:** el flujo exige autorización previa (Ley 1581/2012, Sentencia

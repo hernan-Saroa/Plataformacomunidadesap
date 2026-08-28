@@ -8,7 +8,8 @@ export type EstadoSolicitudViatico =
   | 'EN_COMISION'
   | 'PENDIENTE_LEGALIZACION'
   | 'LEGALIZADO'
-  | 'RECHAZADO';
+  | 'RECHAZADO'
+  | 'RADICADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -25,8 +26,9 @@ export type PrioridadSolicitud = 'ALTA' | 'MEDIA' | 'BAJA';
  * Estado del formulario de nueva solicitud.
  *
  * Los nombres de campo se alinean con el DTO backend `CreateSolicitudDto`
- * (backend/travel-expenses-service/src/dto/create-solicitud.dto.ts) y con
- * `CreateSolicitudRequest` (snake_case) que consume `viaticosService.crearSolicitudComision`.
+ * (backend/travel-expenses-service/src/dto/create-solicitud.dto.ts). El
+ * microservicio serializa sus entidades en camelCase, por lo que el payload
+ * de creación (camelCase) y las respuestas (camelCase) son consistentes.
  */
 export interface FormNuevaSolicitud {
   documentoComisionado: string;
@@ -39,6 +41,9 @@ export interface FormNuevaSolicitud {
   rubroPresupuestal: string;
   prioridad: PrioridadSolicitud;
   requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
   aceptaHabeasData: boolean;
 }
 
@@ -46,74 +51,125 @@ export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUD
 
 export type TipoDocumentoSoporte = 'CDP' | 'RUT' | 'CERT_BANCARIA' | 'SEGURIDAD_SOCIAL' | 'CONTRATO_SECOP';
 
+/** Comisionado tal como lo serializa `ComisionadoEntity` (camelCase). */
 export interface Comisionado {
   id: string;
-  numero_documento: string;
-  primer_nombre: string;
-  segundo_nombre?: string;
-  primer_apellido: string;
-  segundo_apellido?: string;
+  numeroDocumento: string;
+  primerNombre: string;
+  segundoNombre?: string;
+  primerApellido: string;
+  segundoApellido?: string;
   email: string;
-  telefono_contacto: string;
-  tipo_comisionado: TipoComisionado;
-  origen_datos: 'HUMANO' | 'SECOP';
-  autorizacion_habeas_data: boolean;
-  fecha_autorizacion_habeas_data?: Date;
-  ip_registro_habeas_data?: string;
+  telefonoContacto: string;
+  tipoComisionado: TipoComisionado;
+  origenDatos: 'HUMANO' | 'SECOP';
+  autorizacionHabeasData: boolean;
+  fechaAutorizacionHabeasData?: Date;
+  ipRegistroHabeasData?: string;
 }
 
 export interface DocumentoSoporte {
   id: string;
-  solicitud_id: string;
-  tipo_documento: TipoDocumentoSoporte;
-  nombre_archivo_original: string;
-  nombre_archivo_seguro: string;
-  url_repositorio: string;
-  creado_en: Date;
+  solicitudId: string;
+  tipoDocumento: TipoDocumentoSoporte;
+  nombreArchivoOriginal: string;
+  nombreArchivoSeguro: string;
+  urlRepositorio: string;
+  creadoEn: Date;
 }
 
+/** Respuesta del backend al crear una solicitud (serialización camelCase). */
 export interface SolicitudComisionResponse {
   id: string;
-  consecutivo_unico: string;
-  comisionado_id: string;
-  destino_ciudad: string;
-  destino_departamento: string;
-  fecha_inicio: Date;
-  fecha_fin: Date;
-  objeto_comision: string;
+  consecutivoUnico: string;
+  comisionadoId: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: Date;
+  fechaFin: Date;
+  objetoComision: string;
   prioridad: string;
-  rubro_presupuestal: string;
-  requiere_tiquetes: boolean;
-  estado_solicitud: string;
-  radicado_fuera_jornada: boolean;
-  creado_por_usuario_id: string;
-  creado_en: Date;
-  actualizado_en: Date;
-  documentos_soporte?: DocumentoSoporte[];
-  warning_message?: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  estadoSolicitud: string;
+  radicadoFueraJornada: boolean;
+  creadoPorUsuarioId: string;
+  creadoEn: Date;
+  actualizadoEn: Date;
+  documentosSoporte?: DocumentoSoporte[];
+  warningMessage?: string;
 }
 
+/**
+ * Payload de creación alineado con el DTO backend `CreateSolicitudDto`
+ * (camelCase). Lo consume `viaticosService.crearSolicitudComision`.
+ */
 export interface CreateSolicitudRequest {
-  comisionado_id: string;
-  destino_ciudad: string;
-  destino_departamento: string;
-  fecha_inicio: string;
-  fecha_fin: string;
-  objeto_comision: string;
+  comisionadoId: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
   prioridad: string;
-  rubro_presupuestal: string;
-  requiere_tiquetes: boolean;
-  creado_por_usuario_id: string;
-  acepta_habeas_data?: boolean;
-  ip_registro_habeas_data?: string;
-  documentos: {
-    tipo_documento: TipoDocumentoSoporte;
-    nombre_archivo_original: string;
-    nombre_archivo_seguro: string;
-    url_repositorio: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  creadoPorUsuarioId: string;
+  aceptaHabeasData?: boolean;
+  ipRegistroHabeasData?: string;
+  documentos?: {
+    tipoDocumento: TipoDocumentoSoporte;
+    nombreArchivoOriginal: string;
+    nombreArchivoSeguro: string;
+    urlRepositorio: string;
   }[];
 }
 
+/**
+ * Respuesta del endpoint backend `GET /solicitudes`
+ * (lista con datos del comisionado, camelCase).
+ */
+export interface SolicitudListaResponse {
+  id: string;
+  consecutivoUnico: string;
+  comisionadoId: string;
+  comisionado: Pick<
+    Comisionado,
+    | 'id'
+    | 'numeroDocumento'
+    | 'primerNombre'
+    | 'segundoNombre'
+    | 'primerApellido'
+    | 'segundoApellido'
+    | 'tipoComisionado'
+    | 'email'
+    | 'telefonoContacto'
+    | 'autorizacionHabeasData'
+  > | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  estadoSolicitud: string;
+  radicadoFueraJornada: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+/** Modelo de presentación para la tabla de solicitudes. */
 export interface SolicitudViatico {
   id: string;
   codigo: string;

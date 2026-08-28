@@ -21,6 +21,48 @@ export class TravelExpensesService {
     private readonly dataSource: DataSource,
   ) {}
 
+  async obtenerSolicitudes(): Promise<any[]> {
+    const solicitudes = await this.solicitudRepo.find({
+      relations: ['comisionado'],
+      order: { creadoEn: 'DESC' },
+    });
+
+    return solicitudes.map((s) => ({
+      id: s.id,
+      consecutivoUnico: s.consecutivoUnico,
+      comisionadoId: s.comisionadoId,
+      comisionado: s.comisionado
+        ? {
+            id: s.comisionado.id,
+            numeroDocumento: s.comisionado.numeroDocumento,
+            primerNombre: s.comisionado.primerNombre,
+            segundoNombre: s.comisionado.segundoNombre,
+            primerApellido: s.comisionado.primerApellido,
+            segundoApellido: s.comisionado.segundoApellido,
+            tipoComisionado: s.comisionado.tipoComisionado,
+            email: s.comisionado.email,
+            telefonoContacto: s.comisionado.telefonoContacto,
+            autorizacionHabeasData: s.comisionado.autorizacionHabeasData,
+          }
+        : null,
+      destinoCiudad: s.destinoCiudad,
+      destinoDepartamento: s.destinoDepartamento,
+      fechaInicio: s.fechaInicio.toISOString(),
+      fechaFin: s.fechaFin.toISOString(),
+      objetoComision: s.objetoComision,
+      prioridad: s.prioridad,
+      rubroPresupuestal: s.rubroPresupuestal,
+      requiereTiquetes: s.requiereTiquetes,
+      montoViaticos: Number(s.montoViaticos || 0),
+      montoGastosViaje: Number(s.montoGastosViaje || 0),
+      diasComision: s.diasComision ?? 1,
+      estadoSolicitud: s.estadoSolicitud,
+      radicadoFueraJornada: s.radicadoFueraJornada,
+      creadoEn: s.creadoEn.toISOString(),
+      actualizadoEn: s.actualizadoEn.toISOString(),
+    }));
+  }
+
   async consultarComisionado(documento: string): Promise<ComisionadoEntity | null> {
     const comisionado = await this.comisionadoRepo.findOne({
       where: { numeroDocumento: documento },
@@ -85,7 +127,7 @@ export class TravelExpensesService {
     const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
     const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
 
-    let consecutivoUnico: string;
+    let consecutivoUnico = '';
     await this.dataSource.transaction(async (manager) => {
       const maxSolicitud = await manager
         .getRepository(SolicitudComisionEntity)
@@ -116,6 +158,9 @@ export class TravelExpensesService {
       prioridad: dto.prioridad,
       rubroPresupuestal: dto.rubroPresupuestal,
       requiereTiquetes: dto.requiereTiquetes ?? false,
+      montoViaticos: dto.montoViaticos ?? 0,
+      montoGastosViaje: dto.montoGastosViaje ?? 0,
+      diasComision: dto.diasComision ?? 1,
       estadoSolicitud: 'RADICADA',
       radicadoFueraJornada: radicadoFueraJornada,
       creadoPorUsuarioId: dto.creadoPorUsuarioId,

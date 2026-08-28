@@ -55,18 +55,18 @@ const mockResumen = {
 
 const mockComisionado = {
   id: 'com-001',
-  numero_documento: '1019283746',
-  primer_nombre: 'Carlos Eduardo',
-  segundo_nombre: '',
-  primer_apellido: 'Ramírez',
-  segundo_apellido: '',
+  numeroDocumento: '1019283746',
+  primerNombre: 'Carlos Eduardo',
+  segundoNombre: '',
+  primerApellido: 'Ramírez',
+  segundoApellido: '',
   email: 'carlos.ramirez@esap.edu.co',
-  telefono_contacto: '3001234567',
-  tipo_comisionado: 'FUNCIONARIO',
-  origen_datos: 'HUMANO',
-  autorizacion_habeas_data: true,
-  fecha_autorizacion_habeas_data: new Date(),
-  ip_registro_habeas_data: '127.0.0.1',
+  telefonoContacto: '3001234567',
+  tipoComisionado: 'FUNCIONARIO',
+  origenDatos: 'HUMANO',
+  autorizacionHabeasData: true,
+  fechaAutorizacionHabeasData: new Date(),
+  ipRegistroHabeasData: '127.0.0.1',
 };
 
 describe('ViaticosModulePremium', () => {
@@ -103,11 +103,14 @@ describe('ViaticosModulePremium', () => {
       screen.getByPlaceholderText(/Describa el objetivo institucional/i),
       'Comisión de gestión institucional',
     );
-    await userEvent.type(screen.getByPlaceholderText(/Ej\. Cartagena/i), 'Cartagena');
-    await userEvent.type(screen.getByPlaceholderText(/Ej\. Bolívar/i), 'Bolívar');
+    fireEvent.change(screen.getByLabelText(/Departamento/i), { target: { value: 'Bolívar' } });
+    fireEvent.change(screen.getByLabelText(/Ciudad/i), { target: { value: 'Cartagena' } });
     fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: '2026-09-01' } });
     fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: '2026-09-05' } });
     await userEvent.type(screen.getByPlaceholderText(/Ej\. Rubro 01/i), 'Rubro 01');
+    fireEvent.change(screen.getByLabelText(/Viáticos/i), { target: { value: '560000' } });
+    fireEvent.change(screen.getByLabelText(/Gastos de viaje/i), { target: { value: '120000' } });
+    fireEvent.change(screen.getByLabelText(/Días/i), { target: { value: '5' } });
   };
 
   it('debe renderizar el módulo con título y descripción', async () => {
@@ -236,7 +239,7 @@ describe('ViaticosModulePremium', () => {
   it('debe mostrar modal de Habeas Data cuando comisionado no tiene autorización', async () => {
     const comisionadoSinAutorizacion = {
       ...mockComisionado,
-      autorizacion_habeas_data: false,
+      autorizacionHabeasData: false,
     };
     viaticosService.consultarComisionado = vi.fn().mockResolvedValue(comisionadoSinAutorizacion);
 
@@ -261,7 +264,7 @@ describe('ViaticosModulePremium', () => {
   it('debe avanzar al paso 2 tras aceptar Habeas Data', async () => {
     const comisionadoSinAutorizacion = {
       ...mockComisionado,
-      autorizacion_habeas_data: false,
+      autorizacionHabeasData: false,
     };
     viaticosService.consultarComisionado = vi.fn().mockResolvedValue(comisionadoSinAutorizacion);
 
@@ -364,6 +367,79 @@ describe('ViaticosModulePremium', () => {
     expect(objetoInput).toHaveValue('ABCD');
   });
 
+  it('debe mostrar la restricción SIIF en el campo de descripción', async () => {
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await irAlPaso2();
+
+    expect(
+      screen.getByText(/No se permiten caracteres especiales, tildes ni la letra ñ/i),
+    ).toBeInTheDocument();
+  });
+
+  it('debe permitir solo números en el documento de identidad', async () => {
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await abrirModalNueva();
+
+    const inputDoc = screen.getByPlaceholderText(/Ej\. 1019283746/i);
+    await userEvent.type(inputDoc, 'abc101928');
+
+    expect(inputDoc).toHaveValue('101928');
+  });
+
+  it('debe cargar ciudades en cascada según el departamento seleccionado', async () => {
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await irAlPaso2();
+
+    const ciudadSelect = screen.getByLabelText(/Ciudad/i);
+    expect(ciudadSelect).toBeDisabled();
+
+    const deptoSelect = screen.getByLabelText(/Departamento/i);
+    fireEvent.change(deptoSelect, { target: { value: 'Bolívar' } });
+
+    expect(ciudadSelect).toBeEnabled();
+    expect(screen.getByRole('option', { name: 'Cartagena' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Medellín' })).not.toBeInTheDocument();
+
+    // Cambiar de departamento limpia la ciudad
+    fireEvent.change(deptoSelect, { target: { value: 'Antioquia' } });
+    expect(screen.getByRole('option', { name: 'Medellín' })).toBeInTheDocument();
+    expect(ciudadSelect).toHaveValue('');
+  });
+
+  it('debe formatear los campos monetarios como moneda y rechazar texto', async () => {
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await irAlPaso2();
+
+    const montoInput = screen.getByLabelText(/Viáticos/i);
+    fireEvent.change(montoInput, { target: { value: 'abc560000' } });
+
+    expect(montoInput).toHaveValue('$560.000');
+
+    const diasInput = screen.getByLabelText(/Días/i);
+    fireEvent.change(diasInput, { target: { value: 'x12' } });
+    expect(diasInput).toHaveValue('12');
+  });
+
   it('debe mostrar error cuando fecha fin es anterior a fecha inicio', async () => {
     render(<ViaticosModulePremium />);
 
@@ -422,7 +498,7 @@ describe('ViaticosModulePremium', () => {
     });
   });
 
-  it('debe radicar con payload alineado al DTO CreateSolicitudDto (snake_case)', async () => {
+  it('debe radicar con payload alineado al DTO CreateSolicitudDto (camelCase)', async () => {
     render(<ViaticosModulePremium />);
 
     await waitFor(() => {
@@ -442,17 +518,20 @@ describe('ViaticosModulePremium', () => {
 
     expect(payload).toEqual(
       expect.objectContaining({
-        comisionado_id: 'com-001',
-        destino_ciudad: 'Cartagena',
-        destino_departamento: 'Bolívar',
-        fecha_inicio: '2026-09-01',
-        fecha_fin: '2026-09-05',
-        objeto_comision: 'Comision de gestion institucional',
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Cartagena',
+        destinoDepartamento: 'Bolívar',
+        fechaInicio: '2026-09-01',
+        fechaFin: '2026-09-05',
+        objetoComision: 'Comision de gestion institucional',
         prioridad: 'MEDIA',
-        rubro_presupuestal: 'Rubro 01',
-        requiere_tiquetes: true,
-        creado_por_usuario_id: expect.any(String),
-        acepta_habeas_data: true,
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: true,
+        montoViaticos: 560000,
+        montoGastosViaje: 120000,
+        diasComision: 5,
+        creadoPorUsuarioId: expect.any(String),
+        aceptaHabeasData: true,
         documentos: [],
       }),
     );

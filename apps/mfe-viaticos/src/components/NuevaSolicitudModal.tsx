@@ -1,13 +1,27 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plane, Search, Send, ShieldCheck, User, X } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Plane,
+  Search,
+  Send,
+  ShieldCheck,
+  User,
+} from 'lucide-react';
 import { Comisionado, FormNuevaSolicitud, SolicitudComisionResponse } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import {
+  AYUDA_OBJETO_SIIF,
   calcularDiasComision,
+  ciudadesDeDepartamento,
+  departamentosDisponibles,
+  formatearMoneda,
   formatearNombreComisionado,
   formInicialNuevaSolicitud,
   mapearARequestCreacion,
   sanitizeObjetoComision,
+  soloNumeros,
   validarFechasSolicitud,
 } from '../utils/viaticosUtils';
 
@@ -69,7 +83,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       }
       setComisionado(resultado);
       setForm((prev) => ({ ...prev, comisionadoId: resultado.id }));
-      if (!resultado.autorizacion_habeas_data) {
+      if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
     } catch (e) {
@@ -87,7 +101,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const tieneComisionadoAutorizado = Boolean(
-    comisionado && (comisionado.autorizacion_habeas_data || form.aceptaHabeasData),
+    comisionado && (comisionado.autorizacionHabeasData || form.aceptaHabeasData),
   );
 
   const irPaso = (siguiente: number) => {
@@ -204,10 +218,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <input
                     id="documentoComisionado"
                     type="text"
+                    inputMode="numeric"
                     required
                     placeholder="Ej. 1019283746"
                     value={form.documentoComisionado}
-                    onChange={(e) => actualizar('documentoComisionado', e.target.value)}
+                    onChange={(e) => actualizar('documentoComisionado', soloNumeros(e.target.value))}
                     className={inputCls}
                   />
                   <button
@@ -236,18 +251,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <div>
                       <p className="font-bold text-slate-800 text-sm">{formatearNombreComisionado(comisionado)}</p>
                       <p className="text-[11px] text-slate-500">
-                        {comisionado.tipo_comisionado} · {comisionado.email}
+                        {comisionado.tipoComisionado} · {comisionado.email}
                       </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
                     <div>
                       <span className="text-slate-400 font-bold block">Documento</span>
-                      {comisionado.numero_documento}
+                      {comisionado.numeroDocumento}
                     </div>
                     <div>
                       <span className="text-slate-400 font-bold block">Teléfono</span>
-                      {comisionado.telefono_contacto}
+                      {comisionado.telefonoContacto}
                     </div>
                   </div>
                 </div>
@@ -285,35 +300,53 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   onChange={(e) => actualizar('objetoComision', sanitizeObjetoComision(e.target.value))}
                   className={inputCls}
                 />
+                <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-start gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  {AYUDA_OBJETO_SIIF}
+                </p>
               </div>
+
+              {/* Departamento → Ciudad */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls} htmlFor="destinoCiudad">
-                    Ciudad Destino *
-                  </label>
-                  <input
-                    id="destinoCiudad"
-                    type="text"
-                    required
-                    placeholder="Ej. Cartagena"
-                    value={form.destinoCiudad}
-                    onChange={(e) => actualizar('destinoCiudad', e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
                 <div>
                   <label className={labelCls} htmlFor="destinoDepartamento">
                     Departamento *
                   </label>
-                  <input
+                  <select
                     id="destinoDepartamento"
-                    type="text"
-                    required
-                    placeholder="Ej. Bolívar"
                     value={form.destinoDepartamento}
-                    onChange={(e) => actualizar('destinoDepartamento', e.target.value)}
+                    onChange={(e) => {
+                      actualizar('destinoDepartamento', e.target.value);
+                      actualizar('destinoCiudad', '');
+                    }}
                     className={inputCls}
-                  />
+                  >
+                    <option value="">Seleccione un departamento...</option>
+                    {departamentosDisponibles().map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls} htmlFor="destinoCiudad">
+                    Ciudad *
+                  </label>
+                  <select
+                    id="destinoCiudad"
+                    value={form.destinoCiudad}
+                    disabled={!form.destinoDepartamento}
+                    onChange={(e) => actualizar('destinoCiudad', e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">Seleccione una ciudad...</option>
+                    {ciudadesDeDepartamento(form.destinoDepartamento).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className={labelCls} htmlFor="fechaInicio">
@@ -369,6 +402,60 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <option value="MEDIA">Media</option>
                     <option value="BAJA">Baja</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Valores estimados */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Valores estimados (COP)
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelCls} htmlFor="montoViaticos">
+                      Viáticos *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                      <input
+                        id="montoViaticos"
+                        type="text"
+                        inputMode="numeric"
+                        value={formatearMoneda(form.montoViaticos)}
+                        onChange={(e) => actualizar('montoViaticos', Number(soloNumeros(e.target.value)) || 0)}
+                        className={`${inputCls} pl-7 text-right font-bold`}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelCls} htmlFor="montoGastosViaje">
+                      Gastos de viaje *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                      <input
+                        id="montoGastosViaje"
+                        type="text"
+                        inputMode="numeric"
+                        value={formatearMoneda(form.montoGastosViaje)}
+                        onChange={(e) => actualizar('montoGastosViaje', Number(soloNumeros(e.target.value)) || 0)}
+                        className={`${inputCls} pl-7 text-right font-bold`}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelCls} htmlFor="diasComision">
+                      Días *
+                    </label>
+                    <input
+                      id="diasComision"
+                      type="text"
+                      inputMode="numeric"
+                      value={form.diasComision}
+                      onChange={(e) => actualizar('diasComision', Number(soloNumeros(e.target.value)) || 0)}
+                      className={`${inputCls} text-right font-bold`}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -439,7 +526,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <div className="flex justify-between px-4 py-2.5">
                   <span className="text-slate-400 font-bold">Fechas</span>
                   <span className="font-semibold text-slate-800">
-                    {form.fechaInicio} al {form.fechaFin} · {calcularDiasComision(form.fechaInicio, form.fechaFin)} días
+                    {form.fechaInicio} al {form.fechaFin} ·{' '}
+                    {form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)} días
                   </span>
                 </div>
                 <div className="flex justify-between px-4 py-2.5">
@@ -449,6 +537,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <div className="flex justify-between px-4 py-2.5">
                   <span className="text-slate-400 font-bold">Prioridad</span>
                   <span className="font-semibold text-slate-800">{form.prioridad}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-slate-400 font-bold">Viáticos</span>
+                  <span className="font-semibold text-slate-800">{formatearMoneda(form.montoViaticos)}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-slate-400 font-bold">Gastos de viaje</span>
+                  <span className="font-semibold text-slate-800">{formatearMoneda(form.montoGastosViaje)}</span>
+                </div>
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-slate-400 font-bold">Total estimado</span>
+                  <span className="font-semibold text-slate-800">
+                    {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                  </span>
                 </div>
                 <div className="flex justify-between px-4 py-2.5">
                   <span className="text-slate-400 font-bold">Requiere tiquetes</span>

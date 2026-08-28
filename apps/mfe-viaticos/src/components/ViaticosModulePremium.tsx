@@ -114,7 +114,7 @@ export default function ViaticosModulePremium() {
   };
 
   const handleSolicitudCreada = (solicitud: SolicitudComisionResponse) => {
-    const ref = solicitud.consecutivo_unico || 'su solicitud';
+    const ref = solicitud.consecutivoUnico || 'su solicitud';
     setMensajeExito(`La solicitud ${ref} fue radicada correctamente.`);
     cargarDatos();
   };

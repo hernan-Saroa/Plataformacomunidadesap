@@ -3,13 +3,18 @@ import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { Permissions } from '../../common/permissions.decorator';
-import { CreateSolicitudDto } from '../dto/create-solicitud.dto';
-import { UploadDocumentoDto } from '../dto/upload-documento.dto';
+import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
+import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 
-@Controller('api/v1')
+@Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TravelExpensesController {
   constructor(private readonly service: TravelExpensesService) {}
+
+  @Get('solicitudes')
+  obtenerSolicitudes() {
+    return this.service.obtenerSolicitudes();
+  }
 
   @Get('comisionados/:documento')
   consultarComisionado(@Param('documento') documento: string) {

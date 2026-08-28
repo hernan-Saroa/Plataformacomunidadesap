@@ -98,6 +98,64 @@ describe('TravelExpensesService', () => {
     });
   });
 
+  describe('obtenerSolicitudes', () => {
+    it('debe retornar la lista de solicitudes con datos del comisionado', async () => {
+      const entidad = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        comisionadoId: 'com-001',
+        comisionado: mockComisionado,
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: new Date('2026-09-01'),
+        fechaFin: new Date('2026-09-05'),
+        objetoComision: 'Comision de servicios',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: false,
+        montoViaticos: 560000,
+        montoGastosViaje: 120000,
+        diasComision: 5,
+        estadoSolicitud: 'SOLICITADO',
+        radicadoFueraJornada: false,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      };
+
+      const solicitudRepo = {
+        find: jest.fn().mockResolvedValue([entidad]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudes();
+
+      expect(solicitudRepo.find).toHaveBeenCalledWith({
+        relations: ['comisionado'],
+        order: { creadoEn: 'DESC' },
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].consecutivoUnico).toBe('COM-2026-0001');
+      expect(result[0].comisionado.numeroDocumento).toBe('1234567890');
+      expect(result[0].montoViaticos).toBe(560000);
+      expect(result[0].diasComision).toBe(5);
+    });
+
+    it('debe retornar lista vacía cuando no hay solicitudes', async () => {
+      const solicitudRepo = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.obtenerSolicitudes();
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('crearSolicitud', () => {
     it('debe lanzar 400 si comisionado no existe', async () => {
       const comisionadoRepo = {

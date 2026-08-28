@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { ComisionadoEntity } from './comisionado.entity';
+import { DocumentoSoporteEntity } from './documento-soporte.entity';
 
 @Entity({ schema: 'travel_expenses', name: 'solicitudes_comision' })
 @Index('idx_solicitudes_consecutivo_unico', ['consecutivoUnico'], { unique: true })
@@ -45,6 +46,15 @@ export class SolicitudComisionEntity {
   @Column({ name: 'requiere_tiquetes', type: 'boolean', default: false })
   requiereTiquetes: boolean;
 
+  @Column({ name: 'monto_viaticos', type: 'numeric', precision: 12, scale: 2, default: 0 })
+  montoViaticos: number;
+
+  @Column({ name: 'monto_gastos_viaje', type: 'numeric', precision: 12, scale: 2, default: 0 })
+  montoGastosViaje: number;
+
+  @Column({ name: 'dias_comision', type: 'int', default: 1 })
+  diasComision: number;
+
   @Column({ name: 'estado_solicitud', type: 'varchar', length: 50, default: 'RADICADA' })
   estadoSolicitud: string;
 
@@ -59,4 +69,7 @@ export class SolicitudComisionEntity {
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
+
+  @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)
+  documentosSoporte: DocumentoSoporteEntity[];
 }

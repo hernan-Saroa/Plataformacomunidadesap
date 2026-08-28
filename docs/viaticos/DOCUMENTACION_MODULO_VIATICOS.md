@@ -1,7 +1,7 @@
 # Documentación del Módulo de Viáticos y Gastos de Viaje (HU-SOL-001)
 
 > **Estado:** Implementado y probado
-> **Última actualización:** 2026-08-27
+> **Última actualización:** 2026-08-28
 > **Alcance:** Frontend MFE `mfe-viaticos` + Backend microservicio `travel-expenses-service`
 
 ---
@@ -62,11 +62,19 @@ El shell carga el módulo de forma remota mediante Module Federation:
 
 ### 3.1 Endpoints
 
-| Método | Ruta                              | Permiso                          | Descripción                           |
-| ------ | --------------------------------- | -------------------------------- | ------------------------------------- |
-| `GET`  | `/api/v1/comisionados/:documento` | Autenticación                    | Consulta un comisionado por documento |
-| `POST` | `/api/v1/requests`                | `travel_expenses:create_request` | Crea una solicitud de comisión        |
-| `POST` | `/api/v1/requests/:id/documentos` | `travel_expenses:create_request` | Sube un documento soporte             |
+| Método | Ruta                       | Permiso                          | Descripción                                         |
+| ------ | -------------------------- | -------------------------------- | --------------------------------------------------- |
+| `GET`  | `/solicitudes`             | Autenticación                    | Lista las solicitudes de comisión (con comisionado) |
+| `GET`  | `/comisionados/:documento` | Autenticación                    | Consulta un comisionado por documento               |
+| `POST` | `/requests`                | `travel_expenses:create_request` | Crea una solicitud de comisión                      |
+| `POST` | `/requests/:id/documentos` | `travel_expenses:create_request` | Sube un documento soporte                           |
+
+> **Rutas a través del API Gateway:** el gateway expone los microservicios como
+> `/{service}/api/v1/{path}` y elimina el prefijo `/{service}/api/v1` antes de
+> reenviar. Por lo tanto, el frontend llama a `/viaticos/api/v1/solicitudes`,
+> `/viaticos/api/v1/comisionados/:documento`, `/viaticos/api/v1/requests` y
+> `/viaticos/api/v1/requests/:id/documentos`; el microservicio sirve las rutas
+> **sin** el prefijo `api/v1`.
 
 Referencia: [`travel-expenses.controller.ts`](../../backend/travel-expenses-service/src/modules/travel-expenses/travel-expenses.controller.ts)
 
@@ -100,17 +108,20 @@ Referencia: [`create-solicitud.dto.ts`](../../backend/travel-expenses-service/sr
 | `rubroPresupuestal`     | string  | 1–100                 |
 | `prioridad`             | string  | `ALTA`/`MEDIA`/`BAJA` |
 | `requiereTiquetes`      | boolean | —                     |
+| `montoViaticos?`        | number  | opcional, ≥ 0, 2 dec. |
+| `montoGastosViaje?`     | number  | opcional, ≥ 0, 2 dec. |
+| `diasComision?`         | number  | opcional, entero ≥ 0  |
 | `comisionadoId`         | string  | —                     |
 | `creadoPorUsuarioId`    | string  | —                     |
 | `aceptaHabeasData?`     | boolean | opcional              |
 | `ipRegistroHabeasData?` | string  | opcional              |
 | `documentos?`           | array   | opcional              |
 
-> **Nota sobre nomenclatura:** el backend recibe el cuerpo en **camelCase**
-> (`destinoCiudad`, `fechaInicio`, …) tal como lo define `CreateSolicitudDto`
-> con `ValidationPipe`. El frontend trabaja internamente con `snake_case`
-> (`destino_ciudad`, `fecha_inicio`, …) para **persistencia y consulta** vía
-> `CreateSolicitudRequest`, y el mapeo entre ambos se documenta en la sección 5.
+> **Nota sobre nomenclatura:** el backend serializa sus entidades y recibe el
+> cuerpo en **camelCase** (`destinoCiudad`, `fechaInicio`, …). El frontend usa
+> exactamente el mismo contrato camelCase (`CreateSolicitudRequest`) tanto para
+> el payload de creación como para las respuestas (`Comisionado`,
+> `SolicitudComisionResponse`). El mapeo se detalla en la sección 4.3.
 
 ### 3.4 Autenticación y permisos
 
@@ -139,7 +150,7 @@ Referencia: [`create-solicitud.dto.ts`](../../backend/travel-expenses-service/sr
 
 ```
 Paso 1: Datos del Funcionario Comisionado
-  ├─ Ingresar documento (placeholder "Ej. 1019283746")
+  ├─ Ingresar documento (solo números, placeholder "Ej. 1019283746")
   ├─ "Consultar" → viaticosService.consultarComisionado(documento)
   ├─ Si no existe        → mensaje de error
   ├─ Si NO autorizado    → modal "Autorización de Tratamiento de Datos"
@@ -147,10 +158,12 @@ Paso 1: Datos del Funcionario Comisionado
   └─ Si autorizado       → tarjeta con datos del comisionado → "Siguiente"
 
 Paso 2: Objeto y Destino de la Comisión
-  ├─ objetoComision (sanitizado en vivo: ASCII + espacios)
-  ├─ destinoCiudad, destinoDepartamento
+  ├─ objetoComision (sanitizado en vivo + aviso de restricción SIIF)
+  ├─ destinoDepartamento (select) → destinoCiudad (select en cascada)
   ├─ fechaInicio, fechaFin  (validadas: fin >= inicio)
   ├─ rubroPresupuestal, prioridad (ALTA/MEDIA/BAJA), requiereTiquetes
+  ├─ montoViaticos / montoGastosViaje (formato moneda $)
+  ├─ diasComision (solo números)
   └─ "Siguiente" / "Enviar Solicitud" (valida fechas)
 
 Paso 3: Confirmación y envío
@@ -160,28 +173,33 @@ Paso 3: Confirmación y envío
 ### 4.3 Alineación del payload con el DTO backend
 
 `mapearARequestCreacion` ([`viaticosUtils.ts`](../../apps/mfe-viaticos/src/utils/viaticosUtils.ts))
-convierte el formulario en `CreateSolicitudRequest` (snake_case), que
-`crearSolicitudComision` envía al backend:
+convierte el formulario en `CreateSolicitudRequest` (**camelCase**, idéntico al
+DTO backend `CreateSolicitudDto`), que `crearSolicitudComision` envía al backend:
 
-| Campo formulario (FE)         | Payload `CreateSolicitudRequest` | DTO backend (camelCase) |
-| ----------------------------- | -------------------------------- | ----------------------- |
-| `comisionadoId`               | `comisionado_id`                 | `comisionadoId`         |
-| `objetoComision` (sanitizado) | `objeto_comision`                | `objetoComision`        |
-| `destinoCiudad`               | `destino_ciudad`                 | `destinoCiudad`         |
-| `destinoDepartamento`         | `destino_departamento`           | `destinoDepartamento`   |
-| `fechaInicio`                 | `fecha_inicio`                   | `fechaInicio`           |
-| `fechaFin`                    | `fecha_fin`                      | `fechaFin`              |
-| `rubroPresupuestal`           | `rubro_presupuestal`             | `rubroPresupuestal`     |
-| `prioridad`                   | `prioridad`                      | `prioridad`             |
-| `requiereTiquetes`            | `requiere_tiquetes`              | `requiereTiquetes`      |
-| `USUARIO_ACTUAL_ID`           | `creado_por_usuario_id`          | `creadoPorUsuarioId`    |
-| `aceptaHabeasData`            | `acepta_habeas_data`             | `aceptaHabeasData`      |
-| —                             | `ip_registro_habeas_data`        | `ipRegistroHabeasData`  |
-| —                             | `documentos`                     | `documentos`            |
+| Campo formulario (FE)         | Payload `CreateSolicitudRequest` | DTO backend            |
+| ----------------------------- | -------------------------------- | ---------------------- |
+| `comisionadoId`               | `comisionadoId`                  | `comisionadoId`        |
+| `objetoComision` (sanitizado) | `objetoComision`                 | `objetoComision`       |
+| `destinoCiudad`               | `destinoCiudad`                  | `destinoCiudad`        |
+| `destinoDepartamento`         | `destinoDepartamento`            | `destinoDepartamento`  |
+| `fechaInicio`                 | `fechaInicio`                    | `fechaInicio`          |
+| `fechaFin`                    | `fechaFin`                       | `fechaFin`             |
+| `rubroPresupuestal`           | `rubroPresupuestal`              | `rubroPresupuestal`    |
+| `prioridad`                   | `prioridad`                      | `prioridad`            |
+| `requiereTiquetes`            | `requiereTiquetes`               | `requiereTiquetes`     |
+| `montoViaticos`               | `montoViaticos`                  | `montoViaticos`        |
+| `montoGastosViaje`            | `montoGastosViaje`               | `montoGastosViaje`     |
+| `diasComision`                | `diasComision`                   | `diasComision`         |
+| `USUARIO_ACTUAL_ID`           | `creadoPorUsuarioId`             | `creadoPorUsuarioId`   |
+| `aceptaHabeasData`            | `aceptaHabeasData`               | `aceptaHabeasData`     |
+| —                             | `ipRegistroHabeasData`           | `ipRegistroHabeasData` |
+| —                             | `documentos`                     | `documentos`           |
 
-### 4.4 Sanitización del objeto de comisión
+### 4.4 Sanitización del objeto de comisión y restricción SIIF
 
-El frontend replica la política del backend:
+El frontend replica la política del backend y muestra el aviso
+`AYUDA_OBJETO_SIIF` bajo el campo: "No se permiten caracteres especiales,
+tildes ni la letra ñ (integración con el SIIF)".
 
 - Se **normalizan las tildes** conservando la letra base (`ó` → `o`):
   `gestión` → `gestion`.
@@ -192,11 +210,21 @@ El frontend replica la política del backend:
 
 Ejemplo: `Comisión de gestión institucional` → `Comision de gestion institucional`.
 
+### 4.5 Selectores y campos
+
+- **Departamento → Ciudad**: selectores en cascada (el departamento aparece
+  primero). Al elegir departamento se habilitan y filtran las ciudades de
+  Colombia (`DEPARTAMENTOS_COLOMBIA` en `viaticosUtils`).
+- **Campos monetarios**: `montoViaticos` y `montoGastosViaje` se capturan en
+  formato moneda (`$ 1.234.567`) y rechazan texto.
+- **Campos numéricos**: `diasComision` y el documento del comisionado aceptan
+  solo dígitos (`soloNumeros`).
+
 ---
 
 ## 5. Pruebas
 
-### 5.1 Frontend (Vitest) — 23 pruebas
+### 5.1 Frontend (Vitest) — 27 pruebas
 
 Suite: [`ViaticosModulePremium.test.tsx`](../../apps/mfe-viaticos/src/components/ViaticosModulePremium.test.tsx)
 
@@ -206,12 +234,14 @@ Cobertura destacada:
 - Resumen estadístico al cargar (KPIs).
 - Tabla de solicitudes, búsqueda y filtro por estado.
 - Apertura/cierre del modal y reinicio del formulario.
-- Consulta de comisionado por documento (éxito y no encontrado).
+- Consulta de comisionado por documento (éxito, no encontrado y solo números).
 - Modal de Habeas Data y aceptación para avanzar.
 - Navegación entre pasos (Siguiente / Atrás).
-- Sanitización del objeto (conservación de palabras y eliminación de especiales).
+- Sanitización del objeto (normalización de tildes, especiales y aviso SIIF).
+- Selectores en cascada departamento → ciudad.
+- Campos monetarios con formato `$` y numéricos solo dígitos.
 - Validación de fechas (fin anterior a inicio, fechas ausentes).
-- Envío exitoso y **payload alineado al DTO** (snake_case).
+- Envío exitoso y **payload alineado al DTO** (camelCase) con montos y días.
 - Detalle de solicitud y navegación de secciones.
 
 Comando:
@@ -221,17 +251,18 @@ cd apps/mfe-viaticos
 npm run test:run
 ```
 
-### 5.2 Backend (Jest) — 12 pruebas
+### 5.2 Backend (Jest) — 14 pruebas
 
 Suite: [`travel-expenses.service.spec.ts`](../../backend/travel-expenses-service/src/modules/travel-expenses/__tests__/travel-expenses.service.spec.ts)
 y [`app.controller.spec.ts`](../../backend/travel-expenses-service/src/app.controller.spec.ts).
 
 Cobertura:
 
+- `obtenerSolicitudes` (lista con datos del comisionado / lista vacía).
 - `consultarComisionado` (existe / no existe).
 - `crearSolicitud` (comisionado inexistente, falta Habeas Data, aceptación de
   Habeas Data, solapamiento de fechas, creación exitosa con consecutivo, fecha
-  fin anterior a inicio).
+  fin anterior a inicio, persistencia de montos y días).
 - `subirDocumento` (solicitud inexistente / éxito).
 - `AppController` (mensaje de estado del microservicio).
 
@@ -258,9 +289,9 @@ npm test
 
 ## 7. Pendientes / siguientes pasos
 
-- [ ] Conectar `creado_por_usuario_id` con el id de sesión real del portal
+- [ ] Conectar `creadoPorUsuarioId` con el id de sesión real del portal
       (actualmente usa `USUARIO_NO_AUTENTICADO`).
 - [ ] Definir el flujo completo de aprobación (jefe → talento humano → resolución).
 - [ ] Integrar la gestión de tiquetes y legalización de gastos con datos reales.
 - [ ] Persistir documentos soporte desde el frontend (`subirDocumento`).
-- [ ] Ajustar la IP real del cliente para `ip_registro_habeas_data`.
+- [ ] Ajustar la IP real del cliente para `ipRegistroHabeasData` y el `creadoPorUsuarioId`.
