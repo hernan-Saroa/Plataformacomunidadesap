@@ -31,6 +31,21 @@ export const PERMISO_SEGUIMIENTO_VER = 'contratacion.seguimiento.ver';
 /** Consultar el expediente del proceso; ya existe en auth.permission. */
 export const PERMISO_EXPEDIENTE_VER = 'contratacion.expediente.view';
 
+/** Solicitar una modificación contractual — actividad 9.5 (EFDS-1177). */
+export const PERMISO_MODIFICACION_SOLICITAR = 'contratacion.modificacion.solicitar';
+
+/**
+ * Aprobar o negar la modificación (EFDS-1177).
+ *
+ * Aparte de solicitarla a propósito: quien pide la prórroga no puede
+ * concedérsela a sí mismo. Es la misma separación que ya tienen el estudio
+ * previo —`actividad.edit` frente a `actividad.approve`— y el CDP.
+ */
+export const PERMISO_MODIFICACION_APROBAR = 'contratacion.modificacion.aprobar';
+
+/** Consultar las modificaciones del contrato (EFDS-1177). */
+export const PERMISO_MODIFICACION_VER = 'contratacion.modificacion.ver';
+
 // ------------------------------------------------- de dónde salen hoy --
 
 /**
@@ -71,6 +86,37 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'SUPER_ADMIN',
   ],
   [PERMISO_EXPEDIENTE_VER]: [
+    'GESTOR_CONTRATACION',
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'ORDENADOR_GASTO',
+    'SUPERVISOR_CONTRATO',
+    'SUPER_ADMIN',
+  ],
+  /**
+   * Pedir la prórroga es un trámite contractual, no presupuestal: la lleva
+   * quien lleva el expediente. El supervisor no la solicita —constata que hace
+   * falta y lo dice por el seguimiento—, y la Dirección Financiera tampoco,
+   * porque la prórroga no mueve dinero.
+   */
+  [PERMISO_MODIFICACION_SOLICITAR]: [
+    'GESTOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  /**
+   * Concederla es del ordenador del gasto y la Dirección: extender el plazo
+   * compromete a la entidad frente al contratista, y quien la pidió no puede
+   * dársela a sí mismo.
+   */
+  [PERMISO_MODIFICACION_APROBAR]: [
+    'ORDENADOR_GASTO',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  // Ancha como la del seguimiento, y por lo mismo: lo que le pasó al plazo de
+  // un contrato lo revisan control interno y la Dirección.
+  [PERMISO_MODIFICACION_VER]: [
     'GESTOR_CONTRATACION',
     'REVISOR_CONTRATACION',
     'DIRECTOR_CONTRATACION',

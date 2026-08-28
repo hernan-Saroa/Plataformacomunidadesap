@@ -25,6 +25,7 @@ import { RegistroPresupuestalModule } from './modules/registro-presupuestal/regi
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
+import { ModificacionesModule } from './modules/modificaciones/modificaciones.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -118,6 +119,7 @@ import { TipologiaContrato } from './entities/tipologia-contrato.entity';
     PublicacionContratoModule,
     ActaInicioModule,
     SeguimientoModule,
+    ModificacionesModule,
   ],
   controllers: [HealthController],
   providers: [
