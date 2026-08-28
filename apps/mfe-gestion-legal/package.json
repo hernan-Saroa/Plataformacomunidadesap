@@ -12,6 +12,7 @@
     "@esap-mfe/shared-hooks": "*",
     "@esap-mfe/shared-types": "*",
     "@esap-mfe/shared-ui": "*",
+    "exceljs": "^4.4.0",
     "jspdf": "^4.0.0",
     "jspdf-autotable": "^5.0.7",
     "mammoth": "^1.12.0",
