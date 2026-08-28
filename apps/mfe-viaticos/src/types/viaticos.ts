@@ -184,6 +184,8 @@ export interface SolicitudListaResponse {
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
   extemporanea: boolean;
+  creadoPorUsuarioId?: string;
+  esCreadoPorMi?: boolean;
   creadoEn: string;
   actualizadoEn: string;
 }
@@ -216,6 +218,7 @@ export interface SolicitudViatico {
   fechaResolucion?: string;
   creadoEn: string;
   actualizadoEn: string;
+  esCreadoPorMi?: boolean;
 }
 
 export interface TiqueteAereo {

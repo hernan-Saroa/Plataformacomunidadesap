@@ -7,13 +7,6 @@ import {
 } from '../types/viaticos';
 
 /**
- * Identificador por defecto del usuario que radica la solicitud.
- * Debe reemplazarse por el id de la sesión autenticada del portal
- * (p. ej. `authService.getCurrentUser()?.id`).
- */
-export const USUARIO_ACTUAL_ID = 'USUARIO_NO_AUTENTICADO';
-
-/**
  * Ayuda mostrada bajo el campo de descripción del objeto de comisión.
  * Las restricciones responden a la integración con el SIIF.
  */
@@ -158,7 +151,7 @@ export function validarFechasSolicitud(fechaInicio: string, fechaFin: string): s
 export function mapearARequestCreacion(
   form: FormNuevaSolicitud,
   comisionado: Comisionado,
-  creadoPorUsuarioId: string = USUARIO_ACTUAL_ID,
+  creadoPorUsuarioId: string,
 ): CreateSolicitudRequest {
   const aceptaHabeasData = form.aceptaHabeasData || comisionado.autorizacionHabeasData;
   return {

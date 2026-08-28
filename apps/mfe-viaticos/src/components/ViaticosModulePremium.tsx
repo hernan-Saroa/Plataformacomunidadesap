@@ -16,12 +16,15 @@ import {
   Eye,
   CreditCard,
   X,
+  UserCheck,
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
+import SearchableSelect from './SearchableSelect';
 import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
+import { authService } from '../services/api/authService';
 
 type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones';
 
@@ -35,13 +38,15 @@ export default function ViaticosModulePremium() {
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  const [usuarioActualId, setUsuarioActualId] = useState<string | null>(null);
+  const [esSuperAdmin, setEsSuperAdmin] = useState(false);
 
   const cargarDatos = async () => {
     setCargando(true);
     try {
       const [list, res] = await Promise.all([
-        viaticosService.obtenerSolicitudes(),
-        viaticosService.obtenerResumenEstadistico(),
+        viaticosService.obtenerSolicitudes(usuarioActualId || undefined, esSuperAdmin),
+        viaticosService.obtenerResumenEstadistico(esSuperAdmin),
       ]);
       setSolicitudes(list);
       setResumen(res);
@@ -53,8 +58,27 @@ export default function ViaticosModulePremium() {
   };
 
   useEffect(() => {
-    cargarDatos();
+    const cargarUsuario = async () => {
+      try {
+        const usuario = await authService.getCurrentUser();
+        if (usuario) {
+          setUsuarioActualId(usuario.userId);
+          const roles = Array.isArray(usuario.roles) ? usuario.roles : [];
+          const normalizedRoles = roles.map((r: any) => (typeof r === 'string' ? r.toUpperCase().replace(/\s+/g, '_') : (r.code || '').toUpperCase().replace(/\s+/g, '_')));
+          const superAdminRoles = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO', 'SUPER_ADMINISTRADOR'];
+          setEsSuperAdmin(normalizedRoles.some((r: string) => superAdminRoles.includes(r)));
+        }
+      } catch (error) {
+        console.warn('No se pudo cargar el usuario actual:', error);
+      }
+    };
+
+    cargarUsuario();
   }, []);
+
+  useEffect(() => {
+    cargarDatos();
+  }, [usuarioActualId, esSuperAdmin]);
 
   const grupos: MenuGroup[] = [
     {
@@ -240,18 +264,20 @@ export default function ViaticosModulePremium() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Filter className="w-4 h-4 text-slate-400" />
-                  <select
+                  <SearchableSelect
+                    id="filtroEstado"
+                    options={[
+                      { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'SOLICITADO', label: 'Solicitado' },
+                      { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
+                      { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
+                      { value: 'EN_COMISION', label: 'En Comisión' },
+                      { value: 'LEGALIZADO', label: 'Legalizado' },
+                    ]}
                     value={filtroEstado}
-                    onChange={(e) => setFiltroEstado(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="TODOS">Todos los Estados</option>
-                    <option value="SOLICITADO">Solicitado</option>
-                    <option value="APROBADO_TALENTO_HUMANO">Aprobado TH</option>
-                    <option value="RESOLUCION_EMITIDA">Resolución Emitida</option>
-                    <option value="EN_COMISION">En Comisión</option>
-                    <option value="LEGALIZADO">Legalizado</option>
-                  </select>
+                    onChange={(valor) => setFiltroEstado(valor)}
+                    placeholder="Filtrar por estado"
+                  />
                 </div>
               </div>
 
@@ -322,6 +348,12 @@ export default function ViaticosModulePremium() {
                                 {sol.radicadoFueraJornada && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
                                     Radicado fuera de jornada
+                                  </span>
+                                )}
+                                {esSuperAdmin && sol.esCreadoPorMi && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                    <UserCheck className="w-3 h-3 mr-1" />
+                                    Radicada por mí
                                   </span>
                                 )}
                               </div>

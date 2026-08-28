@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { Comisionado, FormNuevaSolicitud, Geopolitica, SolicitudComisionResponse } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
+import { authService } from '../services/api/authService';
+import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
@@ -54,6 +56,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
   const [cargandoDepartamentos, setCargandoDepartamentos] = useState(false);
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
+  const [usuarioActual, setUsuarioActual] = useState<{ userId: string; username: string } | null>(null);
+  const [cargandoUsuario, setCargandoUsuario] = useState(false);
   // Token para descartar respuestas de ciudades fuera de orden al cambiar de departamento rápido.
   const refTokenCiudades = useRef(0);
 
@@ -61,10 +65,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setCargandoDepartamentos(true);
     try {
       const data = await viaticosService.obtenerDepartamentos();
-      // Deduplicar por nombre para evitar registros repetidos (p. ej. por periodo).
-      // Se prefiere el registro que trae codDepartamento (código DANE): si un
-      // duplicado sin código reemplazara al que sí lo tiene, el llamado a
-      // ciudades caería en idGeopolitica (p. ej. Risaralda 105 en vez de 66).
       const unicos = new Map<string, Geopolitica>();
       (data || []).forEach((d) => {
         if (d.tipDivision === 'DEPTO' && d.nomDivGeopolitica?.trim()) {
@@ -84,6 +84,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   };
 
+  const cargarUsuarioActual = async () => {
+    setCargandoUsuario(true);
+    try {
+      const usuario = await authService.getCurrentUser();
+      if (usuario) {
+        setUsuarioActual({ userId: usuario.userId, username: usuario.username });
+      }
+    } catch (e) {
+      console.error('Error cargando usuario actual:', e);
+    } finally {
+      setCargandoUsuario(false);
+    }
+  };
+
   useEffect(() => {
     if (abierta) {
       setPaso(1);
@@ -98,7 +112,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setAlertaAnticipacion(null);
       setDepartamentos([]);
       setCiudades([]);
+      setUsuarioActual(null);
+      setCargandoUsuario(false);
       void cargarDepartamentos();
+      void cargarUsuarioActual();
     }
   }, [abierta]);
 
@@ -193,6 +210,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   }, [paso, form.fechaInicio]);
 
+  useEffect(() => {
+    if (form.fechaInicio && form.fechaFin) {
+      const dias = calcularDiasComision(form.fechaInicio, form.fechaFin);
+      actualizar('diasComision', dias);
+    }
+  }, [form.fechaInicio, form.fechaFin]);
+
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
     if (siguiente === 3) {
@@ -219,7 +243,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setEnviando(true);
     setErrorValidacion(null);
     try {
-      const payload = mapearARequestCreacion(form, comisionado);
+      const payload = mapearARequestCreacion(
+        form,
+        comisionado,
+        usuarioActual?.userId || '',
+      );
       const creada = await viaticosService.crearSolicitudComision(payload);
       onSolicitudCreada(creada);
       onCerrar();
@@ -401,19 +429,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <label className={labelCls} htmlFor="destinoDepartamento">
                     Departamento *
                   </label>
-                  <select
+                  <SearchableSelect
                     id="destinoDepartamento"
+                    options={departamentos.map((d) => ({ value: d.nomDivGeopolitica, label: d.nomDivGeopolitica }))}
                     value={form.destinoDepartamento}
-                    onChange={(e) => manejarCambioDepartamento(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">Seleccione un departamento...</option>
-                    {departamentos.map((d) => (
-                      <option key={d.idGeopolitica} value={d.nomDivGeopolitica}>
-                        {d.nomDivGeopolitica}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(nombre) => manejarCambioDepartamento(nombre)}
+                    placeholder="Seleccione un departamento..."
+                    disabled={cargandoDepartamentos}
+                    loading={cargandoDepartamentos}
+                    emptyText="No hay departamentos"
+                  />
                   {cargandoDepartamentos && (
                     <p className="text-[11px] text-slate-400 mt-1">Cargando departamentos...</p>
                   )}
@@ -422,20 +447,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <label className={labelCls} htmlFor="destinoCiudad">
                     Ciudad *
                   </label>
-                  <select
+                  <SearchableSelect
                     id="destinoCiudad"
+                    options={ciudades.map((c) => ({ value: c.nomDivGeopolitica, label: c.nomDivGeopolitica }))}
                     value={form.destinoCiudad}
+                    onChange={(nombre) => actualizar('destinoCiudad', nombre)}
+                    placeholder="Seleccione una ciudad..."
                     disabled={!form.destinoDepartamento || cargandoCiudades}
-                    onChange={(e) => actualizar('destinoCiudad', e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">Seleccione una ciudad...</option>
-                    {ciudades.map((c) => (
-                      <option key={c.idGeopolitica} value={c.nomDivGeopolitica}>
-                        {c.nomDivGeopolitica}
-                      </option>
-                    ))}
-                  </select>
+                    loading={cargandoCiudades}
+                    emptyText="Primero seleccione un departamento"
+                  />
                   {cargandoCiudades && (
                     <p className="text-[11px] text-slate-400 mt-1">Cargando ciudades...</p>
                   )}
@@ -485,16 +506,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <label className={labelCls} htmlFor="prioridad">
                     Prioridad
                   </label>
-                  <select
+                  <SearchableSelect
                     id="prioridad"
+                    options={[
+                      { value: 'ALTA', label: 'Alta' },
+                      { value: 'MEDIA', label: 'Media' },
+                      { value: 'BAJA', label: 'Baja' },
+                    ]}
                     value={form.prioridad}
-                    onChange={(e) => actualizar('prioridad', e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="ALTA">Alta</option>
-                    <option value="MEDIA">Media</option>
-                    <option value="BAJA">Baja</option>
-                  </select>
+                    onChange={(valor) => actualizar('prioridad', valor)}
+                    placeholder="Seleccione prioridad"
+                  />
                 </div>
               </div>
 
@@ -544,7 +566,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       id="diasComision"
                       type="text"
                       inputMode="numeric"
-                      value={form.diasComision}
+                      value={form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)}
                       onChange={(e) => actualizar('diasComision', Number(soloNumeros(e.target.value)) || 0)}
                       className={`${inputCls} text-right font-bold`}
                     />

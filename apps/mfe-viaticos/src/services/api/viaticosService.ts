@@ -101,12 +101,19 @@ export class ViaticosService {
       requiereTiqueteAereo: s.requiereTiquetes,
       creadoEn: s.creadoEn.slice(0, 10),
       actualizadoEn: s.actualizadoEn.slice(0, 10),
+      esCreadoPorMi: s.esCreadoPorMi,
     };
   }
 
-  async obtenerSolicitudes(): Promise<SolicitudViatico[]> {
+  async obtenerSolicitudes(usuarioId?: string, esSuperAdmin = false): Promise<SolicitudViatico[]> {
     try {
-      const data = await apiClient.get<SolicitudListaResponse[] | SolicitudListaResponse>('/viaticos/api/v1/solicitudes');
+      const params = new URLSearchParams();
+      if (usuarioId && !esSuperAdmin) {
+        params.set('creadoPorUsuarioId', usuarioId);
+      }
+      const query = params.toString();
+      const url = `/viaticos/api/v1/solicitudes${query ? `?${query}` : ''}`;
+      const data = await apiClient.get<SolicitudListaResponse[] | SolicitudListaResponse>(url);
       const lista = Array.isArray(data) ? data : [data];
       if (lista.length === 0) return MOCK_SOLICITUDES;
       return lista.map((item) => this.mapearSolicitudLista(item));
@@ -115,8 +122,8 @@ export class ViaticosService {
     }
   }
 
-  async obtenerResumenEstadistico(): Promise<ResumenEstadisticoViaticos> {
-    const solicitudes = await this.obtenerSolicitudes();
+  async obtenerResumenEstadistico(esSuperAdmin = false): Promise<ResumenEstadisticoViaticos> {
+    const solicitudes = await this.obtenerSolicitudes(undefined, esSuperAdmin);
     return {
       totalSolicitudes: solicitudes.length,
       enProcesoAprobacion: solicitudes.filter((s) =>

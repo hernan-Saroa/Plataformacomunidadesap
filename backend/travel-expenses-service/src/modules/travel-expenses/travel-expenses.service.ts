@@ -38,11 +38,16 @@ export class TravelExpensesService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async obtenerSolicitudes(): Promise<any[]> {
-    const solicitudes = await this.solicitudRepo.find({
-      relations: ['comisionado'],
-      order: { creadoEn: 'DESC' },
-    });
+  async obtenerSolicitudes(usuarioId?: string, isSuperAdmin = false): Promise<any[]> {
+    const query = this.solicitudRepo.createQueryBuilder('s')
+      .leftJoinAndSelect('s.comisionado', 'comisionado')
+      .orderBy('s.creadoEn', 'DESC');
+
+    if (!isSuperAdmin && usuarioId) {
+      query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
+    }
+
+    const solicitudes = await query.getMany();
 
     return solicitudes.map((s) => ({
       id: s.id,
@@ -78,6 +83,8 @@ export class TravelExpensesService {
       extemporanea: s.extemporanea,
       creadoEn: s.creadoEn.toISOString(),
       actualizadoEn: s.actualizadoEn.toISOString(),
+      creadoPorUsuarioId: s.creadoPorUsuarioId,
+      esCreadoPorMi: isSuperAdmin ? s.creadoPorUsuarioId === usuarioId : undefined,
     }));
   }
 
