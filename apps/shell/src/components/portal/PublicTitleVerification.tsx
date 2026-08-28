@@ -353,6 +353,9 @@ export function PublicTitleVerification({
 
   const hideManualReviewPrompt = () => {
     setShowManualReviewDialog(false);
+    setManualReviewReason("no_matches");
+    setMissingTitleBaseRecord(null);
+    setMissingTitleProgramName("");
     setManualReviewAlertMessage("");
     resetManualReviewSupportFile();
   };
@@ -368,9 +371,6 @@ export function PublicTitleVerification({
     });
     setGraduateDocumentNumber(normalizedIdNumber);
     setGraduateLastName(baseRecord.fullName);
-    if (baseRecord.graduateId) {
-      setSelectedSuggestionId(baseRecord.graduateId);
-    }
   };
 
   const openMissingTitleReviewPrompt = (
@@ -381,12 +381,21 @@ export function PublicTitleVerification({
         (suggestion) => suggestion.graduateId === selectedSuggestionId,
       ) ||
       (matchSuggestions.length === 1 ? matchSuggestions[0] : null);
-    const nextBaseRecord = explicitBaseRecord || selectedBaseRecord;
-
-    if (!nextBaseRecord) {
-      toast.error("Seleccione primero la persona correcta para continuar");
-      return;
-    }
+    const normalizedEnteredName = normalizeComparableText(graduateLastName);
+    const matchingIdentityRecord = normalizedEnteredName
+      ? matchSuggestions.find(
+          (suggestion) =>
+            normalizeComparableText(suggestion.fullName) ===
+            normalizedEnteredName,
+        )
+      : null;
+    const nextBaseRecord =
+      explicitBaseRecord ||
+      selectedBaseRecord ||
+      matchingIdentityRecord || {
+        idNumber: graduateDocumentNumber,
+        fullName: graduateLastName,
+      };
 
     applyMissingTitleBaseRecord({
       graduateId: nextBaseRecord.graduateId,
@@ -611,7 +620,7 @@ export function PublicTitleVerification({
       !options?.skipMissingTitleReview
     ) {
       if (!missingTitleBaseRecord) {
-        return "Seleccione primero la persona correcta para crear la solicitud de revisión";
+        return "No se pudieron conservar los datos de la persona para crear la solicitud de revisión";
       }
 
       const normalizedMissingTitle =
@@ -629,7 +638,7 @@ export function PublicTitleVerification({
       if (
         titleAlreadyExistsForMissingReview(normalizedMissingTitle)
       ) {
-        return "Ese título ya existe para la persona seleccionada. Seleccione un título diferente para solicitar revisión.";
+        return "Ese título ya figura entre las coincidencias existentes. Seleccione el título nuevo que desea enviar a revisión.";
       }
     }
 
@@ -1049,8 +1058,11 @@ export function PublicTitleVerification({
     matchSuggestions.find(
       (suggestion) => suggestion.graduateId === selectedSuggestionId,
     ) || null;
-  const hasPendingMatchSuggestions = matchSuggestions.length > 0;
   const isMissingTitleManualReview = manualReviewReason === "missing_title";
+  const isMissingTitleReviewOpen =
+    showManualReviewDialog && isMissingTitleManualReview;
+  const hasPendingMatchSuggestions =
+    matchSuggestions.length > 0 && !isMissingTitleReviewOpen;
   const manualReviewDisplayRecord =
     isMissingTitleManualReview && missingTitleBaseRecord
       ? missingTitleBaseRecord
@@ -2146,7 +2158,7 @@ export function PublicTitleVerification({
                 </div>
 
                 {/* 📜 Términos y Condiciones - Habeas Data */}
-                {matchSuggestions.length > 0 && (
+                {hasPendingMatchSuggestions && (
                   <div className="bg-white border-2 border-blue-200 rounded-xl p-4 space-y-4">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -2366,9 +2378,7 @@ export function PublicTitleVerification({
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <div className="rounded-xl border border-amber-100 bg-white/80 px-4 py-3">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            {isMissingTitleManualReview
-                              ? "Documento seleccionado"
-                              : "Documento consultado"}
+                            Documento consultado
                           </p>
                           <p className="mt-1 text-sm font-semibold text-gray-900">
                             {manualReviewDisplayDocument || "Sin registrar"}
@@ -2431,9 +2441,9 @@ export function PublicTitleVerification({
                           </p>
                           {selectedMissingTitleAlreadyExists && (
                             <p className="mt-2 text-xs font-semibold leading-5 text-red-600">
-                              Ese título ya existe para la persona seleccionada.
-                              Seleccione un título diferente para solicitar
-                              revisión.
+                              Ese título ya figura entre las coincidencias
+                              existentes. Seleccione el título nuevo que desea
+                              enviar a revisión.
                             </p>
                           )}
                         </div>
