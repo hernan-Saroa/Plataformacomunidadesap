@@ -13,6 +13,8 @@ vi.mock('../services/api/viaticosService', () => ({
     consultarComisionado: vi.fn(),
     crearSolicitudComision: vi.fn(),
     subirDocumento: vi.fn(),
+    obtenerDepartamentos: vi.fn(),
+    obtenerCiudadesPorDepartamento: vi.fn(),
   },
 }));
 
@@ -76,6 +78,21 @@ describe('ViaticosModulePremium', () => {
     viaticosService.obtenerResumenEstadistico = vi.fn().mockResolvedValue(mockResumen);
     viaticosService.consultarComisionado = vi.fn().mockResolvedValue(mockComisionado);
     viaticosService.crearSolicitudComision = vi.fn().mockResolvedValue({ id: 'sol-nueva' });
+    viaticosService.obtenerDepartamentos = vi.fn().mockResolvedValue([
+      { idGeopolitica: 1, codGeopolitica: '5', codDepartamento: 5, nomDivGeopolitica: 'Antioquia', tipDivision: 'DEPTO' },
+      { idGeopolitica: 2, codGeopolitica: '13', codDepartamento: 13, nomDivGeopolitica: 'Bolívar', tipDivision: 'DEPTO' },
+    ]);
+    viaticosService.obtenerCiudadesPorDepartamento = vi.fn().mockImplementation(async (id: number) =>
+      id === 13
+        ? [
+            { idGeopolitica: 10, codGeopolitica: '13', codDepartamento: 13, nomDivGeopolitica: 'Cartagena', tipDivision: 'CIUDAD', idPadre: 2 },
+            { idGeopolitica: 11, codGeopolitica: '13', codDepartamento: 13, nomDivGeopolitica: 'Magangué', tipDivision: 'CIUDAD', idPadre: 2 },
+          ]
+        : [
+            { idGeopolitica: 20, codGeopolitica: '5', codDepartamento: 5, nomDivGeopolitica: 'Medellín', tipDivision: 'CIUDAD', idPadre: 1 },
+            { idGeopolitica: 21, codGeopolitica: '5', codDepartamento: 5, nomDivGeopolitica: 'Rionegro', tipDivision: 'CIUDAD', idPadre: 1 },
+          ],
+    );
   });
 
   const abrirModalNueva = async () => {
@@ -103,7 +120,10 @@ describe('ViaticosModulePremium', () => {
       screen.getByPlaceholderText(/Describa el objetivo institucional/i),
       'Comisión de gestión institucional',
     );
-    fireEvent.change(screen.getByLabelText(/Departamento/i), { target: { value: 'Bolívar' } });
+    const deptoSelect = screen.getByLabelText(/Departamento/i);
+    await screen.findByRole('option', { name: 'Bolívar' });
+    fireEvent.change(deptoSelect, { target: { value: 'Bolívar' } });
+    await screen.findByRole('option', { name: 'Cartagena' });
     fireEvent.change(screen.getByLabelText(/Ciudad/i), { target: { value: 'Cartagena' } });
     fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: '2026-09-01' } });
     fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: '2026-09-05' } });
@@ -396,7 +416,7 @@ describe('ViaticosModulePremium', () => {
     expect(inputDoc).toHaveValue('101928');
   });
 
-  it('debe cargar ciudades en cascada según el departamento seleccionado', async () => {
+  it('debe cargar departamentos y ciudades desde la geopolítica del auth-service', async () => {
     render(<ViaticosModulePremium />);
 
     await waitFor(() => {
@@ -405,20 +425,57 @@ describe('ViaticosModulePremium', () => {
 
     await irAlPaso2();
 
+    // Los departamentos se consultan al abrir el modal
+    await screen.findByRole('option', { name: 'Bolívar' });
+    expect(viaticosService.obtenerDepartamentos).toHaveBeenCalled();
+
     const ciudadSelect = screen.getByLabelText(/Ciudad/i);
     expect(ciudadSelect).toBeDisabled();
 
     const deptoSelect = screen.getByLabelText(/Departamento/i);
     fireEvent.change(deptoSelect, { target: { value: 'Bolívar' } });
 
+    // Las ciudades se consultan al elegir departamento usando el CÓDIGO del
+    // departamento (codDepartamento DANE, p. ej. Bolívar = 13), no su idGeopolitica.
+    await screen.findByRole('option', { name: 'Cartagena' });
+    expect(viaticosService.obtenerCiudadesPorDepartamento).toHaveBeenCalledWith(13);
     expect(ciudadSelect).toBeEnabled();
     expect(screen.getByRole('option', { name: 'Cartagena' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Medellín' })).not.toBeInTheDocument();
 
-    // Cambiar de departamento limpia la ciudad
+    // Cambiar de departamento limpia la ciudad y consulta las nuevas ciudades
     fireEvent.change(deptoSelect, { target: { value: 'Antioquia' } });
-    expect(screen.getByRole('option', { name: 'Medellín' })).toBeInTheDocument();
+    await screen.findByRole('option', { name: 'Medellín' });
+    expect(viaticosService.obtenerCiudadesPorDepartamento).toHaveBeenCalledWith(5);
     expect(ciudadSelect).toHaveValue('');
+  });
+
+  it('debe usar codDepartamento (código DANE) para las ciudades aunque haya un duplicado sin código', async () => {
+    // Reproduce el bug reportado: Risaralda tenía un duplicado sin codDepartamento
+    // (idGeopolitica 105) junto al registro correcto (idGeopolitica 920,
+    // codDepartamento 66). El dedupe debe preferir el registro CON código, de modo
+    // que el llamado a ciudades use 66 y no 105.
+    viaticosService.obtenerDepartamentos = vi.fn().mockResolvedValue([
+      { idGeopolitica: 920, codGeopolitica: '66', codDepartamento: 66, nomDivGeopolitica: 'Risaralda', tipDivision: 'DEPTO' },
+      { idGeopolitica: 105, nomDivGeopolitica: 'Risaralda', tipDivision: 'DEPTO' },
+    ]);
+    viaticosService.obtenerCiudadesPorDepartamento = vi.fn().mockResolvedValue([
+      { idGeopolitica: 921, codGeopolitica: '66001', codDepartamento: 66, nomDivGeopolitica: 'Pereira', tipDivision: 'CIUDAD', idPadre: 920 },
+    ]);
+
+    render(<ViaticosModulePremium />);
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+    await irAlPaso2();
+
+    const deptoSelect = screen.getByLabelText(/Departamento/i);
+    await screen.findByRole('option', { name: 'Risaralda' });
+    fireEvent.change(deptoSelect, { target: { value: 'Risaralda' } });
+
+    await screen.findByRole('option', { name: 'Pereira' });
+    // El llamado a ciudades usa el código DANE (66), no el idGeopolitica (105).
+    expect(viaticosService.obtenerCiudadesPorDepartamento).toHaveBeenCalledWith(66);
   });
 
   it('debe formatear los campos monetarios como moneda y rechazar texto', async () => {
@@ -477,6 +534,49 @@ describe('ViaticosModulePremium', () => {
     await waitFor(() => {
       expect(screen.getByText(/Debe indicar las fechas de inicio y fin/i)).toBeInTheDocument();
     });
+  });
+
+  it('debe mostrar error cuando la fecha de inicio es anterior a hoy', async () => {
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await irAlPaso2();
+
+    fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: '2020-01-01' } });
+    fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: '2020-01-05' } });
+
+    fireEvent.click(screen.getByText(/Enviar Solicitud/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/La fecha de inicio no puede ser anterior a hoy/i)).toBeInTheDocument();
+    });
+  });
+
+  it('debe mostrar el aviso de comisión extemporánea (menos de 14 días hábiles)', async () => {
+    const fechaInicio = new Date();
+    fechaInicio.setDate(fechaInicio.getDate() + 2);
+    const inicioISO = fechaInicio.toISOString().slice(0, 10);
+    const fechaFin = new Date();
+    fechaFin.setDate(fechaFin.getDate() + 4);
+    const finISO = fechaFin.toISOString().slice(0, 10);
+
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await irAlPaso2();
+
+    fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: inicioISO } });
+    fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: finISO } });
+
+    fireEvent.click(screen.getByText(/Siguiente/i));
+
+    await screen.findByText(/Comisión Extemporánea/i);
   });
 
   it('debe enviar solicitud exitosamente', async () => {

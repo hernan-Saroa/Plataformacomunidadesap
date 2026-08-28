@@ -89,9 +89,13 @@ Implementadas en [`travel-expenses.service.ts`](../../backend/travel-expenses-se
 3. **Sanitización del objeto**: se aplica [`sanitizeObjetoComision`](../../backend/travel-expenses-service/src/common/sanitize.util.ts)
    (solo ASCII, espacios y guiones, máx. 250). Si queda vacío → `400`.
 4. **Rango de fechas**: `fechaFin < fechaInicio` → `400`.
-5. **Solapamiento**: si el comisionado ya tiene una solicitud activa en el rango → `409 Conflict`.
-6. **Consecutivo único**: `COM-2026-XXXX` calculado en transacción.
-7. **Radicado fuera de jornada**: si es fin de semana o después de las 16:30, se
+5. **Fecha no anterior a hoy**: si `fechaInicio` es anterior a la fecha actual → `400`.
+6. **Extemporánea**: si hay menos de **14 días hábiles** (lunes a viernes) entre
+   hoy y `fechaInicio`, la solicitud se marca `extemporanea = true` y su estado
+   es `EXTEMPORANEA` (comisión extemporánea).
+7. **Solapamiento**: si el comisionado ya tiene una solicitud activa en el rango → `409 Conflict`.
+8. **Consecutivo único**: `COM-2026-XXXX` calculado en transacción.
+9. **Radicado fuera de jornada**: si es fin de semana o después de las 16:30, se
    marca `radicadoFueraJornada` y se retorna `warningMessage`.
 
 ### 3.3 DTO `CreateSolicitudDto`
@@ -212,9 +216,29 @@ Ejemplo: `Comisión de gestión institucional` → `Comision de gestion instituc
 
 ### 4.5 Selectores y campos
 
-- **Departamento → Ciudad**: selectores en cascada (el departamento aparece
-  primero). Al elegir departamento se habilitan y filtran las ciudades de
-  Colombia (`DEPARTAMENTOS_COLOMBIA` en `viaticosUtils`).
+- **Departamento → Ciudad (auth.geopolitica)**: los selectores en cascada (el
+  departamento aparece primero) consultan el microservicio de auth mediante el
+  API Gateway:
+  - `GET /auth/api/v1/estructura-organizacional/geopolitica/departamentos`
+  - `GET /auth/api/v1/estructura-organizacional/geopolitica/departamentos/:id/ciudades`
+  **Se prioriza SIEMPRE la API**: si responde, se usan los datos reales de
+  `auth.geopolitica`; el catálogo estático solo se usa si la API está caída.
+  Para eso, los endpoints de geopolítica están marcados `@Public()` en el
+  auth-service y agregados a las rutas públicas del gateway (no requieren JWT).
+  El frontend parsea la respuesta del auth-service (`{ success, data: { data:
+  [...] } }`) de forma robusta (ver `extraerListaGeopolitica`).
+  El parámetro `:id` es el **código DANE del departamento (`codDepartamento`)**
+    —p. ej. Risaralda = `66`—, que es la clave estable con la que las ciudades se
+    asocian al departamento en `auth.geopolitica`. No se usa `idGeopolitica`
+    (id autoincremental que puede variar entre registros). El auth-service filtra
+    las ciudades por `cod_departamento` y el frontend usa
+    `depto.codDepartamento ?? codGeopolitica ?? idGeopolitica` para resolverlo.
+    Se usa el catálogo estático `DEPARTAMENTOS_COLOMBIA` (`fallbackGeopolitica`)
+    solo como respaldo si el auth-service no está disponible; ese catálogo asigna a
+    cada departamento su **código DANE real** (`COD_DANE_DEPARTAMENTOS`, Risaralda=66),
+    de modo que el respaldo coincide con la BD. (El 105 del bug venía de un id
+    sintético del catálogo antiguo: Risaralda quedaba con `idGeopolitica=105`.) > **Despliegue**: el build de cada MFE se genera en `build/remotes/<mfe>` con > `emptyOutDir: true`, por lo que los chunks con hash antiguos se eliminan en > cada build. Después de modificar el módulo hay que **reconstruir el contenedor > del frontend** (p. ej. `docker compose -f docker-compose.frontend-mfe.yml up -d
+--build frontend-mfe-viaticos`) y hacer **hard refresh** en el navegador; si no, > un `remoteEntry.js` cacheado puede seguir resolviendo un chunk viejo (el bug > del 105 venía de un bundle obsoleto que usaba `idGeopolitica`).
 - **Campos monetarios**: `montoViaticos` y `montoGastosViaje` se capturan en
   formato moneda (`$ 1.234.567`) y rechazan texto.
 - **Campos numéricos**: `diasComision` y el documento del comisionado aceptan

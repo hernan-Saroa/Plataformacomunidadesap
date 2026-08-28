@@ -11,7 +11,7 @@ VALUES
   ('52839102', 'Ana', 'María', 'Gómez', 'Quintero', 'ana.gomez@esap.edu.co', '3204567890', 'DOCENTE', 'HUMANO', true, '2026-03-20'::timestamp, '127.0.0.1'),
   ('79483920', 'Jorge', 'Enrique', 'Vargas', 'Muñoz', 'jorge.vargas@esap.edu.co', '3501234567', 'FUNCIONARIO', 'HUMANO', true, '2026-04-12'::timestamp, '127.0.0.1');
 
-INSERT INTO travel_expenses.solicitudes_comision (consecutivo_unico, comisionado_id, destino_ciudad, destino_departamento, fecha_inicio, fecha_fin, objeto_comision, prioridad, rubro_presupuestal, requiere_tiquetes, estado_solicitud, radicado_fuera_jornada, creado_por_usuario_id)
+INSERT INTO travel_expenses.solicitudes_comision (consecutivo_unico, comisionado_id, destino_ciudad, destino_departamento, fecha_inicio, fecha_fin, objeto_comision, prioridad, rubro_presupuestal, requiere_tiquetes, estado_solicitud, radicado_fuera_jornada, extemporanea, creado_por_usuario_id)
 SELECT
   'COM-2026-0001',
   c.id,
@@ -24,6 +24,7 @@ SELECT
   'Rubro 01',
   false,
   'SOLICITADO',
+  false,
   false,
   '00000000-0000-0000-0000-000000000000'::uuid
 FROM travel_expenses.comisionados c
@@ -42,6 +43,7 @@ SELECT
   true,
   'APROBADO_JEFE',
   false,
+  false,
   '00000000-0000-0000-0000-000000000000'::uuid
 FROM travel_expenses.comisionados c
 WHERE c.numero_documento = '1004734004'
@@ -59,6 +61,7 @@ SELECT
   true,
   'APROBADO_TALENTO_HUMANO',
   false,
+  false,
   '00000000-0000-0000-0000-000000000000'::uuid
 FROM travel_expenses.comisionados c
 WHERE c.numero_documento = '1019283746'
@@ -74,7 +77,8 @@ SELECT
   'MEDIA',
   'Rubro 04',
   false,
-  'RESOLUCION_EMITIDA',
+  'EXTEMPORANEA',
+  true,
   true,
   '00000000-0000-0000-0000-000000000000'::uuid
 FROM travel_expenses.comisionados c
@@ -92,6 +96,7 @@ SELECT
   'Rubro 05',
   true,
   'TIQUETES_COMPRADOS',
+  false,
   false,
   '00000000-0000-0000-0000-000000000000'::uuid
 FROM travel_expenses.comisionados c

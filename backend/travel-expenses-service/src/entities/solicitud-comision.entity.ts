@@ -61,6 +61,9 @@ export class SolicitudComisionEntity {
   @Column({ name: 'radicado_fuera_jornada', type: 'boolean', default: false })
   radicadoFueraJornada: boolean;
 
+  @Column({ name: 'extemporanea', type: 'boolean', default: false })
+  extemporanea: boolean;
+
   @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
   creadoPorUsuarioId: string;
 

@@ -3,6 +3,7 @@ import {
   CreateSolicitudRequest,
   EstadoSolicitudViatico,
   FormNuevaSolicitud,
+  Geopolitica,
 } from '../types/viaticos';
 
 /**
@@ -91,12 +92,60 @@ export function calcularDiasComision(fechaInicio: string, fechaFin: string): num
   return Math.max(0, diff + 1);
 }
 
+export function esDiaHabil(fecha: Date): boolean {
+  const dia = fecha.getDay();
+  return dia !== 0 && dia !== 6;
+}
+
+export function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
+  let count = 0;
+  const fecha = new Date(fechaInicio);
+  while (fecha <= fechaFin) {
+    if (esDiaHabil(fecha)) {
+      count++;
+    }
+    fecha.setDate(fecha.getDate() + 1);
+  }
+  return count;
+}
+
+export function validarAnticipacionRadicacion(fechaInicio: string) {
+  if (!fechaInicio) return null;
+  const ahora = new Date();
+  const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+  const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
+  const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+
+  const inicio = new Date(`${fechaInicio}T00:00:00`);
+  const diasHabiles = contarDiasHabilesEntre(ahora, inicio);
+  const extemporanea = diasHabiles < 14;
+
+  return {
+    extemporanea,
+    diasHabiles,
+    radicadoFueraJornada,
+  };
+}
+
+/**
+ * Fecha de hoy en formato yyyy-mm-dd (hora local).
+ */
+export function hoyISO(): string {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+}
+
 /**
  * Valida el rango de fechas de la solicitud.
- * Devuelve un mensaje de error o `null` si las fechas son correctas.
+ * 1. Deben estar definidas.
+ * 2. La fecha de inicio no puede ser anterior a hoy.
+ * 3. La fecha fin no puede ser anterior a la fecha inicio.
+ *
+ * Devuelve el primer error encontrado o `null` si las fechas son correctas.
  */
 export function validarFechasSolicitud(fechaInicio: string, fechaFin: string): string | null {
   if (!fechaInicio || !fechaFin) return 'Debe indicar las fechas de inicio y fin de la comisión.';
+  if (fechaInicio < hoyISO()) return 'La fecha de inicio no puede ser anterior a hoy.';
   if (fechaFin < fechaInicio) return 'Debe ser posterior o igual a fecha inicio';
   return null;
 }
@@ -143,7 +192,6 @@ export interface ConfigEstado {
  */
 export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
   BORRADOR: { label: 'Borrador', bg: 'bg-gray-100', text: 'text-gray-700' },
-  RADICADA: { label: 'Radicada', bg: 'bg-sky-100', text: 'text-sky-800' },
   SOLICITADO: { label: 'Solicitado', bg: 'bg-blue-100', text: 'text-blue-800' },
   APROBADO_JEFE: { label: 'Aprobado Jefe', bg: 'bg-indigo-100', text: 'text-indigo-800' },
   APROBADO_TALENTO_HUMANO: { label: 'Aprobado TH', bg: 'bg-purple-100', text: 'text-purple-800' },
@@ -153,6 +201,8 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
   PENDIENTE_LEGALIZACION: { label: 'Por Legalizar', bg: 'bg-orange-100', text: 'text-orange-800' },
   LEGALIZADO: { label: 'Legalizado', bg: 'bg-green-100', text: 'text-green-800' },
   RECHAZADO: { label: 'Rechazado', bg: 'bg-red-100', text: 'text-red-800' },
+  RADICADA: { label: 'Radicada', bg: 'bg-slate-100', text: 'text-slate-700' },
+  EXTEMPORANEA: { label: 'Extemporánea', bg: 'bg-red-100', text: 'text-red-700' },
 };
 
 export function getConfigEstado(estado: string): ConfigEstado {
@@ -219,6 +269,47 @@ export const DEPARTAMENTOS_COLOMBIA: Record<string, string[]> = {
 };
 
 /**
+ * Códigos DANE oficiales de cada departamento. Se usan en el catálogo estático
+ * para que coincida con `auth.geopolitica.cod_departamento` (p. ej. Risaralda=66)
+ * y el llamado de ciudades use el mismo código que la BD real.
+ */
+export const COD_DANE_DEPARTAMENTOS: Record<string, number> = {
+  Amazonas: 91,
+  Antioquia: 5,
+  Arauca: 81,
+  'Atlántico': 8,
+  'Bogotá D.C.': 11,
+  Bolívar: 13,
+  Boyacá: 15,
+  Caldas: 17,
+  Caquetá: 18,
+  Casanare: 85,
+  Cauca: 19,
+  Cesar: 20,
+  Chocó: 27,
+  Córdoba: 23,
+  Cundinamarca: 25,
+  Guainía: 94,
+  Guaviare: 95,
+  Huila: 41,
+  'La Guajira': 44,
+  Magdalena: 47,
+  Meta: 50,
+  Nariño: 52,
+  'Norte de Santander': 54,
+  Putumayo: 86,
+  Quindío: 63,
+  Risaralda: 66,
+  'San Andrés y Providencia': 88,
+  Santander: 68,
+  Sucre: 70,
+  Tolima: 73,
+  'Valle del Cauca': 76,
+  Vaupés: 97,
+  Vichada: 99,
+};
+
+/**
  * Lista ordenada de departamentos para los selectores.
  */
 export function departamentosDisponibles(): string[] {
@@ -232,4 +323,39 @@ export function departamentosDisponibles(): string[] {
  */
 export function ciudadesDeDepartamento(departamento: string): string[] {
   return DEPARTAMENTOS_COLOMBIA[departamento] || [];
+}
+
+/**
+ * Construye una lista plana de `Geopolitica` a partir del catálogo estático.
+ * Se usa como respaldo cuando el microservicio de auth (auth.geopolitica) no
+ * está disponible; asigna identificadores sintéticos estables.
+ */
+export function fallbackGeopolitica(): Geopolitica[] {
+  const lista: Geopolitica[] = [];
+  let id = 1;
+  departamentosDisponibles().forEach((depto) => {
+    // Código DANE real del departamento (66 = Risaralda, 5 = Antioquia, …). Se
+    // usa como codDepartamento para que el respaldo coincida con auth.geopolitica
+    // y el llamado de ciudades sea estable (no depender de un id sintético).
+    const codDane = COD_DANE_DEPARTAMENTOS[depto] ?? id;
+    const deptoId = id++;
+    lista.push({
+      idGeopolitica: deptoId,
+      codGeopolitica: String(codDane),
+      codDepartamento: codDane,
+      nomDivGeopolitica: depto,
+      tipDivision: 'DEPTO',
+    });
+    (DEPARTAMENTOS_COLOMBIA[depto] || []).forEach((ciudad) => {
+      lista.push({
+        idGeopolitica: id++,
+        codGeopolitica: String(codDane),
+        codDepartamento: codDane,
+        nomDivGeopolitica: ciudad,
+        tipDivision: 'CIUDAD',
+        idPadre: deptoId,
+      });
+    });
+  });
+  return lista;
 }

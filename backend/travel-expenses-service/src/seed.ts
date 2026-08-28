@@ -114,6 +114,7 @@ async function seed() {
         diasComision: 5,
         estadoSolicitud: 'SOLICITADO',
         radicadoFueraJornada: false,
+        extemporanea: false,
         creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
       },
       {
@@ -132,6 +133,7 @@ async function seed() {
         diasComision: 3,
         estadoSolicitud: 'APROBADO_JEFE',
         radicadoFueraJornada: false,
+        extemporanea: false,
         creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
       },
       {
@@ -150,6 +152,7 @@ async function seed() {
         diasComision: 4,
         estadoSolicitud: 'APROBADO_TALENTO_HUMANO',
         radicadoFueraJornada: false,
+        extemporanea: false,
         creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
       },
       {
@@ -166,8 +169,9 @@ async function seed() {
         montoViaticos: 980000,
         montoGastosViaje: 150000,
         diasComision: 6,
-        estadoSolicitud: 'RESOLUCION_EMITIDA',
+        estadoSolicitud: 'EXTEMPORANEA',
         radicadoFueraJornada: true,
+        extemporanea: true,
         creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
       },
       {
@@ -186,6 +190,7 @@ async function seed() {
         diasComision: 5,
         estadoSolicitud: 'TIQUETES_COMPRADOS',
         radicadoFueraJornada: false,
+        extemporanea: false,
         creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
       },
     ]);

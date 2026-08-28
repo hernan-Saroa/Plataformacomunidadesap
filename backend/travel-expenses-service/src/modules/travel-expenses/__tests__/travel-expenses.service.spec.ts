@@ -414,6 +414,105 @@ describe('TravelExpensesService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('debe lanzar 400 si la fecha de inicio es anterior a la fecha actual', async () => {
+      const comisionado = {
+        ...mockComisionado,
+        autorizacionHabeasData: true,
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.crearSolicitud({
+          comisionadoId: 'com-001',
+          destinoCiudad: 'Bogotá',
+          destinoDepartamento: 'Cundinamarca',
+          fechaInicio: '2020-01-01',
+          fechaFin: '2020-01-05',
+          objetoComision: 'Comisión de gestión',
+          prioridad: 'ALTA',
+          rubroPresupuestal: 'Rubro 01',
+          requiereTiquetes: false,
+          creadoPorUsuarioId: 'user-001',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe marcar como EXTEMPORANEA cuando la anticipación es menor a 14 días hábiles', async () => {
+      const comisionado = {
+        ...mockComisionado,
+        autorizacionHabeasData: true,
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
+
+      const inicio = new Date();
+      inicio.setDate(inicio.getDate() + 2);
+      const fin = new Date();
+      fin.setDate(fin.getDate() + 4);
+      const toISO = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-ext' })),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue({
+              createQueryBuilder: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawOne: jest.fn().mockResolvedValue({ max: null }),
+              }),
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.crearSolicitud({
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: toISO(inicio),
+        fechaFin: toISO(fin),
+        objetoComision: 'Comisión de gestión',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: false,
+        creadoPorUsuarioId: 'user-001',
+      });
+
+      expect(result).toBeDefined();
+      expect(result.extemporanea).toBe(true);
+      expect(result.estadoSolicitud).toBe('EXTEMPORANEA');
+    });
   });
 
   describe('subirDocumento', () => {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   ChevronLeft,
@@ -9,19 +9,21 @@ import {
   ShieldCheck,
   User,
 } from 'lucide-react';
-import { Comisionado, FormNuevaSolicitud, SolicitudComisionResponse } from '../types/viaticos';
+import { Comisionado, FormNuevaSolicitud, Geopolitica, SolicitudComisionResponse } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
-  ciudadesDeDepartamento,
-  departamentosDisponibles,
+  contarDiasHabilesEntre,
+  esDiaHabil,
   formatearMoneda,
+  hoyISO,
   formatearNombreComisionado,
   formInicialNuevaSolicitud,
   mapearARequestCreacion,
   sanitizeObjetoComision,
   soloNumeros,
+  validarAnticipacionRadicacion,
   validarFechasSolicitud,
 } from '../utils/viaticosUtils';
 
@@ -43,6 +45,44 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [habeasPendiente, setHabeasPendiente] = useState(false);
   const [habeasMarcado, setHabeasMarcado] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
+    extemporanea: boolean;
+    diasHabiles: number;
+    radicadoFueraJornada: boolean;
+  } | null>(null);
+  const [departamentos, setDepartamentos] = useState<Geopolitica[]>([]);
+  const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
+  const [cargandoDepartamentos, setCargandoDepartamentos] = useState(false);
+  const [cargandoCiudades, setCargandoCiudades] = useState(false);
+  // Token para descartar respuestas de ciudades fuera de orden al cambiar de departamento rápido.
+  const refTokenCiudades = useRef(0);
+
+  const cargarDepartamentos = async () => {
+    setCargandoDepartamentos(true);
+    try {
+      const data = await viaticosService.obtenerDepartamentos();
+      // Deduplicar por nombre para evitar registros repetidos (p. ej. por periodo).
+      // Se prefiere el registro que trae codDepartamento (código DANE): si un
+      // duplicado sin código reemplazara al que sí lo tiene, el llamado a
+      // ciudades caería en idGeopolitica (p. ej. Risaralda 105 en vez de 66).
+      const unicos = new Map<string, Geopolitica>();
+      (data || []).forEach((d) => {
+        if (d.tipDivision === 'DEPTO' && d.nomDivGeopolitica?.trim()) {
+          const nombre = d.nomDivGeopolitica.trim();
+          const existente = unicos.get(nombre);
+          if (!existente || (existente.codDepartamento == null && d.codDepartamento != null)) {
+            unicos.set(nombre, d);
+          }
+        }
+      });
+      setDepartamentos([...unicos.values()]);
+    } catch (e) {
+      console.error('Error cargando departamentos:', e);
+      setDepartamentos([]);
+    } finally {
+      setCargandoDepartamentos(false);
+    }
+  };
 
   useEffect(() => {
     if (abierta) {
@@ -55,6 +95,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setHabeasPendiente(false);
       setHabeasMarcado(false);
       setEnviando(false);
+      setAlertaAnticipacion(null);
+      setDepartamentos([]);
+      setCiudades([]);
+      void cargarDepartamentos();
     }
   }, [abierta]);
 
@@ -62,6 +106,42 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   const actualizar = (campo: keyof FormNuevaSolicitud, valor: string | boolean | number) => {
     setForm((prev) => ({ ...prev, [campo]: valor }));
+  };
+
+  const manejarCambioDepartamento = (nombre: string) => {
+    actualizar('destinoDepartamento', nombre);
+    actualizar('destinoCiudad', '');
+    setCiudades([]);
+    const nombreLimpio = nombre.trim();
+    if (!nombreLimpio) return;
+    // El llamado a ciudades depende del departamento seleccionado. Se identifica
+    // por su CÓDIGO (codDepartamento / codGeopolitica), que es la clave estable
+    // con la que las ciudades se asocian al departamento en auth.geopolitica
+    // (no por idGeopolitica, que es un id autoincremental y puede variar).
+    const depto = departamentos.find((d) => d.nomDivGeopolitica.trim() === nombreLimpio);
+    if (!depto) return;
+    // Código DANE del departamento (p. ej. Risaralda = 66), normalizado a número.
+    const codigoDepto = Number(depto.codDepartamento ?? depto.codGeopolitica ?? depto.idGeopolitica);
+    const token = ++refTokenCiudades.current;
+    setCargandoCiudades(true);
+    void viaticosService
+      .obtenerCiudadesPorDepartamento(codigoDepto)
+      .then((data) => {
+        if (token === refTokenCiudades.current) {
+          setCiudades(data || []);
+        }
+      })
+      .catch((e) => {
+        if (token === refTokenCiudades.current) {
+          console.error('Error cargando ciudades:', e);
+          setCiudades([]);
+        }
+      })
+      .finally(() => {
+        if (token === refTokenCiudades.current) {
+          setCargandoCiudades(false);
+        }
+      });
   };
 
   const consultarComisionado = async () => {
@@ -103,6 +183,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const tieneComisionadoAutorizado = Boolean(
     comisionado && (comisionado.autorizacionHabeasData || form.aceptaHabeasData),
   );
+
+  useEffect(() => {
+    if (paso === 3 && form.fechaInicio) {
+      const validacion = validarAnticipacionRadicacion(form.fechaInicio);
+      setAlertaAnticipacion(validacion);
+    } else {
+      setAlertaAnticipacion(null);
+    }
+  }, [paso, form.fechaInicio]);
 
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
@@ -315,19 +404,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <select
                     id="destinoDepartamento"
                     value={form.destinoDepartamento}
-                    onChange={(e) => {
-                      actualizar('destinoDepartamento', e.target.value);
-                      actualizar('destinoCiudad', '');
-                    }}
+                    onChange={(e) => manejarCambioDepartamento(e.target.value)}
                     className={inputCls}
                   >
                     <option value="">Seleccione un departamento...</option>
-                    {departamentosDisponibles().map((d) => (
-                      <option key={d} value={d}>
-                        {d}
+                    {departamentos.map((d) => (
+                      <option key={d.idGeopolitica} value={d.nomDivGeopolitica}>
+                        {d.nomDivGeopolitica}
                       </option>
                     ))}
                   </select>
+                  {cargandoDepartamentos && (
+                    <p className="text-[11px] text-slate-400 mt-1">Cargando departamentos...</p>
+                  )}
                 </div>
                 <div>
                   <label className={labelCls} htmlFor="destinoCiudad">
@@ -336,17 +425,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <select
                     id="destinoCiudad"
                     value={form.destinoCiudad}
-                    disabled={!form.destinoDepartamento}
+                    disabled={!form.destinoDepartamento || cargandoCiudades}
                     onChange={(e) => actualizar('destinoCiudad', e.target.value)}
                     className={inputCls}
                   >
                     <option value="">Seleccione una ciudad...</option>
-                    {ciudadesDeDepartamento(form.destinoDepartamento).map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    {ciudades.map((c) => (
+                      <option key={c.idGeopolitica} value={c.nomDivGeopolitica}>
+                        {c.nomDivGeopolitica}
                       </option>
                     ))}
                   </select>
+                  {cargandoCiudades && (
+                    <p className="text-[11px] text-slate-400 mt-1">Cargando ciudades...</p>
+                  )}
                 </div>
                 <div>
                   <label className={labelCls} htmlFor="fechaInicio">
@@ -356,6 +448,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     id="fechaInicio"
                     type="date"
                     required
+                    min={hoyISO()}
                     value={form.fechaInicio}
                     onChange={(e) => actualizar('fechaInicio', e.target.value)}
                     className={inputCls}
@@ -561,6 +654,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <p className="bg-slate-50 rounded-lg p-2.5 text-slate-700 leading-relaxed">{form.objetoComision}</p>
                 </div>
               </div>
+
+              {alertaAnticipacion && (
+                <div className="space-y-2">
+                  {alertaAnticipacion.extemporanea && (
+                    <p className="text-xs text-red-700 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      La solicitud se radicará como <strong>Comisión Extemporánea</strong> porque faltan menos de 14 días hábiles para el inicio ({alertaAnticipacion.diasHabiles} días hábiles).
+                    </p>
+                  )}
+                  {alertaAnticipacion.radicadoFueraJornada && (
+                    <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Radicación fuera de horario laboral: el trámite iniciará formalmente el siguiente día hábil.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {errorValidacion && (
                 <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">

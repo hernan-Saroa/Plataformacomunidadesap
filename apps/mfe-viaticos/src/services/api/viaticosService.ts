@@ -8,8 +8,33 @@ import {
   DocumentoSoporte,
   SolicitudListaResponse,
   EstadoSolicitudViatico,
+  Geopolitica,
 } from '../../types/viaticos';
-import { formatearNombreComisionado } from '../../utils/viaticosUtils';
+import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
+
+/**
+ * Extrae la lista de geopolítica de la respuesta del API de forma robusta.
+ * El auth-service envuelve con { success, data: { data: [...] }, timestamp },
+ * por lo que la lista puede estar en `res.data.data`, `res.data` o `res` como
+ * array directo (según el cliente HTTP o el gateway).
+ */
+function extraerListaGeopolitica(res: unknown): Geopolitica[] {
+  if (Array.isArray(res)) {
+    return res as Geopolitica[];
+  }
+  if (!res || typeof res !== 'object') {
+    return [];
+  }
+  const obj = res as Record<string, unknown>;
+  if (Array.isArray(obj.data)) {
+    return obj.data as Geopolitica[];
+  }
+  const nested = obj.data as Record<string, unknown> | undefined;
+  if (nested && Array.isArray(nested.data)) {
+    return nested.data as Geopolitica[];
+  }
+  return [];
+}
 
 const MOCK_SOLICITUDES: SolicitudViatico[] = [
   {
@@ -32,6 +57,8 @@ const MOCK_SOLICITUDES: SolicitudViatico[] = [
     montoSolicitadoGastosViaje: 180000,
     montoTotalEstimado: 1020000,
     estado: 'RESOLUCION_EMITIDA',
+    extemporanea: false,
+    radicadoFueraJornada: false,
     requiereTiqueteAereo: true,
     numeroResolucion: 'RES-0452-2026',
     fechaResolucion: '2026-08-15',
@@ -69,6 +96,8 @@ export class ViaticosService {
       montoSolicitadoGastosViaje: montoGastosViaje,
       montoTotalEstimado: montoViaticos + montoGastosViaje,
       estado: (s.estadoSolicitud || 'RADICADA') as EstadoSolicitudViatico,
+      extemporanea: Boolean(s.extemporanea),
+      radicadoFueraJornada: Boolean(s.radicadoFueraJornada),
       requiereTiqueteAereo: s.requiereTiquetes,
       creadoEn: s.creadoEn.slice(0, 10),
       actualizadoEn: s.actualizadoEn.slice(0, 10),
@@ -97,6 +126,49 @@ export class ViaticosService {
       pendientesLegalizar: solicitudes.filter((s) => s.estado === 'PENDIENTE_LEGALIZACION').length,
       montoTotalEjecutado: solicitudes.reduce((acc, curr) => acc + curr.montoTotalEstimado, 0),
     };
+  }
+
+  /**
+   * Consulta los departamentos de geopolítica en el microservicio de auth
+   * (`auth.geopolitica`). Si no está disponible, usa el catálogo estático.
+   */
+  async obtenerDepartamentos(): Promise<Geopolitica[]> {
+    try {
+      const res = await apiClient.get<unknown>(
+        '/auth/api/v1/estructura-organizacional/geopolitica/departamentos',
+      );
+      // El API devuelve { success, data: { data: [...] }, timestamp }; se extrae
+      // la lista de forma robusta (res.data.data | res.data | res como array).
+      const lista = extraerListaGeopolitica(res);
+      if (lista.length > 0) {
+        return lista;
+      }
+    } catch (error) {
+      console.warn('[viaticos] geopolítica auth no disponible, usando catálogo local:', error);
+    }
+    return fallbackGeopolitica().filter((g) => g.tipDivision === 'DEPTO');
+  }
+
+  /**
+   * Consulta las ciudades de un departamento en el microservicio de auth
+   * (`auth.geopolitica`). Si no está disponible, usa el catálogo estático.
+   */
+  async obtenerCiudadesPorDepartamento(idDepartamento: number): Promise<Geopolitica[]> {
+    try {
+      const res = await apiClient.get<unknown>(
+        `/auth/api/v1/estructura-organizacional/geopolitica/departamentos/${idDepartamento}/ciudades`,
+      );
+      // Misma forma de respuesta que los departamentos: { success, data: { data: [...] } }.
+      const lista = extraerListaGeopolitica(res);
+      if (lista.length > 0) {
+        return lista;
+      }
+    } catch (error) {
+      console.warn('[viaticos] geopolítica auth no disponible, usando catálogo local:', error);
+    }
+    return fallbackGeopolitica().filter(
+      (g) => g.tipDivision === 'CIUDAD' && g.codDepartamento === idDepartamento,
+    );
   }
 
   async consultarComisionado(documento: string): Promise<Comisionado | null> {

@@ -9,7 +9,8 @@ export type EstadoSolicitudViatico =
   | 'PENDIENTE_LEGALIZACION'
   | 'LEGALIZADO'
   | 'RECHAZADO'
-  | 'RADICADA';
+  | 'RADICADA'
+  | 'EXTEMPORANEA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -48,6 +49,22 @@ export interface FormNuevaSolicitud {
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
+
+/**
+ * Registro de geopolítica (tabla `auth.geopolitica`) expuesto por el
+ * microservicio de auth (estructura-organizacional). Se usa para los
+ * selectores de departamento → ciudad.
+ */
+export interface Geopolitica {
+  idGeopolitica: number;
+  codGeopolitica?: string;
+  codPais?: number;
+  codDepartamento?: number;
+  codCiudad?: number;
+  nomDivGeopolitica: string;
+  tipDivision: 'DEPTO' | 'CIUDAD' | string;
+  idPadre?: number;
+}
 
 export type TipoDocumentoSoporte = 'CDP' | 'RUT' | 'CERT_BANCARIA' | 'SEGURIDAD_SOCIAL' | 'CONTRATO_SECOP';
 
@@ -96,6 +113,7 @@ export interface SolicitudComisionResponse {
   diasComision: number;
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
+  extemporanea: boolean;
   creadoPorUsuarioId: string;
   creadoEn: Date;
   actualizadoEn: Date;
@@ -165,6 +183,7 @@ export interface SolicitudListaResponse {
   diasComision: number;
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
+  extemporanea: boolean;
   creadoEn: string;
   actualizadoEn: string;
 }
@@ -190,6 +209,8 @@ export interface SolicitudViatico {
   montoSolicitadoGastosViaje: number;
   montoTotalEstimado: number;
   estado: EstadoSolicitudViatico;
+  extemporanea: boolean;
+  radicadoFueraJornada: boolean;
   requiereTiqueteAereo: boolean;
   numeroResolucion?: string;
   fechaResolucion?: string;

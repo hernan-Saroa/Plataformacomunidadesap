@@ -1,7 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity({ schema: 'travel_expenses', name: 'comisionados' })
-@Index('idx_comisionados_numero_documento', ['numero_documento'], { unique: true })
 export class ComisionadoEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

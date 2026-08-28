@@ -4,10 +4,27 @@ import { Repository, DataSource } from 'typeorm';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
-import { CreateSolicitudDto } from '../dto/create-solicitud.dto';
-import { UploadDocumentoDto } from '../dto/upload-documento.dto';
+import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
+import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { sanitizeObjetoComision } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
+
+function esDiaHabil(fecha: Date): boolean {
+  const dia = fecha.getDay();
+  return dia !== 0 && dia !== 6;
+}
+
+function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
+  let count = 0;
+  const fecha = new Date(fechaInicio);
+  while (fecha <= fechaFin) {
+    if (esDiaHabil(fecha)) {
+      count++;
+    }
+    fecha.setDate(fecha.getDate() + 1);
+  }
+  return count;
+}
 
 @Injectable()
 export class TravelExpensesService {
@@ -58,6 +75,7 @@ export class TravelExpensesService {
       diasComision: s.diasComision ?? 1,
       estadoSolicitud: s.estadoSolicitud,
       radicadoFueraJornada: s.radicadoFueraJornada,
+      extemporanea: s.extemporanea,
       creadoEn: s.creadoEn.toISOString(),
       actualizadoEn: s.actualizadoEn.toISOString(),
     }));
@@ -109,6 +127,14 @@ export class TravelExpensesService {
       throw new BadRequestException('La fecha fin no puede ser anterior a la fecha inicio.');
     }
 
+    const hoy = new Date();
+    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(
+      hoy.getDate(),
+    ).padStart(2, '0')}`;
+    if (dto.fechaInicio < hoyStr) {
+      throw new BadRequestException('La fecha de inicio no puede ser anterior a la fecha actual.');
+    }
+
     const solapamiento = await this.solicitudRepo
       .createQueryBuilder('s')
       .where('s.comisionado_id = :comisionadoId', { comisionadoId: dto.comisionadoId })
@@ -126,6 +152,9 @@ export class TravelExpensesService {
     const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
     const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
     const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+
+    const diasHabilesAnticipacion = contarDiasHabilesEntre(ahora, fechaInicio);
+    const extemporanea = diasHabilesAnticipacion < 14;
 
     let consecutivoUnico = '';
     await this.dataSource.transaction(async (manager) => {
@@ -147,6 +176,8 @@ export class TravelExpensesService {
       consecutivoUnico = `COM-2026-${String(nextNumber).padStart(4, '0')}`;
     });
 
+    const estadoSolicitud = extemporanea ? 'EXTEMPORANEA' : 'RADICADA';
+
     const solicitud = this.solicitudRepo.create({
       consecutivoUnico,
       comisionadoId: dto.comisionadoId,
@@ -161,8 +192,9 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
       diasComision: dto.diasComision ?? 1,
-      estadoSolicitud: 'RADICADA',
+      estadoSolicitud: estadoSolicitud,
       radicadoFueraJornada: radicadoFueraJornada,
+      extemporanea: extemporanea,
       creadoPorUsuarioId: dto.creadoPorUsuarioId,
     });
 

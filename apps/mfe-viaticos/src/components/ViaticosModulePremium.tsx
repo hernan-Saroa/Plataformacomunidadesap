@@ -316,7 +316,16 @@ export default function ViaticosModulePremium() {
                                 Viáticos: {formatearMoneda(sol.montoSolicitadoViaticos)}
                               </div>
                             </td>
-                            <td className="px-4 py-3">{getBadgeEstado(sol.estado)}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {getBadgeEstado(sol.estado)}
+                                {sol.radicadoFueraJornada && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                    Radicado fuera de jornada
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-4 py-3 text-right">
                               <button
                                 type="button"

@@ -1,7 +1,7 @@
 # Plan de Pruebas — Módulo de Viáticos y Gastos de Viaje
 
-> **Estado:** Ejecutado — 41/41 pruebas en verde
-> **Frontend:** 27 pruebas (Vitest) · **Backend:** 14 pruebas (Jest)
+> **Estado:** Ejecutado — 45/45 pruebas en verde
+> **Frontend:** 29 pruebas (Vitest) · **Backend:** 16 pruebas (Jest)
 > **Última ejecución:** 2026-08-28
 
 ---
@@ -30,35 +30,37 @@ npm test
 
 Suite: [`ViaticosModulePremium.test.tsx`](../../apps/mfe-viaticos/src/components/ViaticosModulePremium.test.tsx)
 
-| #   | Caso                          | Resultado esperado                                                           |
-| --- | ----------------------------- | ---------------------------------------------------------------------------- |
-| F01 | Render del módulo             | Título "VIÁTICOS Y GASTOS DE VIAJE" y descripción visibles                   |
-| F02 | Resumen estadístico al cargar | KPI total = 1; se invocan `obtenerSolicitudes` y `obtenerResumenEstadistico` |
-| F03 | Tabla de solicitudes          | Código, nombre, ciudad destino visibles                                      |
-| F04 | Búsqueda por funcionario      | Coincidencias filtradas correctamente                                        |
-| F05 | Búsqueda sin coincidencias    | Se muestra mensaje de vacío                                                  |
-| F06 | Filtro por estado             | Se ocultan las filas no coincidentes                                         |
-| F07 | Apertura del modal            | Título y "Paso 1 de 3" visibles                                              |
-| F08 | Consulta de comisionado       | `consultarComisionado('1019283746')` llamado; nombre mostrado                |
-| F09 | Comisionado no encontrado     | Mensaje de error claro                                                       |
-| F10 | Habeas Data sin autorización  | Se muestra el modal "Autorización de Tratamiento de Datos"                   |
-| F11 | Aceptación de Habeas Data     | Se cierra el modal y habilita "Siguiente"                                    |
-| F12 | Avance al paso 2 (autorizado) | "Paso 2 de 3" y "Objeto y Destino de la Comisión"                            |
-| F13 | Regreso con "Atrás"           | Vuelve a "Paso 1 de 3"                                                       |
-| F14 | Normalización de tildes       | `Comisión de gestión` → `Comision de gestion`                                |
-| F15 | Eliminación de especiales     | `A@B#C$D%` → `ABCD`                                                          |
-| F16 | Fecha fin anterior a inicio   | Error "Debe ser posterior o igual a fecha inicio"                            |
-| F17 | Fechas ausentes               | Error "Debe indicar las fechas de inicio y fin"                              |
-| F18 | Envío exitoso                 | `crearSolicitudComision` invocado                                            |
-| F19 | Payload alineado al DTO       | Payload camelCase con montos y días correctos                                |
-| F20 | Reinicio del formulario       | Al reabrir, el documento está vacío                                          |
-| F21 | Cierre del modal              | El modal desaparece al cancelar                                              |
-| F22 | Detalle de solicitud          | Se muestra "Ver Detalle" con justificación                                   |
-| F23 | Navegación de secciones       | Sección "Reserva y Emisión de Pasajes" al navegar                            |
-| F24 | Aviso SIIF en la descripción  | Se muestra la restricción SIIF                                               |
-| F25 | Documento solo números        | `abc101928` → `101928`                                                       |
-| F26 | Ciudades en cascada           | Departamento habilita y filtra las ciudades                                  |
-| F27 | Monetarios y numéricos        | Viáticos se formatean `$560.000`; días rechaza texto                         |
+| #   | Caso                           | Resultado esperado                                                                                                                                                                               |
+| --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F01 | Render del módulo              | Título "VIÁTICOS Y GASTOS DE VIAJE" y descripción visibles                                                                                                                                       |
+| F02 | Resumen estadístico al cargar  | KPI total = 1; se invocan `obtenerSolicitudes` y `obtenerResumenEstadistico`                                                                                                                     |
+| F03 | Tabla de solicitudes           | Código, nombre, ciudad destino visibles                                                                                                                                                          |
+| F04 | Búsqueda por funcionario       | Coincidencias filtradas correctamente                                                                                                                                                            |
+| F05 | Búsqueda sin coincidencias     | Se muestra mensaje de vacío                                                                                                                                                                      |
+| F06 | Filtro por estado              | Se ocultan las filas no coincidentes                                                                                                                                                             |
+| F07 | Apertura del modal             | Título y "Paso 1 de 3" visibles                                                                                                                                                                  |
+| F08 | Consulta de comisionado        | `consultarComisionado('1019283746')` llamado; nombre mostrado                                                                                                                                    |
+| F09 | Comisionado no encontrado      | Mensaje de error claro                                                                                                                                                                           |
+| F10 | Habeas Data sin autorización   | Se muestra el modal "Autorización de Tratamiento de Datos"                                                                                                                                       |
+| F11 | Aceptación de Habeas Data      | Se cierra el modal y habilita "Siguiente"                                                                                                                                                        |
+| F12 | Avance al paso 2 (autorizado)  | "Paso 2 de 3" y "Objeto y Destino de la Comisión"                                                                                                                                                |
+| F13 | Regreso con "Atrás"            | Vuelve a "Paso 1 de 3"                                                                                                                                                                           |
+| F14 | Normalización de tildes        | `Comisión de gestión` → `Comision de gestion`                                                                                                                                                    |
+| F15 | Eliminación de especiales      | `A@B#C$D%` → `ABCD`                                                                                                                                                                              |
+| F16 | Fecha fin anterior a inicio    | Error "Debe ser posterior o igual a fecha inicio"                                                                                                                                                |
+| F17 | Fechas ausentes                | Error "Debe indicar las fechas de inicio y fin"                                                                                                                                                  |
+| F18 | Envío exitoso                  | `crearSolicitudComision` invocado                                                                                                                                                                |
+| F19 | Payload alineado al DTO        | Payload camelCase con montos y días correctos                                                                                                                                                    |
+| F20 | Reinicio del formulario        | Al reabrir, el documento está vacío                                                                                                                                                              |
+| F21 | Cierre del modal               | El modal desaparece al cancelar                                                                                                                                                                  |
+| F22 | Detalle de solicitud           | Se muestra "Ver Detalle" con justificación                                                                                                                                                       |
+| F23 | Navegación de secciones        | Sección "Reserva y Emisión de Pasajes" al navegar                                                                                                                                                |
+| F24 | Aviso SIIF en la descripción   | Se muestra la restricción SIIF                                                                                                                                                                   |
+| F25 | Documento solo números         | `abc101928` → `101928`                                                                                                                                                                           |
+| F26 | Geopolítica desde auth-service | Departamentos/ciudades se consultan de `auth.geopolitica`; las ciudades se traen por `codDepartamento` (código DANE, p. ej. Risaralda = 66), no por `idGeopolitica` (catálogo local de respaldo) |
+| F27 | Monetarios y numéricos         | Viáticos se formatean `$560.000`; días rechaza texto                                                                                                                                             |
+| F28 | Fecha anterior a hoy           | Error "La fecha de inicio no puede ser anterior a hoy"                                                                                                                                           |
+| F29 | Comisión extemporánea          | Aviso "Comisión Extemporánea" (< 14 días hábiles de anticipación)                                                                                                                                |
 
 ---
 
@@ -85,6 +87,8 @@ Suites:
 | B12 | `AppController` (suite)                          | Compila y ejecuta correctamente            |
 | B13 | `obtenerSolicitudes` con datos                   | Retorna lista con datos del comisionado    |
 | B14 | `obtenerSolicitudes` sin datos                   | Retorna `[]`                               |
+| B15 | Fecha de inicio anterior a hoy                   | `400 BadRequest`                           |
+| B16 | Anticipación < 14 días hábiles                   | Solicitud marcada `EXTEMPORANEA`           |
 
 ---
 
@@ -93,11 +97,11 @@ Suites:
 ```
 Frontend (Vitest)
   Test Files  1 passed (1)
-  Tests       27 passed (27)
+  Tests       29 passed (29)
 
 Backend (Jest)
   Test Suites 2 passed (2)
-  Tests       14 passed (14)
+  Tests       16 passed (16)
 ```
 
 ---
