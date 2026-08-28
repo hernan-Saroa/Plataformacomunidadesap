@@ -89,6 +89,21 @@ export class ModificacionContrato {
   @Column({ name: 'motivo_rechazo', type: 'text', nullable: true })
   motivoRechazo: string | null;
 
+  /** Nombre y documento, no un id: el cesionario puede no estar registrado. */
+  @Column({ name: 'cesionario_nombre', length: 200, nullable: true })
+  cesionarioNombre: string | null;
+
+  @Column({ name: 'cesionario_documento', length: 40, nullable: true })
+  cesionarioDocumento: string | null;
+
+  /** Nulo cuando la causa de la suspensión aún no se resuelve. */
+  @Column({ name: 'fecha_reanudacion_prevista', type: 'date', nullable: true })
+  fechaReanudacionPrevista: string | null;
+
+  /** Qué suspensión levanta esta reanudación. */
+  @Column({ name: 'suspension_id', type: 'uuid', nullable: true })
+  suspensionId: string | null;
+
   /** Publicación en SECOP II (RF-MOD-05): ocurre por fuera y aquí se transcribe. */
   @Column({ name: 'publicada_at', type: 'date', nullable: true })
   publicadaAt: string | null;

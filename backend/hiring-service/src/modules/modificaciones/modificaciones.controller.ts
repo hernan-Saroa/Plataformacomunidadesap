@@ -20,6 +20,7 @@ import { ModificacionesService } from './modificaciones.service';
 import {
   AprobarModificacionDto,
   RechazarModificacionDto,
+  SolicitarModificacionDto,
   SolicitarProrrogaDto,
 } from './dto/modificaciones.dto';
 import { PermisosGuard } from '../../auth/permisos.guard';
@@ -78,6 +79,22 @@ export class ModificacionesController {
     return this.service.solicitarProrroga(procesoId, dto, getHiringAccess(req));
   }
 
+  @Post()
+  @UseGuards(PermisosGuard)
+  @Permisos(PERMISO_MODIFICACION_SOLICITAR)
+  @ApiOperation({
+    summary: 'Solicitar cesión, aclaración, suspensión, reanudación o terminación',
+    description:
+      'Registra la solicitud. El estado del contrato cambia al aprobarla, y solo en las que lo mueven (RF-MOD-03).',
+  })
+  solicitar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarModificacionDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitar(procesoId, dto, getHiringAccess(req));
+  }
+
   @Post(':modificacionId/aprobar')
   @UseGuards(PermisosGuard)
   @Permisos(PERMISO_MODIFICACION_APROBAR)
@@ -92,9 +109,9 @@ export class ModificacionesController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Aprobar la prórroga y extender el plazo',
+    summary: 'Aprobar la modificación',
     description:
-      'Exige el acto administrativo. Extiende el plazo del contrato sin tocar su valor (RF-MOD-02).',
+      'Exige el acto administrativo. La prorroga extiende el plazo; la suspension, reanudacion y terminacion mueven el estado del contrato.',
   })
   async aprobar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -106,7 +123,7 @@ export class ModificacionesController {
     if (!file) {
       // Aprobar sin acto dejaría el contrato extendido por un acuerdo verbal.
       throw new BadRequestException(
-        'La aprobación necesita el acto administrativo que soporta la prórroga',
+        'La aprobación necesita el acto administrativo que soporta la modificación',
       );
     }
 
@@ -133,9 +150,9 @@ export class ModificacionesController {
   @UseGuards(PermisosGuard)
   @Permisos(PERMISO_MODIFICACION_APROBAR)
   @ApiOperation({
-    summary: 'Negar la prórroga',
+    summary: 'Negar la modificación',
     description:
-      'Exige el motivo. El plazo del contrato no se toca, y la solicitud queda en el expediente explicando por qué no se extendió.',
+      'Exige el motivo. Ni el plazo ni el estado del contrato se tocan, y la solicitud queda en el expediente.',
   })
   rechazar(
     @Param('id', ParseUUIDPipe) procesoId: string,

@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsISO8601,
   IsOptional,
@@ -38,6 +39,36 @@ export class SolicitarProrrogaDto {
   /** Desde cuándo corre el tiempo adicional. */
   @IsISO8601({}, { message: 'La fecha de efecto debe tener formato AAAA-MM-DD' })
   fechaEfecto: string;
+}
+
+/** Cesión, aclaración, suspensión, reanudación y terminación (EFDS-1178). */
+export class SolicitarModificacionDto {
+  @IsIn(
+    ['CESION', 'ACLARACION', 'SUSPENSION', 'REANUDACION', 'TERMINACION_ANTICIPADA'],
+    { message: 'Tipo de modificación no reconocido' },
+  )
+  tipo: 'CESION' | 'ACLARACION' | 'SUSPENSION' | 'REANUDACION' | 'TERMINACION_ANTICIPADA';
+
+  @IsString()
+  @MinLength(20, { message: 'La justificación debe explicar por qué se modifica' })
+  justificacion: string;
+
+  @IsISO8601({}, { message: 'La fecha de efecto debe tener formato AAAA-MM-DD' })
+  fechaEfecto: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(3, { message: 'El nombre del cesionario es demasiado corto' })
+  cesionarioNombre?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(5, { message: 'La identificación del cesionario es demasiado corta' })
+  cesionarioDocumento?: string;
+
+  @IsOptional()
+  @IsISO8601({}, { message: 'La fecha de reanudación debe tener formato AAAA-MM-DD' })
+  fechaReanudacionPrevista?: string;
 }
 
 export class AprobarModificacionDto {

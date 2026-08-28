@@ -6,8 +6,16 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { Contrato, enEjecucion, EstadoContrato } from '../../entities/contrato.entity';
-import { ModificacionContrato } from '../../entities/modificacion-contrato.entity';
+import {
+  Contrato,
+  enEjecucion,
+  EstadoContrato,
+  puedeTransicionar,
+} from '../../entities/contrato.entity';
+import {
+  ModificacionContrato,
+  TipoModificacion,
+} from '../../entities/modificacion-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -17,6 +25,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import {
   AprobarModificacionDto,
   RechazarModificacionDto,
+  SolicitarModificacionDto,
   SolicitarProrrogaDto,
 } from './dto/modificaciones.dto';
 
@@ -43,6 +52,37 @@ export function admiteModificacion(estado: EstadoContrato): boolean {
  */
 export function plazoConProrroga(plazoActual: number | null, dias: number): number {
   return (plazoActual ?? 0) + dias;
+}
+
+/**
+ * A qué estado lleva el contrato aprobar esta modificación.
+ *
+ * `null` cuando no lo mueve: la prórroga cambia el plazo, la cesión cambia
+ * quién ejecuta y la aclaración cambia lo que el contrato dice, pero en los
+ * tres el contrato sigue corriendo igual. Solo la suspensión, la reanudación y
+ * la terminación anticipada lo mueven, que es el «cuando aplique» del criterio
+ * de EFDS-1178.
+ */
+export function estadoTrasModificacion(
+  tipo: TipoModificacion,
+): EstadoContrato | null {
+  if (tipo === 'SUSPENSION') return 'SUSPENDIDO';
+  if (tipo === 'REANUDACION') return 'EJECUCION';
+  if (tipo === 'TERMINACION_ANTICIPADA') return 'TERMINADO';
+  return null;
+}
+
+/**
+ * Si el tipo de modificación cabe en el estado en que está el contrato.
+ *
+ * Un contrato suspendido no se vuelve a suspender, y uno corriendo no se
+ * reanuda porque no está detenido. Lo demás se tramita en ambos.
+ */
+export function admiteTipo(estado: EstadoContrato, tipo: TipoModificacion): boolean {
+  if (!admiteModificacion(estado)) return false;
+  if (tipo === 'SUSPENSION') return estado === 'EJECUCION';
+  if (tipo === 'REANUDACION') return estado === 'SUSPENDIDO';
+  return true;
 }
 
 interface ArchivoCargado {
@@ -179,6 +219,86 @@ export class ModificacionesService {
     return this.estado(procesoId, acceso);
   }
 
+  /**
+   * Pide una cesión, aclaración, suspensión, reanudación o terminación.
+   *
+   * Comparten trámite con la prórroga y se separan del método anterior por lo
+   * que cada una exige: la cesión necesita cesionario, la reanudación necesita
+   * saber qué suspensión levanta, y ninguna de las cinco toca el plazo.
+   */
+  async solicitar(
+    procesoId: string,
+    dto: SolicitarModificacionDto,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const contrato = await this.exigirContratoEnEjecucion(em, procesoId);
+
+      if (!admiteTipo(contrato.estado, dto.tipo)) {
+        throw new ConflictException(
+          dto.tipo === 'SUSPENSION'
+            ? 'El contrato ya está suspendido'
+            : 'El contrato no está suspendido: no hay nada que reanudar',
+        );
+      }
+
+      if (dto.tipo === 'CESION' && !(dto.cesionarioNombre && dto.cesionarioDocumento)) {
+        throw new BadRequestException(
+          'La cesión necesita el nombre y la identificación de quien recibe el contrato',
+        );
+      }
+
+      const enCurso = await em.getRepository(ModificacionContrato).findOne({
+        where: { contratoId: contrato.id, tipo: dto.tipo, estado: 'SOLICITADA' },
+      });
+      if (enCurso) {
+        throw new ConflictException(
+          'El contrato ya tiene una modificación de ese tipo pendiente de resolver',
+        );
+      }
+
+      // La reanudación cuelga de la suspensión que levanta: de ahí salen los
+      // días que el contrato estuvo detenido.
+      let suspensionId: string | null = null;
+      if (dto.tipo === 'REANUDACION') {
+        const suspension = await em.getRepository(ModificacionContrato).findOne({
+          where: { contratoId: contrato.id, tipo: 'SUSPENSION', estado: 'APROBADA' },
+          order: { resueltaAt: 'DESC' },
+        });
+        if (!suspension) {
+          throw new ConflictException('No hay una suspensión aprobada que reanudar');
+        }
+        suspensionId = suspension.id;
+      }
+
+      const modificacion = await em.save(
+        em.create(ModificacionContrato, {
+          contratoId: contrato.id,
+          tipo: dto.tipo,
+          justificacion: dto.justificacion.trim(),
+          fechaEfecto: dto.fechaEfecto,
+          estado: 'SOLICITADA',
+          cesionarioNombre: dto.tipo === 'CESION' ? dto.cesionarioNombre!.trim() : null,
+          cesionarioDocumento:
+            dto.tipo === 'CESION' ? dto.cesionarioDocumento!.trim() : null,
+          fechaReanudacionPrevista: dto.fechaReanudacionPrevista ?? null,
+          suspensionId,
+          solicitadaPor: acceso.userName,
+        } as Partial<ModificacionContrato>),
+      );
+
+      await this.marcarActividad(em, procesoId, acceso);
+
+      await this.traza(em, procesoId, modificacion.id, 'CREAR', acceso, {
+        actividad: NUMERAL_MODIFICACIONES,
+        contrato: contrato.numero,
+        tipo: dto.tipo,
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
   // ---------------------------------------------------------- aprobación --
 
   /** Aprueba la prórroga y extiende el plazo. El valor del contrato no se toca. */
@@ -200,33 +320,46 @@ export class ModificacionesService {
       const doc = await this.guardarDocumento(
         em,
         expediente.id,
-        `Contrato ${contrato.numero} · acto de la prórroga`,
+        `Contrato ${contrato.numero} · acto de la modificación`,
         archivo,
         hash,
         acceso,
       );
 
-      // El plazo de antes se congela: el contrato queda con el nuevo, y sin
-      // esto no habría cómo saber de cuánto se extendió.
-      modificacion.plazoAnteriorDias = contrato.plazoDias;
+      const plazoAnterior = contrato.plazoDias;
+
+      modificacion.plazoAnteriorDias = plazoAnterior;
       modificacion.documentoId = doc.id;
       modificacion.estado = 'APROBADA';
       modificacion.resueltaPor = acceso.userName;
       modificacion.resueltaAt = new Date();
       await em.save(modificacion);
 
-      contrato.plazoDias = plazoConProrroga(
-        contrato.plazoDias,
-        modificacion.diasProrroga ?? 0,
-      );
+      if (modificacion.tipo === 'PRORROGA') {
+        contrato.plazoDias = plazoConProrroga(plazoAnterior, modificacion.diasProrroga ?? 0);
+      }
+
+      // Solo la suspensión, la reanudación y la terminación mueven el estado.
+      // Es el «cuando aplique» del criterio de EFDS-1178.
+      const estadoNuevo = estadoTrasModificacion(modificacion.tipo);
+      if (estadoNuevo) {
+        if (!puedeTransicionar(contrato.estado, estadoNuevo)) {
+          throw new ConflictException(
+            `El contrato no puede pasar de ${contrato.estado} a ${estadoNuevo}`,
+          );
+        }
+        contrato.estado = estadoNuevo;
+      }
+
       await em.save(contrato);
 
       await this.traza(em, procesoId, modificacion.id, 'APROBAR', acceso, {
         actividad: NUMERAL_MODIFICACIONES,
         contrato: contrato.numero,
-        tipo: 'PRORROGA',
-        plazoAnterior: modificacion.plazoAnteriorDias,
+        tipo: modificacion.tipo,
+        plazoAnterior,
         plazoNuevo: contrato.plazoDias,
+        estadoNuevo: estadoNuevo ?? contrato.estado,
         observacion: dto.observacion ?? null,
       });
     });
