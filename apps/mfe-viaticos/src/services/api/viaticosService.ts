@@ -1,5 +1,12 @@
 import apiClient from './apiClient';
-import { SolicitudViatico, ResumenEstadisticoViaticos, TiqueteAereo, LegalizacionGasto } from '../../types/viaticos';
+import {
+  SolicitudViatico,
+  ResumenEstadisticoViaticos,
+  Comisionado,
+  CreateSolicitudRequest,
+  SolicitudComisionResponse,
+  DocumentoSoporte,
+} from '../../types/viaticos';
 
 const MOCK_SOLICITUDES: SolicitudViatico[] = [
   {
@@ -100,37 +107,49 @@ export class ViaticosService {
     };
   }
 
-  async crearSolicitud(solicitud: Partial<SolicitudViatico>): Promise<SolicitudViatico> {
+  async consultarComisionado(documento: string): Promise<Comisionado | null> {
     try {
-      return await apiClient.post<SolicitudViatico>('/viaticos/api/v1/solicitudes', solicitud);
+      return await apiClient.get<Comisionado>(`/api/v1/comisionados/${documento}`);
     } catch {
-      const nueva: SolicitudViatico = {
-        id: `sol-${Date.now()}`,
-        codigo: `SOL-VIA-2026-${Math.floor(100 + Math.random() * 900)}`,
-        cedulaComisionado: solicitud.cedulaComisionado || '1020304050',
-        nombreComisionado: solicitud.nombreComisionado || 'Funcionario ESAP',
-        cargoComisionado: solicitud.cargoComisionado || 'Profesional Especializado',
-        dependencia: solicitud.dependencia || 'Subdirección de Gestión Institucional',
-        sedeOrigen: solicitud.sedeOrigen || 'Sede Central Bogotá',
-        ciudadDestino: solicitud.ciudadDestino || 'Cartagena',
-        departamentoDestino: solicitud.departamentoDestino || 'Bolívar',
-        fechaInicio: solicitud.fechaInicio || new Date().toISOString().split('T')[0],
-        fechaFin: solicitud.fechaFin || new Date().toISOString().split('T')[0],
-        diasComision: solicitud.diasComision || 2,
-        tipoComision: solicitud.tipoComision || 'SERVICIOS_INSTITUCIONALES',
-        medioTransporte: solicitud.medioTransporte || 'AEREO',
-        justificacion: solicitud.justificacion || 'Comisión de servicios oficiales.',
-        montoSolicitadoViaticos: solicitud.montoSolicitadoViaticos || 560000,
-        montoSolicitadoGastosViaje: solicitud.montoSolicitadoGastosViaje || 120000,
-        montoTotalEstimado: (solicitud.montoSolicitadoViaticos || 560000) + (solicitud.montoSolicitadoGastosViaje || 120000),
-        estado: 'SOLICITADO',
-        requiereTiqueteAereo: solicitud.requiereTiqueteAereo ?? true,
-        creadoEn: new Date().toISOString().split('T')[0],
-        actualizadoEn: new Date().toISOString().split('T')[0],
-      };
-      MOCK_SOLICITUDES.unshift(nueva);
-      return nueva;
+      return null;
     }
+  }
+
+  async crearSolicitudComision(data: CreateSolicitudRequest): Promise<SolicitudComisionResponse> {
+    try {
+      return await apiClient.post<SolicitudComisionResponse>('/api/v1/requests', data);
+    } catch (error) {
+      console.error('Error creando solicitud de comisión:', error);
+      throw error;
+    }
+  }
+
+  async subirDocumento(solicitudId: string, tipo: string, archivo: File): Promise<DocumentoSoporte> {
+    const formData = new FormData();
+    formData.append('tipoDocumento', tipo);
+    formData.append('nombreArchivoOriginal', archivo.name);
+    formData.append('nombreArchivoSeguro', this.sanitizeFileName(archivo.name));
+    formData.append('urlRepositorio', `/uploads/${solicitudId}/${this.sanitizeFileName(archivo.name)}`);
+    formData.append('archivo', archivo);
+
+    try {
+      return await apiClient.post<DocumentoSoporte>(`/api/v1/requests/${solicitudId}/documentos`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    } catch (error) {
+      console.error('Error subiendo documento:', error);
+      throw error;
+    }
+  }
+
+  private sanitizeFileName(name: string): string {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ñ/gi, 'n')
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
   }
 }
 

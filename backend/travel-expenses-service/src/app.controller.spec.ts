@@ -15,8 +15,8 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return el mensaje de estado del microservicio', () => {
+      expect(appController.getHello()).toBe('Running Microservice Travel Expenses Service');
     });
   });
 });

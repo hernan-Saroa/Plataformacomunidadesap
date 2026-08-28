@@ -1,145 +1,169 @@
-import { Injectable } from '@nestjs/common';
-
-export interface SolicitudViaticoEntity {
-  id: string;
-  codigo: string;
-  cedulaComisionado: string;
-  nombreComisionado: string;
-  cargoComisionado: string;
-  dependencia: string;
-  sedeOrigen: string;
-  ciudadDestino: string;
-  departamentoDestino: string;
-  fechaInicio: string;
-  fechaFin: string;
-  diasComision: number;
-  tipoComision: string;
-  medioTransporte: string;
-  justificacion: string;
-  montoSolicitadoViaticos: number;
-  montoSolicitadoGastosViaje: number;
-  montoTotalEstimado: number;
-  estado: string;
-  requiereTiqueteAereo: boolean;
-  numeroResolucion?: string;
-  fechaResolucion?: string;
-  creadoEn: string;
-  actualizadoEn: string;
-}
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { ComisionadoEntity } from '../../entities/comisionado.entity';
+import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
+import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
+import { CreateSolicitudDto } from '../dto/create-solicitud.dto';
+import { UploadDocumentoDto } from '../dto/upload-documento.dto';
+import { sanitizeObjetoComision } from '../../common/sanitize.util';
+import { getClientIp } from '../../common/ip.util';
 
 @Injectable()
 export class TravelExpensesService {
-  private solicitudes: SolicitudViaticoEntity[] = [
-    {
-      id: 'sol-001',
-      codigo: 'SOL-VIA-2026-001',
-      cedulaComisionado: '1019283746',
-      nombreComisionado: 'Carlos Eduardo Ramírez',
-      cargoComisionado: 'Docente Ocasional',
-      dependencia: 'Subdirección Académica',
-      sedeOrigen: 'Sede Central Bogotá',
-      ciudadDestino: 'Medellín',
-      departamentoDestino: 'Antioquia',
-      fechaInicio: '2026-08-20',
-      fechaFin: '2026-08-23',
-      diasComision: 3,
-      tipoComision: 'CAPACITACION_DOCENTE',
-      medioTransporte: 'AEREO',
-      justificacion: 'Impartir módulo presencial de Gestión Pública en la Sede Territorial Antioquia.',
-      montoSolicitadoViaticos: 840000,
-      montoSolicitadoGastosViaje: 180000,
-      montoTotalEstimado: 1020000,
-      estado: 'RESOLUCION_EMITIDA',
-      requiereTiqueteAereo: true,
-      numeroResolucion: 'RES-0452-2026',
-      fechaResolucion: '2026-08-15',
-      creadoEn: '2026-08-10',
-      actualizadoEn: '2026-08-15',
-    },
-    {
-      id: 'sol-002',
-      codigo: 'SOL-VIA-2026-002',
-      cedulaComisionado: '52839102',
-      nombreComisionado: 'Ana María Gómez',
-      cargoComisionado: 'Asesora de Dirección',
-      dependencia: 'Oficina Asesora de Planeación',
-      sedeOrigen: 'Sede Central Bogotá',
-      ciudadDestino: 'Cali',
-      departamentoDestino: 'Valle del Cauca',
-      fechaInicio: '2026-08-25',
-      fechaFin: '2026-08-27',
-      diasComision: 2,
-      tipoComision: 'REUNION_TECNICA',
-      medioTransporte: 'AEREO',
-      justificacion: 'Acompañamiento a la autoevaluación institucional en la Sede Valle.',
-      montoSolicitadoViaticos: 560000,
-      montoSolicitadoGastosViaje: 120000,
-      montoTotalEstimado: 680000,
-      estado: 'APROBADO_TALENTO_HUMANO',
-      requiereTiqueteAereo: true,
-      creadoEn: '2026-08-11',
-      actualizadoEn: '2026-08-12',
-    },
-    {
-      id: 'sol-003',
-      codigo: 'SOL-VIA-2026-003',
-      cedulaComisionado: '79483920',
-      nombreComisionado: 'Jorge Enrique Vargas',
-      cargoComisionado: 'Auditor Interno',
-      dependencia: 'Oficina de Control Interno',
-      sedeOrigen: 'Sede Central Bogotá',
-      ciudadDestino: 'Bucaramanga',
-      departamentoDestino: 'Santander',
-      fechaInicio: '2026-09-01',
-      fechaFin: '2026-09-05',
-      diasComision: 4,
-      tipoComision: 'INSPECCION_TERRITORIAL',
-      medioTransporte: 'AEREO',
-      justificacion: 'Ejecución de auditoría interna de cobertura territorial en Sede Santander.',
-      montoSolicitadoViaticos: 1120000,
-      montoSolicitadoGastosViaje: 250000,
-      montoTotalEstimado: 1370000,
-      estado: 'SOLICITADO',
-      requiereTiqueteAereo: true,
-      creadoEn: '2026-08-12',
-      actualizadoEn: '2026-08-12',
-    },
-  ];
+  constructor(
+    @InjectRepository(ComisionadoEntity)
+    private readonly comisionadoRepo: Repository<ComisionadoEntity>,
+    @InjectRepository(SolicitudComisionEntity)
+    private readonly solicitudRepo: Repository<SolicitudComisionEntity>,
+    @InjectRepository(DocumentoSoporteEntity)
+    private readonly documentoRepo: Repository<DocumentoSoporteEntity>,
+    private readonly dataSource: DataSource,
+  ) {}
 
-  findAll(): SolicitudViaticoEntity[] {
-    return this.solicitudes;
+  async consultarComisionado(documento: string): Promise<ComisionadoEntity | null> {
+    const comisionado = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: documento },
+    });
+
+    if (!comisionado) {
+      return null;
+    }
+
+    return comisionado;
   }
 
-  findOne(id: string): SolicitudViaticoEntity | undefined {
-    return this.solicitudes.find(s => s.id === id);
+  async crearSolicitud(dto: CreateSolicitudDto): Promise<SolicitudComisionEntity> {
+    const comisionado = await this.comisionadoRepo.findOne({
+      where: { id: dto.comisionadoId },
+    });
+
+    if (!comisionado) {
+      throw new BadRequestException('Comisionado no encontrado.');
+    }
+
+    if (!comisionado.autorizacionHabeasData && !dto.aceptaHabeasData) {
+      throw new BadRequestException(
+        'Debe aceptar el tratamiento de datos semiprivados (email y teléfono) según Ley 1581 de 2012 y Sentencia T-254 de 2024.',
+      );
+    }
+
+    if (!comisionado.autorizacionHabeasData && dto.aceptaHabeasData) {
+      comisionado.autorizacionHabeasData = true;
+      comisionado.fechaAutorizacionHabeasData = new Date();
+      comisionado.ipRegistroHabeasData = dto.ipRegistroHabeasData || getClientIp({ headers: {} } as any);
+      await this.comisionadoRepo.save(comisionado);
+    }
+
+    const objetoSanitizado = sanitizeObjetoComision(dto.objetoComision);
+    if (objetoSanitizado.length === 0) {
+      throw new BadRequestException('El objeto de la comisión debe contener al menos un carácter válido.');
+    }
+
+    const fechaInicio = new Date(dto.fechaInicio);
+    const fechaFin = new Date(dto.fechaFin);
+
+    if (fechaFin < fechaInicio) {
+      throw new BadRequestException('La fecha fin no puede ser anterior a la fecha inicio.');
+    }
+
+    const solapamiento = await this.solicitudRepo
+      .createQueryBuilder('s')
+      .where('s.comisionado_id = :comisionadoId', { comisionadoId: dto.comisionadoId })
+      .andWhere(
+        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
+        { fechaInicio, fechaFin },
+      )
+      .getOne();
+
+    if (solapamiento) {
+      throw new ConflictException('El comisionado ya tiene una solicitud activa en el rango de fechas indicado.');
+    }
+
+    const ahora = new Date();
+    const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+    const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
+    const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+
+    let consecutivoUnico: string;
+    await this.dataSource.transaction(async (manager) => {
+      const maxSolicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .select('MAX(s.consecutivo_unico)', 'max')
+        .where('s.consecutivo_unico LIKE :pattern', { pattern: 'COM-2026-%' })
+        .getRawOne();
+
+      let nextNumber = 1;
+      if (maxSolicitud?.max) {
+        const match = maxSolicitud.max.match(/COM-2026-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      consecutivoUnico = `COM-2026-${String(nextNumber).padStart(4, '0')}`;
+    });
+
+    const solicitud = this.solicitudRepo.create({
+      consecutivoUnico,
+      comisionadoId: dto.comisionadoId,
+      destinoCiudad: dto.destinoCiudad,
+      destinoDepartamento: dto.destinoDepartamento,
+      fechaInicio,
+      fechaFin,
+      objetoComision: objetoSanitizado,
+      prioridad: dto.prioridad,
+      rubroPresupuestal: dto.rubroPresupuestal,
+      requiereTiquetes: dto.requiereTiquetes ?? false,
+      estadoSolicitud: 'RADICADA',
+      radicadoFueraJornada: radicadoFueraJornada,
+      creadoPorUsuarioId: dto.creadoPorUsuarioId,
+    });
+
+    const saved = await this.solicitudRepo.save(solicitud);
+
+    if (dto.documentos && dto.documentos.length > 0) {
+      const documentos = dto.documentos.map((doc) => {
+        const entity = this.documentoRepo.create({
+          solicitudId: saved.id,
+          tipoDocumento: doc.tipoDocumento,
+          nombreArchivoOriginal: doc.nombreArchivoOriginal,
+          nombreArchivoSeguro: doc.nombreArchivoSeguro,
+          urlRepositorio: doc.urlRepositorio,
+        });
+        return entity;
+      });
+
+      await this.documentoRepo.save(documentos);
+      saved.documentosSoporte = documentos;
+    }
+
+    const response: any = saved;
+    if (radicadoFueraJornada) {
+      response.warningMessage = 'El trámite iniciará el día hábil siguiente.';
+    }
+
+    return response;
   }
 
-  create(dto: Partial<SolicitudViaticoEntity>): SolicitudViaticoEntity {
-    const nueva: SolicitudViaticoEntity = {
-      id: `sol-${Date.now()}`,
-      codigo: `SOL-VIA-2026-${Math.floor(100 + Math.random() * 900)}`,
-      cedulaComisionado: dto.cedulaComisionado || '1020304050',
-      nombreComisionado: dto.nombreComisionado || 'Funcionario ESAP',
-      cargoComisionado: dto.cargoComisionado || 'Profesional Especializado',
-      dependencia: dto.dependencia || 'Subdirección de Gestión Institucional',
-      sedeOrigen: dto.sedeOrigen || 'Sede Central Bogotá',
-      ciudadDestino: dto.ciudadDestino || 'Cartagena',
-      departamentoDestino: dto.departamentoDestino || 'Bolívar',
-      fechaInicio: dto.fechaInicio || new Date().toISOString().split('T')[0],
-      fechaFin: dto.fechaFin || new Date().toISOString().split('T')[0],
-      diasComision: dto.diasComision || 2,
-      tipoComision: dto.tipoComision || 'SERVICIOS_INSTITUCIONALES',
-      medioTransporte: dto.medioTransporte || 'AEREO',
-      justificacion: dto.justificacion || 'Comisión oficial.',
-      montoSolicitadoViaticos: dto.montoSolicitadoViaticos || 560000,
-      montoSolicitadoGastosViaje: dto.montoSolicitadoGastosViaje || 120000,
-      montoTotalEstimado: (dto.montoSolicitadoViaticos || 560000) + (dto.montoSolicitadoGastosViaje || 120000),
-      estado: 'SOLICITADO',
-      requiereTiqueteAereo: dto.requiereTiqueteAereo ?? true,
-      creadoEn: new Date().toISOString().split('T')[0],
-      actualizadoEn: new Date().toISOString().split('T')[0],
-    };
-    this.solicitudes.unshift(nueva);
-    return nueva;
+  async subirDocumento(solicitudId: string, dto: UploadDocumentoDto): Promise<DocumentoSoporteEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+
+    if (!solicitud) {
+      throw new BadRequestException('Solicitud no encontrada.');
+    }
+
+    const entity = this.documentoRepo.create({
+      solicitudId,
+      tipoDocumento: dto.tipoDocumento,
+      nombreArchivoOriginal: dto.nombreArchivoOriginal,
+      nombreArchivoSeguro: dto.nombreArchivoSeguro,
+      urlRepositorio: dto.urlRepositorio,
+    });
+
+    return this.documentoRepo.save(entity);
   }
 }
