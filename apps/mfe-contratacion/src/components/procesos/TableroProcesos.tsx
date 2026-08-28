@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { FileText, ArrowRight } from 'lucide-react';
 
 import { ProcesoResumen } from '../../types';
-import { ETAPAS } from '../proceso/StepperEtapas';
+import { ETAPAS } from '../proceso/Etapas';
 
 interface EstadoVisual {
   texto: string;

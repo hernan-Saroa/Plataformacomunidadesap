@@ -3,7 +3,7 @@ import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
-import { StepperEtapas } from './StepperEtapas';
+import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
 import { RielActividades } from './RielActividades';
@@ -22,7 +22,6 @@ import { PanelComite } from '../comite/PanelComite';
 import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
 import { PanelTraslado } from '../traslado/PanelTraslado';
 import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
-import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelPagos } from '../pagos/PanelPagos';
 import { PanelInformeFinal } from '../informe-final/PanelInformeFinal';
 import { PanelLiquidacion } from '../liquidacion/PanelLiquidacion';
@@ -121,6 +120,16 @@ const NUMERAL_ARL = '8.5';
 
 /** Publicación del contrato dentro del plazo legal (EFDS-1166). */
 const NUMERAL_PUBLICACION_CONTRATO = '8.8';
+
+/** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
+const NUMERALES_ETAPA_8 = [
+  NUMERAL_CONTRATO,
+  NUMERAL_SUPERVISOR,
+  NUMERAL_RP,
+  NUMERAL_GARANTIAS,
+  NUMERAL_ARL,
+  NUMERAL_PUBLICACION_CONTRATO,
+];
 
 /** Reunión de inicio que da comienzo a la ejecución (EFDS-1167). */
 const NUMERAL_ACTA_INICIO = '9.1';
@@ -253,6 +262,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  /**
+   * Qué etapa se está mirando. Nula hasta que alguien elija: mientras tanto se
+   * muestra la del proceso, que es donde se trabaja al entrar.
+   */
+  const [etapaElegida, setEtapaElegida] = useState<number | null>(null);
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
@@ -280,6 +294,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       .then(setCatalogo)
       .catch(() => setCatalogo([]));
   }, [procesoId, tokenExpediente]);
+
+  // Entrar directo a una actividad —desde el tablero, por ejemplo— tiene que
+  // mover también la línea del tiempo, o el carril mostraría otra etapa y la
+  // actividad abierta a la derecha no estaría en ninguna parte de la izquierda.
+  useEffect(() => {
+    if (!expandida) return;
+    const suya = catalogo.find((a: any) => a.numeral === expandida)?.etapa;
+    if (typeof suya === 'number') setEtapaElegida(suya);
+  }, [expandida, catalogo]);
 
   useEffect(() => {
     let vigente = true;
@@ -383,6 +406,31 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
+  const etapaVista = etapaElegida ?? datos.proceso.etapa;
+
+  /**
+   * Cuántas actividades aplican y cuántas están hechas, por etapa.
+   *
+   * Es lo que pinta la línea del tiempo. Se cuenta sobre las que aplican a la
+   * modalidad: exigir las excluidas para dar una etapa por cerrada dejaría
+   * etapas que nunca llegan al final.
+   */
+  const avance: Record<number, AvanceEtapa> = {};
+  for (const act of actividades) {
+    const numero = act.etapa ?? 3;
+    if (!avance[numero]) avance[numero] = { aplicables: 0, completas: 0 };
+    if (act.estado === 'no_aplica') continue;
+    avance[numero].aplicables += 1;
+    if (act.estado === 'aprobada') avance[numero].completas += 1;
+  }
+
+  // Cambiar de etapa suelta la actividad abierta: la de la etapa anterior ya no
+  // está en el carril, y dejarla a la derecha sin nada que la señale confunde.
+  const elegirEtapa = (numero: number) => {
+    setEtapaElegida(numero);
+    setExpandida(null);
+  };
+
   // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
   // proceso, no del estudio previo, y de ella depende la modalidad aplicable.
   const ficha = [
@@ -436,7 +484,12 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           </div>
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
-            <StepperEtapas etapaActual={datos.proceso.etapa} />
+            <LineaDeTiempoEtapas
+              etapaActual={datos.proceso.etapa}
+              etapaSeleccionada={etapaVista}
+              onSeleccionar={elegirEtapa}
+              avance={avance}
+            />
 
             <button
               type="button"
@@ -459,6 +512,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
       <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
         <RielActividades
+          etapa={etapaVista}
           etapaActual={datos.proceso.etapa}
           actividades={actividades}
           seleccionada={expandida}
@@ -589,13 +643,6 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <PanelActaInicio
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelSeguimiento
@@ -690,9 +737,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
               <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
               <p className="text-sm font-bold text-gray-600 m-0">
-                {actividadSeleccionada
-                  ? `${actividadSeleccionada.numeral} · ${actividadSeleccionada.nombre}`
-                  : 'Elige una actividad'}
+                {actividadSeleccionada ? actividadSeleccionada.nombre : 'Elige una actividad'}
               </p>
               <p className="text-xs text-gray-400 m-0 mt-1">
                 {actividadSeleccionada

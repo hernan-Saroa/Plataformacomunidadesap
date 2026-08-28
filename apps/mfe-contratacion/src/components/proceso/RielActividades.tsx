@@ -1,11 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Check, ChevronDown, Lock, Paperclip } from 'lucide-react';
 
 import { ActividadEtapa, EstadoActividadUI } from './ListaActividades';
-import { ETAPAS } from './StepperEtapas';
+import { ETAPAS } from './Etapas';
 
 interface Props {
+  /** La etapa que se está mirando; la elige la línea del tiempo de arriba. */
+  etapa: number;
+  /** Dónde está el proceso, que no siempre es la etapa que se mira. */
   etapaActual: number;
+  /** Todas las actividades del proceso; aquí se filtran a la etapa en vista. */
   actividades: ActividadEtapa[];
   seleccionada: string | null;
   onSeleccionar: (numeral: string) => void;
@@ -26,129 +30,125 @@ function nombreDeEtapa(numero: number): string {
 }
 
 /**
- * Navegación entre las actividades del proceso, agrupadas por etapa.
+ * Las actividades de una sola etapa: la que la línea del tiempo tenga elegida.
  *
- * Reemplaza al acordeón de las 10 etapas: para trabajar en una actividad no hay
- * que recorrer las nueve que no aplican, y cambiar de actividad no pliega ni
- * desplaza el contenido, solo cambia el panel de la derecha.
+ * Antes el carril mostraba todas las etapas en acordeón, y crecía con cada
+ * historia entregada: llegó a listar diez encabezados y sesenta y tres
+ * actividades. Recorrer nueve etapas para llegar a la que se trabaja era el
+ * costo de tener todo a la vista, y no valía la pena teniendo arriba una línea
+ * del tiempo que ya dice dónde está cada cosa.
  *
- * Los grupos se pliegan porque el riel ya cubre tres etapas y seguirá creciendo:
- * en plano, un proceso en la etapa 3 mostraba trece actividades seguidas bajo un
- * encabezado que decía "Etapa 3", y las de la 4 y la 5 parecían suyas. Se abre
- * la etapa en curso, que es donde se trabaja, y las demás quedan a un clic.
+ * **Las actividades no llevan su numeral a la vista.** El número identifica la
+ * fila en la matriz y sirve para hablar entre nosotros, pero al gestor no le
+ * dice nada y competía por atención con el nombre, que es lo que sí le importa.
+ * Sigue estando en el `title`, para poder señalarlo cuando haga falta.
  *
- * Las actividades que no aplican a la modalidad se muestran tachadas en vez de
- * ocultarse: esconderlas impediría distinguir "no aplicaba" de "se omitió" en
- * una auditoría.
+ * **Las que la modalidad excluye no se listan**, pero se cuentan al pie y se
+ * pueden desplegar: esconderlas sin decirlo impediría distinguir «no aplicaba»
+ * de «se omitió» en una auditoría, que es justo lo que el tachado protegía.
  */
 export function RielActividades({
+  etapa,
   etapaActual,
   actividades,
   seleccionada,
   onSeleccionar,
 }: Props) {
-  const grupos = agruparPorEtapa(actividades);
-  const [abiertas, setAbiertas] = useState<number[]>([etapaActual]);
+  const [verExcluidas, setVerExcluidas] = useState(false);
 
-  // La etapa de la actividad elegida se despliega sola: seleccionar la 5.2
-  // desde un proceso en la etapa 3 y que su grupo siguiera plegado dejaría el
-  // panel de la derecha sin nada que lo señale en el riel.
-  const etapaSeleccionada = actividades.find((a) => a.numeral === seleccionada)?.etapa;
-  useEffect(() => {
-    if (etapaSeleccionada === undefined) return;
-    setAbiertas((previas) =>
-      previas.includes(etapaSeleccionada) ? previas : [...previas, etapaSeleccionada],
-    );
-  }, [etapaSeleccionada]);
+  const deLaEtapa = actividades.filter((a) => (a.etapa ?? ETAPA_POR_DEFECTO) === etapa);
+  const aplicables = deLaEtapa.filter((a) => a.estado !== 'no_aplica');
+  const excluidas = deLaEtapa.filter((a) => a.estado === 'no_aplica');
+  const completas = aplicables.filter((a) => a.estado === 'aprobada').length;
+  const esActual = etapa === etapaActual;
 
   return (
     <nav
-      aria-label="Actividades del proceso"
+      aria-label={`Actividades de la etapa ${etapa}`}
       className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col
         shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
     >
-      {grupos.map(({ etapa, items }, indice) => {
-        const abierta = abiertas.includes(etapa);
-        const aplicables = items.filter((a) => a.estado !== 'no_aplica');
-        const completas = aplicables.filter((a) => a.estado === 'aprobada').length;
-        const esActual = etapa === etapaActual;
-
-        return (
-          <section key={etapa} className={indice > 0 ? 'border-t border-gray-200' : ''}>
-            <button
-              type="button"
-              onClick={() =>
-                setAbiertas((previas) =>
-                  previas.includes(etapa)
-                    ? previas.filter((e) => e !== etapa)
-                    : [...previas, etapa],
-                )
-              }
-              aria-expanded={abierta}
-              className="w-full text-left px-3 py-2.5 bg-slate-50 flex items-start gap-2
-                hover:bg-slate-100 focus:outline-none focus-visible:ring-2
-                focus-visible:ring-[#003DA5]/40 transition-colors"
-            >
-              <ChevronDown
-                className={`w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5 transition-transform ${
-                  abierta ? '' : '-rotate-90'
-                }`}
-                aria-hidden="true"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    Etapa {etapa}
-                  </span>
-                  {esActual && (
-                    <span className="text-[10px] font-black uppercase tracking-wider rounded-md px-1.5 py-0.5 bg-[#E0EDFF] text-[#003DA5]">
-                      Actual
-                    </span>
-                  )}
-                </span>
-                <span className="block text-[12px] font-bold text-slate-700 mt-0.5 leading-tight">
-                  {nombreDeEtapa(etapa)}
-                </span>
+      <div className="px-3 py-2.5 bg-slate-50 flex items-start gap-2 border-b border-gray-200">
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Etapa {etapa}
+            </span>
+            {esActual && (
+              <span className="text-[10px] font-black uppercase tracking-wider rounded-md px-1.5 py-0.5 bg-[#E0EDFF] text-[#003DA5]">
+                Actual
               </span>
-              <span className="text-[10.5px] font-bold text-slate-500 tabular-nums flex-shrink-0 mt-0.5">
-                {completas}/{aplicables.length}
-              </span>
-            </button>
-
-            {abierta && (
-              <ul className="list-none m-0 p-1.5 flex flex-col gap-0.5">
-                {items.map((actividad) => (
-                  <li key={actividad.numeral}>
-                    <Actividad
-                      actividad={actividad}
-                      activa={seleccionada === actividad.numeral}
-                      onSeleccionar={onSeleccionar}
-                    />
-                  </li>
-                ))}
-              </ul>
             )}
-          </section>
-        );
-      })}
+          </span>
+          <span className="block text-xs font-bold text-slate-700 mt-0.5 leading-tight">
+            {nombreDeEtapa(etapa)}
+          </span>
+        </span>
+        {aplicables.length > 0 && (
+          <span className="text-[10px] font-bold text-slate-500 tabular-nums flex-shrink-0 mt-0.5">
+            {completas}/{aplicables.length}
+          </span>
+        )}
+      </div>
+
+      {aplicables.length === 0 ? (
+        <p className="text-[11px] text-slate-500 m-0 px-3 py-4 leading-relaxed">
+          {excluidas.length > 0
+            ? 'Ninguna actividad de esta etapa aplica a la modalidad del proceso.'
+            : 'Esta etapa todavía no tiene actividades en la plataforma.'}
+        </p>
+      ) : (
+        <ul className="list-none m-0 p-1.5 flex flex-col gap-0.5">
+          {aplicables.map((actividad) => (
+            <li key={actividad.numeral}>
+              <Actividad
+                actividad={actividad}
+                activa={seleccionada === actividad.numeral}
+                onSeleccionar={onSeleccionar}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {excluidas.length > 0 && (
+        <div className="border-t border-gray-100">
+          <button
+            type="button"
+            onClick={() => setVerExcluidas((v) => !v)}
+            aria-expanded={verExcluidas}
+            className="w-full text-left px-3 py-2 flex items-center gap-1.5 text-[10px]
+              font-bold text-slate-400 hover:bg-slate-50 focus:outline-none
+              focus-visible:ring-2 focus-visible:ring-[#003DA5]/40 transition-colors"
+          >
+            <ChevronDown
+              className={`w-3 h-3 flex-shrink-0 transition-transform ${
+                verExcluidas ? '' : '-rotate-90'
+              }`}
+              aria-hidden="true"
+            />
+            {excluidas.length === 1
+              ? '1 no aplica a esta modalidad'
+              : `${excluidas.length} no aplican a esta modalidad`}
+          </button>
+
+          {verExcluidas && (
+            <ul className="list-none m-0 px-3 pb-2.5 pt-0 flex flex-col gap-1">
+              {excluidas.map((actividad) => (
+                <li
+                  key={actividad.numeral}
+                  title={`${actividad.numeral} · ${actividad.nombre}`}
+                  className="text-[11px] text-slate-400 leading-snug"
+                >
+                  {actividad.nombre}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </nav>
   );
-}
-
-/** Etapas presentes, en orden, con sus actividades en el orden que ya traían. */
-function agruparPorEtapa(actividades: ActividadEtapa[]) {
-  const porEtapa = new Map<number, ActividadEtapa[]>();
-
-  for (const actividad of actividades) {
-    const etapa = actividad.etapa ?? ETAPA_POR_DEFECTO;
-    const grupo = porEtapa.get(etapa);
-    if (grupo) grupo.push(actividad);
-    else porEtapa.set(etapa, [actividad]);
-  }
-
-  return [...porEtapa.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([etapa, items]) => ({ etapa, items }));
 }
 
 function Actividad({
@@ -162,7 +162,6 @@ function Actividad({
 }) {
   const color = COLORES[actividad.estado];
   const bloqueada = !actividad.disponible;
-  const noAplica = actividad.estado === 'no_aplica';
 
   return (
     <button
@@ -170,7 +169,13 @@ function Actividad({
       onClick={() => onSeleccionar(actividad.numeral)}
       disabled={bloqueada}
       aria-current={activa ? 'true' : undefined}
-      title={bloqueada ? 'Aún no disponible' : undefined}
+      // El numeral vive aquí: identifica la fila de la matriz cuando hay que
+      // hablar de ella, sin ocupar la línea que lee el gestor.
+      title={
+        bloqueada
+          ? `${actividad.numeral} · ${actividad.nombre} — aún no disponible`
+          : `${actividad.numeral} · ${actividad.nombre}`
+      }
       className={`w-full text-left rounded-lg px-2.5 py-2 flex items-start gap-2.5
         transition-colors focus:outline-none focus-visible:ring-2
         focus-visible:ring-[#003DA5]/40 ${
@@ -189,21 +194,21 @@ function Actividad({
 
       <span className="min-w-0 flex-1">
         <span
-          className={`block text-[12px] leading-tight ${
+          className={`block text-xs leading-tight ${
             activa ? 'font-black text-[#003DA5]' : 'font-bold text-slate-700'
-          } ${noAplica ? 'line-through' : ''}`}
+          }`}
         >
-          <span className="tabular-nums">{actividad.numeral}</span> {actividad.nombre}
+          {actividad.nombre}
         </span>
 
         {actividad.detalle && (
-          <span className="block text-[10.5px] text-slate-500 mt-0.5 leading-snug">
+          <span className="block text-[10px] text-slate-500 mt-0.5 leading-snug">
             {actividad.detalle}
           </span>
         )}
       </span>
 
-      {bloqueada && !noAplica && (
+      {bloqueada && (
         <Lock className="w-3 h-3 text-slate-300 flex-shrink-0 mt-1" aria-hidden="true" />
       )}
       {!!actividad.adjuntos && (
