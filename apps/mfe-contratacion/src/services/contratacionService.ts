@@ -24,6 +24,8 @@ import {
   DatosActaInicio,
   EstadoSeguimiento,
   DatosSeguimiento,
+  EstadoIncumplimiento,
+  DatosIncumplimiento,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -1096,6 +1098,38 @@ export const contratacionService = {
     }
 
     return pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ------------------- presunto incumplimiento (transversal) --------------
+
+  /** Casos abiertos sobre el contrato y si se puede abrir uno nuevo. */
+  incumplimiento: (procesoId: string) =>
+    pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento`),
+
+  /**
+   * Reporta un presunto incumplimiento.
+   *
+   * El soporte va aparte y es opcional: a diferencia del seguimiento, aquí el
+   * documento no es la razón de ser del registro.
+   */
+  reportarIncumplimiento: (
+    procesoId: string,
+    datos: DatosIncumplimiento,
+    soporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento`, {
       method: 'POST',
       body: cuerpo,
     });

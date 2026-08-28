@@ -26,6 +26,7 @@ import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistr
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
+import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
@@ -442,11 +443,29 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               />
             </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <PanelSeguimiento
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
+            /**
+             * Dos paneles en la misma casilla.
+             *
+             * El presunto incumplimiento es un bloque transversal de la matriz
+             * y no una de las 63 actividades numeradas, así que no tiene
+             * casilla propia en el riel. Se cuelga de la 9.2 porque es donde el
+             * supervisor ya está: vigila la ejecución, y si algo no se cumple
+             * lo constata mirando esto mismo. Dejarlo sin sitio lo volvería
+             * inalcanzable desde la pantalla.
+             */
+            <div className="space-y-3">
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <PanelSeguimiento
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              </div>
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <PanelIncumplimiento
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              </div>
             </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
             actividadSeleccionada?.numeral === NUMERAL_ARL ? (
