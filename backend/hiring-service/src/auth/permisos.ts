@@ -52,6 +52,22 @@ export const PERMISO_INCUMPLIMIENTO_REPORTAR = 'contratacion.incumplimiento.repo
 /** Consultar los reportes de presunto incumplimiento (EFDS-1180). */
 export const PERMISO_INCUMPLIMIENTO_VER = 'contratacion.incumplimiento.ver';
 
+// Los diez del catálogo original (EFDS-1183); ya viven en auth.permission.
+export const PERMISO_ACTIVIDAD_EDITAR = 'contratacion.actividad.edit';
+export const PERMISO_ACTIVIDAD_ENVIAR = 'contratacion.actividad.send';
+export const PERMISO_ACTIVIDAD_APROBAR = 'contratacion.actividad.approve';
+export const PERMISO_DOCUMENTO_ADJUNTAR = 'contratacion.documento.upload';
+export const PERMISO_DOCUMENTO_ELIMINAR = 'contratacion.documento.delete';
+export const PERMISO_PROCESO_CREAR = 'contratacion.proceso.create';
+export const PERMISO_PROCESO_EDITAR = 'contratacion.proceso.edit';
+export const PERMISO_PROCESO_VER = 'contratacion.proceso.view';
+export const PERMISO_PROCESO_VER_TODOS = 'contratacion.proceso.view-all';
+export const PERMISO_PROCESO_ASIGNAR = 'contratacion.proceso.assign';
+export const PERMISO_PROCESO_ARCHIVAR = 'contratacion.proceso.archive';
+export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
+export const PERMISO_CONFIG_ADMINISTRAR = 'contratacion.config.manage';
+export const PERMISO_REPORTE_VER = 'contratacion.reporte.view';
+
 // ------------------------------------------------- de dónde salen hoy --
 
 /**
@@ -147,6 +163,36 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'ORDENADOR_GASTO',
     'SUPER_ADMIN',
   ],
+  // Espejan las listas ROLES_* de hiring-access, que son la lectura vigente
+  // del catálogo A4: el guard por permiso no puede dar ni quitar acceso
+  // respecto del que ya daban los roles.
+  [PERMISO_ACTIVIDAD_EDITAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_ACTIVIDAD_ENVIAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_ACTIVIDAD_APROBAR]: [
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  [PERMISO_DOCUMENTO_ADJUNTAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_DOCUMENTO_ELIMINAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_CREAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_EDITAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_VER]: [
+    'GESTOR_CONTRATACION',
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  [PERMISO_PROCESO_VER_TODOS]: [
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  [PERMISO_PROCESO_ASIGNAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_ARCHIVAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
+  [PERMISO_CONFIG_ADMINISTRAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_REPORTE_VER]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
 };
 
 /**
