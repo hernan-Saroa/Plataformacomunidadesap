@@ -85,6 +85,21 @@ export function admiteTipo(estado: EstadoContrato, tipo: TipoModificacion): bool
   return true;
 }
 
+/**
+ * Qué campos del contrato mueve cada tipo de modificación (EFDS-1179).
+ *
+ * El objeto no aparece en ninguno: cambiarlo sería otro contrato. La regla se
+ * refuerza con trigger en la base (047), que ataja también el UPDATE directo.
+ */
+export function camposQueModifica(tipo: TipoModificacion): string[] {
+  if (tipo === 'PRORROGA') return ['plazoDias'];
+  if (tipo === 'ADICION') return ['valor'];
+  if (tipo === 'SUSPENSION' || tipo === 'REANUDACION' || tipo === 'TERMINACION_ANTICIPADA') {
+    return ['estado'];
+  }
+  return [];
+}
+
 interface ArchivoCargado {
   filename: string;
   originalname: string;

@@ -1,9 +1,11 @@
 import {
   admiteModificacion,
   admiteTipo,
+  camposQueModifica,
   estadoTrasModificacion,
   plazoConProrroga,
 } from './modificaciones.service';
+import { TipoModificacion } from '../../entities/modificacion-contrato.entity';
 
 /**
  * Criterio de EFDS-1177: «dado un contrato en ejecución, cuando se tramita una
@@ -112,5 +114,27 @@ describe('admiteTipo', () => {
     expect(admiteTipo('LEGALIZADO', 'CESION')).toBe(false);
     expect(admiteTipo('TERMINADO', 'SUSPENSION')).toBe(false);
     expect(admiteTipo('CERRADO', 'ACLARACION')).toBe(false);
+  });
+});
+
+/** EFDS-1179: ninguna modificación altera el objeto del contrato. */
+describe('camposQueModifica', () => {
+  const TIPOS: TipoModificacion[] = [
+    'PRORROGA', 'ADICION', 'CESION', 'ACLARACION',
+    'SUSPENSION', 'REANUDACION', 'TERMINACION_ANTICIPADA',
+  ];
+
+  it('ningún tipo de modificación toca el objeto', () => {
+    for (const tipo of TIPOS) {
+      expect(camposQueModifica(tipo)).not.toContain('objeto');
+    }
+  });
+
+  it('cada tipo mueve solo lo suyo', () => {
+    expect(camposQueModifica('PRORROGA')).toEqual(['plazoDias']);
+    expect(camposQueModifica('ADICION')).toEqual(['valor']);
+    expect(camposQueModifica('SUSPENSION')).toEqual(['estado']);
+    expect(camposQueModifica('CESION')).toEqual([]);
+    expect(camposQueModifica('ACLARACION')).toEqual([]);
   });
 });
