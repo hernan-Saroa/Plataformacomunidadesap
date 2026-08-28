@@ -24,7 +24,12 @@ import {
   RechazarModificacionDto,
   RechazarRespaldoDto,
   RevocarModificacionDto,
+  SolicitarAclaratorioDto,
   SolicitarAdicionDto,
+  SolicitarCesionDto,
+  SolicitarProrrogaDto,
+  SolicitarReanudacionDto,
+  SolicitarSuspensionDto,
   SolicitarRespaldoDto,
 } from './dto/modificaciones.dto';
 import { RolesGuard } from '../../auth/roles.guard';
@@ -76,6 +81,88 @@ export class ModificacionesController {
     @Req() req: any,
   ) {
     return this.service.solicitarAdicion(procesoId, dto, getHiringAccess(req));
+  }
+
+  // ------------------------------- los demas tipos (EFDS-1177 y EFDS-1178) --
+
+  @Post('prorrogas')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_MODIFICACIONES)
+  @ApiOperation({
+    summary: 'Actividad 9.5 · Solicitar una prórroga en tiempo',
+    description:
+      'Extiende el plazo con justificación técnica y sin tocar el presupuesto (RF-MOD-02): no pide CDP ni RP.',
+  })
+  solicitarProrroga(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarProrrogaDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarProrroga(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('cesiones')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_MODIFICACIONES)
+  @ApiOperation({
+    summary: 'Actividad 9.5 · Solicitar la cesión del contrato',
+    description:
+      'El contratista solo cambia al aprobarla, y el cedente queda registrado para saber a quién sustituyó.',
+  })
+  solicitarCesion(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarCesionDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarCesion(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('aclaratorios')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_MODIFICACIONES)
+  @ApiOperation({
+    summary: 'Actividad 9.5 · Solicitar un aclaratorio',
+    description:
+      'Precisa lo que el contrato ya dice: no cambia plazo, valor ni partes. Lo sustenta el acto que se adjunta al aprobarlo.',
+  })
+  solicitarAclaratorio(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarAclaratorioDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarAclaratorio(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('suspensiones')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_MODIFICACIONES)
+  @ApiOperation({
+    summary: 'Actividad 9.5 · Solicitar la suspensión del contrato',
+    description:
+      'Al aprobarla el contrato queda SUSPENDIDO (RF-SIS-01) y deja de admitir pagos y liquidación hasta que se reanude.',
+  })
+  solicitarSuspension(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarSuspensionDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarSuspension(procesoId, dto, getHiringAccess(req));
+  }
+
+  @Post('reanudaciones')
+  @UseGuards(RolesGuard)
+  @Roles(...ROLES_MODIFICACIONES)
+  @ApiOperation({
+    summary: 'Actividad 9.5 · Reanudar el contrato suspendido',
+    description:
+      'Levanta la suspensión vigente, devuelve el contrato a ejecución y le suma al plazo los días que estuvo detenido.',
+  })
+  solicitarReanudacion(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: SolicitarReanudacionDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarReanudacion(procesoId, dto, getHiringAccess(req));
   }
 
   // ------------------------------------------- el CDP y el RP de la adición --

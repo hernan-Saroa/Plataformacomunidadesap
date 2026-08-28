@@ -47,6 +47,8 @@ const PENDIENTES: EstadoPago[] = ['RADICADO', 'AVALADO', 'DEVUELTO'];
  * Lo que de verdad condiciona esta actividad no es el estado sino el informe
  * final, y eso se comprueba aparte.
  */
+// SUSPENDIDO tampoco (EFDS-1178): un contrato detenido no terminó, y liquidar
+// lo que sigue vivo cerraría cuentas que aún se pueden mover. Se reanuda primero.
 export function admiteLiquidacion(estado: EstadoContrato): boolean {
   return estado === 'EJECUCION' || estado === 'LIQUIDADO';
 }

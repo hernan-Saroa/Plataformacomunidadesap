@@ -50,6 +50,11 @@ import {
   EstadoCierreDefinitivo,
   EstadoModificaciones,
   DatosAdicion,
+  DatosAclaratorio,
+  DatosCesion,
+  DatosProrroga,
+  DatosReanudacion,
+  DatosSuspension,
   DatosAprobacionModificacion,
   DatosRespaldoAdicion,
   DatosCierreDefinitivo,
@@ -930,6 +935,44 @@ export const contratacionService = {
   /** Registra la adicion en tramite; todavia no toca el valor del contrato. */
   solicitarAdicion: (procesoId: string, datos: DatosAdicion) =>
     pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/adiciones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /**
+   * Los demas tipos de modificacion (EFDS-1177 y EFDS-1178).
+   *
+   * Una ruta por tipo y no una sola con el tipo en el cuerpo: lo que cada uno
+   * pide es distinto —dias, cesionario, fechas— y una sola ruta obligaria a
+   * validar en el servidor lo que el formulario ya sabe.
+   */
+  solicitarProrroga: (procesoId: string, datos: DatosProrroga) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/prorrogas`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  solicitarCesion: (procesoId: string, datos: DatosCesion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/cesiones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  solicitarAclaratorio: (procesoId: string, datos: DatosAclaratorio) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/aclaratorios`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  solicitarSuspension: (procesoId: string, datos: DatosSuspension) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/suspensiones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Levanta la suspension vigente; el servidor sabe cual es. */
+  solicitarReanudacion: (procesoId: string, datos: DatosReanudacion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/reanudaciones`, {
       method: 'POST',
       body: JSON.stringify(datos),
     }),

@@ -2305,6 +2305,21 @@ export interface ModificacionRegistrada {
   revocadaAt: string | null;
   revocadaPor: string | null;
   motivoRevocacion: string | null;
+  // Lo propio de cada tipo (EFDS-1177 y EFDS-1178). Viene siempre, nulo donde
+  // no aplica: una respuesta con forma distinta por tipo obligaria a la
+  // pantalla a adivinar cual lee.
+  diasProrroga: number | null;
+  plazoDiasAntes: number | null;
+  plazoDiasDespues: number | null;
+  suspensionDesde: string | null;
+  suspensionHasta: string | null;
+  reanudaModificacionId: string | null;
+  reanudadaEl: string | null;
+  cedenteNombre: string | null;
+  cedenteDocumento: string | null;
+  cesionarioNombre: string | null;
+  cesionarioDocumento: string | null;
+  cesionarioTipo: string | null;
   documento: { nombre: string; url: string } | null;
   cdp: RespaldoDeAdicion | null;
   rp: RespaldoDeAdicion | null;
@@ -2327,10 +2342,34 @@ export interface MargenDeAdicion {
   motivo: string | null;
 }
 
+/** Que tipo cabe ahora y por que no el resto; lo resuelve el servidor. */
+export interface TipoDisponible {
+  tipo: TipoModificacion;
+  nombre: string;
+  puede: boolean;
+  motivo: string | null;
+}
+
 export interface EstadoModificaciones {
-  contrato: { numero: string; objeto: string; estado: string; valor: number } | null;
+  contrato: {
+    numero: string;
+    objeto: string;
+    estado: string;
+    valor: number;
+    plazoDias: number | null;
+    contratistaNombre: string;
+    contratistaDocumento: string;
+  } | null;
   tope: { porcentaje: number; fundamento: string | null; confirmado: boolean };
   margen: MargenDeAdicion | null;
+  tipos: TipoDisponible[];
+  /** La suspension sin levantar, que es la que la reanudacion nombra. */
+  suspension: {
+    id: string;
+    numero: string | null;
+    desde: string | null;
+    hastaPrevista: string | null;
+  } | null;
   puedeSolicitar: boolean;
   motivoNoPuede: string | null;
   modificaciones: ModificacionRegistrada[];
@@ -2339,6 +2378,39 @@ export interface EstadoModificaciones {
 /** Lo que la pantalla envia al solicitar una adicion. */
 export interface DatosAdicion {
   valorAdicionado: number;
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al solicitar una prorroga (EFDS-1177). */
+export interface DatosProrroga {
+  diasProrroga: number;
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al solicitar una cesion (EFDS-1178). */
+export interface DatosCesion {
+  cesionarioDocumento: string;
+  cesionarioNombre: string;
+  cesionarioTipo: 'NATURAL' | 'JURIDICA';
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al solicitar un aclaratorio (EFDS-1178). */
+export interface DatosAclaratorio {
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al suspender el contrato (EFDS-1178). */
+export interface DatosSuspension {
+  suspensionDesde: string;
+  /** Se omite si la suspension es indefinida. */
+  suspensionHasta?: string;
+  justificacion: string;
+}
+
+/** Lo que la pantalla envia al reanudar (EFDS-1178). */
+export interface DatosReanudacion {
+  reanudadaEl: string;
   justificacion: string;
 }
 

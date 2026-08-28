@@ -64,6 +64,11 @@ const EN_FEMENINO: Record<EstadoPago, string> = {
  * (10.3) ya contaba con eso al congelar el cuadre. Lo que cierra la puerta es
  * CERRADO, no LIQUIDADO.
  *
+ * **SUSPENDIDO queda fuera a propósito** (EFDS-1178): mientras el contrato está
+ * detenido no hay prestación que cobrar. Es criterio del equipo —la historia no
+ * lo dice— y por eso se enumera en vez de usar `alMenos`, que lo dejaría entrar
+ * sin que nadie lo hubiera decidido.
+ *
  * Función pura para poder probar la regla sin base de datos.
  */
 export function admitePagos(estado: EstadoContrato): boolean {

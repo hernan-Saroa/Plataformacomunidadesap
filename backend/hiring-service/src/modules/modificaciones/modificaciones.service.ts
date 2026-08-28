@@ -11,6 +11,7 @@ import {
   ModificacionContrato,
   NUMERAL_MODIFICACIONES,
   PublicacionModificacion,
+  TipoModificacion,
   TopeAdicion,
 } from '../../entities/modificacion-contrato.entity';
 import { Cdp, EstadoCdp } from '../../entities/cdp.entity';
@@ -26,17 +27,30 @@ import { puedeTransicionar as cdpPuedeTransicionar } from '../cdp/cdp.service';
 import { puedeTransicionar as rpPuedeTransicionar } from '../registro-presupuestal/registro-presupuestal.service';
 import { margenDeAdicion, MargenDeAdicion } from './margen-de-adicion';
 import {
+  diasSuspendidos,
+  NOMBRE_TIPO,
+  plazoConMasDias,
+  porQueNoAdmiteTipo,
+  TIPOS_CON_TRAMITE,
+} from './reglas-por-tipo';
+import {
   AprobarModificacionDto,
   ExpedirRespaldoDto,
   PublicarModificacionDto,
   RechazarModificacionDto,
   RechazarRespaldoDto,
   RevocarModificacionDto,
+  SolicitarAclaratorioDto,
   SolicitarAdicionDto,
+  SolicitarCesionDto,
+  SolicitarProrrogaDto,
+  SolicitarReanudacionDto,
   SolicitarRespaldoDto,
+  SolicitarSuspensionDto,
 } from './dto/modificaciones.dto';
 
 export { NUMERAL_MODIFICACIONES, margenDeAdicion };
+export { TIPOS_CON_TRAMITE, porQueNoAdmiteTipo } from './reglas-por-tipo';
 
 /** Qué respaldo se está tramitando: el certificado o el compromiso. */
 export type TipoRespaldo = 'CDP' | 'RP';
@@ -49,16 +63,20 @@ interface ArchivoCargado {
 }
 
 /**
- * Si el contrato admite modificaciones.
+ * Si el estado del contrato admite modificaciones, sea cual sea el tipo.
  *
- * En ejecución, que es lo que dice el criterio de la historia. No liquidado: el
- * acta cierra las cuentas del contrato, y adicionarlo después sería modificar
- * algo que las partes ya dieron por terminado.
+ * En ejecución, que es lo que dice el criterio de la historia, **y suspendido**
+ * desde EFDS-1178: un contrato en pausa tiene que poder reanudarse, y reanudar
+ * es una modificación. Qué tipo cabe en cada caso lo decide
+ * `porQueNoAdmiteTipo`, que además mira si hay una suspensión sin levantar.
+ *
+ * No liquidado: el acta cierra las cuentas del contrato, y modificarlo después
+ * sería cambiar algo que las partes ya dieron por terminado.
  *
  * Función pura para poder probar la regla sin base de datos.
  */
 export function admiteModificacion(estado: EstadoContrato): boolean {
-  return estado === 'EJECUCION';
+  return estado === 'EJECUCION' || estado === 'SUSPENDIDO';
 }
 
 /**
@@ -100,6 +118,18 @@ export class ModificacionesService {
     });
 
     const admite = admiteModificacion(contrato.estado);
+    const suspension = await this.suspensionVigente(em, contrato.id);
+
+    // Qué tipo cabe ahora y por qué no el resto. Va resuelto desde el servidor
+    // y no deducido en la pantalla: la regla vive en un solo sitio y así el
+    // panel puede decir el motivo en vez de apagar un botón sin explicación.
+    const tipos = TIPOS_CON_TRAMITE.map((tipo) => {
+      const motivo = porQueNoAdmiteTipo(
+        { estado: contrato.estado, suspendido: suspension !== null },
+        tipo,
+      );
+      return { tipo, nombre: NOMBRE_TIPO[tipo], puede: motivo === null, motivo };
+    });
 
     return {
       contrato: {
@@ -107,7 +137,21 @@ export class ModificacionesService {
         objeto: contrato.objeto,
         estado: contrato.estado,
         valor: contrato.valor,
+        plazoDias: contrato.plazoDias,
+        contratistaNombre: contrato.contratistaNombre,
+        contratistaDocumento: contrato.contratistaDocumento,
       },
+      tipos,
+      // La suspensión sin levantar, que es lo que la reanudación necesita
+      // nombrar: «suspendido desde el 1 de septiembre».
+      suspension: suspension
+        ? {
+            id: suspension.id,
+            numero: suspension.numero,
+            desde: suspension.suspensionDesde,
+            hastaPrevista: suspension.suspensionHasta,
+          }
+        : null,
       tope,
       // Sin cifra solicitada: es lo que la pantalla necesita para decir cuánto
       // cabe antes de que alguien escriba nada.
@@ -262,6 +306,143 @@ export class ModificacionesService {
     });
   }
 
+  // ------------------------------------------- prorroga (EFDS-1177) --
+
+  /**
+   * Registra la prórroga en trámite.
+   *
+   * No pide CDP ni RP: la prórroga extiende el plazo **sin afectar el
+   * presupuesto** (RF-MOD-02). Exigirle respaldo presupuestal la trataría como
+   * una adición y obligaría a tramitar un certificado que nada compromete.
+   */
+  async solicitarProrroga(procesoId: string, dto: SolicitarProrrogaDto, acceso: HiringAccess) {
+    return this.crear(procesoId, 'PRORROGA', acceso, dto.justificacion, {
+      diasProrroga: dto.diasProrroga,
+    }, { dias: dto.diasProrroga });
+  }
+
+  // --------------------------- cesion, aclaratorio y suspension (EFDS-1178) --
+
+  /** Registra la cesión en trámite. El contratista solo cambia al aprobarla. */
+  async solicitarCesion(procesoId: string, dto: SolicitarCesionDto, acceso: HiringAccess) {
+    return this.crear(procesoId, 'CESION', acceso, dto.justificacion, {
+      cesionarioDocumento: dto.cesionarioDocumento,
+      cesionarioNombre: dto.cesionarioNombre,
+      cesionarioTipo: dto.cesionarioTipo,
+    }, { cesionario: dto.cesionarioNombre });
+  }
+
+  /**
+   * Registra el aclaratorio en trámite.
+   *
+   * No cambia plazo, valor ni partes: precisa lo que el contrato ya dice. Lo
+   * único que produce es el acto que se adjunta al aprobarlo.
+   */
+  async solicitarAclaratorio(
+    procesoId: string,
+    dto: SolicitarAclaratorioDto,
+    acceso: HiringAccess,
+  ) {
+    return this.crear(procesoId, 'ACLARATORIO', acceso, dto.justificacion, {}, {});
+  }
+
+  /** Registra la suspensión en trámite. El contrato se pausa al aprobarla. */
+  async solicitarSuspension(procesoId: string, dto: SolicitarSuspensionDto, acceso: HiringAccess) {
+    if (dto.suspensionHasta && dto.suspensionHasta < dto.suspensionDesde) {
+      throw new BadRequestException(
+        'La fecha prevista de reanudación no puede ser anterior a la de suspensión',
+      );
+    }
+
+    return this.crear(procesoId, 'SUSPENSION', acceso, dto.justificacion, {
+      suspensionDesde: dto.suspensionDesde,
+      suspensionHasta: dto.suspensionHasta ?? null,
+    }, { desde: dto.suspensionDesde, hasta: dto.suspensionHasta ?? null });
+  }
+
+  /**
+   * Registra la reanudación en trámite, contra la suspensión que levanta.
+   *
+   * La suspensión se busca aquí y no se recibe: hay una sola vigente, y pedirla
+   * por parámetro dejaría abierto reanudar una que ya se levantó.
+   */
+  async solicitarReanudacion(
+    procesoId: string,
+    dto: SolicitarReanudacionDto,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const { contrato, suspension } = await this.exigirPuedeTramitar(em, procesoId, 'REANUDACION');
+      // `porQueNoAdmiteTipo` ya garantiza que exista; esto es para el tipo.
+      if (!suspension) throw new ConflictException('El contrato no está suspendido');
+
+      if (dto.reanudadaEl < (suspension.suspensionDesde as string)) {
+        throw new BadRequestException(
+          'El contrato no puede reanudarse antes de la fecha en que se suspendió',
+        );
+      }
+      this.validarFecha(dto.reanudadaEl);
+
+      const registro = await em.save(
+        em.create(ModificacionContrato, {
+          contratoId: contrato.id,
+          tipo: 'REANUDACION' as TipoModificacion,
+          justificacion: dto.justificacion,
+          reanudaModificacionId: suspension.id,
+          reanudadaEl: dto.reanudadaEl,
+          estado: 'EN_TRAMITE' as EstadoModificacion,
+          solicitadaPor: acceso.userName,
+        } as Partial<ModificacionContrato>),
+      );
+
+      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.traza(em, procesoId, registro.id, 'SOLICITAR', acceso, {
+        actividad: NUMERAL_MODIFICACIONES,
+        contrato: contrato.numero,
+        tipo: 'REANUDACION',
+        suspendidoDesde: suspension.suspensionDesde,
+        reanudadaEl: dto.reanudadaEl,
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  /** Lo común de los cinco trámites que no son la adición. */
+  private async crear(
+    procesoId: string,
+    tipo: TipoModificacion,
+    acceso: HiringAccess,
+    justificacion: string,
+    propio: Partial<ModificacionContrato>,
+    detalle: Record<string, unknown>,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      const { contrato } = await this.exigirPuedeTramitar(em, procesoId, tipo);
+
+      const registro = await em.save(
+        em.create(ModificacionContrato, {
+          contratoId: contrato.id,
+          tipo,
+          justificacion,
+          estado: 'EN_TRAMITE' as EstadoModificacion,
+          solicitadaPor: acceso.userName,
+          ...propio,
+        } as Partial<ModificacionContrato>),
+      );
+
+      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.traza(em, procesoId, registro.id, 'SOLICITAR', acceso, {
+        actividad: NUMERAL_MODIFICACIONES,
+        contrato: contrato.numero,
+        tipo,
+        ...detalle,
+      });
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
   // ------------------------------------------------------------ aprobación --
 
   /**
@@ -281,25 +462,32 @@ export class ModificacionesService {
     await this.dataSource.transaction(async (em) => {
       const { contrato, modificacion } = await this.exigirEnTramite(em, procesoId, modificacionId);
 
-      const faltan = await this.respaldoPendiente(em, modificacionId);
-      if (faltan.length > 0) {
-        throw new ConflictException(
-          `No se puede aprobar la adición: ${faltan.join('; ')}`,
-        );
-      }
+      // Solo la adición compromete presupuesto. Exigirle CDP y RP a una
+      // prórroga o a un aclaratorio obligaría a tramitar un certificado que no
+      // respalda nada: RF-MOD-02 dice expresamente «sin afectar el presupuesto».
+      if (modificacion.tipo === 'ADICION') {
+        const faltan = await this.respaldoPendiente(em, modificacionId);
+        if (faltan.length > 0) {
+          throw new ConflictException(
+            `No se puede aprobar la adición: ${faltan.join('; ')}`,
+          );
+        }
 
-      const tope = await this.topeConfigurado(em);
-      const previas = await this.modificacionesDe(em, contrato.id);
-      // Se vuelve a juzgar: entre la solicitud y la aprobación pudo aprobarse
-      // otra adición, y el margen ya no es el mismo.
-      const margen = this.margenDe(
-        contrato,
-        previas.filter((m) => m.id !== modificacionId),
-        modificacion.valorAdicionado ?? 0,
-        tope.porcentaje,
-      );
-      if (!margen.cabe) {
-        throw new ConflictException(`No se puede aprobar la adición: ${margen.motivo}`);
+        const tope = await this.topeConfigurado(em);
+        const previas = await this.modificacionesDe(em, contrato.id);
+        // Se vuelve a juzgar: entre la solicitud y la aprobación pudo aprobarse
+        // otra adición, y el margen ya no es el mismo.
+        const margen = this.margenDe(
+          contrato,
+          previas.filter((m) => m.id !== modificacionId),
+          modificacion.valorAdicionado ?? 0,
+          tope.porcentaje,
+        );
+        if (!margen.cabe) {
+          throw new ConflictException(`No se puede aprobar la adición: ${margen.motivo}`);
+        }
+
+        modificacion.topePorcentaje = tope.porcentaje;
       }
 
       this.validarFecha(dto.fechaSuscripcion);
@@ -316,28 +504,16 @@ export class ModificacionesService {
         acceso,
       );
 
-      const cdp = await this.respaldoExpedido(em, modificacionId, 'CDP');
-      const rp = await this.respaldoExpedido(em, modificacionId, 'RP');
-
-      const valorAntes = contrato.valor;
-      const valorDespues = valorAntes + (modificacion.valorAdicionado ?? 0);
-
       modificacion.estado = 'APROBADA';
       modificacion.numero = dto.numero;
       modificacion.fechaSuscripcion = dto.fechaSuscripcion;
       modificacion.documentoId = documento.id;
-      modificacion.cdpId = (cdp as Cdp).id;
-      modificacion.rpId = (rp as RegistroPresupuestal).id;
-      modificacion.valorContratoAntes = valorAntes;
-      modificacion.valorContratoDespues = valorDespues;
-      modificacion.topePorcentaje = tope.porcentaje;
       modificacion.aprobadaPor = acceso.userName;
       modificacion.aprobadaAt = new Date();
-      await em.save(modificacion);
 
-      // Lo que hace real la adición: el balance del informe final, el cuadre
-      // del cierre financiero y el aviso de sobrepago de los pagos leen esto.
-      contrato.valor = valorDespues;
+      const efecto = await this.aplicarEfecto(em, contrato, modificacion);
+
+      await em.save(modificacion);
       await em.save(contrato);
 
       await this.marcarActividad(em, procesoId, contrato.id, acceso);
@@ -345,15 +521,115 @@ export class ModificacionesService {
       await this.traza(em, procesoId, modificacion.id, 'APROBAR', acceso, {
         actividad: NUMERAL_MODIFICACIONES,
         contrato: contrato.numero,
-        tipo: 'ADICION',
+        tipo: modificacion.tipo,
         numero: dto.numero,
-        valorAdicionado: modificacion.valorAdicionado,
-        valorAntes,
-        valorDespues,
+        ...efecto,
       });
     });
 
     return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Lo que cada tipo le hace al contrato al aprobarse.
+   *
+   * Un solo sitio con todos los efectos, y no un `if` repartido por el
+   * servicio: revocar tiene que deshacer exactamente esto, y tenerlos juntos es
+   * lo que permite leerlos en pareja.
+   *
+   * Devuelve lo que hay que dejar en la trazabilidad, que cambia con el tipo:
+   * de una adición importa la plata y de una suspensión las fechas.
+   */
+  private async aplicarEfecto(
+    em: EntityManager,
+    contrato: Contrato,
+    modificacion: ModificacionContrato,
+  ): Promise<Record<string, unknown>> {
+    switch (modificacion.tipo) {
+      case 'ADICION': {
+        const cdp = await this.respaldoExpedido(em, modificacion.id, 'CDP');
+        const rp = await this.respaldoExpedido(em, modificacion.id, 'RP');
+
+        const valorAntes = contrato.valor;
+        const valorDespues = valorAntes + (modificacion.valorAdicionado ?? 0);
+
+        modificacion.cdpId = (cdp as Cdp).id;
+        modificacion.rpId = (rp as RegistroPresupuestal).id;
+        modificacion.valorContratoAntes = valorAntes;
+        modificacion.valorContratoDespues = valorDespues;
+
+        // Lo que hace real la adición: el balance del informe final, el cuadre
+        // del cierre financiero y el aviso de sobrepago de los pagos leen esto.
+        contrato.valor = valorDespues;
+
+        return { valorAdicionado: modificacion.valorAdicionado, valorAntes, valorDespues };
+      }
+
+      case 'PRORROGA': {
+        const plazo = plazoConMasDias(contrato.plazoDias, modificacion.diasProrroga ?? 0);
+        modificacion.plazoDiasAntes = plazo.antes;
+        modificacion.plazoDiasDespues = plazo.despues;
+        contrato.plazoDias = plazo.despues;
+
+        return { diasProrroga: modificacion.diasProrroga, plazoAntes: plazo.antes, plazoDespues: plazo.despues };
+      }
+
+      case 'CESION': {
+        // El cedente se guarda al aprobar y no al solicitar: si el contrato se
+        // cediera dos veces, la segunda tiene que registrar a quien de verdad
+        // era el contratista ese día.
+        modificacion.cedenteDocumento = contrato.contratistaDocumento;
+        modificacion.cedenteNombre = contrato.contratistaNombre;
+        modificacion.cedenteTipo = contrato.contratistaTipo;
+
+        contrato.contratistaDocumento = modificacion.cesionarioDocumento as string;
+        contrato.contratistaNombre = modificacion.cesionarioNombre as string;
+        contrato.contratistaTipo = modificacion.cesionarioTipo as typeof contrato.contratistaTipo;
+
+        return { cedente: modificacion.cedenteNombre, cesionario: modificacion.cesionarioNombre };
+      }
+
+      case 'SUSPENSION': {
+        contrato.estado = 'SUSPENDIDO';
+        return {
+          suspensionDesde: modificacion.suspensionDesde,
+          suspensionHasta: modificacion.suspensionHasta,
+        };
+      }
+
+      case 'REANUDACION': {
+        const suspension = await em.getRepository(ModificacionContrato).findOne({
+          where: { id: modificacion.reanudaModificacionId as string },
+        });
+        if (!suspension) throw new NotFoundException('No se encuentra la suspensión que se reanuda');
+
+        const dias = diasSuspendidos(
+          suspension.suspensionDesde as string,
+          modificacion.reanudadaEl as string,
+        );
+
+        // Los días suspendidos se le devuelven al plazo. Criterio del equipo:
+        // ninguna fuente lo dice, pero si el plazo corriera durante la pausa el
+        // contratista pagaría con su término una detención que no causó.
+        const plazo = plazoConMasDias(contrato.plazoDias, dias);
+        modificacion.plazoDiasAntes = plazo.antes;
+        modificacion.plazoDiasDespues = plazo.despues;
+        contrato.plazoDias = plazo.despues;
+        contrato.estado = 'EJECUCION';
+
+        return {
+          suspendidoDesde: suspension.suspensionDesde,
+          reanudadaEl: modificacion.reanudadaEl,
+          diasSuspendidos: dias,
+          plazoAntes: plazo.antes,
+          plazoDespues: plazo.despues,
+        };
+      }
+
+      // El aclaratorio precisa lo que el contrato ya dice: no toca nada.
+      default:
+        return {};
+    }
   }
 
   /** Deja sin curso una modificación en trámite. */
@@ -406,16 +682,13 @@ export class ModificacionesService {
         throw new ConflictException('Solo se revoca una modificación aprobada');
       }
 
-      const valorAntes = contrato.valor;
-      const valorDespues = valorAntes - (modificacion.valorAdicionado ?? 0);
+      const deshecho = this.deshacerEfecto(contrato, modificacion);
 
       modificacion.estado = 'REVOCADA';
       modificacion.revocadaAt = new Date();
       modificacion.revocadaPor = acceso.userName;
       modificacion.motivoRevocacion = dto.motivo;
       await em.save(modificacion);
-
-      contrato.valor = valorDespues;
       await em.save(contrato);
 
       await this.marcarActividad(em, procesoId, contrato.id, acceso);
@@ -423,13 +696,70 @@ export class ModificacionesService {
       await this.traza(em, procesoId, modificacion.id, 'REVOCAR', acceso, {
         actividad: NUMERAL_MODIFICACIONES,
         contrato: contrato.numero,
-        valorAntes,
-        valorDespues,
+        tipo: modificacion.tipo,
         motivo: dto.motivo,
+        ...deshecho,
       });
     });
 
     return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Lo que revocar le devuelve al contrato, tipo por tipo.
+   *
+   * Se lee en pareja con `aplicarEfecto`: lo que uno hace, este lo deshace. El
+   * plazo y el contratista vuelven de las columnas «antes» que la aprobación
+   * guardó, no recalculando, porque entre una cosa y la otra pudo haber otra
+   * modificación y restar a ciegas dejaría el contrato en un estado que nunca
+   * tuvo.
+   *
+   * Lo que **no** vuelve atrás son los informes y las actas ya firmados:
+   * congelaron lo que era cierto ese día, con el criterio del resto del módulo.
+   */
+  private deshacerEfecto(
+    contrato: Contrato,
+    modificacion: ModificacionContrato,
+  ): Record<string, unknown> {
+    switch (modificacion.tipo) {
+      case 'ADICION': {
+        const valorAntes = contrato.valor;
+        const valorDespues = valorAntes - (modificacion.valorAdicionado ?? 0);
+        contrato.valor = valorDespues;
+        return { valorAntes, valorDespues };
+      }
+
+      case 'PRORROGA':
+      case 'REANUDACION': {
+        // La reanudación revocada devuelve además el contrato a suspendido: la
+        // suspensión que levantaba vuelve a quedar sin levantar.
+        if (modificacion.tipo === 'REANUDACION') contrato.estado = 'SUSPENDIDO';
+        if (modificacion.plazoDiasAntes !== null) {
+          const plazoDespues = modificacion.plazoDiasAntes;
+          const plazoAntes = contrato.plazoDias;
+          contrato.plazoDias = plazoDespues;
+          return { plazoAntes, plazoDespues };
+        }
+        return {};
+      }
+
+      case 'CESION': {
+        const cesionario = contrato.contratistaNombre;
+        contrato.contratistaDocumento = modificacion.cedenteDocumento as string;
+        contrato.contratistaNombre = modificacion.cedenteNombre as string;
+        contrato.contratistaTipo = modificacion.cedenteTipo as typeof contrato.contratistaTipo;
+        return { cesionario, vuelveA: modificacion.cedenteNombre };
+      }
+
+      case 'SUSPENSION': {
+        // Revocar la suspensión es decir que nunca debió pausarse.
+        contrato.estado = 'EJECUCION';
+        return { suspensionDesde: modificacion.suspensionDesde };
+      }
+
+      default:
+        return {};
+    }
   }
 
   // ------------------------------------------------- publicación (RF-MOD-05) --
@@ -663,6 +993,20 @@ export class ModificacionesService {
       valorContratoAntes: m.valorContratoAntes,
       valorContratoDespues: m.valorContratoDespues,
       topePorcentaje: m.topePorcentaje,
+      // Lo propio de cada tipo. Va siempre, nulo donde no aplica: una respuesta
+      // con forma distinta por tipo obligaría a la pantalla a adivinar cuál lee.
+      diasProrroga: m.diasProrroga,
+      plazoDiasAntes: m.plazoDiasAntes,
+      plazoDiasDespues: m.plazoDiasDespues,
+      suspensionDesde: m.suspensionDesde,
+      suspensionHasta: m.suspensionHasta,
+      reanudaModificacionId: m.reanudaModificacionId,
+      reanudadaEl: m.reanudadaEl,
+      cedenteNombre: m.cedenteNombre,
+      cedenteDocumento: m.cedenteDocumento,
+      cesionarioNombre: m.cesionarioNombre,
+      cesionarioDocumento: m.cesionarioDocumento,
+      cesionarioTipo: m.cesionarioTipo,
       solicitadaPor: m.solicitadaPor,
       aprobadaPor: m.aprobadaPor,
       aprobadaAt: m.aprobadaAt,
@@ -780,6 +1124,59 @@ export class ModificacionesService {
     return contrato;
   }
 
+  /**
+   * La suspensión aprobada que todavía nadie ha levantado, si la hay.
+   *
+   * Se deriva de las modificaciones y no de una columna en `contratos`: el
+   * estado dice que está suspendido, y esto dice por cuál acto. Guardarlo dos
+   * veces daría dos sitios que pueden discrepar.
+   */
+  private async suspensionVigente(em: EntityManager, contratoId: string) {
+    const suspensiones = await em.getRepository(ModificacionContrato).find({
+      where: { contratoId, tipo: 'SUSPENSION' as TipoModificacion, estado: 'APROBADA' as EstadoModificacion },
+      order: { createdAt: 'ASC' },
+    });
+
+    for (const suspension of suspensiones) {
+      const levantada = await em.getRepository(ModificacionContrato).findOne({
+        where: {
+          reanudaModificacionId: suspension.id,
+          // Solo la aprobada levanta: la que está en trámite es justamente la
+          // que necesita ver la suspensión viva para poder aprobarse.
+          estado: 'APROBADA' as EstadoModificacion,
+        },
+      });
+      if (!levantada) return suspension;
+    }
+
+    return null;
+  }
+
+  /**
+   * El contrato, comprobando que admite **este** tipo de modificación ahora.
+   *
+   * Es la puerta única: la usan tanto solicitar como aprobar, porque entre una
+   * cosa y la otra el contrato pudo suspenderse.
+   */
+  private async exigirPuedeTramitar(
+    em: EntityManager,
+    procesoId: string,
+    tipo: TipoModificacion,
+  ) {
+    const contrato = await this.exigirContrato(em, procesoId);
+    const suspension = await this.suspensionVigente(em, contrato.id);
+
+    const motivo = porQueNoAdmiteTipo(
+      { estado: contrato.estado, suspendido: suspension !== null },
+      tipo,
+    );
+    if (motivo) {
+      throw new ConflictException(`No se puede tramitar ${NOMBRE_TIPO[tipo]}: ${motivo}`);
+    }
+
+    return { contrato, suspension };
+  }
+
   private async exigirEnTramite(em: EntityManager, procesoId: string, modificacionId: string) {
     const contrato = await this.exigirContratoModificable(em, procesoId);
 
@@ -788,6 +1185,21 @@ export class ModificacionesService {
       .findOne({ where: { id: modificacionId, contratoId: contrato.id } });
 
     if (!modificacion) throw new NotFoundException('La modificación no existe');
+
+    // Se vuelve a juzgar con el tipo que la modificación ya tiene: entre la
+    // solicitud y la aprobación el contrato pudo suspenderse, y una adición en
+    // trámite no puede aprobarse sobre un contrato en pausa.
+    const suspension = await this.suspensionVigente(em, contrato.id);
+    const motivo = porQueNoAdmiteTipo(
+      { estado: contrato.estado, suspendido: suspension !== null },
+      modificacion.tipo,
+    );
+    if (motivo) {
+      throw new ConflictException(
+        `No se puede tramitar ${NOMBRE_TIPO[modificacion.tipo]}: ${motivo}`,
+      );
+    }
+
     if (modificacion.estado !== 'EN_TRAMITE') {
       throw new ConflictException(
         `La modificación está ${modificacion.estado.toLowerCase().replace('_', ' ')} y ya no se puede tramitar`,

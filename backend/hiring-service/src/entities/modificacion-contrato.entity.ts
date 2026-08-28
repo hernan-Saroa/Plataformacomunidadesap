@@ -98,6 +98,64 @@ export class ModificacionContrato {
   @Column({ name: 'tope_porcentaje', type: 'numeric', precision: 5, scale: 2, nullable: true, transformer: aNumero })
   topePorcentaje: number | null;
 
+  // ------------------------------------------- prorroga (EFDS-1177) --
+
+  /** Dias que la prorroga anade al plazo. La reanudacion deriva los suyos. */
+  @Column({ name: 'dias_prorroga', type: 'int', nullable: true })
+  diasProrroga: number | null;
+
+  /**
+   * El plazo antes y despues, en dias.
+   *
+   * Mismo criterio que el valor en la adicion: `contratos.plazo_dias` dice
+   * cuanto es hoy, y esto dice que hizo cada modificacion. Sin el «antes» no se
+   * puede revocar sin adivinar.
+   */
+  @Column({ name: 'plazo_dias_antes', type: 'int', nullable: true })
+  plazoDiasAntes: number | null;
+
+  @Column({ name: 'plazo_dias_despues', type: 'int', nullable: true })
+  plazoDiasDespues: number | null;
+
+  // ------------------------------ suspension y reanudacion (EFDS-1178) --
+
+  @Column({ name: 'suspension_desde', type: 'date', nullable: true })
+  suspensionDesde: string | null;
+
+  /** Fecha prevista. Puede faltar: hay suspensiones indefinidas. */
+  @Column({ name: 'suspension_hasta', type: 'date', nullable: true })
+  suspensionHasta: string | null;
+
+  /** La suspension que esta reanudacion levanta. */
+  @Column({ name: 'reanuda_modificacion_id', type: 'uuid', nullable: true })
+  reanudaModificacionId: string | null;
+
+  /** Cuando se reanuda de verdad, que manda sobre la fecha prevista. */
+  @Column({ name: 'reanudada_el', type: 'date', nullable: true })
+  reanudadaEl: string | null;
+
+  // ------------------------------------------------ cesion (EFDS-1178) --
+
+  /** Quien era el contratista. `contratos` se queda con el cesionario. */
+  @Column({ name: 'cedente_documento', length: 40, nullable: true })
+  cedenteDocumento: string | null;
+
+  @Column({ name: 'cedente_nombre', length: 300, nullable: true })
+  cedenteNombre: string | null;
+
+  /** De el depende la ARL: revocar sin devolverlo dejaria la exigencia torcida. */
+  @Column({ name: 'cedente_tipo', length: 20, nullable: true })
+  cedenteTipo: string | null;
+
+  @Column({ name: 'cesionario_documento', length: 40, nullable: true })
+  cesionarioDocumento: string | null;
+
+  @Column({ name: 'cesionario_nombre', length: 300, nullable: true })
+  cesionarioNombre: string | null;
+
+  @Column({ name: 'cesionario_tipo', length: 20, nullable: true })
+  cesionarioTipo: string | null;
+
   @Column({ name: 'solicitada_por', length: 200, nullable: true })
   solicitadaPor: string | null;
 
