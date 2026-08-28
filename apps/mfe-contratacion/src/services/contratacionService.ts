@@ -35,6 +35,8 @@ import {
   DatosReasignacion,
   EstadoSeguimiento,
   DatosSeguimiento,
+  EstadoRegistroActividad,
+  DatosRegistroActividad,
   EstadoPagos,
   DatosPago,
   TipoSoportePago,
@@ -1901,6 +1903,43 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
+
+  // ------ actividades sin historia propia · registro con soporte (051) ------
+
+  /** El registro vigente de una actividad, su soporte y si aplica a la modalidad. */
+  registroActividad: (procesoId: string, numeral: string) =>
+    pedir<EstadoRegistroActividad>(`/procesos/${procesoId}/actividades/${numeral}/registro`),
+
+  /**
+   * Deja constancia de que la actividad ocurrio.
+   *
+   * Va como multipart porque el soporte viaja en la misma peticion, y es
+   * opcional: cuales lo exigen lo dice el parametro, no la pantalla.
+   */
+  registrarActividad: (
+    procesoId: string,
+    numeral: string,
+    datos: DatosRegistroActividad,
+    soporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('fecha', datos.fecha);
+    cuerpo.append('nota', datos.nota);
+    if (datos.datos) cuerpo.append('datos', JSON.stringify(datos.datos));
+
+    return pedir<EstadoRegistroActividad>(
+      `/procesos/${procesoId}/actividades/${numeral}/registro`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Anula el registro vigente; la actividad vuelve al riel sin cumplir. */
+  anularRegistroActividad: (procesoId: string, numeral: string, motivo: string) =>
+    pedir<EstadoRegistroActividad>(
+      `/procesos/${procesoId}/actividades/${numeral}/registro/anular`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

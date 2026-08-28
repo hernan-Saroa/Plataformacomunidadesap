@@ -36,6 +36,7 @@ import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistr
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
+import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
@@ -209,6 +210,30 @@ const ACTIVIDADES_ETAPA_3 = [
   },
 ];
 
+/**
+ * Las once actividades de la matriz que ninguna historia recogió (migración 051).
+ *
+ * No tienen trámite propio en la plataforma —el sorteo se hace en la Dirección
+ * de Contratación, la subasta en SECOP II, la radicación en Active Document—,
+ * así que se cumplen dejando constancia. Comparten un solo panel: lo que las
+ * distingue no cambia lo que el expediente necesita de ellas.
+ */
+const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
+  '3.2': 'Análisis del sector y estudio de mercado',
+  '3.3': 'Radicación en la Dirección de Contratación',
+  '3.4': 'Revisión y reparto',
+  '3.5': 'Definir modalidad de contratación',
+  '5.9': 'Manifestación de interés',
+  '5.10': 'Sorteo',
+  '5.11': 'Publicación de la manifestación de interés',
+  '6.7': 'Informe previo a la audiencia de adjudicación',
+  '6.8': 'Informe previo al evento de subasta',
+  '6.9': 'Apertura del sobre económico previo a la subasta',
+  '6.10': 'Evento de subasta',
+};
+
+const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
+
 const formatoPesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
   currency: 'COP',
@@ -332,7 +357,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         NUMERALES_ADJUDICACION.includes(act.numeral) ||
         NUMERALES_ETAPA_8.includes(act.numeral) ||
         NUMERALES_ETAPA_9.includes(act.numeral) ||
-        NUMERALES_ETAPA_10.includes(act.numeral)
+        NUMERALES_ETAPA_10.includes(act.numeral) ||
+        NUMERALES_CON_REGISTRO.includes(act.numeral)
       ) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
@@ -574,6 +600,16 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelSeguimiento
                 procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada &&
+            NUMERALES_CON_REGISTRO.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelRegistroActividad
+                procesoId={procesoId}
+                numeral={actividadSeleccionada.numeral}
+                nombre={ACTIVIDADES_CON_REGISTRO[actividadSeleccionada.numeral]}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>

@@ -2221,6 +2221,50 @@ export interface DatosCierreDefinitivo {
   observaciones?: string;
 }
 
+// --------- actividades sin historia · registro con soporte (migracion 051) ---
+
+/** Un registro que se anulo, con el motivo que lo explica. */
+export interface RegistroActividadAnulado {
+  fecha: string;
+  nota: string;
+  anuladoAt: string | null;
+  anuladoPor: string | null;
+  motivoAnulacion: string | null;
+}
+
+export interface RegistroActividadVigente {
+  id: string;
+  /** Cuando ocurrio el hecho, no cuando se transcribio. */
+  fecha: string;
+  nota: string;
+  datos: Record<string, any>;
+  registradoPor: string | null;
+  registradoAt: string;
+  soporte: { nombre: string; url: string } | null;
+}
+
+export interface EstadoRegistroActividad {
+  numeral: string;
+  etapa: number;
+  exigeSoporte: boolean;
+  /** Si la exigencia sale de la matriz o es suposicion del equipo. */
+  exigenciaConfirmada: boolean;
+  /** Lo que la matriz dice de esta actividad, para mostrarlo en la pantalla. */
+  notaFuente: string | null;
+  /** Hay modalidades que no adelantan la actividad; la subasta es el caso. */
+  aplica: boolean;
+  motivoNoAplica: string | null;
+  registro: RegistroActividadVigente | null;
+  historial: RegistroActividadAnulado[];
+}
+
+/** Lo que la pantalla envia al dejar constancia. */
+export interface DatosRegistroActividad {
+  fecha: string;
+  nota: string;
+  datos?: Record<string, any>;
+}
+
 // ------------------ etapa 9 · modificaciones contractuales (9.5) -----------
 
 /** Los siete tipos que lista la matriz; hoy solo ADICION tiene tramite. */
