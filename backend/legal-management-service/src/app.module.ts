@@ -49,6 +49,7 @@ import { OficioEnviado } from './entities/oficio-enviado.entity';
 import { TasaReferencia } from './entities/tasa-referencia.entity';
 import { PlantillaDocumento } from './entities/plantilla-documento.entity';
 import { CorreoTrackingToken } from './entities/correo-tracking-token.entity';
+import { Sequence } from './entities/sequence.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -122,6 +123,7 @@ import { PlantillasService } from './services/plantillas.service';
 import { NotificationClientService } from './services/notification-client.service';
 import { LegalNotificationsService } from './services/legal-notifications.service';
 import { ReportesService } from './services/reportes.service';
+import { SequenceService } from './services/sequence.service';
 import { AuthModule } from './auth/auth.module';
 
 // Modules
@@ -194,7 +196,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Plantillas de Documentos
       PlantillaDocumento,
       // Tracking de Correos (trazabilidad apertura/descarga)
-      CorreoTrackingToken
+      CorreoTrackingToken,
+      // Consecutivos (radicados autogenerados)
+      Sequence
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -285,7 +289,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     NotificationClientService,
     LegalNotificationsService,
     // Reportes
-    ReportesService
+    ReportesService,
+    // Consecutivos
+    SequenceService
   ],
 })
 export class AppModule { }

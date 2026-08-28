@@ -9,6 +9,7 @@ import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import { TerminoProcesal } from '../entities/termino-procesal.entity';
 import { TerminosService } from './terminos.service';
 import { LegalNotificationsService } from './legal-notifications.service';
+import { SequenceService } from './sequence.service';
 
 // Construidas con el constructor local (year, monthIndex, day) para que getDay()/setDate()
 // se comporten igual sin importar la zona horaria del runner.
@@ -26,6 +27,7 @@ describe('TerminosService', () => {
     let mockActuacionRepo: any;
     let mockDataSource: any;
     let mockLegalNotifications: any;
+    let mockSequenceService: any;
     let queryBuilder: any;
 
     beforeEach(async () => {
@@ -55,6 +57,7 @@ describe('TerminosService', () => {
         mockActuacionRepo = { find: jest.fn().mockResolvedValue([]) };
         mockDataSource = { query: jest.fn().mockResolvedValue([]) };
         mockLegalNotifications = { notifyResponsableAsignadoTermino: jest.fn().mockResolvedValue(undefined) };
+        mockSequenceService = { generateRadicado: jest.fn().mockResolvedValue('TERM-2026-0001') };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -67,6 +70,7 @@ describe('TerminosService', () => {
                 { provide: getRepositoryToken(Actuacion), useValue: mockActuacionRepo },
                 { provide: getDataSourceToken(), useValue: mockDataSource },
                 { provide: LegalNotificationsService, useValue: mockLegalNotifications },
+                { provide: SequenceService, useValue: mockSequenceService },
             ],
         }).compile();
 
@@ -277,6 +281,29 @@ describe('TerminosService', () => {
             await service.create({ nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' } as any);
 
             expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
+
+        // -------------------------------------------------------------
+        // EFDS-1409: radicado legible autogenerado para términos manuales
+        // -------------------------------------------------------------
+        it('debe generar un numeroRadicado consecutivo cuando no viene ninguno (término manual)', async () => {
+            mockSequenceService.generateRadicado.mockResolvedValue('TERM-2026-0042');
+
+            const result = await service.create({ nombreActuacion: 'Informe sin radicado', origenModulo: 'MANUAL' } as any);
+
+            expect(mockSequenceService.generateRadicado).toHaveBeenCalledWith('TERM');
+            expect(result.numeroRadicado).toBe('TERM-2026-0042');
+        });
+
+        it('no debe pisar un numeroRadicado ya presente (términos que sí vienen con radicado)', async () => {
+            const result = await service.create({
+                nombreActuacion: 'Con radicado propio',
+                origenModulo: 'DEFENSA',
+                numeroRadicado: 'RAD-001',
+            } as any);
+
+            expect(mockSequenceService.generateRadicado).not.toHaveBeenCalled();
+            expect(result.numeroRadicado).toBe('RAD-001');
         });
     });
 
