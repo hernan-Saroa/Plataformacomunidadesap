@@ -34,18 +34,22 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
 }
 
 /**
- * Sanea el objeto de la comisión: conserva únicamente caracteres ASCII
- * (letras, números y espacios), colapsa espacios múltiples y recorta
- * hasta 250 caracteres. Espejo de `sanitizeObjetoComision` del backend.
+ * Sanea el objeto de la comisión: normaliza las tildes (conservando la
+ * letra base, p. ej. `gestión` → `gestion`), reemplaza `ñ` → `n`, elimina
+ * caracteres especiales, colapsa espacios múltiples y recorta hasta 250
+ * caracteres. Espejo de `sanitizeObjetoComision` del backend.
  *
  * No recorta espacios finales en tiempo de escritura para preservar la
  * separación entre palabras al digitar; el recorte definitivo se aplica
  * al construir el payload (`mapearARequestCreacion`).
  *
- * @example sanitizeObjetoComision('Comisión de gestión @#$%') // 'Comisin de gestin '
+ * @example sanitizeObjetoComision('Comisión de gestión @#$%') // 'Comision de gestion '
  */
 export function sanitizeObjetoComision(texto: string): string {
   return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ñ/gi, 'n')
     .replace(/[^a-zA-Z0-9 ]/g, '')
     .replace(/ {2,}/g, ' ')
     .slice(0, 250);

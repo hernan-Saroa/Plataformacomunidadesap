@@ -334,7 +334,7 @@ describe('ViaticosModulePremium', () => {
     expect(screen.getByText(/Paso 1 de 3/i)).toBeInTheDocument();
   });
 
-  it('debe sanitizar objeto de comisión conservando las palabras', async () => {
+  it('debe normalizar tildes del objeto de comisión conservando la letra', async () => {
     render(<ViaticosModulePremium />);
 
     await waitFor(() => {
@@ -346,7 +346,7 @@ describe('ViaticosModulePremium', () => {
     const objetoInput = screen.getByPlaceholderText(/Describa el objetivo institucional/i);
     await userEvent.type(objetoInput, 'Comisión de gestión');
 
-    expect(objetoInput).toHaveValue('Comisin de gestin');
+    expect(objetoInput).toHaveValue('Comision de gestion');
   });
 
   it('debe eliminar caracteres especiales del objeto de comisión', async () => {
@@ -447,7 +447,7 @@ describe('ViaticosModulePremium', () => {
         destino_departamento: 'Bolívar',
         fecha_inicio: '2026-09-01',
         fecha_fin: '2026-09-05',
-        objeto_comision: 'Comisin de gestin institucional',
+        objeto_comision: 'Comision de gestion institucional',
         prioridad: 'MEDIA',
         rubro_presupuestal: 'Rubro 01',
         requiere_tiquetes: true,

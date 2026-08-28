@@ -45,7 +45,7 @@ Suite: [`ViaticosModulePremium.test.tsx`](../../apps/mfe-viaticos/src/components
 | F11 | Aceptación de Habeas Data     | Se cierra el modal y habilita "Siguiente"                                    |
 | F12 | Avance al paso 2 (autorizado) | "Paso 2 de 3" y "Objeto y Destino de la Comisión"                            |
 | F13 | Regreso con "Atrás"           | Vuelve a "Paso 1 de 3"                                                       |
-| F14 | Sanitización del objeto       | `Comisión de gestión` → `Comisin de gestin`                                  |
+| F14 | Normalización de tildes       | `Comisión de gestión` → `Comision de gestion`                                |
 | F15 | Eliminación de especiales     | `A@B#C$D%` → `ABCD`                                                          |
 | F16 | Fecha fin anterior a inicio   | Error "Debe ser posterior o igual a fecha inicio"                            |
 | F17 | Fechas ausentes               | Error "Debe indicar las fechas de inicio y fin"                              |
@@ -100,9 +100,10 @@ Backend (Jest)
 
 - **Sanitización:** el frontend replica la política del backend
   ([`sanitize.util.ts`](../../backend/travel-expenses-service/src/common/sanitize.util.ts)):
-  solo caracteres ASCII, espacios y guiones, máx. 250 caracteres. El frontend
-  conserva los espacios entre palabras al escribir y recorta al construir el
-  payload.
+  **normaliza las tildes conservando la letra base** (`gestión` → `gestion`),
+  reemplaza `ñ` → `n`, elimina caracteres especiales y limita a 250 caracteres.
+  El frontend conserva los espacios entre palabras al escribir y recorta al
+  construir el payload.
 - **Validación de fechas:** se valida tanto en el frontend (feedback inmediato)
   como en el backend (defensa en profundidad).
 - **Habeas Data:** el flujo exige autorización previa (Ley 1581/2012, Sentencia

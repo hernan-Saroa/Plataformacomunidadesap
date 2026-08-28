@@ -183,12 +183,14 @@ convierte el formulario en `CreateSolicitudRequest` (snake_case), que
 
 El frontend replica la política del backend:
 
-- Se eliminan caracteres no-ASCII (`á é í ó ú ñ` se descartan, no solo el acento).
+- Se **normalizan las tildes** conservando la letra base (`ó` → `o`):
+  `gestión` → `gestion`.
+- Se reemplaza `ñ` → `n`.
 - Se eliminan caracteres especiales (`@ # $ % …`).
 - Se conservan letras, números y espacios simples.
 - El recorte final de espacios se aplica al construir el payload.
 
-Ejemplo: `Comisión de gestión institucional` → `Comisin de gestion institucional`.
+Ejemplo: `Comisión de gestión institucional` → `Comision de gestion institucional`.
 
 ---
 
