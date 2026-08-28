@@ -284,7 +284,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           adjuntos,
         };
       }
-      return { ...act, estado: 'pendiente', disponible: false, adjuntos };
+      // El candado sin explicación se lee como un error del sistema; decir
+      // que falta construirla distingue lo pendiente de lo roto.
+      return {
+        ...act,
+        estado: 'pendiente',
+        disponible: false,
+        detalle: 'Pendiente de desarrollo',
+        adjuntos,
+      };
     },
   );
 
