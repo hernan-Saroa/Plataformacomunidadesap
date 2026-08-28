@@ -26,6 +26,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { puedeTransicionar as cdpPuedeTransicionar } from '../cdp/cdp.service';
 import { puedeTransicionar as rpPuedeTransicionar } from '../registro-presupuestal/registro-presupuestal.service';
 import { margenDeAdicion, MargenDeAdicion } from './margen-de-adicion';
+import { objetoCambio } from './objeto-inmutable';
 import {
   diasSuspendidos,
   NOMBRE_TIPO,
@@ -51,6 +52,7 @@ import {
 } from './dto/modificaciones.dto';
 
 export { NUMERAL_MODIFICACIONES, margenDeAdicion };
+export { intentoDeModificarObjeto, objetoCambio } from './objeto-inmutable';
 export { TIPOS_CON_TRAMITE, porQueNoAdmiteTipo } from './reglas-por-tipo';
 
 /** Qué respaldo se está tramitando: el certificado o el compromiso. */
@@ -188,6 +190,9 @@ export class ModificacionesService {
           contratoId: contrato.id,
           tipo: 'ADICION' as const,
           justificacion: dto.justificacion,
+          // El objeto sobre el que se tramita (RF-MOD-04): aprobar exige que
+          // siga siendo el mismo.
+          objetoContrato: contrato.objeto,
           valorAdicionado: dto.valorAdicionado,
           estado: 'EN_TRAMITE' as const,
           solicitadaPor: acceso.userName,
@@ -417,6 +422,7 @@ export class ModificacionesService {
           contratoId: contrato.id,
           tipo: 'REANUDACION' as TipoModificacion,
           justificacion: dto.justificacion,
+          objetoContrato: contrato.objeto,
           reanudaModificacionId: suspension.id,
           reanudadaEl: dto.reanudadaEl,
           estado: 'EN_TRAMITE' as EstadoModificacion,
@@ -454,6 +460,7 @@ export class ModificacionesService {
           contratoId: contrato.id,
           tipo,
           justificacion,
+          objetoContrato: contrato.objeto,
           estado: 'EN_TRAMITE' as EstadoModificacion,
           solicitadaPor: acceso.userName,
           ...propio,
@@ -517,6 +524,17 @@ export class ModificacionesService {
         }
 
         modificacion.topePorcentaje = tope.porcentaje;
+      }
+
+      // La regla del objeto (RF-MOD-04). Se comprueba aquí y no solo al
+      // solicitar porque es aquí donde el acto se suscribe: si el objeto cambió
+      // por fuera del trámite, esta modificación estaría firmándose sobre algo
+      // que ya no es lo que se pidió modificar.
+      if (objetoCambio(modificacion.objetoContrato, contrato.objeto)) {
+        throw new ConflictException(
+          'No se puede aprobar la modificación: el objeto del contrato no es el mismo sobre el que se solicitó, ' +
+            'y el objeto no se modifica (RF-MOD-04). Revísalo antes de suscribir el acto.',
+        );
       }
 
       this.validarFecha(dto.fechaSuscripcion);
@@ -1058,6 +1076,7 @@ export class ModificacionesService {
       numero: m.numero,
       fechaSuscripcion: m.fechaSuscripcion,
       justificacion: m.justificacion,
+      objetoContrato: m.objetoContrato,
       valorAdicionado: m.valorAdicionado,
       valorContratoAntes: m.valorContratoAntes,
       valorContratoDespues: m.valorContratoDespues,

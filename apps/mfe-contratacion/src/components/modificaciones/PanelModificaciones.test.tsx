@@ -203,7 +203,7 @@ describe('PanelModificaciones · los formularios de cada tipo', () => {
     pintar();
     await userEvent.click(await screen.findByRole('button', { name: /Aclaratorio/ }));
 
-    expect(screen.getByText(/no cambia plazo, valor ni partes/)).toBeInTheDocument();
+    expect(screen.getByText(/no cambia el objeto, ni el plazo/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Días de prórroga/)).toBeNull();
     expect(screen.queryByLabelText(/Valor de la adición/)).toBeNull();
   });
@@ -265,6 +265,7 @@ describe('PanelModificaciones · aprobar lo que no es una adición', () => {
         numero: null,
         fechaSuscripcion: null,
         justificacion: 'La entrega se retrasó por el invierno en la zona de obra.',
+        objetoContrato: 'Servicios profesionales',
         valorAdicionado: null,
         valorContratoAntes: null,
         valorContratoDespues: null,
@@ -315,5 +316,30 @@ describe('PanelModificaciones · aprobar lo que no es una adición', () => {
 
     expect(screen.getByText(/el plazo del contrato crece en 30 días/)).toBeInTheDocument();
     expect(screen.queryByText(/el valor del contrato aumenta/)).toBeNull();
+  });
+});
+
+describe('PanelModificaciones · la regla del objeto (RF-MOD-04)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.modificaciones.mockResolvedValue(enEjecucion());
+  });
+
+  it('muestra el objeto y dice que ninguna modificación lo cambia', async () => {
+    // Es la pregunta previa a cualquier modificación: si lo que hay que cambiar
+    // es el objeto, no cabe un otrosí sino otro contrato.
+    pintar();
+    expect(await screen.findByText(/Objeto del contrato · no se modifica/)).toBeInTheDocument();
+    expect(screen.getByText('Servicios profesionales')).toBeInTheDocument();
+    expect(screen.getByText(/exigiría un contrato nuevo/)).toBeInTheDocument();
+  });
+
+  it('ningún formulario ofrece cambiar el objeto', async () => {
+    pintar();
+    for (const tipo of ['Aclaratorio', 'Prórroga', 'Cesión']) {
+      await userEvent.click(await screen.findByRole('button', { name: new RegExp(tipo) }));
+      expect(screen.queryByLabelText(/^Objeto/)).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: /Cancelar/ }));
+    }
   });
 });

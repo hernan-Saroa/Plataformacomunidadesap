@@ -42,6 +42,7 @@ import {
   ROLES_RESPALDO_ADICION,
 } from '../../auth/hiring-access';
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { ObjetoInmutableGuard } from './objeto-inmutable.guard';
 
 /**
  * Modificaciones contractuales — actividad 9.5 (EFDS-1176).
@@ -53,6 +54,10 @@ import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '.
  */
 @ApiTags('Etapa 9 · Modificaciones contractuales')
 @Controller('procesos/:id/modificaciones')
+// La regla del objeto (RF-MOD-04, EFDS-1179) cubre el controlador entero y no
+// ruta por ruta: el criterio es «cualquier trámite de modificación
+// contractual», y una ruta nueva queda protegida sin acordarse de ella.
+@UseGuards(ObjetoInmutableGuard)
 export class ModificacionesController {
   constructor(private readonly service: ModificacionesService) {}
 

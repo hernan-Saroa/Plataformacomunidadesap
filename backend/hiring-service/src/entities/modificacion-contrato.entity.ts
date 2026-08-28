@@ -70,6 +70,18 @@ export class ModificacionContrato {
   @Column({ type: 'text' })
   justificacion: string;
 
+  /**
+   * El objeto del contrato el dia en que se solicito la modificacion — RF-MOD-04.
+   *
+   * Congelado y no calculado al consultar, con el criterio del resto del
+   * modulo: aprobar exige que siga siendo el mismo, y comparar contra algo que
+   * se recalcula diria siempre que coincide.
+   *
+   * Nulo en las modificaciones anteriores a EFDS-1179: no congelaron nada.
+   */
+  @Column({ name: 'objeto_contrato', type: 'text', nullable: true })
+  objetoContrato: string | null;
+
   /** El otrosí o el acto administrativo firmado; se aporta al aprobar. */
   @Column({ name: 'documento_id', type: 'uuid', nullable: true })
   documentoId: string | null;

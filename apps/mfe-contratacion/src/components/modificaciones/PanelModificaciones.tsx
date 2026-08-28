@@ -5,6 +5,7 @@ import {
   FilePlus2,
   Globe,
   Landmark,
+  Lock,
   Paperclip,
   Undo2,
 } from 'lucide-react';
@@ -287,6 +288,27 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
         es la única que exige un CDP y un RP nuevos. Todas se publican en SECOP II.
       </Ayuda>
 
+      {/* La regla del objeto (RF-MOD-04). Va arriba y con el objeto a la vista
+          porque es la pregunta previa a cualquier modificación: si lo que hay
+          que cambiar es esto, no cabe un otrosí sino otro contrato. Ningún
+          formulario lo ofrece, y decirlo evita que se intente por el campo de
+          justificación. */}
+      {estado.contrato ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3">
+          <p className="text-[11.5px] font-bold text-slate-700 m-0 inline-flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-slate-400" />
+            Objeto del contrato · no se modifica
+          </p>
+          <p className="text-[11.5px] text-slate-600 m-0 mt-1 leading-relaxed break-words">
+            {estado.contrato.objeto}
+          </p>
+          <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+            Ninguna modificación cambia qué se contrató: eso exigiría un contrato nuevo, con su
+            propia selección. Se puede adicionar, prorrogar, ceder, aclarar, suspender o terminar.
+          </p>
+        </div>
+      ) : null}
+
       {/* Que el contrato esté detenido manda sobre todo lo demás, así que se
           dice arriba y no se deduce de los botones apagados. */}
       {estado.suspension ? (
@@ -567,8 +589,9 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
 
           {tipoNuevo === 'ACLARATORIO' ? (
             <p className="text-[11px] text-slate-500 m-0 leading-relaxed">
-              El aclaratorio precisa lo que el contrato ya dice: no cambia plazo, valor ni partes.
-              Lo que lo sustenta es el acto que se adjunta al aprobarlo.
+              El aclaratorio precisa lo que el contrato ya dice: corrige cláusulas no esenciales,
+              y no cambia el objeto, ni el plazo, ni el valor, ni las partes. Lo que lo sustenta
+              es el acto que se adjunta al aprobarlo.
             </p>
           ) : null}
 

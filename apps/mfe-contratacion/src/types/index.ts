@@ -2303,6 +2303,8 @@ export interface ModificacionRegistrada {
   numero: string | null;
   fechaSuscripcion: string | null;
   justificacion: string;
+  /** El objeto sobre el que se tramito, congelado al solicitar (RF-MOD-04). */
+  objetoContrato: string | null;
   valorAdicionado: number | null;
   valorContratoAntes: number | null;
   valorContratoDespues: number | null;
