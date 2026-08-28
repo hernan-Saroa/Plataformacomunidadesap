@@ -2449,3 +2449,44 @@ export interface DatosRespaldoAdicion {
   fechaExpedicion: string;
   vigenciaFiscal?: number;
 }
+
+// ------------------------- presunto incumplimiento (transversal) ----------
+
+/**
+ * En qué punto va el caso.
+ *
+ * EFDS-1180 solo lo abre; los estados del trámite sancionatorio los añade
+ * EFDS-1181 cuando exista.
+ */
+export type EstadoCasoIncumplimiento = 'REPORTADO';
+
+/** Un caso de presunto incumplimiento abierto sobre el contrato (EFDS-1180). */
+export interface CasoIncumplimiento {
+  id: string;
+  motivo: string;
+  /** La del hecho, no la del reporte. */
+  fechaHecho: string;
+  estado: EstadoCasoIncumplimiento;
+  reportadoPor: string | null;
+  createdAt: string;
+  /** Opcional: se puede reportar lo observado sin documento a la mano. */
+  soporte: { nombre: string; url: string | null } | null;
+}
+
+export interface EstadoIncumplimiento {
+  enEjecucion: boolean;
+  puedeReportar: boolean;
+  /** Qué falta, dicho por el servidor y no deducido en pantalla. */
+  motivoNoPuede: string | null;
+  contrato: {
+    numero: string;
+    estado: string;
+  } | null;
+  casos: CasoIncumplimiento[];
+}
+
+/** Lo que la pantalla envia al reportar. */
+export interface DatosIncumplimiento {
+  motivo: string;
+  fechaHecho: string;
+}

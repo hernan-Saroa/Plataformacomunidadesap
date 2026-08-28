@@ -49,7 +49,9 @@ export type AccionTraza =
   | 'INICIAR'
   // Cierre del expediente (etapa 10, EFDS-1174).
   | 'ARCHIVAR'
-  | 'REABRIR';
+  | 'REABRIR'
+  // Presunto incumplimiento (transversal, contrato en ejecución).
+  | 'REPORTAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

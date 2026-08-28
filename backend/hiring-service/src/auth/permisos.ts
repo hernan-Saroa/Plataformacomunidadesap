@@ -31,6 +31,12 @@ export const PERMISO_SEGUIMIENTO_VER = 'contratacion.seguimiento.ver';
 /** Consultar el expediente del proceso; ya existe en auth.permission. */
 export const PERMISO_EXPEDIENTE_VER = 'contratacion.expediente.view';
 
+/** Reportar el presunto incumplimiento del contrato (EFDS-1180). */
+export const PERMISO_INCUMPLIMIENTO_REPORTAR = 'contratacion.incumplimiento.reportar';
+
+/** Consultar los reportes de presunto incumplimiento (EFDS-1180). */
+export const PERMISO_INCUMPLIMIENTO_VER = 'contratacion.incumplimiento.ver';
+
 // ------------------------------------------------- de dónde salen hoy --
 
 /**
@@ -76,6 +82,23 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'DIRECTOR_CONTRATACION',
     'ORDENADOR_GASTO',
     'SUPERVISOR_CONTRATO',
+    'SUPER_ADMIN',
+  ],
+  // La lista más estrecha del bloque: RF-INC-01 encarga el reporte al
+  // supervisor, y es coherente con quién constata el hecho. Ni el gestor ni el
+  // ordenador vigilan la ejecución día a día, así que no están en condiciones
+  // de afirmar que algo se incumplió.
+  [PERMISO_INCUMPLIMIENTO_REPORTAR]: ['SUPERVISOR_CONTRATO', 'SUPER_ADMIN'],
+  // La consulta es más ancha: el caso lo tramita el área jurídica y lo revisa
+  // la Dirección, así que ocultárselo a quien lleva el expediente no protegería
+  // nada. La restricción por reserva legal que pide RF-INC-03 es EFDS-1182 y se
+  // resuelve allí, sobre este mismo permiso.
+  [PERMISO_INCUMPLIMIENTO_VER]: [
+    'SUPERVISOR_CONTRATO',
+    'GESTOR_CONTRATACION',
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'ORDENADOR_GASTO',
     'SUPER_ADMIN',
   ],
 };
