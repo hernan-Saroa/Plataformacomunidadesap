@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import {
+  alMenos,
+  Contrato,
+  enEjecucion,
+  EstadoContrato,
+} from '../../entities/contrato.entity';
 import { ActaInicio } from '../../entities/acta-inicio.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -93,7 +98,7 @@ export class ActaInicioService {
       contrato: {
         numero: contrato.numero,
         objeto: contrato.objeto,
-        enEjecucion: contrato.estado === 'EJECUCION',
+        enEjecucion: enEjecucion(contrato.estado),
         ejecucionDesde: contrato.ejecucionDesde,
       },
       supervisor: supervisor
@@ -202,14 +207,6 @@ export class ActaInicioService {
     });
 
     return this.estado(procesoId, acceso);
-  }
-
-  // ------------------------------------------- lo que consumen otras --
-
-  /** Si el contrato ya arrancó, para las actividades que lo exigen (9.2, 9.3). */
-  async enEjecucion(procesoId: string, em?: EntityManager): Promise<boolean> {
-    const contrato = await this.contratoDelProceso(em ?? this.dataSource.manager, procesoId);
-    return contrato?.estado === 'EJECUCION';
   }
 
   // ----------------------------------------------------------- auxiliares --

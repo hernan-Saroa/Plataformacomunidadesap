@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
+import {
+  alMenos,
+  Contrato,
+  enEjecucion,
+  EstadoContrato,
+} from '../../entities/contrato.entity';
 import { SeguimientoContrato } from '../../entities/seguimiento-contrato.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { ActaInicio } from '../../entities/acta-inicio.entity';
@@ -27,9 +32,15 @@ export const NUMERAL_SEGUIMIENTO = '9.2';
  * Los dos criterios de la historia empiezan igual: «dado un contrato en
  * ejecución». Antes de la reunión de inicio no hay ejecución que seguir, y
  * cargar informes de algo que no ha empezado acreditaría un periodo inexistente.
+ *
+ * Se pregunta por `enEjecucion` y no por `alMenos(estado, 'EJECUCION')`, que es
+ * lo que decía antes de que existieran los estados del final del ciclo
+ * (EFDS-1184): «al menos en ejecución» lo cumple también un contrato terminado
+ * o liquidado, y esos ya no tienen periodo que reportar. Un contrato
+ * suspendido, en cambio, sí: la suspensión detiene el plazo, no la vigilancia.
  */
 export function admiteSeguimiento(estado: EstadoContrato): boolean {
-  return alMenos(estado, 'EJECUCION');
+  return enEjecucion(estado);
 }
 
 interface ArchivoCargado {
@@ -85,11 +96,17 @@ export class SeguimientoService {
     return {
       enEjecucion,
       puedeCargar: enEjecucion,
+      // El orden importa: un contrato terminado también pasó por la reunión de
+      // inicio, así que preguntar primero por la legalización le respondería
+      // que le falta algo que ya hizo. Lo que le pasa es que su ejecución
+      // terminó, y eso va antes.
       motivoNoPuede: enEjecucion
         ? null
-        : alMenos(contrato.estado, 'LEGALIZADO')
-          ? 'el contrato todavía no tiene registrada su reunión de inicio'
-          : 'el contrato todavía no está legalizado',
+        : alMenos(contrato.estado, 'TERMINADO')
+          ? 'la ejecución del contrato ya terminó'
+          : alMenos(contrato.estado, 'LEGALIZADO')
+            ? 'el contrato todavía no tiene registrada su reunión de inicio'
+            : 'el contrato todavía no está legalizado',
 
       /**
        * El estado actual del contrato, que es la mitad del segundo criterio.
