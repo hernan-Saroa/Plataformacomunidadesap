@@ -7,7 +7,10 @@ import {
 import { DataSource, EntityManager } from 'typeorm';
 
 import { alMenos, Contrato, EstadoContrato } from '../../entities/contrato.entity';
-import { CasoIncumplimiento } from '../../entities/caso-incumplimiento.entity';
+import {
+  CasoIncumplimiento,
+  EstadoCasoIncumplimiento,
+} from '../../entities/caso-incumplimiento.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -15,6 +18,13 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ReportarIncumplimientoDto } from './dto/incumplimiento.dto';
+import { SancionatorioService, TramiteDelCaso } from './sancionatorio.service';
+import {
+  porQueNoSePuedeAbrir,
+  porQueNoSePuedeCaducar,
+  porQueNoSePuedeDecidir,
+  porQueNoSePuedeInstruir,
+} from './tramite-sancionatorio';
 
 /**
  * Si el contrato admite que se le reporte un presunto incumplimiento.
@@ -49,15 +59,22 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class IncumplimientoService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    // El trámite (EFDS-1181) se pinta junto al reporte: es el mismo caso visto
+    // por el área jurídica, y separarlo en otra pantalla obligaría a quien lo
+    // instruye a leer el hecho en una y actuar en otra.
+    private readonly sancionatorio: SancionatorioService,
+  ) {}
 
   // ----------------------------------------------------------- consulta --
 
   /**
-   * Los casos del contrato y si quien consulta puede abrir uno nuevo.
+   * Los casos del contrato, lo actuado en cada uno y qué se puede hacer.
    *
-   * Devuelve `puedeReportar` y `motivoNoPuede` por separado para que el panel
-   * pueda decir qué falta, y no solo que la acción no está disponible.
+   * Devuelve el poder y el motivo por separado —`puedeReportar` y
+   * `motivoNoPuede`, y lo mismo dentro de cada caso— para que el panel pueda
+   * decir qué falta, y no solo que la acción no está disponible.
    */
   async estado(procesoId: string, acceso: HiringAccess) {
     const em = this.dataSource.manager;
@@ -86,6 +103,11 @@ export class IncumplimientoService {
         )
       : [];
 
+    const tramites = await this.sancionatorio.tramiteDe(
+      em,
+      casos.map((caso) => caso.id),
+    );
+
     return {
       enEjecucion,
       puedeReportar: enEjecucion,
@@ -102,6 +124,8 @@ export class IncumplimientoService {
 
       casos: casos.map((caso) => {
         const doc = documentos.find((d) => d.id === caso.documentoId);
+        const tramite = tramites.get(caso.id) ?? { audiencias: [], resoluciones: [] };
+
         return {
           id: caso.id,
           motivo: caso.motivo,
@@ -112,8 +136,59 @@ export class IncumplimientoService {
           soporte: doc
             ? { nombre: doc.archivoNombreOriginal ?? doc.nombre, url: doc.archivoUrl }
             : null,
+          tramite: this.comoVaElTramite(caso.estado, tramite, contrato.estado),
         };
       }),
+    };
+  }
+
+  /**
+   * Qué se puede hacer en el caso y qué falta para lo que no.
+   *
+   * Las reglas son las puras del trámite (EFDS-1181), no una segunda versión
+   * escrita para la pantalla: si el panel dedujera por su cuenta cuándo se
+   * puede decidir, tarde o temprano ofrecería un botón que el servidor rechaza.
+   */
+  private comoVaElTramite(
+    estadoCaso: EstadoCasoIncumplimiento,
+    tramite: TramiteDelCaso,
+    estadoContrato: EstadoContrato,
+  ) {
+    const celebradas = tramite.audiencias.filter((a) => a.estado === 'CELEBRADA').length;
+    const citada = tramite.audiencias.find((a) => a.estado === 'CITADA') ?? null;
+
+    // Se pregunta por un sentido que sanciona: archivar es lo único que no
+    // exige haber oído al contratista, y el panel lo dice aparte.
+    const noPuedeSancionar = porQueNoSePuedeDecidir(estadoCaso, 'DECLARA_INCUMPLIMIENTO', celebradas);
+    const noPuedeArchivar = porQueNoSePuedeDecidir(estadoCaso, 'ARCHIVA', celebradas);
+    const noPuedeInstruir = porQueNoSePuedeInstruir(estadoCaso);
+    const noPuedeAbrir = porQueNoSePuedeAbrir(estadoCaso);
+
+    return {
+      audiencias: tramite.audiencias,
+      resoluciones: tramite.resoluciones,
+      audienciasCelebradas: celebradas,
+      /** La citada que está pendiente de que se registre qué pasó, si la hay. */
+      audienciaPendiente: citada ? { id: citada.id, citadaPara: citada.citadaPara } : null,
+
+      puedeAbrir: !noPuedeAbrir,
+      motivoNoAbrir: noPuedeAbrir,
+
+      // Citar exige que no haya otra pendiente: mal se cita a una segunda
+      // audiencia sin haber dicho qué pasó con la primera.
+      puedeCitar: !noPuedeInstruir && !citada,
+      motivoNoCitar:
+        noPuedeInstruir ??
+        (citada ? 'ya hay una audiencia citada: registra primero qué pasó con ella' : null),
+
+      puedeSancionar: !noPuedeSancionar,
+      motivoNoSancionar: noPuedeSancionar,
+      puedeArchivar: !noPuedeArchivar,
+      motivoNoArchivar: noPuedeArchivar,
+
+      // La caducidad depende además del contrato, que es de lo que el trámite
+      // no sabe: interrumpe una ejecución, así que exige que la haya.
+      motivoNoCaducar: porQueNoSePuedeCaducar(estadoContrato),
     };
   }
 
