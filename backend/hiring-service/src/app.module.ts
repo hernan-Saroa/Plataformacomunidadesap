@@ -26,6 +26,7 @@ import { PublicacionContratoModule } from './modules/publicacion-contrato/public
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
 import { ModificacionesModule } from './modules/modificaciones/modificaciones.module';
+import { AlertasModule } from './modules/alertas/alertas.module';
 import { IncumplimientoModule } from './modules/incumplimiento/incumplimiento.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -122,6 +123,7 @@ import { TipologiaContrato } from './entities/tipologia-contrato.entity';
     ActaInicioModule,
     SeguimientoModule,
     ModificacionesModule,
+    AlertasModule,
     IncumplimientoModule,
   ],
   controllers: [HealthController],

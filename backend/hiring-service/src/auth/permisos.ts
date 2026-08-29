@@ -68,6 +68,17 @@ export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
 export const PERMISO_CONFIG_ADMINISTRAR = 'contratacion.config.manage';
 export const PERMISO_REPORTE_VER = 'contratacion.reporte.view';
 
+/** Consultar los vencimientos próximos y cumplidos (EFDS-1185). */
+export const PERMISO_ALERTA_VER = 'contratacion.alerta.ver';
+
+/**
+ * Consultar el expediente completo para auditoría (EFDS-1186).
+ *
+ * Aparte de `expediente.view`: auditar incluye la trazabilidad y el historial
+ * de supervisiones y modificaciones, no solo los documentos.
+ */
+export const PERMISO_EXPEDIENTE_AUDITAR = 'contratacion.expediente.auditar';
+
 // ------------------------------------------------- de dónde salen hoy --
 
 /**
@@ -193,6 +204,24 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
   [PERMISO_CONFIG_ADMINISTRAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
   [PERMISO_REPORTE_VER]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  // Ancha: el vencimiento de una póliza le importa a quien la vigila y a quien
+  // responde por el contrato.
+  [PERMISO_ALERTA_VER]: [
+    'GESTOR_CONTRATACION',
+    'SUPERVISOR_CONTRATO',
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'ORDENADOR_GASTO',
+    'ESTRUCTURADOR_FINANCIERO',
+    'SUPER_ADMIN',
+  ],
+  // Los organismos de control entran aquí y no al expediente de trabajo.
+  [PERMISO_EXPEDIENTE_AUDITAR]: [
+    'ENTE_DE_CONTROL',
+    'DIRECTOR_CONTRATACION',
+    'ARCHIVO_GESTION_DC',
+    'SUPER_ADMIN',
+  ],
 };
 
 /**
