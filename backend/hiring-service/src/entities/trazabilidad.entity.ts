@@ -51,7 +51,14 @@ export type AccionTraza =
   | 'ARCHIVAR'
   | 'REABRIR'
   // Presunto incumplimiento (transversal, contrato en ejecución).
-  | 'REPORTAR';
+  | 'REPORTAR'
+  // Trámite sancionatorio (EFDS-1181). ABRIR, CELEBRAR, ANULAR y REVOCAR ya
+  // estaban; estas tres no. Decidir tiene acción propia y no reusa APROBAR: lo
+  // que la resolución hace no es aprobar nada, es resolver el caso —y puede
+  // resolverlo archivándolo—.
+  | 'CITAR'
+  | 'DECIDIR'
+  | 'NOTIFICAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

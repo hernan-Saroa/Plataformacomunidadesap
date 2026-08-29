@@ -37,6 +37,22 @@ export const PERMISO_INCUMPLIMIENTO_REPORTAR = 'contratacion.incumplimiento.repo
 /** Consultar los reportes de presunto incumplimiento (EFDS-1180). */
 export const PERMISO_INCUMPLIMIENTO_VER = 'contratacion.incumplimiento.ver';
 
+/**
+ * Instruir el trámite sancionatorio: abrirlo, citar audiencias, registrar lo
+ * que pasó en ellas y notificar las resoluciones (EFDS-1181).
+ */
+export const PERMISO_INCUMPLIMIENTO_TRAMITAR = 'contratacion.incumplimiento.tramitar';
+
+/**
+ * Decidir el caso: archivarlo, declarar el incumplimiento o la caducidad, y
+ * revocar lo resuelto (EFDS-1181).
+ *
+ * Aparte del anterior y no reunido con él: instruir y decidir no son la misma
+ * competencia, y juntarlos le daría a quien lleva el trámite la facultad de
+ * sancionar.
+ */
+export const PERMISO_INCUMPLIMIENTO_DECIDIR = 'contratacion.incumplimiento.decidir';
+
 // ------------------------------------------------- de dónde salen hoy --
 
 /**
@@ -97,6 +113,26 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'SUPERVISOR_CONTRATO',
     'GESTOR_CONTRATACION',
     'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'ORDENADOR_GASTO',
+    'SUPER_ADMIN',
+  ],
+  // El trámite lo lleva el área jurídica, que en la matriz de roles son los
+  // «ABOGADOS / PROFESIONALES» de la Dirección de Contratación: los que
+  // «proyectan todos los actos administrativos del proceso». Este módulo los
+  // viene llamando GESTOR_CONTRATACION desde la etapa 3, así que no se inventa
+  // un rol nuevo para nombrarlos otra vez.
+  [PERMISO_INCUMPLIMIENTO_TRAMITAR]: [
+    'GESTOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  // Más estrecho, con el criterio de las garantías (EFDS-1164) y del acto de
+  // adjudicación: quien instruye no decide. Declarar el incumplimiento o la
+  // caducidad compromete a la entidad frente al contratista —le impone una
+  // multa o le termina el contrato—, así que queda en la Dirección y en el
+  // Ordenador del Gasto, que es de quien son los actos que obligan.
+  [PERMISO_INCUMPLIMIENTO_DECIDIR]: [
     'DIRECTOR_CONTRATACION',
     'ORDENADOR_GASTO',
     'SUPER_ADMIN',
