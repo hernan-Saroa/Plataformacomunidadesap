@@ -36,36 +36,80 @@ function extraerListaGeopolitica(res: unknown): Geopolitica[] {
   return [];
 }
 
-const MOCK_SOLICITUDES: SolicitudViatico[] = [
-  {
-    id: 'sol-001',
-    codigo: 'SOL-VIA-2026-001',
-    cedulaComisionado: '1019283746',
-    nombreComisionado: 'Carlos Eduardo Ramírez',
-    cargoComisionado: 'Docente Ocasional',
-    dependencia: 'Subdirección Académica',
-    sedeOrigen: 'Sede Central Bogotá',
-    ciudadDestino: 'Medellín',
-    departamentoDestino: 'Antioquia',
-    fechaInicio: '2026-08-20',
-    fechaFin: '2026-08-23',
-    diasComision: 3,
-    tipoComision: 'CAPACITACION_DOCENTE',
-    medioTransporte: 'AEREO',
-    justificacion: 'Impartir módulo presencial de Gestión Pública en la Sede Territorial Antioquia.',
-    montoSolicitadoViaticos: 840000,
-    montoSolicitadoGastosViaje: 180000,
-    montoTotalEstimado: 1020000,
-    estado: 'RESOLUCION_EMITIDA',
-    extemporanea: false,
-    radicadoFueraJornada: false,
-    requiereTiqueteAereo: true,
-    numeroResolucion: 'RES-0452-2026',
-    fechaResolucion: '2026-08-15',
-    creadoEn: '2026-08-10',
-    actualizadoEn: '2026-08-15',
-  },
-];
+function esSuperAdminFromResponse(res: unknown): boolean {
+  if (!res || typeof res !== 'object') return false;
+  const obj = res as Record<string, unknown>;
+
+  if (typeof obj.esSuperAdmin === 'boolean') {
+    console.log('[viaticos] esSuperAdminFromResponse root esSuperAdmin=', obj.esSuperAdmin);
+    return obj.esSuperAdmin;
+  }
+
+  const nested = obj.data as Record<string, unknown> | undefined;
+  if (nested && typeof nested === 'object' && typeof nested.esSuperAdmin === 'boolean') {
+    console.log('[viaticos] esSuperAdminFromResponse nested esSuperAdmin=', nested.esSuperAdmin);
+    return nested.esSuperAdmin;
+  }
+
+  console.log('[viaticos] esSuperAdminFromResponse no encontrado,=false');
+  return false;
+}
+
+function extraerSolicitudes(res: unknown): { data: SolicitudListaResponse[]; esSuperAdmin: boolean } {
+  if (!res || typeof res !== 'object') {
+    console.log('[viaticos] extraerSolicitudes: respuesta vacía o no objeto');
+    return { data: [], esSuperAdmin: false };
+  }
+
+  const esSuperAdmin = esSuperAdminFromResponse(res);
+
+  const arr = encontrarArraySolicitudes(res);
+  console.log('[viaticos] extraerSolicitudes: array encontrado?', Array.isArray(arr), 'length=', Array.isArray(arr) ? arr.length : 'n/a');
+
+  if (Array.isArray(arr)) {
+    return { data: arr as SolicitudListaResponse[], esSuperAdmin };
+  }
+
+  return { data: [], esSuperAdmin };
+}
+
+function encontrarArraySolicitudes(valor: unknown): unknown[] | null {
+  if (Array.isArray(valor)) {
+    console.log('[viaticos] encontrarArraySolicitudes: array directo length=', valor.length);
+    return valor;
+  }
+
+  if (!valor || typeof valor !== 'object') {
+    return null;
+  }
+
+  const obj = valor as Record<string, unknown>;
+
+  if (Array.isArray(obj.data)) {
+    console.log('[viaticos] encontrarArraySolicitudes: obj.data length=', obj.data.length);
+    return obj.data;
+  }
+
+  const nested = obj.data as Record<string, unknown> | undefined;
+  if (nested && typeof nested === 'object') {
+    const candidato = encontrarArraySolicitudes(nested);
+    if (candidato) return candidato;
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (key === 'data' || key === 'timestamp' || key === 'success') {
+      continue;
+    }
+    const candidato = encontrarArraySolicitudes(obj[key]);
+    if (candidato) {
+      console.log('[viaticos] encontrarArraySolicitudes: encontrado en key=', key, 'length=', candidato.length);
+      return candidato;
+    }
+  }
+
+  console.log('[viaticos] encontrarArraySolicitudes: no encontrado');
+  return null;
+}
 
 export class ViaticosService {
   /**
@@ -105,25 +149,27 @@ export class ViaticosService {
     };
   }
 
-  async obtenerSolicitudes(usuarioId?: string, esSuperAdmin = false): Promise<SolicitudViatico[]> {
+  async obtenerSolicitudes(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
     try {
-      const params = new URLSearchParams();
-      if (usuarioId && !esSuperAdmin) {
-        params.set('creadoPorUsuarioId', usuarioId);
+      const timestamp = Date.now();
+      const response = await apiClient.get<unknown>(`/viaticos/api/v1/solicitudes?t=${timestamp}`);
+      const responseKeys = Object.keys(response as any);
+      console.log('[viaticos] obtenerSolicitudes raw response type=', typeof response, 'keys=', responseKeys, 'value=', JSON.stringify(response));
+      const { data, esSuperAdmin } = extraerSolicitudes(response);
+      console.log('[viaticos] obtenerSolicitudes parsed count=', data.length, 'esSuperAdmin=', esSuperAdmin);
+      if (data.length === 0) {
+        console.warn('[viaticos] obtenerSolicitudes: no se pudieron extraer solicitudes de la respuesta', response);
       }
-      const query = params.toString();
-      const url = `/viaticos/api/v1/solicitudes${query ? `?${query}` : ''}`;
-      const data = await apiClient.get<SolicitudListaResponse[] | SolicitudListaResponse>(url);
-      const lista = Array.isArray(data) ? data : [data];
-      if (lista.length === 0) return MOCK_SOLICITUDES;
-      return lista.map((item) => this.mapearSolicitudLista(item));
-    } catch {
-      return MOCK_SOLICITUDES;
+      const solicitudes = data.map((item) => this.mapearSolicitudLista(item));
+      return { solicitudes, esSuperAdmin };
+    } catch (error) {
+      console.error('[viaticos] obtenerSolicitudes error=', error);
+      return { solicitudes: [], esSuperAdmin: false };
     }
   }
 
-  async obtenerResumenEstadistico(esSuperAdmin = false): Promise<ResumenEstadisticoViaticos> {
-    const solicitudes = await this.obtenerSolicitudes(undefined, esSuperAdmin);
+  async obtenerResumenEstadistico(): Promise<ResumenEstadisticoViaticos> {
+    const { solicitudes } = await this.obtenerSolicitudes();
     return {
       totalSolicitudes: solicitudes.length,
       enProcesoAprobacion: solicitudes.filter((s) =>

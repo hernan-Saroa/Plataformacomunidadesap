@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Req, Header, Query } from '@nestjs/common';
 import { Request } from 'express';
 import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -9,25 +9,32 @@ import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { getClientIp } from '../../common/ip.util';
 
 interface AuthenticatedRequest extends Request {
-  user?: { userId: string; roles?: string[] };
+  user?: { userId: string; roles?: string[]; role?: string; permissions?: string[] };
 }
 
 const SUPER_ADMIN_ROLES = [
   'ADMIN',
   'SUPER_ADMIN',
   'ADMINISTRATIVO',
-  'Super Administrador',
   'SUPER_ADMINISTRADOR',
-  'super_administrador',
 ];
 
+function normalizeRoleCode(role: any): string {
+  if (typeof role === 'string') {
+    return role.toUpperCase().replace(/\s+/g, '_');
+  }
+  if (role && typeof role === 'object') {
+    return String(role.code || role.nombre || role.name || '').toUpperCase().replace(/\s+/g, '_');
+  }
+  return '';
+}
+
 function isSuperAdmin(user: AuthenticatedRequest['user']): boolean {
-  if (!user?.roles?.length) return false;
-  return user.roles.some((role) => {
-    if (typeof role !== 'string') return false;
-    const normalized = role.toUpperCase().replace(/\s+/g, '_');
-    return SUPER_ADMIN_ROLES.includes(normalized) || SUPER_ADMIN_ROLES.includes(role.toUpperCase());
-  });
+  if (!user) return false;
+  const rawRoles = Array.isArray(user.roles) ? user.roles : [];
+  const singleRole = user.role ? [user.role] : [];
+  const allRoles = [...rawRoles, ...singleRole];
+  return allRoles.some((r) => SUPER_ADMIN_ROLES.includes(normalizeRoleCode(r)));
 }
 
 @Controller()
@@ -36,10 +43,21 @@ export class TravelExpensesController {
   constructor(private readonly service: TravelExpensesService) {}
 
   @Get('solicitudes')
-  obtenerSolicitudes(@Req() req: AuthenticatedRequest) {
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
+  async obtenerSolicitudes(@Req() req: AuthenticatedRequest, @Query('page') page?: string, @Query('limit') limit?: string) {
     const usuarioId = req.user?.userId;
-    const superAdmin = isSuperAdmin(req.user);
-    return this.service.obtenerSolicitudes(usuarioId, superAdmin);
+    const rawRoles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const normalizedRoles = rawRoles.map((r: any) => (typeof r === 'string' ? r.toUpperCase().replace(/\s+/g, '_') : (r?.code || '').toUpperCase().replace(/\s+/g, '_')));
+    const SUPER_ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO', 'SUPER_ADMINISTRADOR'];
+    const superAdmin = normalizedRoles.some((r) => SUPER_ADMIN_ROLES.includes(r));
+    console.log('[travel-expenses] obtenerSolicitudes req.user=', JSON.stringify(req.user), 'usuarioId=', usuarioId, 'roles=', JSON.stringify(rawRoles), 'superAdmin=', superAdmin);
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const result = await this.service.obtenerSolicitudes(usuarioId, superAdmin, pageNum, limitNum);
+    console.log('[travel-expenses] obtenerSolicitudes response count=', result.data.length, 'total=', result.total);
+    return { data: result.data, total: result.total, page: result.page, limit: result.limit, esSuperAdmin: superAdmin };
   }
 
   @Get('comisionados/:documento')

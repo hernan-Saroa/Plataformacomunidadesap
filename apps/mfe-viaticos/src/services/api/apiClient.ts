@@ -20,6 +20,7 @@ export class ApiClient {
           ...(options?.headers || {}),
         },
         credentials: 'include',
+        cache: 'no-store',
         ...options,
       });
 

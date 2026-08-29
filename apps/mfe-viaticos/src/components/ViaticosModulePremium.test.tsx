@@ -74,7 +74,7 @@ const mockComisionado = {
 describe('ViaticosModulePremium', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    viaticosService.obtenerSolicitudes = vi.fn().mockResolvedValue(mockSolicitudes);
+    viaticosService.obtenerSolicitudes = vi.fn().mockResolvedValue({ solicitudes: mockSolicitudes, esSuperAdmin: false });
     viaticosService.obtenerResumenEstadistico = vi.fn().mockResolvedValue(mockResumen);
     viaticosService.consultarComisionado = vi.fn().mockResolvedValue(mockComisionado);
     viaticosService.crearSolicitudComision = vi.fn().mockResolvedValue({ id: 'sol-nueva' });

@@ -24,7 +24,6 @@ import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
-import { authService } from '../services/api/authService';
 
 type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones';
 
@@ -38,17 +37,16 @@ export default function ViaticosModulePremium() {
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
-  const [usuarioActualId, setUsuarioActualId] = useState<string | null>(null);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
 
   const cargarDatos = async () => {
     setCargando(true);
     try {
-      const [list, res] = await Promise.all([
-        viaticosService.obtenerSolicitudes(usuarioActualId || undefined, esSuperAdmin),
-        viaticosService.obtenerResumenEstadistico(esSuperAdmin),
-      ]);
+      const { solicitudes: list, esSuperAdmin: esSuperAdminResp } = await viaticosService.obtenerSolicitudes();
+      console.log('[ViaticosModulePremium] solicitudes cargadas=', list.length, 'esSuperAdmin=', esSuperAdminResp);
       setSolicitudes(list);
+      setEsSuperAdmin(esSuperAdminResp);
+      const res = await viaticosService.obtenerResumenEstadistico();
       setResumen(res);
     } catch (e) {
       console.error('Error cargando viáticos:', e);
@@ -58,27 +56,8 @@ export default function ViaticosModulePremium() {
   };
 
   useEffect(() => {
-    const cargarUsuario = async () => {
-      try {
-        const usuario = await authService.getCurrentUser();
-        if (usuario) {
-          setUsuarioActualId(usuario.userId);
-          const roles = Array.isArray(usuario.roles) ? usuario.roles : [];
-          const normalizedRoles = roles.map((r: any) => (typeof r === 'string' ? r.toUpperCase().replace(/\s+/g, '_') : (r.code || '').toUpperCase().replace(/\s+/g, '_')));
-          const superAdminRoles = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO', 'SUPER_ADMINISTRADOR'];
-          setEsSuperAdmin(normalizedRoles.some((r: string) => superAdminRoles.includes(r)));
-        }
-      } catch (error) {
-        console.warn('No se pudo cargar el usuario actual:', error);
-      }
-    };
-
-    cargarUsuario();
-  }, []);
-
-  useEffect(() => {
     cargarDatos();
-  }, [usuarioActualId, esSuperAdmin]);
+  }, []);
 
   const grupos: MenuGroup[] = [
     {
@@ -452,6 +431,12 @@ export default function ViaticosModulePremium() {
                   <div>
                     <span className="font-mono text-xs font-bold text-blue-700">{solicitudSeleccionada.codigo}</span>
                     <h3 className="text-base font-black text-slate-900">{solicitudSeleccionada.nombreComisionado}</h3>
+                    {esSuperAdmin && solicitudSeleccionada.esCreadoPorMi && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 mt-1">
+                        <UserCheck className="w-3 h-3 mr-1" />
+                        Radicada por mí
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"

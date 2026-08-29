@@ -38,18 +38,24 @@ export class TravelExpensesService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async obtenerSolicitudes(usuarioId?: string, isSuperAdmin = false): Promise<any[]> {
+  async obtenerSolicitudes(usuarioId?: string, isSuperAdmin = false, page = 1, limit = 20): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    console.log('[travel-expenses] service obtenerSolicitudes usuarioId=', usuarioId, 'isSuperAdmin=', isSuperAdmin, 'page=', page, 'limit=', limit);
     const query = this.solicitudRepo.createQueryBuilder('s')
-      .leftJoinAndSelect('s.comisionado', 'comisionado')
-      .orderBy('s.creadoEn', 'DESC');
+      .leftJoinAndSelect('s.comisionado', 'comisionado');
 
     if (!isSuperAdmin && usuarioId) {
       query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
     }
 
-    const solicitudes = await query.getMany();
+    query.orderBy('s.extemporanea', 'DESC')
+      .addOrderBy('s.estadoSolicitud', 'ASC')
+      .addOrderBy('s.creadoEn', 'DESC');
 
-    return solicitudes.map((s) => ({
+    const total = await query.getCount();
+    const solicitudes = await query.offset((page - 1) * limit).limit(limit).getMany();
+    console.log('[travel-expenses] service obtenerSolicitudes count=', solicitudes.length, 'total=', total);
+
+    const data = solicitudes.map((s) => ({
       id: s.id,
       consecutivoUnico: s.consecutivoUnico,
       comisionadoId: s.comisionadoId,
@@ -86,6 +92,8 @@ export class TravelExpensesService {
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       esCreadoPorMi: isSuperAdmin ? s.creadoPorUsuarioId === usuarioId : undefined,
     }));
+
+    return { data, total, page, limit };
   }
 
   async consultarComisionado(documento: string): Promise<ComisionadoEntity | null> {
