@@ -27,6 +27,14 @@ const formatoPesos = new Intl.NumberFormat('es-CO', {
 const pesos = (valor: string | null) =>
   valor === null ? '—' : formatoPesos.format(Number(valor));
 
+/**
+ * Las columnas `date` llegan como timestamp ISO, no como AAAA-MM-DD.
+ *
+ * `fechaLarga` espera lo segundo y devuelve «Invalid Date» con lo primero, así
+ * que aquí se recorta antes de pasárselo.
+ */
+const soloFecha = (valor: string) => fechaLarga(valor.slice(0, 10));
+
 /** Cabecera de cada bloque, con su conteo. */
 const Bloque = ({
   icono,
@@ -130,7 +138,7 @@ export function PanelAuditoria({ procesoId }: Props) {
             />
             <Dato
               etiqueta="En ejecución desde"
-              valor={contrato.ejecucion_desde ? fechaLarga(contrato.ejecucion_desde) : '—'}
+              valor={contrato.ejecucion_desde ? soloFecha(contrato.ejecucion_desde) : '—'}
             />
           </div>
         </div>
@@ -282,8 +290,8 @@ export function PanelAuditoria({ procesoId }: Props) {
 }
 
 const Dato = ({ etiqueta, valor }: { etiqueta: string; valor: string }) => (
-  <div>
-    <span className="block text-[10.5px] font-bold text-slate-400">{etiqueta}</span>
-    <span className="block text-[12px] text-slate-700">{valor}</span>
+  <div className="min-w-0">
+    <span className="block text-[10.5px] font-bold text-slate-400 mb-0.5">{etiqueta}</span>
+    <span className="block text-[12px] text-slate-700 break-words">{valor}</span>
   </div>
 );
