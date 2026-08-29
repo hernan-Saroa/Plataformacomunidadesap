@@ -24,7 +24,9 @@ import {
   DatosActaInicio,
   EstadoSeguimiento,
   DatosSeguimiento,
+  AlertaVencimiento,
   EstadoIncumplimiento,
+  ExpedienteAuditoria,
   DatosIncumplimiento,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
@@ -1134,6 +1136,13 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+  /** Expediente completo del proceso para auditoría (EFDS-1186). */
+  auditoria: (procesoId: string) =>
+    pedir<ExpedienteAuditoria>(`/procesos/${procesoId}/auditoria`),
+
+  /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
+  alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

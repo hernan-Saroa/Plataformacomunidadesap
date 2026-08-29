@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
+import { ArrowLeft, FileText, FolderOpen, ClipboardList, ShieldCheck } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
@@ -28,6 +28,7 @@ import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
+import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -167,6 +168,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  const [auditoriaAbierta, setAuditoriaAbierta] = useState(false);
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
@@ -370,9 +372,34 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               <FolderOpen className="w-3.5 h-3.5" />
               Expediente
             </button>
+
+            {/* El expediente de trabajo deja subir y borrar; este solo se lee, y
+                trae además la trazabilidad y el historial (EFDS-1186). */}
+            <button
+              type="button"
+              onClick={() => setAuditoriaAbierta((v) => !v)}
+              aria-expanded={auditoriaAbierta}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                border transition-colors ${
+                  auditoriaAbierta
+                    ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                    : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Auditoría
+            </button>
           </div>
         </div>
       </div>
+
+      {/* A ancho completo y no en la columna del expediente: la trazabilidad y
+          el historial no caben en una barra lateral. */}
+      {auditoriaAbierta && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] mb-4">
+          <PanelAuditoria procesoId={procesoId} />
+        </div>
+      )}
 
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
       <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
