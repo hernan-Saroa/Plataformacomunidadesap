@@ -64,6 +64,11 @@ import {
   DatosCierreFinanciero,
   EstadoIncumplimiento,
   DatosIncumplimiento,
+  DatosResolucion,
+  DatosDecision,
+  DatosCitacion,
+  DatosAudienciaCelebrada,
+  DatosNotificacion,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -146,6 +151,26 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
   }
 
   throw new Error(cuerpo?.message ?? `Error ${res.status}`);
+}
+
+/**
+ * El cuerpo multipart de una acción que va con su documento.
+ *
+ * Se omite lo vacío en vez de mandar la cadena: en `FormData` todo viaja como
+ * texto, y un campo opcional enviado en blanco llega al servidor como `''` y
+ * no como ausente, que es lo que la validación espera.
+ */
+function conArchivo<T extends object>(datos: T, archivo: File): FormData {
+  const cuerpo = new FormData();
+  cuerpo.append('file', archivo);
+
+  for (const [clave, valor] of Object.entries(datos as Record<string, unknown>)) {
+    if (valor !== undefined && valor !== null && valor !== '') {
+      cuerpo.append(clave, String(valor));
+    }
+  }
+
+  return cuerpo;
 }
 
 export const contratacionService = {
@@ -2030,6 +2055,86 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
+
+  // ------------------- trámite sancionatorio (EFDS-1181) ------------------
+
+  /**
+   * Abre el trámite del caso con su resolución.
+   *
+   * El documento va aparte y es obligatorio: una resolución **es** el
+   * documento, y registrarla sin él dejaría al expediente afirmando que la
+   * entidad resolvió algo que no puede mostrar.
+   */
+  abrirTramite: (procesoId: string, casoId: string, datos: DatosResolucion, resolucion: File) =>
+    pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento/${casoId}/abrir`, {
+      method: 'POST',
+      body: conArchivo(datos, resolucion),
+    }),
+
+  /** Cita a audiencia sancionatoria; la fecha es la única del módulo que mira adelante. */
+  citarAudienciaSancionatoria: (procesoId: string, casoId: string, datos: DatosCitacion, citacion: File) =>
+    pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento/${casoId}/audiencias`, {
+      method: 'POST',
+      body: conArchivo(datos, citacion),
+    }),
+
+  /**
+   * Registra la audiencia sancionatoria celebrada; el acta prueba que el
+   * contratista fue oído.
+   *
+   * El nombre lleva el apellido porque `celebrarAudiencia` ya es la de
+   * adjudicación (EFDS-1159), que no tiene nada que ver con esta.
+   */
+  celebrarAudienciaSancionatoria: (
+    procesoId: string,
+    casoId: string,
+    audienciaId: string,
+    datos: DatosAudienciaCelebrada,
+    acta: File,
+  ) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/audiencias/${audienciaId}/celebrar`,
+      { method: 'POST', body: conArchivo(datos, acta) },
+    ),
+
+  /** Registra que la audiencia no se celebró: suspendida para citar otra, o cancelada. */
+  cerrarAudienciaSinCelebrar: (
+    procesoId: string,
+    casoId: string,
+    audienciaId: string,
+    desenlace: 'suspender' | 'cancelar',
+    motivo: string,
+  ) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/audiencias/${audienciaId}/${desenlace}`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Decide el caso: lo archiva, declara el incumplimiento o declara la caducidad. */
+  decidirCaso: (procesoId: string, casoId: string, datos: DatosDecision, resolucion: File) =>
+    pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento/${casoId}/decidir`, {
+      method: 'POST',
+      body: conArchivo(datos, resolucion),
+    }),
+
+  /** Registra la notificación de la resolución y, cuando la hay, su firmeza. */
+  notificarResolucion: (
+    procesoId: string,
+    casoId: string,
+    resolucionId: string,
+    datos: DatosNotificacion,
+  ) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/resoluciones/${resolucionId}/notificar`,
+      { method: 'POST', body: JSON.stringify(datos) },
+    ),
+
+  /** Revoca una resolución y deshace lo que hizo; no se borra del expediente. */
+  revocarResolucion: (procesoId: string, casoId: string, resolucionId: string, motivo: string) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/resoluciones/${resolucionId}/revocar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

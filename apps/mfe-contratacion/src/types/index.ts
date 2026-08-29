@@ -2455,10 +2455,83 @@ export interface DatosRespaldoAdicion {
 /**
  * En qué punto va el caso.
  *
- * EFDS-1180 solo lo abre; los estados del trámite sancionatorio los añade
- * EFDS-1181 cuando exista.
+ * `REPORTADO` lo abre el supervisor (EFDS-1180); los otros tres los mueve el
+ * trámite sancionatorio del área jurídica (EFDS-1181). `ARCHIVADO` y
+ * `DECIDIDO` son dos desenlaces distintos: el expediente tiene que poder
+ * distinguir el incumplimiento que se declaró del que se examinó y no
+ * prosperó.
  */
-export type EstadoCasoIncumplimiento = 'REPORTADO';
+export type EstadoCasoIncumplimiento = 'REPORTADO' | 'EN_TRAMITE' | 'DECIDIDO' | 'ARCHIVADO';
+
+/** En qué quedó la audiencia (EFDS-1181). */
+export type EstadoAudienciaSancionatoria = 'CITADA' | 'CELEBRADA' | 'SUSPENDIDA' | 'CANCELADA';
+
+/** Los dos actos del trámite: el que lo abre y el que lo decide. */
+export type TipoResolucionSancionatoria = 'APERTURA' | 'DECISION';
+
+/** Qué resolvió la decisión (EFDS-1181). */
+export type SentidoResolucion = 'DECLARA_INCUMPLIMIENTO' | 'DECLARA_CADUCIDAD' | 'ARCHIVA';
+
+/** Una audiencia del trámite sancionatorio (EFDS-1181). */
+export interface AudienciaSancionatoria {
+  id: string;
+  /** Con hora: a una audiencia se comparece a una hora concreta. */
+  citadaPara: string;
+  objeto: string | null;
+  estado: EstadoAudienciaSancionatoria;
+  celebradaEl: string | null;
+  resumen: string | null;
+  /** Por qué no se celebró, cuando no se celebró. */
+  motivo: string | null;
+  citadaPor: string | null;
+  citacion: { nombre: string; url: string | null } | null;
+  acta: { nombre: string; url: string | null } | null;
+}
+
+/** Una resolución del trámite sancionatorio (EFDS-1181). */
+export interface ResolucionSancionatoria {
+  id: string;
+  tipo: TipoResolucionSancionatoria;
+  numero: string;
+  fechaExpedicion: string;
+  sentido: SentidoResolucion | null;
+  valorSancion: number | null;
+  notificadaEl: string | null;
+  firmeEl: string | null;
+  expedidaPor: string | null;
+  revocadaAt: string | null;
+  revocadaPor: string | null;
+  motivoRevocacion: string | null;
+  documento: { nombre: string; url: string | null } | null;
+}
+
+/**
+ * Lo actuado en el caso y qué se puede hacer con él.
+ *
+ * Cada poder viene con su motivo: la pantalla dice qué falta y no solo que la
+ * acción no está disponible. Los calcula el servidor con las reglas del
+ * trámite, para que el panel no ofrezca un botón que el servidor rechaza.
+ */
+export interface TramiteSancionatorio {
+  audiencias: AudienciaSancionatoria[];
+  resoluciones: ResolucionSancionatoria[];
+  audienciasCelebradas: number;
+  /** La citada que espera que se registre qué pasó, si la hay. */
+  audienciaPendiente: { id: string; citadaPara: string } | null;
+
+  puedeAbrir: boolean;
+  motivoNoAbrir: string | null;
+  puedeCitar: boolean;
+  motivoNoCitar: string | null;
+  /** Declarar el incumplimiento o la caducidad: exige haber oído al contratista. */
+  puedeSancionar: boolean;
+  motivoNoSancionar: string | null;
+  /** Archivar es la única salida que no exige audiencia. */
+  puedeArchivar: boolean;
+  motivoNoArchivar: string | null;
+  /** Por qué el contrato no admite la caducidad hoy, si no la admite. */
+  motivoNoCaducar: string | null;
+}
 
 /** Un caso de presunto incumplimiento abierto sobre el contrato (EFDS-1180). */
 export interface CasoIncumplimiento {
@@ -2471,6 +2544,8 @@ export interface CasoIncumplimiento {
   createdAt: string;
   /** Opcional: se puede reportar lo observado sin documento a la mano. */
   soporte: { nombre: string; url: string | null } | null;
+  /** El trámite del área jurídica sobre este caso (EFDS-1181). */
+  tramite: TramiteSancionatorio;
 }
 
 export interface EstadoIncumplimiento {
@@ -2489,4 +2564,37 @@ export interface EstadoIncumplimiento {
 export interface DatosIncumplimiento {
   motivo: string;
   fechaHecho: string;
+}
+
+/** Lo comun a las dos resoluciones del tramite (EFDS-1181). */
+export interface DatosResolucion {
+  numero: string;
+  fechaExpedicion: string;
+}
+
+/** Lo que la pantalla envia al decidir el caso (EFDS-1181). */
+export interface DatosDecision extends DatosResolucion {
+  sentido: SentidoResolucion;
+  /** La multa o la clausula penal, cuando la decision las impone. */
+  valorSancion?: number;
+}
+
+/** Lo que la pantalla envia al citar a audiencia (EFDS-1181). */
+export interface DatosCitacion {
+  /** Fecha y hora: es lo unico del modulo que mira adelante. */
+  citadaPara: string;
+  objeto?: string;
+}
+
+/** Lo que la pantalla envia al registrar la audiencia celebrada. */
+export interface DatosAudienciaCelebrada {
+  celebradaEl: string;
+  resumen: string;
+}
+
+/** Lo que la pantalla envia al notificar una resolucion (EFDS-1181). */
+export interface DatosNotificacion {
+  notificadaEl: string;
+  /** Se omite mientras la resolucion no este en firme. */
+  firmeEl?: string;
 }
