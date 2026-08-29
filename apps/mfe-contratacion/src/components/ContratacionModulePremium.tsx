@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
   Briefcase,
-  Building2,
+  Coins,
+  FolderOpen,
   CalendarClock,
   FileSignature,
   ClipboardCheck,
   FileText,
-  Scale,
+  Store,
   Settings,
 } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -25,10 +26,12 @@ import { VistaConfiguracion } from './configuracion/VistaConfiguracion';
 import { VistaPlantillas } from './plantillas/VistaPlantillas';
 import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
+import { VistaExpedientes } from './expedientes/VistaExpedientes';
 
 type Seccion =
   | 'estudios-previos'
   | 'revision'
+  | 'expedientes'
   | 'umbrales'
   | 'plazos'
   | 'mipyme'
@@ -69,6 +72,18 @@ export default function ContratacionModulePremium() {
           disabled: true,
           tag: 'Próx.',
         },
+        {
+          // Tab propio y no un botón dentro del detalle: el expediente se
+          // consulta sin estar trabajando un proceso —es lo que abre un
+          // organismo de control—, y llegar a él pasando por lista y detalle
+          // lo escondía. Mismo sitio y mismo cian que en control interno y
+          // gestión legal.
+          id: 'expedientes',
+          label: 'Expedientes',
+          subtitle: 'Consulta y auditoría',
+          icon: <FolderOpen className="w-5 h-5" />,
+          color: '#0891B2',
+        },
       ],
     },
     {
@@ -76,11 +91,16 @@ export default function ContratacionModulePremium() {
       // diligencia un proceso.
       title: 'Configuración',
       items: [
+        // Un color por tab y no uno para el grupo: los tres primeros
+        // configuran cosas distintas —dinero, tiempo y quién puede
+        // participar— y con el mismo morado había que leer la etiqueta para
+        // distinguirlos.
         {
           id: 'umbrales',
           label: 'Umbrales',
           subtitle: 'Cuantías por modalidad',
-          icon: <Scale className="w-5 h-5" />,
+          // La balanza es de justicia; aquí lo que se configura son pesos.
+          icon: <Coins className="w-5 h-5" />,
           color: '#7C3AED',
         },
         {
@@ -88,14 +108,15 @@ export default function ContratacionModulePremium() {
           label: 'Plazos',
           subtitle: 'Publicidad del pliego',
           icon: <CalendarClock className="w-5 h-5" />,
-          color: '#7C3AED',
+          color: '#D97706',
         },
         {
           id: 'mipyme',
           label: 'MIPYME',
           subtitle: 'Condiciones de limitación',
-          icon: <Building2 className="w-5 h-5" />,
-          color: '#7C3AED',
+          // Un edificio no dice «pequeña empresa»; la tienda sí.
+          icon: <Store className="w-5 h-5" />,
+          color: '#059669',
         },
         {
           // Los formatos del SIG son un catálogo propio: un mismo formato
@@ -104,7 +125,9 @@ export default function ContratacionModulePremium() {
           label: 'Plantillas',
           subtitle: 'Formatos del SIG',
           icon: <FileText className="w-5 h-5" />,
-          color: '#0891B2',
+          // Rosa y no cian: el cian ya identifica a Expedientes, y dos tabs
+          // del mismo color obligan a leer la etiqueta para distinguirlos.
+          color: '#DB2777',
         },
         {
           id: 'configuracion',
@@ -120,6 +143,7 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (seccion === 'expedientes') return <VistaExpedientes />;
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;
     if (seccion === 'mipyme') return <VistaCondicionesMipyme />;
