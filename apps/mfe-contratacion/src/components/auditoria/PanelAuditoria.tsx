@@ -272,13 +272,19 @@ export function PanelAuditoria({ procesoId }: Props) {
         <ul className="m-0 p-0 list-none space-y-1">
           {datos.trazabilidad.map((t, i) => (
             <li key={i} className="flex items-baseline gap-2 text-[11px] text-slate-500">
-              {/* Con hora: en una auditoría importa el orden dentro del día. */}
-              <span className="text-[10px] text-slate-400 w-36 flex-shrink-0 tabular-nums">
+              {/* Con hora: en una auditoría importa el orden dentro del día.
+                  El ancho va en estilo y no en clase: el CSS del shell viene
+                  precompilado y solo trae las utilidades que él usa, así que
+                  una `w-*` que no esté en su hoja no aplica. */}
+              <span
+                className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums whitespace-nowrap"
+                style={{ width: '13rem' }}
+              >
                 {momentoConHora(t.created_at)}
               </span>
-              <span className="font-bold text-slate-600 w-20 flex-shrink-0">{t.accion}</span>
-              <span className="flex-1 min-w-0 truncate">{t.entidad}</span>
-              <span className="text-[10px] text-slate-400 truncate max-w-[180px]">
+              <span className="font-bold text-slate-600 w-24 flex-shrink-0">{t.accion}</span>
+              <span className="w-48 flex-shrink-0 truncate">{t.entidad}</span>
+              <span className="flex-1 min-w-0 truncate text-[10px] text-slate-400">
                 {t.usuario_nombre ?? '—'}
               </span>
             </li>
