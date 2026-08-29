@@ -245,6 +245,7 @@ export class TerminosService {
 
         // Check if exists to update
         let termino = await this.terminoRepository.findOne({ where: { referenciaId, origenModulo: origen } });
+        const responsableAnterior = termino?.responsableId ?? null;
 
         if (termino) {
             termino.numeroRadicado = radicado;
@@ -283,7 +284,13 @@ export class TerminosService {
             });
         }
 
-        return this.terminoRepository.save(termino);
+        const guardado = await this.terminoRepository.save(termino);
+
+        if (guardado.responsableId && guardado.responsableId !== responsableAnterior) {
+            this.notificarAsignacionResponsable(guardado, !!responsableAnterior);
+        }
+
+        return guardado;
     }
 
     async findAll(filtros: any): Promise<TerminoProcesal[]> {
