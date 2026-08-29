@@ -113,6 +113,7 @@ resolve_mfe_service() {
     pta|mfe-pta|frontend-mfe-pta) echo "frontend-mfe-pta" ;;
     contratacion|mfe-contratacion|frontend-mfe-contratacion) echo "frontend-mfe-contratacion" ;;
     viaticos|mfe-viaticos|frontend-mfe-viaticos) echo "frontend-mfe-viaticos" ;;
+    programacion-academica|mfe-programacion-academica|frontend-mfe-programacion-academica) echo "frontend-mfe-programacion-academica" ;;
     *) return 1 ;;
   esac
 }
@@ -158,12 +159,12 @@ cmd_restart() {
 
 cmd_up_backend() {
   echo -e "${GREEN}Levantando backend local sin PostgreSQL...${NC}"
-  compose_local up -d --build redis onlyoffice auth-service academic-registration-service academic-work-plan-service certification-service internal-disciplinary-control-service interoperability-service internal-institutional-control-service legal-management-service notifications-service travel-expenses-service audit-service hiring-service api-gateway
+  compose_local up -d --build redis onlyoffice auth-service academic-registration-service academic-work-plan-service certification-service internal-disciplinary-control-service interoperability-service internal-institutional-control-service legal-management-service notifications-service travel-expenses-service audit-service hiring-service academic-schedule-service api-gateway
 }
 
 cmd_up_frontend() {
   echo -e "${GREEN}Levantando frontend MFE local...${NC}"
-  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos
+  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica
 }
 
 cmd_logs() {

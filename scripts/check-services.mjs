@@ -14,6 +14,10 @@ const frontendServices = [
   { name: 'mfe-control-interno', port: 3110, path: '/remotes/mfe-control-interno/assets/remoteEntry.js' },
   { name: 'mfe-control-disciplinario', port: 3111, path: '/remotes/mfe-control-disciplinario/assets/remoteEntry.js' },
   { name: 'mfe-gestion-legal', port: 3112, path: '/remotes/mfe-gestion-legal/assets/remoteEntry.js' },
+  { name: 'mfe-pta', port: 3113, path: '/remotes/mfe-pta/assets/remoteEntry.js' },
+  { name: 'mfe-contratacion', port: 3114, path: '/remotes/mfe-contratacion/assets/remoteEntry.js' },
+  { name: 'mfe-viaticos', port: 3115, path: '/remotes/mfe-viaticos/assets/remoteEntry.js' },
+  { name: 'mfe-programacion-academica', port: 3116, path: '/remotes/mfe-programacion-academica/assets/remoteEntry.js' },
 ];
 
 const backendServices = [
@@ -29,6 +33,8 @@ const backendServices = [
   { name: 'notifications-service', port: 3009, path: '/' },
   { name: 'travel-expenses-service', port: 3010, path: '/' },
   { name: 'audit-service', port: 3011, path: '/' },
+  { name: 'hiring-service', port: 3012, path: '/' },
+  { name: 'academic-schedule-service', port: 3013, path: '/' },
 ];
 
 function checkService(service) {

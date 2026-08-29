@@ -73,6 +73,7 @@ services:
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service-qa:3010
       AUDIT_SERVICE_URL: http://audit-service:3011
       HIRING_SERVICE_URL: http://hiring-service-qa:3012
+      ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service-qa:3013
     ports:
       - "3000:3000"
     depends_on:
@@ -88,6 +89,7 @@ services:
       - travel-expenses-service
       - audit-service
       - hiring-service
+      - academic-schedule-service
     networks:
       - superapp-net-qa
     restart: unless-stopped
@@ -539,6 +541,34 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_qa_2024}
     ports:
       - "3012:3012"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ ACADEMIC SCHEDULE SERVICE ============
+  academic-schedule-service:
+    build:
+      context: ./backend/academic-schedule-service
+      dockerfile: Dockerfile
+    container_name: academic-schedule-service-qa
+    environment:
+      NODE_ENV: production
+      PORT: 3013
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: academic-schedule
+
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_qa_2024}
+      API_GATEWAY_URL: http://api-gateway:3000
+    ports:
+      - "3013:3013"
     depends_on:
       db:
         condition: service_healthy

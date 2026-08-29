@@ -32,4 +32,6 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-audit-service:pre-latest
   hiring-service:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-hiring-service:pre-latest
+  academic-schedule-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-academic-schedule-service:pre-latest
 
