@@ -23,6 +23,7 @@ import {
   Layers3
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
+import { SelectorCatalogo } from './SelectorCatalogo';
 
 interface FranjaHoraria {
   id: string;
@@ -41,7 +42,7 @@ interface FranjaHoraria {
   estado: 'PROGRAMADO' | 'CONFIRMADO' | 'CONFLICTO';
 }
 
-type Seccion = 'horarios' | 'aulas' | 'docentes' | 'alertas';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'alertas';
 
 const INITIAL_SCHEDULE: FranjaHoraria[] = [
   {
@@ -136,6 +137,14 @@ export function ProgramacionAcademicaModule() {
     {
       title: 'GESTIÓN PRINCIPAL',
       items: [
+        {
+          // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
+          id: 'catalogo',
+          label: 'Catálogo Académico',
+          subtitle: 'Nivel, programa y plan de estudios',
+          icon: <BookOpen className="w-5 h-5" />,
+          color: '#003DA5',
+        },
         {
           id: 'horarios',
           label: 'Programación General',
@@ -312,6 +321,10 @@ export function ProgramacionAcademicaModule() {
       </div>
 
       {/* ── VISTAS POR SECCIÓN ── */}
+      {/* Catálogo: única sección conectada al backend real. Las demás siguen
+          sobre INITIAL_SCHEDULE hasta que se implementen sus HUs. */}
+      {seccion === 'catalogo' && <SelectorCatalogo />}
+
       {seccion === 'horarios' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
