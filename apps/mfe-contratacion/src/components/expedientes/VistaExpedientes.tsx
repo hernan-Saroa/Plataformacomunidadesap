@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { FolderOpen, Search, ShieldCheck } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
+import { Cargando } from '../shared/PiezasPanel';
 import { ProcesoResumen } from '../../types';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 
@@ -90,7 +91,7 @@ export function VistaExpedientes() {
         </div>
 
         {cargando ? (
-          <p className="text-xs text-slate-500 m-0 px-4 py-6 text-center">Cargando expedientes…</p>
+          <Cargando filas={4} />
         ) : error ? (
           <p className="text-xs text-red-600 m-0 px-4 py-6 text-center">{error}</p>
         ) : filtrados.length === 0 ? (

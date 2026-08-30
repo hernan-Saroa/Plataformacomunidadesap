@@ -11,7 +11,7 @@ import {
 
 import { contratacionService } from '../../services/contratacionService';
 import { ExpedienteAuditoria } from '../../types';
-import { Ayuda, Titulo } from '../shared/PiezasPanel';
+import { Ayuda, Cargando, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga, momento, momentoConHora } from '../shared/fechas';
 
 interface Props {
@@ -85,7 +85,7 @@ export function PanelAuditoria({ procesoId }: Props) {
   }, [procesoId]);
 
   if (cargando) {
-    return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando el expediente…</p>;
+    return <Cargando filas={6} />;
   }
 
   if (error) {

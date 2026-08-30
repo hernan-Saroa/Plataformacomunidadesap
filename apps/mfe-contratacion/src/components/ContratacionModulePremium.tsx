@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   BellRing,
-  Briefcase,
+  Handshake,
   Coins,
   FolderOpen,
   CalendarClock,
@@ -193,7 +193,7 @@ export default function ContratacionModulePremium() {
     <ModuleLayout
       moduleName="CONTRATACIÓN"
       moduleDescription="Gestión Contractual · Fase 1"
-      moduleIcon={<Briefcase className="w-6 h-6" />}
+      moduleIcon={<Handshake className="w-5 h-5" />}
       moduleColor="#003DA5"
       groups={grupos}
       activeSection={seccion}
@@ -203,7 +203,11 @@ export default function ContratacionModulePremium() {
         setActividad(null);
       }}
     >
-      {contenido()}
+      {/* La clave reinicia la animación al cambiar de sección: sin ella React
+          reutiliza el nodo y el cambio es un corte seco. */}
+      <div key={`${seccion}-${procesoId ?? ''}`} className="anima-seccion">
+        {contenido()}
+      </div>
       {/* Misma configuración que gestión legal y control interno, para que las
           notificaciones se comporten igual en toda la plataforma. */}
       <Toaster position="bottom-right" richColors closeButton duration={4000} />

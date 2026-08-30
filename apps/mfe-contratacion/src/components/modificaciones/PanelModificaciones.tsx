@@ -13,6 +13,7 @@ import {
   Pendiente,
   SelectorArchivo,
   Titulo,
+  Cargando,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 
@@ -183,7 +184,7 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
   };
 
   if (cargando) {
-    return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
+    return <Cargando filas={4} />;
   }
   if (error || !estado) {
     return <p className="text-xs text-red-600 m-0 px-4 py-3">{error ?? 'No se pudo cargar'}</p>;

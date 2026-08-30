@@ -241,3 +241,18 @@ export const SelectorArchivo = ({
     </div>
   );
 };
+
+/**
+ * Esqueleto de carga: dice la forma de lo que viene, no solo que se espera.
+ *
+ * `filas` aproxima cuántos renglones tendrá el contenido real, para que la
+ * página no salte cuando llegue.
+ */
+export const Cargando = ({ filas = 3 }: { filas?: number }) => (
+  <div className="p-4 space-y-2.5" role="status" aria-label="Cargando">
+    <div className="esqueleto h-4 w-2/5" />
+    {Array.from({ length: filas }, (_, i) => (
+      <div key={i} className="esqueleto h-9" style={{ width: `${94 - i * 7}%` }} />
+    ))}
+  </div>
+);

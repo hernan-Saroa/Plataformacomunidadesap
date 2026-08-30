@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BellRing, FileCheck2, Landmark, ShieldAlert, Timer } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
+import { Cargando } from '../shared/PiezasPanel';
 import { AlertaVencimiento } from '../../types';
 import { fechaLarga } from '../shared/fechas';
 
@@ -108,7 +109,7 @@ export function VistaAlertas() {
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         {cargando ? (
-          <p className="text-xs text-slate-500 m-0 px-4 py-6 text-center">Consultando…</p>
+          <Cargando filas={3} />
         ) : error ? (
           <p className="text-xs text-red-600 m-0 px-4 py-6 text-center">{error}</p>
         ) : alertas.length === 0 ? (
