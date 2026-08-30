@@ -8,6 +8,8 @@ import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { sanitizeObjetoComision } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
+import { ConfigService } from '../config/config.service';
+import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 
 function esDiaHabil(fecha: Date): boolean {
   const dia = fecha.getDay();
@@ -36,6 +38,7 @@ export class TravelExpensesService {
     @InjectRepository(DocumentoSoporteEntity)
     private readonly documentoRepo: Repository<DocumentoSoporteEntity>,
     private readonly dataSource: DataSource,
+    private readonly configService: ConfigService,
   ) {}
 
   async obtenerSolicitudes(usuarioId?: string, isSuperAdmin = false, page = 1, limit = 20): Promise<{ data: any[]; total: number; page: number; limit: number }> {
@@ -257,5 +260,38 @@ export class TravelExpensesService {
     });
 
     return this.documentoRepo.save(entity);
+  }
+
+  async obtenerParametrizacionFormulario(): Promise<{
+    campos: any[];
+    configuraciones: Record<string, ConfigTipoComisionadoEntity>;
+  }> {
+    const [campos, configs] = await Promise.all([
+      this.configService.obtenerCamposFormulario(),
+      this.configService.obtenerTodasConfiguraciones(),
+    ]);
+
+    const configuraciones: Record<string, ConfigTipoComisionadoEntity> = {};
+    for (const config of configs) {
+      configuraciones[config.tipoComisionado] = config;
+    }
+
+    return { campos, configuraciones };
+  }
+
+  async validarDocumentosRequeridos(
+    tipoComisionado: string,
+    tiposDocumentos: string[],
+  ): Promise<{ faltantes: string[] }> {
+    const config = await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    if (!config) {
+      return { faltantes: [] };
+    }
+
+    const faltantes = config.documentosObligatorios.filter(
+      (req) => !tiposDocumentos.includes(req),
+    );
+
+    return { faltantes };
   }
 }

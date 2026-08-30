@@ -31,7 +31,6 @@ export class SolicitudComisionEntity {
   fechaInicio: Date;
 
   @Column({ name: 'fecha_fin', type: 'timestamp' })
-  @Index('idx_solicitudes_comisionado_fechas')
   fechaFin: Date;
 
   @Column({ name: 'objeto_comision', type: 'varchar', length: 250 })

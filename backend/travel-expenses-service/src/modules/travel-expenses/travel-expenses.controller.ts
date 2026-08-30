@@ -86,4 +86,17 @@ export class TravelExpensesController {
   ) {
     return this.service.subirDocumento(id, dto);
   }
+
+  @Get('parametrizacion/formulario')
+  @Permissions('travel_expenses:read')
+  obtenerParametrizacionFormulario() {
+    return this.service.obtenerParametrizacionFormulario();
+  }
+
+  @Get('parametrizacion/validar-documentos')
+  @Permissions('travel_expenses:read')
+  async validarDocumentosRequeridos(@Query('tipo') tipo: string, @Query('documentos') documentos?: string) {
+    const tipos = documentos ? documentos.split(',') : [];
+    return this.service.validarDocumentosRequeridos(tipo, tipos);
+  }
 }
