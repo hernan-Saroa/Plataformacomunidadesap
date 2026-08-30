@@ -105,31 +105,15 @@ export function ModuleLayout({
         }}
       >
         {compacto ? (
-          <span
-            className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-            style={{ background: activo ? `${color}18` : 'transparent' }}
-          >
-            {item.icon}
-          </span>
+          <span className="flex items-center justify-center w-full">{item.icon}</span>
         ) : (
-          // Una línea por opción: el subtítulo repetía el nombre con otras
-          // palabras —«Procesos» / «Procesos contractuales»— y doblaba el alto
-          // de cada entrada para no añadir nada. Queda en el `title`, para
-          // quien no reconozca la opción por el nombre.
-          <div className="flex items-center gap-2.5">
-            {/* El icono en su chip de color, activo o no: es lo que deja
-                reconocer la opción de un vistazo sin leer la etiqueta, y el
-                color por tab no sirve de nada si solo aparece al pulsar. */}
-            <span
-              className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-              style={{
-                background: item.disabled ? '#F1F5F9' : `${color}${activo ? '22' : '12'}`,
-                color: item.disabled ? '#94A3B8' : color,
-              }}
-            >
-              {item.icon}
-            </span>
-            <span className="min-w-0 flex-1 font-semibold text-[13px] leading-tight truncate">
+          // Icono plano que hereda el color del botón: gris en reposo, el
+          // color del item al activarse. Es el patrón de control interno y
+          // gestión legal —byte a byte—, y el chip coloreado que hubo aquí
+          // hacía que este módulo se viera de otra plataforma.
+          <div className="flex items-center gap-3">
+            <span className="flex-shrink-0">{item.icon}</span>
+            <span className="min-w-0 flex-1 font-bold text-sm leading-tight truncate text-left">
               {item.label}
             </span>
             {item.tag && (

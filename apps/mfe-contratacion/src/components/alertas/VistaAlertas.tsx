@@ -91,7 +91,7 @@ export function VistaAlertas() {
 
       {/* Lo vencido primero y aparte: no es lo mismo «se acerca» que «se pasó». */}
       {!cargando && !error && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Resumen
             etiqueta="Ya vencieron"
             cuantas={vencidas.length}

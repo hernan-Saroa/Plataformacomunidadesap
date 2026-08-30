@@ -237,7 +237,7 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
           )}
 
           {!tramite ? (
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {disponibles.map((t) => (
                 <button
                   key={t.tipo}
@@ -297,7 +297,7 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
               )}
 
               {tramite === 'CESION' && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label className="block">
                     <span className="block text-xs font-bold text-slate-600 mb-1">
                       Quién recibe el contrato

@@ -121,7 +121,7 @@ export default function ContratacionModulePremium() {
           label: 'Plazos',
           subtitle: 'Publicidad del pliego',
           icon: <CalendarClock className="w-5 h-5" />,
-          color: '#D97706',
+          color: '#B45309',
         },
         {
           id: 'mipyme',

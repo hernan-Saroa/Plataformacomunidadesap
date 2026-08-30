@@ -81,6 +81,8 @@ export interface Alerta {
   estado: EstadoAlerta;
   responsable: string | null;
   responsableEmail: string | null;
+  /** `id_person` del supervisor vigente; a él va la notificación. */
+  responsableId: string | null;
 }
 
 /**
@@ -117,8 +119,13 @@ export class AlertasService {
 
     return [...amparos, ...presupuestales, ...liquidaciones]
       .map((fila) => {
-        const diasRestantes = diasParaVencer(fila.vence, hoy);
-        return { ...fila, diasRestantes, estado: estadoAlerta(diasRestantes, anticipacion) };
+        // pg devuelve las columnas `date` como Date; aquí todo es AAAA-MM-DD.
+        const vence =
+          typeof fila.vence === 'string'
+            ? fila.vence.slice(0, 10)
+            : new Date(fila.vence).toISOString().slice(0, 10);
+        const diasRestantes = diasParaVencer(vence, hoy);
+        return { ...fila, vence, diasRestantes, estado: estadoAlerta(diasRestantes, anticipacion) };
       })
       .filter((a) => a.estado !== 'VIGENTE')
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
@@ -139,6 +146,7 @@ export class AlertasService {
              c.numero        AS contrato,
              a.tipo          AS tipo_amparo,
              a.vigencia_hasta AS vence,
+             s.persona_id    AS responsable_id,
              s.nombre        AS responsable,
              s.email         AS responsable_email
         FROM hiring.amparos a
@@ -160,6 +168,7 @@ export class AlertasService {
       vence: f.vence,
       responsable: f.responsable,
       responsableEmail: f.responsable_email,
+      responsableId: f.responsable_id ?? null,
     }));
   }
 
@@ -192,6 +201,7 @@ export class AlertasService {
         vence: finDeVigenciaFiscal(f.vigencia_fiscal),
         responsable: null,
         responsableEmail: null,
+        responsableId: null,
       })),
       ...rps.map((f: any) => ({
         tipo: 'REGISTRO_PRESUPUESTAL' as const,
@@ -202,6 +212,7 @@ export class AlertasService {
         vence: finDeVigenciaFiscal(f.vigencia_fiscal),
         responsable: null,
         responsableEmail: null,
+        responsableId: null,
       })),
     ];
   }
@@ -217,7 +228,7 @@ export class AlertasService {
     const filas = await this.dataSource.query(`
       SELECT p.id AS proceso_id, p.radicado, c.numero AS contrato,
              COALESCE(m.fecha_efecto, c.updated_at::date) AS termino,
-             s.nombre AS responsable, s.email AS responsable_email
+             s.persona_id AS responsable_id, s.nombre AS responsable, s.email AS responsable_email
         FROM hiring.contratos c
         JOIN hiring.procesos p ON p.id = c.proceso_id
         LEFT JOIN hiring.modificaciones_contrato m
@@ -240,6 +251,7 @@ export class AlertasService {
       ),
       responsable: f.responsable,
       responsableEmail: f.responsable_email,
+      responsableId: f.responsable_id ?? null,
     }));
   }
 
@@ -253,7 +265,8 @@ export class AlertasService {
    */
   async notificar(anticipacion: number, acceso: HiringAccess) {
     const alertas = await this.listar(anticipacion, acceso);
-    const conDestinatario = alertas.filter((a) => a.responsableEmail);
+    // Con id de persona: es lo que notifications-service usa como destinatario.
+    const conDestinatario = alertas.filter((a) => a.responsableId);
 
     if (!conDestinatario.length) {
       return { alertas: alertas.length, notificadas: 0, sinDestinatario: alertas.length };
@@ -267,14 +280,14 @@ export class AlertasService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           notifications: conDestinatario.map((a) => ({
-            email: a.responsableEmail,
-            title: a.estado === 'VENCIDO' ? 'Vencimiento cumplido' : 'Vencimiento próximo',
-            message: `${a.descripcion} del contrato ${a.contrato ?? a.radicado}: ${
+            id_usuario_destinatario: a.responsableId,
+            tipo_notificacion: 'contratacion_vencimiento',
+            titulo: a.estado === 'VENCIDO' ? 'Vencimiento cumplido' : 'Vencimiento próximo',
+            mensaje: `${a.descripcion} del contrato ${a.contrato ?? a.radicado}: ${
               a.estado === 'VENCIDO'
                 ? `vencido hace ${Math.abs(a.diasRestantes)} días`
                 : `vence en ${a.diasRestantes} días`
             } (${a.vence})`,
-            module: 'contratacion',
           })),
         }),
       });

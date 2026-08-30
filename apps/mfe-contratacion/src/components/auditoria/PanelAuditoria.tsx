@@ -114,12 +114,12 @@ export function PanelAuditoria({ procesoId }: Props) {
 
       {/* Identificación */}
       <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3">
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
           <Dato etiqueta="Radicado" valor={proceso.radicado} />
           <Dato etiqueta="Modalidad" valor={proceso.modalidad ?? '—'} />
           <Dato etiqueta="Valor estimado" valor={pesos(proceso.valor_estimado)} />
           <Dato etiqueta="Radicado el" valor={momento(proceso.fecha_radicacion)} />
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <Dato etiqueta="Objeto" valor={proceso.objeto} />
           </div>
         </div>
@@ -127,7 +127,7 @@ export function PanelAuditoria({ procesoId }: Props) {
 
       {contrato && (
         <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
             <Dato etiqueta="Contrato" valor={contrato.numero} />
             <Dato etiqueta="Estado" valor={contrato.estado} />
             <Dato etiqueta="Contratista" valor={contrato.contratista_nombre ?? '—'} />
