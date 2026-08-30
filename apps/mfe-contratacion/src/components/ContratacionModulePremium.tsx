@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  BellRing,
   Briefcase,
   Coins,
   FolderOpen,
@@ -27,10 +28,12 @@ import { VistaPlantillas } from './plantillas/VistaPlantillas';
 import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
+import { VistaAlertas } from './alertas/VistaAlertas';
 
 type Seccion =
   | 'estudios-previos'
   | 'revision'
+  | 'alertas'
   | 'expedientes'
   | 'umbrales'
   | 'plazos'
@@ -71,6 +74,16 @@ export default function ContratacionModulePremium() {
           color: '#10B981',
           disabled: true,
           tag: 'Próx.',
+        },
+        {
+          // Junto a Procesos y no en Configuración: es trabajo diario, no un
+          // parámetro que se administra. Quien vigila vencimientos los mira
+          // todos juntos, no proceso por proceso.
+          id: 'alertas',
+          label: 'Alertas',
+          subtitle: 'Vencimientos y plazos',
+          icon: <BellRing className="w-5 h-5" />,
+          color: '#DC2626',
         },
         {
           // Tab propio y no un botón dentro del detalle: el expediente se
@@ -143,6 +156,7 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (seccion === 'alertas') return <VistaAlertas />;
     if (seccion === 'expedientes') return <VistaExpedientes />;
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;

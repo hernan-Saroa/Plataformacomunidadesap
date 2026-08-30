@@ -29,6 +29,7 @@ import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
+import { PanelModificaciones } from '../modificaciones/PanelModificaciones';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -92,6 +93,9 @@ const NUMERAL_ACTA_INICIO = '9.1';
 /** Seguimiento de la ejecución del contrato (EFDS-1168). */
 const NUMERAL_SEGUIMIENTO = '9.2';
 
+/** Modificaciones contractuales de la ejecucion (EFDS-1177, EFDS-1178). */
+const NUMERAL_MODIFICACIONES = '9.5';
+
 /**
  * Las que se trabajan desde su propio panel y no desde el formulario.
  *
@@ -107,6 +111,7 @@ const NUMERALES_CON_PANEL_PROPIO = [
   NUMERAL_PUBLICACION_CONTRATO,
   NUMERAL_ACTA_INICIO,
   NUMERAL_SEGUIMIENTO,
+  NUMERAL_MODIFICACIONES,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -493,6 +498,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
               </div>
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelModificaciones
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
             </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
             actividadSeleccionada?.numeral === NUMERAL_ARL ? (

@@ -27,6 +27,9 @@ import {
   AlertaVencimiento,
   EstadoIncumplimiento,
   ExpedienteAuditoria,
+  EstadoModificaciones,
+  DatosProrroga,
+  DatosModificacion,
   DatosIncumplimiento,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
@@ -1140,6 +1143,50 @@ export const contratacionService = {
   /** Expediente completo del proceso para auditoría (EFDS-1186). */
   auditoria: (procesoId: string) =>
     pedir<ExpedienteAuditoria>(`/procesos/${procesoId}/auditoria`),
+
+  // ------------------- actividad 9.5 · modificaciones contractuales --------
+
+  /** Plazo vigente del contrato y el historial de sus modificaciones. */
+  modificaciones: (procesoId: string) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones`),
+
+  /** Pide la prórroga. No extiende el plazo: eso ocurre al aprobarla. */
+  solicitarProrroga: (procesoId: string, datos: DatosProrroga) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/prorroga`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Pide una cesión, aclaración, suspensión o reanudación. */
+  solicitarModificacion: (procesoId: string, datos: DatosModificacion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Aprueba con el acto administrativo, que es obligatorio. */
+  aprobarModificacion: (
+    procesoId: string,
+    modificacionId: string,
+    acto: File,
+    observacion?: string,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+    if (observacion) cuerpo.append('observacion', observacion);
+
+    return pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/aprobar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Niega la modificación. Ni el plazo ni el estado del contrato se tocan. */
+  rechazarModificacion: (procesoId: string, modificacionId: string, motivo: string) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/rechazar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
 
   /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
   alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),

@@ -1418,6 +1418,69 @@ export interface DatosIncumplimiento {
   fechaHecho: string;
 }
 
+/** Los tipos de modificación de la actividad 9.5 (EFDS-1177, EFDS-1178). */
+export type TipoModificacion =
+  | 'PRORROGA'
+  | 'ADICION'
+  | 'CESION'
+  | 'ACLARACION'
+  | 'SUSPENSION'
+  | 'REANUDACION'
+  | 'TERMINACION_ANTICIPADA';
+
+export type EstadoModificacion = 'SOLICITADA' | 'APROBADA' | 'RECHAZADA';
+
+export interface ModificacionContrato {
+  id: string;
+  tipo: TipoModificacion;
+  estado: EstadoModificacion;
+  justificacion: string;
+  /** Solo en la prórroga. */
+  diasProrroga: number | null;
+  fechaEfecto: string;
+  /** El plazo que tenía el contrato al aprobarla, congelado. */
+  plazoAnteriorDias: number | null;
+  solicitadaPor: string | null;
+  resueltaPor: string | null;
+  resueltaAt: string | null;
+  motivoRechazo: string | null;
+  publicadaAt: string | null;
+  createdAt: string;
+}
+
+export interface EstadoModificaciones {
+  puedeSolicitar: boolean;
+  /** Qué falta, dicho por el servidor y no deducido en pantalla. */
+  motivoNoPuede: string | null;
+  contrato: {
+    numero: string;
+    objeto: string;
+    estado: string;
+    /** El plazo vigente, que ya incluye las prórrogas aprobadas. */
+    plazoDias: number | null;
+    ejecucionDesde: string | null;
+    diasProrrogados: number;
+  } | null;
+  modificaciones: ModificacionContrato[];
+}
+
+/** Lo que la pantalla envía al pedir una prórroga. */
+export interface DatosProrroga {
+  diasProrroga: number;
+  justificacion: string;
+  fechaEfecto: string;
+}
+
+/** Lo que envía al pedir cesión, aclaración, suspensión o reanudación. */
+export interface DatosModificacion {
+  tipo: Exclude<TipoModificacion, 'PRORROGA' | 'ADICION'>;
+  justificacion: string;
+  fechaEfecto: string;
+  cesionarioNombre?: string;
+  cesionarioDocumento?: string;
+  fechaReanudacionPrevista?: string;
+}
+
 /** Vencimiento próximo o ya cumplido (EFDS-1185). */
 export interface AlertaVencimiento {
   tipo: 'AMPARO' | 'CDP' | 'REGISTRO_PRESUPUESTAL' | 'LIQUIDACION';
