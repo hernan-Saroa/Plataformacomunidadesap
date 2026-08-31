@@ -343,34 +343,54 @@ export class DocumentConversionService {
       // Mammoth no lee word/header*.xml ni word/footer*.xml (solo word/document.xml),
       // así que el membrete y el pie de página insertados como encabezado/pie de
       // Word se pierden en la conversión. Se extraen aparte (imágenes y texto) y
-      // se anteponen/adjuntan al contenido.
+      // se inyectan como encabezado/pie de página REALES de Puppeteer, para que
+      // queden fijos en el margen y se repitan en todas las páginas, tal como en
+      // el documento original (antes se anteponían al cuerpo y salían en línea a
+      // mitad de página, en desorden).
       const headerContent = await this.extractHeaderContent(inputPath);
+      const footerContent = await this.extractFooterContent(inputPath);
+
       const headerImagesHtml = headerContent.images
         .map(
           (src) =>
-            `<img src="${src}" style="max-width:100%; display:block; margin: 0 0 12pt 0;" />`,
+            `<img src="${src}" style="display:block; margin:0 auto; max-height:2cm; max-width:100%;" />`,
         )
         .join('');
       const headerTextHtml = headerContent.textBlocks
         .map(
           (texto) =>
-            `<p style="text-align:center; font-size:10pt; margin: 0 0 4pt 0;">${this.escapeHtmlText(texto)}</p>`,
+            `<div style="text-align:center; font-size:8pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
-
-      const footerContent = await this.extractFooterContent(inputPath);
       const footerImagesHtml = footerContent.images
         .map(
           (src) =>
-            `<img src="${src}" style="max-width:100%; display:block; margin: 12pt 0 0 0;" />`,
+            `<img src="${src}" style="display:block; margin:0 auto; max-height:1.2cm; max-width:100%;" />`,
         )
         .join('');
       const footerTextHtml = footerContent.textBlocks
         .map(
           (texto) =>
-            `<p style="text-align:center; font-size:10pt; margin: 4pt 0 0 0;">${this.escapeHtmlText(texto)}</p>`,
+            `<div style="text-align:center; font-size:7pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
+
+      const hasHeader = headerImagesHtml.length > 0 || headerTextHtml.length > 0;
+      const hasFooter = footerImagesHtml.length > 0 || footerTextHtml.length > 0;
+
+      // Puppeteer no hereda los estilos de la página en las plantillas de
+      // encabezado/pie y fija un tamaño de fuente diminuto por defecto: se fuerzan
+      // los estilos en línea y se deja padding lateral igual al margen del cuerpo.
+      // El "Página X de Y" del pie original es un campo de Word (no <w:t>), así que
+      // no lo trae la extracción: se reconstruye con los contadores de Puppeteer.
+      const footerPageNumberHtml =
+        '<div style="text-align:center; font-size:7pt; line-height:1.3;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+      const headerTemplate = hasHeader
+        ? `<div style="width:100%; padding:2mm 2cm 0; box-sizing:border-box; -webkit-print-color-adjust:exact;">${headerImagesHtml}${headerTextHtml}</div>`
+        : '<div></div>';
+      const footerTemplate = hasFooter
+        ? `<div style="width:100%; padding:0 2cm 2mm; box-sizing:border-box; -webkit-print-color-adjust:exact;">${footerPageNumberHtml}${footerTextHtml}${footerImagesHtml}</div>`
+        : '<div></div>';
 
       // Crear HTML completo con estilos básicos
       const fullHtml = `
@@ -396,11 +416,7 @@ export class DocumentConversionService {
         </head>
         <body>
           <div class="mammoth-style-wrapper">
-            ${headerImagesHtml}
-            ${headerTextHtml}
             ${htmlContent}
-            ${footerImagesHtml}
-            ${footerTextHtml}
           </div>
         </body>
         </html>
@@ -427,16 +443,21 @@ export class DocumentConversionService {
       const page = await browser.newPage();
       await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
 
-      // Generar PDF
+      // Generar PDF. Cuando hay membrete/pie se activa displayHeaderFooter y se
+      // amplía el margen superior/inferior para que las plantillas quepan sin
+      // solaparse con el cuerpo.
       this.logger.log(`[Mammoth] Generating PDF...`);
       await page.pdf({
         path: outputPath,
         format: 'A4',
         printBackground: true,
+        displayHeaderFooter: hasHeader || hasFooter,
+        headerTemplate,
+        footerTemplate,
         margin: {
-          top: '2cm',
+          top: hasHeader ? '3.5cm' : '2cm',
           right: '2cm',
-          bottom: '2cm',
+          bottom: hasFooter ? '4cm' : '2cm',
           left: '2cm'
         }
       });
