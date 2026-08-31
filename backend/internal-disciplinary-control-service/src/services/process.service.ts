@@ -324,6 +324,9 @@ export class ProcessService {
     });
 
     actuaciones.forEach((actuacion) => {
+      if (!actuacion.processId) {
+        return;
+      }
       const actual = resumen.get(actuacion.processId);
 
       if (!actual) {

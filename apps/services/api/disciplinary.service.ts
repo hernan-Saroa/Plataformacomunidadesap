@@ -164,7 +164,8 @@ export interface ProcessStatistics {
 
 export interface DisciplinaryProcessActuacion {
     id: string;
-    processId: string;
+    processId: string | null;
+    newsId?: string | null;
     tipo: string;
     etapa?: string | null;
     descripcion: string;
@@ -623,6 +624,22 @@ if (fechaQuejaRaw) {
 
     async getNoticiaById(id: string): Promise<DisciplinaryNews> {
         return apiClient.get<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
+    }
+
+    async getActuacionesNoticia(newsId: string): Promise<DisciplinaryProcessActuacion[]> {
+        return apiClient.get<DisciplinaryProcessActuacion[]>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`
+        );
+    }
+
+    async createActuacionNoticia(
+        newsId: string,
+        data: CreateDisciplinaryProcessActuacionDto
+    ): Promise<DisciplinaryProcessActuacion> {
+        return apiClient.post<DisciplinaryProcessActuacion>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`,
+            data
+        );
     }
 
     async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
