@@ -40,6 +40,7 @@ import { ReglasAlertaController } from './controllers/reglas-alerta.controller';
 import { AlertasController } from './controllers/alertas.controller';
 import { JobsController } from './controllers/jobs.controller';
 import { DisciplinaryProcessActuacionesController } from './controllers/disciplinary-process-actuaciones.controller';
+import { DisciplinaryNewsActuacionesController } from './controllers/disciplinary-news-actuaciones.controller';
 import { DisciplinaryProcessTasksController } from './controllers/disciplinary-process-tasks.controller';
 import { DisciplinaryProcessNotesController } from './controllers/disciplinary-process-notes.controller';
 import { DisciplinaryProcessReassignmentController } from './controllers/disciplinary-process-reassignment.controller';
@@ -161,6 +162,7 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     AlertasController,
     JobsController,
     DisciplinaryProcessActuacionesController,
+    DisciplinaryNewsActuacionesController,
     DisciplinaryProcessTasksController,
     DisciplinaryProcessNotesController,
     DisciplinaryExportController,

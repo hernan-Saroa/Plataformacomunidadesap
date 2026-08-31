@@ -500,6 +500,46 @@ export class NewsService {
   }
 
   /**
+   * El Radicador reenvia al Jefe una noticia previamente devuelta, ya corregida.
+   * Registra la observacion (opcional) en el historial y notifica al Jefe.
+   */
+  async resubmitNews(id: string, observaciones?: string): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    noticia.estado = NewsStatus.EN_VALORACION;
+
+    const historyEntry = {
+      id: Date.now().toString(),
+      tipo: 'reenvio',
+      usuario: 'Radicador',
+      fecha: new Date().toISOString(),
+      observaciones: observaciones?.trim()
+        ? `Noticia corregida reenviada al Jefe. Observacion: ${observaciones.trim()}`
+        : 'Noticia corregida reenviada al Jefe',
+    };
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+
+    const noticiaGuardada = await this.newsRepository.save(noticia);
+
+    this.notificationClient.notifyByRole('JEFE_DE_LA_OCID', {
+      tipo_notificacion: 'NOTICIA_REENVIADA',
+      titulo: 'Noticia disciplinaria corregida reenviada',
+      mensaje: observaciones?.trim()
+        ? `La noticia ${noticia.radicado} fue corregida y reenviada para valoracion. Observacion: ${observaciones.trim()}`
+        : `La noticia ${noticia.radicado} fue corregida y reenviada para valoracion.`,
+      descripcion_corta: `Noticia ${noticia.radicado} reenviada`,
+      icono: 'RefreshCw',
+      color: '#2563EB',
+      prioridad: 'Alta',
+      categoria: 'DISCIPLINARIO',
+      tiene_accion: true,
+      texto_boton_accion: 'Ver noticia',
+      datos_adicionales: { noticiaId: noticia.id, radicado: noticia.radicado },
+    }).catch(() => {});
+
+    return noticiaGuardada;
+  }
+
+  /**
    * Devuelve una noticia con observaciones
    */
   async returnNews(id: string, returnNewsDto: ReturnNewsDto): Promise<DisciplinaryNews> {
