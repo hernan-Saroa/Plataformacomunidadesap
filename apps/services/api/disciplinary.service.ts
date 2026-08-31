@@ -648,6 +648,10 @@ if (fechaQuejaRaw) {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
     }
 
+    async resubmitNews(id: string, observaciones?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/resubmit`, { observaciones });
+    }
+
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/kanban`, { kanbanStage });
     }
