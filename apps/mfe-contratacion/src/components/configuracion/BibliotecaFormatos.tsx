@@ -468,39 +468,56 @@ export function BibliotecaFormatos() {
           )}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200 bg-slate-50">
-                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                  Formato
-                </th>
-                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                  Actividad en la que se ofrece
-                </th>
-                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                  Archivo
-                </th>
-                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                  Estado
-                </th>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((f) => (
-                <Fila
-                  key={f.id}
-                  formato={f}
-                  actividades={actividades}
-                  onAsignar={(numeral) => asignar(f, numeral)}
-                  onEditar={() => setEditando(f)}
-                  onCambiarEstado={() => cambiarEstado(f)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Tarjetas en móvil y tabla en escritorio, como auditoría y control
+              interno: cinco columnas con selector no caben en un teléfono. */}
+          <ul className="lg:hidden m-0 p-0 list-none rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
+            {filtrados.map((f) => (
+              <TarjetaFormato
+                key={f.id}
+                formato={f}
+                actividades={actividades}
+                onAsignar={(numeral) => asignar(f, numeral)}
+                onEditar={() => setEditando(f)}
+                onCambiarEstado={() => cambiarEstado(f)}
+              />
+            ))}
+          </ul>
+
+          <div className="hidden lg:block overflow-x-auto rounded-xl border border-gray-200 bg-white">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 bg-slate-50">
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                    Formato
+                  </th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                    Actividad en la que se ofrece
+                  </th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                    Archivo
+                  </th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                    Estado
+                  </th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.map((f) => (
+                  <Fila
+                    key={f.id}
+                    formato={f}
+                    actividades={actividades}
+                    onAsignar={(numeral) => asignar(f, numeral)}
+                    onEditar={() => setEditando(f)}
+                    onCambiarEstado={() => cambiarEstado(f)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -561,69 +578,148 @@ function Fila({
       {/* Sin archivo el formato está declarado pero no se puede descargar: se
           dice, porque un botón que no baja nada se lee como un fallo. */}
       <td className="px-4 py-2.5">
-        {formato.archivoUrl ? (
-          <a
-            href={contratacionService.urlDescarga(formato.archivoUrl)}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold text-[#003DA5] hover:bg-gray-100"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Descargar
-          </a>
-        ) : (
-          <span
-            title="El formato está registrado pero nadie subió el archivo"
-            className="text-[11px] font-bold text-amber-700"
-          >
-            sin archivo
-          </span>
-        )}
+        <EnlaceArchivo formato={formato} />
       </td>
 
-      {/* El estado lleva punto además de color: distinguir vigente de retirado
-          solo por el tono deja fuera a quien no separa esos dos colores. */}
       <td className="px-4 py-2.5">
-        <button
-          type="button"
-          onClick={onCambiarEstado}
-          aria-pressed={formato.activo}
-          title={
-            formato.activo
-              ? 'El gestor lo ve. Pulsa para retirarlo.'
-              : 'El gestor no lo ve. Pulsa para volver a ofrecerlo.'
-          }
-          className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
-            formato.activo
-              ? 'border-[#003DA5] bg-[#E0EDFF] text-[#003DA5]'
-              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
-          }`}
-        >
-          <span
-            aria-hidden="true"
-            className={`w-1.5 h-1.5 rounded-full ${
-              formato.activo ? 'bg-[#003DA5]' : 'bg-gray-400'
-            }`}
-          />
-          {formato.activo ? 'Vigente' : 'Retirado'}
-        </button>
+        <BotonEstadoFormato formato={formato} onCambiarEstado={onCambiarEstado} />
       </td>
 
       {/* Con texto y no solo icono: «editar» es lo que se busca al llegar a
           esta columna, y un lápiz suelto obliga a deducirlo. El área supera
           los 44 px de alto que pide el tamaño mínimo de toque. */}
       <td className="px-4 py-2.5 text-right">
-        <button
-          type="button"
-          onClick={onEditar}
-          aria-label={`Editar ${formato.nombre}`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition-colors hover:border-[#003DA5] hover:text-[#003DA5]"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-          Editar
-        </button>
+        <BotonEditarFormato formato={formato} onEditar={onEditar} />
       </td>
     </tr>
+  );
+}
+
+/** El mismo formato de la tabla, apilado para la pantalla del teléfono. */
+function TarjetaFormato({
+  formato,
+  actividades,
+  onAsignar,
+  onEditar,
+  onCambiarEstado,
+}: {
+  formato: PlantillaFormato;
+  actividades: ActividadCatalogo[];
+  onAsignar: (numeral: string) => void;
+  onEditar: () => void;
+  onCambiarEstado: () => void;
+}) {
+  return (
+    <li className={`px-4 py-3 ${formato.activo ? '' : 'bg-slate-50'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p
+            className={`text-sm font-bold m-0 leading-snug ${
+              formato.activo ? 'text-slate-800' : 'text-gray-400 line-through'
+            }`}
+          >
+            {formato.nombre}
+          </p>
+          <span className="text-[11px] text-slate-500">
+            {formato.codigo} · versión {formato.version}
+          </span>
+        </div>
+        <BotonEstadoFormato formato={formato} onCambiarEstado={onCambiarEstado} />
+      </div>
+
+      <div className="mt-2">
+        <SelectorActividad
+          id={`actividad-movil-${formato.id}`}
+          etiqueta={`Actividad de ${formato.nombre}`}
+          actividades={actividades}
+          valor={formato.numeral}
+          onCambio={onAsignar}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+        <EnlaceArchivo formato={formato} />
+        <BotonEditarFormato formato={formato} onEditar={onEditar} />
+      </div>
+    </li>
+  );
+}
+
+/** Descarga el archivo, o dice por qué no hay nada que descargar. */
+function EnlaceArchivo({ formato }: { formato: PlantillaFormato }) {
+  return formato.archivoUrl ? (
+    <a
+      href={contratacionService.urlDescarga(formato.archivoUrl)}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold text-[#003DA5] hover:bg-gray-100"
+    >
+      <Download className="w-3.5 h-3.5" />
+      Descargar
+    </a>
+  ) : (
+    <span
+      title="El formato está registrado pero nadie subió el archivo"
+      className="text-[11px] font-bold text-amber-700"
+    >
+      sin archivo
+    </span>
+  );
+}
+
+/** El estado lleva punto además de color: distinguir vigente de retirado
+    solo por el tono deja fuera a quien no separa esos dos colores. */
+function BotonEstadoFormato({
+  formato,
+  onCambiarEstado,
+}: {
+  formato: PlantillaFormato;
+  onCambiarEstado: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onCambiarEstado}
+      aria-pressed={formato.activo}
+      title={
+        formato.activo
+          ? 'El gestor lo ve. Pulsa para retirarlo.'
+          : 'El gestor no lo ve. Pulsa para volver a ofrecerlo.'
+      }
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors flex-shrink-0 ${
+        formato.activo
+          ? 'border-[#003DA5] bg-[#E0EDFF] text-[#003DA5]'
+          : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`w-1.5 h-1.5 rounded-full ${
+          formato.activo ? 'bg-[#003DA5]' : 'bg-gray-400'
+        }`}
+      />
+      {formato.activo ? 'Vigente' : 'Retirado'}
+    </button>
+  );
+}
+
+function BotonEditarFormato({
+  formato,
+  onEditar,
+}: {
+  formato: PlantillaFormato;
+  onEditar: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onEditar}
+      aria-label={`Editar ${formato.nombre}`}
+      className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition-colors hover:border-[#003DA5] hover:text-[#003DA5]"
+    >
+      <Pencil className="w-3.5 h-3.5" />
+      Editar
+    </button>
   );
 }
 /**

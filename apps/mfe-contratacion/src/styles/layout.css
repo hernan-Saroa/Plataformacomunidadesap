@@ -198,9 +198,13 @@
 .text-\[15px\]    { font-size: 15px; }
 
 /* -------------------------------------------------------- medidas ----- */
+.table-fixed      { table-layout: fixed; }
 .min-w-\[640px\]  { min-width: 640px; }
+.w-\[100px\]      { width: 100px; }
 .w-\[110px\]      { width: 110px; }
+.w-\[120px\]      { width: 120px; }
 .w-\[130px\]      { width: 130px; }
+.w-\[180px\]      { width: 180px; }
 .w-\[220px\]      { width: 220px; }
 .w-\[2px\]        { width: 2px; }
 .w-\[18px\]       { width: 18px; }

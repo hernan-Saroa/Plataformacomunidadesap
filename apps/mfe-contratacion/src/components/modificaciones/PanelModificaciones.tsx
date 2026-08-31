@@ -16,6 +16,7 @@ import {
   Cargando,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { CicloContrato } from '../shared/CicloContrato';
 
 interface Props {
   procesoId: string;
@@ -221,6 +222,14 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
         <Pendiente falta="9.1" texto={`No se puede modificar: ${motivoNoPuede}.`} />
       ) : (
         <>
+          {/* El ciclo completo con el punto actual: es el front de los estados
+              de EFDS-1184, y aquí es donde las modificaciones lo mueven. */}
+          {contrato && (
+            <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5">
+              <CicloContrato estado={contrato.estado} />
+            </div>
+          )}
+
           {/* El plazo vigente arriba: es contra lo que se decide si prorrogar. */}
           {contrato && (
             <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 flex items-center gap-6 flex-wrap">

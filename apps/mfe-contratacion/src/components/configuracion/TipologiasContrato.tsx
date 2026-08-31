@@ -136,6 +136,50 @@ export function TipologiasContrato() {
 
   const activas = tipologias.filter((t) => t.activo).length;
 
+  // Los mismos botones en la tabla y en las tarjetas: definirlos una vez evita
+  // que las dos vistas se desactualicen entre sí.
+  const botonGarantias = (t: TipologiaConfigurable) => (
+    <button
+      type="button"
+      disabled={guardando}
+      onClick={() => alternarGarantias(t)}
+      aria-label={`${t.exigeGarantias ? 'Dejar de exigir' : 'Exigir'} garantías en ${t.nombre}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold transition-colors disabled:opacity-50 ${
+        t.exigeGarantias
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+          : 'border-gray-200 bg-white text-slate-500 hover:bg-slate-50'
+      }`}
+    >
+      {t.exigeGarantias ? 'Sí las exige' : 'No las exige'}
+    </button>
+  );
+
+  const botonEstado = (t: TipologiaConfigurable) => (
+    <button
+      type="button"
+      disabled={guardando}
+      onClick={() => alternarActiva(t)}
+      aria-label={`${t.activo ? 'Retirar' : 'Volver a ofrecer'} ${t.nombre}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold transition-colors disabled:opacity-50 ${
+        t.activo
+          ? 'text-slate-500 hover:text-red-600 hover:bg-red-50'
+          : 'text-[#003DA5] hover:bg-blue-50'
+      }`}
+    >
+      {t.activo ? (
+        <>
+          <X className="w-3 h-3" />
+          Retirar
+        </>
+      ) : (
+        <>
+          <Check className="w-3 h-3" strokeWidth={3} />
+          Ofrecer
+        </>
+      )}
+    </button>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -261,16 +305,45 @@ export function TipologiasContrato() {
         </div>
       ) : null}
 
-      <div className="rounded-lg border border-gray-200 overflow-hidden">
+      {/* Tabla en escritorio y tarjetas en móvil, como auditoría y control
+          interno: el scroll horizontal dejaba el código y los botones
+          escondidos fuera de la pantalla del teléfono. */}
+      <ul className="lg:hidden m-0 p-0 list-none rounded-lg border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
+        {tipologias.map((t) => (
+          <li key={t.codigo} className={`px-3.5 py-3 ${t.activo ? '' : 'bg-slate-50'}`}>
+            <p
+              className={`text-[12.5px] font-bold m-0 break-words ${
+                t.activo ? 'text-slate-800' : 'text-slate-400 line-through'
+              }`}
+            >
+              {t.nombre}
+            </p>
+            <code className="inline-block mt-1 text-[10.5px] font-mono text-slate-600 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 break-all">
+              {t.codigo}
+            </code>
+            {t.descripcion ? (
+              <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed break-words">
+                {t.descripcion}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+              {botonGarantias(t)}
+              {botonEstado(t)}
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden lg:block rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           {/* Anchos fijos: sin ellos, una descripción larga ensancha su columna
               y las demás bailan de fila en fila. */}
           <table className="w-full text-left table-fixed min-w-[640px]">
             <colgroup>
               <col />
-              <col className="w-[220px]" />
-              <col className="w-[130px]" />
-              <col className="w-[110px]" />
+              <col className="w-[180px]" />
+              <col className="w-[120px]" />
+              <col className="w-[100px]" />
             </colgroup>
             <thead className="bg-slate-50 border-b border-gray-200">
               <tr>
@@ -324,46 +397,8 @@ export function TipologiasContrato() {
                       {t.codigo}
                     </code>
                   </td>
-                  <td className="px-3 py-2.5">
-                    <button
-                      type="button"
-                      disabled={guardando}
-                      onClick={() => alternarGarantias(t)}
-                      aria-label={`${t.exigeGarantias ? 'Dejar de exigir' : 'Exigir'} garantías en ${t.nombre}`}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold transition-colors disabled:opacity-50 ${
-                        t.exigeGarantias
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
-                          : 'border-gray-200 bg-white text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      {t.exigeGarantias ? 'Sí las exige' : 'No las exige'}
-                    </button>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <button
-                      type="button"
-                      disabled={guardando}
-                      onClick={() => alternarActiva(t)}
-                      aria-label={`${t.activo ? 'Retirar' : 'Volver a ofrecer'} ${t.nombre}`}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold transition-colors disabled:opacity-50 ${
-                        t.activo
-                          ? 'text-slate-500 hover:text-red-600 hover:bg-red-50'
-                          : 'text-[#003DA5] hover:bg-blue-50'
-                      }`}
-                    >
-                      {t.activo ? (
-                        <>
-                          <X className="w-3 h-3" />
-                          Retirar
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-3 h-3" strokeWidth={3} />
-                          Ofrecer
-                        </>
-                      )}
-                    </button>
-                  </td>
+                  <td className="px-3 py-2.5">{botonGarantias(t)}</td>
+                  <td className="px-3 py-2.5">{botonEstado(t)}</td>
                 </tr>
               ))}
             </tbody>

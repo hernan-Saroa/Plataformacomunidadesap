@@ -174,17 +174,11 @@ export function VistaConfiguracion() {
         </div>
       )}
 
-      {/* Título y pestañas en la misma fila: la cabecera grande de antes
-          empujaba el contenido media pantalla hacia abajo para repetir lo que
-          el propio tab del menú ya dice. Dos pestañas y no dos secciones del
-          menú: la matriz y las tipologías son parámetros del mismo flujo. */}
-      <div className="flex items-center gap-4 border-b border-gray-200 flex-wrap">
-        <span className="flex items-center gap-2 py-2 min-w-0">
-          <Settings className="w-4 h-4 text-slate-500 flex-shrink-0" aria-hidden="true" />
-          <span className="text-[13px] font-bold text-slate-700 truncate">
-            Configuración de etapas
-          </span>
-        </span>
+      {/* Solo las pestañas, sin cabecera: el tab del menú ya dice dónde se
+          está, y repetirlo aquí solo empujaba el contenido hacia abajo. Dos
+          pestañas y no dos secciones del menú: la matriz y las tipologías son
+          parámetros del mismo flujo. */}
+      <div className="flex items-center gap-1 border-b border-gray-200 flex-wrap">
         {(
           [
             ['matriz', 'Matriz de actividades'],

@@ -61,6 +61,36 @@ export function VistaCondicionesMipyme() {
   const sinConfirmar = parametros.filter((p) => !p.confirmado).length;
   const puedeEditar = datos?.puedeEditar === true;
 
+  // Las mismas celdas en la tabla de escritorio y en las tarjetas de móvil:
+  // definirlas una vez evita que las dos vistas cuenten cosas distintas.
+  const valorDe = (parametro: ParametroMipyme) => (
+    <>
+      {comoSeLee(parametro)}
+      {/* El tope se guarda en SMMLV y nadie que lo valide piensa en salarios
+          mínimos: ver el equivalente al lado es lo que permite notar que una
+          cifra está mal. */}
+      {parametro.clave === 'TOPE_VALOR' && parametro.unidad === 'SMMLV' && (
+        <span className="block text-xs text-slate-500 mt-0.5">
+          {datos?.topeEnPesos !== null && datos?.topeEnPesos !== undefined
+            ? `equivale hoy a ${pesos.format(datos.topeEnPesos)}`
+            : 'no hay salario mínimo del año para convertirlo'}
+        </span>
+      )}
+    </>
+  );
+
+  const botonEditar = (parametro: ParametroMipyme) =>
+    puedeEditar ? (
+      <button
+        type="button"
+        onClick={() => setEditando(parametro)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-md border border-gray-200 text-slate-600 hover:border-[#003DA5] hover:text-[#003DA5] transition-colors"
+      >
+        <Pencil className="w-3 h-3" />
+        Cambiar
+      </button>
+    ) : null;
+
   return (
     <div className="space-y-3 md:space-y-4">
       <ModuleHeader
@@ -97,7 +127,31 @@ export function VistaCondicionesMipyme() {
         <SkeletonTable rows={2} />
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="overflow-x-auto">
+          {/* Tarjetas en móvil y tabla en escritorio, como auditoría y control
+              interno: el fundamento legal es largo y no cabe en columna. */}
+          <ul className="lg:hidden m-0 p-0 list-none divide-y divide-gray-100">
+            {parametros.map((parametro) => (
+              <li key={parametro.clave} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-800 m-0">{parametro.descripcion}</p>
+                    {!parametro.confirmado && (
+                      <span className="text-xs font-bold text-amber-700">valor sin confirmar</span>
+                    )}
+                  </div>
+                  {botonEditar(parametro)}
+                </div>
+                <p className="text-xs text-slate-700 tabular-nums m-0 mt-1">{valorDe(parametro)}</p>
+                {parametro.fundamento && (
+                  <p className="text-xs text-slate-500 m-0 mt-0.5 leading-relaxed">
+                    {parametro.fundamento}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 bg-slate-50">
@@ -127,34 +181,12 @@ export function VistaCondicionesMipyme() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-slate-700 tabular-nums">
-                      {comoSeLee(parametro)}
-                      {/* El tope se guarda en SMMLV y nadie que lo valide
-                          piensa en salarios mínimos: ver el equivalente al lado
-                          es lo que permite notar que una cifra está mal. */}
-                      {parametro.clave === 'TOPE_VALOR' &&
-                        parametro.unidad === 'SMMLV' && (
-                          <span className="block text-xs text-slate-500 mt-0.5">
-                            {datos?.topeEnPesos !== null && datos?.topeEnPesos !== undefined
-                              ? `equivale hoy a ${pesos.format(datos.topeEnPesos)}`
-                              : 'no hay salario mínimo del año para convertirlo'}
-                          </span>
-                        )}
+                      {valorDe(parametro)}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-slate-600">
                       {parametro.fundamento ?? <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {puedeEditar && (
-                        <button
-                          type="button"
-                          onClick={() => setEditando(parametro)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-md border border-gray-200 text-slate-600 hover:border-[#003DA5] hover:text-[#003DA5] transition-colors"
-                        >
-                          <Pencil className="w-3 h-3" />
-                          Cambiar
-                        </button>
-                      )}
-                    </td>
+                    <td className="px-4 py-2.5 text-right">{botonEditar(parametro)}</td>
                   </tr>
                 ))}
               </tbody>
