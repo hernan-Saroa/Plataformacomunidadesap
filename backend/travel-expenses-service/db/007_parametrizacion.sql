@@ -1,3 +1,12 @@
+-- ============================================================================
+-- parametrizacion.sql
+-- Description: Tablas de parametrización del módulo de viáticos.
+--              Idempotente (CREATE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS).
+-- ============================================================================
+
+CREATE SCHEMA IF NOT EXISTS travel_expenses;
+SET search_path TO travel_expenses, public;
+
 CREATE TABLE IF NOT EXISTS travel_expenses.config_campos_formulario (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clave VARCHAR(100) NOT NULL UNIQUE,
@@ -51,3 +60,5 @@ CREATE INDEX IF NOT EXISTS idx_config_tipo_comisionado_codigo_formulario ON trav
 CREATE INDEX IF NOT EXISTS idx_tipos_documento_soporte_codigo ON travel_expenses.tipos_documento_soporte(codigo);
 CREATE INDEX IF NOT EXISTS idx_config_tipo_comisionado_documentos_config ON travel_expenses.config_tipo_comisionado_documentos(config_tipo_comisionado_id);
 CREATE INDEX IF NOT EXISTS idx_config_tipo_comisionado_documentos_tipo ON travel_expenses.config_tipo_comisionado_documentos(tipo_documento_soporte_id);
+
+RESET search_path;

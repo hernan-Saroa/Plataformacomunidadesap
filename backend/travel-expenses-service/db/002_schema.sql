@@ -1,7 +1,8 @@
 -- ============================================================================
--- Migration: 002_create_travel_expenses_schema.sql
+-- 002_schema.sql
 -- Description: Crear esquema travel_expenses y tablas comisionados,
---              solicitudes_comision, documentos_soporte con indices y constraints
+--              solicitudes_comision y documentos_soporte con índices y
+--              constraints. Idempotente (CREATE IF NOT EXISTS).
 -- ============================================================================
 
 CREATE SCHEMA IF NOT EXISTS travel_expenses;
@@ -9,7 +10,7 @@ CREATE SCHEMA IF NOT EXISTS travel_expenses;
 SET search_path TO travel_expenses, public;
 
 -- Tabla comisionados
-CREATE TABLE IF NOT EXISTS comisionados (
+CREATE TABLE IF NOT EXISTS travel_expenses.comisionados (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     numero_documento VARCHAR(20) UNIQUE NOT NULL,
     primer_nombre VARCHAR(100) NOT NULL,
@@ -27,13 +28,13 @@ CREATE TABLE IF NOT EXISTS comisionados (
     actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_comisionados_numero_documento ON comisionados(numero_documento);
+CREATE INDEX IF NOT EXISTS idx_comisionados_numero_documento ON travel_expenses.comisionados(numero_documento);
 
 -- Tabla solicitudes_comision
-CREATE TABLE IF NOT EXISTS solicitudes_comision (
+CREATE TABLE IF NOT EXISTS travel_expenses.solicitudes_comision (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     consecutivo_unico VARCHAR(50) UNIQUE NOT NULL,
-    comisionado_id UUID NOT NULL REFERENCES comisionados(id),
+    comisionado_id UUID NOT NULL REFERENCES travel_expenses.comisionados(id),
     destino_ciudad VARCHAR(100) NOT NULL,
     destino_departamento VARCHAR(100) NOT NULL,
     fecha_inicio TIMESTAMP NOT NULL,
@@ -49,13 +50,13 @@ CREATE TABLE IF NOT EXISTS solicitudes_comision (
     actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_solicitudes_consecutivo_unico ON solicitudes_comision(consecutivo_unico);
-CREATE INDEX IF NOT EXISTS idx_solicitudes_comisionado_fechas ON solicitudes_comision(comisionado_id, fecha_inicio, fecha_fin);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_consecutivo_unico ON travel_expenses.solicitudes_comision(consecutivo_unico);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_comisionado_fechas ON travel_expenses.solicitudes_comision(comisionado_id, fecha_inicio, fecha_fin);
 
 -- Tabla documentos_soporte
-CREATE TABLE IF NOT EXISTS documentos_soporte (
+CREATE TABLE IF NOT EXISTS travel_expenses.documentos_soporte (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    solicitud_id UUID NOT NULL REFERENCES solicitudes_comision(id) ON DELETE CASCADE,
+    solicitud_id UUID NOT NULL REFERENCES travel_expenses.solicitudes_comision(id) ON DELETE CASCADE,
     tipo_documento VARCHAR(50) NOT NULL CHECK (tipo_documento IN ('CDP','RUT','CERT_BANCARIA','SEGURIDAD_SOCIAL','CONTRATO_SECOP')),
     nombre_archivo_original VARCHAR(255) NOT NULL,
     nombre_archivo_seguro VARCHAR(255) NOT NULL,
@@ -63,4 +64,6 @@ CREATE TABLE IF NOT EXISTS documentos_soporte (
     creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_documentos_soporte_solicitud ON documentos_soporte(solicitud_id);
+CREATE INDEX IF NOT EXISTS idx_documentos_soporte_solicitud ON travel_expenses.documentos_soporte(solicitud_id);
+
+RESET search_path;

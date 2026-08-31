@@ -1,6 +1,7 @@
 -- ============================================================================
--- Migration: Seed auth.module for Viáticos / Travel Expenses
--- Description: Registrar y activar el módulo de Viáticos en la tabla auth.module (is_active = true)
+-- 001_module.sql
+-- Description: Registrar y activar el módulo de Viáticos en auth.module
+--              (idempotente: seguro de ejecutar múltiples veces).
 -- ============================================================================
 
 DO $$
@@ -36,5 +37,4 @@ BEGIN
         UPDATE auth.module SET is_active = true WHERE code = 'viaticos';
         RAISE NOTICE 'Módulo viaticos actualizado a is_active = true';
     END IF;
-
 END $$;

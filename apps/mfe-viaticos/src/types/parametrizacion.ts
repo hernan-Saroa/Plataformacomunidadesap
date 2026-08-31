@@ -53,3 +53,45 @@ export interface ParametrizacionFormulario {
   campos: CampoFormulario[];
   configuraciones: Record<string, ConfigTipoComisionado>;
 }
+
+// DTOs para crear/actualizar
+export interface CrearCampoFormularioDTO {
+  clave: string;
+  etiqueta: string;
+  tipoCampo: TipoCampoFormulario;
+  placeholder?: string;
+  opciones?: Array<{ value: string; label: string }>;
+  grupo?: GrupoCampoFormulario;
+  orden?: number;
+  activo?: boolean;
+}
+
+export interface ActualizarCampoFormularioDTO {
+  etiqueta?: string;
+  placeholder?: string;
+  opciones?: Array<{ value: string; label: string }>;
+  grupo?: GrupoCampoFormulario;
+  orden?: number;
+  activo?: boolean;
+}
+
+export interface CrearConfigTipoComisionadoDTO {
+  tipoComisionado: string;
+  codigoFormulario: string;
+  camposObligatorios: string[];
+  camposOpcionales?: string[];
+  camposOcultos?: string[];
+  documentosObligatorios?: string[];
+  documentosOpcionales?: string[];
+  activo?: boolean;
+}
+
+export interface ActualizarConfigTipoComisionadoDTO {
+  codigoFormulario?: string;
+  camposObligatorios?: string[];
+  camposOpcionales?: string[];
+  camposOcultos?: string[];
+  documentosObligatorios?: string[];
+  documentosOpcionales?: string[];
+  activo?: boolean;
+}
