@@ -1,14 +1,29 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, OneToMany } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+  OneToMany,
+} from 'typeorm';
 import { ConfigTipoComisionadoDocumentoEntity } from './config-tipo-comisionado-documento.entity';
 
 @Entity({ schema: 'travel_expenses', name: 'config_tipo_comisionado' })
-@Index('idx_config_tipo_comisionado_tipo', ['tipoComisionado'], { unique: true })
+@Index('idx_config_tipo_comisionado_tipo', ['tipoComisionado'], {
+  unique: true,
+})
 @Index('idx_config_tipo_comisionado_codigo_formulario', ['codigoFormulario'])
 export class ConfigTipoComisionadoEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'tipo_comisionado', type: 'varchar', length: 50, unique: true })
+  @Column({
+    name: 'tipo_comisionado',
+    type: 'varchar',
+    length: 50,
+    unique: true,
+  })
   tipoComisionado: string;
 
   @Column({ name: 'codigo_formulario', type: 'varchar', length: 50 })
@@ -32,6 +47,10 @@ export class ConfigTipoComisionadoEntity {
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
 
-  @OneToMany(() => ConfigTipoComisionadoDocumentoEntity, (rel) => rel.configTipoComisionado, { cascade: true })
+  @OneToMany(
+    () => ConfigTipoComisionadoDocumentoEntity,
+    (rel) => rel.configTipoComisionado,
+    { cascade: true },
+  )
   documentos: ConfigTipoComisionadoDocumentoEntity[];
 }

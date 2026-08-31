@@ -1,15 +1,36 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+} from 'typeorm';
 import { ComisionadoEntity } from './comisionado.entity';
 import { DocumentoSoporteEntity } from './documento-soporte.entity';
 
 @Entity({ schema: 'travel_expenses', name: 'solicitudes_comision' })
-@Index('idx_solicitudes_consecutivo_unico', ['consecutivoUnico'], { unique: true })
-@Index('idx_solicitudes_comisionado_fechas', ['comisionadoId', 'fechaInicio', 'fechaFin'])
+@Index('idx_solicitudes_consecutivo_unico', ['consecutivoUnico'], {
+  unique: true,
+})
+@Index('idx_solicitudes_comisionado_fechas', [
+  'comisionadoId',
+  'fechaInicio',
+  'fechaFin',
+])
 export class SolicitudComisionEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'consecutivo_unico', type: 'varchar', length: 50, unique: true })
+  @Column({
+    name: 'consecutivo_unico',
+    type: 'varchar',
+    length: 50,
+    unique: true,
+  })
   @Index('idx_solicitudes_consecutivo_unico')
   consecutivoUnico: string;
 
@@ -45,16 +66,33 @@ export class SolicitudComisionEntity {
   @Column({ name: 'requiere_tiquetes', type: 'boolean', default: false })
   requiereTiquetes: boolean;
 
-  @Column({ name: 'monto_viaticos', type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({
+    name: 'monto_viaticos',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
   montoViaticos: number;
 
-  @Column({ name: 'monto_gastos_viaje', type: 'numeric', precision: 12, scale: 2, default: 0 })
+  @Column({
+    name: 'monto_gastos_viaje',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
   montoGastosViaje: number;
 
   @Column({ name: 'dias_comision', type: 'int', default: 1 })
   diasComision: number;
 
-  @Column({ name: 'estado_solicitud', type: 'varchar', length: 50, default: 'RADICADA' })
+  @Column({
+    name: 'estado_solicitud',
+    type: 'varchar',
+    length: 50,
+    default: 'RADICADA',
+  })
   estadoSolicitud: string;
 
   @Column({ name: 'radicado_fuera_jornada', type: 'boolean', default: false })

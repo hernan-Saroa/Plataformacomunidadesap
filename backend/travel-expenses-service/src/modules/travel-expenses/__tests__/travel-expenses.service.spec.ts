@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { ComisionadoEntity } from '../../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../../entities/documento-soporte.entity';
+import { ConfigService } from '../../config/config.service';
 
 describe('TravelExpensesService', () => {
   let service: TravelExpensesService;
@@ -26,17 +27,28 @@ describe('TravelExpensesService', () => {
     actualizadoEn: new Date(),
   } as ComisionadoEntity;
 
-  const createMockModule = (overrides: {
-    comisionadoRepo?: any;
-    solicitudRepo?: any;
-    documentoRepo?: any;
-    dataSource?: any;
-  } = {}) => {
+  const createMockModule = (
+    overrides: {
+      comisionadoRepo?: any;
+      solicitudRepo?: any;
+      documentoRepo?: any;
+      dataSource?: any;
+      configService?: any;
+    } = {},
+  ) => {
     const {
       comisionadoRepo = { findOne: jest.fn(), save: jest.fn() },
-      solicitudRepo = { createQueryBuilder: jest.fn(), create: jest.fn(), save: jest.fn() },
+      solicitudRepo = {
+        createQueryBuilder: jest.fn(),
+        create: jest.fn(),
+        save: jest.fn(),
+      },
       documentoRepo = { create: jest.fn(), save: jest.fn() },
       dataSource = { transaction: jest.fn(), createQueryBuilder: jest.fn() },
+      configService = {
+        obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue(null),
+        obtenerConfiguracionPorCodigoFormulario: jest.fn().mockResolvedValue(null),
+      },
     } = overrides;
 
     return Test.createTestingModule({
@@ -57,6 +69,10 @@ describe('TravelExpensesService', () => {
         {
           provide: getRepositoryToken(DocumentoSoporteEntity),
           useValue: documentoRepo,
+        },
+        {
+          provide: ConfigService,
+          useValue: configService,
         },
       ],
     }).compile();
@@ -565,7 +581,9 @@ describe('TravelExpensesService', () => {
           andWhere: jest.fn().mockReturnThis(),
           getOne: jest.fn().mockResolvedValue(null),
         }),
-        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-ext' })),
+        create: jest
+          .fn()
+          .mockImplementation((ent) => ({ ...ent, id: 'sol-ext' })),
         save: jest.fn().mockImplementation(async (ent) => ent),
       };
 
@@ -585,7 +603,11 @@ describe('TravelExpensesService', () => {
         createQueryBuilder: jest.fn(),
       };
 
-      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource });
+      const module = await createMockModule({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const result = await svc.crearSolicitud({

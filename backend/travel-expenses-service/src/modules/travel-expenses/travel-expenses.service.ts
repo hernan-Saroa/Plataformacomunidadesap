@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
@@ -41,22 +45,46 @@ export class TravelExpensesService {
     private readonly configService: ConfigService,
   ) {}
 
-  async obtenerSolicitudes(usuarioId?: string, isSuperAdmin = false, page = 1, limit = 20): Promise<{ data: any[]; total: number; page: number; limit: number }> {
-    console.log('[travel-expenses] service obtenerSolicitudes usuarioId=', usuarioId, 'isSuperAdmin=', isSuperAdmin, 'page=', page, 'limit=', limit);
-    const query = this.solicitudRepo.createQueryBuilder('s')
+  async obtenerSolicitudes(
+    usuarioId?: string,
+    isSuperAdmin = false,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    console.log(
+      '[travel-expenses] service obtenerSolicitudes usuarioId=',
+      usuarioId,
+      'isSuperAdmin=',
+      isSuperAdmin,
+      'page=',
+      page,
+      'limit=',
+      limit,
+    );
+    const query = this.solicitudRepo
+      .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
     if (!isSuperAdmin && usuarioId) {
       query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
     }
 
-    query.orderBy('s.extemporanea', 'DESC')
+    query
+      .orderBy('s.extemporanea', 'DESC')
       .addOrderBy('s.estadoSolicitud', 'ASC')
       .addOrderBy('s.creadoEn', 'DESC');
 
     const total = await query.getCount();
-    const solicitudes = await query.offset((page - 1) * limit).limit(limit).getMany();
-    console.log('[travel-expenses] service obtenerSolicitudes count=', solicitudes.length, 'total=', total);
+    const solicitudes = await query
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getMany();
+    console.log(
+      '[travel-expenses] service obtenerSolicitudes count=',
+      solicitudes.length,
+      'total=',
+      total,
+    );
 
     const data = solicitudes.map((s) => ({
       id: s.id,
@@ -93,13 +121,17 @@ export class TravelExpensesService {
       creadoEn: s.creadoEn.toISOString(),
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
-      esCreadoPorMi: isSuperAdmin ? s.creadoPorUsuarioId === usuarioId : undefined,
+      esCreadoPorMi: isSuperAdmin
+        ? s.creadoPorUsuarioId === usuarioId
+        : undefined,
     }));
 
     return { data, total, page, limit };
   }
 
-  async consultarComisionado(documento: string): Promise<ComisionadoEntity | null> {
+  async consultarComisionado(
+    documento: string,
+  ): Promise<ComisionadoEntity | null> {
     const comisionado = await this.comisionadoRepo.findOne({
       where: { numeroDocumento: documento },
     });
@@ -111,7 +143,9 @@ export class TravelExpensesService {
     return comisionado;
   }
 
-  async crearSolicitud(dto: CreateSolicitudDto): Promise<SolicitudComisionEntity> {
+  async crearSolicitud(
+    dto: CreateSolicitudDto,
+  ): Promise<SolicitudComisionEntity> {
     const comisionado = await this.comisionadoRepo.findOne({
       where: { id: dto.comisionadoId },
     });
@@ -129,33 +163,69 @@ export class TravelExpensesService {
     if (!comisionado.autorizacionHabeasData && dto.aceptaHabeasData) {
       comisionado.autorizacionHabeasData = true;
       comisionado.fechaAutorizacionHabeasData = new Date();
-      comisionado.ipRegistroHabeasData = dto.ipRegistroHabeasData || getClientIp({ headers: {} } as any);
+      comisionado.ipRegistroHabeasData =
+        dto.ipRegistroHabeasData || getClientIp({ headers: {} } as any);
       await this.comisionadoRepo.save(comisionado);
     }
 
-    const objetoSanitizado = sanitizeObjetoComision(dto.objetoComision);
-    if (objetoSanitizado.length === 0) {
-      throw new BadRequestException('El objeto de la comisión debe contener al menos un carácter válido.');
+    const datosFormulario: Record<string, any> = {
+      objetoComision: dto.objetoComision,
+      destinoCiudad: dto.destinoCiudad,
+      destinoDepartamento: dto.destinoDepartamento,
+      fechaInicio: dto.fechaInicio,
+      fechaFin: dto.fechaFin,
+      rubroPresupuestal: dto.rubroPresupuestal,
+      prioridad: dto.prioridad,
+      requiereTiquetes: dto.requiereTiquetes,
+      montoViaticos: dto.montoViaticos,
+      montoGastosViaje: dto.montoGastosViaje,
+      diasComision: dto.diasComision,
+    };
+
+    const { camposFaltantes } = await this.validarCamposObligatorios(
+      comisionado.tipoComisionado,
+      datosFormulario,
+    );
+
+    if (camposFaltantes.length > 0) {
+      throw new BadRequestException(
+        `Faltan los siguientes campos obligatorios para el tipo de comisionado ${comisionado.tipoComisionado}: ${camposFaltantes.join(', ')}`,
+      );
     }
 
-    const fechaInicio = new Date(dto.fechaInicio);
-    const fechaFin = new Date(dto.fechaFin);
+    const objetoSanitizado = sanitizeObjetoComision(dto.objetoComision ?? '');
+    if (objetoSanitizado.length === 0) {
+      throw new BadRequestException(
+        'El objeto de la comisión debe contener al menos un carácter válido.',
+      );
+    }
+
+    const fechaInicioStr = dto.fechaInicio as string;
+    const fechaFinStr = dto.fechaFin as string;
+    const fechaInicio = new Date(fechaInicioStr);
+    const fechaFin = new Date(fechaFinStr);
 
     if (fechaFin < fechaInicio) {
-      throw new BadRequestException('La fecha fin no puede ser anterior a la fecha inicio.');
+      throw new BadRequestException(
+        'La fecha fin no puede ser anterior a la fecha inicio.',
+      );
     }
 
     const hoy = new Date();
     const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(
       hoy.getDate(),
     ).padStart(2, '0')}`;
-    if (dto.fechaInicio < hoyStr) {
-      throw new BadRequestException('La fecha de inicio no puede ser anterior a la fecha actual.');
+    if (fechaInicioStr < hoyStr) {
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser anterior a la fecha actual.',
+      );
     }
 
     const solapamiento = await this.solicitudRepo
       .createQueryBuilder('s')
-      .where('s.comisionado_id = :comisionadoId', { comisionadoId: dto.comisionadoId })
+      .where('s.comisionado_id = :comisionadoId', {
+        comisionadoId: dto.comisionadoId,
+      })
       .andWhere(
         `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
         { fechaInicio, fechaFin },
@@ -163,7 +233,9 @@ export class TravelExpensesService {
       .getOne();
 
     if (solapamiento) {
-      throw new ConflictException('El comisionado ya tiene una solicitud activa en el rango de fechas indicado.');
+      throw new ConflictException(
+        'El comisionado ya tiene una solicitud activa en el rango de fechas indicado.',
+      );
     }
 
     const ahora = new Date();
@@ -199,13 +271,13 @@ export class TravelExpensesService {
     const solicitud = this.solicitudRepo.create({
       consecutivoUnico,
       comisionadoId: dto.comisionadoId,
-      destinoCiudad: dto.destinoCiudad,
-      destinoDepartamento: dto.destinoDepartamento,
+      destinoCiudad: dto.destinoCiudad ?? '',
+      destinoDepartamento: dto.destinoDepartamento ?? '',
       fechaInicio,
       fechaFin,
       objetoComision: objetoSanitizado,
-      prioridad: dto.prioridad,
-      rubroPresupuestal: dto.rubroPresupuestal,
+      prioridad: dto.prioridad ?? 'BAJA',
+      rubroPresupuestal: dto.rubroPresupuestal ?? '',
       requiereTiquetes: dto.requiereTiquetes ?? false,
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
@@ -242,7 +314,10 @@ export class TravelExpensesService {
     return response;
   }
 
-  async subirDocumento(solicitudId: string, dto: UploadDocumentoDto): Promise<DocumentoSoporteEntity> {
+  async subirDocumento(
+    solicitudId: string,
+    dto: UploadDocumentoDto,
+  ): Promise<DocumentoSoporteEntity> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
     });
@@ -279,15 +354,20 @@ export class TravelExpensesService {
     return { campos, configuraciones };
   }
 
-  async obtenerParametrizacionPorCodigoFormulario(codigoFormulario: string): Promise<ConfigTipoComisionadoEntity | null> {
-    return this.configService.obtenerConfiguracionPorCodigoFormulario(codigoFormulario);
+  async obtenerParametrizacionPorCodigoFormulario(
+    codigoFormulario: string,
+  ): Promise<ConfigTipoComisionadoEntity | null> {
+    return this.configService.obtenerConfiguracionPorCodigoFormulario(
+      codigoFormulario,
+    );
   }
 
   async validarDocumentosRequeridos(
     tipoComisionado: string,
     tiposDocumentos: string[],
   ): Promise<{ faltantes: string[] }> {
-    const config = await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    const config =
+      await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
     if (!config) {
       return { faltantes: [] };
     }
@@ -297,7 +377,9 @@ export class TravelExpensesService {
       .map((d) => d.tipoDocumentoSoporte?.codigo)
       .filter((codigo): codigo is string => Boolean(codigo));
 
-    const faltantes = codigosObligatorios.filter((req) => !tiposDocumentos.includes(req));
+    const faltantes = codigosObligatorios.filter(
+      (req) => !tiposDocumentos.includes(req),
+    );
 
     return { faltantes };
   }
@@ -306,12 +388,20 @@ export class TravelExpensesService {
     tipoComisionado: string,
     datosFormulario: Record<string, any>,
   ): Promise<{ camposFaltantes: string[] }> {
-    const config = await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    const config =
+      await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
     if (!config) {
       return { camposFaltantes: [] };
     }
 
-    const camposFaltantes = config.camposObligatorios.filter((campo) => {
+    const camposOpcionales = new Set(config.camposOpcionales ?? []);
+    const camposOcultos = new Set(config.camposOcultos ?? []);
+
+    const camposEfectivamenteObligatorios = config.camposObligatorios.filter(
+      (campo) => !camposOpcionales.has(campo) && !camposOcultos.has(campo),
+    );
+
+    const camposFaltantes = camposEfectivamenteObligatorios.filter((campo) => {
       const valor = datosFormulario[campo];
       if (valor === undefined || valor === null || valor === '') {
         return true;

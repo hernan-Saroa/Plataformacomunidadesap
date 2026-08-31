@@ -1,9 +1,25 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { ConfigTipoComisionadoEntity } from './config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from './tipo-documento-soporte.entity';
 
-@Entity({ schema: 'travel_expenses', name: 'config_tipo_comisionado_documentos' })
-@Index('idx_config_tipo_comisionado_documentos_unique', ['configTipoComisionadoId', 'tipoDocumentoSoporteId'], { unique: true })
+@Entity({
+  schema: 'travel_expenses',
+  name: 'config_tipo_comisionado_documentos',
+})
+@Index(
+  'idx_config_tipo_comisionado_documentos_unique',
+  ['configTipoComisionadoId', 'tipoDocumentoSoporteId'],
+  { unique: true },
+)
 export class ConfigTipoComisionadoDocumentoEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

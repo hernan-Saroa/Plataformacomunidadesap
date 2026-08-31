@@ -109,7 +109,9 @@ async function seed() {
 
     const existingComisionados = await comisionadoRepo.count();
     if (existingComisionados > 0) {
-      console.log(`⚠️  Ya existen ${existingComisionados} comisionado(s). Se omite la carga de comisionados y solicitudes.`);
+      console.log(
+        `⚠️  Ya existen ${existingComisionados} comisionado(s). Se omite la carga de comisionados y solicitudes.`,
+      );
     } else {
       const comisionados = comisionadoRepo.create([
         {
@@ -422,15 +424,44 @@ async function seed() {
       console.log(`✅ ${campos.length} campos de formulario creados.`);
     }
 
-    const existingTiposDoc = await dataSource.getRepository(TipoDocumentoSoporteEntity).count();
+    const existingTiposDoc = await dataSource
+      .getRepository(TipoDocumentoSoporteEntity)
+      .count();
     if (existingTiposDoc === 0) {
-      const tiposDoc = dataSource.getRepository(TipoDocumentoSoporteEntity).create([
-        { codigo: 'CDP', nombre: 'Certificado de Disponibilidad Presupuestal', descripcion: 'CDP', activo: true },
-        { codigo: 'RUT', nombre: 'RUT', descripcion: 'Registro único tributario', activo: true },
-        { codigo: 'CERT_BANCARIA', nombre: 'Certificación Bancaria', descripcion: 'Certificación bancaria', activo: true },
-        { codigo: 'SEGURIDAD_SOCIAL', nombre: 'Seguridad Social', descripcion: 'Certificado de seguridad social', activo: true },
-        { codigo: 'CONTRATO_SECOP', nombre: 'Contrato SECOP', descripcion: 'Contrato SECOP', activo: true },
-      ]);
+      const tiposDoc = dataSource
+        .getRepository(TipoDocumentoSoporteEntity)
+        .create([
+          {
+            codigo: 'CDP',
+            nombre: 'Certificado de Disponibilidad Presupuestal',
+            descripcion: 'CDP',
+            activo: true,
+          },
+          {
+            codigo: 'RUT',
+            nombre: 'RUT',
+            descripcion: 'Registro único tributario',
+            activo: true,
+          },
+          {
+            codigo: 'CERT_BANCARIA',
+            nombre: 'Certificación Bancaria',
+            descripcion: 'Certificación bancaria',
+            activo: true,
+          },
+          {
+            codigo: 'SEGURIDAD_SOCIAL',
+            nombre: 'Seguridad Social',
+            descripcion: 'Certificado de seguridad social',
+            activo: true,
+          },
+          {
+            codigo: 'CONTRATO_SECOP',
+            nombre: 'Contrato SECOP',
+            descripcion: 'Contrato SECOP',
+            activo: true,
+          },
+        ]);
       await dataSource.getRepository(TipoDocumentoSoporteEntity).save(tiposDoc);
       console.log(`✅ ${tiposDoc.length} tipos de documento soporte creados.`);
     }
@@ -560,58 +591,141 @@ async function seed() {
       ]);
 
       await configRepo.save(configs);
-      console.log(`✅ ${configs.length} configuraciones de tipo comisionado creadas.`);
+      console.log(
+        `✅ ${configs.length} configuraciones de tipo comisionado creadas.`,
+      );
 
-      const configDocumentoRepo = dataSource.getRepository(ConfigTipoComisionadoDocumentoEntity);
+      const configDocumentoRepo = dataSource.getRepository(
+        ConfigTipoComisionadoDocumentoEntity,
+      );
       const configsCreadas = await configRepo.find({ where: { activo: true } });
-      const tiposDoc = await dataSource.getRepository(TipoDocumentoSoporteEntity).find({ where: { activo: true } });
+      const tiposDoc = await dataSource
+        .getRepository(TipoDocumentoSoporteEntity)
+        .find({ where: { activo: true } });
 
-      const obtenerTipoDoc = (codigo: string) => tiposDoc.find((t) => t.codigo === codigo);
+      const obtenerTipoDoc = (codigo: string) =>
+        tiposDoc.find((t) => t.codigo === codigo);
 
       const relaciones: ConfigTipoComisionadoDocumentoEntity[] = [];
       for (const config of configsCreadas) {
         switch (config.tipoComisionado) {
           case 'FUNCIONARIO':
             relaciones.push(
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CERT_BANCARIA')!.id, tipoRequisito: 'OPCIONAL' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('SEGURIDAD_SOCIAL')!.id, tipoRequisito: 'OPCIONAL' }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CERT_BANCARIA')!.id,
+                tipoRequisito: 'OPCIONAL',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('SEGURIDAD_SOCIAL')!.id,
+                tipoRequisito: 'OPCIONAL',
+              }),
             );
             break;
           case 'CONTRATISTA':
             relaciones.push(
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CONTRATO_SECOP')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CERT_BANCARIA')!.id, tipoRequisito: 'OPCIONAL' }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CONTRATO_SECOP')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CERT_BANCARIA')!.id,
+                tipoRequisito: 'OPCIONAL',
+              }),
             );
             break;
           case 'DOCENTE':
             relaciones.push(
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('SEGURIDAD_SOCIAL')!.id, tipoRequisito: 'OPCIONAL' }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('SEGURIDAD_SOCIAL')!.id,
+                tipoRequisito: 'OPCIONAL',
+              }),
             );
             break;
           case 'ESTUDIANTE':
             relaciones.push(
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id, tipoRequisito: 'OBLIGATORIO' }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
             );
             break;
           case 'INVESTIGADOR':
             relaciones.push(
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CERT_BANCARIA')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('SEGURIDAD_SOCIAL')!.id, tipoRequisito: 'OPCIONAL' }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CERT_BANCARIA')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('SEGURIDAD_SOCIAL')!.id,
+                tipoRequisito: 'OPCIONAL',
+              }),
             );
             break;
           case 'DEFAULT':
             relaciones.push(
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id, tipoRequisito: 'OBLIGATORIO' }),
-              configDocumentoRepo.create({ configTipoComisionadoId: config.id, tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id, tipoRequisito: 'OBLIGATORIO' }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('CDP')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
+              configDocumentoRepo.create({
+                configTipoComisionadoId: config.id,
+                tipoDocumentoSoporteId: obtenerTipoDoc('RUT')!.id,
+                tipoRequisito: 'OBLIGATORIO',
+              }),
             );
             break;
         }
@@ -619,7 +733,9 @@ async function seed() {
 
       if (relaciones.length > 0) {
         await configDocumentoRepo.save(relaciones);
-        console.log(`✅ ${relaciones.length} relaciones documento-configuración creadas.`);
+        console.log(
+          `✅ ${relaciones.length} relaciones documento-configuración creadas.`,
+        );
       }
     }
 

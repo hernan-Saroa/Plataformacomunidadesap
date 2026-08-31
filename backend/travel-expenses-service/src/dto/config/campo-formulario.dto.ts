@@ -1,5 +1,17 @@
-import { IsString, Length, IsOptional, IsIn, IsInt, IsBoolean, Min, Max } from 'class-validator';
-import { TipoCampoFormulario, GrupoCampoFormulario } from '../../entities/config/campo-formulario.entity';
+import {
+  IsString,
+  Length,
+  IsOptional,
+  IsIn,
+  IsInt,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator';
+import {
+  TipoCampoFormulario,
+  GrupoCampoFormulario,
+} from '../../entities/config/campo-formulario.entity';
 
 export class CreateCampoFormularioDto {
   @IsString()

@@ -1,14 +1,36 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Req, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Req,
+  Query,
+} from '@nestjs/common';
 import { Request } from 'express';
 import { ConfigService } from './config.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { Permissions } from '../../common/permissions.decorator';
-import { CreateCampoFormularioDto, UpdateCampoFormularioDto } from '../../dto/config/campo-formulario.dto';
-import { CreateConfigTipoComisionadoDto, UpdateConfigTipoComisionadoDto } from '../../dto/config/config-tipo-comisionado.dto';
+import {
+  CreateCampoFormularioDto,
+  UpdateCampoFormularioDto,
+} from '../../dto/config/campo-formulario.dto';
+import {
+  CreateConfigTipoComisionadoDto,
+  UpdateConfigTipoComisionadoDto,
+} from '../../dto/config/config-tipo-comisionado.dto';
 
 interface AuthenticatedRequest extends Request {
-  user?: { userId: string; roles?: string[]; role?: string; permissions?: string[] };
+  user?: {
+    userId: string;
+    roles?: string[];
+    role?: string;
+    permissions?: string[];
+  };
 }
 
 @Controller('parametrizacion')
@@ -40,7 +62,10 @@ export class ConfigController {
 
   @Put('campos-formulario/:clave')
   @Permissions('travel_expenses:manage_config')
-  actualizarCampoFormulario(@Param('clave') clave: string, @Body() dto: UpdateCampoFormularioDto) {
+  actualizarCampoFormulario(
+    @Param('clave') clave: string,
+    @Body() dto: UpdateCampoFormularioDto,
+  ) {
     return this.configService.actualizarCampoFormulario(clave, dto);
   }
 
@@ -70,10 +95,17 @@ export class ConfigController {
 
   @Get('config-tipo-comisionado/formulario/:codigo')
   @Permissions('travel_expenses:read')
-  async obtenerConfiguracionPorCodigoFormulario(@Param('codigo') codigo: string) {
-    const config = await this.configService.obtenerConfiguracionPorCodigoFormulario(codigo);
+  async obtenerConfiguracionPorCodigoFormulario(
+    @Param('codigo') codigo: string,
+  ) {
+    const config =
+      await this.configService.obtenerConfiguracionPorCodigoFormulario(codigo);
     if (!config) {
-      return { message: 'Configuración no encontrada para el formulario', codigo, config: null };
+      return {
+        message: 'Configuración no encontrada para el formulario',
+        codigo,
+        config: null,
+      };
     }
     return config;
   }
@@ -83,7 +115,11 @@ export class ConfigController {
   async obtenerConfiguracionPorTipo(@Param('tipo') tipo: string) {
     const config = await this.configService.obtenerConfiguracionPorTipo(tipo);
     if (!config) {
-      return { message: 'Configuración no encontrada para el tipo', tipo, config: null };
+      return {
+        message: 'Configuración no encontrada para el tipo',
+        tipo,
+        config: null,
+      };
     }
     return config;
   }
@@ -96,7 +132,10 @@ export class ConfigController {
 
   @Put('config-tipo-comisionado/:tipo')
   @Permissions('travel_expenses:manage_config')
-  actualizarConfigTipoComisionado(@Param('tipo') tipo: string, @Body() dto: UpdateConfigTipoComisionadoDto) {
+  actualizarConfigTipoComisionado(
+    @Param('tipo') tipo: string,
+    @Body() dto: UpdateConfigTipoComisionadoDto,
+  ) {
     return this.configService.actualizarConfigTipoComisionado(tipo, dto);
   }
 

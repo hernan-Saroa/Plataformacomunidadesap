@@ -1,4 +1,11 @@
-import { IsString, Length, IsArray, IsOptional, IsIn, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  Length,
+  IsArray,
+  IsOptional,
+  IsIn,
+  IsBoolean,
+} from 'class-validator';
 
 export class CreateConfigTipoComisionadoDto {
   @IsString()

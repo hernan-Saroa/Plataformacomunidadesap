@@ -1,4 +1,11 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm';
 
 @Entity({ schema: 'travel_expenses', name: 'tipos_documento_soporte' })
 @Index('idx_tipos_documento_soporte_codigo', ['codigo'], { unique: true })
