@@ -71,6 +71,13 @@ export interface DisciplinaryNews {
     radicadorEmail?: string;
     createdAt: string;
     updatedAt: string;
+    historialAuditoria?: {
+        id: string;
+        tipo: string;
+        usuario: string;
+        fecha: string;
+        observaciones?: string;
+    }[];
 }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
@@ -557,6 +564,10 @@ class DisciplinaryService {
 
     async getAllNoticias(): Promise<DisciplinaryNews[]> {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
+    }
+
+    async getNoticiaById(id: string): Promise<DisciplinaryNews> {
+        return apiClient.get<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
     }
 
     async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
