@@ -7,7 +7,7 @@
  * bloque @media print propio (ver <style> al inicio del render).
  */
 import React, { useRef, useState } from 'react';
-import { Download, Loader2, X, ShieldCheck, Printer } from 'lucide-react';
+import { Download, Loader2, X, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
@@ -1209,7 +1209,9 @@ export function ReportePTAInstitucional({
       <div
         key="reporte-pta-overlay"
         className="reporte-pta-overlay"
-        style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px 8px 80px', background: 'rgba(17,24,39,0.8)', overflowY: 'auto' }}
+        // Debe cubrir también el header y el sidebar fijos del Shell. Con z-index
+        // 100 ambos quedaban por encima y ocultaban la barra de controles/cierre.
+        style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px 8px 80px', background: 'rgba(17,24,39,0.8)', overflowY: 'auto' }}
       >
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1253,25 +1255,6 @@ export function ReportePTAInstitucional({
                   ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
                   : <Download size={14} />}
                 {exportandoPdf ? 'Generando PDF…' : 'Descargar PDF fiel'}
-              </button>
-              <button
-                onClick={() => window.print()}
-                disabled={exportandoPdf}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #CBD5E1',
-                  background: '#F8FAFC',
-                  color: '#334155',
-                  fontSize: '0.76rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                <Printer size={14} /> Imprimir
               </button>
               <button
                 onClick={onClose}

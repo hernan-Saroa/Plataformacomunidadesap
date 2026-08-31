@@ -224,6 +224,24 @@ export class AutoController {
   }
 
   /**
+   * Reversar la aprobación de un Pliego de Cargos (solo mientras no se haya enviado a Jurídica)
+   */
+  @Patch(':id/revert-approval')
+  @ApiOperation({
+    summary: 'Reversar Aprobación de Pliego de Cargos',
+    description: 'El Jefe reversa la aprobación de un pliego de cargos aprobado, volviéndolo a borrador para corrección. No aplica si ya fue enviado a Jurídica.',
+  })
+  async revertApproval(
+    @Param('id') id: string,
+    @Query('revertidoPorId') revertidoPorId: string,
+  ): Promise<LegalAuto> {
+    if (!revertidoPorId) {
+      throw new Error('revertidoPorId es requerido');
+    }
+    return await this.autoService.revertApproval(id, revertidoPorId);
+  }
+
+  /**
    * Firmar Auto (Paso Final)
    */
   @Patch(':id/sign')
