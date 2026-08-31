@@ -32,6 +32,7 @@ import { NewsService } from '../services/news.service';
 import { StorageService } from '../services/storage.service';
 import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto';
 import { ReturnNewsDto } from '../dtos/return-news.dto';
+import { ResubmitNewsDto } from '../dtos/resubmit-news.dto';
 import { UpdateNewsKanbanDto } from '../dtos/update-news-kanban.dto';
 import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
 import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
@@ -318,9 +319,32 @@ async getById(@Param('id') id: string): Promise<DisciplinaryNews> {
   }
 
   /**
+   * Reenviar noticia corregida al Jefe (por el Radicador tras una devolucion)
+   */
+  @Patch(':id/resubmit')
+  @ApiOperation({
+    summary: 'Reenviar Noticia corregida',
+    description:
+      'El Radicador reenvia al Jefe una noticia devuelta ya corregida; deja observacion opcional y notifica al Jefe',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Noticia reenviada',
+    type: DisciplinaryNews,
+  })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async resubmit(
+    @Param('id') id: string,
+    @Body() resubmitNewsDto: ResubmitNewsDto,
+  ): Promise<DisciplinaryNews> {
+    return await this.newsService.resubmitNews(id, resubmitNewsDto.observaciones);
+  }
+
+  /**
    * Eliminar noticia
    */
   @Delete(':id')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID', 'SECRETARIA_RADICADOR')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Eliminar Noticia',
