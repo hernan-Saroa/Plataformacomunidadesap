@@ -934,6 +934,100 @@ export class AutoService {
     });
   }
 
+  /**
+   * Reversa la aprobación de un Pliego de Cargos, devolviéndolo a BORRADOR para
+   * que el Profesional lo corrija y lo vuelva a enviar a revisión. Solo aplica
+   * mientras el auto sigue en estado APROBADO — una vez enviado a Jurídica el
+   * auto pasa a NOTIFICADO, así que esta operación queda bloqueada por diseño y
+   * NO afecta en absoluto el envío a Jurídica ni el cierre del proceso.
+   */
+  async revertApproval(
+    id: string,
+    revertidoPorId: string,
+  ): Promise<LegalAuto> {
+    const auto = await this.findById(id, ['process']);
+
+    if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
+      throw new HttpException(
+        'Esta operación solo aplica para autos de pliego de cargos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (auto.estado !== AutoStatus.APROBADO) {
+      throw new HttpException(
+        'Solo se puede reversar la aprobación de un auto que esté APROBADO. Si ya fue enviado a Jurídica, no se puede reversar.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const versionPreviaAprobacion = await this.versionRepository.findOne({
+      where: { auto: { id: auto.id } },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!versionPreviaAprobacion) {
+      throw new HttpException(
+        'No se encontró el historial de versiones del auto, no es posible reversar la aprobación de forma segura',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // NOTA: approve() no incrementa currentVersion (queda con el mismo numero que
+    // ya tenia la fila de historial guardada al aprobar). Por eso, para no chocar
+    // con esa fila (versionPreviaAprobacion), la version restaurada se registra con
+    // un numero nuevo (currentVersion + 1), igual que hace uploadDocumentoDuranteRevision().
+    auto.contenido = versionPreviaAprobacion.contenido;
+    auto.documentUrl = versionPreviaAprobacion.documentUrl ?? auto.documentUrl;
+    auto.documentName = versionPreviaAprobacion.documentName ?? auto.documentName;
+    auto.currentVersion += 1;
+    auto.estado = AutoStatus.BORRADOR;
+
+    const savedAuto = await this.autoRepository.save(auto);
+
+    await this.versionRepository.save({
+      auto: { id: savedAuto.id } as LegalAuto,
+      contenido: savedAuto.contenido,
+      versionNumber: savedAuto.currentVersion,
+      createdBy: revertidoPorId,
+      changeReason: 'Aprobación reversada por el Jefe — auto vuelve a borrador para corrección',
+      documentUrl: savedAuto.documentUrl,
+      documentName: savedAuto.documentName,
+    });
+
+    await this.actuacionesRepository.save({
+      processId: auto.processId,
+      tipo: 'reversion_aprobacion',
+      etapa: auto.process?.etapaActual,
+      descripcion: `Se reversó la aprobación del Pliego de Cargos (${auto.numero || 'sin número'}). El auto vuelve a borrador para corrección.`,
+      responsableNombre: revertidoPorId,
+      fechaActuacion: new Date(),
+      observaciones: 'La etapa del proceso no se modifica; solo se revierte el estado del auto.',
+    });
+
+    const proceso = auto.process;
+    if (proceso?.abogadoAsignadoId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: proceso.abogadoAsignadoId,
+          tipo_notificacion: 'AUTO_APROBACION_REVERSADA',
+          titulo: 'Aprobación de Pliego de Cargos reversada',
+          mensaje: `El Jefe OCID reversó la aprobación del Pliego de Cargos del proceso ${proceso.radicadoProceso}. El auto volvió a borrador para que lo corrijas y lo envíes de nuevo a revisión.`,
+          descripcion_corta: `Aprobación reversada - ${proceso.radicadoProceso}`,
+          icono: 'RotateCcw',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver auto',
+          datos_adicionales: { processId: auto.processId, radicadoProceso: proceso.radicadoProceso, autoId: auto.id },
+        })
+        .catch(() => {});
+    }
+
+    return savedAuto;
+  }
+
   private async preparePdfDocumentForSignature(auto: LegalAuto): Promise<void> {
     if (!auto.documentUrl) {
       return;

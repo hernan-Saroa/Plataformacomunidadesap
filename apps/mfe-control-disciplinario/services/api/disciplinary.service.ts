@@ -1082,9 +1082,9 @@ class DisciplinaryService {
     }
 
     async sendJuridica(
-        id: string, 
-        enviadoPorId: string, 
-        enviadoPorEmail?: string, 
+        id: string,
+        enviadoPorId: string,
+        enviadoPorEmail?: string,
         enviadoPorNombre?: string
     ): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-juridica`, {
@@ -1092,6 +1092,10 @@ class DisciplinaryService {
             enviadoPorEmail,
             enviadoPorNombre,
         });
+    }
+
+    async revertirAprobacionAuto(id: string, revertidoPorId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/revert-approval?revertidoPorId=${revertidoPorId}`, {});
     }
 
     async registrarNotificacion(id: string, fecha: string, evidencia?: string): Promise<LegalAuto> {
