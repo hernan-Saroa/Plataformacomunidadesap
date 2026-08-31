@@ -44,6 +44,23 @@ Aplicarlos en cualquier orden dentro del mismo número da el mismo resultado: no
 hay tabla de la etapa 8 que dependa de una de la 6 o la 7, ni al revés. La 037
 y la 041 no chocan porque solo una línea las usó.
 
+## La 042, que sí chocó
+
+El choque de la **042** es de otra clase y por eso tiene arreglo propio. La
+actividad 9.1 se modeló dos veces —EFDS-1514 y EFDS-1167— y las dos versiones
+se llamaron `042_acta_de_inicio.sql`, pero además **crean la misma tabla con
+columnas distintas**. En los pares anteriores cada archivo tocaba lo suyo; aquí
+las dos escriben `hiring.actas_inicio`.
+
+Al integrar se conservó la de EFDS-1167, que es la que describe la entidad
+`ActaInicio`. La otra ya había corrido en algunas bases, y como la 042 crea con
+`CREATE TABLE IF NOT EXISTS`, reaplicarla no las corrige: quedan con el esquema
+de una versión y el código de la otra, y todo lo que lee el acta —9.1, 9.2,
+9.4, 10.1 y 10.2— responde «column does not exist».
+
+La **058** las converge. En una base que aplicó la 042 buena no hace nada, y
+después de ella las dos historias dan el mismo esquema.
+
 ## Cuidado
 
 - `013_documentos_proceso.sql` **no** crea `documentos_proceso`: es la carga
