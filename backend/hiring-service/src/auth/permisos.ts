@@ -31,6 +31,21 @@ export const PERMISO_SEGUIMIENTO_VER = 'contratacion.seguimiento.ver';
 /** Consultar el expediente del proceso; ya existe en auth.permission. */
 export const PERMISO_EXPEDIENTE_VER = 'contratacion.expediente.view';
 
+/** Solicitar una modificación contractual — actividad 9.5 (EFDS-1177). */
+export const PERMISO_MODIFICACION_SOLICITAR = 'contratacion.modificacion.solicitar';
+
+/**
+ * Aprobar o negar la modificación (EFDS-1177).
+ *
+ * Aparte de solicitarla a propósito: quien pide la prórroga no puede
+ * concedérsela a sí mismo. Es la misma separación que ya tienen el estudio
+ * previo —`actividad.edit` frente a `actividad.approve`— y el CDP.
+ */
+export const PERMISO_MODIFICACION_APROBAR = 'contratacion.modificacion.aprobar';
+
+/** Consultar las modificaciones del contrato (EFDS-1177). */
+export const PERMISO_MODIFICACION_VER = 'contratacion.modificacion.ver';
+
 /** Reportar el presunto incumplimiento del contrato (EFDS-1180). */
 export const PERMISO_INCUMPLIMIENTO_REPORTAR = 'contratacion.incumplimiento.reportar';
 
@@ -52,6 +67,33 @@ export const PERMISO_INCUMPLIMIENTO_TRAMITAR = 'contratacion.incumplimiento.tram
  * sancionar.
  */
 export const PERMISO_INCUMPLIMIENTO_DECIDIR = 'contratacion.incumplimiento.decidir';
+
+// Los diez del catálogo original (EFDS-1183); ya viven en auth.permission.
+export const PERMISO_ACTIVIDAD_EDITAR = 'contratacion.actividad.edit';
+export const PERMISO_ACTIVIDAD_ENVIAR = 'contratacion.actividad.send';
+export const PERMISO_ACTIVIDAD_APROBAR = 'contratacion.actividad.approve';
+export const PERMISO_DOCUMENTO_ADJUNTAR = 'contratacion.documento.upload';
+export const PERMISO_DOCUMENTO_ELIMINAR = 'contratacion.documento.delete';
+export const PERMISO_PROCESO_CREAR = 'contratacion.proceso.create';
+export const PERMISO_PROCESO_EDITAR = 'contratacion.proceso.edit';
+export const PERMISO_PROCESO_VER = 'contratacion.proceso.view';
+export const PERMISO_PROCESO_VER_TODOS = 'contratacion.proceso.view-all';
+export const PERMISO_PROCESO_ASIGNAR = 'contratacion.proceso.assign';
+export const PERMISO_PROCESO_ARCHIVAR = 'contratacion.proceso.archive';
+export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
+export const PERMISO_CONFIG_ADMINISTRAR = 'contratacion.config.manage';
+export const PERMISO_REPORTE_VER = 'contratacion.reporte.view';
+
+/** Consultar los vencimientos próximos y cumplidos (EFDS-1185). */
+export const PERMISO_ALERTA_VER = 'contratacion.alerta.ver';
+
+/**
+ * Consultar el expediente completo para auditoría (EFDS-1186).
+ *
+ * Aparte de `expediente.view`: auditar incluye la trazabilidad y el historial
+ * de supervisiones y modificaciones, no solo los documentos.
+ */
+export const PERMISO_EXPEDIENTE_AUDITAR = 'contratacion.expediente.auditar';
 
 // ------------------------------------------------- de dónde salen hoy --
 
@@ -100,6 +142,37 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'SUPERVISOR_CONTRATO',
     'SUPER_ADMIN',
   ],
+  /**
+   * Pedir la prórroga es un trámite contractual, no presupuestal: la lleva
+   * quien lleva el expediente. El supervisor no la solicita —constata que hace
+   * falta y lo dice por el seguimiento—, y la Dirección Financiera tampoco,
+   * porque la prórroga no mueve dinero.
+   */
+  [PERMISO_MODIFICACION_SOLICITAR]: [
+    'GESTOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  /**
+   * Concederla es del ordenador del gasto y la Dirección: extender el plazo
+   * compromete a la entidad frente al contratista, y quien la pidió no puede
+   * dársela a sí mismo.
+   */
+  [PERMISO_MODIFICACION_APROBAR]: [
+    'ORDENADOR_GASTO',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  // Ancha como la del seguimiento, y por lo mismo: lo que le pasó al plazo de
+  // un contrato lo revisan control interno y la Dirección.
+  [PERMISO_MODIFICACION_VER]: [
+    'GESTOR_CONTRATACION',
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'ORDENADOR_GASTO',
+    'SUPERVISOR_CONTRATO',
+    'SUPER_ADMIN',
+  ],
   // La lista más estrecha del bloque: RF-INC-01 encarga el reporte al
   // supervisor, y es coherente con quién constata el hecho. Ni el gestor ni el
   // ordenador vigilan la ejecución día a día, así que no están en condiciones
@@ -135,6 +208,54 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   [PERMISO_INCUMPLIMIENTO_DECIDIR]: [
     'DIRECTOR_CONTRATACION',
     'ORDENADOR_GASTO',
+    'SUPER_ADMIN',
+  ],
+  // Espejan las listas ROLES_* de hiring-access, que son la lectura vigente
+  // del catálogo A4: el guard por permiso no puede dar ni quitar acceso
+  // respecto del que ya daban los roles.
+  [PERMISO_ACTIVIDAD_EDITAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_ACTIVIDAD_ENVIAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_ACTIVIDAD_APROBAR]: [
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  [PERMISO_DOCUMENTO_ADJUNTAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_DOCUMENTO_ELIMINAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_CREAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_EDITAR]: ['GESTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_VER]: [
+    'GESTOR_CONTRATACION',
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  [PERMISO_PROCESO_VER_TODOS]: [
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'SUPER_ADMIN',
+  ],
+  [PERMISO_PROCESO_ASIGNAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_ARCHIVAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
+  [PERMISO_CONFIG_ADMINISTRAR]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  [PERMISO_REPORTE_VER]: ['DIRECTOR_CONTRATACION', 'SUPER_ADMIN'],
+  // Ancha: el vencimiento de una póliza le importa a quien la vigila y a quien
+  // responde por el contrato.
+  [PERMISO_ALERTA_VER]: [
+    'GESTOR_CONTRATACION',
+    'SUPERVISOR_CONTRATO',
+    'REVISOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
+    'ORDENADOR_GASTO',
+    'ESTRUCTURADOR_FINANCIERO',
+    'SUPER_ADMIN',
+  ],
+  // Los organismos de control entran aquí y no al expediente de trabajo.
+  [PERMISO_EXPEDIENTE_AUDITAR]: [
+    'ENTE_DE_CONTROL',
+    'DIRECTOR_CONTRATACION',
+    'ARCHIVO_GESTION_DC',
     'SUPER_ADMIN',
   ],
 };

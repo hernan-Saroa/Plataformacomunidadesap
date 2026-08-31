@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import {
-  Briefcase,
-  Building2,
+  BellRing,
+  Handshake,
+  Coins,
+  FolderOpen,
   CalendarClock,
   FileSignature,
   ClipboardCheck,
   FileText,
-  Scale,
+  Store,
   Settings,
 } from 'lucide-react';
 import { Toaster } from '@esap-mfe/shared-ui/sonner';
@@ -25,10 +27,14 @@ import { VistaConfiguracion } from './configuracion/VistaConfiguracion';
 import { VistaPlantillas } from './plantillas/VistaPlantillas';
 import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
+import { VistaExpedientes } from './expedientes/VistaExpedientes';
+import { VistaAlertas } from './alertas/VistaAlertas';
 
 type Seccion =
   | 'estudios-previos'
   | 'revision'
+  | 'alertas'
+  | 'expedientes'
   | 'umbrales'
   | 'plazos'
   | 'mipyme'
@@ -69,6 +75,28 @@ export default function ContratacionModulePremium() {
           disabled: true,
           tag: 'Próx.',
         },
+        {
+          // Junto a Procesos y no en Configuración: es trabajo diario, no un
+          // parámetro que se administra. Quien vigila vencimientos los mira
+          // todos juntos, no proceso por proceso.
+          id: 'alertas',
+          label: 'Alertas',
+          subtitle: 'Vencimientos y plazos',
+          icon: <BellRing className="w-5 h-5" />,
+          color: '#DC2626',
+        },
+        {
+          // Tab propio y no un botón dentro del detalle: el expediente se
+          // consulta sin estar trabajando un proceso —es lo que abre un
+          // organismo de control—, y llegar a él pasando por lista y detalle
+          // lo escondía. Mismo sitio y mismo cian que en control interno y
+          // gestión legal.
+          id: 'expedientes',
+          label: 'Expedientes',
+          subtitle: 'Consulta y auditoría',
+          icon: <FolderOpen className="w-5 h-5" />,
+          color: '#0891B2',
+        },
       ],
     },
     {
@@ -76,11 +104,16 @@ export default function ContratacionModulePremium() {
       // diligencia un proceso.
       title: 'Configuración',
       items: [
+        // Un color por tab y no uno para el grupo: los tres primeros
+        // configuran cosas distintas —dinero, tiempo y quién puede
+        // participar— y con el mismo morado había que leer la etiqueta para
+        // distinguirlos.
         {
           id: 'umbrales',
           label: 'Umbrales',
           subtitle: 'Cuantías por modalidad',
-          icon: <Scale className="w-5 h-5" />,
+          // La balanza es de justicia; aquí lo que se configura son pesos.
+          icon: <Coins className="w-5 h-5" />,
           color: '#7C3AED',
         },
         {
@@ -88,14 +121,15 @@ export default function ContratacionModulePremium() {
           label: 'Plazos',
           subtitle: 'Publicidad del pliego',
           icon: <CalendarClock className="w-5 h-5" />,
-          color: '#7C3AED',
+          color: '#B45309',
         },
         {
           id: 'mipyme',
           label: 'MIPYME',
           subtitle: 'Condiciones de limitación',
-          icon: <Building2 className="w-5 h-5" />,
-          color: '#7C3AED',
+          // Un edificio no dice «pequeña empresa»; la tienda sí.
+          icon: <Store className="w-5 h-5" />,
+          color: '#059669',
         },
         {
           // Los formatos del SIG son un catálogo propio: un mismo formato
@@ -104,7 +138,9 @@ export default function ContratacionModulePremium() {
           label: 'Plantillas',
           subtitle: 'Formatos del SIG',
           icon: <FileText className="w-5 h-5" />,
-          color: '#0891B2',
+          // Rosa y no cian: el cian ya identifica a Expedientes, y dos tabs
+          // del mismo color obligan a leer la etiqueta para distinguirlos.
+          color: '#DB2777',
         },
         {
           id: 'configuracion',
@@ -120,6 +156,8 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (seccion === 'alertas') return <VistaAlertas />;
+    if (seccion === 'expedientes') return <VistaExpedientes />;
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;
     if (seccion === 'mipyme') return <VistaCondicionesMipyme />;
@@ -155,7 +193,7 @@ export default function ContratacionModulePremium() {
     <ModuleLayout
       moduleName="CONTRATACIÓN"
       moduleDescription="Gestión Contractual · Fase 1"
-      moduleIcon={<Briefcase className="w-6 h-6" />}
+      moduleIcon={<Handshake className="w-5 h-5" />}
       moduleColor="#003DA5"
       groups={grupos}
       activeSection={seccion}
@@ -165,7 +203,11 @@ export default function ContratacionModulePremium() {
         setActividad(null);
       }}
     >
-      {contenido()}
+      {/* La clave reinicia la animación al cambiar de sección: sin ella React
+          reutiliza el nodo y el cambio es un corte seco. */}
+      <div key={`${seccion}-${procesoId ?? ''}`} className="anima-seccion">
+        {contenido()}
+      </div>
       {/* Misma configuración que gestión legal y control interno, para que las
           notificaciones se comporten igual en toda la plataforma. */}
       <Toaster position="bottom-right" richColors closeButton duration={4000} />

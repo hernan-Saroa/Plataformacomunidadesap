@@ -62,6 +62,8 @@ import {
   DatosPublicacionActa,
   DatosArchivoExpediente,
   DatosCierreFinanciero,
+  AlertaVencimiento,
+  ExpedienteAuditoria,
   EstadoIncumplimiento,
   DatosIncumplimiento,
   DatosResolucion,
@@ -2135,6 +2137,13 @@ export const contratacionService = {
       `/procesos/${procesoId}/incumplimiento/${casoId}/resoluciones/${resolucionId}/revocar`,
       { method: 'POST', body: JSON.stringify({ motivo }) },
     ),
+
+  /** Expediente completo del proceso para auditoría (EFDS-1186). */
+  auditoria: (procesoId: string) =>
+    pedir<ExpedienteAuditoria>(`/procesos/${procesoId}/auditoria`),
+
+  /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
+  alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

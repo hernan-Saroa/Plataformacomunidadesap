@@ -58,7 +58,10 @@ export type AccionTraza =
   // resolverlo archivándolo—.
   | 'CITAR'
   | 'DECIDIR'
-  | 'NOTIFICAR';
+  | 'NOTIFICAR'
+  // Acceso de lectura al módulo de incumplimiento: la reserva legal exige
+  // bitácora de quién consultó, no solo de quién escribió (EFDS-1182).
+  | 'CONSULTAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

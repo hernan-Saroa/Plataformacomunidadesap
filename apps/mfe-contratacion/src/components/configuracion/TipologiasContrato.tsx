@@ -263,13 +263,29 @@ export function TipologiasContrato() {
 
       <div className="rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          {/* Anchos fijos: sin ellos, una descripción larga ensancha su columna
+              y las demás bailan de fila en fila. */}
+          <table className="w-full text-left table-fixed min-w-[640px]">
+            <colgroup>
+              <col />
+              <col className="w-[220px]" />
+              <col className="w-[130px]" />
+              <col className="w-[110px]" />
+            </colgroup>
             <thead className="bg-slate-50 border-b border-gray-200">
               <tr>
-                <th className="px-3 py-2 text-xs font-bold text-gray-600">Tipología</th>
-                <th className="px-3 py-2 text-xs font-bold text-gray-600">Código</th>
-                <th className="px-3 py-2 text-xs font-bold text-gray-600">Garantías</th>
-                <th className="px-3 py-2 text-xs font-bold text-gray-600">Estado</th>
+                <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-500">
+                  Tipología
+                </th>
+                <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-500">
+                  Código
+                </th>
+                <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-500">
+                  Garantías
+                </th>
+                <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-500">
+                  Estado
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -304,7 +320,9 @@ export function TipologiasContrato() {
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    <span className="text-[11px] font-mono text-slate-600">{t.codigo}</span>
+                    <code className="inline-block text-[10.5px] font-mono text-slate-600 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 break-all">
+                      {t.codigo}
+                    </code>
                   </td>
                   <td className="px-3 py-2.5">
                     <button

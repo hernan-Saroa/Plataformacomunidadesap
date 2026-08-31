@@ -164,3 +164,43 @@ describe('permisos del trámite sancionatorio', () => {
     expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
   });
 });
+
+/**
+ * Criterios de EFDS-1183: el rol habilita únicamente los permisos que le
+ * corresponden, y una acción no permitida se bloquea.
+ */
+describe('catálogo por perfil (EFDS-1183)', () => {
+  it('el gestor diligencia pero no aprueba', () => {
+    const permisos = permisosDelUsuario({ roles: ['GESTOR_CONTRATACION'] });
+
+    expect(permisos).toContain('contratacion.actividad.edit');
+    expect(permisos).toContain('contratacion.actividad.send');
+    expect(permisos).not.toContain('contratacion.actividad.approve');
+  });
+
+  it('el revisor aprueba pero no diligencia', () => {
+    const permisos = permisosDelUsuario({ roles: ['REVISOR_CONTRATACION'] });
+
+    expect(permisos).toContain('contratacion.actividad.approve');
+    expect(permisos).not.toContain('contratacion.actividad.edit');
+  });
+
+  it('configurar etapas es de la Dirección, no del gestor', () => {
+    expect(tienePermiso({ roles: ['DIRECTOR_CONTRATACION'] }, 'contratacion.config.manage')).toBe(true);
+    expect(tienePermiso({ roles: ['GESTOR_CONTRATACION'] }, 'contratacion.config.manage')).toBe(false);
+  });
+
+  it('borrar procesos no lo otorga ningún rol operativo', () => {
+    for (const rol of ['GESTOR_CONTRATACION', 'REVISOR_CONTRATACION', 'DIRECTOR_CONTRATACION']) {
+      expect(tienePermiso({ roles: [rol] }, 'contratacion.proceso.delete')).toBe(false);
+    }
+  });
+
+  it('los permisos del token mandan sobre el mapa de roles', () => {
+    // Cuando auth-service los incluya, el rol deja de importar aquí.
+    const usuario = { roles: ['GESTOR_CONTRATACION'], permissions: ['contratacion.actividad.approve'] };
+
+    expect(tienePermiso(usuario, 'contratacion.actividad.approve')).toBe(true);
+    expect(tienePermiso(usuario, 'contratacion.actividad.edit')).toBe(false);
+  });
+});

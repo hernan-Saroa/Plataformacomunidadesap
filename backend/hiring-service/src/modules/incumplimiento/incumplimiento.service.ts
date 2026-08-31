@@ -80,6 +80,14 @@ export class IncumplimientoService {
     const em = this.dataSource.manager;
     const contrato = await this.contratoDelProceso(em, procesoId);
 
+    // La reserva legal exige bitácora de quién consultó, no solo de quién
+    // escribió (EFDS-1182, RNF-AUD-01). Se registra aunque no haya casos: el
+    // acceso al módulo ya es el hecho auditable.
+    await this.traza(em, procesoId, contrato?.id ?? procesoId, 'CONSULTAR', acceso, {
+      bloque: 'Presunto Incumplimiento',
+      contrato: contrato?.numero ?? null,
+    });
+
     if (!contrato) {
       return {
         enEjecucion: false,

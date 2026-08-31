@@ -2598,3 +2598,95 @@ export interface DatosNotificacion {
   /** Se omite mientras la resolucion no este en firme. */
   firmeEl?: string;
 }
+
+/** Vencimiento próximo o ya cumplido (EFDS-1185). */
+export interface AlertaVencimiento {
+  tipo: 'AMPARO' | 'CDP' | 'REGISTRO_PRESUPUESTAL' | 'LIQUIDACION';
+  procesoId: string;
+  radicado: string | null;
+  contrato: string | null;
+  descripcion: string;
+  vence: string;
+  /** Negativo cuando ya venció. */
+  diasRestantes: number;
+  estado: 'VENCIDO' | 'POR_VENCER' | 'VIGENTE';
+  responsable: string | null;
+  responsableEmail: string | null;
+}
+
+/**
+ * Expediente completo del proceso para auditoría (EFDS-1186).
+ *
+ * Del incumplimiento solo llega el conteo: el detalle está bajo reserva legal
+ * (EFDS-1182) y se consulta con su propio permiso.
+ */
+export interface ExpedienteAuditoria {
+  proceso: {
+    id: string;
+    radicado: string;
+    objeto: string;
+    modalidad: string | null;
+    valor_estimado: string | null;
+    etapa: number;
+    fecha_radicacion: string;
+    created_by: string | null;
+    created_at: string;
+  } | null;
+  contrato: {
+    numero: string;
+    objeto: string;
+    estado: string;
+    valor: string | null;
+    plazo_dias: number | null;
+    contratista_nombre: string | null;
+    perfeccionado_at: string | null;
+    legalizado_at: string | null;
+    ejecucion_desde: string | null;
+  } | null;
+  actividades: {
+    numeral: string;
+    nombre: string;
+    etapa: number;
+    estado: string | null;
+    enviado_por: string | null;
+    updated_at: string | null;
+  }[];
+  documentos: {
+    numeral: string | null;
+    tipo: string;
+    nombre: string;
+    archivo_nombre_original: string | null;
+    /** Permite verificar que el archivado es el mismo que se subió. */
+    hash_sha256: string | null;
+    subido_por: string | null;
+    created_at: string;
+  }[];
+  supervisiones: {
+    nombre: string;
+    cargo: string | null;
+    estado: string;
+    fecha_designacion: string;
+    designado_por: string | null;
+    relevado_at: string | null;
+    motivo_relevo: string | null;
+  }[];
+  modificaciones: {
+    tipo: string;
+    estado: string;
+    justificacion: string;
+    dias_prorroga: number | null;
+    fecha_efecto: string;
+    plazo_anterior_dias: number | null;
+    solicitada_por: string | null;
+    resuelta_por: string | null;
+    resuelta_at: string | null;
+  }[];
+  casosIncumplimiento: number;
+  trazabilidad: {
+    accion: string;
+    entidad: string;
+    usuario_nombre: string | null;
+    detalle: Record<string, unknown> | null;
+    created_at: string;
+  }[];
+}

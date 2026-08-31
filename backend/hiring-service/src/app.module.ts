@@ -36,6 +36,7 @@ import { CierreDefinitivoModule } from './modules/cierre-definitivo/cierre-defin
 import { ModificacionesModule } from './modules/modificaciones/modificaciones.module';
 import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
 import { RegistroActividadModule } from './modules/registro-actividad/registro-actividad.module';
+import { AlertasModule } from './modules/alertas/alertas.module';
 import { IncumplimientoModule } from './modules/incumplimiento/incumplimiento.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -171,6 +172,7 @@ import {
     ModificacionesModule,
     SeguimientoModule,
     RegistroActividadModule,
+    AlertasModule,
     IncumplimientoModule,
   ],
   controllers: [HealthController],

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { DocumentosService } from './documentos.service';
 import { DocumentosController } from './documentos.controller';
+import { AuditoriaController } from './auditoria.controller';
 
 import { DocumentoRequerido } from '../../entities/documento-requerido.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
@@ -32,7 +33,7 @@ import { CdpModule } from '../cdp/cdp.module';
     // esta actividad, y esa regla ya vive en el ciclo del CDP (EFDS-1148).
     CdpModule,
   ],
-  controllers: [DocumentosController],
+  controllers: [DocumentosController, AuditoriaController],
   providers: [DocumentosService],
   // Lo consumirá la apertura (EFDS-1152): el pliego definitivo se registra
   // sobre los documentos elaborados aquí.

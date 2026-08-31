@@ -31,4 +31,17 @@ describe('admiteSeguimiento', () => {
   it('tampoco sobre una minuta rechazada', () => {
     expect(admiteSeguimiento('RECHAZADO')).toBe(false);
   });
+
+  it('un contrato suspendido sí: la suspensión detiene el plazo, no la vigilancia', () => {
+    // De hecho la suspensión suele ser justamente lo que hay que acreditar.
+    expect(admiteSeguimiento('SUSPENDIDO')).toBe(true);
+  });
+
+  it('uno terminado ya no tiene periodo que reportar', () => {
+    // Mientras la regla preguntaba «al menos en ejecución» esto habría dado
+    // true, porque un contrato terminado también llegó a ejecutarse.
+    expect(admiteSeguimiento('TERMINADO')).toBe(false);
+    expect(admiteSeguimiento('LIQUIDADO')).toBe(false);
+    expect(admiteSeguimiento('CERRADO')).toBe(false);
+  });
 });
