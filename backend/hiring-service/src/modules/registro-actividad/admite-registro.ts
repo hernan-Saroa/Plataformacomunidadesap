@@ -1,10 +1,16 @@
 /**
- * Las once actividades de la matriz que ninguna historia recogió.
+ * Las catorce actividades de la matriz que ninguna historia recogió.
  *
  * No es una lista de conveniencia: es exactamente lo que quedó fuera de las
  * historias 1146-1176 y que, por eso, no tenía forma de cumplirse en el riel.
  * Vive en código y no en la base porque cambiarla no es parametrizar, es
  * decidir que una actividad pasa a tener pantalla propia.
+ *
+ * Eran once. Al revisar los candados del riel aparecieron tres más con el
+ * mismo problema y ninguna diferencia de fondo: la 3.6, la 3.7 y la 8.6
+ * tampoco las recogió una historia, también se resuelven fuera de la
+ * plataforma y también se quedaban en BORRADOR para siempre. Entran por la
+ * misma puerta en vez de estrenar tres pantallas.
  */
 export const NUMERALES_CON_REGISTRO = [
   // Etapa 3 · lo que acompaña al estudio previo
@@ -12,6 +18,11 @@ export const NUMERALES_CON_REGISTRO = [
   '3.3',
   '3.4',
   '3.5',
+  // La causal la elige el abogado leyendo el Decreto 1082/2015 contra el
+  // objeto, y el comité sesiona en la Dirección de Contratación: ninguna de las
+  // dos es un cálculo que la plataforma pueda hacer ni un trámite que reciba.
+  '3.6',
+  '3.7',
   // Etapa 5 · participación previa a la apertura
   '5.9',
   '5.10',
@@ -21,6 +32,10 @@ export const NUMERALES_CON_REGISTRO = [
   '6.8',
   '6.9',
   '6.10',
+  // Etapa 8 · la comunicación con que la Dirección avisa que los requisitos
+  // anteriores están cumplidos. Es un oficio que sale, no un estado que se
+  // derive: lo que la plataforma puede hacer es guardarlo.
+  '8.6',
 ] as const;
 
 export type NumeralConRegistro = (typeof NUMERALES_CON_REGISTRO)[number];

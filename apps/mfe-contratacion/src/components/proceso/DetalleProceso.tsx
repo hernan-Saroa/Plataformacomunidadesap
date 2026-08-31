@@ -257,18 +257,25 @@ const ACTIVIDADES_ETAPA_3 = [
 ];
 
 /**
- * Las once actividades de la matriz que ninguna historia recogió (migración 051).
+ * Las catorce actividades de la matriz que ninguna historia recogió
+ * (migraciones 051 y 059).
  *
  * No tienen trámite propio en la plataforma —el sorteo se hace en la Dirección
  * de Contratación, la subasta en SECOP II, la radicación en Active Document—,
  * así que se cumplen dejando constancia. Comparten un solo panel: lo que las
  * distingue no cambia lo que el expediente necesita de ellas.
+ *
+ * La 3.6, la 3.7 y la 8.6 llegaron después, con la 059: estaban en la misma
+ * situación que las once y se habían quedado fuera de la cuenta, saliendo con
+ * candado en el riel.
  */
 const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   '3.2': 'Análisis del sector y estudio de mercado',
   '3.3': 'Radicación en la Dirección de Contratación',
   '3.4': 'Revisión y reparto',
   '3.5': 'Definir modalidad de contratación',
+  '3.6': 'Causal de contratación',
+  '3.7': 'Comité de contratación',
   '5.9': 'Manifestación de interés',
   '5.10': 'Sorteo',
   '5.11': 'Publicación de la manifestación de interés',
@@ -276,6 +283,7 @@ const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   '6.8': 'Informe previo al evento de subasta',
   '6.9': 'Apertura del sobre económico previo a la subasta',
   '6.10': 'Evento de subasta',
+  '8.6': 'Comunicación de inicio',
 };
 
 const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);

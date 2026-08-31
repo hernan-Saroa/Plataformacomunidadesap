@@ -15,12 +15,14 @@ const base = {
 };
 
 describe('admiteRegistro · qué actividades se cumplen dejando constancia', () => {
-  it('son las once que ninguna historia recogió', () => {
+  it('son las catorce que ninguna historia recogió', () => {
     expect([...NUMERALES_CON_REGISTRO]).toEqual([
       '3.2',
       '3.3',
       '3.4',
       '3.5',
+      '3.6',
+      '3.7',
       '5.9',
       '5.10',
       '5.11',
@@ -28,6 +30,7 @@ describe('admiteRegistro · qué actividades se cumplen dejando constancia', () 
       '6.8',
       '6.9',
       '6.10',
+      '8.6',
     ]);
   });
 
@@ -35,6 +38,16 @@ describe('admiteRegistro · qué actividades se cumplen dejando constancia', () 
     expect(admiteRegistro('3.3')).toBe(true);
     expect(admiteRegistro('5.10')).toBe(true);
     expect(admiteRegistro('6.10')).toBe(true);
+    expect(admiteRegistro('8.6')).toBe(true);
+  });
+
+  it('no se lleva por delante las vecinas de la etapa 8', () => {
+    // La 8.6 entra por registro, pero está rodeada de actividades que sí
+    // tienen trámite: la ARL antes y el acta de inicio después. Que una etapa
+    // aporte una a la lista no la abre entera.
+    expect(admiteRegistro('8.5')).toBe(false);
+    expect(admiteRegistro('8.7')).toBe(false);
+    expect(admiteRegistro('8.8')).toBe(false);
   });
 
   it('rechaza las que ya tienen su propio trámite', () => {
