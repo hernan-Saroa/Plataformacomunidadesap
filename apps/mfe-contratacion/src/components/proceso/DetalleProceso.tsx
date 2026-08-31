@@ -120,6 +120,17 @@ const NUMERAL_GARANTIAS = '8.4';
 /** Registro de la ARL para contratistas persona natural (EFDS-1164). */
 const NUMERAL_ARL = '8.5';
 
+/**
+ * Acta de inicio, cuando el contrato la pactó (EFDS-1167), actividad 8.7.
+ *
+ * La matriz nombra el acta dos veces: aquí, al cerrar la legalización, y en la
+ * 9.1 como «reunión de inicio». Es un solo hecho y un solo registro —una sola
+ * acta por contrato—, así que las dos casillas abren el mismo panel en vez de
+ * duplicar el trámite. Se llegue por donde se llegue, lo que se ve es el
+ * estado del acta de ese contrato.
+ */
+const NUMERAL_ACTA_INICIO_LEGALIZACION = '8.7';
+
 /** Publicación del contrato dentro del plazo legal (EFDS-1166). */
 const NUMERAL_PUBLICACION_CONTRATO = '8.8';
 
@@ -130,6 +141,7 @@ const NUMERALES_ETAPA_8 = [
   NUMERAL_RP,
   NUMERAL_GARANTIAS,
   NUMERAL_ARL,
+  NUMERAL_ACTA_INICIO_LEGALIZACION,
   NUMERAL_PUBLICACION_CONTRATO,
 ];
 
@@ -149,12 +161,35 @@ const NUMERAL_PAGOS = '9.4';
  * traen la prorroga, la cesion, el aclaratorio y la suspension al mismo panel.
  */
 const NUMERAL_MODIFICACIONES = '9.5';
+
+/**
+ * Reasignación de supervisión (EFDS-1169), actividad 9.3.
+ *
+ * No tiene panel propio: comparte el de la 8.2, que es donde se reasigna desde
+ * que la historia se cerró. Reasignar *es* designar otra vez —el mismo
+ * ordenador del gasto, el mismo acto administrativo—, y lo que la matriz
+ * separa en dos numerales es cuándo ocurre: la 8.2 antes de arrancar y la 9.3
+ * «en cualquier momento durante la ejecución». Mismo criterio que los cuatro
+ * numerales del CDP contra un solo `PanelCdp`.
+ *
+ * Sin esto la actividad salía con candado y «Pendiente de desarrollo», que era
+ * falso: lo construido no se podía alcanzar desde la etapa donde ocurre.
+ */
+const NUMERAL_REASIGNACION = '9.3';
+
 const NUMERALES_ETAPA_9 = [
   NUMERAL_ACTA_INICIO,
   NUMERAL_SEGUIMIENTO,
+  NUMERAL_REASIGNACION,
   NUMERAL_PAGOS,
   NUMERAL_MODIFICACIONES,
 ];
+
+/** Los dos numerales que trabajan la supervisión: designarla y reasignarla. */
+const NUMERALES_SUPERVISION = [NUMERAL_SUPERVISOR, NUMERAL_REASIGNACION];
+
+/** Los dos numerales desde los que se llega al acta de inicio del contrato. */
+const NUMERALES_ACTA_INICIO = [NUMERAL_ACTA_INICIO_LEGALIZACION, NUMERAL_ACTA_INICIO];
 
 /**
  * Informe final de ejecucion (EFDS-1171), primera actividad de la etapa 10.
@@ -653,7 +688,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
+          ) : actividadSeleccionada &&
+            NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelActaInicio
                 procesoId={procesoId}
@@ -674,7 +710,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_SUPERVISOR ? (
+          ) : actividadSeleccionada &&
+            NUMERALES_SUPERVISION.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelSupervision
                 procesoId={procesoId}
