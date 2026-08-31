@@ -50,6 +50,8 @@ import { ReportBuilderModal } from './ReportBuilderModal';
 import { ScheduledReportsView } from './ScheduledReportsView';
 import { ScheduleReportModal } from './ScheduleReportModal';
 import { UnifiedStatsCards, type StatCardData } from './UnifiedStatsCards';
+import { PlantaDocenteReportView } from './PlantaDocenteReportView';
+import { MacroDocenteReportView } from './MacroDocenteReportView';
 
 // ═══════════════════════════════════════════════════════════════
 // TIPOS Y ENUMS
@@ -938,6 +940,19 @@ export function ReportsModuleV2() {
               <Badge variant="secondary">{scheduledReports.length}</Badge>
             )}
           </TabsTrigger>
+          {(!allowedCategories || allowedCategories.length === 0 || allowedCategories.includes('profesoral')) && (
+            <TabsTrigger value="planta-docente" className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              <span>Planta Docente</span>
+            </TabsTrigger>
+          )}
+          {(!allowedCategories || allowedCategories.length === 0
+            || allowedCategories.includes('profesoral') || allowedCategories.includes('control-interno')) && (
+            <TabsTrigger value="macro-docente" className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              <span>Macro Docente</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Tab: Reportes */}
@@ -1080,6 +1095,16 @@ export function ReportsModuleV2() {
               toast.info('Historial en desarrollo');
             }}
           />
+        </TabsContent>
+
+        {/* Tab: Planta Docente (REQ-RUND-F019) */}
+        <TabsContent value="planta-docente" className="mt-6">
+          <PlantaDocenteReportView />
+        </TabsContent>
+
+        {/* Tab: Macro Docente (REQ-RUND-F020/F022) */}
+        <TabsContent value="macro-docente" className="mt-6">
+          <MacroDocenteReportView />
         </TabsContent>
       </Tabs>
 

@@ -1145,7 +1145,7 @@ export class BancoDocentesService implements OnModuleInit {
     `;
   }
 
-  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string }, params: any[]) {
+  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }, params: any[]) {
     const conditions: string[] = [];
 
     if (filters.territorial) {
@@ -1186,6 +1186,26 @@ export class BancoDocentesService implements OnModuleInit {
       conditions.push(`periodo_carga = $${params.length}`);
     }
 
+    if (filters.categoria) {
+      params.push(filters.categoria);
+      conditions.push(`LOWER(categoria) = LOWER($${params.length})`);
+    }
+
+    if (filters.genero) {
+      params.push(filters.genero);
+      conditions.push(`LOWER(genero) = LOWER($${params.length})`);
+    }
+
+    if (filters.nivelFormacion) {
+      params.push(filters.nivelFormacion);
+      conditions.push(`LOWER(nivel_formacion) = LOWER($${params.length})`);
+    }
+
+    if (filters.nucleoTematico) {
+      params.push(filters.nucleoTematico);
+      conditions.push(`LOWER(nucleo_tematico) = LOWER($${params.length})`);
+    }
+
     if (filters.search) {
       params.push(`%${filters.search}%`);
       const idx = params.length;
@@ -1203,7 +1223,7 @@ export class BancoDocentesService implements OnModuleInit {
     return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   }
 
-  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; page?: number; limit?: number }) {
+  async list(filters: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; search?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string; page?: number; limit?: number }) {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
@@ -2004,7 +2024,7 @@ export class BancoDocentesService implements OnModuleInit {
     return result;
   }
 
-  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string }) {
+  async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }) {
     const baseSql = this.authDocentesBaseSql();
     const params: any[] = [];
     const whereClause = filters ? this.buildAuthDocentesFilters(filters, params) : '';
@@ -2115,6 +2135,18 @@ export class BancoDocentesService implements OnModuleInit {
       ORDER BY rango_edad ASC
     `, e.p);
 
+    const nt = mkParams();
+    const porNucleoTematico = await this.dataSource.query(`
+      ${baseSql}
+      SELECT
+        COALESCE(NULLIF(TRIM(nucleo_tematico), ''), 'Sin núcleo temático') AS nucleo_tematico,
+        COUNT(*)::int AS total
+      FROM auth_docentes
+      ${nt.w}
+      GROUP BY COALESCE(NULLIF(TRIM(nucleo_tematico), ''), 'Sin núcleo temático')
+      ORDER BY total DESC
+    `, nt.p);
+
     // Por sede/CETAP
     const s = mkParams();
     const porSede = await this.dataSource.query(`
@@ -2145,6 +2177,7 @@ export class BancoDocentesService implements OnModuleInit {
       por_genero: porGenero,
       por_rango_edad: porRangoEdad,
       por_sede: porSede,
+      por_nucleo_tematico: porNucleoTematico,
     };
   }
 
