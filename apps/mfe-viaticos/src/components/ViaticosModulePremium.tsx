@@ -17,6 +17,7 @@ import {
   CreditCard,
   X,
   UserCheck,
+  Settings,
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
@@ -24,8 +25,10 @@ import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
+import parametrizacionService from '../services/api/parametrizacionService';
+import { ConfigTipoComisionado, CampoFormulario } from '../types/parametrizacion';
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
 
 export default function ViaticosModulePremium() {
   const [seccion, setSeccion] = useState<Seccion>('solicitudes');
@@ -38,6 +41,23 @@ export default function ViaticosModulePremium() {
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
+  const [parametrizacion, setParametrizacion] = useState<ConfigTipoComisionado | null>(null);
+  const [camposFormulario, setCamposFormulario] = useState<CampoFormulario[]>([]);
+  const [cargandoConfig, setCargandoConfig] = useState(false);
+
+  const cargarParametrizacion = async () => {
+    setCargandoConfig(true);
+    try {
+      const config = await parametrizacionService.obtenerParametrizacionPorCodigo('REPORTE_SOLICITUD');
+      setParametrizacion(config);
+      const campos = await parametrizacionService.obtenerCamposFormulario();
+      setCamposFormulario(campos);
+    } catch (e) {
+      console.error('Error cargando parametrización:', e);
+    } finally {
+      setCargandoConfig(false);
+    }
+  };
 
   const cargarDatos = async () => {
     setCargando(true);
@@ -58,6 +78,12 @@ export default function ViaticosModulePremium() {
   useEffect(() => {
     cargarDatos();
   }, []);
+
+  useEffect(() => {
+    if (seccion === 'configuracion') {
+      void cargarParametrizacion();
+    }
+  }, [seccion]);
 
   const grupos: MenuGroup[] = [
     {
@@ -90,6 +116,13 @@ export default function ViaticosModulePremium() {
           subtitle: 'Actos administrativos de comisión',
           icon: <FileCheck className="w-5 h-5" />,
           color: '#7C3AED',
+        },
+        {
+          id: 'configuracion',
+          label: 'Configuración',
+          subtitle: 'Parametrización de formulario y documentos',
+          icon: <Settings className="w-5 h-5" />,
+          color: '#64748B',
         },
       ],
     },
@@ -492,6 +525,96 @@ export default function ViaticosModulePremium() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── CONFIGURACIÓN ── */}
+      {seccion === 'configuracion' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
+            <div>
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-slate-600" />
+                Configuración de Formulario
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Parametrización dinámica de campos obligatorios y documentos requeridos por tipo de comisionado.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={cargarParametrizacion}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-sm transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Recargar Configuración
+            </button>
+          </div>
+
+          {cargandoConfig ? (
+            <div className="py-10 text-center text-xs text-slate-500">Cargando parametrización...</div>
+          ) : parametrizacion ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-5">
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <h3 className="text-sm font-black text-slate-800 mb-3">Datos Generales</h3>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Código Formulario:</span>
+                    <span className="font-bold text-slate-800">{parametrizacion.codigoFormulario}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Tipo Comisionado:</span>
+                    <span className="font-bold text-slate-800">{parametrizacion.tipoComisionado}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Estado:</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${parametrizacion.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      {parametrizacion.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <h3 className="text-sm font-black text-slate-800 mb-3">Campos</h3>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Obligatorios</span>
+                    <span className="text-lg font-black text-slate-800">{parametrizacion.camposObligatorios.length}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Opcionales</span>
+                    <span className="text-lg font-black text-slate-800">{parametrizacion.camposOpcionales.length}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Ocultos</span>
+                    <span className="text-lg font-black text-slate-800">{parametrizacion.camposOcultos.length}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-10 text-center text-xs text-slate-500">No se encontró parametrización para REPORTE_SOLICITUD.</div>
+          )}
+
+          {parametrizacion && parametrizacion.documentos && parametrizacion.documentos.length > 0 && (
+            <div className="mt-6 bg-slate-50 rounded-xl border border-slate-200 p-4">
+              <h3 className="text-sm font-black text-slate-800 mb-3">Documentos Dinámicos</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {parametrizacion.documentos.map((doc) => (
+                  <div key={doc.id} className="bg-white rounded-lg border border-slate-200 p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">{doc.tipoDocumentoSoporte?.nombre || doc.tipoDocumentoSoporte?.codigo}</p>
+                      <p className="text-[10px] text-slate-500">{doc.tipoDocumentoSoporte?.descripcion}</p>
+                    </div>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${doc.tipoRequisito === 'OBLIGATORIO' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {doc.tipoRequisito}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </ModuleLayout>
   );

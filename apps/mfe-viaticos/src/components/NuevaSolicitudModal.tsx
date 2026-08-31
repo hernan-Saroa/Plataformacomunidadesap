@@ -116,6 +116,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   };
 
+  const cargarParametrizacionPorCodigo = async (codigoFormulario: string) => {
+    setCargandoParametrizacion(true);
+    try {
+      const config = await viaticosService.obtenerParametrizacionPorCodigoFormulario(codigoFormulario);
+      setParametrizacion(config);
+    } catch (e) {
+      console.error('Error cargando parametrización por código:', e);
+    } finally {
+      setCargandoParametrizacion(false);
+    }
+  };
+
   useEffect(() => {
     if (abierta) {
       setPaso(1);
@@ -264,7 +276,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         return;
       }
       if (comisionado && parametrizacion) {
-        const faltantes = parametrizacion.documentosObligatorios.filter(
+        const documentosObligatorios = parametrizacion.documentos
+          .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+          .map((d) => d.tipoDocumentoSoporte?.codigo)
+          .filter((codigo): codigo is string => Boolean(codigo));
+
+        const faltantes = documentosObligatorios.filter(
           (doc) => !(form.documentos || []).some((d) => d.tipoDocumento === doc),
         );
         setDocumentosFaltantes(faltantes);

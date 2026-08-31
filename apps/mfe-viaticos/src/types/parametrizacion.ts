@@ -22,15 +22,31 @@ export interface CampoFormulario {
   activo: boolean;
 }
 
+export interface TipoDocumentoSoporte {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+}
+
+export interface ConfigTipoComisionadoDocumento {
+  id: string;
+  configTipoComisionadoId: string;
+  tipoDocumentoSoporteId: string;
+  tipoRequisito: 'OBLIGATORIO' | 'OPCIONAL';
+  tipoDocumentoSoporte: TipoDocumentoSoporte;
+}
+
 export interface ConfigTipoComisionado {
   id: string;
   tipoComisionado: string;
+  codigoFormulario: string;
   camposObligatorios: string[];
   camposOpcionales: string[];
   camposOcultos: string[];
-  documentosObligatorios: string[];
-  documentosOpcionales: string[];
   activo: boolean;
+  documentos: ConfigTipoComisionadoDocumento[];
 }
 
 export interface ParametrizacionFormulario {

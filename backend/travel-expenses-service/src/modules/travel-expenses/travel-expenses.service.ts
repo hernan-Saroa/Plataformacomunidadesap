@@ -279,6 +279,10 @@ export class TravelExpensesService {
     return { campos, configuraciones };
   }
 
+  async obtenerParametrizacionPorCodigoFormulario(codigoFormulario: string): Promise<ConfigTipoComisionadoEntity | null> {
+    return this.configService.obtenerConfiguracionPorCodigoFormulario(codigoFormulario);
+  }
+
   async validarDocumentosRequeridos(
     tipoComisionado: string,
     tiposDocumentos: string[],
@@ -288,10 +292,36 @@ export class TravelExpensesService {
       return { faltantes: [] };
     }
 
-    const faltantes = config.documentosObligatorios.filter(
-      (req) => !tiposDocumentos.includes(req),
-    );
+    const codigosObligatorios = (config.documentos || [])
+      .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+      .map((d) => d.tipoDocumentoSoporte?.codigo)
+      .filter((codigo): codigo is string => Boolean(codigo));
+
+    const faltantes = codigosObligatorios.filter((req) => !tiposDocumentos.includes(req));
 
     return { faltantes };
+  }
+
+  async validarCamposObligatorios(
+    tipoComisionado: string,
+    datosFormulario: Record<string, any>,
+  ): Promise<{ camposFaltantes: string[] }> {
+    const config = await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
+    if (!config) {
+      return { camposFaltantes: [] };
+    }
+
+    const camposFaltantes = config.camposObligatorios.filter((campo) => {
+      const valor = datosFormulario[campo];
+      if (valor === undefined || valor === null || valor === '') {
+        return true;
+      }
+      if (Array.isArray(valor) && valor.length === 0) {
+        return true;
+      }
+      return false;
+    });
+
+    return { camposFaltantes };
   }
 }

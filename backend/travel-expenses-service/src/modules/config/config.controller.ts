@@ -50,6 +50,12 @@ export class ConfigController {
     return this.configService.eliminarCampoFormulario(clave);
   }
 
+  @Get('tipos-documento-soporte')
+  @Permissions('travel_expenses:read')
+  obtenerTiposDocumentoSoporte() {
+    return this.configService.obtenerTodosTiposDocumentoSoporte();
+  }
+
   @Get('config-tipo-comisionado')
   @Permissions('travel_expenses:read')
   obtenerTodasConfiguraciones() {
@@ -62,6 +68,16 @@ export class ConfigController {
     const config = await this.configService.obtenerConfiguracionPorTipo(tipo);
     if (!config) {
       return { message: 'Configuración no encontrada para el tipo', tipo, config: null };
+    }
+    return config;
+  }
+
+  @Get('config-tipo-comisionado/formulario/:codigo')
+  @Permissions('travel_expenses:read')
+  async obtenerConfiguracionPorCodigoFormulario(@Param('codigo') codigo: string) {
+    const config = await this.configService.obtenerConfiguracionPorCodigoFormulario(codigo);
+    if (!config) {
+      return { message: 'Configuración no encontrada para el formulario', codigo, config: null };
     }
     return config;
   }

@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CampoFormularioEntity } from '../../entities/config/campo-formulario.entity';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
+import { TipoDocumentoSoporteEntity } from '../../entities/config/tipo-documento-soporte.entity';
+import { ConfigTipoComisionadoDocumentoEntity } from '../../entities/config/config-tipo-comisionado-documento.entity';
 import { CreateCampoFormularioDto, UpdateCampoFormularioDto } from '../../dto/config/campo-formulario.dto';
 import { CreateConfigTipoComisionadoDto, UpdateConfigTipoComisionadoDto } from '../../dto/config/config-tipo-comisionado.dto';
 
@@ -13,9 +15,11 @@ export class ConfigService {
     private readonly campoRepo: Repository<CampoFormularioEntity>,
     @InjectRepository(ConfigTipoComisionadoEntity)
     private readonly configRepo: Repository<ConfigTipoComisionadoEntity>,
+    @InjectRepository(TipoDocumentoSoporteEntity)
+    private readonly tipoDocumentoRepo: Repository<TipoDocumentoSoporteEntity>,
+    @InjectRepository(ConfigTipoComisionadoDocumentoEntity)
+    private readonly configDocumentoRepo: Repository<ConfigTipoComisionadoDocumentoEntity>,
   ) {}
-
-  // ── Campos del formulario ──
 
   async obtenerCamposFormulario(): Promise<CampoFormularioEntity[]> {
     return this.campoRepo.find({
@@ -70,29 +74,53 @@ export class ConfigService {
     await this.campoRepo.save(entity);
   }
 
-  // ── Configuración por tipo de comisionado ──
+  async obtenerTodosTiposDocumentoSoporte(): Promise<TipoDocumentoSoporteEntity[]> {
+    return this.tipoDocumentoRepo.find({
+      where: { activo: true },
+      order: { nombre: 'ASC' },
+    });
+  }
+
+  async obtenerTipoDocumentoSoportePorCodigo(codigo: string): Promise<TipoDocumentoSoporteEntity | null> {
+    return this.tipoDocumentoRepo.findOne({ where: { codigo } });
+  }
 
   async obtenerTodasConfiguraciones(): Promise<ConfigTipoComisionadoEntity[]> {
     return this.configRepo.find({
       where: { activo: true },
       order: { tipoComisionado: 'ASC' },
+      relations: ['documentos', 'documentos.tipoDocumentoSoporte'],
     });
   }
 
   async obtenerConfiguracionPorTipo(tipoComisionado: string): Promise<ConfigTipoComisionadoEntity | null> {
-    return this.configRepo.findOne({ where: { tipoComisionado, activo: true } });
+    return this.configRepo.findOne({
+      where: { tipoComisionado, activo: true },
+      relations: ['documentos', 'documentos.tipoDocumentoSoporte'],
+    });
+  }
+
+  async obtenerConfiguracionPorCodigoFormulario(codigoFormulario: string): Promise<ConfigTipoComisionadoEntity | null> {
+    return this.configRepo.findOne({
+      where: { codigoFormulario, activo: true },
+      relations: ['documentos', 'documentos.tipoDocumentoSoporte'],
+    });
   }
 
   async obtenerConfiguracionPorDefecto(): Promise<ConfigTipoComisionadoEntity> {
     const defaultConfig = await this.configRepo.findOne({
       where: { tipoComisionado: 'DEFAULT', activo: true },
+      relations: ['documentos', 'documentos.tipoDocumentoSoporte'],
     });
 
     if (defaultConfig) {
       return defaultConfig;
     }
 
-    return this.configRepo.findOne({ where: { activo: true } }) as Promise<ConfigTipoComisionadoEntity>;
+    return this.configRepo.findOne({
+      where: { activo: true },
+      relations: ['documentos', 'documentos.tipoDocumentoSoporte'],
+    }) as Promise<ConfigTipoComisionadoEntity>;
   }
 
   async crearConfigTipoComisionado(dto: CreateConfigTipoComisionadoDto): Promise<ConfigTipoComisionadoEntity> {
@@ -101,12 +129,27 @@ export class ConfigService {
       throw new BadRequestException(`Ya existe una configuración para el tipo ${dto.tipoComisionado}`);
     }
 
-    const entity = this.configRepo.create({
-      ...dto,
+    const config = this.configRepo.create({
+      tipoComisionado: dto.tipoComisionado,
+      codigoFormulario: dto.codigoFormulario,
+      camposObligatorios: dto.camposObligatorios,
+      camposOpcionales: dto.camposOpcionales ?? [],
+      camposOcultos: dto.camposOcultos ?? [],
       activo: dto.activo ?? true,
+      documentos: [],
     });
 
-    return this.configRepo.save(entity);
+    const savedConfig = await this.configRepo.save(config);
+
+    if (dto.documentosObligatorios && dto.documentosObligatorios.length > 0) {
+      await this.asignarDocumentosAConfiguracion(savedConfig.id, dto.documentosObligatorios, 'OBLIGATORIO');
+    }
+
+    if (dto.documentosOpcionales && dto.documentosOpcionales.length > 0) {
+      await this.asignarDocumentosAConfiguracion(savedConfig.id, dto.documentosOpcionales, 'OPCIONAL');
+    }
+
+    return this.obtenerConfiguracionPorTipo(savedConfig.tipoComisionado) as Promise<ConfigTipoComisionadoEntity>;
   }
 
   async actualizarConfigTipoComisionado(
@@ -119,7 +162,56 @@ export class ConfigService {
     }
 
     Object.assign(entity, dto);
-    return this.configRepo.save(entity);
+    await this.configRepo.save(entity);
+
+    if (dto.documentosObligatorios !== undefined || dto.documentosOpcionales !== undefined) {
+      await this.configDocumentoRepo.delete({ configTipoComisionadoId: entity.id });
+
+      if (dto.documentosObligatorios && dto.documentosObligatorios.length > 0) {
+        await this.asignarDocumentosAConfiguracion(entity.id, dto.documentosObligatorios, 'OBLIGATORIO');
+      }
+
+      if (dto.documentosOpcionales && dto.documentosOpcionales.length > 0) {
+        await this.asignarDocumentosAConfiguracion(entity.id, dto.documentosOpcionales, 'OPCIONAL');
+      }
+    }
+
+    return this.obtenerConfiguracionPorTipo(tipoComisionado) as Promise<ConfigTipoComisionadoEntity>;
+  }
+
+  private async asignarDocumentosAConfiguracion(
+    configId: string,
+    codigosDocumentos: string[],
+    tipoRequisito: 'OBLIGATORIO' | 'OPCIONAL',
+  ): Promise<void> {
+    for (const codigo of codigosDocumentos) {
+      let tipoDoc = await this.tipoDocumentoRepo.findOne({ where: { codigo } });
+      if (!tipoDoc) {
+        tipoDoc = this.tipoDocumentoRepo.create({
+          codigo,
+          nombre: codigo,
+          descripcion: null,
+          activo: true,
+        });
+        tipoDoc = await this.tipoDocumentoRepo.save(tipoDoc);
+      }
+
+      const existe = await this.configDocumentoRepo.findOne({
+        where: {
+          configTipoComisionadoId: configId,
+          tipoDocumentoSoporteId: tipoDoc.id,
+        },
+      });
+
+      if (!existe) {
+        const rel = this.configDocumentoRepo.create({
+          configTipoComisionadoId: configId,
+          tipoDocumentoSoporteId: tipoDoc.id,
+          tipoRequisito,
+        });
+        await this.configDocumentoRepo.save(rel);
+      }
+    }
   }
 
   async obtenerResumenParametrizacion(): Promise<{

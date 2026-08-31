@@ -10,6 +10,7 @@ import {
   EstadoSolicitudViatico,
   Geopolitica,
 } from '../../types/viaticos';
+import { ParametrizacionFormulario, ConfigTipoComisionado } from '../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
 /**
@@ -229,6 +230,52 @@ export class ViaticosService {
       return await apiClient.get<Comisionado>(`/viaticos/api/v1/comisionados/${documento}`);
     } catch {
       return null;
+    }
+  }
+
+  async obtenerParametrizacionFormulario(): Promise<ParametrizacionFormulario> {
+    return apiClient.get<ParametrizacionFormulario>('/viaticos/api/v1/parametrizacion/formulario');
+  }
+
+  async obtenerParametrizacionPorCodigoFormulario(codigo: string): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.get<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/formulario/${encodeURIComponent(codigo)}`);
+    } catch (error) {
+      console.error('Error obteniendo parametrización por código:', error);
+      return null;
+    }
+  }
+
+  async validarDocumentosRequeridos(tipoComisionado: string, tiposDocumentos: string[]): Promise<string[]> {
+    try {
+      const params = new URLSearchParams();
+      params.set('tipo', tipoComisionado);
+      if (tiposDocumentos.length > 0) {
+        params.set('documentos', tiposDocumentos.join(','));
+      }
+      const response = await apiClient.get<{ faltantes: string[] }>(`/viaticos/api/v1/parametrizacion/validar-documentos?${params.toString()}`);
+      return response.faltantes || [];
+    } catch (error) {
+      console.error('Error validando documentos requeridos:', error);
+      return [];
+    }
+  }
+
+  async validarCamposObligatorios(tipoComisionado: string, datosCampos: Record<string, any>): Promise<string[]> {
+    try {
+      const camposQuery = Object.entries(datosCampos)
+        .map(([clave, valor]) => `${clave}=${encodeURIComponent(valor || '')}`)
+        .join(',');
+      const params = new URLSearchParams();
+      params.set('tipo', tipoComisionado);
+      if (camposQuery) {
+        params.set('campos', camposQuery);
+      }
+      const response = await apiClient.get<{ camposFaltantes: string[] }>(`/viaticos/api/v1/parametrizacion/validar-campos?${params.toString()}`);
+      return response.camposFaltantes || [];
+    } catch (error) {
+      console.error('Error validando campos obligatorios:', error);
+      return [];
     }
   }
 

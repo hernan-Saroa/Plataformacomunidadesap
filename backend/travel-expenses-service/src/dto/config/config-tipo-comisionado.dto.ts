@@ -5,6 +5,10 @@ export class CreateConfigTipoComisionadoDto {
   @Length(1, 50)
   tipoComisionado: string;
 
+  @IsString()
+  @Length(1, 50)
+  codigoFormulario: string;
+
   @IsArray()
   @IsString({ each: true })
   camposObligatorios: string[];
@@ -27,7 +31,7 @@ export class CreateConfigTipoComisionadoDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  documentosOcionales?: string[];
+  documentosOpcionales?: string[];
 
   @IsOptional()
   @IsBoolean()
@@ -35,6 +39,11 @@ export class CreateConfigTipoComisionadoDto {
 }
 
 export class UpdateConfigTipoComisionadoDto {
+  @IsOptional()
+  @IsString()
+  @Length(1, 50)
+  codigoFormulario?: string;
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

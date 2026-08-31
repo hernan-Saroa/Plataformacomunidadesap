@@ -93,10 +93,31 @@ export class TravelExpensesController {
     return this.service.obtenerParametrizacionFormulario();
   }
 
+  @Get('parametrizacion/formulario/:codigo')
+  @Permissions('travel_expenses:read')
+  async obtenerParametrizacionPorCodigo(@Param('codigo') codigo: string) {
+    const config = await this.service.obtenerParametrizacionPorCodigoFormulario(codigo);
+    if (!config) {
+      return { message: 'Configuración no encontrada para el formulario', codigo, config: null };
+    }
+    return config;
+  }
+
   @Get('parametrizacion/validar-documentos')
   @Permissions('travel_expenses:read')
   async validarDocumentosRequeridos(@Query('tipo') tipo: string, @Query('documentos') documentos?: string) {
     const tipos = documentos ? documentos.split(',') : [];
     return this.service.validarDocumentosRequeridos(tipo, tipos);
+  }
+
+  @Get('parametrizacion/validar-campos')
+  @Permissions('travel_expenses:read')
+  async validarCamposObligatorios(@Query('tipo') tipo: string, @Query('campos') campos?: string) {
+    const datosCampos = campos ? campos.split(',').reduce((acc, campo) => {
+      const [clave, valor] = campo.split('=');
+      acc[clave] = valor;
+      return acc;
+    }, {} as Record<string, any>) : {};
+    return this.service.validarCamposObligatorios(tipo, datosCampos);
   }
 }

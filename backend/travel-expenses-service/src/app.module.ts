@@ -11,6 +11,8 @@ import { SolicitudComisionEntity } from './entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from './entities/documento-soporte.entity';
 import { CampoFormularioEntity } from './entities/config/campo-formulario.entity';
 import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
+import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
+import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-tipo-comisionado-documento.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 
@@ -31,6 +33,8 @@ import { PermissionsGuard } from './common/permissions.guard';
         DocumentoSoporteEntity,
         CampoFormularioEntity,
         ConfigTipoComisionadoEntity,
+        TipoDocumentoSoporteEntity,
+        ConfigTipoComisionadoDocumentoEntity,
       ],
       synchronize: false,
       logging: true,
