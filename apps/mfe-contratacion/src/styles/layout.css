@@ -148,6 +148,46 @@
    misma cadena de variables que usa `shadow-sm`.
    ====================================================================== */
 
+/* ----------------------------------------------------- animaciones ---- */
+/* Van aquí y no como utilidades de Tailwind por la misma razón de todo el
+   bloque: el shell no genera lo que él mismo no usa. Duraciones de 150-250ms
+   —lo bastante para dar continuidad, no para hacer esperar— y desactivadas
+   cuando el usuario pidió reducir movimiento. */
+
+@keyframes entrada-seccion {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.anima-seccion {
+  animation: entrada-seccion .22s cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes brillo-esqueleto {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* Esqueleto de carga: dice la forma de lo que viene, no solo que se espera. */
+.esqueleto {
+  background: linear-gradient(90deg, #eef1f5 25%, #f8fafc 50%, #eef1f5 75%);
+  background-size: 200% 100%;
+  animation: brillo-esqueleto 1.4s ease-in-out infinite;
+  border-radius: .5rem;
+}
+
+@keyframes giro { to { transform: rotate(360deg); } }
+
+.girar { animation: giro .8s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anima-seccion,
+  .esqueleto,
+  .girar {
+    animation: none;
+  }
+}
+
 /* ------------------------------------------------------- tipografía --- */
 .text-\[9\.5px\]  { font-size: 9.5px; }
 .text-\[10\.5px\] { font-size: 10.5px; }
@@ -158,6 +198,14 @@
 .text-\[15px\]    { font-size: 15px; }
 
 /* -------------------------------------------------------- medidas ----- */
+.table-fixed      { table-layout: fixed; }
+.min-w-\[640px\]  { min-width: 640px; }
+.w-\[100px\]      { width: 100px; }
+.w-\[110px\]      { width: 110px; }
+.w-\[120px\]      { width: 120px; }
+.w-\[130px\]      { width: 130px; }
+.w-\[180px\]      { width: 180px; }
+.w-\[220px\]      { width: 220px; }
 .w-\[2px\]        { width: 2px; }
 .w-\[18px\]       { width: 18px; }
 .h-\[2px\]        { height: 2px; }

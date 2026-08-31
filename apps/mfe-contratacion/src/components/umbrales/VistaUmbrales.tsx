@@ -75,6 +75,47 @@ export function VistaUmbrales() {
   const salarioVigente = salarios.find((s) => s.anio === new Date().getFullYear()) ?? null;
   const puedeEditar = datos?.puedeEditar === true;
 
+  // Las mismas celdas en la tabla de escritorio y en las tarjetas de móvil:
+  // definirlas una vez evita que las dos vistas cuenten cosas distintas.
+  const rangoDe = (m: ModalidadConUmbral) =>
+    m.umbral ? (
+      `${limite(m.umbral.limiteInferior, m.umbral.unidad, 'sin piso')} — ${limite(m.umbral.limiteSuperior, m.umbral.unidad, 'sin techo')}`
+    ) : (
+      // Ausencia legítima: la causal manda sobre el monto y su rango hay que
+      // confirmarlo aparte.
+      <span className="text-gray-400">sin configurar</span>
+    );
+
+  const pesosDe = (m: ModalidadConUmbral) => {
+    const u = m.umbral;
+    if (u?.enPesos) {
+      return `${u.enPesos.inferior === null ? 'sin piso' : formatoPesos.format(u.enPesos.inferior)} — ${
+        u.enPesos.superior === null ? 'sin techo' : formatoPesos.format(u.enPesos.superior)
+      }`;
+    }
+    if (u?.advertencia) {
+      return (
+        <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
+          <AlertTriangle className="w-3 h-3" />
+          {u.advertencia}
+        </span>
+      );
+    }
+    return <span className="text-gray-400">—</span>;
+  };
+
+  const botonEditar = (m: ModalidadConUmbral) =>
+    puedeEditar ? (
+      <button
+        type="button"
+        onClick={() => setEditando(m)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-md border border-gray-200 text-slate-600 hover:border-[#003DA5] hover:text-[#003DA5] transition-colors"
+      >
+        <Pencil className="w-3 h-3" />
+        {m.umbral ? 'Cambiar' : 'Configurar'}
+      </button>
+    ) : null;
+
   return (
     <div className="space-y-3 md:space-y-4">
       <ModuleHeader
@@ -142,7 +183,47 @@ export function VistaUmbrales() {
         <SkeletonTable rows={5} />
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="overflow-x-auto">
+          {/* Tarjetas en móvil y tabla en escritorio, como auditoría y control
+              interno: cuatro columnas con cifras no caben en un teléfono. */}
+          <ul className="lg:hidden m-0 p-0 list-none divide-y divide-gray-100">
+            {porCuantia.map((m) => (
+              <li key={m.modalidad} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-bold text-slate-800 m-0">{m.nombre}</p>
+                    {m.umbral && !m.umbral.confirmado && (
+                      <span className="text-[10px] font-bold text-amber-700">
+                        valor sin confirmar
+                      </span>
+                    )}
+                  </div>
+                  {botonEditar(m)}
+                </div>
+                <dl className="m-0 mt-1.5 space-y-1">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-[11px] font-bold text-slate-500">Rango</dt>
+                    <dd className="text-[12px] text-slate-700 tabular-nums m-0 text-right">
+                      {rangoDe(m)}
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-[11px] font-bold text-slate-500">En pesos</dt>
+                    <dd className="text-[12px] text-slate-700 tabular-nums m-0 text-right">
+                      {pesosDe(m)}
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-[11px] font-bold text-slate-500">Vigente desde</dt>
+                    <dd className="text-[12px] text-slate-500 tabular-nums m-0 text-right">
+                      {m.umbral?.vigenciaDesde ?? '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 bg-slate-50">
@@ -175,45 +256,15 @@ export function VistaUmbrales() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-[12px] text-slate-700 tabular-nums">
-                        {u ? (
-                          `${limite(u.limiteInferior, u.unidad, 'sin piso')} — ${limite(u.limiteSuperior, u.unidad, 'sin techo')}`
-                        ) : (
-                          // Ausencia legítima: la causal manda sobre el monto y
-                          // su rango hay que confirmarlo aparte.
-                          <span className="text-gray-400">sin configurar</span>
-                        )}
+                        {rangoDe(m)}
                       </td>
                       <td className="px-4 py-2.5 text-[12px] text-slate-700 tabular-nums">
-                        {u?.enPesos ? (
-                          `${u.enPesos.inferior === null ? 'sin piso' : formatoPesos.format(u.enPesos.inferior)} — ${
-                            u.enPesos.superior === null
-                              ? 'sin techo'
-                              : formatoPesos.format(u.enPesos.superior)
-                          }`
-                        ) : u?.advertencia ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
-                            <AlertTriangle className="w-3 h-3" />
-                            {u.advertencia}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                        {pesosDe(m)}
                       </td>
                       <td className="px-4 py-2.5 text-[12px] text-slate-500 tabular-nums">
                         {u?.vigenciaDesde ?? '—'}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
-                        {puedeEditar && (
-                          <button
-                            type="button"
-                            onClick={() => setEditando(m)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-md border border-gray-200 text-slate-600 hover:border-[#003DA5] hover:text-[#003DA5] transition-colors"
-                          >
-                            <Pencil className="w-3 h-3" />
-                            {u ? 'Cambiar' : 'Configurar'}
-                          </button>
-                        )}
-                      </td>
+                      <td className="px-4 py-2.5 text-right">{botonEditar(m)}</td>
                     </tr>
                   );
                 })}

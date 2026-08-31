@@ -25,37 +25,122 @@ export type EstadoContrato =
   | 'RECHAZADO'
   | 'PERFECCIONADO'
   | 'LEGALIZADO'
-  | 'EJECUCION';
+  | 'EJECUCION'
+  | 'SUSPENDIDO'
+  | 'TERMINADO'
+  | 'LIQUIDADO'
+  | 'CERRADO';
 
 /**
- * Qué tan avanzado está el contrato, para poder preguntar «al menos» en vez de
- * enumerar estados.
+ * Hasta dónde llegó el contrato en su ciclo.
  *
- * Los estados son acumulativos: quien está en ejecución ya pasó por legalizado,
- * y quien está legalizado ya estaba perfeccionado. Las reglas que los
- * enumeraban una a una —`estado === 'PERFECCIONADO' || estado ===
- * 'LEGALIZADO'`— había que corregirlas cada vez que aparecía un estado nuevo, y
- * olvidarse de una sola dejaba de admitir un contrato más avanzado que el
- * exigido: al añadir EJECUCION, seis reglas habrían dejado de reconocer
- * contratos ya legalizados.
+ * Es la línea recta que va de la minuta al cierre, y responde «ya pasó por»,
+ * no «está en». Los estados son acumulativos: quien está liquidado ya pasó por
+ * legalizado, y las reglas que los enumeraban una a una —`estado ===
+ * 'PERFECCIONADO' || estado === 'LEGALIZADO'`— había que corregirlas cada vez
+ * que aparecía uno nuevo.
  *
- * RECHAZADO queda fuera del orden a propósito: no es una fase menos avanzada,
- * es una minuta que no prosperó y no llega a ninguna parte.
+ * SUSPENDIDO no está aquí y es deliberado: no es un punto del camino sino una
+ * pausa sobre el punto en que se iba. Un contrato suspendido llegó tan lejos
+ * como uno en ejecución —de hecho estaba ejecutándose—, así que preguntar
+ * «hasta dónde llegó» tiene que responder EJECUCION. Meterlo en la recta
+ * obligaría a elegir entre dos errores: ponerlo antes de EJECUCION haría que
+ * un contrato suspendido dejara de admitir el seguimiento que sí se le hace, y
+ * ponerlo después haría que TERMINADO lo superara y admitiera todo.
+ *
+ * RECHAZADO también queda fuera: no es una fase menos avanzada, es una minuta
+ * que no prosperó y no llega a ninguna parte.
  */
-const AVANCE: Record<EstadoContrato, number> = {
-  RECHAZADO: -1,
+const AVANCE: Record<Exclude<EstadoContrato, 'RECHAZADO' | 'SUSPENDIDO'>, number> = {
   GENERADO: 0,
   ACEPTADO: 1,
   PERFECCIONADO: 2,
   LEGALIZADO: 3,
   EJECUCION: 4,
+  TERMINADO: 5,
+  LIQUIDADO: 6,
+  CERRADO: 7,
 };
 
-/** Si el contrato alcanzó ese punto de su ciclo, o uno posterior. */
+/**
+ * Sobre qué punto del ciclo está detenido un contrato suspendido.
+ *
+ * La suspensión solo ocurre durante la ejecución —RF-MOD-03 la trata junto a
+ * la reanudación—, así que el punto es siempre ese. Se nombra en vez de
+ * escribirlo suelto para que quede dicho por qué.
+ */
+const PUNTO_DE_LA_SUSPENSION = 'EJECUCION' as const;
+
+/**
+ * Si el contrato alcanzó ese punto de su ciclo, o uno posterior.
+ *
+ * Un contrato suspendido responde por el punto donde quedó detenido: llegó a
+ * la ejecución, y la pausa no le quita el camino recorrido.
+ */
 export function alMenos(estado: EstadoContrato, minimo: EstadoContrato): boolean {
-  const actual = AVANCE[estado];
   // Una minuta rechazada no alcanza ningún punto, ni siquiera los anteriores.
-  return actual >= 0 && actual >= AVANCE[minimo];
+  if (estado === 'RECHAZADO' || minimo === 'RECHAZADO') return false;
+
+  const actual = estado === 'SUSPENDIDO' ? AVANCE[PUNTO_DE_LA_SUSPENSION] : AVANCE[estado];
+  const exigido = minimo === 'SUSPENDIDO' ? AVANCE[PUNTO_DE_LA_SUSPENSION] : AVANCE[minimo];
+
+  return actual >= exigido;
+}
+
+/**
+ * Si el contrato está corriendo ahora mismo.
+ *
+ * Distinto de `alMenos(estado, 'EJECUCION')`, que responde si llegó a
+ * ejecutarse alguna vez: uno terminado también llegó, y sin embargo ya no
+ * corre. Las reglas que hablan de lo que ocurre *mientras* el contrato se
+ * ejecuta —cargar seguimiento, reasignar supervisión, reportar un
+ * incumplimiento— preguntan por esto y no por aquello.
+ *
+ * Un contrato suspendido sí está en ejecución: la suspensión detiene el plazo,
+ * no la relación contractual. Se le sigue vigilando, y de hecho la suspensión
+ * suele ser justamente lo que hay que vigilar.
+ */
+export function enEjecucion(estado: EstadoContrato): boolean {
+  return estado === 'EJECUCION' || estado === 'SUSPENDIDO';
+}
+
+/**
+ * Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer.
+ *
+ * El mapa es el criterio 2 de EFDS-1184 —«cuando se intenta una transición no
+ * válida, el sistema la impide»— y sustituye a comparar números de avance: la
+ * recta dice si un estado va después de otro, pero no si se puede saltar
+ * directamente, y de LEGALIZADO a LIQUIDADO no se llega sin ejecutar.
+ *
+ * SUSPENDIDO y EJECUCION se alcanzan mutuamente: es la suspensión y la
+ * reanudación de RF-MOD-03. Un contrato suspendido también puede terminarse
+ * sin reanudarse —la terminación anticipada de un contrato suspendido es
+ * justamente un caso típico—.
+ *
+ * CERRADO y RECHAZADO no llevan a ninguna parte: son finales.
+ */
+const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
+  GENERADO: ['ACEPTADO', 'RECHAZADO'],
+  ACEPTADO: ['PERFECCIONADO'],
+  RECHAZADO: [],
+  PERFECCIONADO: ['LEGALIZADO'],
+  LEGALIZADO: ['EJECUCION'],
+  EJECUCION: ['SUSPENDIDO', 'TERMINADO'],
+  SUSPENDIDO: ['EJECUCION', 'TERMINADO'],
+  TERMINADO: ['LIQUIDADO'],
+  LIQUIDADO: ['CERRADO'],
+  CERRADO: [],
+};
+
+/**
+ * Valida un salto de estado del contrato.
+ *
+ * Función pura y exportada, igual que la del CDP: es la regla que impide, por
+ * ejemplo, liquidar un contrato que nadie terminó, y conviene poder probarla
+ * sin base de datos.
+ */
+export function puedeTransicionar(desde: EstadoContrato, hacia: EstadoContrato): boolean {
+  return TRANSICIONES[desde]?.includes(hacia) ?? false;
 }
 
 /** Determina si la legalización exigirá ARL (EFDS-1164, criterio 2). */

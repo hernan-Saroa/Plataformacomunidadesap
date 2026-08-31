@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadAplicable, CampoConfigurable, Modalidad } from '../../types';
-import { ModuleHeader } from '../shared/ModuleHeader';
 import { Modal } from '../shared/Modal';
 
 import { DetalleActividad } from './DetalleActividad';
@@ -164,14 +163,7 @@ export function VistaConfiguracion() {
     modalidades.find((m) => m.codigo === modalidad)?.nombre ?? modalidad;
 
   return (
-    <div className="space-y-5">
-      <ModuleHeader
-        icon={<Settings className="w-6 h-6" />}
-        title="Configuración de etapas"
-        subtitle="Qué actividades recorre cada modalidad de contratación"
-        color="#64748B"
-      />
-
+    <div className="space-y-3">
       {error && (
         <div
           role="alert"
@@ -182,10 +174,11 @@ export function VistaConfiguracion() {
         </div>
       )}
 
-      {/* Dos pestañas y no dos secciones del menú: la matriz y las tipologías
-          son parámetros del mismo flujo, y separarlas obligaría a salir de la
-          configuración para volver a entrar en ella. */}
-      <div className="flex items-center gap-1 border-b border-gray-200">
+      {/* Solo las pestañas, sin cabecera: el tab del menú ya dice dónde se
+          está, y repetirlo aquí solo empujaba el contenido hacia abajo. Dos
+          pestañas y no dos secciones del menú: la matriz y las tipologías son
+          parámetros del mismo flujo. */}
+      <div className="flex items-center gap-1 border-b border-gray-200 flex-wrap">
         {(
           [
             ['matriz', 'Matriz de actividades'],

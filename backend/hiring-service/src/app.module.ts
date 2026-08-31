@@ -25,6 +25,9 @@ import { RegistroPresupuestalModule } from './modules/registro-presupuestal/regi
 import { PublicacionContratoModule } from './modules/publicacion-contrato/publicacion-contrato.module';
 import { ActaInicioModule } from './modules/acta-inicio/acta-inicio.module';
 import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
+import { ModificacionesModule } from './modules/modificaciones/modificaciones.module';
+import { AlertasModule } from './modules/alertas/alertas.module';
+import { IncumplimientoModule } from './modules/incumplimiento/incumplimiento.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -66,6 +69,8 @@ import { Amparo, TipoAmparo } from './entities/amparo.entity';
 import { AfiliacionArl } from './entities/afiliacion-arl.entity';
 import { ActaInicio } from './entities/acta-inicio.entity';
 import { SeguimientoContrato } from './entities/seguimiento-contrato.entity';
+import { CasoIncumplimiento } from './entities/caso-incumplimiento.entity';
+import { ModificacionContrato } from './entities/modificacion-contrato.entity';
 import { SupervisionContrato } from './entities/supervision-contrato.entity';
 import { RegistroPresupuestal } from './entities/registro-presupuestal.entity';
 import { PlazoPublicacionContrato, PublicacionContrato } from './entities/publicacion-contrato.entity';
@@ -87,7 +92,7 @@ import { TipologiaContrato } from './entities/tipologia-contrato.entity';
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, SeguimientoContrato],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, SeguimientoContrato, CasoIncumplimiento, ModificacionContrato],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -118,6 +123,9 @@ import { TipologiaContrato } from './entities/tipologia-contrato.entity';
     PublicacionContratoModule,
     ActaInicioModule,
     SeguimientoModule,
+    ModificacionesModule,
+    AlertasModule,
+    IncumplimientoModule,
   ],
   controllers: [HealthController],
   providers: [

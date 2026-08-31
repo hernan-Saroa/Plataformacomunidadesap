@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FileText, FolderOpen, ClipboardList } from 'lucide-react';
+import { ArrowLeft, FileText, FolderOpen, ClipboardList, ShieldCheck } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
@@ -26,7 +26,10 @@ import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistr
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
+import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
+import { PanelAuditoria } from '../auditoria/PanelAuditoria';
+import { PanelModificaciones } from '../modificaciones/PanelModificaciones';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -90,6 +93,9 @@ const NUMERAL_ACTA_INICIO = '9.1';
 /** Seguimiento de la ejecución del contrato (EFDS-1168). */
 const NUMERAL_SEGUIMIENTO = '9.2';
 
+/** Modificaciones contractuales de la ejecucion (EFDS-1177, EFDS-1178). */
+const NUMERAL_MODIFICACIONES = '9.5';
+
 /**
  * Las que se trabajan desde su propio panel y no desde el formulario.
  *
@@ -105,6 +111,7 @@ const NUMERALES_CON_PANEL_PROPIO = [
   NUMERAL_PUBLICACION_CONTRATO,
   NUMERAL_ACTA_INICIO,
   NUMERAL_SEGUIMIENTO,
+  NUMERAL_MODIFICACIONES,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -166,6 +173,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  const [auditoriaAbierta, setAuditoriaAbierta] = useState(false);
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
@@ -284,7 +292,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           adjuntos,
         };
       }
-      return { ...act, estado: 'pendiente', disponible: false, adjuntos };
+      // El candado sin explicación se lee como un error del sistema; decir
+      // que falta construirla distingue lo pendiente de lo roto.
+      return {
+        ...act,
+        estado: 'pendiente',
+        disponible: false,
+        detalle: 'Pendiente de desarrollo',
+        adjuntos,
+      };
     },
   );
 
@@ -323,8 +339,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           </button>
 
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#E0EDFF] grid place-items-center flex-shrink-0">
-              <FileText className="w-5 h-5 text-[#003DA5]" />
+            {/* Gradiente y no fondo plano: misma insignia que las cabeceras de
+                control interno y gestión legal. */}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#003DA5] to-[#0051D5] grid place-items-center flex-shrink-0 shadow-md">
+              <FileText className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black text-[#003DA5] m-0 tabular-nums">
@@ -361,9 +379,34 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               <FolderOpen className="w-3.5 h-3.5" />
               Expediente
             </button>
+
+            {/* El expediente de trabajo deja subir y borrar; este solo se lee, y
+                trae además la trazabilidad y el historial (EFDS-1186). */}
+            <button
+              type="button"
+              onClick={() => setAuditoriaAbierta((v) => !v)}
+              aria-expanded={auditoriaAbierta}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                border transition-colors ${
+                  auditoriaAbierta
+                    ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                    : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Auditoría
+            </button>
           </div>
         </div>
       </div>
+
+      {/* A ancho completo y no en la columna del expediente: la trazabilidad y
+          el historial no caben en una barra lateral. */}
+      {auditoriaAbierta && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] mb-4">
+          <PanelAuditoria procesoId={procesoId} />
+        </div>
+      )}
 
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
       <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
@@ -434,8 +477,33 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               />
             </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
+            /**
+             * Dos paneles en la misma casilla.
+             *
+             * El presunto incumplimiento es un bloque transversal de la matriz
+             * y no una de las 63 actividades numeradas, así que no tiene
+             * casilla propia en el riel. Se cuelga de la 9.2 porque es donde el
+             * supervisor ya está: vigila la ejecución, y si algo no se cumple
+             * lo constata mirando esto mismo. Dejarlo sin sitio lo volvería
+             * inalcanzable desde la pantalla.
+             */
+            <div className="space-y-3">
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <PanelSeguimiento
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              </div>
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <PanelIncumplimiento
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              </div>
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <PanelSeguimiento
+              <PanelModificaciones
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />

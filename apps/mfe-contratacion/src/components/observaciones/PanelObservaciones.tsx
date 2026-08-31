@@ -505,6 +505,9 @@ function FormularioObservacion({
           <input
             type="date"
             value={fecha}
+            // El servidor rechaza las futuras; el calendario tampoco las
+            // ofrece, para no descubrirlo al enviar todo el formulario.
+            max={hoyEnBogota()}
             onChange={(e) => setFecha(e.target.value)}
             aria-label="Fecha en que se presentó la observación"
             className={campo}

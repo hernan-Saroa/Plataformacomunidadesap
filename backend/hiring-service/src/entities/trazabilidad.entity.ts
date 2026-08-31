@@ -27,7 +27,12 @@ export type AccionTraza =
   | 'FIRMAR'
   | 'LEGALIZAR'
   // Ejecución y supervisión (etapa 9).
-  | 'INICIAR';
+  | 'INICIAR'
+  // Presunto incumplimiento (transversal, contrato en ejecución).
+  | 'REPORTAR'
+  // Acceso de lectura al módulo de incumplimiento: la reserva legal exige
+  // bitácora de quién consultó, no solo de quién escribió (EFDS-1182).
+  | 'CONSULTAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {
