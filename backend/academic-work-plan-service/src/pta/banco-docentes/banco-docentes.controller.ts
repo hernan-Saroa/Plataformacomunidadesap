@@ -87,6 +87,10 @@ export class BancoDocentesController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Req() req?: any,
+    @Query('categoria') categoria?: string,
+    @Query('genero') genero?: string,
+    @Query('nivelFormacion') nivelFormacion?: string,
+    @Query('nucleoTematico') nucleoTematico?: string,
   ) {
     const result = await this.service.list({
       territorial,
@@ -95,6 +99,10 @@ export class BancoDocentesController {
       estado,
       search,
       periodoCarga,
+      categoria,
+      genero,
+      nivelFormacion,
+      nucleoTematico,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
@@ -117,8 +125,25 @@ export class BancoDocentesController {
     @Query('vinculacion') vinculacion?: string,
     @Query('estado') estado?: string,
     @Query('periodoCarga') periodoCarga?: string,
+    @Query('categoria') categoria?: string,
+    @Query('genero') genero?: string,
+    @Query('nivelFormacion') nivelFormacion?: string,
+    @Query('nucleoTematico') nucleoTematico?: string,
   ) {
-    return { success: true, data: await this.service.getStats({ territorial, dedicacion, vinculacion, estado, periodoCarga }) };
+    return {
+      success: true,
+      data: await this.service.getStats({
+        territorial,
+        dedicacion,
+        vinculacion,
+        estado,
+        periodoCarga,
+        categoria,
+        genero,
+        nivelFormacion,
+        nucleoTematico,
+      }),
+    };
   }
 
   @Get('invitaciones')

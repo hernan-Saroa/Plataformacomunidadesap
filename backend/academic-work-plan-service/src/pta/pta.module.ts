@@ -84,5 +84,8 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
   ],
   controllers: [PtaController, AsignaturasImportController, CascadaController, PeriodoAcademicoController],
   providers: [PtaService, AsignaturasImportService, ExcelParserService, PtaPermissionsService, PtaAuthGuard, PtaNotificationsService],
+  // PtaPermissionsService/PtaNotificationsService se reutilizan desde MacroDocenteModule
+  // (permisos granulares pta.macro_docente.* y correo de acceso externo otorgado).
+  exports: [PtaPermissionsService, PtaNotificationsService],
 })
 export class PtaModule {}

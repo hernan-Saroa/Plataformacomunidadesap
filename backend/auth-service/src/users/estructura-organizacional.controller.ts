@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { EstructuraOrganizacionalService } from './estructura-organizacional.service';
+import { Public } from '../auth/decorators/public.decorator';
 import {
   CreateSeccionalDto,
   UpdateSeccionalDto,
@@ -72,12 +73,17 @@ export class EstructuraOrganizacionalController {
 
   // ==================== GEOPOLITICA ====================
 
+  // GEOPOLÍTICA: es catálogo público de referencia (departamentos/municipios de
+  // Colombia). Se marca @Public() para que cualquier frontend pueda consultarlo
+  // sin token; el catálogo estático solo debe usarse si la API está caída.
+  @Public()
   @Get('geopolitica/departamentos')
   async findDepartamentos() {
     const departamentos = await this.estructuraService.findDepartamentos();
     return { data: departamentos };
   }
 
+  @Public()
   @Get('geopolitica/departamentos/:idDepartamento/ciudades')
   async findCiudadesByDepartamento(
     @Param('idDepartamento') idDepartamento: string,
@@ -88,6 +94,7 @@ export class EstructuraOrganizacionalController {
     return { data: ciudades };
   }
 
+  @Public()
   @Get('geopolitica/:id')
   async findGeopoliticaById(@Param('id') id: string) {
     const geopolitica = await this.estructuraService.findGeopoliticaById(

@@ -71,6 +71,13 @@ export interface DisciplinaryNews {
     radicadorEmail?: string;
     createdAt: string;
     updatedAt: string;
+    historialAuditoria?: {
+        id: string;
+        tipo: string;
+        usuario: string;
+        fecha: string;
+        observaciones?: string;
+    }[];
 }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
@@ -559,12 +566,20 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    async getNoticiaById(id: string): Promise<DisciplinaryNews> {
+        return apiClient.get<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
+    }
+
     async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
     }
 
     async restoreNews(id: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
+    }
+
+    async deleteNews(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
     }
 
     /**
@@ -1078,9 +1093,9 @@ class DisciplinaryService {
     }
 
     async sendJuridica(
-        id: string, 
-        enviadoPorId: string, 
-        enviadoPorEmail?: string, 
+        id: string,
+        enviadoPorId: string,
+        enviadoPorEmail?: string,
         enviadoPorNombre?: string
     ): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-juridica`, {
@@ -1088,6 +1103,10 @@ class DisciplinaryService {
             enviadoPorEmail,
             enviadoPorNombre,
         });
+    }
+
+    async revertirAprobacionAuto(id: string, revertidoPorId: string): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/revert-approval?revertidoPorId=${revertidoPorId}`, {});
     }
 
     async registrarNotificacion(id: string, fecha: string, evidencia?: string): Promise<LegalAuto> {

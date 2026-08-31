@@ -5257,13 +5257,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 loadData();
               }}
               onConcertar={() => { setConcertacionPtaId(selectedPTA.id); setSelectedPTA(null); }}
-              onVerReporte={() => setShowReporteR01(true)}
+              onVerInformacion={() => setShowReporteR01(true)}
               puedeAprobar={permisos.puedeAprobar}
               nivelAprobacion={permisos.nivelAprobacion}
               rolLabel={rolLabel}
               isSuperUser={isSuperUserEffective}
               actorId={aprobadorId}
               actorNombre={aprobadorNombre}
+              periodoAcademico={periodosPTA.find((periodo: any) => (
+                getPeriodCode(periodo) === getPeriodCode(selectedPTA?.periodo)
+              ))}
               jefaturaTerritorialId={
                 permisos.nivelAprobacion === 1 && permisos.filtroTerritorial?.[0]
                   ? permisos.filtroTerritorial[0]

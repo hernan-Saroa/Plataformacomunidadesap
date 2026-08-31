@@ -86,10 +86,13 @@ export class EstructuraOrganizacionalService {
   }
 
   async findCiudadesByDepartamento(idDepartamento: number): Promise<Geopolitica[]> {
+    // Las ciudades se asocian al departamento por el código DANE
+    // (cod_departamento), no por id_padre (id autoincremental). Esto mantiene
+    // estable la relación aunque el id_geopolitica varíe entre registros.
     return this.geopoliticaRepo.find({
       where: {
         tipDivision: 'CIUDAD',
-        idPadre: idDepartamento,
+        codDepartamento: idDepartamento,
       },
       order: { nomDivGeopolitica: 'ASC' },
     });
