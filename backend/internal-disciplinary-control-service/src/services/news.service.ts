@@ -621,6 +621,15 @@ export class NewsService {
     */
    async delete(id: string): Promise<void> {
      const noticia = await this.findById(id);
+
+     const procesoExistente = await this.processRepository.findOne({ where: { newsId: id } });
+     if (procesoExistente) {
+       throw new HttpException(
+         'No se puede eliminar una noticia que ya tiene un proceso disciplinario asociado',
+         HttpStatus.CONFLICT,
+       );
+     }
+
      await this.storageService.deleteExpediente(noticia.radicado);
      await this.newsRepository.delete(id);
    }

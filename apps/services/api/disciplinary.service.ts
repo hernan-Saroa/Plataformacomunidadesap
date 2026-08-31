@@ -622,6 +622,10 @@ if (fechaQuejaRaw) {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
     }
 
+    async deleteNews(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
+    }
+
     /**
      * Obtiene las noticias asociadas a los procesos de un profesional específico
      */
