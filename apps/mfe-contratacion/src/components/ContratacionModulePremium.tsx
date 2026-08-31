@@ -76,16 +76,6 @@ export default function ContratacionModulePremium() {
           tag: 'Próx.',
         },
         {
-          // Junto a Procesos y no en Configuración: es trabajo diario, no un
-          // parámetro que se administra. Quien vigila vencimientos los mira
-          // todos juntos, no proceso por proceso.
-          id: 'alertas',
-          label: 'Alertas',
-          subtitle: 'Vencimientos y plazos',
-          icon: <BellRing className="w-5 h-5" />,
-          color: '#DC2626',
-        },
-        {
           // Tab propio y no un botón dentro del detalle: el expediente se
           // consulta sin estar trabajando un proceso —es lo que abre un
           // organismo de control—, y llegar a él pasando por lista y detalle
@@ -122,6 +112,15 @@ export default function ContratacionModulePremium() {
           subtitle: 'Publicidad del pliego',
           icon: <CalendarClock className="w-5 h-5" />,
           color: '#B45309',
+        },
+        {
+          // En Configuración por pedido del área: se revisa junto a los demás
+          // parámetros del flujo, no en el trabajo diario.
+          id: 'alertas',
+          label: 'Alertas',
+          subtitle: 'Vencimientos y plazos',
+          icon: <BellRing className="w-5 h-5" />,
+          color: '#DC2626',
         },
         {
           id: 'mipyme',

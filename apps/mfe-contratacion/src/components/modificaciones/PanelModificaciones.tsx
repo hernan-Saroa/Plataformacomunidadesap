@@ -33,6 +33,7 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { CicloContrato } from '../shared/CicloContrato';
 
 interface Props {
   procesoId: string;
@@ -287,6 +288,14 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
         suspenderse y terminarse antes de tiempo. Solo la adición aumenta el presupuesto y por eso
         es la única que exige un CDP y un RP nuevos. Todas se publican en SECOP II.
       </Ayuda>
+
+      {/* El ciclo completo con el punto actual: es el front de los estados
+          de EFDS-1184, y aquí es donde las modificaciones lo mueven. */}
+      {estado.contrato ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5">
+          <CicloContrato estado={estado.contrato.estado} />
+        </div>
+      ) : null}
 
       {/* La regla del objeto (RF-MOD-04). Va arriba y con el objeto a la vista
           porque es la pregunta previa a cualquier modificación: si lo que hay

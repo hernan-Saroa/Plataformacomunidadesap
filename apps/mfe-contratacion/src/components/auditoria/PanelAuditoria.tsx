@@ -13,6 +13,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { ExpedienteAuditoria } from '../../types';
 import { Ayuda, Cargando, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga, momento, momentoConHora } from '../shared/fechas';
+import { CicloContrato } from '../shared/CicloContrato';
 
 interface Props {
   procesoId: string;
@@ -126,7 +127,8 @@ export function PanelAuditoria({ procesoId }: Props) {
       </div>
 
       {contrato && (
-        <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3">
+        <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-3">
+          <CicloContrato estado={contrato.estado} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
             <Dato etiqueta="Contrato" valor={contrato.numero} />
             <Dato etiqueta="Estado" valor={contrato.estado} />

@@ -54,6 +54,29 @@ export function VistaPlazosPublicacion() {
   const sinConfigurar = conPliego.filter((m) => !m.plazo).length;
   const puedeEditar = datos?.puedeEditar === true;
 
+  // Las mismas celdas en la tabla de escritorio y en las tarjetas de móvil:
+  // definirlas una vez evita que las dos vistas cuenten cosas distintas.
+  const plazoDe = (m: ModalidadConPlazo) =>
+    m.plazo ? (
+      `${m.plazo.diasHabiles} ${m.plazo.diasHabiles === 1 ? 'día hábil' : 'días hábiles'}`
+    ) : (
+      // Ausencia real, no un hueco de la pantalla: es justamente lo que hay
+      // que resolver.
+      <span className="text-gray-400">sin configurar</span>
+    );
+
+  const botonEditar = (m: ModalidadConPlazo) =>
+    puedeEditar ? (
+      <button
+        type="button"
+        onClick={() => setEditando(m)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-md border border-gray-200 text-slate-600 hover:border-[#003DA5] hover:text-[#003DA5] transition-colors"
+      >
+        <Pencil className="w-3 h-3" />
+        {m.plazo ? 'Cambiar' : 'Configurar'}
+      </button>
+    ) : null;
+
   return (
     <div className="space-y-3 md:space-y-4">
       <ModuleHeader
@@ -97,7 +120,33 @@ export function VistaPlazosPublicacion() {
         <SkeletonTable rows={5} />
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-          <div className="overflow-x-auto">
+          {/* Tarjetas en móvil y tabla en escritorio, como auditoría y control
+              interno: el fundamento legal es largo y no cabe en columna. */}
+          <ul className="lg:hidden m-0 p-0 list-none divide-y divide-gray-100">
+            {conPliego.map((m) => (
+              <li key={m.modalidad} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-bold text-slate-800 m-0">{m.nombre}</p>
+                    {m.plazo && !m.plazo.confirmado && (
+                      <span className="text-[10px] font-bold text-amber-700">
+                        valor sin confirmar
+                      </span>
+                    )}
+                  </div>
+                  {botonEditar(m)}
+                </div>
+                <p className="text-[12px] text-slate-700 tabular-nums m-0 mt-1">{plazoDe(m)}</p>
+                {m.plazo?.fundamento && (
+                  <p className="text-[11px] text-slate-500 m-0 mt-0.5 leading-relaxed">
+                    {m.plazo.fundamento}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 bg-slate-50">
@@ -125,29 +174,12 @@ export function VistaPlazosPublicacion() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-[12px] text-slate-700 tabular-nums">
-                      {m.plazo ? (
-                        `${m.plazo.diasHabiles} ${m.plazo.diasHabiles === 1 ? 'día hábil' : 'días hábiles'}`
-                      ) : (
-                        // Ausencia real, no un hueco de la pantalla: es
-                        // justamente lo que hay que resolver.
-                        <span className="text-gray-400">sin configurar</span>
-                      )}
+                      {plazoDe(m)}
                     </td>
                     <td className="px-4 py-2.5 text-[11.5px] text-slate-600">
                       {m.plazo?.fundamento ?? <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {puedeEditar && (
-                        <button
-                          type="button"
-                          onClick={() => setEditando(m)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-md border border-gray-200 text-slate-600 hover:border-[#003DA5] hover:text-[#003DA5] transition-colors"
-                        >
-                          <Pencil className="w-3 h-3" />
-                          {m.plazo ? 'Cambiar' : 'Configurar'}
-                        </button>
-                      )}
-                    </td>
+                    <td className="px-4 py-2.5 text-right">{botonEditar(m)}</td>
                   </tr>
                 ))}
               </tbody>

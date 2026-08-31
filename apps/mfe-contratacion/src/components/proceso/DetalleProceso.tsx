@@ -473,8 +473,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           </button>
 
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#E0EDFF] grid place-items-center flex-shrink-0">
-              <FileText className="w-5 h-5 text-[#003DA5]" />
+            {/* Gradiente y no fondo plano: misma insignia que las cabeceras de
+                control interno y gestión legal. */}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#003DA5] to-[#0051D5] grid place-items-center flex-shrink-0 shadow-md">
+              <FileText className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black text-[#003DA5] m-0 tabular-nums">
