@@ -1,11 +1,11 @@
 -- ============================================================================
 -- seed_parametrizacion.sql
 -- Description: Datos iniciales (idempotentes) para las tablas de
---              parametrización del módulo de viáticos:
---                - tipos_documento_soporte
---                - config_tipo_comisionado
---                - config_campos_formulario
---                - config_tipo_comisionado_documentos
+--              parametrización del módulo de viáticos.
+--              config_campos_formulario contiene SOLO los campos que el
+--              usuario diligencia en el formulario (los datos de identidad
+--              y contacto del comisionado se obtienen desde la tabla
+--              comisionados al consultarlo por número de documento).
 --              Usa ON CONFLICT DO NOTHING sobre las claves únicas.
 -- ============================================================================
 
@@ -19,68 +19,70 @@ BEGIN;
 -- ============================================================================
 INSERT INTO travel_expenses.tipos_documento_soporte (codigo, nombre, descripcion, activo)
 VALUES
-  ('CDP',             'CDP - Certificado de Disponibilidad Presupuestal', 'Documento que respalda la disponibilidad presupuestal para la comisión.', TRUE),
-  ('RUT',             'RUT - Registro Único Tributario',                  'Registro Único Tributario del comisionado.',                                 TRUE),
-  ('CERT_BANCARIA',   'Certificación Bancaria',                           'Certificación de la cuenta bancaria donde se consignarán los viáticos.',     TRUE),
-  ('SEGURIDAD_SOCIAL','Seguridad Social',                                 'Acreditación de pago de seguridad social vigente.',                          TRUE),
-  ('CONTRATO_SECOP',  'Contrato SECOP',                                   'Contrato vigente registrado en SECOP (para contratistas).',                  TRUE)
+  ('CDP',              'CDP - Certificado de Disponibilidad Presupuestal', 'Documento que respalda la disponibilidad presupuestal para la comisión.', TRUE),
+  ('RUT',              'RUT - Registro Único Tributario',                  'Registro Único Tributario del comisionado.',                                 TRUE),
+  ('CERT_BANCARIA',    'Certificación Bancaria',                           'Certificación de la cuenta bancaria donde se consignarán los viáticos.',     TRUE),
+  ('SEGURIDAD_SOCIAL', 'Seguridad Social',                                 'Acreditación de pago de seguridad social vigente.',                          TRUE),
+  ('CONTRATO_SECOP',   'Contrato SECOP',                                   'Contrato vigente registrado en SECOP (para contratistas).',                  TRUE)
 ON CONFLICT (codigo) DO NOTHING;
 
 -- ============================================================================
 -- 2) Configuración por tipo de comisionado
+--    Nota: NO incluye campos de identidad/contacto pues esos se obtienen
+--    automáticamente de travel_expenses.comisionados al consultar por
+--    número de documento.
 -- ============================================================================
 INSERT INTO travel_expenses.config_tipo_comisionado
   (tipo_comisionado, codigo_formulario, campos_obligatorios, campos_opcionales, campos_ocultos, activo)
 VALUES
   ('FUNCIONARIO', 'FMT023_FUNCIONARIO',
-   '["numero_documento","primer_nombre","primer_apellido","email","telefono_contacto","destino_ciudad","destino_departamento","fecha_inicio","fecha_fin","objeto_comision","prioridad","rubro_presupuestal"]'::jsonb,
-   '["segundo_nombre","segundo_apellido","requiere_tiquetes"]'::jsonb,
-   '["autorizacion_habeas_data"]'::jsonb,
+   '["documentoComisionado","destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["requiereTiquetes"]'::jsonb,
+   '[]'::jsonb,
    TRUE),
   ('CONTRATISTA', 'FMT023_CONTRATISTA',
-   '["numero_documento","primer_nombre","primer_apellido","email","telefono_contacto","destino_ciudad","destino_departamento","fecha_inicio","fecha_fin","objeto_comision","prioridad","rubro_presupuestal"]'::jsonb,
-   '["segundo_nombre","segundo_apellido","requiere_tiquetes"]'::jsonb,
+   '["documentoComisionado","destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["requiereTiquetes"]'::jsonb,
    '[]'::jsonb,
    TRUE),
   ('DOCENTE', 'FMT023_DOCENTE',
-   '["numero_documento","primer_nombre","primer_apellido","email","telefono_contacto","destino_ciudad","destino_departamento","fecha_inicio","fecha_fin","objeto_comision","prioridad","rubro_presupuestal"]'::jsonb,
-   '["segundo_nombre","segundo_apellido","requiere_tiquetes"]'::jsonb,
+   '["documentoComisionado","destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["requiereTiquetes"]'::jsonb,
    '[]'::jsonb,
    TRUE),
   ('ESTUDIANTE', 'FMT023_ESTUDIANTE',
-   '["numero_documento","primer_nombre","primer_apellido","email","destino_ciudad","destino_departamento","fecha_inicio","fecha_fin","objeto_comision","prioridad","rubro_presupuestal"]'::jsonb,
-   '["segundo_nombre","segundo_apellido","telefono_contacto","requiere_tiquetes"]'::jsonb,
+   '["documentoComisionado","destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["requiereTiquetes"]'::jsonb,
    '[]'::jsonb,
    TRUE),
   ('INVESTIGADOR', 'FMT023_INVESTIGADOR',
-   '["numero_documento","primer_nombre","primer_apellido","email","telefono_contacto","destino_ciudad","destino_departamento","fecha_inicio","fecha_fin","objeto_comision","prioridad","rubro_presupuestal"]'::jsonb,
-   '["segundo_nombre","segundo_apellido","requiere_tiquetes"]'::jsonb,
+   '["documentoComisionado","destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+   '["requiereTiquetes"]'::jsonb,
    '[]'::jsonb,
    TRUE)
 ON CONFLICT (tipo_comisionado) DO NOTHING;
 
 -- ============================================================================
 -- 3) Campos del formulario (config_campos_formulario)
+--    SOLO los campos que el usuario diligencia en el formulario.
+--    Los datos del comisionado (nombre, apellido, email, teléfono) NO se
+--    incluyen aquí porque se obtienen automáticamente al consultarlo.
 -- ============================================================================
 INSERT INTO travel_expenses.config_campos_formulario
   (clave, etiqueta, tipo_campo, placeholder, opciones, grupo, orden, activo)
 VALUES
-  ('numero_documento',         'Número de documento',             'text',     'Ej. 123456789',                       NULL,                                                       'identidad',     10, TRUE),
-  ('primer_nombre',           'Primer nombre',                    'text',     'Ingrese su primer nombre',             NULL,                                                       'identidad',     20, TRUE),
-  ('segundo_nombre',          'Segundo nombre',                   'text',     'Ingrese su segundo nombre (opcional)', NULL,                                                       'identidad',     30, TRUE),
-  ('primer_apellido',         'Primer apellido',                  'text',     'Ingrese su primer apellido',           NULL,                                                       'identidad',     40, TRUE),
-  ('segundo_apellido',        'Segundo apellido',                 'text',     'Ingrese su segundo apellido (opcional)', NULL,                                                     'identidad',     50, TRUE),
-  ('email',                   'Correo electrónico',               'email',    'usuario@esap.edu.co',                  NULL,                                                       'contacto',      60, TRUE),
-  ('telefono_contacto',       'Teléfono de contacto',             'tel',      '3001234567',                           NULL,                                                       'contacto',      70, TRUE),
-  ('destino_ciudad',          'Ciudad de destino',                'text',     'Ciudad donde se realizará la comisión', NULL,                                                       'comision',      80, TRUE),
-  ('destino_departamento',    'Departamento de destino',          'text',     'Departamento de destino',              NULL,                                                       'comision',      90, TRUE),
-  ('fecha_inicio',            'Fecha de inicio',                  'date',     'YYYY-MM-DD',                           NULL,                                                       'comision',     100, TRUE),
-  ('fecha_fin',               'Fecha de finalización',            'date',     'YYYY-MM-DD',                           NULL,                                                       'comision',     110, TRUE),
-  ('objeto_comision',         'Objeto de la comisión',            'textarea', 'Describa brevemente el objeto de la comisión', NULL,                                              'comision',     120, TRUE),
-  ('prioridad',               'Prioridad',               'select',   NULL,                                    '[{"value":"ALTA","label":"Alta"},{"value":"MEDIA","label":"Media"},{"value":"BAJA","label":"Baja"}]'::jsonb, 'comision',     130, TRUE),
-  ('rubro_presupuestal',      'Rubro presupuestal',               'text',     'Código del rubro',                     NULL,                                                       'presupuesto',   140, TRUE),
-  ('requiere_tiquetes',       '¿Requiere tiquetes?',              'checkbox', NULL,                                    NULL,                                                       'tiquetes',      150, TRUE),
-  ('autorizacion_habeas_data','Autorización Habeas Data',         'checkbox', NULL,                                    NULL,                                                       'legal',         160, TRUE)
+  ('documentoComisionado', 'Número de documento',             'text',     'Ingrese el número de documento y presione Consultar',  NULL,                                                                                                                                                                                                                                                                'identidad',   10, TRUE),
+  ('objetoComision',       'Objeto de la comisión',           'textarea', 'Describa el objetivo institucional de la comisión',     NULL,                                                                                                                                                                                                                                                                'comision',    20, TRUE),
+  ('destinoCiudad',        'Ciudad de destino',               'text',     'Ciudad donde se realizará la comisión',                 NULL,                                                                                                                                                                                                                                                                'comision',    30, TRUE),
+  ('destinoDepartamento',  'Departamento de destino',         'text',     'Departamento de destino',                               NULL,                                                                                                                                                                                                                                                                'comision',    40, TRUE),
+  ('fechaInicio',          'Fecha de inicio',                 'date',     'YYYY-MM-DD',                                            NULL,                                                                                                                                                                                                                                                                'comision',    50, TRUE),
+  ('fechaFin',             'Fecha de finalización',           'date',     'YYYY-MM-DD',                                            NULL,                                                                                                                                                                                                                                                                'comision',    60, TRUE),
+  ('prioridad',            'Prioridad',                       'select',   NULL,                                                    '[{"value":"ALTA","label":"Alta"},{"value":"MEDIA","label":"Media"},{"value":"BAJA","label":"Baja"}]'::jsonb,                                                                                                                                                              'comision',    70, TRUE),
+  ('rubroPresupuestal',    'Rubro presupuestal',              'text',     'Código del rubro',                                      NULL,                                                                                                                                                                                                                                                                'presupuesto', 80, TRUE),
+  ('montoViaticos',        'Viáticos (COP)',                  'number',   '0.00',                                                  NULL,                                                                                                                                                                                                                                                                'presupuesto', 90, TRUE),
+  ('montoGastosViaje',     'Gastos de viaje (COP)',           'number',   '0.00',                                                  NULL,                                                                                                                                                                                                                                                                'presupuesto',100, TRUE),
+  ('diasComision',         'Días de comisión',                'number',   '1',                                                     NULL,                                                                                                                                                                                                                                                                'presupuesto',110, TRUE),
+  ('requiereTiquetes',     '¿Requiere tiquetes?',             'checkbox', NULL,                                                    NULL,                                                                                                                                                                                                                                                                'tiquetes',   120, TRUE)
 ON CONFLICT (clave) DO NOTHING;
 
 -- ============================================================================

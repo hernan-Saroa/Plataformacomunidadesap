@@ -62,14 +62,10 @@ export class ConfigController {
     return this.configService.obtenerTodasConfiguraciones();
   }
 
-  @Get('config-tipo-comisionado/:tipo')
+  @Get('config-tipo-comisionado/default')
   @Permissions('travel_expenses:read')
-  async obtenerConfiguracionPorTipo(@Param('tipo') tipo: string) {
-    const config = await this.configService.obtenerConfiguracionPorTipo(tipo);
-    if (!config) {
-      return { message: 'Configuración no encontrada para el tipo', tipo, config: null };
-    }
-    return config;
+  async obtenerConfiguracionPorDefecto() {
+    return this.configService.obtenerConfiguracionPorDefecto();
   }
 
   @Get('config-tipo-comisionado/formulario/:codigo')
@@ -82,10 +78,14 @@ export class ConfigController {
     return config;
   }
 
-  @Get('config-tipo-comisionado/default')
+  @Get('config-tipo-comisionado/:tipo')
   @Permissions('travel_expenses:read')
-  async obtenerConfiguracionPorDefecto() {
-    return this.configService.obtenerConfiguracionPorDefecto();
+  async obtenerConfiguracionPorTipo(@Param('tipo') tipo: string) {
+    const config = await this.configService.obtenerConfiguracionPorTipo(tipo);
+    if (!config) {
+      return { message: 'Configuración no encontrada para el tipo', tipo, config: null };
+    }
+    return config;
   }
 
   @Post('config-tipo-comisionado')

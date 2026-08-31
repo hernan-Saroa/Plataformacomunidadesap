@@ -46,6 +46,7 @@ export interface FormNuevaSolicitud {
   montoGastosViaje: number;
   diasComision: number;
   aceptaHabeasData: boolean;
+  documentos?: DocumentoSoporte[];
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';

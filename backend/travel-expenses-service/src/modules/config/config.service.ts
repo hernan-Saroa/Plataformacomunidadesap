@@ -187,6 +187,9 @@ export class ConfigService {
     for (const codigo of codigosDocumentos) {
       let tipoDoc = await this.tipoDocumentoRepo.findOne({ where: { codigo } });
       if (!tipoDoc) {
+        tipoDoc = await this.tipoDocumentoRepo.findOne({ where: { id: codigo } }).catch(() => null);
+      }
+      if (!tipoDoc) {
         tipoDoc = this.tipoDocumentoRepo.create({
           codigo,
           nombre: codigo,

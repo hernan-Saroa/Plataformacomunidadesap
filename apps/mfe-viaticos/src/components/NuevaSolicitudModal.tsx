@@ -180,6 +180,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return parametrizacion.camposOcultos.includes(clave);
   };
 
+  const documentosObligatoriosLista = (parametrizacion?.documentos ?? [])
+    .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+    .map((d) => d.tipoDocumentoSoporte?.codigo)
+    .filter((codigo): codigo is string => Boolean(codigo));
+
   const manejarCambioDepartamento = (nombre: string) => {
     actualizar('destinoDepartamento', nombre);
     actualizar('destinoCiudad', '');
@@ -275,7 +280,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         setErrorValidacion(error);
         return;
       }
-      if (comisionado && parametrizacion) {
+       if (comisionado && parametrizacion) {
         const documentosObligatorios = parametrizacion.documentos
           .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
           .map((d) => d.tipoDocumentoSoporte?.codigo)
@@ -285,12 +290,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           (doc) => !(form.documentos || []).some((d) => d.tipoDocumento === doc),
         );
         setDocumentosFaltantes(faltantes);
-        if (faltantes.length > 0) {
-          setErrorValidacion(
-            `Faltan documentos obligatorios para ${comisionado.tipoComisionado}: ${faltantes.join(', ')}`,
-          );
-          return;
-        }
       }
     }
     setErrorValidacion(null);
@@ -819,11 +818,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <p className="bg-slate-50 rounded-lg p-2.5 text-slate-700 leading-relaxed">{form.objetoComision}</p>
                   </div>
                 )}
-                {parametrizacion && parametrizacion.documentosObligatorios.length > 0 && (
+                {parametrizacion && documentosObligatoriosLista.length > 0 && (
                   <div className="px-4 py-2.5">
                     <span className="text-slate-400 font-bold block mb-1">Documentos requeridos</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {parametrizacion.documentosObligatorios.map((doc) => (
+                      {documentosObligatoriosLista.map((doc) => (
                         <span
                           key={doc}
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${
@@ -839,6 +838,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     {documentosFaltantes.length > 0 && (
                       <p className="text-[11px] text-red-600 font-semibold mt-1">
                         Faltan por cargar: {documentosFaltantes.join(', ')}
+                      </p>
+                    )}
+                    {documentosFaltantes.length > 0 && (
+                      <p className="text-[10px] text-slate-500 mt-1 italic">
+                        Puedes radicar la solicitud y cargar estos documentos después en la sección de legalización.
                       </p>
                     )}
                   </div>

@@ -10,7 +10,16 @@ import {
   EstadoSolicitudViatico,
   Geopolitica,
 } from '../../types/viaticos';
-import { ParametrizacionFormulario, ConfigTipoComisionado } from '../types/parametrizacion';
+import {
+  ParametrizacionFormulario,
+  ConfigTipoComisionado,
+  CampoFormulario,
+  TipoDocumentoSoporte,
+  CrearCampoFormularioDTO,
+  ActualizarCampoFormularioDTO,
+  CrearConfigTipoComisionadoDTO,
+  ActualizarConfigTipoComisionadoDTO,
+} from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
 /**
@@ -234,7 +243,12 @@ export class ViaticosService {
   }
 
   async obtenerParametrizacionFormulario(): Promise<ParametrizacionFormulario> {
-    return apiClient.get<ParametrizacionFormulario>('/viaticos/api/v1/parametrizacion/formulario');
+    try {
+      return await apiClient.get<ParametrizacionFormulario>('/viaticos/api/v1/parametrizacion/formulario');
+    } catch (error) {
+      console.error('Error obteniendo parametrización del formulario:', error);
+      return { campos: [], configuraciones: {} };
+    }
   }
 
   async obtenerParametrizacionPorCodigoFormulario(codigo: string): Promise<ConfigTipoComisionado | null> {
@@ -277,6 +291,105 @@ export class ViaticosService {
       console.error('Error validando campos obligatorios:', error);
       return [];
     }
+  }
+
+  async obtenerConfiguracionPorTipo(tipoComisionado: string): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.get<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipoComisionado)}`);
+    } catch (error) {
+      console.error('Error obteniendo configuración por tipo:', error);
+      return null;
+    }
+  }
+
+  async obtenerTodasConfiguraciones(): Promise<ConfigTipoComisionado[]> {
+    try {
+      return await apiClient.get<ConfigTipoComisionado[]>('/viaticos/api/v1/parametrizacion/config-tipo-comisionado');
+    } catch (error) {
+      console.error('Error obteniendo todas las configuraciones:', error);
+      return [];
+    }
+  }
+
+  async obtenerCamposFormulario(): Promise<CampoFormulario[]> {
+    try {
+      return await apiClient.get<CampoFormulario[]>('/viaticos/api/v1/parametrizacion/campos-formulario');
+    } catch (error) {
+      console.error('Error obteniendo campos del formulario:', error);
+      return [];
+    }
+  }
+
+  async obtenerTiposDocumentoSoporte(): Promise<TipoDocumentoSoporte[]> {
+    try {
+      return await apiClient.get<TipoDocumentoSoporte[]>('/viaticos/api/v1/parametrizacion/tipos-documento-soporte');
+    } catch (error) {
+      console.error('Error obteniendo tipos de documento soporte:', error);
+      return [];
+    }
+  }
+
+  async crearCampoFormulario(dto: CrearCampoFormularioDTO): Promise<CampoFormulario | null> {
+    try {
+      return await apiClient.post<CampoFormulario>('/viaticos/api/v1/parametrizacion/campos-formulario', dto);
+    } catch (error) {
+      console.error('Error creando campo del formulario:', error);
+      throw error;
+    }
+  }
+
+  async actualizarCampoFormulario(clave: string, dto: ActualizarCampoFormularioDTO): Promise<CampoFormulario | null> {
+    try {
+      return await apiClient.put<CampoFormulario>(`/viaticos/api/v1/parametrizacion/campos-formulario/${encodeURIComponent(clave)}`, dto);
+    } catch (error) {
+      console.error('Error actualizando campo del formulario:', error);
+      throw error;
+    }
+  }
+
+  async eliminarCampoFormulario(clave: string): Promise<void> {
+    try {
+      await apiClient.delete(`/viaticos/api/v1/parametrizacion/campos-formulario/${encodeURIComponent(clave)}`);
+    } catch (error) {
+      console.error('Error eliminando campo del formulario:', error);
+      throw error;
+    }
+  }
+
+  async crearConfigTipoComisionado(dto: CrearConfigTipoComisionadoDTO): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.post<ConfigTipoComisionado>('/viaticos/api/v1/parametrizacion/config-tipo-comisionado', dto);
+    } catch (error) {
+      console.error('Error creando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  async actualizarConfigTipoComisionado(tipo: string, dto: ActualizarConfigTipoComisionadoDTO): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.put<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipo)}`, dto);
+    } catch (error) {
+      console.error('Error actualizando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  extraerDocumentosRequeridos(config: ConfigTipoComisionado | null): { obligatorios: TipoDocumentoSoporte[]; opcionales: TipoDocumentoSoporte[] } {
+    if (!config || !config.documentos) {
+      return { obligatorios: [], opcionales: [] };
+    }
+
+    const obligatorios = config.documentos
+      .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+      .map((d) => d.tipoDocumentoSoporte)
+      .filter((doc): doc is TipoDocumentoSoporte => Boolean(doc));
+
+    const opcionales = config.documentos
+      .filter((d) => d.tipoRequisito === 'OPCIONAL')
+      .map((d) => d.tipoDocumentoSoporte)
+      .filter((doc): doc is TipoDocumentoSoporte => Boolean(doc));
+
+    return { obligatorios, opcionales };
   }
 
   async crearSolicitudComision(data: CreateSolicitudRequest): Promise<SolicitudComisionResponse> {

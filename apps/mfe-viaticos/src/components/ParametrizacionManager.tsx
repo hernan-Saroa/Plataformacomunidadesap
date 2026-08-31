@@ -12,7 +12,7 @@ import {
   ToggleLeft,
   ToggleRight,
 } from 'lucide-react';
-import parametrizacionService from '../services/api/parametrizacionService';
+import viaticosService from '../services/api/viaticosService';
 import {
   CampoFormulario,
   ConfigTipoComisionado,
@@ -101,9 +101,9 @@ export default function ParametrizacionManager() {
     setError(null);
     try {
       const [camposRes, configsRes, docsRes] = await Promise.all([
-        parametrizacionService.obtenerCamposFormulario(),
-        parametrizacionService.obtenerTodasConfiguraciones(),
-        parametrizacionService.obtenerTiposDocumentoSoporte(),
+        viaticosService.obtenerCamposFormulario(),
+        viaticosService.obtenerTodasConfiguraciones(),
+        viaticosService.obtenerTiposDocumentoSoporte(),
       ]);
       setCampos(camposRes);
       setConfiguraciones(configsRes);
@@ -168,7 +168,7 @@ export default function ParametrizacionManager() {
           activo: campoEditando.activo,
           opciones,
         };
-        await parametrizacionService.actualizarCampoFormulario(campoEditando.clave, dto);
+        await viaticosService.actualizarCampoFormulario(campoEditando.clave, dto);
         mostrarExito(`Campo "${campoEditando.clave}" actualizado correctamente.`);
       } else {
         const dto: CrearCampoFormularioDTO = {
@@ -181,7 +181,7 @@ export default function ParametrizacionManager() {
           activo: campoEditando.activo,
           opciones,
         };
-        await parametrizacionService.crearCampoFormulario(dto);
+        await viaticosService.crearCampoFormulario(dto);
         mostrarExito(`Campo "${campoEditando.clave}" creado correctamente.`);
       }
       cerrarModalCampo();
@@ -198,7 +198,7 @@ export default function ParametrizacionManager() {
     if (!campoAEliminar) return;
     setError(null);
     try {
-      await parametrizacionService.eliminarCampoFormulario(campoAEliminar.clave);
+       await viaticosService.eliminarCampoFormulario(campoAEliminar.clave);
       mostrarExito(`Campo "${campoAEliminar.clave}" eliminado.`);
       setCampoAEliminar(null);
       await cargarDatos();
@@ -241,10 +241,10 @@ export default function ParametrizacionManager() {
         camposOcultos: [...config.camposOcultos],
         documentosObligatorios: config.documentos
           .filter(d => d.tipoRequisito === 'OBLIGATORIO')
-          .map(d => d.tipoDocumentoSoporteId),
+          .map(d => d.tipoDocumentoSoporte?.codigo ?? d.tipoDocumentoSoporteId),
         documentosOpcionales: config.documentos
           .filter(d => d.tipoRequisito === 'OPCIONAL')
-          .map(d => d.tipoDocumentoSoporteId),
+          .map(d => d.tipoDocumentoSoporte?.codigo ?? d.tipoDocumentoSoporteId),
         activo: config.activo,
       });
       setConfigEsNueva(false);
@@ -298,7 +298,7 @@ export default function ParametrizacionManager() {
           documentosOpcionales: configEditando.documentosOpcionales,
           activo: configEditando.activo,
         };
-        await parametrizacionService.crearConfigTipoComisionado(dto);
+         await viaticosService.crearConfigTipoComisionado(dto);
         mostrarExito(`Configuración "${configEditando.tipoComisionado}" creada correctamente.`);
       } else {
         const dto: ActualizarConfigTipoComisionadoDTO = {
@@ -310,7 +310,7 @@ export default function ParametrizacionManager() {
           documentosOpcionales: configEditando.documentosOpcionales,
           activo: configEditando.activo,
         };
-        await parametrizacionService.actualizarConfigTipoComisionado(configEditando.tipoComisionado, dto);
+         await viaticosService.actualizarConfigTipoComisionado(configEditando.tipoComisionado, dto);
         mostrarExito(`Configuración "${configEditando.tipoComisionado}" actualizada correctamente.`);
       }
       cerrarModalConfig();
@@ -861,8 +861,8 @@ export default function ParametrizacionManager() {
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2">Documentos Requeridos</label>
                   <div className="space-y-1 max-h-36 overflow-y-auto border border-slate-200 rounded-lg p-2">
                     {tiposDocumento.map((doc) => {
-                      const esObli = configEditando.documentosObligatorios.includes(doc.id);
-                      const esOpci = configEditando.documentosOpcionales.includes(doc.id);
+                      const esObli = configEditando.documentosObligatorios.includes(doc.codigo);
+                      const esOpci = configEditando.documentosOpcionales.includes(doc.codigo);
                       return (
                         <div key={doc.id} className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
                           <div className="flex items-center gap-2">
@@ -872,7 +872,7 @@ export default function ParametrizacionManager() {
                           <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              onClick={() => toggleDocEnLista(doc.id, 'obligatorios')}
+                              onClick={() => toggleDocEnLista(doc.codigo, 'obligatorios')}
                               className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${
                                 esObli ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500 hover:bg-red-50'
                               }`}
@@ -882,7 +882,7 @@ export default function ParametrizacionManager() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => toggleDocEnLista(doc.id, 'opcionales')}
+                              onClick={() => toggleDocEnLista(doc.codigo, 'opcionales')}
                               className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors ${
                                 esOpci ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500 hover:bg-blue-50'
                               }`}
