@@ -23,7 +23,10 @@ VALUES
   ('RUT',              'RUT - Registro Único Tributario',                  'Registro Único Tributario del comisionado.',                                 TRUE),
   ('CERT_BANCARIA',    'Certificación Bancaria',                           'Certificación de la cuenta bancaria donde se consignarán los viáticos.',     TRUE),
   ('SEGURIDAD_SOCIAL', 'Seguridad Social',                                 'Acreditación de pago de seguridad social vigente.',                          TRUE),
-  ('CONTRATO_SECOP',   'Contrato SECOP',                                   'Contrato vigente registrado en SECOP (para contratistas).',                  TRUE)
+  ('CONTRATO_SECOP',   'Contrato SECOP',                                   'Contrato vigente registrado en SECOP (para contratistas).',                  TRUE),
+  ('PASAPORTE',        'Pasaporte',                                        'Documento de viajero para comisiones internacionales.',                    TRUE),
+  ('CARTA_INVITACION', 'Carta de Invitación',                              'Carta institucional de invitación para comisión especial.',             TRUE),
+  ('RESOLUCION_ACTO',  'Resolución / Acto Administrativo',                 'Acto administrativo que autoriza la comisión.',                         TRUE)
 ON CONFLICT (codigo) DO NOTHING;
 
 -- ============================================================================
@@ -55,12 +58,22 @@ VALUES
    '["documentoComisionado","requiereTiquetes"]'::jsonb,
    '[]'::jsonb,
    TRUE),
-  ('INVESTIGADOR', 'FMT023_INVESTIGADOR',
-   '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
-   '["documentoComisionado","requiereTiquetes"]'::jsonb,
-   '[]'::jsonb,
-   TRUE)
-ON CONFLICT (tipo_comisionado) DO NOTHING;
+   ('INVESTIGADOR', 'FMT023_INVESTIGADOR',
+    '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+    '["documentoComisionado","requiereTiquetes"]'::jsonb,
+    '[]'::jsonb,
+    TRUE),
+   ('INTERNACIONAL', 'FMT023_INTERNACIONAL',
+    '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+    '["documentoComisionado","requiereTiquetes"]'::jsonb,
+    '[]'::jsonb,
+    TRUE),
+   ('ACTO_ADMINISTRATIVO', 'FMT023_ACTO_ADMIN',
+    '["destinoCiudad","destinoDepartamento","fechaInicio","fechaFin","objetoComision","prioridad","rubroPresupuestal","montoViaticos","montoGastosViaje","diasComision"]'::jsonb,
+    '["documentoComisionado","requiereTiquetes"]'::jsonb,
+    '[]'::jsonb,
+    TRUE)
+   ON CONFLICT (tipo_comisionado) DO NOTHING;
 
 -- ============================================================================
 -- 3) Campos del formulario (config_campos_formulario)
@@ -107,11 +120,17 @@ FROM (VALUES
   ('DOCENTE',      'SEGURIDAD_SOCIAL', 'OPCIONAL'),
   ('ESTUDIANTE',   'RUT',              'OBLIGATORIO'),
   ('ESTUDIANTE',   'CERT_BANCARIA',    'OPCIONAL'),
-  ('INVESTIGADOR', 'CDP',              'OBLIGATORIO'),
-  ('INVESTIGADOR', 'RUT',              'OBLIGATORIO'),
-  ('INVESTIGADOR', 'CERT_BANCARIA',    'OBLIGATORIO'),
-  ('INVESTIGADOR', 'SEGURIDAD_SOCIAL', 'OPCIONAL')
-) AS v(tipo_comisionado, codigo_documento, tipo_requisito)
+   ('INVESTIGADOR', 'CDP',              'OBLIGATORIO'),
+   ('INVESTIGADOR', 'RUT',              'OBLIGATORIO'),
+   ('INVESTIGADOR', 'CERT_BANCARIA',    'OBLIGATORIO'),
+   ('INVESTIGADOR', 'SEGURIDAD_SOCIAL', 'OPCIONAL'),
+   -- Comisiones especiales (HU casos especiales: internacional / acto administrativo)
+   ('INTERNACIONAL',  'PASAPORTE',        'OBLIGATORIO'),
+   ('INTERNACIONAL',  'CARTA_INVITACION', 'OBLIGATORIO'),
+   ('INTERNACIONAL',  'RESOLUCION_ACTO',  'OBLIGATORIO'),
+   ('ACTO_ADMINISTRATIVO', 'RESOLUCION_ACTO',  'OBLIGATORIO'),
+   ('ACTO_ADMINISTRATIVO', 'RUT',              'OBLIGATORIO')
+ ) AS v(tipo_comisionado, codigo_documento, tipo_requisito)
 JOIN travel_expenses.config_tipo_comisionado c ON c.tipo_comisionado = v.tipo_comisionado
 JOIN travel_expenses.tipos_documento_soporte  t ON t.codigo           = v.codigo_documento
 ON CONFLICT (config_tipo_comisionado_id, tipo_documento_soporte_id) DO NOTHING;

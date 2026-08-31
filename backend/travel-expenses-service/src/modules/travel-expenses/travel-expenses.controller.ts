@@ -8,8 +8,10 @@ import {
   Req,
   Header,
   Query,
+  Res,
 } from '@nestjs/common';
 import { Request } from 'express';
+import type { Response } from 'express';
 import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
@@ -144,6 +146,24 @@ export class TravelExpensesController {
     return this.service.subirDocumento(id, dto);
   }
 
+  @Post('requests/:id/finalizar')
+  @Permissions('travel_expenses:create_request')
+  finalizarSolicitud(@Param('id') id: string) {
+    return this.service.finalizarSolicitud(id);
+  }
+
+  @Get('requests/:id')
+  @Permissions('travel_expenses:read')
+  obtenerSolicitud(@Param('id') id: string) {
+    return this.service.obtenerSolicitudCompleta(id);
+  }
+
+  @Get('parametrizacion/checklist/:tipo')
+  @Permissions('travel_expenses:read')
+  obtenerChecklistDocumentos(@Param('tipo') tipo: string) {
+    return this.service.obtenerChecklistDocumentos(tipo);
+  }
+
   @Get('parametrizacion/formulario')
   @Permissions('travel_expenses:read')
   obtenerParametrizacionFormulario() {
@@ -192,5 +212,20 @@ export class TravelExpensesController {
         )
       : {};
     return this.service.validarCamposObligatorios(tipo, datosCampos);
+  }
+
+  @Get('solicitudes/:id/exportar/pdf')
+  @Permissions('travel_expenses:read')
+  async exportarFormato023(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.service.exportarFormato023(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Formato-023-Solicitud-${id}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
   }
 }

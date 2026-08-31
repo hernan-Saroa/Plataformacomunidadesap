@@ -38,8 +38,9 @@ FROM (VALUES
   ('COM-2026-0002', '1004734004', 'Medellín',     'Antioquia',        '2026-09-10'::timestamp, '2026-09-12'::timestamp, 'Comision de capacitacion docente',          'MEDIA', 'Rubro 02', true,  'APROBADO_JEFE',             false, false),
   ('COM-2026-0003', '1019283746', 'Cali',         'Valle del Cauca',  '2026-09-15'::timestamp, '2026-09-18'::timestamp, 'Acompanamiento a autoevaluacion institucional', 'ALTA', 'Rubro 03', true, 'APROBADO_TALENTO_HUMANO', false, false),
   ('COM-2026-0004', '52839102',   'Bucaramanga',  'Santander',        '2026-09-20'::timestamp, '2026-09-25'::timestamp, 'Sesion de trabajo territorial',             'MEDIA', 'Rubro 04', false, 'EXTEMPORANEA',              true,  true),
-  ('COM-2026-0005', '79483920',   'Cartagena',    'Bolívar',          '2026-10-02'::timestamp, '2026-10-06'::timestamp, 'Inspeccion de programas academicos',        'ALTA',  'Rubro 05', true,  'TIQUETES_COMPRADOS',        false, false)
-) AS v(consecutivo_unico, numero_documento, destino_ciudad, destino_departamento, fecha_inicio, fecha_fin, objeto_comision, prioridad, rubro_presupuestal, requiere_tiquetes, estado_solicitud, radicado_fuera_jornada, extemporanea)
+   ('COM-2026-0005', '79483920',   'Cartagena',    'Bolívar',          '2026-10-02'::timestamp, '2026-10-06'::timestamp, 'Inspeccion de programas academicos',        'ALTA',  'Rubro 05', true,  'TIQUETES_COMPRADOS',        false, false),
+   ('COM-2026-0006', '1019283746', 'Barranquilla', 'Atlántico',        '2026-11-03'::timestamp, '2026-11-07'::timestamp, 'Coomitión de seguimiento al SIC',           'ALTA',  'Rubro 06', false, 'PENDIENTE',                  false, false)
+ ) AS v(consecutivo_unico, numero_documento, destino_ciudad, destino_departamento, fecha_inicio, fecha_fin, objeto_comision, prioridad, rubro_presupuestal, requiere_tiquetes, estado_solicitud, radicado_fuera_jornada, extemporanea)
 JOIN travel_expenses.comisionados c ON c.numero_documento = v.numero_documento
 ON CONFLICT (consecutivo_unico) DO NOTHING;
 

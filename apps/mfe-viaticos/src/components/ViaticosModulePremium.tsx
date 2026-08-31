@@ -17,6 +17,7 @@ import {
   X,
   UserCheck,
   Settings,
+  Download,
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
@@ -38,6 +39,7 @@ export default function ViaticosModulePremium() {
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
 
   const cargarDatos = async () => {
@@ -128,6 +130,19 @@ export default function ViaticosModulePremium() {
     const ref = solicitud.consecutivoUnico || 'su solicitud';
     setMensajeExito(`La solicitud ${ref} fue radicada correctamente.`);
     cargarDatos();
+  };
+
+  const handleExportarPDF = async (solicitud: SolicitudViatico) => {
+    setExportando(true);
+    try {
+      await viaticosService.exportarFormato023(solicitud.id, solicitud.codigo);
+      setMensajeExito(`Formato 023 de la solicitud ${solicitud.codigo} exportado correctamente.`);
+    } catch (error) {
+      console.error('Error al exportar Formato 023:', error);
+      setMensajeExito('Error al exportar el Formato 023. Intente nuevamente.');
+    } finally {
+      setExportando(false);
+    }
   };
 
   return (
@@ -349,16 +364,28 @@ export default function ViaticosModulePremium() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => setSolicitudSeleccionada(sol)}
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-slate-500" />
-                                Ver Detalle
-                              </button>
-                            </td>
+                             <td className="px-4 py-3 text-right">
+                               <div className="flex items-center justify-end gap-1.5">
+                                 <button
+                                   type="button"
+                                   onClick={() => handleExportarPDF(sol)}
+                                   disabled={exportando}
+                                   className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold inline-flex items-center gap-1 transition-colors disabled:opacity-50"
+                                   title="Exportar Formato 023"
+                                 >
+                                   <Download className="w-3.5 h-3.5" />
+                                   Exportar
+                                 </button>
+                                 <button
+                                   type="button"
+                                   onClick={() => setSolicitudSeleccionada(sol)}
+                                   className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                                 >
+                                   <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                   Ver Detalle
+                                 </button>
+                               </div>
+                             </td>
                           </tr>
                         ))
                       )}
@@ -491,7 +518,16 @@ export default function ViaticosModulePremium() {
                     </p>
                   </div>
                 </div>
-                <div className="pt-3 border-t border-slate-100 flex justify-end">
+                <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}
+                    disabled={exportando}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs inline-flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {exportando ? 'Exportando...' : 'Exportar Formato 023'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSolicitudSeleccionada(null)}

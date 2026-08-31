@@ -82,5 +82,15 @@ export class CreateSolicitudDto {
     nombreArchivoOriginal: string;
     nombreArchivoSeguro: string;
     urlRepositorio: string;
+    tipoMime?: string;
   }>;
+
+  @IsOptional()
+  @IsBoolean()
+  modoBorrador?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
+  tipoComision?: string;
 }

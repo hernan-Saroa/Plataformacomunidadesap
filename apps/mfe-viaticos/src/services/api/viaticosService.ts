@@ -432,6 +432,24 @@ export class ViaticosService {
       .replace(/ñ/gi, 'n')
       .replace(/[^a-zA-Z0-9._-]/g, '_');
   }
+
+  async exportarFormato023(solicitudId: string, codigo: string): Promise<void> {
+    try {
+      const blob = await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Formato-023-Solicitud-${codigo}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exportando Formato 023:', error);
+      throw error;
+    }
+  }
 }
 
 export const viaticosService = new ViaticosService();

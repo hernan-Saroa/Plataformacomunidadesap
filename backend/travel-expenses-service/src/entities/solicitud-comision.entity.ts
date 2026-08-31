@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { ComisionadoEntity } from './comisionado.entity';
 import { DocumentoSoporteEntity } from './documento-soporte.entity';
+import { EstadoSolicitud, ESTADOS_SOLICITUD } from './estado-solicitud.enum';
 
 @Entity({ schema: 'travel_expenses', name: 'solicitudes_comision' })
 @Index('idx_solicitudes_consecutivo_unico', ['consecutivoUnico'], {
@@ -87,13 +88,14 @@ export class SolicitudComisionEntity {
   @Column({ name: 'dias_comision', type: 'int', default: 1 })
   diasComision: number;
 
-  @Column({
-    name: 'estado_solicitud',
-    type: 'varchar',
-    length: 50,
-    default: 'RADICADA',
-  })
-  estadoSolicitud: string;
+   @Column({
+     name: 'estado_solicitud',
+     type: 'varchar',
+     length: 50,
+     enum: ESTADOS_SOLICITUD,
+     default: EstadoSolicitud.PENDIENTE,
+   })
+   estadoSolicitud: EstadoSolicitud;
 
   @Column({ name: 'radicado_fuera_jornada', type: 'boolean', default: false })
   radicadoFueraJornada: boolean;
@@ -101,11 +103,14 @@ export class SolicitudComisionEntity {
   @Column({ name: 'extemporanea', type: 'boolean', default: false })
   extemporanea: boolean;
 
-  @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
-  creadoPorUsuarioId: string;
+   @Column({ name: 'tipo_comision', type: 'varchar', length: 50, default: 'TERRESTRE' })
+   tipoComision: string;
 
-  @CreateDateColumn({ name: 'creado_en' })
-  creadoEn: Date;
+   @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
+   creadoPorUsuarioId: string;
+
+   @CreateDateColumn({ name: 'creado_en' })
+   creadoEn: Date;
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;

@@ -101,6 +101,21 @@ export class ApiClient {
     if (!text) return {} as T;
     return JSON.parse(text) as T;
   }
+
+  async getBlob(endpoint: string): Promise<Blob> {
+    const url = this.buildURL(endpoint);
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error ${response.status}: ${response.statusText}`);
+    }
+
+    return response.blob();
+  }
 }
 
 export const apiClient = new ApiClient();

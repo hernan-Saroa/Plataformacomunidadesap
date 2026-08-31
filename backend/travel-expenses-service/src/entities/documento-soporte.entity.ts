@@ -34,6 +34,14 @@ export class DocumentoSoporteEntity {
   @Column({ name: 'url_repositorio', type: 'varchar', length: 512 })
   urlRepositorio: string;
 
+  @Column({
+    name: 'tipo_mime',
+    type: 'varchar',
+    length: 100,
+    default: 'application/pdf',
+  })
+  tipoMime: string;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 }
