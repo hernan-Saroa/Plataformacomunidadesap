@@ -262,18 +262,28 @@ export default function ParametrizacionManager() {
 
   const toggleCampoEnLista = (campo: string, lista: 'obligatorios' | 'opcionales' | 'ocultos') => {
     if (!configEditando) return;
-    const key = `campos${lista.charAt(0).toUpperCase() + lista.slice(1)}` as keyof ConfigFormularioEstado;
-    const arr = configEditando[key] as string[];
-    const nuevo = arr.includes(campo) ? arr.filter(c => c !== campo) : [...arr, campo];
-    setConfigEditando({ ...configEditando, [key]: nuevo });
+    const siguientes: ConfigFormularioEstado = {
+      ...configEditando,
+      camposObligatorios: configEditando.camposObligatorios.filter(c => c !== campo),
+      camposOpcionales: configEditando.camposOpcionales.filter(c => c !== campo),
+      camposOcultos: configEditando.camposOcultos.filter(c => c !== campo),
+    };
+    if (lista === 'obligatorios') siguientes.camposObligatorios = [...siguientes.camposObligatorios, campo];
+    else if (lista === 'opcionales') siguientes.camposOpcionales = [...siguientes.camposOpcionales, campo];
+    else siguientes.camposOcultos = [...siguientes.camposOcultos, campo];
+    setConfigEditando(siguientes);
   };
 
   const toggleDocEnLista = (docId: string, lista: 'obligatorios' | 'opcionales') => {
     if (!configEditando) return;
-    const key = `documentos${lista.charAt(0).toUpperCase() + lista.slice(1)}` as keyof ConfigFormularioEstado;
-    const arr = configEditando[key] as string[];
-    const nuevo = arr.includes(docId) ? arr.filter(d => d !== docId) : [...arr, docId];
-    setConfigEditando({ ...configEditando, [key]: nuevo });
+    const siguientes: ConfigFormularioEstado = {
+      ...configEditando,
+      documentosObligatorios: configEditando.documentosObligatorios.filter(d => d !== docId),
+      documentosOpcionales: configEditando.documentosOpcionales.filter(d => d !== docId),
+    };
+    if (lista === 'obligatorios') siguientes.documentosObligatorios = [...siguientes.documentosObligatorios, docId];
+    else siguientes.documentosOpcionales = [...siguientes.documentosOpcionales, docId];
+    setConfigEditando(siguientes);
   };
 
   const guardarConfig = async () => {

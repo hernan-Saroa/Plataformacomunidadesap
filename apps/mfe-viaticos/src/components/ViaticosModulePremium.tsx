@@ -138,7 +138,11 @@ export default function ViaticosModulePremium() {
       moduleColor="#003DA5"
       groups={grupos}
       activeSection={seccion}
-      onSectionChange={(s) => setSeccion(s as Seccion)}
+      onSectionChange={(s) => {
+        setSeccion(s as Seccion);
+        setModalNuevaAbierta(false);
+        setSolicitudSeleccionada(null);
+      }}
     >
       {mensajeExito && (
         <div className="mb-4 flex items-start justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3 text-xs font-semibold">
