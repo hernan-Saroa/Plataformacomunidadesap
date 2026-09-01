@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { CatalogoModule } from './catalogo/catalogo.module.js';
+import { GruposModule } from './grupos/grupos.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { CatalogoModule } from './catalogo/catalogo.module.js';
       }),
     }),
     CatalogoModule,
+    GruposModule,
   ],
   controllers: [AppController],
   providers: [AppService],

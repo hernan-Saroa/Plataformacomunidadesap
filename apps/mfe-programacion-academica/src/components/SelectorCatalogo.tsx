@@ -7,7 +7,9 @@ import {
   type NivelAcademico,
   type ProgramaCatalogo,
   type SemestreCatalogo,
+  type AsignaturaCatalogo,
 } from '../services/api/catalogoApi';
+import { GestionGrupos } from './GestionGrupos';
 
 /**
  * EFDS-1368 — Selección en cascada nivel → programa y catálogo por semestre.
@@ -35,6 +37,8 @@ export function SelectorCatalogo() {
   const [cargandoCatalogo, setCargandoCatalogo] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  // EFDS-1370: la asignatura elegida abre su gestión de grupos debajo del plan.
+  const [asignaturaSel, setAsignaturaSel] = useState<AsignaturaCatalogo | null>(null);
 
   // Un solo llamado sin `nivel`: el backend ya devuelve únicamente los programas
   // de los niveles autorizados, y de ahí se derivan las opciones del selector.
@@ -220,9 +224,14 @@ export function SelectorCatalogo() {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     {s.asignaturas.map((a) => (
-                      <div
+                      <button
                         key={a.id}
-                        className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
+                        onClick={() => setAsignaturaSel(a)}
+                        className={`w-full text-left flex items-center justify-between gap-3 px-3 py-2 rounded-lg border transition-colors ${
+                          asignaturaSel?.id === a.id
+                            ? "border-blue-300 bg-blue-50"
+                            : "border-slate-100 hover:border-blue-200 hover:bg-blue-50/40"
+                        }`}
                       >
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-slate-800 truncate">{a.nombre}</p>
@@ -232,7 +241,7 @@ export function SelectorCatalogo() {
                           </p>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -240,6 +249,16 @@ export function SelectorCatalogo() {
             </div>
           )}
         </div>
+      )}
+
+      {/* EFDS-1370: los grupos cuelgan de la asignatura elegida. El horario, a su
+          vez, colgará del grupo — no de la asignatura (RN-11). */}
+      {asignaturaSel && (
+        <GestionGrupos
+          idAsignatura={asignaturaSel.id}
+          nombreAsignatura={asignaturaSel.nombre}
+          codigoAsignatura={asignaturaSel.codigo}
+        />
       )}
     </div>
   );

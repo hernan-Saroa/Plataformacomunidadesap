@@ -4,7 +4,7 @@ import { Entity, PrimaryColumn, Column } from 'typeorm';
  * Vista de SOLO LECTURA del catálogo de asignaturas (dueño: `academic_work_plan`).
  * Ver la nota de ProgramaCatalogoEntity: no se replica ni se escribe.
  */
-@Entity({ schema: 'academic_work_plan', name: 'Asignatura' })
+@Entity({ schema: 'academic_work_plan', name: 'asignatura' })
 export class AsignaturaCatalogoEntity {
   @PrimaryColumn({ type: 'bigint' })
   id: string;
@@ -36,5 +36,5 @@ export class AsignaturaCatalogoEntity {
   horasClase: number | null;
 
   @Column({ type: 'boolean', default: true })
-  activo: boolean;
+  activa: boolean;
 }
