@@ -954,5 +954,50 @@ describe('TravelExpensesService', () => {
       expect(result.estadoSolicitud).toBe('PENDIENTE');
       expect(solicitudRepo.save).toHaveBeenCalled();
     });
+
+    it('debe marcar esInternacional=true y tipoComision=INTERNACIONAL cuando la comisión es internacional', async () => {
+      const comisionado = { ...mockComisionado, autorizacionHabeasData: true };
+      const comisionadoRepo = { findOne: jest.fn().mockResolvedValue(comisionado), save: jest.fn() };
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({}),
+        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-int' })),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) =>
+          cb({
+            getRepository: jest.fn().mockReturnValue({
+              createQueryBuilder: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawOne: jest.fn().mockResolvedValue({ max: null }),
+              }),
+            }),
+          }),
+        ),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.crearSolicitud({
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: '2026-09-01',
+        fechaFin: '2026-09-05',
+        objetoComision: 'Comisión internacional',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: false,
+        creadoPorUsuarioId: 'user-001',
+        modoBorrador: true,
+        esInternacional: true,
+      });
+
+      expect(result.esInternacional).toBe(true);
+      expect(result.tipoComision).toBe('INTERNACIONAL');
+    });
   });
 });

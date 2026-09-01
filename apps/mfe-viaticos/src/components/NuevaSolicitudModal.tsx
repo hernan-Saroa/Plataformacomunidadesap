@@ -180,6 +180,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       montoGastosViaje: Number(solicitud.montoGastosViaje || 0),
       diasComision: solicitud.diasComision ?? 1,
       aceptaHabeasData: true,
+      tipoComision: solicitud.tipoComision || 'TERRESTRE',
+      esInternacional: Boolean(solicitud.esInternacional),
       documentos: (solicitud.documentosSoporte || []).map((d) => ({
         tipoDocumento: d.tipoDocumento,
         nombreArchivoOriginal: d.nombreArchivoOriginal,
@@ -190,7 +192,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     });
     if (solicitud.comisionado) {
       setComisionado(solicitud.comisionado);
-      await cargarChecklist(solicitud.comisionado.tipoComisionado);
+      await cargarChecklist(
+        solicitud.esInternacional ? 'INTERNACIONAL' : solicitud.comisionado.tipoComisionado,
+      );
     }
     setPaso(PASOS.length - 1);
   };
@@ -412,13 +416,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           form.tipoComision || 'TERRESTRE',
         );
         const creada = await viaticosService.crearSolicitudComision(payload);
-        setSolicitudBorrador({
-          ...creada,
-          documentosSoporte: (creada.documentosSoporte || []) as DocumentoSoporte[],
-        });
-      }
-      await cargarChecklist(comisionado.tipoComisionado);
-      setPaso(3);
+      setSolicitudBorrador({
+        ...creada,
+        documentosSoporte: (creada.documentosSoporte || []) as DocumentoSoporte[],
+      });
+    }
+    const tipoChecklist = form.esInternacional ? 'INTERNACIONAL' : comisionado.tipoComisionado;
+    await cargarChecklist(tipoChecklist);
+    setPaso(3);
     } catch (e) {
       console.error('Error guardando borrador:', e);
       setErrorValidacion('No fue posible guardar el borrador. Verifique e intente nuevamente.');
@@ -864,19 +869,36 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </div>
               )}
 
-              {!esCampoOculto('requiereTiquetes') && (
-                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.requiereTiquetes}
-                    onChange={(e) => actualizar('requiereTiquetes', e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
-                  />
-                  {esCampoObligatorio('requiereTiquetes') ? 'La comisión requiere tiquetes aéreos / pasajes *' : 'La comisión requiere tiquetes aéreos / pasajes'}
-                </label>
-              )}
+               {!esCampoOculto('requiereTiquetes') && (
+                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
+                   <input
+                     type="checkbox"
+                     checked={form.requiereTiquetes}
+                     onChange={(e) => actualizar('requiereTiquetes', e.target.checked)}
+                     className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
+                   />
+                   {esCampoObligatorio('requiereTiquetes') ? 'La comisión requiere tiquetes aéreos / pasajes *' : 'La comisión requiere tiquetes aéreos / pasajes'}
+                 </label>
+               )}
 
-              {errorValidacion && (
+               <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
+                 <input
+                   type="checkbox"
+                   checked={Boolean(form.esInternacional)}
+                   onChange={(e) => {
+                     const internacional = e.target.checked;
+                     actualizar('esInternacional', internacional);
+                     actualizar('tipoComision', internacional ? 'INTERNACIONAL' : 'TERRESTRE');
+                   }}
+                   className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
+                 />
+                 <span>
+                   Comisión internacional / acto administrativo{' '}
+                   <span className="text-slate-400 font-normal">(exige pasaporte, carta de invitación y resolución)</span>
+                 </span>
+               </label>
+
+               {errorValidacion && (
                 <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
                   {errorValidacion}
                 </p>

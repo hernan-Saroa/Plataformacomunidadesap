@@ -691,6 +691,84 @@ describe('ViaticosModulePremium', () => {
     );
   });
 
+  it('debe radicar la solicitud luego de cargar los documentos obligatorios en PDF', async () => {
+    viaticosService.obtenerChecklistDocumentos = vi.fn().mockResolvedValue({
+      obligatorios: [{ codigo: 'CDP', nombre: 'Certificación Débito Presupuestal', descripcion: null }],
+      opcionales: [],
+    });
+    viaticosService.subirDocumento = vi.fn().mockResolvedValue({
+      id: 'doc-001',
+      tipoDocumento: 'CDP',
+      nombreArchivoOriginal: 'cdp.pdf',
+      nombreArchivoSeguro: 'cdp_seguro.pdf',
+      urlRepositorio: '/uploads/cdp_seguro.pdf',
+      tipoMime: 'application/pdf',
+    });
+    viaticosService.finalizarSolicitud = vi.fn().mockResolvedValue({ id: 'sol-rad', estadoSolicitud: 'RADICADA' });
+
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await llenarPaso2();
+    await guardarYBContinuar();
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['contenido-pdf'], 'cdp.pdf', { type: 'application/pdf' })] },
+    });
+
+    await screen.findByText('Cargado');
+
+    expect(viaticosService.subirDocumento).toHaveBeenCalledWith(
+      'sol-nueva',
+      'CDP',
+      expect.any(File),
+      'application/pdf',
+    );
+
+    fireEvent.click(screen.getByText(/Siguiente/i));
+    await screen.findByText(/4\. Confirmación de la Solicitud/i);
+
+    const finalizarBtn = screen.getByText(/Finalizar y Radicar/i);
+    expect(finalizarBtn).toBeEnabled();
+    fireEvent.click(finalizarBtn);
+
+    await waitFor(() => {
+      expect(viaticosService.finalizarSolicitud).toHaveBeenCalledWith('sol-nueva');
+    });
+  });
+
+  it('debe pedir pasaporte, carta de invitación y resolución al marcar comisión internacional', async () => {
+    viaticosService.obtenerChecklistDocumentos = vi.fn().mockResolvedValue({
+      obligatorios: [
+        { codigo: 'PASAPORTE', nombre: 'Pasaporte', descripcion: null },
+        { codigo: 'CARTA_INVITACION', nombre: 'Carta de Invitación', descripcion: null },
+        { codigo: 'RESOLUCION_ACTO', nombre: 'Resolución / Acto Administrativo', descripcion: null },
+      ],
+      opcionales: [],
+    });
+
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await llenarPaso2();
+
+    fireEvent.click(screen.getByLabelText(/Comisión internacional/i));
+    await guardarYBContinuar();
+
+    expect(viaticosService.obtenerChecklistDocumentos).toHaveBeenCalledWith('INTERNACIONAL');
+    expect(screen.getByText('Pasaporte')).toBeInTheDocument();
+    expect(screen.getByText('Carta de Invitación')).toBeInTheDocument();
+    expect(screen.getByText('Resolución / Acto Administrativo')).toBeInTheDocument();
+    expect(screen.getAllByText(/Subir/i)).toHaveLength(3);
+  });
+
   it('debe reiniciar el formulario al cerrar y reabrir el modal', async () => {
     render(<ViaticosModulePremium />);
 

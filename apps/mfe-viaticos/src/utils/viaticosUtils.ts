@@ -35,6 +35,7 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     diasComision: 1,
     aceptaHabeasData: false,
     tipoComision: 'TERRESTRE',
+    esInternacional: false,
   };
 }
 
@@ -182,7 +183,8 @@ export function mapearARequestCreacion(
     aceptaHabeasData: aceptaHabeasData,
     ipRegistroHabeasData: aceptaHabeasData ? '127.0.0.1' : comisionado.ipRegistroHabeasData,
     modoBorrador,
-    tipoComision,
+    tipoComision: form.esInternacional ? 'INTERNACIONAL' : (tipoComision || 'TERRESTRE'),
+    esInternacional: Boolean(form.esInternacional),
     documentos,
   };
 }

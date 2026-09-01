@@ -9,9 +9,10 @@ import {
   SolicitudListaResponse,
   EstadoSolicitudViatico,
   Geopolitica,
-  ChecklistDocumentosResponse,
-  FinalizarSolicitudResponse,
-} from '../../types/viaticos';
+   ChecklistDocumentosResponse,
+   FinalizarSolicitudResponse,
+   UploadDocumentoRequest,
+ } from '../../types/viaticos';
 import {
   ParametrizacionFormulario,
   ConfigTipoComisionado,
@@ -410,25 +411,19 @@ export class ViaticosService {
     archivo: File,
     tipoMime?: string,
   ): Promise<DocumentoSoporte> {
-    const formData = new FormData();
-    formData.append('tipoDocumento', tipo);
-    formData.append('nombreArchivoOriginal', archivo.name);
-    formData.append('nombreArchivoSeguro', this.sanitizeFileName(archivo.name));
-    formData.append('urlRepositorio', `/uploads/${solicitudId}/${this.sanitizeFileName(archivo.name)}`);
-    formData.append('archivo', archivo);
-    if (tipoMime) {
-      formData.append('tipoMime', tipoMime);
-    }
+    const nombreSeguro = this.sanitizeFileName(archivo.name);
+    const payload: UploadDocumentoRequest = {
+      tipoDocumento: tipo,
+      nombreArchivoOriginal: archivo.name,
+      nombreArchivoSeguro: nombreSeguro,
+      urlRepositorio: `/uploads/${solicitudId}/${nombreSeguro}`,
+      tipoMime: tipoMime || undefined,
+    };
 
     try {
       return await apiClient.post<DocumentoSoporte>(
         `/viaticos/api/v1/requests/${solicitudId}/documentos`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        },
+        payload,
       );
     } catch (error) {
       console.error('Error subiendo documento:', error);

@@ -103,8 +103,11 @@ export class SolicitudComisionEntity {
   @Column({ name: 'extemporanea', type: 'boolean', default: false })
   extemporanea: boolean;
 
-   @Column({ name: 'tipo_comision', type: 'varchar', length: 50, default: 'TERRESTRE' })
-   tipoComision: string;
+    @Column({ name: 'tipo_comision', type: 'varchar', length: 50, default: 'TERRESTRE' })
+    tipoComision: string;
+
+    @Column({ name: 'es_internacional', type: 'boolean', default: false })
+    esInternacional: boolean;
 
    @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
    creadoPorUsuarioId: string;

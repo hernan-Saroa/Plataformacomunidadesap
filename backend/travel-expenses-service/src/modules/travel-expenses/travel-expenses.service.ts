@@ -317,12 +317,13 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
       diasComision: dto.diasComision ?? 1,
-      estadoSolicitud,
-      radicadoFueraJornada,
-      extemporanea,
-      tipoComision: dto.tipoComision ?? 'TERRESTRE',
-      creadoPorUsuarioId: dto.creadoPorUsuarioId,
-    });
+       estadoSolicitud,
+       radicadoFueraJornada,
+       extemporanea,
+       esInternacional: dto.esInternacional ?? false,
+       tipoComision: dto.esInternacional ? 'INTERNACIONAL' : (dto.tipoComision ?? 'TERRESTRE'),
+       creadoPorUsuarioId: dto.creadoPorUsuarioId,
+     });
 
     const saved = await this.solicitudRepo.save(solicitud);
 
@@ -426,8 +427,12 @@ export class TravelExpensesService {
       where: { solicitudId: solicitud.id },
     });
 
+    const tipoChecklist = solicitud.esInternacional
+      ? 'INTERNACIONAL'
+      : solicitud.comisionado?.tipoComisionado;
+
     const { faltantes, noPdf } = await this.validarChecklistCompleto(
-      solicitud.comisionado.tipoComisionado,
+      tipoChecklist,
       documentos,
     );
 

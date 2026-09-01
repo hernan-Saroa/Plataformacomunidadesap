@@ -89,8 +89,12 @@ export class CreateSolicitudDto {
   @IsBoolean()
   modoBorrador?: boolean;
 
-  @IsOptional()
-  @IsString()
-  @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
-  tipoComision?: string;
-}
+   @IsOptional()
+   @IsString()
+   @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
+   tipoComision?: string;
+
+   @IsOptional()
+   @IsBoolean()
+   esInternacional?: boolean;
+ }
