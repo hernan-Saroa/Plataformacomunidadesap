@@ -1,5 +1,6 @@
 export type EstadoSolicitudViatico =
   | 'BORRADOR'
+  | 'PENDIENTE'
   | 'SOLICITADO'
   | 'APROBADO_JEFE'
   | 'APROBADO_TALENTO_HUMANO'
@@ -46,7 +47,8 @@ export interface FormNuevaSolicitud {
   montoGastosViaje: number;
   diasComision: number;
   aceptaHabeasData: boolean;
-  documentos?: DocumentoSoporte[];
+  tipoComision?: string;
+  documentos?: DocumentoFormItem[];
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -93,7 +95,17 @@ export interface DocumentoSoporte {
   nombreArchivoOriginal: string;
   nombreArchivoSeguro: string;
   urlRepositorio: string;
-  creadoEn: Date;
+  tipoMime: string;
+  creadoEn?: Date;
+}
+
+export interface DocumentoFormItem {
+  id?: string;
+  tipoDocumento: TipoDocumentoSoporte;
+  nombreArchivoOriginal: string;
+  nombreArchivoSeguro: string;
+  urlRepositorio: string;
+  tipoMime?: string;
 }
 
 /** Respuesta del backend al crear una solicitud (serialización camelCase). */
@@ -111,15 +123,17 @@ export interface SolicitudComisionResponse {
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
-  diasComision: number;
-  estadoSolicitud: string;
-  radicadoFueraJornada: boolean;
-  extemporanea: boolean;
-  creadoPorUsuarioId: string;
-  creadoEn: Date;
-  actualizadoEn: Date;
-  documentosSoporte?: DocumentoSoporte[];
-  warningMessage?: string;
+   diasComision: number;
+   estadoSolicitud: string;
+   tipoComision: string;
+   radicadoFueraJornada: boolean;
+   extemporanea: boolean;
+   creadoPorUsuarioId: string;
+   creadoEn: Date;
+   actualizadoEn: Date;
+   documentosSoporte?: DocumentoSoporte[];
+   comisionado?: Comisionado;
+   warningMessage?: string;
 }
 
 /**
@@ -142,11 +156,14 @@ export interface CreateSolicitudRequest {
   creadoPorUsuarioId: string;
   aceptaHabeasData?: boolean;
   ipRegistroHabeasData?: string;
+  modoBorrador?: boolean;
+  tipoComision?: string;
   documentos?: {
     tipoDocumento: TipoDocumentoSoporte;
     nombreArchivoOriginal: string;
     nombreArchivoSeguro: string;
     urlRepositorio: string;
+    tipoMime?: string;
   }[];
 }
 
@@ -256,5 +273,26 @@ export interface ResumenEstadisticoViaticos {
   enProcesoAprobacion: number;
   enComisionActivas: number;
   pendientesLegalizar: number;
+  borradores: number;
   montoTotalEjecutado: number;
+}
+
+export interface ChecklistDocumento {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+}
+
+export interface ChecklistDocumentosResponse {
+  obligatorios: ChecklistDocumento[];
+  opcionales: ChecklistDocumento[];
+}
+
+export interface FinalizarSolicitudResponse {
+  id: string;
+  consecutivoUnico: string;
+  estadoSolicitud: EstadoSolicitudViatico;
+  extemporanea: boolean;
+  radicadoFueraJornada: boolean;
+  warningMessage?: string;
 }

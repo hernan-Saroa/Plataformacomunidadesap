@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { DataSource } from 'typeorm';
 import { ComisionadoEntity } from './entities/comisionado.entity';
 import { SolicitudComisionEntity } from './entities/solicitud-comision.entity';
+import { EstadoSolicitud } from './entities/estado-solicitud.enum';
 import { CampoFormularioEntity } from './entities/config/campo-formulario.entity';
 import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
@@ -204,7 +205,7 @@ async function seed() {
           montoViaticos: 560000,
           montoGastosViaje: 120000,
           diasComision: 5,
-          estadoSolicitud: 'SOLICITADO',
+          estadoSolicitud: EstadoSolicitud.SOLICITADO,
           radicadoFueraJornada: false,
           extemporanea: false,
           creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
@@ -223,7 +224,7 @@ async function seed() {
           montoViaticos: 420000,
           montoGastosViaje: 90000,
           diasComision: 3,
-          estadoSolicitud: 'APROBADO_JEFE',
+          estadoSolicitud: EstadoSolicitud.APROBADO_JEFE,
           radicadoFueraJornada: false,
           extemporanea: false,
           creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
@@ -242,7 +243,7 @@ async function seed() {
           montoViaticos: 720000,
           montoGastosViaje: 180000,
           diasComision: 4,
-          estadoSolicitud: 'APROBADO_TALENTO_HUMANO',
+          estadoSolicitud: EstadoSolicitud.APROBADO_TALENTO_HUMANO,
           radicadoFueraJornada: false,
           extemporanea: false,
           creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
@@ -261,7 +262,7 @@ async function seed() {
           montoViaticos: 980000,
           montoGastosViaje: 150000,
           diasComision: 6,
-          estadoSolicitud: 'EXTEMPORANEA',
+          estadoSolicitud: EstadoSolicitud.EXTEMPORANEA,
           radicadoFueraJornada: true,
           extemporanea: true,
           creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',
@@ -280,7 +281,7 @@ async function seed() {
           montoViaticos: 1260000,
           montoGastosViaje: 300000,
           diasComision: 5,
-          estadoSolicitud: 'TIQUETES_COMPRADOS',
+          estadoSolicitud: EstadoSolicitud.TIQUETES_COMPRADOS,
           radicadoFueraJornada: false,
           extemporanea: false,
           creadoPorUsuarioId: 'USUARIO_NO_AUTENTICADO',

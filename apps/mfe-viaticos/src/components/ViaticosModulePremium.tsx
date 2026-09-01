@@ -37,6 +37,7 @@ export default function ViaticosModulePremium() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
+  const [solicitudAResumir, setSolicitudAResumir] = useState<SolicitudComisionResponse | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [exportando, setExportando] = useState(false);
@@ -176,11 +177,15 @@ export default function ViaticosModulePremium() {
         </div>
       )}
 
-      {modalNuevaAbierta ? (
+      {modalNuevaAbierta || solicitudAResumir ? (
         <NuevaSolicitudModal
-          abierta={modalNuevaAbierta}
-          onCerrar={() => setModalNuevaAbierta(false)}
+          abierta={modalNuevaAbierta || Boolean(solicitudAResumir)}
+          onCerrar={() => {
+            setModalNuevaAbierta(false);
+            setSolicitudAResumir(null);
+          }}
           onSolicitudCreada={handleSolicitudCreada}
+          solicitudAResumir={solicitudAResumir}
         />
       ) : (
         <>
@@ -274,6 +279,7 @@ export default function ViaticosModulePremium() {
                     id="filtroEstado"
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
                       { value: 'SOLICITADO', label: 'Solicitado' },
                       { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
                       { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
@@ -376,15 +382,28 @@ export default function ViaticosModulePremium() {
                                    <Download className="w-3.5 h-3.5" />
                                    Exportar
                                  </button>
-                                 <button
-                                   type="button"
-                                   onClick={() => setSolicitudSeleccionada(sol)}
-                                   className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
-                                 >
-                                   <Eye className="w-3.5 h-3.5 text-slate-500" />
-                                   Ver Detalle
-                                 </button>
-                               </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSolicitudSeleccionada(sol)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                    Ver Detalle
+                                  </button>
+                                  {sol.estado === 'PENDIENTE' && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+                                        setSolicitudAResumir(completa);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                                      title="Continuar solicitud en borrador"
+                                    >
+                                      Continuar
+                                    </button>
+                                  )}
+                                </div>
                              </td>
                           </tr>
                         ))

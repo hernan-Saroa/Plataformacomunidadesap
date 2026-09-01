@@ -373,8 +373,8 @@ export class TravelExpensesService {
   async obtenerChecklistDocumentos(
     tipoComisionado: string,
   ): Promise<{
-    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null }>;
-    opcionales: Array<{ codigo: string; nombre: string; description: string | null }>;
+     obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null }>;
+     opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null }>;
   }> {
     const config =
       await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
@@ -406,7 +406,7 @@ export class TravelExpensesService {
     });
 
     if (!solicitud) {
-      throw new BadRequestException('Solicitud no encontrada.');
+      throw new NotFoundException('Solicitud no encontrada.');
     }
 
     if (solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE) {

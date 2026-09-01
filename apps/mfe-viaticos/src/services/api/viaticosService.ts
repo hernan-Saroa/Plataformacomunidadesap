@@ -9,6 +9,8 @@ import {
   SolicitudListaResponse,
   EstadoSolicitudViatico,
   Geopolitica,
+  ChecklistDocumentosResponse,
+  FinalizarSolicitudResponse,
 } from '../../types/viaticos';
 import {
   ParametrizacionFormulario,
@@ -187,6 +189,7 @@ export class ViaticosService {
       ).length,
       enComisionActivas: solicitudes.filter((s) => s.estado === 'EN_COMISION').length,
       pendientesLegalizar: solicitudes.filter((s) => s.estado === 'PENDIENTE_LEGALIZACION').length,
+      borradores: solicitudes.filter((s) => s.estado === 'PENDIENTE' || s.estado === 'BORRADOR').length,
       montoTotalEjecutado: solicitudes.reduce((acc, curr) => acc + curr.montoTotalEstimado, 0),
     };
   }
@@ -401,13 +404,21 @@ export class ViaticosService {
     }
   }
 
-  async subirDocumento(solicitudId: string, tipo: string, archivo: File): Promise<DocumentoSoporte> {
+  async subirDocumento(
+    solicitudId: string,
+    tipo: string,
+    archivo: File,
+    tipoMime?: string,
+  ): Promise<DocumentoSoporte> {
     const formData = new FormData();
     formData.append('tipoDocumento', tipo);
     formData.append('nombreArchivoOriginal', archivo.name);
     formData.append('nombreArchivoSeguro', this.sanitizeFileName(archivo.name));
     formData.append('urlRepositorio', `/uploads/${solicitudId}/${this.sanitizeFileName(archivo.name)}`);
     formData.append('archivo', archivo);
+    if (tipoMime) {
+      formData.append('tipoMime', tipoMime);
+    }
 
     try {
       return await apiClient.post<DocumentoSoporte>(
@@ -431,6 +442,42 @@ export class ViaticosService {
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/ñ/gi, 'n')
       .replace(/[^a-zA-Z0-9._-]/g, '_');
+  }
+
+  async obtenerChecklistDocumentos(
+    tipoComisionado: string,
+  ): Promise<ChecklistDocumentosResponse> {
+    try {
+      return await apiClient.get<ChecklistDocumentosResponse>(
+        `/viaticos/api/v1/parametrizacion/checklist/${encodeURIComponent(tipoComisionado)}`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo checklist de documentos:', error);
+      return { obligatorios: [], opcionales: [] };
+    }
+  }
+
+  async obtenerSolicitudCompleta(solicitudId: string): Promise<SolicitudComisionResponse> {
+    try {
+      return await apiClient.get<SolicitudComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo solicitud:', error);
+      throw error;
+    }
+  }
+
+  async finalizarSolicitud(solicitudId: string): Promise<FinalizarSolicitudResponse> {
+    try {
+      return await apiClient.post<FinalizarSolicitudResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/finalizar`,
+        {},
+      );
+    } catch (error) {
+      console.error('Error finalizando solicitud:', error);
+      throw error;
+    }
   }
 
   async exportarFormato023(solicitudId: string, codigo: string): Promise<void> {
