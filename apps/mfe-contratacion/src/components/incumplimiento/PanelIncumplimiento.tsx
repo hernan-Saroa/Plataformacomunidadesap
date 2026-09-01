@@ -3,7 +3,8 @@ import { AlertOctagon, Paperclip, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DatosIncumplimiento, EstadoIncumplimiento } from '../../types';
+import { DatosIncumplimiento, EstadoCasoIncumplimiento, EstadoIncumplimiento } from '../../types';
+import { TramiteSancionatorio } from './TramiteSancionatorio';
 import {
   Aviso,
   Ayuda,
@@ -26,17 +27,25 @@ const VACIO = {
   fechaHecho: hoyEnBogota(),
 };
 
+/** En qué punto va el caso, dicho para quien lo lee y no en clave. */
+const NOMBRE_ESTADO: Record<EstadoCasoIncumplimiento, string> = {
+  REPORTADO: 'Reportado, a la espera del área jurídica',
+  EN_TRAMITE: 'En trámite sancionatorio',
+  DECIDIDO: 'Decidido',
+  ARCHIVADO: 'Archivado',
+};
+
 /**
- * Presunto incumplimiento del contrato (EFDS-1180, RF-INC-01).
+ * Presunto incumplimiento del contrato (EFDS-1180 y EFDS-1181).
  *
- * El supervisor constata el hecho y con el reporte queda abierto el caso. Lo
- * que sigue —resoluciones, audiencias y la caducidad— es el trámite del área
- * jurídica (EFDS-1181), que tendrá su propia pantalla.
+ * El supervisor constata el hecho y con el reporte queda abierto el caso
+ * (RF-INC-01); debajo de cada caso va el trámite del área jurídica —las
+ * resoluciones, las audiencias y la caducidad— que pide RF-INC-02.
  *
- * Se dice «presunto» en todo el panel a propósito: el supervisor reporta lo
- * que observa, y quien declara el incumplimiento es el área jurídica al cabo
- * de su trámite. Llamarlo de otro modo haría que la pantalla afirmara algo que
- * todavía no se ha resuelto.
+ * Se dice «presunto» hasta que hay resolución a propósito: el supervisor
+ * reporta lo que observa, y quien declara el incumplimiento es el área
+ * jurídica al cabo de su trámite. Llamarlo de otro modo haría que la pantalla
+ * afirmara algo que todavía no se ha resuelto.
  */
 export function PanelIncumplimiento({ procesoId, onCambio }: Props) {
   const [estado, setEstado] = useState<EstadoIncumplimiento | null>(null);
@@ -110,6 +119,12 @@ export function PanelIncumplimiento({ procesoId, onCambio }: Props) {
   // que se exige lo mismo que el servidor y no una palabra suelta.
   const completo = datos.motivo.trim().length >= 10 && datos.fechaHecho;
 
+  // Los resueltos siguen en pantalla —el expediente los conserva— pero ya no
+  // están esperando nada, así que no cuentan como casos abiertos.
+  const sinResolver = estado.casos.filter(
+    (caso) => caso.estado === 'REPORTADO' || caso.estado === 'EN_TRAMITE',
+  );
+
   return (
     <Marco>
       <Titulo>Presunto incumplimiento</Titulo>
@@ -128,16 +143,18 @@ export function PanelIncumplimiento({ procesoId, onCambio }: Props) {
         />
       ) : null}
 
-      {estado.casos.length > 0 ? (
+      {sinResolver.length > 0 ? (
         <Aviso
           tono="aviso"
           titulo={
-            estado.casos.length === 1
+            sinResolver.length === 1
               ? 'Un caso abierto sobre el contrato'
-              : `${estado.casos.length} casos abiertos sobre el contrato`
+              : `${sinResolver.length} casos abiertos sobre el contrato`
           }
         >
-          Están a la espera del trámite del área jurídica.
+          {sinResolver.every((caso) => caso.estado === 'REPORTADO')
+            ? 'Están a la espera de que el área jurídica abra el trámite sancionatorio.'
+            : 'El área jurídica los está tramitando.'}
         </Aviso>
       ) : null}
 
@@ -157,22 +174,28 @@ export function PanelIncumplimiento({ procesoId, onCambio }: Props) {
               <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
                 {caso.motivo}
               </p>
-              {caso.reportadoPor ? (
-                <p className="text-[10.5px] text-slate-500 m-0 mt-0.5">
-                  Reportado por {caso.reportadoPor}
-                </p>
-              ) : null}
+              <p className="text-[10.5px] text-slate-500 m-0 mt-0.5">
+                {NOMBRE_ESTADO[caso.estado]}
+                {caso.reportadoPor ? ` · reportado por ${caso.reportadoPor}` : ''}
+              </p>
               {caso.soporte?.url ? (
                 <a
                   href={contratacionService.urlDescarga(caso.soporte.url)}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-bold text-[#003DA5] hover:underline"
+                  className="inline-flex items-center gap-1.5 mt-1 text-[11.5px] font-bold text-[#003DA5] hover:underline"
                 >
                   <Paperclip className="w-3 h-3" />
                   {caso.soporte.nombre}
                 </a>
               ) : null}
+
+              <TramiteSancionatorio
+                procesoId={procesoId}
+                caso={caso}
+                onEstado={setEstado}
+                onCambio={onCambio}
+              />
             </div>
           ))}
         </div>

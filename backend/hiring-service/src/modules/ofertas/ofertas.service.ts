@@ -114,6 +114,9 @@ export class OfertasService {
         nombre: o.nombre,
         identificacion: o.identificacion,
         fechaRadicacion: o.fechaRadicacion,
+        // Número o nulo, no el string que devuelve el driver: la pantalla lo
+        // formatea como moneda.
+        valorOfertado: o.valorOfertado != null ? Number(o.valorOfertado) : null,
         registradoPor: o.registradoPor,
         soporte: this.verArchivo(documentos.get(o.soporteDocumentoId)),
       })),
@@ -304,6 +307,7 @@ export class OfertasService {
           identificacion: dto.identificacion,
           fechaRadicacion: radicacion,
           soporteDocumentoId: doc.id,
+          valorOfertado: dto.valorOfertado != null ? String(dto.valorOfertado) : null,
           registradoPor: acceso.userName,
         }),
       );

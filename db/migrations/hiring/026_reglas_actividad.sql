@@ -22,7 +22,7 @@
 
 CREATE TABLE IF NOT EXISTS hiring.reglas_actividad (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  numeral     varchar(10) NOT NULL REFERENCES hiring.actividades_catalogo (numeral) ON DELETE CASCADE,
+  numeral     varchar(10) NOT NULL REFERENCES hiring.actividades (numeral) ON DELETE CASCADE,
 
   -- NULL = la regla aplica a todas las modalidades. Evita repetir once veces
   -- una condición que no distingue entre ellas.

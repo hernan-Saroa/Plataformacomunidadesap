@@ -11,6 +11,17 @@ import {
   EstadoDocumentos,
   EstadoMipyme,
   EstadoComite,
+  EstadoEvaluacion,
+  Adjudicar,
+  DeclararDesierto,
+  EstadoAdjudicacion,
+  EstadoDeclaratoriaDesierta,
+  EstadoAudienciaAdjudicacion,
+  EstadoInformeDefinitivoProceso,
+  EstadoSubsanaciones,
+  EstadoTraslado,
+  RegistrarSubsanacion,
+  TipoPiezaAudiencia,
   EstadoContratoProceso,
   DatosContrato,
   DatosFirma,
@@ -19,18 +30,47 @@ import {
   EstadoLegalizacion,
   EstadoSupervision,
   DatosSupervisor,
-  DatosReasignacion,
   EstadoActaInicio,
   DatosActaInicio,
+  DatosReasignacion,
   EstadoSeguimiento,
   DatosSeguimiento,
-  AlertaVencimiento,
-  EstadoIncumplimiento,
-  ExpedienteAuditoria,
+  EstadoRegistroActividad,
+  DatosRegistroActividad,
+  EstadoPagos,
+  DatosPago,
+  TipoSoportePago,
+  EstadoInformeFinal,
+  DatosInformeFinal,
+  DatosEntregable,
+  EstadoLiquidacion,
+  DatosLiquidacion,
+  EstadoCierreFinanciero,
+  EstadoArchivoExpediente,
+  EstadoCierreDefinitivo,
   EstadoModificaciones,
+  DatosAdicion,
+  DatosAclaratorio,
+  DatosCesion,
   DatosProrroga,
-  DatosModificacion,
+  DatosReanudacion,
+  DatosSuspension,
+  DatosTerminacion,
+  DatosAprobacionModificacion,
+  DatosRespaldoAdicion,
+  DatosCierreDefinitivo,
+  DatosPublicacionActa,
+  DatosArchivoExpediente,
+  DatosCierreFinanciero,
+  AlertaVencimiento,
+  ExpedienteAuditoria,
+  EstadoIncumplimiento,
   DatosIncumplimiento,
+  DatosResolucion,
+  DatosDecision,
+  DatosCitacion,
+  DatosAudienciaCelebrada,
+  DatosNotificacion,
   EstadoRegistroPresupuestal,
   DatosSolicitudRp,
   DatosExpedicionRp,
@@ -47,6 +87,7 @@ import {
   Cobertura,
   Matriz,
   FlujoModalidad,
+  RegistrarResultado,
   CampoConfigurable,
   ActividadCatalogo,
   ActividadAplicable,
@@ -112,6 +153,26 @@ async function pedir<T>(ruta: string, init?: RequestInit): Promise<T> {
   }
 
   throw new Error(cuerpo?.message ?? `Error ${res.status}`);
+}
+
+/**
+ * El cuerpo multipart de una acción que va con su documento.
+ *
+ * Se omite lo vacío en vez de mandar la cadena: en `FormData` todo viaja como
+ * texto, y un campo opcional enviado en blanco llega al servidor como `''` y
+ * no como ausente, que es lo que la validación espera.
+ */
+function conArchivo<T extends object>(datos: T, archivo: File): FormData {
+  const cuerpo = new FormData();
+  cuerpo.append('file', archivo);
+
+  for (const [clave, valor] of Object.entries(datos as Record<string, unknown>)) {
+    if (valor !== undefined && valor !== null && valor !== '') {
+      cuerpo.append(clave, String(valor));
+    }
+  }
+
+  return cuerpo;
 }
 
 export const contratacionService = {
@@ -237,7 +298,12 @@ export const contratacionService = {
   /** Registra una oferta recibida en ventanilla, con su soporte. */
   registrarOferente: (
     procesoId: string,
-    datos: { nombre: string; identificacion: string; fechaRadicacion: string },
+    datos: {
+      nombre: string;
+      identificacion: string;
+      fechaRadicacion: string;
+      valorOfertado?: number;
+    },
     soporte: File,
   ) => {
     const cuerpo = new FormData();
@@ -245,6 +311,9 @@ export const contratacionService = {
     cuerpo.append('nombre', datos.nombre);
     cuerpo.append('identificacion', datos.identificacion);
     cuerpo.append('fechaRadicacion', datos.fechaRadicacion);
+    // Solo si viene: enviarlo vacío haría que el DTO lo leyera como 0, y una
+    // oferta de cero pesos entraría al cálculo económico como la más barata.
+    if (datos.valorOfertado != null) cuerpo.append('valorOfertado', String(datos.valorOfertado));
 
     return pedir<EstadoOfertas>(`/procesos/${procesoId}/ofertas`, {
       method: 'POST',
@@ -519,6 +588,7 @@ export const contratacionService = {
       body: JSON.stringify({ motivo }),
     }),
 
+
   /**
    * Reasigna la supervisión: releva al vigente y designa al nuevo de una vez
    * (EFDS-1169). En dos pasos el contrato quedaría sin quien lo vigile.
@@ -538,13 +608,520 @@ export const contratacionService = {
       body: cuerpo,
     });
   },
-
   /** Deja constancia de que se le comunicó la designación (matriz 8.2). */
   avisarSupervisor: (procesoId: string) =>
     pedir<EstadoSupervision>(`/procesos/${procesoId}/supervision/aviso`, {
       method: 'POST',
       body: JSON.stringify({}),
     }),
+
+  // ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
+
+  /** Si el contrato puede arrancar, qué le falta, y la reunión ya registrada. */
+  actaInicio: (procesoId: string) =>
+    pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`),
+
+  /**
+   * Registra la reunión de inicio y deja el contrato en ejecución.
+   *
+   * El acta va aparte porque puede no existir: la matriz la describe como
+   * «firmada por ambas partes, si fue pactada en el contrato».
+   */
+  suscribirActaInicio: (procesoId: string, datos: DatosActaInicio, acta?: File | null) => {
+    const cuerpo = new FormData();
+    if (acta) cuerpo.append('file', acta);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // ------------------- etapa 9 · seguimiento de la ejecución (9.2) ---------
+
+  /** Estado del contrato en ejecución, sus responsables y los soportes. */
+  seguimiento: (procesoId: string) =>
+    pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`),
+
+  /** Carga un informe, acta o soporte de la ejecución al expediente. */
+  cargarSeguimiento: (procesoId: string, datos: DatosSeguimiento, soporte: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  // --------------------------- etapa 9 · tramite de pagos (9.4) -------------
+
+  /** Cuentas de cobro del contrato, con lo cobrado y lo tramitado. */
+  pagos: (procesoId: string) => pedir<EstadoPagos>(`/procesos/${procesoId}/pagos`),
+
+  /**
+   * Radica la cuenta con la factura y el informe de actividades.
+   *
+   * Los dos van en la misma peticion porque los dos los exige el criterio de
+   * la historia: la factura es lo que se cobra y el informe lo que sustenta
+   * que se presto.
+   */
+  radicarPago: (procesoId: string, datos: DatosPago, factura: File, informe: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('factura', factura);
+    cuerpo.append('informe', informe);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoPagos>(`/procesos/${procesoId}/pagos`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Suma un soporte: seguridad social, RUT o el anexo que sea. */
+  cargarSoportePago: (
+    procesoId: string,
+    pagoId: string,
+    tipo: TipoSoportePago,
+    archivo: File,
+    descripcion?: string,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('tipo', tipo);
+    if (descripcion) cuerpo.append('descripcion', descripcion);
+
+    return pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/soportes`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** El aval del supervisor sobre una cuenta radicada. */
+  avalarPago: (procesoId: string, pagoId: string, observacion?: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/avalar`, {
+      method: 'POST',
+      body: JSON.stringify(observacion ? { observacion } : {}),
+    }),
+
+  /** Devuelve la cuenta al contratista para que la corrija. */
+  devolverPago: (procesoId: string, pagoId: string, motivo: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/devolver`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** La Direccion Financiera registra que el pago se tramito. */
+  tramitarPago: (procesoId: string, pagoId: string, referenciaPago: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/tramitar`, {
+      method: 'POST',
+      body: JSON.stringify({ referenciaPago }),
+    }),
+
+  /** Anula una cuenta que no debio radicarse. */
+  anularPago: (procesoId: string, pagoId: string, motivo: string) =>
+    pedir<EstadoPagos>(`/procesos/${procesoId}/pagos/${pagoId}/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------ etapa 10 · informe final de ejecucion (10.1) ----------
+
+  /** El informe vigente, el balance de hoy y los que se anularon antes. */
+  informeFinal: (procesoId: string) =>
+    pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final`),
+
+  /** Elabora el informe y congela el balance de la ejecucion. */
+  elaborarInformeFinal: (procesoId: string, datos: DatosInformeFinal, informe: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', informe);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Suma un entregable al consolidado.
+   *
+   * El soporte es opcional: muchos entregables ya estan en el expediente por
+   * otra actividad.
+   */
+  agregarEntregable: (procesoId: string, datos: DatosEntregable, soporte?: File | null) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final/entregables`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula el informe vigente para rehacerlo. */
+  anularInformeFinal: (procesoId: string, motivo: string) =>
+    pedir<EstadoInformeFinal>(`/procesos/${procesoId}/informe-final/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ---------------------- etapa 10 · acta de liquidacion (10.2) -------------
+
+  /** El acta vigente, la ventana de plazos y que liquidacion esta habilitada. */
+  liquidacion: (procesoId: string) =>
+    pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion`),
+
+  /**
+   * Liquida el contrato, bilateral o unilateral.
+   *
+   * El soporte del paz y salvo va en la misma peticion: declararlo sin
+   * documento deja al expediente afirmando algo que no puede probar.
+   */
+  liquidar: (
+    procesoId: string,
+    datos: DatosLiquidacion,
+    acta: File,
+    pazYSalvoSoporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('acta', acta);
+    if (pazYSalvoSoporte) cuerpo.append('pazYSalvoSoporte', pazYSalvoSoporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Anula el acta vigente para rehacerla. */
+  anularLiquidacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoLiquidacion>(`/procesos/${procesoId}/liquidacion/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // --------------------- etapa 10 · cierre financiero (10.3) ----------------
+
+  /** El cuadre contra el RP, el cierre vigente y los que se revirtieron. */
+  cierreFinanciero: (procesoId: string) =>
+    pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero`),
+
+  /**
+   * Registra el pago final y libera el saldo.
+   *
+   * El soporte es opcional: mientras no exista KLIC, cada entidad tramita la
+   * liberacion con el documento que tenga.
+   */
+  cerrarFinancieramente: (
+    procesoId: string,
+    datos: DatosCierreFinanciero,
+    soporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Revierte el cierre vigente. */
+  revertirCierreFinanciero: (procesoId: string, motivo: string) =>
+    pedir<EstadoCierreFinanciero>(`/procesos/${procesoId}/cierre-financiero/revertir`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------ etapa 10 · publicacion y archivo (10.4) ---------------
+
+  /** Las publicaciones del acta, el expediente y que falta para archivarlo. */
+  archivoExpediente: (procesoId: string) =>
+    pedir<EstadoArchivoExpediente>(`/procesos/${procesoId}/archivo-expediente`),
+
+  /**
+   * Registra que el acta se publico.
+   *
+   * La evidencia es obligatoria, al reves del soporte del cierre financiero:
+   * sin soporte no hay publicacion registrada, solo la afirmacion de que se
+   * hizo.
+   */
+  publicarActa: (procesoId: string, datos: DatosPublicacionActa, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoArchivoExpediente>(
+      `/procesos/${procesoId}/archivo-expediente/publicaciones`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Archiva el expediente y congela su indice documental. */
+  archivarExpediente: (procesoId: string, datos: DatosArchivoExpediente) =>
+    pedir<EstadoArchivoExpediente>(`/procesos/${procesoId}/archivo-expediente/archivar`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Reabre el expediente archivado. El indice congelado no se toca. */
+  reabrirExpediente: (procesoId: string, motivo: string) =>
+    pedir<EstadoArchivoExpediente>(`/procesos/${procesoId}/archivo-expediente/reabrir`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // --------------------- etapa 10 · cierre definitivo -----------------------
+
+  /** Los amparos de estabilidad y calidad, y que falta para cerrar en firme. */
+  cierreDefinitivo: (procesoId: string) =>
+    pedir<EstadoCierreDefinitivo>(`/procesos/${procesoId}/cierre-definitivo`),
+
+  /**
+   * Cierra el contrato en firme.
+   *
+   * El soporte es opcional: a veces es la certificacion de la aseguradora y a
+   * veces no hay ninguno.
+   */
+  cerrarDefinitivamente: (
+    procesoId: string,
+    datos: DatosCierreDefinitivo,
+    soporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoCierreDefinitivo>(`/procesos/${procesoId}/cierre-definitivo`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Revierte el cierre definitivo. El contrato vuelve a LIQUIDADO. */
+  revertirCierreDefinitivo: (procesoId: string, motivo: string) =>
+    pedir<EstadoCierreDefinitivo>(`/procesos/${procesoId}/cierre-definitivo/revertir`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ---------------- etapa 9 · modificaciones contractuales (9.5) ------------
+
+  /** El tope, cuanto cabe todavia y las modificaciones con su respaldo. */
+  modificaciones: (procesoId: string) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones`),
+
+  /** Registra la adicion en tramite; todavia no toca el valor del contrato. */
+  solicitarAdicion: (procesoId: string, datos: DatosAdicion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/adiciones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /**
+   * Los demas tipos de modificacion (EFDS-1177 y EFDS-1178).
+   *
+   * Una ruta por tipo y no una sola con el tipo en el cuerpo: lo que cada uno
+   * pide es distinto —dias, cesionario, fechas— y una sola ruta obligaria a
+   * validar en el servidor lo que el formulario ya sabe.
+   */
+  solicitarProrroga: (procesoId: string, datos: DatosProrroga) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/prorrogas`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  solicitarCesion: (procesoId: string, datos: DatosCesion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/cesiones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  solicitarAclaratorio: (procesoId: string, datos: DatosAclaratorio) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/aclaratorios`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  solicitarSuspension: (procesoId: string, datos: DatosSuspension) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/suspensiones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Levanta la suspension vigente; el servidor sabe cual es. */
+  solicitarReanudacion: (procesoId: string, datos: DatosReanudacion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/reanudaciones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /**
+   * Termina el contrato antes de tiempo (EFDS-1178).
+   *
+   * Queda EN_TRAMITE como los demas tipos: el contrato solo pasa a TERMINADO
+   * cuando se aprueba con el acta o la resolucion adjunta.
+   */
+  solicitarTerminacion: (procesoId: string, datos: DatosTerminacion) =>
+    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/terminaciones`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Solicita el CDP o el RP que respalda la adicion. */
+  solicitarRespaldoAdicion: (
+    procesoId: string,
+    modificacionId: string,
+    tipo: 'CDP' | 'RP',
+    rubro: string,
+  ) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}`,
+      { method: 'POST', body: JSON.stringify({ rubro }) },
+    ),
+
+  /** La Financiera confirma que hay disponibilidad. */
+  verificarRespaldoAdicion: (procesoId: string, modificacionId: string, tipo: 'CDP' | 'RP') =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}/verificar`,
+      { method: 'POST' },
+    ),
+
+  /** La Financiera expide el certificado o el compromiso. */
+  expedirRespaldoAdicion: (
+    procesoId: string,
+    modificacionId: string,
+    tipo: 'CDP' | 'RP',
+    datos: DatosRespaldoAdicion,
+  ) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}/expedir`,
+      { method: 'POST', body: JSON.stringify(datos) },
+    ),
+
+  /** No hay disponibilidad en el rubro; se puede volver a solicitar. */
+  rechazarRespaldoAdicion: (
+    procesoId: string,
+    modificacionId: string,
+    tipo: 'CDP' | 'RP',
+    observaciones: string,
+  ) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/respaldo/${tipo}/rechazar`,
+      { method: 'POST', body: JSON.stringify({ observaciones }) },
+    ),
+
+  /**
+   * Aprueba la modificacion y aumenta el valor del contrato.
+   *
+   * El acto firmado es obligatorio: aprobar sin documento dejaria al expediente
+   * afirmando algo que no puede probar.
+   */
+  aprobarModificacion: (
+    procesoId: string,
+    modificacionId: string,
+    datos: DatosAprobacionModificacion,
+    acto: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/aprobar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Deja sin curso una modificacion en tramite. */
+  rechazarModificacion: (procesoId: string, modificacionId: string, motivo: string) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/rechazar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Revoca una aprobada y devuelve el valor del contrato. */
+  revocarModificacion: (procesoId: string, modificacionId: string, motivo: string) =>
+    pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/revocar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Registra la publicacion de la modificacion en SECOP II (RF-MOD-05). */
+  publicarModificacion: (
+    procesoId: string,
+    modificacionId: string,
+    datos: { fechaPublicacion: string; secopNumero?: string; secopUrl?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    for (const [clave, valor] of Object.entries(datos)) {
+      if (valor !== undefined && valor !== null && valor !== '') {
+        cuerpo.append(clave, String(valor));
+      }
+    }
+
+    return pedir<EstadoModificaciones>(
+      `/procesos/${procesoId}/modificaciones/${modificacionId}/publicar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
 
   // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
 
@@ -1057,56 +1634,397 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
-  // ---------------------- etapa 9 · reunión y acta de inicio (9.1) ----------
-
-  /** Si el contrato puede arrancar, qué le falta, y la reunión ya registrada. */
-  actaInicio: (procesoId: string) =>
-    pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`),
+  // ----------------------------------- evaluación de ofertas (actividad 6.3) ---
 
   /**
-   * Registra la reunión de inicio y deja el contrato en ejecución.
-   *
-   * El acta va aparte porque puede no existir: la matriz la describe como
-   * «firmada por ambas partes, si fue pactada en el contrato».
+   * Estado de la evaluación: las ofertas de la lista publicada, el resultado
+   * que registró el comité con su informe y sus evidencias, y si quien consulta
+   * integra ese comité.
    */
-  suscribirActaInicio: (procesoId: string, datos: DatosActaInicio, acta?: File | null) => {
+  evaluacion: (procesoId: string) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion`),
+
+  /**
+   * Registra el resultado con el informe del comité.
+   *
+   * Va como multipart porque el informe viaja en la misma petición: sin él el
+   * resultado sería la opinión de quien lo digitó. Los números se envían solo
+   * cuando vienen —`FormData` los convertiría en cadena vacía, y una escala en
+   * blanco no es un cero.
+   */
+  registrarResultadoEvaluacion: (procesoId: string, datos: RegistrarResultado, informe: File) => {
     const cuerpo = new FormData();
-    if (acta) cuerpo.append('file', acta);
-
-    for (const [clave, valor] of Object.entries(datos)) {
-      if (valor !== undefined && valor !== null && valor !== '') {
-        cuerpo.append(clave, String(valor));
-      }
+    cuerpo.append('file', informe);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('justificacion', datos.justificacion);
+    if (datos.puntajeObtenido != null) {
+      cuerpo.append('puntajeObtenido', String(datos.puntajeObtenido));
     }
+    if (datos.puntajeMaximo != null) cuerpo.append('puntajeMaximo', String(datos.puntajeMaximo));
+    if (datos.valorEvaluado != null) cuerpo.append('valorEvaluado', String(datos.valorEvaluado));
 
-    return pedir<EstadoActaInicio>(`/procesos/${procesoId}/acta-inicio`, {
+    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado`, {
       method: 'POST',
       body: cuerpo,
     });
   },
 
-  // ------------------- etapa 9 · seguimiento de la ejecución (9.2) ---------
+  /** Deja sin efecto el resultado vigente; el anterior queda con su motivo. */
+  rectificarResultadoEvaluacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado/rectificar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
 
-  /** Estado del contrato en ejecución, sus responsables y los soportes. */
-  seguimiento: (procesoId: string) =>
-    pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`),
+  /** Una evidencia a la vez: cada una la sube quien la produjo. */
+  cargarEvidenciaEvaluacion: (procesoId: string, descripcion: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('descripcion', descripcion);
 
-  /** Carga un informe, acta o soporte de la ejecución al expediente. */
-  cargarSeguimiento: (procesoId: string, datos: DatosSeguimiento, soporte: File) => {
+    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado/evidencias`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+
+  // --------------------- traslado del informe y subsanaciones (6.4 a 6.6) ---
+
+  /**
+   * Estado del traslado: el informe en juego con su resultado congelado, el
+   * plazo que se le aplicó y lo que queda de término.
+   */
+  traslado: (procesoId: string) => pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado`),
+
+  /**
+   * Genera el informe preliminar congelando el resultado del comité.
+   *
+   * El archivo es opcional: volver a llamarlo sin adjuntar vuelve a tomar la
+   * fotografía —porque el comité rectificó— conservando el documento que ya
+   * estaba cargado.
+   */
+  generarInformeTraslado: (procesoId: string, observacion: string, informe: File | null) => {
+    const cuerpo = new FormData();
+    if (informe) cuerpo.append('file', informe);
+    if (observacion.trim()) cuerpo.append('observacion', observacion.trim());
+
+    return pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/informe`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /**
+   * Publica y traslada el informe, con lo que abre el término.
+   *
+   * La evidencia va en la misma petición: no hay integración con SECOP II, así
+   * que el soporte es lo que prueba la publicación.
+   */
+  trasladarInforme: (procesoId: string, medioPublicacion: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', medioPublicacion);
+
+    return pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/trasladar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Deja sin efecto el informe en juego; el anulado queda con su motivo. */
+  anularInformeTraslado: (procesoId: string, motivo: string) =>
+    pedir<EstadoTraslado>(`/procesos/${procesoId}/traslado/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** Lo presentado contra el informe trasladado, con sus respuestas. */
+  subsanaciones: (procesoId: string) =>
+    pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones`),
+
+  /** Transcribe lo que presentó un oferente, con su soporte. */
+  registrarSubsanacion: (procesoId: string, datos: RegistrarSubsanacion, soporte: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', soporte);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('tipo', datos.tipo);
+    cuerpo.append('presentadoPor', datos.presentadoPor);
+    cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
+    cuerpo.append('asunto', datos.asunto);
+    cuerpo.append('contenido', datos.contenido);
+    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
 
-    for (const [clave, valor] of Object.entries(datos)) {
-      if (valor !== undefined && valor !== null && valor !== '') {
-        cuerpo.append(clave, String(valor));
-      }
-    }
-
-    return pedir<EstadoSeguimiento>(`/procesos/${procesoId}/seguimiento`, {
+    return pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones`, {
       method: 'POST',
       body: cuerpo,
     });
   },
+
+  /** Responde un escrito. El documento por dimensión es opcional. */
+  responderSubsanacion: (
+    procesoId: string,
+    subsanacionId: string,
+    datos: { aceptada: boolean; respuesta: string },
+    documento: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (documento) cuerpo.append('file', documento);
+    cuerpo.append('aceptada', String(datos.aceptada));
+    cuerpo.append('respuesta', datos.respuesta);
+
+    return pedir<EstadoSubsanaciones>(
+      `/procesos/${procesoId}/traslado/subsanaciones/${subsanacionId}/responder`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Da por agotado el término: exige plazo vencido y nada sin responder. */
+  cerrarTraslado: (procesoId: string, nota: string) =>
+    pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones/cerrar`, {
+      method: 'POST',
+      body: JSON.stringify(nota.trim() ? { nota: nota.trim() } : {}),
+    }),
+
+
+  // ---------------------------------------- adjudicación, etapa 7 (7.1-7.4) ---
+
+  /** La audiencia registrada, sus piezas y los sobres abiertos. */
+  audienciaAdjudicacion: (procesoId: string) =>
+    pedir<EstadoAudienciaAdjudicacion>(`/procesos/${procesoId}/adjudicacion/audiencia`),
+
+  /** Registra que la audiencia se celebró, con su acta. */
+  celebrarAudiencia: (
+    procesoId: string,
+    datos: { celebradaAt: string; presididaPor: string; resumen?: string },
+    acta: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acta);
+    cuerpo.append('celebradaAt', datos.celebradaAt);
+    cuerpo.append('presididaPor', datos.presididaPor);
+    if (datos.resumen?.trim()) cuerpo.append('resumen', datos.resumen.trim());
+
+    return pedir<EstadoAudienciaAdjudicacion>(`/procesos/${procesoId}/adjudicacion/audiencia`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  /** Una grabación, una observación con su respuesta, o un anexo. */
+  cargarPiezaAudiencia: (
+    procesoId: string,
+    datos: { tipo: TipoPiezaAudiencia; descripcion: string },
+    archivo: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    cuerpo.append('tipo', datos.tipo);
+    cuerpo.append('descripcion', datos.descripcion);
+
+    return pedir<EstadoAudienciaAdjudicacion>(
+      `/procesos/${procesoId}/adjudicacion/audiencia/piezas`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Abre el sobre económico de una oferta; la evidencia es opcional. */
+  abrirSobreEconomico: (
+    procesoId: string,
+    datos: { oferenteId: string; valorOfertado: number; observacion?: string },
+    evidencia: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (evidencia) cuerpo.append('file', evidencia);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('valorOfertado', String(datos.valorOfertado));
+    if (datos.observacion?.trim()) cuerpo.append('observacion', datos.observacion.trim());
+
+    return pedir<EstadoAudienciaAdjudicacion>(
+      `/procesos/${procesoId}/adjudicacion/audiencia/sobres`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  anularAudiencia: (procesoId: string, motivo: string) =>
+    pedir<EstadoAudienciaAdjudicacion>(`/procesos/${procesoId}/adjudicacion/audiencia/anular`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  /** El informe definitivo, con lo que cambió desde el preliminar. */
+  informeDefinitivo: (procesoId: string) =>
+    pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo`,
+    ),
+
+  /** Congela el resultado vigente del comité. El archivo es opcional. */
+  generarInformeDefinitivo: (procesoId: string, informe: File | null) => {
+    const cuerpo = new FormData();
+    if (informe) cuerpo.append('file', informe);
+
+    return pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  publicarInformeDefinitivo: (procesoId: string, medioPublicacion: string, evidencia: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', medioPublicacion);
+
+    return pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo/publicar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  anularInformeDefinitivo: (procesoId: string, motivo: string) =>
+    pedir<EstadoInformeDefinitivoProceso>(
+      `/procesos/${procesoId}/adjudicacion/informe-definitivo/anular`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** El acto vigente y la ganadora que propone el informe definitivo. */
+  adjudicacion: (procesoId: string) =>
+    pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto`),
+
+  /**
+   * Emite la resolución de adjudicación.
+   *
+   * La justificación solo se envía cuando el adjudicatario no es la ganadora
+   * del informe: el backend la exige ahí y solo ahí.
+   */
+  adjudicar: (procesoId: string, datos: Adjudicar, acto: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', acto);
+    cuerpo.append('oferenteId', datos.oferenteId);
+    cuerpo.append('numeroActo', datos.numeroActo);
+    cuerpo.append('fechaActo', datos.fechaActo);
+    cuerpo.append('valorAdjudicado', String(datos.valorAdjudicado));
+    if (datos.justificacion?.trim()) cuerpo.append('justificacion', datos.justificacion.trim());
+
+    return pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  publicarActoAdjudicacion: (
+    procesoId: string,
+    datos: { medioPublicacion: string; notificadoAt?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', datos.medioPublicacion);
+    if (datos.notificadoAt) cuerpo.append('notificadoAt', datos.notificadoAt);
+
+    return pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto/publicar`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  revocarActoAdjudicacion: (procesoId: string, motivo: string) =>
+    pedir<EstadoAdjudicacion>(`/procesos/${procesoId}/adjudicacion/acto/revocar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------------------------------------- declaratoria desierta (EFDS-1160) --
+
+  /** La declaratoria vigente, qué causal cabe y qué impide declarar. */
+  declaratoriaDesierta: (procesoId: string) =>
+    pedir<EstadoDeclaratoriaDesierta>(`/procesos/${procesoId}/adjudicacion/desierta`),
+
+  /**
+   * Declara desierto el proceso y lo cierra.
+   *
+   * El informe del comité va solo cuando la causal es que ninguna oferta quedó
+   * habilitada: sin ofertas no hay comité que haya evaluado nada. La
+   * justificación, solo cuando el comité ya había registrado una ganadora.
+   */
+  declararDesierto: (
+    procesoId: string,
+    datos: DeclararDesierto,
+    acto: File,
+    informeComite: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('acto', acto);
+    if (informeComite) cuerpo.append('informeComite', informeComite);
+    cuerpo.append('causal', datos.causal);
+    cuerpo.append('motivo', datos.motivo);
+    cuerpo.append('numeroActo', datos.numeroActo);
+    cuerpo.append('fechaActo', datos.fechaActo);
+    if (datos.justificacion?.trim()) cuerpo.append('justificacion', datos.justificacion.trim());
+
+    return pedir<EstadoDeclaratoriaDesierta>(`/procesos/${procesoId}/adjudicacion/desierta`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  publicarDeclaratoriaDesierta: (
+    procesoId: string,
+    datos: { medioPublicacion: string; notificadaAt?: string },
+    evidencia: File,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', evidencia);
+    cuerpo.append('medioPublicacion', datos.medioPublicacion);
+    if (datos.notificadaAt) cuerpo.append('notificadaAt', datos.notificadaAt);
+
+    return pedir<EstadoDeclaratoriaDesierta>(
+      `/procesos/${procesoId}/adjudicacion/desierta/publicar`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  revocarDeclaratoriaDesierta: (procesoId: string, motivo: string) =>
+    pedir<EstadoDeclaratoriaDesierta>(`/procesos/${procesoId}/adjudicacion/desierta/revocar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  // ------ actividades sin historia propia · registro con soporte (051) ------
+
+  /** El registro vigente de una actividad, su soporte y si aplica a la modalidad. */
+  registroActividad: (procesoId: string, numeral: string) =>
+    pedir<EstadoRegistroActividad>(`/procesos/${procesoId}/actividades/${numeral}/registro`),
+
+  /**
+   * Deja constancia de que la actividad ocurrio.
+   *
+   * Va como multipart porque el soporte viaja en la misma peticion, y es
+   * opcional: cuales lo exigen lo dice el parametro, no la pantalla.
+   */
+  registrarActividad: (
+    procesoId: string,
+    numeral: string,
+    datos: DatosRegistroActividad,
+    soporte?: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (soporte) cuerpo.append('file', soporte);
+    cuerpo.append('fecha', datos.fecha);
+    cuerpo.append('nota', datos.nota);
+    if (datos.datos) cuerpo.append('datos', JSON.stringify(datos.datos));
+
+    return pedir<EstadoRegistroActividad>(
+      `/procesos/${procesoId}/actividades/${numeral}/registro`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Anula el registro vigente; la actividad vuelve al riel sin cumplir. */
+  anularRegistroActividad: (procesoId: string, numeral: string, motivo: string) =>
+    pedir<EstadoRegistroActividad>(
+      `/procesos/${procesoId}/actividades/${numeral}/registro/anular`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
 
   // ------------------- presunto incumplimiento (transversal) --------------
 
@@ -1140,53 +2058,89 @@ export const contratacionService = {
     });
   },
 
+  // ------------------- trámite sancionatorio (EFDS-1181) ------------------
+
+  /**
+   * Abre el trámite del caso con su resolución.
+   *
+   * El documento va aparte y es obligatorio: una resolución **es** el
+   * documento, y registrarla sin él dejaría al expediente afirmando que la
+   * entidad resolvió algo que no puede mostrar.
+   */
+  abrirTramite: (procesoId: string, casoId: string, datos: DatosResolucion, resolucion: File) =>
+    pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento/${casoId}/abrir`, {
+      method: 'POST',
+      body: conArchivo(datos, resolucion),
+    }),
+
+  /** Cita a audiencia sancionatoria; la fecha es la única del módulo que mira adelante. */
+  citarAudienciaSancionatoria: (procesoId: string, casoId: string, datos: DatosCitacion, citacion: File) =>
+    pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento/${casoId}/audiencias`, {
+      method: 'POST',
+      body: conArchivo(datos, citacion),
+    }),
+
+  /**
+   * Registra la audiencia sancionatoria celebrada; el acta prueba que el
+   * contratista fue oído.
+   *
+   * El nombre lleva el apellido porque `celebrarAudiencia` ya es la de
+   * adjudicación (EFDS-1159), que no tiene nada que ver con esta.
+   */
+  celebrarAudienciaSancionatoria: (
+    procesoId: string,
+    casoId: string,
+    audienciaId: string,
+    datos: DatosAudienciaCelebrada,
+    acta: File,
+  ) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/audiencias/${audienciaId}/celebrar`,
+      { method: 'POST', body: conArchivo(datos, acta) },
+    ),
+
+  /** Registra que la audiencia no se celebró: suspendida para citar otra, o cancelada. */
+  cerrarAudienciaSinCelebrar: (
+    procesoId: string,
+    casoId: string,
+    audienciaId: string,
+    desenlace: 'suspender' | 'cancelar',
+    motivo: string,
+  ) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/audiencias/${audienciaId}/${desenlace}`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
+  /** Decide el caso: lo archiva, declara el incumplimiento o declara la caducidad. */
+  decidirCaso: (procesoId: string, casoId: string, datos: DatosDecision, resolucion: File) =>
+    pedir<EstadoIncumplimiento>(`/procesos/${procesoId}/incumplimiento/${casoId}/decidir`, {
+      method: 'POST',
+      body: conArchivo(datos, resolucion),
+    }),
+
+  /** Registra la notificación de la resolución y, cuando la hay, su firmeza. */
+  notificarResolucion: (
+    procesoId: string,
+    casoId: string,
+    resolucionId: string,
+    datos: DatosNotificacion,
+  ) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/resoluciones/${resolucionId}/notificar`,
+      { method: 'POST', body: JSON.stringify(datos) },
+    ),
+
+  /** Revoca una resolución y deshace lo que hizo; no se borra del expediente. */
+  revocarResolucion: (procesoId: string, casoId: string, resolucionId: string, motivo: string) =>
+    pedir<EstadoIncumplimiento>(
+      `/procesos/${procesoId}/incumplimiento/${casoId}/resoluciones/${resolucionId}/revocar`,
+      { method: 'POST', body: JSON.stringify({ motivo }) },
+    ),
+
   /** Expediente completo del proceso para auditoría (EFDS-1186). */
   auditoria: (procesoId: string) =>
     pedir<ExpedienteAuditoria>(`/procesos/${procesoId}/auditoria`),
-
-  // ------------------- actividad 9.5 · modificaciones contractuales --------
-
-  /** Plazo vigente del contrato y el historial de sus modificaciones. */
-  modificaciones: (procesoId: string) =>
-    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones`),
-
-  /** Pide la prórroga. No extiende el plazo: eso ocurre al aprobarla. */
-  solicitarProrroga: (procesoId: string, datos: DatosProrroga) =>
-    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones/prorroga`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
-  /** Pide una cesión, aclaración, suspensión o reanudación. */
-  solicitarModificacion: (procesoId: string, datos: DatosModificacion) =>
-    pedir<EstadoModificaciones>(`/procesos/${procesoId}/modificaciones`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
-  /** Aprueba con el acto administrativo, que es obligatorio. */
-  aprobarModificacion: (
-    procesoId: string,
-    modificacionId: string,
-    acto: File,
-    observacion?: string,
-  ) => {
-    const cuerpo = new FormData();
-    cuerpo.append('file', acto);
-    if (observacion) cuerpo.append('observacion', observacion);
-
-    return pedir<EstadoModificaciones>(
-      `/procesos/${procesoId}/modificaciones/${modificacionId}/aprobar`,
-      { method: 'POST', body: cuerpo },
-    );
-  },
-
-  /** Niega la modificación. Ni el plazo ni el estado del contrato se tocan. */
-  rechazarModificacion: (procesoId: string, modificacionId: string, motivo: string) =>
-    pedir<EstadoModificaciones>(
-      `/procesos/${procesoId}/modificaciones/${modificacionId}/rechazar`,
-      { method: 'POST', body: JSON.stringify({ motivo }) },
-    ),
 
   /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
   alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),

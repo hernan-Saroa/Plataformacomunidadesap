@@ -8,6 +8,8 @@ export const ROL_REVISOR_CONTRATACION = 'REVISOR_CONTRATACION';
 export const ROL_DIRECTOR_CONTRATACION = 'DIRECTOR_CONTRATACION';
 /** Dirección Financiera: verifica la disponibilidad y expide el CDP. */
 export const ROL_ESTRUCTURADOR_FINANCIERO = 'ESTRUCTURADOR_FINANCIERO';
+/** Archivo de Gestion DC: organiza y custodia los expedientes contractuales. */
+export const ROL_ARCHIVO_GESTION_DC = 'ARCHIVO_GESTION_DC';
 export const ROL_SUPER_ADMIN = 'SUPER_ADMIN';
 
 /** Roles que pueden escribir sobre un proceso en etapa de estudios previos. */
@@ -172,6 +174,91 @@ export const ROL_EVALUADOR_TECNICO = 'EVALUADOR_TECNICO';
 export const ROLES_DESIGNAR_COMITE = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
 
 /**
+ * Quién registra el resultado de la evaluación (actividad 6.3, EFDS-1157).
+ *
+ * La evaluación se hace por fuera de la plataforma y quien la trae es el mismo
+ * comité que la hizo: la matriz de roles le reconoce "consulta y cargue de
+ * archivos". El gestor queda fuera a propósito —no evaluó— y el rol solo abre
+ * la puerta: **quién puede registrar lo decide la membresía del comité del
+ * proceso** (EFDS-1438), no esta lista. Un evaluador designado en otro proceso
+ * llega hasta aquí y no escribe nada, que es exactamente lo correcto.
+ */
+export const ROLES_EVALUACION = [
+  ROL_EVALUADOR_JURIDICO,
+  ROL_EVALUADOR_FINANCIERO,
+  ROL_EVALUADOR_TECNICO,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién publica y traslada el informe de evaluación (actividad 6.4, EFDS-1158).
+ *
+ * El comité evalúa y entrega su resultado (6.3); trasladarlo es un acto de la
+ * entidad, no del comité: se publica, se notifica y se abre el término para que
+ * los oferentes reclamen. Por eso vuelve al gestor del proceso y los
+ * evaluadores quedan fuera —nadie corre el traslado de su propia evaluación—.
+ */
+export const ROLES_TRASLADO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién mueve los plazos de traslado (EFDS-1467).
+ *
+ * Mismo criterio que los umbrales, los plazos de publicidad y los de ofertas:
+ * cambiar un término no afecta a un proceso sino a todos los que se trasladen
+ * después, así que queda en la Dirección de Contratación.
+ */
+export const ROLES_ADMIN_PLAZOS_TRASLADO = [ROL_DIRECTOR_CONTRATACION, ROL_SUPER_ADMIN];
+
+/**
+ * Quién registra la audiencia de adjudicación y abre el sobre económico
+ * (actividades 7.1 y 7.2, EFDS-1159).
+ *
+ * El trámite lo lleva el gestor del proceso, como el traslado: registrar que la
+ * audiencia se celebró y cargar su acta es documentar un hecho, no decidir.
+ * Adjudicar sí es decidir, y por eso tiene su propia lista.
+ *
+ * **Supuesto del equipo, sin confirmar** (EFDS-1489): la historia dice que el
+ * Ordenador del Gasto adjudica, pero no dice quién preside ni quién registra la
+ * audiencia.
+ */
+export const ROLES_AUDIENCIA_ADJUDICACION = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién emite el acto de adjudicación (actividad 7.4, EFDS-1159).
+ *
+ * El Ordenador del Gasto, con la misma separación de la designación del comité
+ * (EFDS-1438): el gestor lleva el trámite, pero comprometer a la entidad con un
+ * tercero es de quien ordena el gasto. Aquí sí lo dice la historia.
+ */
+export const ROLES_ADJUDICAR = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién declara desierto el proceso (EFDS-1160, RF-ADJ-02).
+ *
+ * El gestor del proceso, porque es lo que dice la historia: "Como Gestor de
+ * Contratación quiero declarar desierto el proceso".
+ *
+ * **Queda una tensión sin resolver** (EFDS-1513): la declaratoria desierta es
+ * un acto administrativo motivado, de la misma naturaleza del acto de
+ * adjudicación, y aquel lo firma el Ordenador del Gasto. Se implementa como
+ * dice la historia y no como el equipo supone que debería ser; si Contratación
+ * confirma lo otro, esta lista es lo único que cambia.
+ */
+export const ROLES_DECLARAR_DESIERTO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
  * Quién elabora el contrato y registra la aceptación del proponente
  * (actividad 8.1, EFDS-1161).
  *
@@ -241,6 +328,188 @@ export const ROL_SUPERVISOR_CONTRATO = 'SUPERVISOR_CONTRATO';
  * responde por a quién encarga la vigilancia de la ejecución.
  */
 export const ROLES_DESIGNAR_SUPERVISOR = [ROL_ORDENADOR_GASTO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién suscribe el acta de inicio (actividad 9.1, EFDS-1167).
+ *
+ * La historia es del Supervisor: es él quien convoca la reunión, socializa el
+ * alcance y responde por la ejecución que arranca. Se le suman el gestor y el
+ * Director de Contratación, que son quienes llevan el expediente y quienes
+ * tendrán que registrar el acta cuando el supervisor no la cargue él mismo.
+ *
+ * Como con el comité evaluador (EFDS-1438), **el rol solo abre la puerta**: el
+ * servicio exige que el contrato tenga supervisor vigente designado, así que
+ * un supervisor de otro contrato llega hasta aquí y no suscribe nada.
+ */
+export const ROLES_ACTA_INICIO = [
+  ROL_SUPERVISOR_CONTRATO,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién consulta la etapa 9.
+ *
+ * Los de contratación más el supervisor: sin esto, quien vigila la ejecución no
+ * podría ni abrir la pantalla del contrato que le asignaron.
+ */
+export const ROLES_LECTURA_EJECUCION = [
+  ...ROLES_LECTURA_CONTRATACION,
+  ROL_SUPERVISOR_CONTRATO,
+];
+
+/**
+ * Quién radica la cuenta de cobro (actividad 9.4, EFDS-1170).
+ *
+ * El contratista no tiene cuenta en el sistema —igual que en la etapa 8, donde
+ * el gestor registra su firma—, así que la radica quien lleva el expediente o
+ * quien vigila la ejecución.
+ */
+export const ROLES_RADICAR_PAGO = [
+  ROL_SUPERVISOR_CONTRATO,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién avala o devuelve la cuenta (actividad 9.4).
+ *
+ * El núcleo de la historia: «el supervisor da aval». Más estrecho que quien
+ * radica, y a propósito —si quien presenta la cuenta pudiera avalarla, el aval
+ * dejaría de ser una revisión, con el mismo criterio de las garantías
+ * (EFDS-1164)—.
+ *
+ * Y el rol solo abre la puerta: el servicio exige que sea el supervisor
+ * **vigente de ese contrato**, como en la evaluación (EFDS-1438).
+ */
+export const ROLES_AVALAR_PAGO = [ROL_SUPERVISOR_CONTRATO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién tramita el pago avalado (actividad 9.4).
+ *
+ * La Dirección Financiera, con el mismo criterio del CDP y del RP: es ella la
+ * que mueve el presupuesto de la entidad. El supervisor avala la prestación;
+ * no gira el dinero.
+ */
+export const ROLES_TRAMITAR_PAGO = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién elabora el informe final de ejecución (actividad 10.1, EFDS-1171).
+ *
+ * El supervisor, y por la misma razón que avala los pagos: el informe final es
+ * la conclusión de su vigilancia. El gestor lleva el expediente, pero no puede
+ * concluir sobre una ejecución que no vigiló.
+ *
+ * Como en el aval, el rol solo abre la puerta: el servicio exige que sea el
+ * supervisor **vigente de ese contrato**.
+ */
+export const ROLES_INFORME_FINAL = [ROL_SUPERVISOR_CONTRATO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién liquida el contrato (actividad 10.2, EFDS-1172).
+ *
+ * La Dirección de Contratación, que es de quien habla la historia. Y tiene
+ * sentido que no sea el supervisor: él concluye sobre la ejecución en el
+ * informe final (10.1), y sobre ese informe la entidad cierra el contrato. Un
+ * supervisor que liquidara estaría cerrando su propia gestión.
+ */
+export const ROLES_LIQUIDAR = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién cierra financieramente el contrato (actividad 10.3, EFDS-1173).
+ *
+ * La Dirección Financiera y nadie más. Es la lista más estrecha del módulo
+ * junto con la del CDP, y por la misma razón: liberar saldo devuelve plata al
+ * presupuesto de la entidad, y eso es competencia suya.
+ *
+ * Ni el gestor que liquidó ni el supervisor que vigiló: cada uno hizo lo suyo,
+ * pero ninguno mueve presupuesto.
+ */
+export const ROLES_CIERRE_FINANCIERO = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
+
+/**
+ * Quién archiva y reabre el expediente (actividad 10.4, EFDS-1174).
+ *
+ * El Archivo de Gestión y nadie más. La matriz de roles lo describe como el
+ * «personal que organiza y custodia los expedientes en su totalidad», con
+ * atributos de renombrar, consecutivo y mover: archivar es exactamente eso.
+ *
+ * Ni el gestor que liquidó ni la Dirección Financiera que cerró. Cada uno hizo
+ * lo suyo, pero la custodia del expediente no es de ninguno de los dos, y
+ * reabrir uno archivado toca algo que ya se declaró completo ante entes de
+ * control.
+ */
+export const ROLES_ARCHIVO_EXPEDIENTE = [ROL_ARCHIVO_GESTION_DC, ROL_SUPER_ADMIN];
+
+/**
+ * Quién registra la publicación del acta (actividad 10.4, EFDS-1174).
+ *
+ * Más amplio que el archivo, a propósito. La historia pone la publicación en el
+ * Archivo de Gestión, pero publicar en SECOP II ha sido siempre del gestor en
+ * este módulo —actividades 5.2 y 8.8—, y estrecharlo aquí dejaría un trámite
+ * conocido en manos de un rol que todavía no existe en producción.
+ *
+ * **Tensión anotada, no resuelta por cuenta propia:** si Contratación confirma
+ * que la publicación del acta es exclusiva del Archivo de Gestión, esta lista
+ * se reduce a la de arriba.
+ */
+export const ROLES_PUBLICACION_ACTA = [
+  ROL_ARCHIVO_GESTION_DC,
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién cierra definitivamente el contrato (EFDS-1175).
+ *
+ * La Dirección de Contratación, que es de quien habla la historia. Misma lista
+ * que la liquidación (EFDS-1172) y por la misma razón: el cierre definitivo es
+ * la conclusión de lo que se liquidó, y quien lleva el expediente contractual
+ * es quien lo declara en firme.
+ *
+ * Ni el supervisor —su vigilancia terminó con el informe final— ni la Dirección
+ * Financiera —aquí no se mueve presupuesto, solo se constata que los amparos
+ * vencieron—.
+ */
+export const ROLES_CIERRE_DEFINITIVO = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién tramita las modificaciones contractuales (actividad 9.5, EFDS-1176).
+ *
+ * La Dirección de Contratación, que es de quien habla la historia. Misma lista
+ * que la liquidación y el cierre definitivo: modificar un contrato es un
+ * trámite contractual, y quien lleva el expediente es quien lo adelanta.
+ *
+ * El supervisor **solicita** las modificaciones según la matriz de roles, pero
+ * quien las tramita y las suscribe no es él. Cuando exista la solicitud del
+ * supervisor como paso propio, entrará con su propia lista.
+ */
+export const ROLES_MODIFICACIONES = [
+  ROL_GESTOR_CONTRATACION,
+  ROL_DIRECTOR_CONTRATACION,
+  ROL_SUPER_ADMIN,
+];
+
+/**
+ * Quién tramita el CDP y el RP que respaldan una adición (EFDS-1176).
+ *
+ * La Dirección Financiera, exactamente como los del proceso y los del contrato.
+ * Es ella la que compromete el presupuesto de la entidad, y que la plata entre
+ * por una adición en vez de por el contrato original no cambia de quién es esa
+ * competencia.
+ */
+export const ROLES_RESPALDO_ADICION = [ROL_ESTRUCTURADOR_FINANCIERO, ROL_SUPER_ADMIN];
 
 export interface HiringUser {
   userId?: string;

@@ -1,5 +1,9 @@
 import {
   PERMISO_ACTA_INICIO_SUSCRIBIR,
+  PERMISO_INCUMPLIMIENTO_DECIDIR,
+  PERMISO_INCUMPLIMIENTO_REPORTAR,
+  PERMISO_INCUMPLIMIENTO_TRAMITAR,
+  PERMISO_INCUMPLIMIENTO_VER,
   PERMISO_SUPERVISION_REASIGNAR,
   permisosDelUsuario,
   tienePermiso,
@@ -68,6 +72,96 @@ describe('tienePermiso', () => {
 
     expect(tienePermiso(ordenador, PERMISO_SUPERVISION_REASIGNAR)).toBe(true);
     expect(tienePermiso(ordenador, 'contratacion.seguimiento.cargar')).toBe(false);
+  });
+});
+
+/**
+ * RF-INC-01 le encarga el reporte al supervisor, y estas pruebas fijan que sea
+ * él y nadie más quien lo tenga: es la lista más estrecha del bloque, porque
+ * quien vigila la ejecución día a día es el único en condiciones de afirmar
+ * que algo se incumplió.
+ */
+describe('permisos del presunto incumplimiento', () => {
+  it('el supervisor puede reportar', () => {
+    expect(tienePermiso({ roles: ['SUPERVISOR_CONTRATO'] }, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(
+      true,
+    );
+  });
+
+  it('el gestor de contratación no reporta, aunque lleve el expediente', () => {
+    // Lleva el expediente pero no vigila la obra: no ha visto el hecho.
+    const gestor = { roles: ['GESTOR_CONTRATACION'] };
+
+    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(false);
+    // Consultarlo sí, que es lo que necesita para tramitarlo.
+    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
+  });
+
+  it('el ordenador del gasto tampoco reporta', () => {
+    // Designa al supervisor, pero no hace la vigilancia él mismo.
+    expect(tienePermiso({ roles: ['ORDENADOR_GASTO'] }, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(
+      false,
+    );
+  });
+
+  it('el revisor consulta pero no reporta', () => {
+    const revisor = { roles: ['REVISOR_CONTRATACION'] };
+
+    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
+    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(false);
+  });
+});
+
+/**
+ * RF-INC-02 encarga el trámite al área jurídica, y estas pruebas fijan la
+ * separación que la migración 651 explica: instruir y decidir no son la misma
+ * competencia. Reunirlas le daría a quien lleva el trámite la facultad de
+ * sancionar, y el debido proceso que pide la historia es justamente que no
+ * ocurra.
+ */
+describe('permisos del trámite sancionatorio', () => {
+  it('el gestor de contratación instruye pero no decide', () => {
+    // Es el «abogado / profesional» de la matriz de roles: proyecta los actos
+    // administrativos del proceso. Proyectarlos no es firmarlos.
+    const gestor = { roles: ['GESTOR_CONTRATACION'] };
+
+    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(true);
+    expect(tienePermiso(gestor, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
+  });
+
+  it('el ordenador del gasto decide pero no instruye', () => {
+    // Declarar el incumplimiento o la caducidad compromete a la entidad frente
+    // al contratista, como el acto de adjudicación; citar audiencias no.
+    const ordenador = { roles: ['ORDENADOR_GASTO'] };
+
+    expect(tienePermiso(ordenador, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(true);
+    expect(tienePermiso(ordenador, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(false);
+  });
+
+  it('el director de contratación hace las dos cosas', () => {
+    const director = { roles: ['DIRECTOR_CONTRATACION'] };
+
+    expect(tienePermiso(director, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(true);
+    expect(tienePermiso(director, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(true);
+  });
+
+  it('el supervisor reporta y consulta, pero no tramita ni decide', () => {
+    // Constata el hecho; lo que sigue es del área jurídica, y que sea él quien
+    // lo vio no lo pone en condiciones de resolverlo.
+    const supervisor = { roles: ['SUPERVISOR_CONTRATO'] };
+
+    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_REPORTAR)).toBe(true);
+    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
+    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(false);
+    expect(tienePermiso(supervisor, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
+  });
+
+  it('el revisor consulta y nada más', () => {
+    const revisor = { roles: ['REVISOR_CONTRATACION'] };
+
+    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_VER)).toBe(true);
+    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_TRAMITAR)).toBe(false);
+    expect(tienePermiso(revisor, PERMISO_INCUMPLIMIENTO_DECIDIR)).toBe(false);
   });
 });
 

@@ -18,6 +18,9 @@ import {
  * ya ocurrieron. `PERFECCIONADO` de que estén las dos firmas (EFDS-1162),
  * `LEGALIZADO` de que las garantías y la ARL estén aprobadas (EFDS-1164), y
  * `EJECUCION` de que se haya celebrado la reunión de inicio (EFDS-1167).
+ *
+ * En `EJECUCION` el contrato deja de tramitarse y empieza a cumplirse: es donde
+ * lo toma la etapa 9.
  */
 export type EstadoContrato =
   | 'GENERADO'
@@ -26,8 +29,19 @@ export type EstadoContrato =
   | 'PERFECCIONADO'
   | 'LEGALIZADO'
   | 'EJECUCION'
+  // Ejecucion en pausa (EFDS-1178). La suspension no retrocede el contrato: lo
+  // detiene. Mientras dure no admite pagos ni liquidacion, y de ahi se sale
+  // reanudando o terminando anticipadamente.
   | 'SUSPENDIDO'
+  // Ejecucion acabada antes de tiempo (EFDS-1178): por mutuo acuerdo o por
+  // decision unilateral motivada. No es un desenlace, es una parada: lo que
+  // sigue es el informe final y la liquidacion de lo ejecutado.
+  //
+  // Con el, el ciclo que pedia RF-SIS-01 queda completo.
   | 'TERMINADO'
+  // Los dos desenlaces de la etapa 10 (EFDS-1175). Son hechos distintos: el
+  // acta de liquidacion produce el primero y el vencimiento de los amparos de
+  // estabilidad y calidad, el segundo.
   | 'LIQUIDADO'
   | 'CERRADO';
 
@@ -57,9 +71,22 @@ const AVANCE: Record<Exclude<EstadoContrato, 'RECHAZADO' | 'SUSPENDIDO'>, number
   PERFECCIONADO: 2,
   LEGALIZADO: 3,
   EJECUCION: 4,
-  TERMINADO: 5,
-  LIQUIDADO: 6,
-  CERRADO: 7,
+  // SUSPENDIDO no tiene escalon propio y por eso no esta en el mapa: un contrato
+  // suspendido llego hasta la ejecucion y ahi sigue, en pausa. `alMenos` lo
+  // responde por PUNTO_DE_LA_SUSPENSION.
+  //
+  // Lo que la pausa impide no se decide aqui: `admitePagos`, `admiteLiquidacion`
+  // y `admiteInformeFinal` enumeran estados uno por uno y dejan SUSPENDIDO
+  // fuera. Esta escala responde «que tan avanzado esta», no «que puede hacer».
+  // La terminacion anticipada tampoco avanza: el contrato llego hasta la
+  // ejecucion y ahi paro antes de tiempo. Comparte escalon por lo mismo que la
+  // suspension, y lo que la terminacion impide —modificarlo otra vez— se decide
+  // en `porQueNoAdmiteTipo`, no aqui.
+  TERMINADO: 4,
+  // Los dos de la etapa 10 continuan el orden: un contrato liquidado ya paso
+  // por la ejecucion, y uno cerrado por la liquidacion.
+  LIQUIDADO: 5,
+  CERRADO: 6,
 };
 
 /**

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ETAPAS } from '../proceso/StepperEtapas';
+import { ETAPAS } from '../proceso/Etapas';
 
 interface Props {
   etapaActual: number;

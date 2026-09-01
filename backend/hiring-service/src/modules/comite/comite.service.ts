@@ -243,9 +243,9 @@ export class ComiteService {
   /**
    * Exige que haya comité designado antes de evaluar.
    *
-   * Segundo criterio de la historia. La evaluación es EFDS-1157 y todavía no
-   * existe, así que esto queda expuesto y probado a la espera de que la
-   * consuma, en vez de duplicar la regla cuando llegue.
+   * Segundo criterio de la historia, y lo consume EFDS-1157: sin comité
+   * designado no se registra el resultado de la evaluación. La regla vive aquí
+   * y no allá para no duplicarla.
    */
   async exigirComiteParaEvaluar(procesoId: string, em?: EntityManager) {
     const comite = await this.comiteVigente(procesoId, em);

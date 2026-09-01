@@ -25,6 +25,42 @@ copias byte a byte renumeradas (017_causal_normativa, 018_campos_solo_del_hu,
 019_limpia_datos_de_campos_retirados) que se eliminaron del directorio: eran
 idénticas a 010/011/012 y su prefijo chocaba con la línea funcional.
 
+Volvió a pasar en los números **035–040**, y por la misma causa: las etapas 6 y
+7 y la etapa 8 se construyeron en paralelo sin ver el numerador de la otra.
+
+| Nº | Etapas 6 y 7 | Etapa 8 |
+| --- | --- | --- |
+| 035 | `criterios_de_evaluacion` | `contrato_electronico` |
+| 036 | `numerales_de_las_etapas_5_y_6` | `suscripcion_contrato` |
+| 038 | `evaluacion_por_fuera` | `designacion_supervisor` |
+| 039 | `traslado_y_subsanaciones` | `registro_presupuestal` |
+| 040 | `adjudicacion` | `publicacion_contrato` |
+
+**No se renumeran**: los dos juegos ya corrieron en las bases de quienes los
+construyeron, y renombrarlos ahora obligaría a rastrear cuál se aplicó dónde.
+Se dejan documentados, como los de 010/011/012.
+
+Aplicarlos en cualquier orden dentro del mismo número da el mismo resultado: no
+hay tabla de la etapa 8 que dependa de una de la 6 o la 7, ni al revés. La 037
+y la 041 no chocan porque solo una línea las usó.
+
+## La 042, que sí chocó
+
+El choque de la **042** es de otra clase y por eso tiene arreglo propio. La
+actividad 9.1 se modeló dos veces —EFDS-1514 y EFDS-1167— y las dos versiones
+se llamaron `042_acta_de_inicio.sql`, pero además **crean la misma tabla con
+columnas distintas**. En los pares anteriores cada archivo tocaba lo suyo; aquí
+las dos escriben `hiring.actas_inicio`.
+
+Al integrar se conservó la de EFDS-1167, que es la que describe la entidad
+`ActaInicio`. La otra ya había corrido en algunas bases, y como la 042 crea con
+`CREATE TABLE IF NOT EXISTS`, reaplicarla no las corrige: quedan con el esquema
+de una versión y el código de la otra, y todo lo que lee el acta —9.1, 9.2,
+9.4, 10.1 y 10.2— responde «column does not exist».
+
+La **058** las converge. En una base que aplicó la 042 buena no hace nada, y
+después de ella las dos historias dan el mismo esquema.
+
 ## Cuidado
 
 - `013_documentos_proceso.sql` **no** crea `documentos_proceso`: es la carga

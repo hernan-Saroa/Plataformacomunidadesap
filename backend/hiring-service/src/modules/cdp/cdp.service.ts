@@ -4,15 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, EntityManager, In } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
 import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
+import { ETAPA_LIQUIDACION } from '../../entities/informe-final.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
+import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import {
   HiringAccess,
@@ -59,12 +61,21 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  * `hiring.actividades` no basta, porque lo que no esté en estas etapas no se
  * devuelve y la pantalla no tiene cómo llegar a ella.
  *
- * La 8 entra con EFDS-1161 (contrato electrónico), EFDS-1162 (suscripción) y
- * EFDS-1164 (garantías y ARL). La 7 se suma con ella y no después: la
- * adjudicación es el paso que antecede al contrato, y dejarla fuera haría que
- * el riel saltara de la etapa 6 a la 8 sin explicar qué pasó en medio. Sus
- * actividades aparecen sin panel propio mientras EFDS-1159 y EFDS-1160 estén
- * en curso, que es la verdad de lo entregado.
+ * La 7 entra con EFDS-1159 (adjudicación) y EFDS-1160 (declaratoria desierta),
+ * y la 8 con EFDS-1161 (contrato electrónico), EFDS-1162 (suscripción) y
+ * EFDS-1164 (garantías y ARL). Las dos llegaron por caminos distintos y con el
+ * mismo olvido: sus paneles y su API estaban construidos y probados, pero la
+ * etapa no figuraba aquí y el riel no tenía cómo mostrarla. Es la tercera vez
+ * que pasa —ya había pasado con la 6— y por eso ahora cada etapa entra con su
+ * prueba de que llega al riel.
+ *
+ * La declaratoria desierta no suma numeral —la matriz no le da uno—: se trabaja
+ * desde el panel de la 7.1 a la 7.4.
+ *
+ * La 9 entra con EFDS-1167 (acta de inicio) y EFDS-1170 (trámite de pagos), y
+ * la 10 con EFDS-1171 (informe final). De las dos solo tienen panel las
+ * actividades construidas —9.1, 9.4 y 10.1—; las demás aparecen en el riel sin
+ * él, que es la verdad de lo entregado.
  */
 export const ETAPA_ADJUDICACION = 7;
 export const ETAPA_LEGALIZACION = 8;
@@ -84,6 +95,7 @@ export const ETAPAS_ENTREGADAS = [
   ETAPA_ADJUDICACION,
   ETAPA_LEGALIZACION,
   ETAPA_EJECUCION,
+  ETAPA_LIQUIDACION,
 ];
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
@@ -253,11 +265,17 @@ export class CdpService {
     return nuevas.length > 0 ? em.save(nuevas) : [];
   }
 
-  /** CDP en curso del proceso, o null si nunca se solicitó o quedó cerrado. */
+  /**
+   * CDP en curso del proceso, o null si nunca se solicitó o quedó cerrado.
+   *
+   * `modificacionId` nulo: desde EFDS-1176 una adición trae su propio CDP, y sin
+   * este filtro la apertura del proceso podría quedar respaldada por el CDP de
+   * una adición tramitada meses después.
+   */
   async delProceso(procesoId: string, em?: EntityManager): Promise<Cdp | null> {
     const manager = em ?? this.dataSource.manager;
     return manager.getRepository(Cdp).findOne({
-      where: { procesoId, estado: In(ESTADOS_CDP_EN_CURSO) },
+      where: { procesoId, estado: In(ESTADOS_CDP_EN_CURSO), modificacionId: IsNull() },
     });
   }
 
@@ -551,16 +569,18 @@ export class CdpService {
       proceso.etapa = ETAPA_APERTURA;
       await manager.save(proceso);
 
-      await manager.save(
-        manager.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_APERTURA,
-          estado: 'APROBADO' as const,
-          datos: {},
-          revisadoPor: acceso.userName,
-          revisadoAt: new Date(),
-        }),
-      );
+      // Se busca antes de crear: desde EFDS-1187 el proceso nace con las 63
+      // actividades de la matriz instanciadas, así que la fila de la 5.7 ya
+      // existe y crearla otra vez choca contra uq_proceso_numeral.
+      const actividad =
+        (await manager.getRepository(ProcesoActividad).findOne({
+          where: { procesoId, numeral: NUMERAL_APERTURA },
+        })) ?? manager.create(ProcesoActividad, { procesoId, numeral: NUMERAL_APERTURA, datos: {} });
+
+      actividad.estado = 'APROBADO';
+      actividad.revisadoPor = acceso.userName;
+      actividad.revisadoAt = new Date();
+      await manager.save(actividad);
 
       await this.traza(manager, procesoId, procesoId, 'APROBAR', acceso, {
         actividad: NUMERAL_APERTURA,
@@ -614,20 +634,26 @@ export class CdpService {
 
       await this.exigirCdpParaDocumentos(procesoId, em);
 
+      // Que la fila exista ya no significa que la actividad esté iniciada:
+      // desde EFDS-1187 el proceso nace con las 63 actividades de la matriz
+      // instanciadas. Lo que la inicia es el trabajo —un documento cargado— o
+      // que ya haya salido de borrador.
       const existente = await em.getRepository(ProcesoActividad).findOne({
         where: { procesoId, numeral: NUMERAL_DOCUMENTOS },
       });
-      if (existente) {
+      const cargados = await em.getRepository(DocumentoProceso).count({ where: { procesoId } });
+      if (cargados > 0 || (existente && existente.estado !== 'BORRADOR')) {
         throw new ConflictException('La elaboración de documentos ya está iniciada');
       }
 
       const actividad = await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_DOCUMENTOS,
-          estado: 'BORRADOR' as const,
-          datos: {},
-        }),
+        existente ??
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_DOCUMENTOS,
+            estado: 'BORRADOR' as const,
+            datos: {},
+          }),
       );
 
       await this.traza(em, procesoId, actividad.id, 'CREAR', acceso, {

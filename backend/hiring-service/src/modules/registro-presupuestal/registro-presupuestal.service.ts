@@ -327,7 +327,12 @@ export class RegistroPresupuestalService {
     await em.save(actividad);
   }
 
-  /** El RP en trámite o expedido; los rechazados y anulados no cuentan. */
+  /**
+   * El RP en trámite o expedido; los rechazados y anulados no cuentan.
+   *
+   * Solo el del contrato: desde EFDS-1176 cada adición trae el suyo, y sin el
+   * filtro esta consulta empezaría a devolver cualquiera de los dos.
+   */
   rpVigente(contratoId: string, em?: EntityManager) {
     const manager = em ?? this.dataSource.manager;
     return manager
@@ -335,6 +340,7 @@ export class RegistroPresupuestalService {
       .createQueryBuilder('rp')
       .where('rp.contrato_id = :contratoId', { contratoId })
       .andWhere("rp.estado NOT IN ('RECHAZADO', 'ANULADO')")
+      .andWhere('rp.modificacion_id IS NULL')
       .getOne();
   }
 

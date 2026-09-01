@@ -3,7 +3,7 @@ import { ArrowLeft, FileText, FolderOpen, ClipboardList, ShieldCheck } from 'luc
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
-import { StepperEtapas } from './StepperEtapas';
+import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
 import { RielActividades } from './RielActividades';
@@ -19,6 +19,15 @@ import { PanelAudienciaRiesgos } from '../riesgos/PanelAudienciaRiesgos';
 import { PanelAdendas } from '../adendas/PanelAdendas';
 import { PanelOfertas } from '../ofertas/PanelOfertas';
 import { PanelComite } from '../comite/PanelComite';
+import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
+import { PanelTraslado } from '../traslado/PanelTraslado';
+import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
+import { PanelPagos } from '../pagos/PanelPagos';
+import { PanelInformeFinal } from '../informe-final/PanelInformeFinal';
+import { PanelLiquidacion } from '../liquidacion/PanelLiquidacion';
+import { PanelCierreFinanciero } from '../cierre-financiero/PanelCierreFinanciero';
+import { PanelArchivoExpediente } from '../archivo-expediente/PanelArchivoExpediente';
+import { PanelModificaciones } from '../modificaciones/PanelModificaciones';
 import { PanelContrato } from '../contrato/PanelContrato';
 import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
@@ -26,10 +35,10 @@ import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistr
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
+import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
-import { PanelModificaciones } from '../modificaciones/PanelModificaciones';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
@@ -53,6 +62,28 @@ const NUMERAL_OFERTAS = '6.1';
 /** Designación del comité que evaluará las ofertas (EFDS-1156). */
 const NUMERAL_COMITE = '6.2';
 
+/** Evaluación de las ofertas (EFDS-1157). */
+const NUMERAL_EVALUACION = '6.3';
+
+/**
+ * Traslado del informe y subsanaciones (EFDS-1158).
+ *
+ * Tres numerales y un solo panel: para el usuario es un solo trámite —se
+ * publica el informe, corre un término, entran escritos y se responden—, y
+ * partirlo obligaría a saltar entre pantallas para saber si el plazo sigue
+ * abierto.
+ */
+const NUMERALES_TRASLADO = ['6.4', '6.5', '6.6'];
+
+/**
+ * Adjudicación (EFDS-1159), etapa 7 completa.
+ *
+ * Cuatro numerales y un solo panel, por lo mismo que el traslado: para el
+ * usuario es un solo desenlace —audiencia, sobre económico, informe definitivo
+ * y acto— y saber en qué paso va exige verlos juntos.
+ */
+const NUMERALES_ADJUDICACION = ['7.1', '7.2', '7.3', '7.4'];
+
 /** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
 const NUMERALES_ETAPA_5 = [
   NUMERAL_DOCUMENTOS,
@@ -70,7 +101,12 @@ const NUMERALES_ETAPA_5 = [
  * Lista aparte y no añadida a la de la etapa 5: son etapas distintas, y meterlas
  * en la misma constante haría que el nombre dejara de decir la verdad.
  */
-const NUMERALES_ETAPA_6 = [NUMERAL_OFERTAS, NUMERAL_COMITE];
+const NUMERALES_ETAPA_6 = [
+  NUMERAL_OFERTAS,
+  NUMERAL_COMITE,
+  NUMERAL_EVALUACION,
+  ...NUMERALES_TRASLADO,
+];
 
 /** Elaboración del contrato y aceptación del proponente (EFDS-1161). */
 const NUMERAL_CONTRATO = '8.1';
@@ -84,8 +120,30 @@ const NUMERAL_GARANTIAS = '8.4';
 /** Registro de la ARL para contratistas persona natural (EFDS-1164). */
 const NUMERAL_ARL = '8.5';
 
+/**
+ * Acta de inicio, cuando el contrato la pactó (EFDS-1167), actividad 8.7.
+ *
+ * La matriz nombra el acta dos veces: aquí, al cerrar la legalización, y en la
+ * 9.1 como «reunión de inicio». Es un solo hecho y un solo registro —una sola
+ * acta por contrato—, así que las dos casillas abren el mismo panel en vez de
+ * duplicar el trámite. Se llegue por donde se llegue, lo que se ve es el
+ * estado del acta de ese contrato.
+ */
+const NUMERAL_ACTA_INICIO_LEGALIZACION = '8.7';
+
 /** Publicación del contrato dentro del plazo legal (EFDS-1166). */
 const NUMERAL_PUBLICACION_CONTRATO = '8.8';
+
+/** Las de la etapa 8 que ya tienen panel. Misma razón que la lista anterior. */
+const NUMERALES_ETAPA_8 = [
+  NUMERAL_CONTRATO,
+  NUMERAL_SUPERVISOR,
+  NUMERAL_RP,
+  NUMERAL_GARANTIAS,
+  NUMERAL_ARL,
+  NUMERAL_ACTA_INICIO_LEGALIZACION,
+  NUMERAL_PUBLICACION_CONTRATO,
+];
 
 /** Reunión de inicio que da comienzo a la ejecución (EFDS-1167). */
 const NUMERAL_ACTA_INICIO = '9.1';
@@ -93,25 +151,69 @@ const NUMERAL_ACTA_INICIO = '9.1';
 /** Seguimiento de la ejecución del contrato (EFDS-1168). */
 const NUMERAL_SEGUIMIENTO = '9.2';
 
-/** Modificaciones contractuales de la ejecucion (EFDS-1177, EFDS-1178). */
+/** Tramite de pagos del contrato (EFDS-1170). */
+const NUMERAL_PAGOS = '9.4';
+/**
+ * Modificaciones contractuales (EFDS-1176).
+ *
+ * La matriz si le da numeral a este bloque, a diferencia de la declaratoria
+ * desierta y del cierre definitivo. Crecera con EFDS-1177 y EFDS-1178, que
+ * traen la prorroga, la cesion, el aclaratorio y la suspension al mismo panel.
+ */
 const NUMERAL_MODIFICACIONES = '9.5';
 
 /**
- * Las que se trabajan desde su propio panel y no desde el formulario.
+ * Reasignación de supervisión (EFDS-1169), actividad 9.3.
  *
- * Ya no son solo de la etapa 8: la reunión de inicio abre la 9 y sigue el mismo
- * criterio, así que la lista se nombra por lo que tienen en común.
+ * No tiene panel propio: comparte el de la 8.2, que es donde se reasigna desde
+ * que la historia se cerró. Reasignar *es* designar otra vez —el mismo
+ * ordenador del gasto, el mismo acto administrativo—, y lo que la matriz
+ * separa en dos numerales es cuándo ocurre: la 8.2 antes de arrancar y la 9.3
+ * «en cualquier momento durante la ejecución». Mismo criterio que los cuatro
+ * numerales del CDP contra un solo `PanelCdp`.
+ *
+ * Sin esto la actividad salía con candado y «Pendiente de desarrollo», que era
+ * falso: lo construido no se podía alcanzar desde la etapa donde ocurre.
  */
-const NUMERALES_CON_PANEL_PROPIO = [
-  NUMERAL_CONTRATO,
-  NUMERAL_SUPERVISOR,
-  NUMERAL_RP,
-  NUMERAL_GARANTIAS,
-  NUMERAL_ARL,
-  NUMERAL_PUBLICACION_CONTRATO,
+const NUMERAL_REASIGNACION = '9.3';
+
+const NUMERALES_ETAPA_9 = [
   NUMERAL_ACTA_INICIO,
   NUMERAL_SEGUIMIENTO,
+  NUMERAL_REASIGNACION,
+  NUMERAL_PAGOS,
   NUMERAL_MODIFICACIONES,
+];
+
+/** Los dos numerales que trabajan la supervisión: designarla y reasignarla. */
+const NUMERALES_SUPERVISION = [NUMERAL_SUPERVISOR, NUMERAL_REASIGNACION];
+
+/** Los dos numerales desde los que se llega al acta de inicio del contrato. */
+const NUMERALES_ACTA_INICIO = [NUMERAL_ACTA_INICIO_LEGALIZACION, NUMERAL_ACTA_INICIO];
+
+/**
+ * Informe final de ejecucion (EFDS-1171), primera actividad de la etapa 10.
+ *
+ * Lista propia por lo mismo que las anteriores: es otra etapa. Crecera con
+ * EFDS-1172 a EFDS-1175.
+ */
+const NUMERAL_INFORME_FINAL = '10.1';
+/** Acta de liquidacion del contrato (EFDS-1172). */
+const NUMERAL_LIQUIDACION = '10.2';
+/** Pago final y liberacion del saldo del RP (EFDS-1173). */
+const NUMERAL_CIERRE_FINANCIERO = '10.3';
+/**
+ * Publicacion del acta y archivo del expediente (EFDS-1174).
+ *
+ * La matriz solo le da numeral al archivo; la publicacion no tiene uno propio y
+ * RF-LIQ-04 las enuncia juntas, asi que las dos viven en la 10.4.
+ */
+const NUMERAL_ARCHIVO_EXPEDIENTE = '10.4';
+const NUMERALES_ETAPA_10 = [
+  NUMERAL_INFORME_FINAL,
+  NUMERAL_LIQUIDACION,
+  NUMERAL_CIERRE_FINANCIERO,
+  NUMERAL_ARCHIVO_EXPEDIENTE,
 ];
 
 /** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
@@ -154,6 +256,38 @@ const ACTIVIDADES_ETAPA_3 = [
   },
 ];
 
+/**
+ * Las catorce actividades de la matriz que ninguna historia recogió
+ * (migraciones 051 y 059).
+ *
+ * No tienen trámite propio en la plataforma —el sorteo se hace en la Dirección
+ * de Contratación, la subasta en SECOP II, la radicación en Active Document—,
+ * así que se cumplen dejando constancia. Comparten un solo panel: lo que las
+ * distingue no cambia lo que el expediente necesita de ellas.
+ *
+ * La 3.6, la 3.7 y la 8.6 llegaron después, con la 059: estaban en la misma
+ * situación que las once y se habían quedado fuera de la cuenta, saliendo con
+ * candado en el riel.
+ */
+const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
+  '3.2': 'Análisis del sector y estudio de mercado',
+  '3.3': 'Radicación en la Dirección de Contratación',
+  '3.4': 'Revisión y reparto',
+  '3.5': 'Definir modalidad de contratación',
+  '3.6': 'Causal de contratación',
+  '3.7': 'Comité de contratación',
+  '5.9': 'Manifestación de interés',
+  '5.10': 'Sorteo',
+  '5.11': 'Publicación de la manifestación de interés',
+  '6.7': 'Informe previo a la audiencia de adjudicación',
+  '6.8': 'Informe previo al evento de subasta',
+  '6.9': 'Apertura del sobre económico previo a la subasta',
+  '6.10': 'Evento de subasta',
+  '8.6': 'Comunicación de inicio',
+};
+
+const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
+
 const formatoPesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
   currency: 'COP',
@@ -173,6 +307,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  /**
+   * Qué etapa se está mirando. Nula hasta que alguien elija: mientras tanto se
+   * muestra la del proceso, que es donde se trabaja al entrar.
+   */
+  const [etapaElegida, setEtapaElegida] = useState<number | null>(null);
   const [auditoriaAbierta, setAuditoriaAbierta] = useState(false);
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
@@ -201,6 +340,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       .then(setCatalogo)
       .catch(() => setCatalogo([]));
   }, [procesoId, tokenExpediente]);
+
+  // Entrar directo a una actividad —desde el tablero, por ejemplo— tiene que
+  // mover también la línea del tiempo, o el carril mostraría otra etapa y la
+  // actividad abierta a la derecha no estaría en ninguna parte de la izquierda.
+  useEffect(() => {
+    if (!expandida) return;
+    const suya = catalogo.find((a: any) => a.numeral === expandida)?.etapa;
+    if (typeof suya === 'number') setEtapaElegida(suya);
+  }, [expandida, catalogo]);
 
   useEffect(() => {
     let vigente = true;
@@ -275,7 +423,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         NUMERALES_CDP.includes(act.numeral) ||
         NUMERALES_ETAPA_5.includes(act.numeral) ||
         NUMERALES_ETAPA_6.includes(act.numeral) ||
-        NUMERALES_CON_PANEL_PROPIO.includes(act.numeral)
+        NUMERALES_ADJUDICACION.includes(act.numeral) ||
+        NUMERALES_ETAPA_8.includes(act.numeral) ||
+        NUMERALES_ETAPA_9.includes(act.numeral) ||
+        NUMERALES_ETAPA_10.includes(act.numeral) ||
+        NUMERALES_CON_REGISTRO.includes(act.numeral)
       ) {
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
@@ -307,6 +459,31 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const actividades = delCatalogo;
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
+
+  const etapaVista = etapaElegida ?? datos.proceso.etapa;
+
+  /**
+   * Cuántas actividades aplican y cuántas están hechas, por etapa.
+   *
+   * Es lo que pinta la línea del tiempo. Se cuenta sobre las que aplican a la
+   * modalidad: exigir las excluidas para dar una etapa por cerrada dejaría
+   * etapas que nunca llegan al final.
+   */
+  const avance: Record<number, AvanceEtapa> = {};
+  for (const act of actividades) {
+    const numero = act.etapa ?? 3;
+    if (!avance[numero]) avance[numero] = { aplicables: 0, completas: 0 };
+    if (act.estado === 'no_aplica') continue;
+    avance[numero].aplicables += 1;
+    if (act.estado === 'aprobada') avance[numero].completas += 1;
+  }
+
+  // Cambiar de etapa suelta la actividad abierta: la de la etapa anterior ya no
+  // está en el carril, y dejarla a la derecha sin nada que la señale confunde.
+  const elegirEtapa = (numero: number) => {
+    setEtapaElegida(numero);
+    setExpandida(null);
+  };
 
   // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
   // proceso, no del estudio previo, y de ella depende la modalidad aplicable.
@@ -377,7 +554,12 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           </div>
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
-            <StepperEtapas etapaActual={datos.proceso.etapa} />
+            <LineaDeTiempoEtapas
+              etapaActual={datos.proceso.etapa}
+              etapaSeleccionada={etapaVista}
+              onSeleccionar={elegirEtapa}
+              avance={avance}
+            />
 
             <button
               type="button"
@@ -425,6 +607,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
       <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
         <RielActividades
+          etapa={etapaVista}
           etapaActual={datos.proceso.etapa}
           actividades={actividades}
           seleccionada={expandida}
@@ -462,6 +645,79 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_EVALUACION ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelEvaluacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada &&
+            NUMERALES_TRASLADO.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelTraslado
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada &&
+            NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelAdjudicacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_ARCHIVO_EXPEDIENTE ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelArchivoExpediente
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_CIERRE_FINANCIERO ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelCierreFinanciero
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_LIQUIDACION ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelLiquidacion
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_INFORME_FINAL ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelInformeFinal
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelModificaciones
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada?.numeral === NUMERAL_PAGOS ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelPagos
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : actividadSeleccionada &&
+            NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <PanelActaInicio
+                procesoId={procesoId}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
           ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION_CONTRATO ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelPublicacionContrato
@@ -476,16 +732,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_SUPERVISOR ? (
+          ) : actividadSeleccionada &&
+            NUMERALES_SUPERVISION.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelSupervision
-                procesoId={procesoId}
-                onCambio={() => setTokenExpediente((t) => t + 1)}
-              />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <PanelActaInicio
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
@@ -515,10 +765,13 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 />
               </div>
             </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
+          ) : actividadSeleccionada &&
+            NUMERALES_CON_REGISTRO.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <PanelModificaciones
+              <PanelRegistroActividad
                 procesoId={procesoId}
+                numeral={actividadSeleccionada.numeral}
+                nombre={ACTIVIDADES_CON_REGISTRO[actividadSeleccionada.numeral]}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
             </div>
@@ -599,9 +852,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
               <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
               <p className="text-sm font-bold text-gray-600 m-0">
-                {actividadSeleccionada
-                  ? `${actividadSeleccionada.numeral} · ${actividadSeleccionada.nombre}`
-                  : 'Elige una actividad'}
+                {actividadSeleccionada ? actividadSeleccionada.nombre : 'Elige una actividad'}
               </p>
               <p className="text-xs text-gray-400 m-0 mt-1">
                 {actividadSeleccionada

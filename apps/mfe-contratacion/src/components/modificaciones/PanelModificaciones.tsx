@@ -1,21 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarPlus, Check, PauseCircle, PlayCircle, Users, X } from 'lucide-react';
+import {
+  Banknote,
+  CheckCircle2,
+  FilePlus2,
+  Globe,
+  Landmark,
+  Lock,
+  Paperclip,
+  Undo2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoModificaciones, ModificacionContrato, TipoModificacion } from '../../types';
+import {
+  DatosAdicion,
+  EstadoModificaciones,
+  MargenDeAdicion,
+  CausalTerminacion,
+  ModificacionRegistrada,
+  RespaldoDeAdicion,
+  TipoModificacion,
+} from '../../types';
 import {
   Aviso,
   Ayuda,
   Boton,
   BotonSecundario,
   campo,
+  Marco,
   Pendiente,
   SelectorArchivo,
   Titulo,
-  Cargando,
 } from '../shared/PiezasPanel';
-import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { CicloContrato } from '../shared/CicloContrato';
 
 interface Props {
@@ -23,521 +40,937 @@ interface Props {
   onCambio?: () => void;
 }
 
-/** Qué se puede pedir, y qué mueve cada una. */
-const TRAMITES = [
-  {
-    tipo: 'PRORROGA' as const,
-    etiqueta: 'Prorrogar el plazo',
-    ayuda: 'Extiende los días de ejecución. No toca el valor del contrato.',
-    icono: CalendarPlus,
-    color: '#003DA5',
-  },
-  {
-    tipo: 'SUSPENSION' as const,
-    etiqueta: 'Suspender',
-    ayuda: 'Detiene el plazo mientras dura la causa. La vigilancia continúa.',
-    icono: PauseCircle,
-    color: '#D97706',
-  },
-  {
-    tipo: 'REANUDACION' as const,
-    etiqueta: 'Reanudar',
-    ayuda: 'Levanta la suspensión y el contrato vuelve a correr.',
-    icono: PlayCircle,
-    color: '#059669',
-  },
-  {
-    tipo: 'CESION' as const,
-    etiqueta: 'Ceder el contrato',
-    ayuda: 'Otro contratista asume la ejecución en las mismas condiciones.',
-    icono: Users,
-    color: '#7C3AED',
-  },
-];
+const pesos = (valor: number | null | undefined) =>
+  valor == null
+    ? '—'
+    : new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        maximumFractionDigits: 0,
+      }).format(valor);
 
-const ETIQUETA_TIPO: Record<TipoModificacion, string> = {
+const NOMBRE_CAUSAL: Record<CausalTerminacion, string> = {
+  MUTUO_ACUERDO: 'por mutuo acuerdo',
+  UNILATERAL: 'por decisión unilateral motivada',
+};
+
+const NOMBRE_TIPO: Record<string, string> = {
+  ADICION: 'Adición en dinero',
   PRORROGA: 'Prórroga',
-  ADICION: 'Adición',
   CESION: 'Cesión',
-  ACLARACION: 'Aclaración',
+  ACLARATORIO: 'Aclaratorio',
   SUSPENSION: 'Suspensión',
   REANUDACION: 'Reanudación',
   TERMINACION_ANTICIPADA: 'Terminación anticipada',
 };
 
+const VACIO = {
+  justificacion: '',
+  // adicion
+  valorAdicionado: '',
+  // prorroga
+  diasProrroga: '',
+  // cesion
+  cesionarioDocumento: '',
+  cesionarioNombre: '',
+  cesionarioTipo: 'JURIDICA' as 'NATURAL' | 'JURIDICA',
+  // suspension y reanudacion
+  suspensionDesde: hoyEnBogota(),
+  suspensionHasta: '',
+  reanudadaEl: hoyEnBogota(),
+  // terminacion anticipada
+  terminacionCausal: 'MUTUO_ACUERDO' as CausalTerminacion,
+  terminacionEl: hoyEnBogota(),
+};
+const APROBACION_VACIA = { numero: '', fechaSuscripcion: hoyEnBogota() };
+
 /**
- * Modificaciones contractuales — actividad 9.5 (EFDS-1177, EFDS-1178).
+ * Actividad 9.5 · Modificaciones contractuales (EFDS-1176 a EFDS-1178).
  *
- * Se entra por lo que el gestor quiere hacer —prorrogar, suspender, ceder— y
- * no por un selector de «tipo de modificación»: quien abre esta pantalla ya
- * sabe qué necesita, y obligarlo a traducirlo a una categoría es trabajo que
- * la pantalla puede ahorrarle.
+ * Los siete tipos de la matriz cuelgan de un mismo listado: adición, prórroga,
+ * cesión, aclaratorio, suspensión, reanudación y terminación anticipada.
+ *
+ * **Qué tipo cabe ahora lo decide el servidor**, no la pantalla: un contrato
+ * suspendido solo admite reanudarse, y esa regla vive en un sitio. Aquí solo se
+ * muestra, con el motivo a la vista cuando el botón no sirve.
+ *
+ * Lo que el gestor necesita ver antes de adicionar es **cuánto cabe todavía**:
+ * el tope se cuenta acumulado sobre el valor inicial, y calcular eso a mano es
+ * justo lo que la pantalla debe evitar.
  */
 export function PanelModificaciones({ procesoId, onCambio }: Props) {
   const [estado, setEstado] = useState<EstadoModificaciones | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tramite, setTramite] = useState<TipoModificacion | null>(null);
-  const [enviando, setEnviando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
 
-  const [dias, setDias] = useState('30');
-  const [justificacion, setJustificacion] = useState('');
-  const [fechaEfecto, setFechaEfecto] = useState(hoyEnBogota());
-  const [cesionarioNombre, setCesionarioNombre] = useState('');
-  const [cesionarioDocumento, setCesionarioDocumento] = useState('');
+  /** Qué tipo se está solicitando; nulo cuando no hay formulario abierto. */
+  const [tipoNuevo, setTipoNuevo] = useState<TipoModificacion | null>(null);
+  const [datos, setDatos] = useState(VACIO);
 
-  /** Cuál se está resolviendo, y con qué acto. */
-  const [resolviendo, setResolviendo] = useState<string | null>(null);
+  const [aprobando, setAprobando] = useState<string | null>(null);
+  const [aprobacion, setAprobacion] = useState(APROBACION_VACIA);
   const [acto, setActo] = useState<File | null>(null);
-  const [motivoRechazo, setMotivoRechazo] = useState('');
 
-  const cargar = () =>
+  const leer = () =>
     contratacionService
       .modificaciones(procesoId)
-      .then((d) => {
-        setEstado(d);
+      .then((respuesta) => {
+        setEstado(respuesta);
         setError(null);
       })
-      .catch((e) => setError(e.message))
+      .catch((err: any) => setError(err.message))
       .finally(() => setCargando(false));
 
   useEffect(() => {
-    cargar();
+    setCargando(true);
+    leer();
   }, [procesoId]);
 
-  const limpiar = () => {
-    setTramite(null);
-    setDias('30');
-    setJustificacion('');
-    setFechaEfecto(hoyEnBogota());
-    setCesionarioNombre('');
-    setCesionarioDocumento('');
+  const conError = async (accion: () => Promise<EstadoModificaciones>, exito: string) => {
+    setGuardando(true);
+    try {
+      setEstado(await accion());
+      toast.success(exito);
+      onCambio?.();
+      return true;
+    } catch (err: any) {
+      toast.error(err.message);
+      return false;
+    } finally {
+      setGuardando(false);
+    }
   };
 
+  /** Cada tipo manda lo suyo; la justificación es de todos. */
   const solicitar = async () => {
-    if (!tramite) return;
-    setEnviando(true);
-    try {
-      if (tramite === 'PRORROGA') {
-        const d = await contratacionService.solicitarProrroga(procesoId, {
-          diasProrroga: Number(dias),
-          justificacion: justificacion.trim(),
-          fechaEfecto,
-        });
-        setEstado(d);
-      } else {
-        const d = await contratacionService.solicitarModificacion(procesoId, {
-          tipo: tramite as 'CESION' | 'SUSPENSION' | 'REANUDACION' | 'ACLARACION',
-          justificacion: justificacion.trim(),
-          fechaEfecto,
-          ...(tramite === 'CESION'
-            ? {
-                cesionarioNombre: cesionarioNombre.trim(),
-                cesionarioDocumento: cesionarioDocumento.trim(),
-              }
-            : {}),
-        });
-        setEstado(d);
-      }
-      toast.success('Solicitud registrada', {
-        description: 'Queda pendiente de aprobación con su acto administrativo.',
-      });
-      limpiar();
-      onCambio?.();
-    } catch (e: any) {
-      toast.error('No se pudo registrar', { description: e.message });
-    } finally {
-      setEnviando(false);
+    if (!tipoNuevo) return;
+    const justificacion = datos.justificacion.trim();
+
+    const envios: Record<string, () => Promise<EstadoModificaciones>> = {
+      ADICION: () =>
+        contratacionService.solicitarAdicion(procesoId, {
+          valorAdicionado: Number(datos.valorAdicionado),
+          justificacion,
+        } as DatosAdicion),
+      PRORROGA: () =>
+        contratacionService.solicitarProrroga(procesoId, {
+          diasProrroga: Number(datos.diasProrroga),
+          justificacion,
+        }),
+      CESION: () =>
+        contratacionService.solicitarCesion(procesoId, {
+          cesionarioDocumento: datos.cesionarioDocumento.trim(),
+          cesionarioNombre: datos.cesionarioNombre.trim(),
+          cesionarioTipo: datos.cesionarioTipo,
+          justificacion,
+        }),
+      ACLARATORIO: () => contratacionService.solicitarAclaratorio(procesoId, { justificacion }),
+      SUSPENSION: () =>
+        contratacionService.solicitarSuspension(procesoId, {
+          suspensionDesde: datos.suspensionDesde,
+          ...(datos.suspensionHasta ? { suspensionHasta: datos.suspensionHasta } : {}),
+          justificacion,
+        }),
+      REANUDACION: () =>
+        contratacionService.solicitarReanudacion(procesoId, {
+          reanudadaEl: datos.reanudadaEl,
+          justificacion,
+        }),
+      TERMINACION_ANTICIPADA: () =>
+        contratacionService.solicitarTerminacion(procesoId, {
+          terminacionCausal: datos.terminacionCausal,
+          terminacionEl: datos.terminacionEl,
+          justificacion,
+        }),
+    };
+
+    const ok = await conError(envios[tipoNuevo], `${NOMBRE_TIPO[tipoNuevo]} registrada en trámite`);
+    if (ok) {
+      setDatos(VACIO);
+      setTipoNuevo(null);
     }
   };
 
-  const aprobar = async (id: string) => {
+  /** Si lo escrito alcanza para enviar. La justificación la piden todos. */
+  const completo = () => {
+    if (datos.justificacion.trim().length < 20) return false;
+    switch (tipoNuevo) {
+      case 'ADICION':
+        return Number(datos.valorAdicionado || 0) > 0 && cabeLoEscrito;
+      case 'PRORROGA':
+        return Number(datos.diasProrroga || 0) > 0;
+      case 'CESION':
+        return (
+          datos.cesionarioDocumento.trim().length > 0 && datos.cesionarioNombre.trim().length > 0
+        );
+      case 'SUSPENSION':
+        return (
+          !!datos.suspensionDesde &&
+          (!datos.suspensionHasta || datos.suspensionHasta >= datos.suspensionDesde)
+        );
+      case 'REANUDACION':
+        return !!datos.reanudadaEl;
+      case 'TERMINACION_ANTICIPADA':
+        return !!datos.terminacionEl && datos.terminacionEl <= hoyEnBogota();
+      default:
+        return true;
+    }
+  };
+
+  const aprobar = async (modificacionId: string) => {
     if (!acto) return;
-    setEnviando(true);
-    try {
-      const d = await contratacionService.aprobarModificacion(procesoId, id, acto);
-      setEstado(d);
-      toast.success('Modificación aprobada');
-      setResolviendo(null);
+
+    const ok = await conError(
+      () =>
+        contratacionService.aprobarModificacion(
+          procesoId,
+          modificacionId,
+          { numero: aprobacion.numero.trim(), fechaSuscripcion: aprobacion.fechaSuscripcion },
+          acto,
+        ),
+      'Modificación aprobada',
+    );
+    if (ok) {
+      setAprobacion(APROBACION_VACIA);
       setActo(null);
-      onCambio?.();
-    } catch (e: any) {
-      toast.error('No se pudo aprobar', { description: e.message });
-    } finally {
-      setEnviando(false);
+      setAprobando(null);
     }
   };
 
-  const rechazar = async (id: string) => {
-    setEnviando(true);
-    try {
-      const d = await contratacionService.rechazarModificacion(procesoId, id, motivoRechazo.trim());
-      setEstado(d);
-      toast.success('Modificación negada');
-      setResolviendo(null);
-      setMotivoRechazo('');
-      onCambio?.();
-    } catch (e: any) {
-      toast.error('No se pudo negar', { description: e.message });
-    } finally {
-      setEnviando(false);
-    }
+  const revocar = (modificacionId: string) => {
+    const motivo = window.prompt('¿Por qué se revoca la modificación?')?.trim();
+    if (!motivo) return;
+
+    return conError(
+      () => contratacionService.revocarModificacion(procesoId, modificacionId, motivo),
+      'Modificación revocada',
+    );
+  };
+
+  const rechazar = (modificacionId: string) => {
+    const motivo = window.prompt('¿Por qué se rechaza la modificación?')?.trim();
+    if (!motivo) return;
+
+    return conError(
+      () => contratacionService.rechazarModificacion(procesoId, modificacionId, motivo),
+      'Modificación rechazada',
+    );
   };
 
   if (cargando) {
-    return <Cargando filas={4} />;
+    return (
+      <Marco>
+        <p className="text-[11.5px] text-slate-400 m-0">Cargando las modificaciones…</p>
+      </Marco>
+    );
   }
+
   if (error || !estado) {
-    return <p className="text-xs text-red-600 m-0 px-4 py-3">{error ?? 'No se pudo cargar'}</p>;
+    return (
+      <Marco>
+        <Aviso tono="error" titulo="No se pudo cargar la actividad">
+          {error ?? 'Inténtalo de nuevo en un momento.'}
+        </Aviso>
+      </Marco>
+    );
   }
 
-  const { contrato, puedeSolicitar, motivoNoPuede, modificaciones } = estado;
-  const suspendido = contrato?.estado === 'SUSPENDIDO';
-
-  // Lo que cabe en el estado en que está el contrato: uno suspendido no se
-  // vuelve a suspender, y uno corriendo no se reanuda.
-  const disponibles = TRAMITES.filter((t) => {
-    if (t.tipo === 'SUSPENSION') return !suspendido;
-    if (t.tipo === 'REANUDACION') return suspendido;
-    return true;
-  });
-
-  const completo =
-    justificacion.trim().length >= 20 &&
-    fechaEfecto &&
-    (tramite !== 'PRORROGA' || Number(dias) > 0) &&
-    (tramite !== 'CESION' || (cesionarioNombre.trim() && cesionarioDocumento.trim()));
+  const solicitado = Number(datos.valorAdicionado || 0);
+  const cabeLoEscrito =
+    !estado.margen || solicitado <= 0 || solicitado <= estado.margen.margenDisponible;
 
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <Titulo>Modificaciones del contrato</Titulo>
-        <Ayuda>
-          Se solicita, alguien la aprueba con su acto administrativo, y solo entonces produce
-          efectos. Ninguna modificación cambia el objeto del contrato.
-        </Ayuda>
-      </div>
+    <Marco>
+      <Titulo>Modificaciones contractuales</Titulo>
+      <Ayuda>
+        En ejecución, el contrato puede adicionarse, prorrogarse, cederse, aclararse,
+        suspenderse y terminarse antes de tiempo. Solo la adición aumenta el presupuesto y por eso
+        es la única que exige un CDP y un RP nuevos. Todas se publican en SECOP II.
+      </Ayuda>
 
-      {!puedeSolicitar ? (
-        <Pendiente falta="9.1" texto={`No se puede modificar: ${motivoNoPuede}.`} />
-      ) : (
-        <>
-          {/* El ciclo completo con el punto actual: es el front de los estados
-              de EFDS-1184, y aquí es donde las modificaciones lo mueven. */}
-          {contrato && (
-            <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5">
-              <CicloContrato estado={contrato.estado} />
-            </div>
-          )}
-
-          {/* El plazo vigente arriba: es contra lo que se decide si prorrogar. */}
-          {contrato && (
-            <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 flex items-center gap-6 flex-wrap">
-              <Cifra etiqueta="Plazo vigente" valor={`${contrato.plazoDias ?? '—'} días`} />
-              {contrato.diasProrrogados > 0 && (
-                <Cifra etiqueta="De los cuales prorrogados" valor={`${contrato.diasProrrogados}`} />
-              )}
-              <Cifra
-                etiqueta="Estado"
-                valor={suspendido ? 'Suspendido' : 'En ejecución'}
-                destacado={suspendido}
-              />
-            </div>
-          )}
-
-          {!tramite ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {disponibles.map((t) => (
-                <button
-                  key={t.tipo}
-                  type="button"
-                  onClick={() => setTramite(t.tipo)}
-                  className="text-left rounded-lg border border-gray-200 bg-white px-3.5 py-3
-                    hover:border-slate-300 hover:shadow-sm transition-all
-                    focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5]/40"
-                >
-                  <span className="flex items-center gap-2">
-                    <t.icono className="w-4 h-4 flex-shrink-0" style={{ color: t.color }} />
-                    <span className="text-[12.5px] font-bold text-slate-800">{t.etiqueta}</span>
-                  </span>
-                  <span className="block text-[11px] text-slate-500 mt-1 leading-relaxed">
-                    {t.ayuda}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[12.5px] font-bold text-slate-800">
-                  {TRAMITES.find((t) => t.tipo === tramite)?.etiqueta}
-                </span>
-                <button
-                  type="button"
-                  onClick={limpiar}
-                  aria-label="Cancelar la solicitud"
-                  className="text-slate-400 hover:text-slate-600 p-1 rounded
-                    focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {tramite === 'PRORROGA' && (
-                <label className="block">
-                  <span className="block text-xs font-bold text-slate-600 mb-1">
-                    Días adicionales
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={1095}
-                    value={dias}
-                    onChange={(e) => setDias(e.target.value)}
-                    className={campo}
-                  />
-                  {contrato?.plazoDias != null && Number(dias) > 0 && (
-                    <span className="block text-[11px] text-slate-500 mt-1">
-                      El plazo pasaría de {contrato.plazoDias} a{' '}
-                      <strong>{contrato.plazoDias + Number(dias)} días</strong>.
-                    </span>
-                  )}
-                </label>
-              )}
-
-              {tramite === 'CESION' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="block text-xs font-bold text-slate-600 mb-1">
-                      Quién recibe el contrato
-                    </span>
-                    <input
-                      value={cesionarioNombre}
-                      onChange={(e) => setCesionarioNombre(e.target.value)}
-                      placeholder="Nombre o razón social"
-                      className={campo}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="block text-xs font-bold text-slate-600 mb-1">
-                      NIT o cédula
-                    </span>
-                    <input
-                      value={cesionarioDocumento}
-                      onChange={(e) => setCesionarioDocumento(e.target.value)}
-                      placeholder="900123456-1"
-                      className={campo}
-                    />
-                  </label>
-                </div>
-              )}
-
-              <label className="block">
-                <span className="block text-xs font-bold text-slate-600 mb-1">
-                  Justificación técnica
-                </span>
-                <textarea
-                  value={justificacion}
-                  onChange={(e) => setJustificacion(e.target.value)}
-                  rows={3}
-                  placeholder="Por qué se necesita la modificación"
-                  className={campo}
-                />
-                <span className="block text-[11px] text-slate-500 mt-1">
-                  Es lo que lee quien aprueba
-                  {justificacion.trim().length > 0 && justificacion.trim().length < 20
-                    ? ` · faltan ${20 - justificacion.trim().length} caracteres`
-                    : ''}
-                </span>
-              </label>
-
-              <label className="block">
-                <span className="block text-xs font-bold text-slate-600 mb-1">
-                  Desde cuándo rige
-                </span>
-                <input
-                  type="date"
-                  value={fechaEfecto}
-                  onChange={(e) => setFechaEfecto(e.target.value)}
-                  className={campo}
-                />
-              </label>
-
-              <div className="flex items-center gap-2">
-                <Boton icono={<Check className="w-3.5 h-3.5" />} onClick={solicitar} disabled={!completo || enviando}>
-                  {enviando ? 'Registrando…' : 'Registrar solicitud'}
-                </Boton>
-                <BotonSecundario icono={<X className="w-3.5 h-3.5" />} onClick={limpiar}>Cancelar</BotonSecundario>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {modificaciones.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-slate-700 m-0">
-            Historial <span className="text-slate-400">{modificaciones.length}</span>
-          </p>
-          <ul className="m-0 p-0 list-none space-y-2">
-            {modificaciones.map((m) => (
-              <Fila
-                key={m.id}
-                m={m}
-                resolviendo={resolviendo === m.id}
-                enviando={enviando}
-                acto={acto}
-                motivoRechazo={motivoRechazo}
-                onResolver={() => setResolviendo(resolviendo === m.id ? null : m.id)}
-                onActo={setActo}
-                onMotivo={setMotivoRechazo}
-                onAprobar={() => aprobar(m.id)}
-                onRechazar={() => rechazar(m.id)}
-              />
-            ))}
-          </ul>
+      {/* El ciclo completo con el punto actual: es el front de los estados
+          de EFDS-1184, y aquí es donde las modificaciones lo mueven. */}
+      {estado.contrato ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5">
+          <CicloContrato estado={estado.contrato.estado} />
         </div>
-      )}
+      ) : null}
+
+      {/* La regla del objeto (RF-MOD-04). Va arriba y con el objeto a la vista
+          porque es la pregunta previa a cualquier modificación: si lo que hay
+          que cambiar es esto, no cabe un otrosí sino otro contrato. Ningún
+          formulario lo ofrece, y decirlo evita que se intente por el campo de
+          justificación. */}
+      {estado.contrato ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3">
+          <p className="text-[11.5px] font-bold text-slate-700 m-0 inline-flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-slate-400" />
+            Objeto del contrato · no se modifica
+          </p>
+          <p className="text-[11.5px] text-slate-600 m-0 mt-1 leading-relaxed break-words">
+            {estado.contrato.objeto}
+          </p>
+          <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+            Ninguna modificación cambia qué se contrató: eso exigiría un contrato nuevo, con su
+            propia selección. Se puede adicionar, prorrogar, ceder, aclarar, suspender o terminar.
+          </p>
+        </div>
+      ) : null}
+
+      {/* Que el contrato esté detenido manda sobre todo lo demás, así que se
+          dice arriba y no se deduce de los botones apagados. */}
+      {estado.suspension ? (
+        <Aviso
+          tono="aviso"
+          titulo={`Contrato suspendido desde el ${fechaLarga(estado.suspension.desde ?? '')}`}
+        >
+          {estado.suspension.hastaPrevista
+            ? `Prevista hasta el ${fechaLarga(estado.suspension.hastaPrevista)}. `
+            : 'Sin fecha prevista de reanudación. '}
+          Mientras dure no admite pagos ni liquidación, y lo único que cabe es reanudarlo o
+          terminarlo anticipadamente.
+        </Aviso>
+      ) : null}
+
+      {/* El tope sin confirmar se advierte con su fundamento: la cifra es de la
+          ley, pero ninguna fuente del proyecto la ratifica. */}
+      {!estado.tope.confirmado ? (
+        <Aviso tono="aviso" titulo={`Tope tentativo: ${estado.tope.porcentaje}% del valor inicial`}>
+          {estado.tope.fundamento ?? 'Pendiente de ratificar con la Dirección de Contratación.'}
+        </Aviso>
+      ) : null}
+
+      {estado.margen ? <Margen margen={estado.margen} /> : null}
+
+      {!estado.puedeSolicitar && estado.motivoNoPuede ? (
+        <Pendiente falta="9.1" texto={`No se puede modificar: ${estado.motivoNoPuede}.`} />
+      ) : null}
+
+      {estado.modificaciones.length > 0 ? (
+        <div className="space-y-2">
+          {estado.modificaciones.map((m) => (
+            <Modificacion
+              key={m.id}
+              modificacion={m}
+              guardando={guardando}
+              aprobando={aprobando === m.id}
+              aprobacion={aprobacion}
+              acto={acto}
+              onAprobacion={setAprobacion}
+              onActo={setActo}
+              onAbrirAprobacion={() => {
+                setAprobacion(APROBACION_VACIA);
+                setActo(null);
+                setAprobando(m.id);
+              }}
+              onCancelarAprobacion={() => setAprobando(null)}
+              onAprobar={() => aprobar(m.id)}
+              onRechazar={() => rechazar(m.id)}
+              onRevocar={() => revocar(m.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {/* Qué tipo cabe ahora lo resuelve el servidor: la pantalla solo lo
+          muestra, y el que no cabe dice por qué en vez de estar apagado y ya. */}
+      {tipoNuevo === null ? (
+        <div className="flex flex-wrap gap-2">
+          {estado.tipos.map((t) => (
+            <BotonSecundario
+              key={t.tipo}
+              icono={<FilePlus2 className="w-3.5 h-3.5" />}
+              disabled={!t.puede || guardando}
+              title={t.motivo ?? undefined}
+              onClick={() => {
+                setDatos(VACIO);
+                setTipoNuevo(t.tipo);
+              }}
+            >
+              {NOMBRE_TIPO[t.tipo]}
+            </BotonSecundario>
+          ))}
+        </div>
+      ) : null}
+
+      {tipoNuevo !== null ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
+          <p className="text-xs font-bold text-slate-800 m-0">{NOMBRE_TIPO[tipoNuevo]}</p>
+
+          {tipoNuevo === 'ADICION' ? (
+            <div>
+              <label htmlFor="ad-valor" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Valor de la adición <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="ad-valor"
+                type="number"
+                min={0}
+                value={datos.valorAdicionado}
+                onChange={(e) => setDatos((p) => ({ ...p, valorAdicionado: e.target.value }))}
+                className={campo}
+              />
+              {/* Se dice antes de enviar, no después del error del servidor. */}
+              {!cabeLoEscrito && estado.margen ? (
+                <p className="text-[11px] text-amber-700 m-0 mt-1 leading-relaxed tabular-nums">
+                  Se pasa del tope: solo caben {pesos(estado.margen.margenDisponible)}.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {tipoNuevo === 'PRORROGA' ? (
+            <div>
+              <label htmlFor="pr-dias" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Días de prórroga <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="pr-dias"
+                type="number"
+                min={1}
+                value={datos.diasProrroga}
+                onChange={(e) => setDatos((p) => ({ ...p, diasProrroga: e.target.value }))}
+                className={campo}
+              />
+              <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed tabular-nums">
+                {estado.contrato?.plazoDias != null
+                  ? 'El plazo pasa de ' +
+                    estado.contrato.plazoDias +
+                    ' a ' +
+                    (estado.contrato.plazoDias + Number(datos.diasProrroga || 0)) +
+                    ' días. La prórroga no toca el presupuesto.'
+                  : 'El contrato no tiene plazo registrado, así que la prórroga queda como constancia sin recalcularlo.'}
+              </p>
+            </div>
+          ) : null}
+
+          {tipoNuevo === 'CESION' ? (
+            <>
+              <div>
+                <label htmlFor="ce-nom" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Cesionario <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="ce-nom"
+                  value={datos.cesionarioNombre}
+                  onChange={(e) => setDatos((p) => ({ ...p, cesionarioNombre: e.target.value }))}
+                  className={campo}
+                />
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  Sustituye a {estado.contrato?.contratistaNombre ?? 'el contratista actual'}.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="ce-doc" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Documento del cesionario <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="ce-doc"
+                  value={datos.cesionarioDocumento}
+                  onChange={(e) => setDatos((p) => ({ ...p, cesionarioDocumento: e.target.value }))}
+                  className={campo}
+                />
+              </div>
+              <div>
+                <label htmlFor="ce-tipo" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Tipo de persona
+                </label>
+                <select
+                  id="ce-tipo"
+                  value={datos.cesionarioTipo}
+                  onChange={(e) =>
+                    setDatos((p) => ({
+                      ...p,
+                      cesionarioTipo: e.target.value as 'NATURAL' | 'JURIDICA',
+                    }))
+                  }
+                  className={campo}
+                >
+                  <option value="JURIDICA">Jurídica</option>
+                  <option value="NATURAL">Natural</option>
+                </select>
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  De esto depende si el contrato exige ARL.
+                </p>
+              </div>
+            </>
+          ) : null}
+
+          {tipoNuevo === 'SUSPENSION' ? (
+            <>
+              <div>
+                <label htmlFor="su-desde" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Suspendido desde <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="su-desde"
+                  type="date"
+                  value={datos.suspensionDesde}
+                  onChange={(e) => setDatos((p) => ({ ...p, suspensionDesde: e.target.value }))}
+                  className={campo}
+                />
+              </div>
+              <div>
+                <label htmlFor="su-hasta" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Hasta (prevista)
+                </label>
+                <input
+                  id="su-hasta"
+                  type="date"
+                  min={datos.suspensionDesde}
+                  value={datos.suspensionHasta}
+                  onChange={(e) => setDatos((p) => ({ ...p, suspensionHasta: e.target.value }))}
+                  className={campo}
+                />
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  Se deja en blanco si la suspensión es indefinida. La fecha real es la que se
+                  registre al reanudar.
+                </p>
+              </div>
+            </>
+          ) : null}
+
+          {tipoNuevo === 'REANUDACION' ? (
+            <div>
+              <label htmlFor="re-el" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Reanudado desde <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="re-el"
+                type="date"
+                min={estado.suspension?.desde ?? undefined}
+                max={hoyEnBogota()}
+                value={datos.reanudadaEl}
+                onChange={(e) => setDatos((p) => ({ ...p, reanudadaEl: e.target.value }))}
+                className={campo}
+              />
+              <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                Los días que el contrato estuvo detenido se le devuelven al plazo.
+              </p>
+            </div>
+          ) : null}
+
+          {tipoNuevo === 'TERMINACION_ANTICIPADA' ? (
+            <>
+              <div>
+                <label htmlFor="te-causal" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Causal <span className="text-red-600">*</span>
+                </label>
+                <select
+                  id="te-causal"
+                  value={datos.terminacionCausal}
+                  onChange={(e) =>
+                    setDatos((p) => ({
+                      ...p,
+                      terminacionCausal: e.target.value as CausalTerminacion,
+                    }))
+                  }
+                  className={campo}
+                >
+                  <option value="MUTUO_ACUERDO">Mutuo acuerdo</option>
+                  <option value="UNILATERAL">Decisión unilateral motivada</option>
+                </select>
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  Terminar por incumplimiento no se registra aquí: eso es el proceso
+                  sancionatorio, con su propia reserva legal.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="te-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Deja de ejecutarse el <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="te-fecha"
+                  type="date"
+                  max={hoyEnBogota()}
+                  value={datos.terminacionEl}
+                  onChange={(e) => setDatos((p) => ({ ...p, terminacionEl: e.target.value }))}
+                  className={campo}
+                />
+                <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+                  Es la fecha del hecho, no la de la firma. Al aprobarse, lo que sigue es el
+                  informe final y la liquidación de lo ejecutado.
+                </p>
+              </div>
+            </>
+          ) : null}
+
+          {tipoNuevo === 'ACLARATORIO' ? (
+            <p className="text-[11px] text-slate-500 m-0 leading-relaxed">
+              El aclaratorio precisa lo que el contrato ya dice: corrige cláusulas no esenciales,
+              y no cambia el objeto, ni el plazo, ni el valor, ni las partes. Lo que lo sustenta
+              es el acto que se adjunta al aprobarlo.
+            </p>
+          ) : null}
+
+          <div>
+            <label htmlFor="ad-just" className="block text-xs font-bold text-gray-600 mb-1.5">
+              Justificación <span className="text-red-600">*</span>
+            </label>
+            <textarea
+              id="ad-just"
+              rows={3}
+              value={datos.justificacion}
+              onChange={(e) => setDatos((p) => ({ ...p, justificacion: e.target.value }))}
+              className={campo}
+            />
+            <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
+              Una modificación sin sustento es lo primero que un ente de control pregunta.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Boton
+              icono={<FilePlus2 className="w-3.5 h-3.5" />}
+              disabled={guardando || !completo()}
+              onClick={solicitar}
+            >
+              Solicitar
+            </Boton>
+            <BotonSecundario
+              icono={<Undo2 className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={() => {
+                setDatos(VACIO);
+                setTipoNuevo(null);
+              }}
+            >
+              Cancelar
+            </BotonSecundario>
+          </div>
+        </div>
+      ) : null}
+    </Marco>
+  );
+}
+
+/**
+ * Cuánto cabe todavía.
+ *
+ * El margen va destacado y no como una fila más: es la cifra que decide si la
+ * adición procede, y el tope se cuenta acumulado sobre el valor inicial —no
+ * sobre el valor vigente, que ya incluye las anteriores—.
+ */
+function Margen({ margen }: { margen: MargenDeAdicion }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3">
+      <p className="text-[12.5px] font-bold text-slate-800 m-0 mb-2">Margen de adición</p>
+
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 m-0">
+        <dt className="text-[11.5px] text-slate-500 m-0">Valor inicial</dt>
+        <dd className="text-[11.5px] font-bold text-slate-800 m-0 text-right tabular-nums">
+          {pesos(margen.valorInicial)}
+        </dd>
+        <dt className="text-[11.5px] text-slate-500 m-0">Ya adicionado</dt>
+        <dd className="text-[11.5px] font-bold text-slate-800 m-0 text-right tabular-nums">
+          {pesos(margen.yaAdicionado)}
+        </dd>
+        <dt className="text-[11.5px] text-slate-500 m-0">
+          Tope del {margen.topePorcentaje}%
+        </dt>
+        <dd className="text-[11.5px] font-bold text-slate-800 m-0 text-right tabular-nums">
+          {pesos(margen.topeValor)}
+        </dd>
+      </dl>
+
+      <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+        <span className="text-[11.5px] font-bold text-slate-700 inline-flex items-center gap-1.5">
+          <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+          Cabe todavía
+        </span>
+        <span className="text-[13px] font-black text-slate-900 tabular-nums">
+          {pesos(margen.margenDisponible)}
+        </span>
+      </div>
     </div>
   );
 }
 
-const Cifra = ({
-  etiqueta,
-  valor,
-  destacado,
-}: {
-  etiqueta: string;
-  valor: string;
-  destacado?: boolean;
-}) => (
-  <div>
-    <span className="block text-[10.5px] font-bold text-slate-400">{etiqueta}</span>
-    <span
-      className={`block text-[13px] font-bold ${destacado ? 'text-amber-700' : 'text-slate-800'}`}
-    >
-      {valor}
-    </span>
-  </div>
-);
-
-function Fila({
-  m,
-  resolviendo,
-  enviando,
+/** Una modificación con su respaldo presupuestal y su publicación. */
+function Modificacion({
+  modificacion: m,
+  guardando,
+  aprobando,
+  aprobacion,
   acto,
-  motivoRechazo,
-  onResolver,
+  onAprobacion,
   onActo,
-  onMotivo,
+  onAbrirAprobacion,
+  onCancelarAprobacion,
   onAprobar,
   onRechazar,
+  onRevocar,
 }: {
-  m: ModificacionContrato;
-  resolviendo: boolean;
-  enviando: boolean;
+  modificacion: ModificacionRegistrada;
+  guardando: boolean;
+  aprobando: boolean;
+  aprobacion: { numero: string; fechaSuscripcion: string };
   acto: File | null;
-  motivoRechazo: string;
-  onResolver: () => void;
+  onAprobacion: (v: { numero: string; fechaSuscripcion: string }) => void;
   onActo: (f: File | null) => void;
-  onMotivo: (v: string) => void;
+  onAbrirAprobacion: () => void;
+  onCancelarAprobacion: () => void;
   onAprobar: () => void;
   onRechazar: () => void;
+  onRevocar: () => void;
 }) {
-  const pendiente = m.estado === 'SOLICITADA';
+  const enTramite = m.estado === 'EN_TRAMITE';
+  const aprobada = m.estado === 'APROBADA';
+
+  // Qué falta para poder aprobar, dicho en palabras: es lo que el gestor
+  // necesita para saber a quién pedirle qué.
+  //
+  // **Solo la adición compromete presupuesto.** Pedírselo a los demás tipos
+  // dejaba su botón de aprobar apagado para siempre, esperando un CDP que nadie
+  // iba a tramitar: la prórroga no toca el presupuesto y el aclaratorio no
+  // cambia nada.
+  const faltantes =
+    m.tipo === 'ADICION'
+      ? ([
+          m.cdp?.estado === 'EXPEDIDO' ? null : 'el CDP',
+          m.rp?.estado === 'EXPEDIDO' ? null : 'el RP',
+        ].filter(Boolean) as string[])
+      : [];
 
   return (
-    <li className="rounded-lg border border-gray-200 bg-white px-3.5 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[12.5px] font-bold text-slate-800">
-              {ETIQUETA_TIPO[m.tipo]}
-            </span>
-            <Etiqueta estado={m.estado} />
-            {m.diasProrroga !== null && m.plazoAnteriorDias !== null && (
-              <span className="text-[11px] text-slate-500 tabular-nums">
-                {m.plazoAnteriorDias} → {m.plazoAnteriorDias + m.diasProrroga} días
-              </span>
-            )}
-          </div>
-          <p className="text-[11.5px] text-slate-600 m-0 mt-1 leading-relaxed">
-            {m.justificacion}
+    <div
+      className={`rounded-lg border px-3.5 py-3 space-y-2 ${
+        aprobada ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p
+            className={`text-[12.5px] font-bold m-0 break-words ${
+              aprobada ? 'text-emerald-900' : 'text-slate-800'
+            }`}
+          >
+            {NOMBRE_TIPO[m.tipo] ?? m.tipo}
+            {m.valorAdicionado != null ? ` · ${pesos(m.valorAdicionado)}` : ''}
           </p>
-          <p className="text-[10.5px] text-slate-400 m-0 mt-1">
-            Rige desde {fechaLarga(m.fechaEfecto.slice(0, 10))}
+          <p
+            className={`text-[11px] m-0 mt-0.5 leading-relaxed break-words ${
+              aprobada ? 'text-emerald-900' : 'text-slate-500'
+            }`}
+          >
+            {m.numero ? `${m.numero} · ` : ''}
+            {m.fechaSuscripcion ? `${fechaLarga(m.fechaSuscripcion)} · ` : ''}
+            {m.estado.toLowerCase().replace('_', ' ')}
             {m.solicitadaPor ? ` · solicitada por ${m.solicitadaPor}` : ''}
-            {m.resueltaPor ? ` · resuelta por ${m.resueltaPor}` : ''}
           </p>
-          {m.motivoRechazo && (
-            <p className="text-[11px] text-red-700 m-0 mt-1">Negada: {m.motivoRechazo}</p>
-          )}
         </div>
-
-        {pendiente && (
-          <BotonSecundario icono={null} onClick={onResolver}>
-            {resolviendo ? 'Cerrar' : 'Resolver'}
-          </BotonSecundario>
-        )}
       </div>
 
-      {resolviendo && pendiente && (
-        <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
-          <Aviso tono="aviso" titulo="La aprobación necesita el acto administrativo">
-            Sin él, el contrato quedaría modificado por un acuerdo verbal.
-          </Aviso>
+      <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed whitespace-pre-line break-words">
+        {m.justificacion}
+      </p>
 
-          <SelectorArchivo
-            etiqueta="Acto administrativo"
-            archivo={acto}
-            onElegir={onActo}
-            ayuda="Resolución o acta motivada que soporta la modificación"
-          />
+      {aprobada && m.valorContratoAntes != null ? (
+        <p className="text-[11.5px] text-emerald-900 m-0 tabular-nums">
+          El contrato pasó de {pesos(m.valorContratoAntes)} a {pesos(m.valorContratoDespues)}.
+        </p>
+      ) : null}
 
-          <div className="flex items-center gap-2">
-            <Boton icono={<Check className="w-3.5 h-3.5" />} onClick={onAprobar} disabled={!acto || enviando}>
-              <Check className="w-3.5 h-3.5" /> Aprobar
-            </Boton>
-          </div>
+      {m.tipo === 'TERMINACION_ANTICIPADA' && m.terminacionEl ? (
+        <p
+          className={`text-[11.5px] m-0 ${aprobada ? 'text-emerald-900' : 'text-slate-600'}`}
+        >
+          Deja de ejecutarse el {fechaLarga(m.terminacionEl)}
+          {m.terminacionCausal ? ` · ${NOMBRE_CAUSAL[m.terminacionCausal]}` : ''}.
+        </p>
+      ) : null}
 
-          <label className="block pt-2 border-t border-gray-100">
-            <span className="block text-xs font-bold text-slate-600 mb-1">
-              O negarla, diciendo por qué
-            </span>
-            <input
-              value={motivoRechazo}
-              onChange={(e) => onMotivo(e.target.value)}
-              placeholder="Quien la pidió tiene que saber qué corregir"
-              className={campo}
-            />
-          </label>
-          <BotonSecundario
-            icono={<X className="w-3.5 h-3.5" />}
-            onClick={onRechazar}
-            disabled={motivoRechazo.trim().length < 10 || enviando}
+      {m.tipo === 'ADICION' ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          <Respaldo titulo="CDP" respaldo={m.cdp} />
+          <Respaldo titulo="RP" respaldo={m.rp} />
+        </div>
+      ) : null}
+
+      {enTramite && faltantes.length > 0 ? (
+        <p className="text-[11px] text-amber-700 m-0 leading-relaxed">
+          Falta que la Dirección Financiera expida {faltantes.join(' y ')} antes de aprobar.
+        </p>
+      ) : null}
+
+      {m.documento?.url ? (
+        <a
+          href={contratacionService.urlDescarga(m.documento.url)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline break-words"
+        >
+          <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
+          {m.documento.nombre}
+        </a>
+      ) : null}
+
+      {m.publicacion ? (
+        <p className="text-[11px] text-slate-500 m-0 leading-relaxed break-words inline-flex items-center gap-1.5">
+          <Globe className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
+          Publicada en SECOP II el {fechaLarga(m.publicacion.fechaPublicacion)}
+          {m.publicacion.secopNumero ? ` · ${m.publicacion.secopNumero}` : ''}
+        </p>
+      ) : null}
+
+      {m.revocadaAt ? (
+        <p className="text-[11px] text-slate-500 m-0 leading-relaxed break-words">
+          Revocada el {momento(m.revocadaAt)}
+          {m.revocadaPor ? ` por ${m.revocadaPor}` : ''}
+          {m.motivoRevocacion ? ` · ${m.motivoRevocacion}` : ''}
+        </p>
+      ) : null}
+
+      {enTramite && !aprobando ? (
+        <div className="flex flex-wrap gap-2">
+          <Boton
+            icono={<CheckCircle2 className="w-3.5 h-3.5" />}
+            disabled={guardando || faltantes.length > 0}
+            onClick={onAbrirAprobacion}
           >
-            Negar la solicitud
+            Aprobar
+          </Boton>
+          <BotonSecundario
+            icono={<Undo2 className="w-3.5 h-3.5" />}
+            disabled={guardando}
+            onClick={onRechazar}
+          >
+            Rechazar
           </BotonSecundario>
         </div>
-      )}
-    </li>
+      ) : null}
+
+      {aprobando ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label htmlFor="mo-num" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Número <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="mo-num"
+                type="text"
+                value={aprobacion.numero}
+                onChange={(e) => onAprobacion({ ...aprobacion, numero: e.target.value })}
+                placeholder="OTROSI-2026-001"
+                className={campo}
+              />
+            </div>
+            <div>
+              <label htmlFor="mo-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Fecha de suscripción <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="mo-fecha"
+                type="date"
+                value={aprobacion.fechaSuscripcion}
+                onChange={(e) => onAprobacion({ ...aprobacion, fechaSuscripcion: e.target.value })}
+                className={campo}
+              />
+            </div>
+          </div>
+
+          <SelectorArchivo
+            id="mo-acto"
+            etiqueta="Otrosí o acto administrativo firmado *"
+            ayuda="Aprobar sin documento dejaría al expediente afirmando algo que no puede probar."
+            archivo={acto}
+            onElegir={onActo}
+          />
+
+          <p className="text-[11.5px] text-slate-600 m-0">{queHaceAlAprobar(m)}</p>
+
+          <div className="flex flex-wrap gap-2">
+            <Boton
+              icono={<CheckCircle2 className="w-3.5 h-3.5" />}
+              disabled={guardando || !acto || !aprobacion.numero.trim()}
+              onClick={onAprobar}
+            >
+              Aprobar la modificación
+            </Boton>
+            <BotonSecundario
+              icono={<Undo2 className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={onCancelarAprobacion}
+            >
+              Cancelar
+            </BotonSecundario>
+          </div>
+        </div>
+      ) : null}
+
+      {aprobada ? (
+        <BotonSecundario
+          icono={<Undo2 className="w-3.5 h-3.5" />}
+          disabled={guardando}
+          onClick={onRevocar}
+        >
+          Revocar
+        </BotonSecundario>
+      ) : null}
+    </div>
   );
 }
 
-const Etiqueta = ({ estado }: { estado: ModificacionContrato['estado'] }) => {
-  const estilo =
-    estado === 'APROBADA'
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-      : estado === 'RECHAZADA'
-        ? 'bg-red-50 text-red-700 border-red-200'
-        : 'bg-amber-50 text-amber-700 border-amber-200';
+/**
+ * Qué le hace al contrato aprobar esta modificación, dicho antes de firmarla.
+ *
+ * Una frase por tipo y no la de la adición para todos: lo que el gestor está a
+ * punto de hacer cambia por completo según el tipo, y anunciarle un aumento de
+ * valor cuando lo que va a hacer es detener el contrato es peor que no decir
+ * nada.
+ */
+function queHaceAlAprobar(m: ModificacionRegistrada): string {
+  switch (m.tipo) {
+    case 'ADICION':
+      return `Al aprobar, el valor del contrato aumenta en ${pesos(m.valorAdicionado)}.`;
+    case 'PRORROGA':
+      return `Al aprobar, el plazo del contrato crece en ${m.diasProrroga ?? 0} días.`;
+    case 'CESION':
+      return `Al aprobar, el contratista pasa a ser ${m.cesionarioNombre ?? 'el cesionario'}.`;
+    case 'SUSPENSION':
+      return 'Al aprobar, el contrato queda suspendido: no admite pagos ni liquidación hasta que se reanude.';
+    case 'REANUDACION':
+      return 'Al aprobar, el contrato vuelve a ejecución y se le devuelven al plazo los días que estuvo detenido.';
+    case 'TERMINACION_ANTICIPADA':
+      return 'Al aprobar, el contrato queda terminado: lo que sigue es el informe final y la liquidación de lo ejecutado.';
+    default:
+      return 'Al aprobar queda el acto en el expediente; el contrato no cambia.';
+  }
+}
 
-  const texto =
-    estado === 'APROBADA' ? 'Aprobada' : estado === 'RECHAZADA' ? 'Negada' : 'Pendiente';
+/**
+ * El CDP o el RP de la adición, con su estado del ciclo de la Financiera.
+ *
+ * Se muestra el estado y no solo si existe: entre solicitado y expedido hay dos
+ * pasos, y saber en cuál va es lo que le dice al gestor si tiene que esperar o
+ * si tiene que reclamar.
+ */
+function Respaldo({ titulo, respaldo }: { titulo: string; respaldo: RespaldoDeAdicion | null }) {
+  const expedido = respaldo?.estado === 'EXPEDIDO';
 
   return (
-    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${estilo}`}>
-      {texto}
-    </span>
+    <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3">
+      <p className="text-[11.5px] font-bold text-slate-700 m-0 inline-flex items-center gap-1.5">
+        <Landmark className={`w-3.5 h-3.5 ${expedido ? 'text-emerald-600' : 'text-slate-400'}`} />
+        {titulo}
+      </p>
+      {respaldo ? (
+        <>
+          <p className="text-[11px] text-slate-500 m-0 mt-0.5 leading-relaxed break-words">
+            {respaldo.estado.toLowerCase()}
+            {respaldo.numero ? ` · ${respaldo.numero}` : ''}
+          </p>
+          {respaldo.valor != null ? (
+            <p className="text-[11.5px] font-bold text-slate-800 m-0 tabular-nums">
+              {pesos(respaldo.valor)}
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-[11px] text-slate-400 m-0 mt-0.5 leading-relaxed">Sin solicitar</p>
+      )}
+    </div>
   );
-};
+}

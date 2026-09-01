@@ -80,4 +80,13 @@ export class Cdp {
 
   @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'now()' })
   updatedAt: Date;
+
+  /**
+   * La adición que este CDP respalda; nulo si es el CDP del proceso (EFDS-1176).
+   *
+   * Es lo que distingue los de una modificación de los originales. Toda
+   * consulta que busque «el CDP del proceso» tiene que exigirlo nulo.
+   */
+  @Column({ name: 'modificacion_id', type: 'uuid', nullable: true })
+  modificacionId: string | null;
 }

@@ -1,5 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsISO8601, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsISO8601,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class FijarPlazoOfertasDto {
   /**
@@ -50,4 +60,18 @@ export class RegistrarOferenteDto {
     { message: 'La radicación debe llevar fecha y hora en ISO 8601, por ejemplo 2026-09-01T09:35:00-05:00' },
   )
   fechaRadicacion: string;
+
+  /**
+   * Valor de la oferta tal como se presentó.
+   *
+   * Opcional a propósito: no todas las modalidades califican precio, y una
+   * oferta ya recibida no se puede rechazar por un dato que la actividad 6.1 no
+   * pedía cuando se registró.
+   */
+  @ApiPropertyOptional({ description: 'Valor de la oferta presentada', example: 45000000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor de la oferta debe ser un número' })
+  @Min(0, { message: 'El valor de la oferta no puede ser negativo' })
+  valorOfertado?: number;
 }

@@ -3,13 +3,19 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeor
 /**
  * En qué punto va el caso.
  *
- * EFDS-1180 solo abre el caso: el supervisor constata el hecho y lo reporta.
- * Lo que sigue —resoluciones, audiencias y la caducidad— es el trámite
- * sancionatorio del área jurídica (EFDS-1181), que añadirá sus propios estados
- * cuando exista. Hasta entonces un caso solo puede estar reportado, y decir
- * aquí que puede estar «en trámite» prometería un flujo que no está construido.
+ * `REPORTADO` lo abre el supervisor (EFDS-1180): constata el hecho y lo
+ * reporta. Los tres siguientes los mueve el trámite sancionatorio del área
+ * jurídica (EFDS-1181), que EFDS-1180 dejó anunciado y ya existe.
+ *
+ * Dos desenlaces y no uno: un caso archivado no es lo mismo que uno decidido, y
+ * el expediente tiene que poder distinguir el incumplimiento que se declaró del
+ * que se examinó y no prosperó.
  */
-export type EstadoCasoIncumplimiento = 'REPORTADO';
+export type EstadoCasoIncumplimiento =
+  | 'REPORTADO'
+  | 'EN_TRAMITE'
+  | 'DECIDIDO'
+  | 'ARCHIVADO';
 
 /**
  * Presunto incumplimiento del contrato (EFDS-1180, RF-INC-01).
