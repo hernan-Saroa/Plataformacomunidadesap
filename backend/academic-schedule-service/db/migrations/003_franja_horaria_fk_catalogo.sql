@@ -4,7 +4,7 @@
 -- La migración 001 declaró id_programa e id_asignatura como UUID sin FK, pero el
 -- catálogo autoritativo usa bigint:
 --     academic_work_plan.programa.id      -> bigint
---     academic_work_plan."Asignatura".id  -> bigint
+--     academic_work_plan.asignatura.id  -> bigint
 -- Así, esas columnas no referenciaban nada y además impedían la FK.
 --
 -- Ambos servicios comparten instancia (DB_NAME=esap_db, ver docker-compose), por
@@ -44,7 +44,7 @@ BEGIN
         ALTER TABLE "academic-schedule".franja_horaria
             ADD CONSTRAINT fk_franja_asignatura
             FOREIGN KEY (id_asignatura)
-            REFERENCES academic_work_plan."Asignatura"(id)
+            REFERENCES academic_work_plan.asignatura(id)
             ON DELETE RESTRICT;
     END IF;
 END $$;
@@ -64,4 +64,4 @@ CREATE INDEX IF NOT EXISTS idx_franja_docente_dia_horario
 COMMENT ON COLUMN "academic-schedule".franja_horaria.id_programa
     IS 'FK a academic_work_plan.programa. El catálogo es autoritativo (SNIES): aquí solo se referencia, nunca se copia.';
 COMMENT ON COLUMN "academic-schedule".franja_horaria.id_asignatura
-    IS 'FK a academic_work_plan."Asignatura". Ver nota de id_programa.';
+    IS 'FK a academic_work_plan.asignatura. Ver nota de id_programa.';

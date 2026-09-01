@@ -95,7 +95,7 @@ export class CatalogoService {
     }
 
     const asignaturas = await this.asignaturaRepo.find({
-      where: { idPrograma: programa.id, activo: true },
+      where: { idPrograma: programa.id, activa: true },
       order: { idUbicacionSemestral: 'ASC', nombre: 'ASC' },
     });
 
