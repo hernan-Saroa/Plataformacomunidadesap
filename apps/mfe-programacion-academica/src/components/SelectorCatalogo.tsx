@@ -10,6 +10,7 @@ import {
   type AsignaturaCatalogo,
 } from '../services/api/catalogoApi';
 import { GestionGrupos } from './GestionGrupos';
+import { BuscarPorCodigo } from './BuscarPorCodigo';
 
 /**
  * EFDS-1368 — Selección en cascada nivel → programa y catálogo por semestre.
@@ -126,6 +127,9 @@ export function SelectorCatalogo() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* EFDS-1369: la vía directa cuando ya se conoce el código. */}
+      <BuscarPorCodigo />
+
       {/* Cascada: nivel → programa */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
         <div className="flex items-center gap-2 mb-4">
