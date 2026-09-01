@@ -20,6 +20,7 @@ export class ApiClient {
           ...(options?.headers || {}),
         },
         credentials: 'include',
+        cache: 'no-store',
         ...options,
       });
 
@@ -56,6 +57,64 @@ export class ApiClient {
     const text = await response.text();
     if (!text) return {} as T;
     return JSON.parse(text) as T;
+  }
+
+  async put<T = any>(endpoint: string, data?: any, options?: RequestInit): Promise<T> {
+    const url = this.buildURL(endpoint);
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {}),
+      },
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: 'include',
+      ...options,
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error ${response.status}: ${response.statusText}`);
+    }
+
+    const text = await response.text();
+    if (!text) return {} as T;
+    return JSON.parse(text) as T;
+  }
+
+  async delete<T = any>(endpoint: string, options?: RequestInit): Promise<T> {
+    const url = this.buildURL(endpoint);
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {}),
+      },
+      credentials: 'include',
+      ...options,
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error ${response.status}: ${response.statusText}`);
+    }
+
+    const text = await response.text();
+    if (!text) return {} as T;
+    return JSON.parse(text) as T;
+  }
+
+  async getBlob(endpoint: string): Promise<Blob> {
+    const url = this.buildURL(endpoint);
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error ${response.status}: ${response.statusText}`);
+    }
+
+    return response.blob();
   }
 }
 

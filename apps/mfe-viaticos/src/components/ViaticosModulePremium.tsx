@@ -12,21 +12,22 @@ import {
   Calendar,
   Receipt,
   FileCheck,
-  Download,
   Eye,
   CreditCard,
   X,
   UserCheck,
+  Settings,
+  Download,
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
+import ParametrizacionManager from './ParametrizacionManager';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
-import { authService } from '../services/api/authService';
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones';
+type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
 
 export default function ViaticosModulePremium() {
   const [seccion, setSeccion] = useState<Seccion>('solicitudes');
@@ -36,19 +37,20 @@ export default function ViaticosModulePremium() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
+  const [solicitudAResumir, setSolicitudAResumir] = useState<SolicitudComisionResponse | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
-  const [usuarioActualId, setUsuarioActualId] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
 
   const cargarDatos = async () => {
     setCargando(true);
     try {
-      const [list, res] = await Promise.all([
-        viaticosService.obtenerSolicitudes(usuarioActualId || undefined, esSuperAdmin),
-        viaticosService.obtenerResumenEstadistico(esSuperAdmin),
-      ]);
+      const { solicitudes: list, esSuperAdmin: esSuperAdminResp } = await viaticosService.obtenerSolicitudes();
+      console.log('[ViaticosModulePremium] solicitudes cargadas=', list.length, 'esSuperAdmin=', esSuperAdminResp);
       setSolicitudes(list);
+      setEsSuperAdmin(esSuperAdminResp);
+      const res = await viaticosService.obtenerResumenEstadistico();
       setResumen(res);
     } catch (e) {
       console.error('Error cargando viáticos:', e);
@@ -58,27 +60,8 @@ export default function ViaticosModulePremium() {
   };
 
   useEffect(() => {
-    const cargarUsuario = async () => {
-      try {
-        const usuario = await authService.getCurrentUser();
-        if (usuario) {
-          setUsuarioActualId(usuario.userId);
-          const roles = Array.isArray(usuario.roles) ? usuario.roles : [];
-          const normalizedRoles = roles.map((r: any) => (typeof r === 'string' ? r.toUpperCase().replace(/\s+/g, '_') : (r.code || '').toUpperCase().replace(/\s+/g, '_')));
-          const superAdminRoles = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO', 'SUPER_ADMINISTRADOR'];
-          setEsSuperAdmin(normalizedRoles.some((r: string) => superAdminRoles.includes(r)));
-        }
-      } catch (error) {
-        console.warn('No se pudo cargar el usuario actual:', error);
-      }
-    };
-
-    cargarUsuario();
-  }, []);
-
-  useEffect(() => {
     cargarDatos();
-  }, [usuarioActualId, esSuperAdmin]);
+  }, []);
 
   const grupos: MenuGroup[] = [
     {
@@ -112,6 +95,13 @@ export default function ViaticosModulePremium() {
           icon: <FileCheck className="w-5 h-5" />,
           color: '#7C3AED',
         },
+        {
+          id: 'configuracion',
+          label: 'Configuración',
+          subtitle: 'Parametrización de formulario y documentos',
+          icon: <Settings className="w-5 h-5" />,
+          color: '#64748B',
+        },
       ],
     },
   ];
@@ -143,6 +133,19 @@ export default function ViaticosModulePremium() {
     cargarDatos();
   };
 
+  const handleExportarPDF = async (solicitud: SolicitudViatico) => {
+    setExportando(true);
+    try {
+      await viaticosService.exportarFormato023(solicitud.id, solicitud.codigo);
+      setMensajeExito(`Formato 023 de la solicitud ${solicitud.codigo} exportado correctamente.`);
+    } catch (error) {
+      console.error('Error al exportar Formato 023:', error);
+      setMensajeExito('Error al exportar el Formato 023. Intente nuevamente.');
+    } finally {
+      setExportando(false);
+    }
+  };
+
   return (
     <ModuleLayout
       moduleName="VIÁTICOS Y GASTOS DE VIAJE"
@@ -151,7 +154,11 @@ export default function ViaticosModulePremium() {
       moduleColor="#003DA5"
       groups={grupos}
       activeSection={seccion}
-      onSectionChange={(s) => setSeccion(s as Seccion)}
+      onSectionChange={(s) => {
+        setSeccion(s as Seccion);
+        setModalNuevaAbierta(false);
+        setSolicitudSeleccionada(null);
+      }}
     >
       {mensajeExito && (
         <div className="mb-4 flex items-start justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl px-4 py-3 text-xs font-semibold">
@@ -170,11 +177,15 @@ export default function ViaticosModulePremium() {
         </div>
       )}
 
-      {modalNuevaAbierta ? (
+      {modalNuevaAbierta || solicitudAResumir ? (
         <NuevaSolicitudModal
-          abierta={modalNuevaAbierta}
-          onCerrar={() => setModalNuevaAbierta(false)}
+          abierta={modalNuevaAbierta || Boolean(solicitudAResumir)}
+          onCerrar={() => {
+            setModalNuevaAbierta(false);
+            setSolicitudAResumir(null);
+          }}
           onSolicitudCreada={handleSolicitudCreada}
+          solicitudAResumir={solicitudAResumir}
         />
       ) : (
         <>
@@ -268,6 +279,7 @@ export default function ViaticosModulePremium() {
                     id="filtroEstado"
                     options={[
                       { value: 'TODOS', label: 'Todos los Estados' },
+                      { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
                       { value: 'SOLICITADO', label: 'Solicitado' },
                       { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
                       { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
@@ -358,16 +370,41 @@ export default function ViaticosModulePremium() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => setSolicitudSeleccionada(sol)}
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-slate-500" />
-                                Ver Detalle
-                              </button>
-                            </td>
+                             <td className="px-4 py-3 text-right">
+                               <div className="flex items-center justify-end gap-1.5">
+                                 <button
+                                   type="button"
+                                   onClick={() => handleExportarPDF(sol)}
+                                   disabled={exportando}
+                                   className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold inline-flex items-center gap-1 transition-colors disabled:opacity-50"
+                                   title="Exportar Formato 023"
+                                 >
+                                   <Download className="w-3.5 h-3.5" />
+                                   Exportar
+                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSolicitudSeleccionada(sol)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                    Ver Detalle
+                                  </button>
+                                  {sol.estado === 'PENDIENTE' && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+                                        setSolicitudAResumir(completa);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                                      title="Continuar solicitud en borrador"
+                                    >
+                                      Continuar
+                                    </button>
+                                  )}
+                                </div>
+                             </td>
                           </tr>
                         ))
                       )}
@@ -452,6 +489,12 @@ export default function ViaticosModulePremium() {
                   <div>
                     <span className="font-mono text-xs font-bold text-blue-700">{solicitudSeleccionada.codigo}</span>
                     <h3 className="text-base font-black text-slate-900">{solicitudSeleccionada.nombreComisionado}</h3>
+                    {esSuperAdmin && solicitudSeleccionada.esCreadoPorMi && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 mt-1">
+                        <UserCheck className="w-3 h-3 mr-1" />
+                        Radicada por mí
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -494,7 +537,16 @@ export default function ViaticosModulePremium() {
                     </p>
                   </div>
                 </div>
-                <div className="pt-3 border-t border-slate-100 flex justify-end">
+                <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}
+                    disabled={exportando}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs inline-flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {exportando ? 'Exportando...' : 'Exportar Formato 023'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSolicitudSeleccionada(null)}
@@ -508,6 +560,9 @@ export default function ViaticosModulePremium() {
           )}
         </>
       )}
+
+      {/* ── CONFIGURACIÓN ── */}
+      {seccion === 'configuracion' && <ParametrizacionManager />}
     </ModuleLayout>
   );
 }

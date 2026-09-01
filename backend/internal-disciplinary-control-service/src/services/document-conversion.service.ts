@@ -350,11 +350,11 @@ export class DocumentConversionService {
       const headerContent = await this.extractHeaderContent(inputPath);
       const footerContent = await this.extractFooterContent(inputPath);
 
+      // El membrete y el pie de ESAP son imágenes tipo "banner" que ocupan todo el
+      // ancho de la página (el logo queda a la izquierda; "www.esap.edu.co" a la
+      // derecha). Se renderizan a ancho completo, no centradas ni encogidas.
       const headerImagesHtml = headerContent.images
-        .map(
-          (src) =>
-            `<img src="${src}" style="display:block; margin:0 auto; max-height:2cm; max-width:100%;" />`,
-        )
+        .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
         .join('');
       const headerTextHtml = headerContent.textBlocks
         .map(
@@ -363,15 +363,12 @@ export class DocumentConversionService {
         )
         .join('');
       const footerImagesHtml = footerContent.images
-        .map(
-          (src) =>
-            `<img src="${src}" style="display:block; margin:0 auto; max-height:1.2cm; max-width:100%;" />`,
-        )
+        .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
         .join('');
       const footerTextHtml = footerContent.textBlocks
         .map(
           (texto) =>
-            `<div style="text-align:center; font-size:7pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
+            `<div style="text-align:left; font-size:7pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
         )
         .join('');
 
@@ -385,11 +382,22 @@ export class DocumentConversionService {
       // no lo trae la extracción: se reconstruye con los contadores de Puppeteer.
       const footerPageNumberHtml =
         '<div style="text-align:center; font-size:7pt; line-height:1.3;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+
+      // La imagen del membrete va a sangre (ancho completo). El texto del pie
+      // (dirección) se superpone sobre el banner por la izquierda, como en el
+      // documento original; si no hay imagen, simplemente se apila.
       const headerTemplate = hasHeader
-        ? `<div style="width:100%; padding:2mm 2cm 0; box-sizing:border-box; -webkit-print-color-adjust:exact;">${headerImagesHtml}${headerTextHtml}</div>`
+        ? `<div style="width:100%; -webkit-print-color-adjust:exact;">${headerImagesHtml}${
+            headerTextHtml
+              ? `<div style="padding:1mm 2cm 0; box-sizing:border-box;">${headerTextHtml}</div>`
+              : ''
+          }</div>`
         : '<div></div>';
+      const footerBodyHtml = footerImagesHtml
+        ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:0; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
+        : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
       const footerTemplate = hasFooter
-        ? `<div style="width:100%; padding:0 2cm 2mm; box-sizing:border-box; -webkit-print-color-adjust:exact;">${footerPageNumberHtml}${footerTextHtml}${footerImagesHtml}</div>`
+        ? `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact;">${footerPageNumberHtml}${footerBodyHtml}</div>`
         : '<div></div>';
 
       // Crear HTML completo con estilos básicos
@@ -455,8 +463,12 @@ export class DocumentConversionService {
         headerTemplate,
         footerTemplate,
         margin: {
-          top: hasHeader ? '3.5cm' : '2cm',
+          top: hasHeader ? '3.8cm' : '2cm',
           right: '2cm',
+          // El pie institucional es alto (banner a ancho completo + varias líneas
+          // de dirección superpuestas): necesita un margen inferior generoso o se
+          // recorta. Debe coincidir con el yPosition de la firma en
+          // pdf-modifier.service para que no se solapen.
           bottom: hasFooter ? '4cm' : '2cm',
           left: '2cm'
         }

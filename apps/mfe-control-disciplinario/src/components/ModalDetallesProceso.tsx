@@ -4501,7 +4501,7 @@ export function ModalDetallesProceso({
                               <button
                                 disabled={revirtiendoAprobacion}
                                 onClick={async () => {
-                                  if (!window.confirm('¿Reversar la aprobación de este Pliego de Cargos? Volverá a borrador para que el Profesional lo corrija y lo reenvíe a revisión. Esta acción no afecta el envío a Jurídica.')) {
+                                  if (!window.confirm('¿Reversar la aprobación de este Pliego de Cargos? Volverá a borrador para que el Profesional lo corrija y lo reenvíe a revisión, y el proceso regresará a la etapa en la que estaba antes de aprobarlo. Esta acción no afecta el envío a Jurídica.')) {
                                     return;
                                   }
                                   try {

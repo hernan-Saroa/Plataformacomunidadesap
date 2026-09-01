@@ -9,7 +9,19 @@ import {
   SolicitudListaResponse,
   EstadoSolicitudViatico,
   Geopolitica,
+  ChecklistDocumentosResponse,
+  FinalizarSolicitudResponse,
 } from '../../types/viaticos';
+import {
+  ParametrizacionFormulario,
+  ConfigTipoComisionado,
+  CampoFormulario,
+  TipoDocumentoSoporte,
+  CrearCampoFormularioDTO,
+  ActualizarCampoFormularioDTO,
+  CrearConfigTipoComisionadoDTO,
+  ActualizarConfigTipoComisionadoDTO,
+} from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
 /**
@@ -36,36 +48,80 @@ function extraerListaGeopolitica(res: unknown): Geopolitica[] {
   return [];
 }
 
-const MOCK_SOLICITUDES: SolicitudViatico[] = [
-  {
-    id: 'sol-001',
-    codigo: 'SOL-VIA-2026-001',
-    cedulaComisionado: '1019283746',
-    nombreComisionado: 'Carlos Eduardo Ramírez',
-    cargoComisionado: 'Docente Ocasional',
-    dependencia: 'Subdirección Académica',
-    sedeOrigen: 'Sede Central Bogotá',
-    ciudadDestino: 'Medellín',
-    departamentoDestino: 'Antioquia',
-    fechaInicio: '2026-08-20',
-    fechaFin: '2026-08-23',
-    diasComision: 3,
-    tipoComision: 'CAPACITACION_DOCENTE',
-    medioTransporte: 'AEREO',
-    justificacion: 'Impartir módulo presencial de Gestión Pública en la Sede Territorial Antioquia.',
-    montoSolicitadoViaticos: 840000,
-    montoSolicitadoGastosViaje: 180000,
-    montoTotalEstimado: 1020000,
-    estado: 'RESOLUCION_EMITIDA',
-    extemporanea: false,
-    radicadoFueraJornada: false,
-    requiereTiqueteAereo: true,
-    numeroResolucion: 'RES-0452-2026',
-    fechaResolucion: '2026-08-15',
-    creadoEn: '2026-08-10',
-    actualizadoEn: '2026-08-15',
-  },
-];
+function esSuperAdminFromResponse(res: unknown): boolean {
+  if (!res || typeof res !== 'object') return false;
+  const obj = res as Record<string, unknown>;
+
+  if (typeof obj.esSuperAdmin === 'boolean') {
+    console.log('[viaticos] esSuperAdminFromResponse root esSuperAdmin=', obj.esSuperAdmin);
+    return obj.esSuperAdmin;
+  }
+
+  const nested = obj.data as Record<string, unknown> | undefined;
+  if (nested && typeof nested === 'object' && typeof nested.esSuperAdmin === 'boolean') {
+    console.log('[viaticos] esSuperAdminFromResponse nested esSuperAdmin=', nested.esSuperAdmin);
+    return nested.esSuperAdmin;
+  }
+
+  console.log('[viaticos] esSuperAdminFromResponse no encontrado,=false');
+  return false;
+}
+
+function extraerSolicitudes(res: unknown): { data: SolicitudListaResponse[]; esSuperAdmin: boolean } {
+  if (!res || typeof res !== 'object') {
+    console.log('[viaticos] extraerSolicitudes: respuesta vacía o no objeto');
+    return { data: [], esSuperAdmin: false };
+  }
+
+  const esSuperAdmin = esSuperAdminFromResponse(res);
+
+  const arr = encontrarArraySolicitudes(res);
+  console.log('[viaticos] extraerSolicitudes: array encontrado?', Array.isArray(arr), 'length=', Array.isArray(arr) ? arr.length : 'n/a');
+
+  if (Array.isArray(arr)) {
+    return { data: arr as SolicitudListaResponse[], esSuperAdmin };
+  }
+
+  return { data: [], esSuperAdmin };
+}
+
+function encontrarArraySolicitudes(valor: unknown): unknown[] | null {
+  if (Array.isArray(valor)) {
+    console.log('[viaticos] encontrarArraySolicitudes: array directo length=', valor.length);
+    return valor;
+  }
+
+  if (!valor || typeof valor !== 'object') {
+    return null;
+  }
+
+  const obj = valor as Record<string, unknown>;
+
+  if (Array.isArray(obj.data)) {
+    console.log('[viaticos] encontrarArraySolicitudes: obj.data length=', obj.data.length);
+    return obj.data;
+  }
+
+  const nested = obj.data as Record<string, unknown> | undefined;
+  if (nested && typeof nested === 'object') {
+    const candidato = encontrarArraySolicitudes(nested);
+    if (candidato) return candidato;
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (key === 'data' || key === 'timestamp' || key === 'success') {
+      continue;
+    }
+    const candidato = encontrarArraySolicitudes(obj[key]);
+    if (candidato) {
+      console.log('[viaticos] encontrarArraySolicitudes: encontrado en key=', key, 'length=', candidato.length);
+      return candidato;
+    }
+  }
+
+  console.log('[viaticos] encontrarArraySolicitudes: no encontrado');
+  return null;
+}
 
 export class ViaticosService {
   /**
@@ -105,25 +161,27 @@ export class ViaticosService {
     };
   }
 
-  async obtenerSolicitudes(usuarioId?: string, esSuperAdmin = false): Promise<SolicitudViatico[]> {
+  async obtenerSolicitudes(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
     try {
-      const params = new URLSearchParams();
-      if (usuarioId && !esSuperAdmin) {
-        params.set('creadoPorUsuarioId', usuarioId);
+      const timestamp = Date.now();
+      const response = await apiClient.get<unknown>(`/viaticos/api/v1/solicitudes?t=${timestamp}`);
+      const responseKeys = Object.keys(response as any);
+      console.log('[viaticos] obtenerSolicitudes raw response type=', typeof response, 'keys=', responseKeys, 'value=', JSON.stringify(response));
+      const { data, esSuperAdmin } = extraerSolicitudes(response);
+      console.log('[viaticos] obtenerSolicitudes parsed count=', data.length, 'esSuperAdmin=', esSuperAdmin);
+      if (data.length === 0) {
+        console.warn('[viaticos] obtenerSolicitudes: no se pudieron extraer solicitudes de la respuesta', response);
       }
-      const query = params.toString();
-      const url = `/viaticos/api/v1/solicitudes${query ? `?${query}` : ''}`;
-      const data = await apiClient.get<SolicitudListaResponse[] | SolicitudListaResponse>(url);
-      const lista = Array.isArray(data) ? data : [data];
-      if (lista.length === 0) return MOCK_SOLICITUDES;
-      return lista.map((item) => this.mapearSolicitudLista(item));
-    } catch {
-      return MOCK_SOLICITUDES;
+      const solicitudes = data.map((item) => this.mapearSolicitudLista(item));
+      return { solicitudes, esSuperAdmin };
+    } catch (error) {
+      console.error('[viaticos] obtenerSolicitudes error=', error);
+      return { solicitudes: [], esSuperAdmin: false };
     }
   }
 
-  async obtenerResumenEstadistico(esSuperAdmin = false): Promise<ResumenEstadisticoViaticos> {
-    const solicitudes = await this.obtenerSolicitudes(undefined, esSuperAdmin);
+  async obtenerResumenEstadistico(): Promise<ResumenEstadisticoViaticos> {
+    const { solicitudes } = await this.obtenerSolicitudes();
     return {
       totalSolicitudes: solicitudes.length,
       enProcesoAprobacion: solicitudes.filter((s) =>
@@ -131,6 +189,7 @@ export class ViaticosService {
       ).length,
       enComisionActivas: solicitudes.filter((s) => s.estado === 'EN_COMISION').length,
       pendientesLegalizar: solicitudes.filter((s) => s.estado === 'PENDIENTE_LEGALIZACION').length,
+      borradores: solicitudes.filter((s) => s.estado === 'PENDIENTE' || s.estado === 'BORRADOR').length,
       montoTotalEjecutado: solicitudes.reduce((acc, curr) => acc + curr.montoTotalEstimado, 0),
     };
   }
@@ -186,6 +245,156 @@ export class ViaticosService {
     }
   }
 
+  async obtenerParametrizacionFormulario(): Promise<ParametrizacionFormulario> {
+    try {
+      return await apiClient.get<ParametrizacionFormulario>('/viaticos/api/v1/parametrizacion/formulario');
+    } catch (error) {
+      console.error('Error obteniendo parametrización del formulario:', error);
+      return { campos: [], configuraciones: {} };
+    }
+  }
+
+  async obtenerParametrizacionPorCodigoFormulario(codigo: string): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.get<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/formulario/${encodeURIComponent(codigo)}`);
+    } catch (error) {
+      console.error('Error obteniendo parametrización por código:', error);
+      return null;
+    }
+  }
+
+  async validarDocumentosRequeridos(tipoComisionado: string, tiposDocumentos: string[]): Promise<string[]> {
+    try {
+      const params = new URLSearchParams();
+      params.set('tipo', tipoComisionado);
+      if (tiposDocumentos.length > 0) {
+        params.set('documentos', tiposDocumentos.join(','));
+      }
+      const response = await apiClient.get<{ faltantes: string[] }>(`/viaticos/api/v1/parametrizacion/validar-documentos?${params.toString()}`);
+      return response.faltantes || [];
+    } catch (error) {
+      console.error('Error validando documentos requeridos:', error);
+      return [];
+    }
+  }
+
+  async validarCamposObligatorios(tipoComisionado: string, datosCampos: Record<string, any>): Promise<string[]> {
+    try {
+      const camposQuery = Object.entries(datosCampos)
+        .map(([clave, valor]) => `${clave}=${encodeURIComponent(valor || '')}`)
+        .join(',');
+      const params = new URLSearchParams();
+      params.set('tipo', tipoComisionado);
+      if (camposQuery) {
+        params.set('campos', camposQuery);
+      }
+      const response = await apiClient.get<{ camposFaltantes: string[] }>(`/viaticos/api/v1/parametrizacion/validar-campos?${params.toString()}`);
+      return response.camposFaltantes || [];
+    } catch (error) {
+      console.error('Error validando campos obligatorios:', error);
+      return [];
+    }
+  }
+
+  async obtenerConfiguracionPorTipo(tipoComisionado: string): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.get<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipoComisionado)}`);
+    } catch (error) {
+      console.error('Error obteniendo configuración por tipo:', error);
+      return null;
+    }
+  }
+
+  async obtenerTodasConfiguraciones(): Promise<ConfigTipoComisionado[]> {
+    try {
+      return await apiClient.get<ConfigTipoComisionado[]>('/viaticos/api/v1/parametrizacion/config-tipo-comisionado');
+    } catch (error) {
+      console.error('Error obteniendo todas las configuraciones:', error);
+      return [];
+    }
+  }
+
+  async obtenerCamposFormulario(): Promise<CampoFormulario[]> {
+    try {
+      return await apiClient.get<CampoFormulario[]>('/viaticos/api/v1/parametrizacion/campos-formulario');
+    } catch (error) {
+      console.error('Error obteniendo campos del formulario:', error);
+      return [];
+    }
+  }
+
+  async obtenerTiposDocumentoSoporte(): Promise<TipoDocumentoSoporte[]> {
+    try {
+      return await apiClient.get<TipoDocumentoSoporte[]>('/viaticos/api/v1/parametrizacion/tipos-documento-soporte');
+    } catch (error) {
+      console.error('Error obteniendo tipos de documento soporte:', error);
+      return [];
+    }
+  }
+
+  async crearCampoFormulario(dto: CrearCampoFormularioDTO): Promise<CampoFormulario | null> {
+    try {
+      return await apiClient.post<CampoFormulario>('/viaticos/api/v1/parametrizacion/campos-formulario', dto);
+    } catch (error) {
+      console.error('Error creando campo del formulario:', error);
+      throw error;
+    }
+  }
+
+  async actualizarCampoFormulario(clave: string, dto: ActualizarCampoFormularioDTO): Promise<CampoFormulario | null> {
+    try {
+      return await apiClient.put<CampoFormulario>(`/viaticos/api/v1/parametrizacion/campos-formulario/${encodeURIComponent(clave)}`, dto);
+    } catch (error) {
+      console.error('Error actualizando campo del formulario:', error);
+      throw error;
+    }
+  }
+
+  async eliminarCampoFormulario(clave: string): Promise<void> {
+    try {
+      await apiClient.delete(`/viaticos/api/v1/parametrizacion/campos-formulario/${encodeURIComponent(clave)}`);
+    } catch (error) {
+      console.error('Error eliminando campo del formulario:', error);
+      throw error;
+    }
+  }
+
+  async crearConfigTipoComisionado(dto: CrearConfigTipoComisionadoDTO): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.post<ConfigTipoComisionado>('/viaticos/api/v1/parametrizacion/config-tipo-comisionado', dto);
+    } catch (error) {
+      console.error('Error creando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  async actualizarConfigTipoComisionado(tipo: string, dto: ActualizarConfigTipoComisionadoDTO): Promise<ConfigTipoComisionado | null> {
+    try {
+      return await apiClient.put<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipo)}`, dto);
+    } catch (error) {
+      console.error('Error actualizando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  extraerDocumentosRequeridos(config: ConfigTipoComisionado | null): { obligatorios: TipoDocumentoSoporte[]; opcionales: TipoDocumentoSoporte[] } {
+    if (!config || !config.documentos) {
+      return { obligatorios: [], opcionales: [] };
+    }
+
+    const obligatorios = config.documentos
+      .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
+      .map((d) => d.tipoDocumentoSoporte)
+      .filter((doc): doc is TipoDocumentoSoporte => Boolean(doc));
+
+    const opcionales = config.documentos
+      .filter((d) => d.tipoRequisito === 'OPCIONAL')
+      .map((d) => d.tipoDocumentoSoporte)
+      .filter((doc): doc is TipoDocumentoSoporte => Boolean(doc));
+
+    return { obligatorios, opcionales };
+  }
+
   async crearSolicitudComision(data: CreateSolicitudRequest): Promise<SolicitudComisionResponse> {
     try {
       return await apiClient.post<SolicitudComisionResponse>('/viaticos/api/v1/requests', data);
@@ -195,13 +404,21 @@ export class ViaticosService {
     }
   }
 
-  async subirDocumento(solicitudId: string, tipo: string, archivo: File): Promise<DocumentoSoporte> {
+  async subirDocumento(
+    solicitudId: string,
+    tipo: string,
+    archivo: File,
+    tipoMime?: string,
+  ): Promise<DocumentoSoporte> {
     const formData = new FormData();
     formData.append('tipoDocumento', tipo);
     formData.append('nombreArchivoOriginal', archivo.name);
     formData.append('nombreArchivoSeguro', this.sanitizeFileName(archivo.name));
     formData.append('urlRepositorio', `/uploads/${solicitudId}/${this.sanitizeFileName(archivo.name)}`);
     formData.append('archivo', archivo);
+    if (tipoMime) {
+      formData.append('tipoMime', tipoMime);
+    }
 
     try {
       return await apiClient.post<DocumentoSoporte>(
@@ -225,6 +442,60 @@ export class ViaticosService {
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/ñ/gi, 'n')
       .replace(/[^a-zA-Z0-9._-]/g, '_');
+  }
+
+  async obtenerChecklistDocumentos(
+    tipoComisionado: string,
+  ): Promise<ChecklistDocumentosResponse> {
+    try {
+      return await apiClient.get<ChecklistDocumentosResponse>(
+        `/viaticos/api/v1/parametrizacion/checklist/${encodeURIComponent(tipoComisionado)}`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo checklist de documentos:', error);
+      return { obligatorios: [], opcionales: [] };
+    }
+  }
+
+  async obtenerSolicitudCompleta(solicitudId: string): Promise<SolicitudComisionResponse> {
+    try {
+      return await apiClient.get<SolicitudComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo solicitud:', error);
+      throw error;
+    }
+  }
+
+  async finalizarSolicitud(solicitudId: string): Promise<FinalizarSolicitudResponse> {
+    try {
+      return await apiClient.post<FinalizarSolicitudResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}/finalizar`,
+        {},
+      );
+    } catch (error) {
+      console.error('Error finalizando solicitud:', error);
+      throw error;
+    }
+  }
+
+  async exportarFormato023(solicitudId: string, codigo: string): Promise<void> {
+    try {
+      const blob = await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Formato-023-Solicitud-${codigo}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exportando Formato 023:', error);
+      throw error;
+    }
   }
 }
 

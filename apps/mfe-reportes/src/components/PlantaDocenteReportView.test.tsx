@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { PlantaDocenteReportView } from './PlantaDocenteReportView';
 import { apiClient } from '../services/api/apiClient';
@@ -12,7 +12,13 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+vi.mock('../utils/rundReportExport', () => ({
+  exportRundReportToExcel: vi.fn(),
+  exportRundReportToPDF: vi.fn(),
+}));
+
 afterEach(cleanup);
+beforeEach(() => vi.clearAllMocks());
 
 const STATS_SIN_FILTRO = {
   total: 10,
@@ -122,5 +128,62 @@ describe('PlantaDocenteReportView — reporte de planta docente (REQ-RUND-F019)'
     render(<PlantaDocenteReportView />);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  });
+
+  it('exportar agregado a Excel/PDF envía las columnas de agregado y los filtros aplicados como metadata (REQ-RUND-F021)', async () => {
+    mockGet(async (endpoint: string) => {
+      if (endpoint.endsWith('/stats')) return { data: STATS_SIN_FILTRO };
+      return { items: [], total: 0, pages: 1 };
+    });
+    const { exportRundReportToExcel, exportRundReportToPDF } = await import('../utils/rundReportExport');
+
+    render(<PlantaDocenteReportView />);
+    await waitFor(() => expect(screen.getByText('Total docentes')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Territorial'), { target: { value: 'Bogotá' } });
+    fireEvent.click(screen.getByRole('button', { name: /generar reporte/i }));
+    await waitFor(() => expect(screen.getByText(/1 filtro\(s\) aplicado\(s\)/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /exportar agregado \(excel\)/i }));
+    expect(exportRundReportToExcel).toHaveBeenCalledTimes(1);
+    const [rows, columnas, meta, prefix] = (exportRundReportToExcel as any).mock.calls[0];
+    expect(prefix).toBe('RUND_Planta_Docente_Agregado');
+    expect(meta.filtros.Territorial).toBe('Bogotá');
+    expect(meta.filtros['Tipo de vinculación']).toBeUndefined();
+    expect(columnas.map((c: any) => c.key)).toEqual(['dimension', 'valor', 'total']);
+    expect(rows[0]).toEqual({ dimension: 'Total', valor: 'Total', total: STATS_SIN_FILTRO.total });
+
+    // Hay un botón "PDF" en el bloque de agregado y otro en el de detalle; el de agregado es el primero en el DOM.
+    fireEvent.click(screen.getAllByRole('button', { name: 'PDF' })[0]);
+    expect(exportRundReportToPDF).toHaveBeenCalledTimes(1);
+    expect((exportRundReportToPDF as any).mock.calls[0][3]).toBe('RUND_Planta_Docente_Agregado');
+  });
+
+  it('exportar el detalle a Excel solo incluye las columnas visibles de la tabla (sin documento/puntaje salarial) — el backend ya los enmascara y aquí ni se piden', async () => {
+    mockGet(async (endpoint: string) => {
+      if (endpoint.endsWith('/stats')) return { data: STATS_SIN_FILTRO };
+      return {
+        items: [{
+          docente_id: '1', nombre_completo: 'Ana Pérez', territorial: 'Bogotá', vinculacion: 'Carrera',
+          categoria: 'Titular', genero: 'Femenino', nivel_formacion: 'Maestría', nucleo_tematico: 'Ciencias Sociales',
+          documento_identidad: '******7890', proteccion_datos: { acceso_completo: false, campos_sensibles: ['DOCUMENTO_IDENTIDAD'], campos_enmascarados: ['DOCUMENTO_IDENTIDAD'] },
+        }],
+        total: 1,
+        pages: 1,
+      };
+    });
+    const { exportRundReportToExcel } = await import('../utils/rundReportExport');
+
+    render(<PlantaDocenteReportView />);
+    fireEvent.click(await screen.findByRole('button', { name: /generar reporte/i }));
+    await waitFor(() => expect(screen.getByText('Ana Pérez')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /exportar página \(excel\)/i }));
+
+    expect(exportRundReportToExcel).toHaveBeenCalledTimes(1);
+    const [rows, columnas] = (exportRundReportToExcel as any).mock.calls[0];
+    expect(columnas.map((c: any) => c.key)).not.toContain('documento_identidad');
+    expect(columnas.map((c: any) => c.key)).not.toContain('proteccion_datos');
+    expect(rows[0].nombre_completo).toBe('Ana Pérez');
   });
 });

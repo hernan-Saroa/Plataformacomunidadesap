@@ -1,9 +1,8 @@
-import { IsString, Length, IsIn } from 'class-validator';
+import { IsString, Length, IsOptional } from 'class-validator';
 
 export class UploadDocumentoDto {
   @IsString()
   @Length(1, 50)
-  @IsIn(['CDP', 'RUT', 'CERT_BANCARIA', 'SEGURIDAD_SOCIAL', 'CONTRATO_SECOP'])
   tipoDocumento: string;
 
   @IsString()
@@ -17,4 +16,9 @@ export class UploadDocumentoDto {
   @IsString()
   @Length(1, 512)
   urlRepositorio: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  tipoMime?: string;
 }
