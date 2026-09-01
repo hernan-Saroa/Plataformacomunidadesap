@@ -17,8 +17,23 @@ export class CatalogoController {
    * confía en un nivel o permiso enviado por el cliente.
    */
   private async permisosDe(req: Request): Promise<Set<string>> {
-    const roles = Array.isArray((req as any)?.user?.roles) ? (req as any).user.roles : [];
-    const codes = roles.map((r: any) => (typeof r === 'string' ? r : r?.code)).filter(Boolean);
+    // El gateway NO propaga `req.user`: reenvia la identidad como cabeceras
+    // (`x-user-roles`, separadas por coma). Leer solo `req.user` dejaba el
+    // catalogo en 403 para TODOS detras del gateway, y los tests unitarios no lo
+    // veian porque invocan el servicio con el Set de permisos ya resuelto.
+    const desdeHeader = String(req.headers["x-user-roles"] || "")
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
+
+    // Fallback para ejecucion directa del servicio (sin gateway) o pruebas.
+    const desdeUser = Array.isArray((req as any)?.user?.roles)
+      ? (req as any).user.roles
+          .map((r: any) => (typeof r === "string" ? r : r?.code ?? r?.name))
+          .filter(Boolean)
+      : [];
+
+    const codes = desdeHeader.length > 0 ? desdeHeader : desdeUser;
     return this.permisos.resolveForRoles(codes);
   }
 
