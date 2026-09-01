@@ -263,6 +263,9 @@ export class AutoService {
         await this.archiveProcess(auto.processId, aprobadoPorId);
       }
 
+      // EFDS-1564: recordar la etapa previa por si luego se reversa la aprobación.
+      const etapaAntesDeAprobar = auto.process?.etapaActual;
+
       // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
       if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
         await this.processService.changeStageByAutoApertura(
@@ -304,6 +307,18 @@ export class AutoService {
               datos_adicionales: { processId: auto.processId, radicadoProceso: auto.process.radicadoProceso, autoId: auto.id },
             })
             .catch(() => {});
+        }
+      }
+
+      // EFDS-1564: si la aprobación efectivamente movió la etapa del proceso, se
+      // guarda la etapa previa para poder devolver el proceso a ella si se reversa.
+      if (etapaAntesDeAprobar) {
+        const procesoTrasAprobar = await this.processService.findById(
+          auto.processId,
+          false,
+        );
+        if (procesoTrasAprobar.etapaActual !== etapaAntesDeAprobar) {
+          auto.etapaPreviaAprobacion = etapaAntesDeAprobar;
         }
       }
 
@@ -932,6 +947,115 @@ export class AutoService {
     }).catch((err) => {
       console.error(`Error async enviando correo jurídica: ${err.message}`);
     });
+  }
+
+  /**
+   * Reversa la aprobación de un Pliego de Cargos, devolviéndolo a BORRADOR para
+   * que el Profesional lo corrija y lo vuelva a enviar a revisión. Solo aplica
+   * mientras el auto sigue en estado APROBADO — una vez enviado a Jurídica el
+   * auto pasa a NOTIFICADO, así que esta operación queda bloqueada por diseño y
+   * NO afecta en absoluto el envío a Jurídica ni el cierre del proceso.
+   */
+  async revertApproval(
+    id: string,
+    revertidoPorId: string,
+  ): Promise<LegalAuto> {
+    const auto = await this.findById(id, ['process']);
+
+    if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
+      throw new HttpException(
+        'Esta operación solo aplica para autos de pliego de cargos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (auto.estado !== AutoStatus.APROBADO) {
+      throw new HttpException(
+        'Solo se puede reversar la aprobación de un auto que esté APROBADO. Si ya fue enviado a Jurídica, no se puede reversar.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const versionPreviaAprobacion = await this.versionRepository.findOne({
+      where: { auto: { id: auto.id } },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!versionPreviaAprobacion) {
+      throw new HttpException(
+        'No se encontró el historial de versiones del auto, no es posible reversar la aprobación de forma segura',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // NOTA: approve() no incrementa currentVersion (queda con el mismo numero que
+    // ya tenia la fila de historial guardada al aprobar). Por eso, para no chocar
+    // con esa fila (versionPreviaAprobacion), la version restaurada se registra con
+    // un numero nuevo (currentVersion + 1), igual que hace uploadDocumentoDuranteRevision().
+    auto.contenido = versionPreviaAprobacion.contenido;
+    auto.documentUrl = versionPreviaAprobacion.documentUrl ?? auto.documentUrl;
+    auto.documentName = versionPreviaAprobacion.documentName ?? auto.documentName;
+    auto.currentVersion += 1;
+    auto.estado = AutoStatus.BORRADOR;
+
+    // EFDS-1564: devolver el proceso a la etapa en la que estaba antes de aprobar.
+    const etapaADevolver = auto.etapaPreviaAprobacion;
+    let etapaProcesoRevertida: string | null = null;
+    if (etapaADevolver) {
+      const procesoRevertido = await this.processService.revertirEtapaProceso(
+        auto.processId,
+        etapaADevolver,
+        revertidoPorId,
+      );
+      etapaProcesoRevertida = procesoRevertido.etapaActual;
+      auto.etapaPreviaAprobacion = null;
+    }
+
+    const savedAuto = await this.autoRepository.save(auto);
+
+    await this.versionRepository.save({
+      auto: { id: savedAuto.id } as LegalAuto,
+      contenido: savedAuto.contenido,
+      versionNumber: savedAuto.currentVersion,
+      createdBy: revertidoPorId,
+      changeReason: 'Aprobación reversada por el Jefe — auto vuelve a borrador para corrección',
+      documentUrl: savedAuto.documentUrl,
+      documentName: savedAuto.documentName,
+    });
+
+    await this.actuacionesRepository.save({
+      processId: auto.processId,
+      tipo: 'reversion_aprobacion',
+      etapa: etapaProcesoRevertida ?? auto.process?.etapaActual,
+      descripcion: `Se reversó la aprobación del Pliego de Cargos (${auto.numero || 'sin número'}). El auto vuelve a borrador para corrección.`,
+      responsableNombre: revertidoPorId,
+      fechaActuacion: new Date(),
+      observaciones: etapaProcesoRevertida
+        ? `El proceso regresó a la etapa ${etapaProcesoRevertida}.`
+        : 'La etapa del proceso no se modifica; solo se revierte el estado del auto.',
+    });
+
+    const proceso = auto.process;
+    if (proceso?.abogadoAsignadoId) {
+      this.notificationClient
+        .send({
+          id_usuario_destinatario: proceso.abogadoAsignadoId,
+          tipo_notificacion: 'AUTO_APROBACION_REVERSADA',
+          titulo: 'Aprobación de Pliego de Cargos reversada',
+          mensaje: `El Jefe OCID reversó la aprobación del Pliego de Cargos del proceso ${proceso.radicadoProceso}. El auto volvió a borrador para que lo corrijas y lo envíes de nuevo a revisión.`,
+          descripcion_corta: `Aprobación reversada - ${proceso.radicadoProceso}`,
+          icono: 'RotateCcw',
+          color: '#DC2626',
+          prioridad: 'Alta',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver auto',
+          datos_adicionales: { processId: auto.processId, radicadoProceso: proceso.radicadoProceso, autoId: auto.id },
+        })
+        .catch(() => {});
+    }
+
+    return savedAuto;
   }
 
   private async preparePdfDocumentForSignature(auto: LegalAuto): Promise<void> {

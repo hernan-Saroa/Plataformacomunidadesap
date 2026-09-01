@@ -32,12 +32,13 @@ import {
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { usePermisosPTA, usePermisosPTAGranulares } from './PermisosPTAContext';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA, getComponentesAprobacion, aprobarComponente, getComponentesRevision, revisarComponente, requestPTAFirmaAprobadorCode, verifyPTAFirmaDocenteCode, getAprobacionTerritorial, type TerritorialApprovalRow, getRevisionTerritorial, type TerritorialReviewRow, getBancoDocenteById } from '../../services/api/ptaApi';
 import { getBaseURL } from '../../../../shell/src/services/api';
 import { API_MODE, MICROSERVICE_URLS } from '../../../../shell/src/config/environment';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
+import { ReportePTAInstitucional } from '../portal/pta/ReportePTAInstitucional';
 import { PTA_COLORS } from './shared/ptaColors';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
@@ -76,7 +77,7 @@ interface PTADetallePanelProps {
   onAprobar: () => void;
   onDevolver: () => void;
   onConcertar: () => void;
-  onVerReporte: () => void;
+  onVerInformacion: () => void;
   onUpdated?: (updatedPta: any) => void; // Notifica al padre cuando el PTA cambia
   puedeAprobar: boolean;
   nivelAprobacion: number;
@@ -85,6 +86,7 @@ interface PTADetallePanelProps {
   isSuperUser?: boolean;
   actorId?: string;
   actorNombre?: string;
+  periodoAcademico?: any;
 }
 
 type EvidencePreviewFile = {
@@ -723,13 +725,17 @@ function normalizePTAData(d: any, fallbackPta: any = {}) {
 // ═══ MAIN COMPONENT ═══════════════════════════════════════════════════
 
 export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADetallePanelProps>(({
-  pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte, onUpdated,
+  pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerInformacion, onUpdated,
   puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId, actorNombre,
+  periodoAcademico,
 }, ref) => {
   const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'concertacion' | 'evidencias' | 'trazabilidad'>('resumen');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
   const [aprobacionesJefatura, setAprobacionesJefatura] = useState<any[]>([]);
   const [pta, setPta] = useState<any>(initialPta);
+  const [showReporteInstitucional, setShowReporteInstitucional] = useState(false);
+  const [loadingReporteInstitucional, setLoadingReporteInstitucional] = useState(false);
+  const [reporteDocentePerfil, setReporteDocentePerfil] = useState<any>(null);
   const [loadingExtras, setLoadingExtras] = useState(false);
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [loadingEvidencias, setLoadingEvidencias] = useState(false);
@@ -879,6 +885,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  useEffect(() => {
+    setReporteDocentePerfil(null);
+    setShowReporteInstitucional(false);
+  }, [initialPta?.id]);
 
   // Cargar evidencias al activar el tab
   useEffect(() => {
@@ -3164,6 +3175,112 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     );
   };
 
+  const abrirReporteInstitucional = async () => {
+    if (loadingReporteInstitucional) return;
+
+    setLoadingReporteInstitucional(true);
+    try {
+      if (!reporteDocentePerfil) {
+        const docenteId = pta?.docente_id || pta?.docenteId || pta?.persona_id || pta?.personaId || pta?.usuario_id;
+        const periodoCodigo = typeof pta?.periodo === 'string'
+          ? pta.periodo
+          : (pta?.periodo?.codigo || periodoAcademico?.codigo);
+
+        if (docenteId) {
+          const perfilRes = await getBancoDocenteById(String(docenteId), periodoCodigo || undefined);
+          if (perfilRes.success && perfilRes.data) setReporteDocentePerfil(perfilRes.data);
+        }
+      }
+    } catch (error) {
+      // El reporte conserva fallbacks con los datos persistidos en el PTA. Un fallo
+      // no crítico del Banco/RUND no debe impedir que el administrador lo consulte.
+      console.warn('[PTA] No se pudo enriquecer el reporte con la ficha RUND:', error);
+    } finally {
+      setLoadingReporteInstitucional(false);
+      setShowReporteInstitucional(true);
+    }
+  };
+
+  const reporteUserPerfil = {
+    ...(pta?.docente && typeof pta.docente === 'object' ? pta.docente : {}),
+    ...(reporteDocentePerfil || {}),
+    nombre_completo: reporteDocentePerfil?.nombre_completo
+      || pta?.docente_nombre || pta?.nombre_docente || pta?.docenteNombre,
+    documento_identidad: reporteDocentePerfil?.documento_identidad
+      || pta?.documento_identidad || pta?.docente_identificacion || pta?.docente_documento || pta?.cedula,
+    correo_institucional: reporteDocentePerfil?.correo_institucional
+      || pta?.correo_institucional || pta?.docente_email,
+    categoria: reporteDocentePerfil?.categoria || pta?.categoria_escalafon || pta?.categoria,
+    territorial: reporteDocentePerfil?.territorial || pta?.territorial,
+    vinculacion: reporteDocentePerfil?.vinculacion || pta?.tipo_vinculacion,
+    dedicacion: reporteDocentePerfil?.dedicacion || pta?.dedicacion,
+    nucleo_tematico: reporteDocentePerfil?.nucleo_tematico || pta?.nucleo_tematico,
+  };
+
+  // normalizePTAData conserva `acad_admin` en la forma legacy usada por el visor
+  // de Información. El reporte institucional consume el arreglo plano del portal.
+  const ptaReporteInstitucional = {
+    ...pta,
+    acad_admin: Array.isArray(pta?.acad_admin)
+      ? pta.acad_admin
+      : (pta?.acad_admin?.actividades || pta?.academico_admin || []),
+  };
+
+  const renderBotonInformacion = (mobile = false) => (
+    <button
+      type="button"
+      onClick={onVerInformacion}
+      style={{
+        ...(mobile ? { flex: 1, padding: '10px 14px', borderRadius: 10 } : { padding: '7px 14px', borderRadius: 8 }),
+        border: '1px solid #BFDBFE', background: '#EFF6FF',
+        color: '#1E40AF', fontWeight: 600, fontSize: mobile ? '0.8rem' : '0.78rem',
+        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+      }}
+    >
+      <Info style={{ width: 13, height: 13 }} /> Información
+    </button>
+  );
+
+  const renderBotonReporteInstitucional = (mobile = false) => (
+    <button
+      type="button"
+      onClick={abrirReporteInstitucional}
+      disabled={loadingReporteInstitucional}
+      style={{
+        ...(mobile ? { flex: 1, padding: '10px 14px', borderRadius: 10 } : { padding: '7px 14px', borderRadius: 8 }),
+        border: '1px solid #BFDBFE', background: '#EFF6FF',
+        color: '#1E40AF', fontWeight: 600, fontSize: mobile ? '0.8rem' : '0.78rem',
+        cursor: loadingReporteInstitucional ? 'wait' : 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+        opacity: loadingReporteInstitucional ? 0.7 : 1,
+      }}
+    >
+      {loadingReporteInstitucional
+        ? <Loader2 className="animate-spin" style={{ width: 13, height: 13 }} />
+        : <FileText style={{ width: 13, height: 13 }} />}
+      Reporte
+    </button>
+  );
+
+  // Al abrir el reporte se reemplaza temporalmente el slide-out. Así el mismo
+  // overlay compartido con el portal docente mantiene su comportamiento y estilos.
+  if (showReporteInstitucional) {
+    return createPortal(
+      <ReportePTAInstitucional
+        pta={ptaReporteInstitucional}
+        userPerfil={reporteUserPerfil}
+        onClose={() => setShowReporteInstitucional(false)}
+        isParcial={!['Aprobado', 'En Firme', 'Finalizado'].includes(pta?.estado)}
+        certificadoId={pta?.certificado_qr}
+        signedAt={pta?.signed_at || pta?.updated_at}
+        periodoAcademico={periodoAcademico}
+        componentesAprobacion={componentesAprobacion}
+        aprobacionTerritorial={aprobacionTerritorial}
+      />,
+      document.body,
+    );
+  }
+
   return (
     <motion.div
       ref={ref}
@@ -4325,6 +4442,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* Mobile: columna completa. Desktop: fila space-between */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {renderBotonInformacion(true)}
+                {renderBotonReporteInstitucional(true)}
+              </div>
               {isPendiente && puedeAprobarNivelActual && (
                 <>
                   {yaAproboEstaJefatura ? (
@@ -4353,19 +4474,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     {procesandoAprobacion ? 'Procesando...' : getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0))}
                   </button>
                   ) : null}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={onVerReporte}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 10,
-                        border: '1px solid #BFDBFE', background: '#EFF6FF',
-                        color: '#1E40AF', fontWeight: 600, fontSize: '0.8rem',
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                      }}
-                    >
-                      <Eye style={{ width: 13, height: 13 }} /> R-01
-                    </button>
-                  </div>
                 </>
               )}
               {isConcertacion && (
@@ -4381,34 +4489,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   >
                     <MessageSquare style={{ width: 15, height: 15 }} /> Abrir Mesa de Concertación
                   </button>
-                  <button
-                    onClick={onVerReporte}
-                    style={{
-                      width: '100%', padding: '10px 14px', borderRadius: 10,
-                      border: '1px solid #BFDBFE', background: '#EFF6FF',
-                      color: '#1E40AF', fontWeight: 600, fontSize: '0.8rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                    }}
-                  >
-                    <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
-                  </button>
                 </>
               )}
               {!isPendiente && !isConcertacion && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={onVerReporte}
-                    style={{
-                      flex: 1, padding: '11px 14px', borderRadius: 10,
-                      border: '1px solid #BFDBFE', background: '#EFF6FF',
-                      color: '#1E40AF', fontWeight: 600, fontSize: '0.82rem',
-                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                    }}
-                  >
-                    <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.72rem', color: '#9CA3AF', fontStyle: 'italic', textAlign: 'center',
                   }}>
                     {pta.estado === 'Aprobado' ? '✓ PTA aprobado' :
@@ -4422,17 +4508,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             /* Desktop: fila space-between */
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={onVerReporte}
-                  style={{
-                    padding: '7px 14px', borderRadius: 8,
-                    border: '1px solid #BFDBFE', background: '#EFF6FF',
-                    color: '#1E40AF', fontWeight: 600, fontSize: '0.78rem',
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-                  }}
-                >
-                  <Eye style={{ width: 13, height: 13 }} /> Reporte R-{String(reporteVersionActual).padStart(2, '0')}
-                </button>
+                {renderBotonInformacion()}
+                {renderBotonReporteInstitucional()}
               </div>
 
               {isPendiente && puedeAprobarNivelActual && (

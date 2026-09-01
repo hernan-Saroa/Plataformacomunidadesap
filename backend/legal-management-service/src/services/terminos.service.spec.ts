@@ -466,6 +466,57 @@ describe('TerminosService', () => {
             expect(result.responsableId).toBeNull();
             expect(result.responsableNombre).toBeNull();
         });
+
+        it('debe notificar la asignación cuando se crea un término nuevo con responsableId (p.ej. actuación con abogado asignado)', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue(null);
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-10', 'RAD-10', 'Actuación', localDate(2026, 1, 1), 15,
+                'resp-1', 'Juan Pérez',
+            );
+
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).toHaveBeenCalledWith(
+                expect.objectContaining({ responsableId: 'resp-1', esReasignacion: false }),
+            );
+        });
+
+        it('debe notificar como reasignación cuando el término ya existía con otro responsable', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({
+                id: 't-10', referenciaId: 'ref-11', origenModulo: 'DEFENSA', responsableId: 'anterior', responsableNombre: 'Anterior', observaciones: null,
+            });
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-11', 'RAD-11', 'Actuación', localDate(2026, 1, 1), 15,
+                'resp-2', 'Nuevo Responsable',
+            );
+
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).toHaveBeenCalledWith(
+                expect.objectContaining({ responsableId: 'resp-2', esReasignacion: true }),
+            );
+        });
+
+        it('no debe notificar si el responsable no cambió respecto al término existente', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({
+                id: 't-11', referenciaId: 'ref-12', origenModulo: 'DEFENSA', responsableId: 'resp-1', responsableNombre: 'Juan Pérez', observaciones: null,
+            });
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-12', 'RAD-12', 'Actuación', localDate(2026, 1, 1), 15,
+                'resp-1', 'Juan Pérez',
+            );
+
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
+
+        it('no debe notificar cuando no se provee responsableId', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue(null);
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-13', 'RAD-13', 'Actuación', localDate(2026, 1, 1), 15,
+            );
+
+            expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
     });
 
     // ---------------------------------------------------------------------

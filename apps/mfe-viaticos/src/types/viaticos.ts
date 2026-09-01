@@ -1,5 +1,6 @@
 export type EstadoSolicitudViatico =
   | 'BORRADOR'
+  | 'PENDIENTE'
   | 'SOLICITADO'
   | 'APROBADO_JEFE'
   | 'APROBADO_TALENTO_HUMANO'
@@ -8,7 +9,9 @@ export type EstadoSolicitudViatico =
   | 'EN_COMISION'
   | 'PENDIENTE_LEGALIZACION'
   | 'LEGALIZADO'
-  | 'RECHAZADO';
+  | 'RECHAZADO'
+  | 'RADICADA'
+  | 'EXTEMPORANEA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -19,9 +22,196 @@ export type TipoComision =
 
 export type MedioTransporte = 'AEREO' | 'TERRESTRE' | 'VEHICULO_INSTITUCIONAL' | 'MIXTO';
 
+export type PrioridadSolicitud = 'ALTA' | 'MEDIA' | 'BAJA';
+
+/**
+ * Estado del formulario de nueva solicitud.
+ *
+ * Los nombres de campo se alinean con el DTO backend `CreateSolicitudDto`
+ * (backend/travel-expenses-service/src/dto/create-solicitud.dto.ts). El
+ * microservicio serializa sus entidades en camelCase, por lo que el payload
+ * de creación (camelCase) y las respuestas (camelCase) son consistentes.
+ */
+export interface FormNuevaSolicitud {
+  documentoComisionado: string;
+  comisionadoId: string;
+  objetoComision: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  rubroPresupuestal: string;
+  prioridad: PrioridadSolicitud;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  aceptaHabeasData: boolean;
+  tipoComision?: string;
+  documentos?: DocumentoFormItem[];
+}
+
+export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
+
+/**
+ * Registro de geopolítica (tabla `auth.geopolitica`) expuesto por el
+ * microservicio de auth (estructura-organizacional). Se usa para los
+ * selectores de departamento → ciudad.
+ */
+export interface Geopolitica {
+  idGeopolitica: number;
+  codGeopolitica?: string;
+  codPais?: number;
+  codDepartamento?: number;
+  codCiudad?: number;
+  nomDivGeopolitica: string;
+  tipDivision: 'DEPTO' | 'CIUDAD' | string;
+  idPadre?: number;
+}
+
+export type TipoDocumentoSoporte = 'CDP' | 'RUT' | 'CERT_BANCARIA' | 'SEGURIDAD_SOCIAL' | 'CONTRATO_SECOP';
+
+/** Comisionado tal como lo serializa `ComisionadoEntity` (camelCase). */
+export interface Comisionado {
+  id: string;
+  numeroDocumento: string;
+  primerNombre: string;
+  segundoNombre?: string;
+  primerApellido: string;
+  segundoApellido?: string;
+  email: string;
+  telefonoContacto: string;
+  tipoComisionado: TipoComisionado;
+  origenDatos: 'HUMANO' | 'SECOP';
+  autorizacionHabeasData: boolean;
+  fechaAutorizacionHabeasData?: Date;
+  ipRegistroHabeasData?: string;
+}
+
+export interface DocumentoSoporte {
+  id: string;
+  solicitudId: string;
+  tipoDocumento: TipoDocumentoSoporte;
+  nombreArchivoOriginal: string;
+  nombreArchivoSeguro: string;
+  urlRepositorio: string;
+  tipoMime: string;
+  creadoEn?: Date;
+}
+
+export interface DocumentoFormItem {
+  id?: string;
+  tipoDocumento: TipoDocumentoSoporte;
+  nombreArchivoOriginal: string;
+  nombreArchivoSeguro: string;
+  urlRepositorio: string;
+  tipoMime?: string;
+}
+
+/** Respuesta del backend al crear una solicitud (serialización camelCase). */
+export interface SolicitudComisionResponse {
+  id: string;
+  consecutivoUnico: string;
+  comisionadoId: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: Date;
+  fechaFin: Date;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+   diasComision: number;
+   estadoSolicitud: string;
+   tipoComision: string;
+   radicadoFueraJornada: boolean;
+   extemporanea: boolean;
+   creadoPorUsuarioId: string;
+   creadoEn: Date;
+   actualizadoEn: Date;
+   documentosSoporte?: DocumentoSoporte[];
+   comisionado?: Comisionado;
+   warningMessage?: string;
+}
+
+/**
+ * Payload de creación alineado con el DTO backend `CreateSolicitudDto`
+ * (camelCase). Lo consume `viaticosService.crearSolicitudComision`.
+ */
+export interface CreateSolicitudRequest {
+  comisionadoId: string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  creadoPorUsuarioId: string;
+  aceptaHabeasData?: boolean;
+  ipRegistroHabeasData?: string;
+  modoBorrador?: boolean;
+  tipoComision?: string;
+  documentos?: {
+    tipoDocumento: TipoDocumentoSoporte;
+    nombreArchivoOriginal: string;
+    nombreArchivoSeguro: string;
+    urlRepositorio: string;
+    tipoMime?: string;
+  }[];
+}
+
+/**
+ * Respuesta del endpoint backend `GET /solicitudes`
+ * (lista con datos del comisionado, camelCase).
+ */
+export interface SolicitudListaResponse {
+  id: string;
+  consecutivoUnico: string;
+  comisionadoId: string;
+  comisionado: Pick<
+    Comisionado,
+    | 'id'
+    | 'numeroDocumento'
+    | 'primerNombre'
+    | 'segundoNombre'
+    | 'primerApellido'
+    | 'segundoApellido'
+    | 'tipoComisionado'
+    | 'email'
+    | 'telefonoContacto'
+    | 'autorizacionHabeasData'
+  > | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
+  prioridad: string;
+  rubroPresupuestal: string;
+  requiereTiquetes: boolean;
+  montoViaticos: number;
+  montoGastosViaje: number;
+  diasComision: number;
+  estadoSolicitud: string;
+  radicadoFueraJornada: boolean;
+  extemporanea: boolean;
+  creadoPorUsuarioId?: string;
+  esCreadoPorMi?: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+/** Modelo de presentación para la tabla de solicitudes. */
 export interface SolicitudViatico {
   id: string;
-  codigo: string; // ej. SOL-VIA-2026-001
+  codigo: string;
   cedulaComisionado: string;
   nombreComisionado: string;
   cargoComisionado: string;
@@ -39,11 +229,14 @@ export interface SolicitudViatico {
   montoSolicitadoGastosViaje: number;
   montoTotalEstimado: number;
   estado: EstadoSolicitudViatico;
+  extemporanea: boolean;
+  radicadoFueraJornada: boolean;
   requiereTiqueteAereo: boolean;
   numeroResolucion?: string;
   fechaResolucion?: string;
   creadoEn: string;
   actualizadoEn: string;
+  esCreadoPorMi?: boolean;
 }
 
 export interface TiqueteAereo {
@@ -80,5 +273,26 @@ export interface ResumenEstadisticoViaticos {
   enProcesoAprobacion: number;
   enComisionActivas: number;
   pendientesLegalizar: number;
+  borradores: number;
   montoTotalEjecutado: number;
+}
+
+export interface ChecklistDocumento {
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+}
+
+export interface ChecklistDocumentosResponse {
+  obligatorios: ChecklistDocumento[];
+  opcionales: ChecklistDocumento[];
+}
+
+export interface FinalizarSolicitudResponse {
+  id: string;
+  consecutivoUnico: string;
+  estadoSolicitud: EstadoSolicitudViatico;
+  extemporanea: boolean;
+  radicadoFueraJornada: boolean;
+  warningMessage?: string;
 }

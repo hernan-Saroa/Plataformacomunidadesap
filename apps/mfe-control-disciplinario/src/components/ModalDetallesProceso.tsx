@@ -2140,6 +2140,7 @@ export function ModalDetallesProceso({
   const [mostrarModalPliego, setMostrarModalPliego] = useState(false);
   const [mostrarModalEnvioJuridica, setMostrarModalEnvioJuridica] = useState(false);
   const [enviandoJuridica, setEnviandoJuridica] = useState(false);
+  const [revirtiendoAprobacion, setRevirtiendoAprobacion] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -4479,21 +4480,55 @@ export function ModalDetallesProceso({
                       }
 
                       if (autoPliego.estado === 'aprobado') {
-                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ? (
-                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
+                        return (
+                          <div className="space-y-2">
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
+                              <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
+                                <button
+                                  onClick={() => setMostrarModalEnvioJuridica(true)}
+                                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                  style={{ background: '#2563EB', color: 'white' }}
+                                >
+                                  <Send className="w-4 h-4" />
+                                  Enviar a Jurídica
+                                </button>
+                                <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
+                                  Auto aprobado — listo para enviar a Oficina Jurídica
+                                </p>
+                              </div>
+                            )}
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
                               <button
-                                onClick={() => setMostrarModalEnvioJuridica(true)}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                                style={{ background: '#2563EB', color: 'white' }}
+                                disabled={revirtiendoAprobacion}
+                                onClick={async () => {
+                                  if (!window.confirm('¿Reversar la aprobación de este Pliego de Cargos? Volverá a borrador para que el Profesional lo corrija y lo reenvíe a revisión, y el proceso regresará a la etapa en la que estaba antes de aprobarlo. Esta acción no afecta el envío a Jurídica.')) {
+                                    return;
+                                  }
+                                  try {
+                                    setRevirtiendoAprobacion(true);
+                                    const currentUser = authService.getCurrentUser();
+                                    await disciplinaryService.revertirAprobacionAuto(autoPliego.id, currentUser?.id || '');
+                                    toast.success('Aprobación reversada', {
+                                      description: 'El auto volvió a borrador para corrección.',
+                                    });
+                                    onClose();
+                                  } catch (error: any) {
+                                    toast.error('Error al reversar la aprobación', {
+                                      description: error?.message || 'No se pudo conectar con el servidor.',
+                                    });
+                                  } finally {
+                                    setRevirtiendoAprobacion(false);
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all hover:bg-gray-50 disabled:opacity-50"
+                                style={{ border: '1px solid #D1D5DB', color: '#6B7280' }}
                               >
-                                <Send className="w-4 h-4" />
-                                Enviar a Jurídica
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                {revirtiendoAprobacion ? 'Reversando...' : 'Reversar Aprobación'}
                               </button>
-                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
-                                Auto aprobado — listo para enviar a Oficina Jurídica
-                              </p>
-                            </div>
-                        ) : null;
+                            )}
+                          </div>
+                        );
                       }
 
                       return null;
