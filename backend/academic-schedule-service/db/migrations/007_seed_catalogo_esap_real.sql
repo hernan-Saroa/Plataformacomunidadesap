@@ -22,46 +22,84 @@
 -- ============================================================================
 
 -- Facultades (3)
-INSERT INTO academic_work_plan.facultad (codigo, nombre, activo) VALUES ('PREGRADO', 'Pregrado', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.facultad (codigo, nombre, activo) VALUES ('POSGRADO-ESP', 'Posgrado - Especializaciones', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.facultad (codigo, nombre, activo) VALUES ('POSGRADO-MAES', 'Posgrado - Maestrías', TRUE) ON CONFLICT (codigo) DO NOTHING;
+INSERT INTO academic_work_plan.facultad (codigo, nombre, activo)
+SELECT 'PREGRADO', 'Pregrado', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.facultad WHERE codigo = 'PREGRADO' OR nombre = 'Pregrado');
+INSERT INTO academic_work_plan.facultad (codigo, nombre, activo)
+SELECT 'POSGRADO-ESP', 'Posgrado - Especializaciones', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.facultad WHERE codigo = 'POSGRADO-ESP' OR nombre = 'Posgrado - Especializaciones');
+INSERT INTO academic_work_plan.facultad (codigo, nombre, activo)
+SELECT 'POSGRADO-MAES', 'Posgrado - Maestrías', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.facultad WHERE codigo = 'POSGRADO-MAES' OR nombre = 'Posgrado - Maestrías');
 
 -- Direcciones territoriales (17)
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('SC', 'SEDE_CENTRAL', 'sedecentral', 1, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-001', 'ANTIOQUIA', 'antioquia', 2, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-002', 'ATLÁNTICO', 'atlantico', 3, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-003', 'BOLÍVAR', 'bolivar', 4, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-004', 'BOYACÁ', 'boyaca', 5, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-005', 'CALDAS', 'caldas', 6, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-006', 'CAUCA', 'cauca', 7, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-007', 'CHOCÓ', 'choco', 8, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-008', 'CUNDINAMARCA', 'cundinamarca', 9, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-009', 'HUILA', 'huila', 10, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-010', 'META', 'meta', 11, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-011', 'NARIÑO', 'narino', 12, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-012', 'NORTE DE SANTANDER', 'nortedesantander', 13, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-013', 'RISARALDA', 'risaralda', 14, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-014', 'SANTANDER', 'santander', 15, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-015', 'TOLIMA', 'tolima', 16, TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo) VALUES ('DT-016', 'VALLE', 'valle', 17, TRUE) ON CONFLICT (codigo) DO NOTHING;
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'SC', 'SEDE_CENTRAL', 'sedecentral', 1, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'SC' OR nombre = 'SEDE_CENTRAL' OR nombre_normalizado = 'sedecentral');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-001', 'ANTIOQUIA', 'antioquia', 2, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-001' OR nombre = 'ANTIOQUIA' OR nombre_normalizado = 'antioquia');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-002', 'ATLÁNTICO', 'atlantico', 3, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-002' OR nombre = 'ATLÁNTICO' OR nombre_normalizado = 'atlantico');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-003', 'BOLÍVAR', 'bolivar', 4, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-003' OR nombre = 'BOLÍVAR' OR nombre_normalizado = 'bolivar');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-004', 'BOYACÁ', 'boyaca', 5, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-004' OR nombre = 'BOYACÁ' OR nombre_normalizado = 'boyaca');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-005', 'CALDAS', 'caldas', 6, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-005' OR nombre = 'CALDAS' OR nombre_normalizado = 'caldas');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-006', 'CAUCA', 'cauca', 7, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-006' OR nombre = 'CAUCA' OR nombre_normalizado = 'cauca');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-007', 'CHOCÓ', 'choco', 8, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-007' OR nombre = 'CHOCÓ' OR nombre_normalizado = 'choco');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-008', 'CUNDINAMARCA', 'cundinamarca', 9, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-008' OR nombre = 'CUNDINAMARCA' OR nombre_normalizado = 'cundinamarca');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-009', 'HUILA', 'huila', 10, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-009' OR nombre = 'HUILA' OR nombre_normalizado = 'huila');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-010', 'META', 'meta', 11, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-010' OR nombre = 'META' OR nombre_normalizado = 'meta');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-011', 'NARIÑO', 'narino', 12, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-011' OR nombre = 'NARIÑO' OR nombre_normalizado = 'narino');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-012', 'NORTE DE SANTANDER', 'nortedesantander', 13, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-012' OR nombre = 'NORTE DE SANTANDER' OR nombre_normalizado = 'nortedesantander');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-013', 'RISARALDA', 'risaralda', 14, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-013' OR nombre = 'RISARALDA' OR nombre_normalizado = 'risaralda');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-014', 'SANTANDER', 'santander', 15, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-014' OR nombre = 'SANTANDER' OR nombre_normalizado = 'santander');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-015', 'TOLIMA', 'tolima', 16, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-015' OR nombre = 'TOLIMA' OR nombre_normalizado = 'tolima');
+INSERT INTO academic_work_plan.direccion_territorial (codigo, nombre, nombre_normalizado, orden_visualizacion, activo)
+SELECT 'DT-016', 'VALLE', 'valle', 17, TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.direccion_territorial WHERE codigo = 'DT-016' OR nombre = 'VALLE' OR nombre_normalizado = 'valle');
 
--- Ubicacion semestral (16): dos familias, pregrado ordinal y posgrado romano
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (1, 'POS_1', 'Semestre I', 'posgrado', 1) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (2, 'POS_2', 'Semestre II', 'posgrado', 2) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (3, 'POS_3', 'Semestre III', 'posgrado', 3) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (4, 'POS_4', 'Semestre IV', 'posgrado', 4) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (5, 'PRE_1', 'Primer semestre', 'pregrado', 1) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (6, 'PRE_2', 'Segundo semestre', 'pregrado', 2) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (7, 'PRE_3', 'Tercer semestre', 'pregrado', 3) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (8, 'PRE_4', 'Cuarto semestre', 'pregrado', 4) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (9, 'PRE_5', 'Quinto semestre', 'pregrado', 5) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (10, 'PRE_6', 'Sexto semestre', 'pregrado', 6) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (11, 'PRE_7', 'Séptimo semestre', 'pregrado', 7) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (12, 'PRE_8', 'Octavo semestre', 'pregrado', 8) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (13, 'PRE_9', 'Noveno semestre', 'pregrado', 9) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (14, 'PRE_10', 'Décimo semestre', 'pregrado', 10) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (15, 'PRE_11', 'Onceavo semestre', 'pregrado', 11) ON CONFLICT (id) DO NOTHING;
-INSERT INTO academic_work_plan.ubicacion_semestral (id, codigo, etiqueta, tipo_programa, orden) VALUES (16, 'PRE_12', 'Doceavo semestre', 'pregrado', 12) ON CONFLICT (id) DO NOTHING;
+-- Ubicacion semestral (16): dos familias, pregrado ordinal y posgrado romano.
+-- El id NO se fija a mano: la columna tiene secuencia y hardcodearlo colisiona
+-- con las filas que ya existan. Se guarda por codigo Y etiqueta, ambos UNIQUE.
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'POS_1', 'Semestre I', 'posgrado', 1 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'POS_1' OR etiqueta = 'Semestre I');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'POS_2', 'Semestre II', 'posgrado', 2 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'POS_2' OR etiqueta = 'Semestre II');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'POS_3', 'Semestre III', 'posgrado', 3 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'POS_3' OR etiqueta = 'Semestre III');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'POS_4', 'Semestre IV', 'posgrado', 4 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'POS_4' OR etiqueta = 'Semestre IV');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_1', 'Primer semestre', 'pregrado', 1 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_1' OR etiqueta = 'Primer semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_2', 'Segundo semestre', 'pregrado', 2 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_2' OR etiqueta = 'Segundo semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_3', 'Tercer semestre', 'pregrado', 3 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_3' OR etiqueta = 'Tercer semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_4', 'Cuarto semestre', 'pregrado', 4 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_4' OR etiqueta = 'Cuarto semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_5', 'Quinto semestre', 'pregrado', 5 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_5' OR etiqueta = 'Quinto semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_6', 'Sexto semestre', 'pregrado', 6 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_6' OR etiqueta = 'Sexto semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_7', 'Séptimo semestre', 'pregrado', 7 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_7' OR etiqueta = 'Séptimo semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_8', 'Octavo semestre', 'pregrado', 8 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_8' OR etiqueta = 'Octavo semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_9', 'Noveno semestre', 'pregrado', 9 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_9' OR etiqueta = 'Noveno semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_10', 'Décimo semestre', 'pregrado', 10 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_10' OR etiqueta = 'Décimo semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_11', 'Onceavo semestre', 'pregrado', 11 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_11' OR etiqueta = 'Onceavo semestre');
+INSERT INTO academic_work_plan.ubicacion_semestral (codigo, etiqueta, tipo_programa, orden)
+SELECT 'PRE_12', 'Doceavo semestre', 'pregrado', 12 WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.ubicacion_semestral WHERE codigo = 'PRE_12' OR etiqueta = 'Doceavo semestre');
 
 -- Programas academicos (14)
 INSERT INTO academic_work_plan.programa (codigo, nombre, nombre_excel, nombre_corto, id_facultad, tipo, modalidad, horas_base_por_credito, horas_pregrado_central, activo)
@@ -121,40 +159,75 @@ SELECT 'PRO-014', 'Maestría Administración Pública - Presencial', 'Maestria_A
 FROM academic_work_plan.facultad f WHERE f.codigo = 'POSGRADO-MAES'
 ON CONFLICT (codigo) DO NOTHING;
 
--- Nucleos tematicos (33), derivados de las asignaturas
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-001', 'Nuevo Plan de Estudios AP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-002', 'Estado Y Poder', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-003', 'Idioma Extranjero', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-004', 'Fundamentación Cuantitativa', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-005', 'Problemática Pública', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-006', 'Economía Pública', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-007', 'Desarrollo Y Gestión Territorial', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-008', 'Organizaciones Públicas Y Gestión', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-009', 'Electivas Generales', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-010', 'Ciclo De Formación Específica', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-011', 'Formación General', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-012', 'Complementaria', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-013', 'Nuevo Plan de Estudios APT', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-014', 'Problemática Del  Estado Y Del Poder', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-015', 'Estado, Gobierno y Sociedad', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-016', 'Economía De Lo Público', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-017', 'Organizaciones Públicas', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-018', 'Espacio,  Tiempo Y  Territorio', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-019', 'Gestión Del Desarrollo', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-020', 'Cuantitativa', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-021', 'Formación integral Y de contexto', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-022', 'Teoría Económica e Historia', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-023', 'Alta Dirección del Estado - ESP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-024', 'Derechos Humanos - ESP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-025', 'Finanzas Públicas - ESP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-026', 'Gestión del Conocimiento', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-027', 'GEPUR - ESP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-028', 'Gerencia Social - ESP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-029', 'Gestión Pública - ESP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-030', 'Proyectos de Desarrollo - ESP', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-031', 'Maestria DDHH y Posconflicto', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-032', 'Maestria Administración Pública - DISTANCIA', TRUE) ON CONFLICT (codigo) DO NOTHING;
-INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo) VALUES ('NT-033', 'Maestria Administración Pública - PRESENCIAL', TRUE) ON CONFLICT (codigo) DO NOTHING;
+-- Nucleos tematicos (33), derivados de las asignaturas.
+-- UNIQUE en codigo Y nombre: en un entorno ya cargado los codigos difieren pero
+-- los nombres coinciden, asi que se guarda por ambos.
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-001', 'Nuevo Plan de Estudios AP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-001' OR nombre = 'Nuevo Plan de Estudios AP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-002', 'Estado Y Poder', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-002' OR nombre = 'Estado Y Poder');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-003', 'Idioma Extranjero', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-003' OR nombre = 'Idioma Extranjero');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-004', 'Fundamentación Cuantitativa', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-004' OR nombre = 'Fundamentación Cuantitativa');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-005', 'Problemática Pública', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-005' OR nombre = 'Problemática Pública');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-006', 'Economía Pública', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-006' OR nombre = 'Economía Pública');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-007', 'Desarrollo Y Gestión Territorial', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-007' OR nombre = 'Desarrollo Y Gestión Territorial');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-008', 'Organizaciones Públicas Y Gestión', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-008' OR nombre = 'Organizaciones Públicas Y Gestión');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-009', 'Electivas Generales', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-009' OR nombre = 'Electivas Generales');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-010', 'Ciclo De Formación Específica', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-010' OR nombre = 'Ciclo De Formación Específica');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-011', 'Formación General', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-011' OR nombre = 'Formación General');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-012', 'Complementaria', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-012' OR nombre = 'Complementaria');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-013', 'Nuevo Plan de Estudios APT', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-013' OR nombre = 'Nuevo Plan de Estudios APT');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-014', 'Problemática Del  Estado Y Del Poder', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-014' OR nombre = 'Problemática Del  Estado Y Del Poder');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-015', 'Estado, Gobierno y Sociedad', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-015' OR nombre = 'Estado, Gobierno y Sociedad');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-016', 'Economía De Lo Público', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-016' OR nombre = 'Economía De Lo Público');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-017', 'Organizaciones Públicas', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-017' OR nombre = 'Organizaciones Públicas');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-018', 'Espacio,  Tiempo Y  Territorio', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-018' OR nombre = 'Espacio,  Tiempo Y  Territorio');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-019', 'Gestión Del Desarrollo', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-019' OR nombre = 'Gestión Del Desarrollo');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-020', 'Cuantitativa', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-020' OR nombre = 'Cuantitativa');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-021', 'Formación integral Y de contexto', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-021' OR nombre = 'Formación integral Y de contexto');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-022', 'Teoría Económica e Historia', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-022' OR nombre = 'Teoría Económica e Historia');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-023', 'Alta Dirección del Estado - ESP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-023' OR nombre = 'Alta Dirección del Estado - ESP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-024', 'Derechos Humanos - ESP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-024' OR nombre = 'Derechos Humanos - ESP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-025', 'Finanzas Públicas - ESP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-025' OR nombre = 'Finanzas Públicas - ESP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-026', 'Gestión del Conocimiento', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-026' OR nombre = 'Gestión del Conocimiento');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-027', 'GEPUR - ESP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-027' OR nombre = 'GEPUR - ESP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-028', 'Gerencia Social - ESP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-028' OR nombre = 'Gerencia Social - ESP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-029', 'Gestión Pública - ESP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-029' OR nombre = 'Gestión Pública - ESP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-030', 'Proyectos de Desarrollo - ESP', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-030' OR nombre = 'Proyectos de Desarrollo - ESP');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-031', 'Maestria DDHH y Posconflicto', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-031' OR nombre = 'Maestria DDHH y Posconflicto');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-032', 'Maestria Administración Pública - DISTANCIA', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-032' OR nombre = 'Maestria Administración Pública - DISTANCIA');
+INSERT INTO academic_work_plan.nucleo_tematico (codigo, nombre, activo)
+SELECT 'NT-033', 'Maestria Administración Pública - PRESENCIAL', TRUE WHERE NOT EXISTS (SELECT 1 FROM academic_work_plan.nucleo_tematico WHERE codigo = 'NT-033' OR nombre = 'Maestria Administración Pública - PRESENCIAL');
 
 -- Asignaturas (427): codigos unicos, entran sin conflicto
 -- contra el NOT NULL UNIQUE que ya existe desde la migracion 326.
