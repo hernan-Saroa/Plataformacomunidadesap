@@ -310,10 +310,18 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
   // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
   // proceso, no del estudio previo, y de ella depende la modalidad aplicable.
+  // `numeric` puede llegar como string desde el driver, así que un
+  // `typeof === 'number'` dejaba fuera valores que sí existen y la ficha
+  // mostraba «Valor estimado $» con el importe en blanco.
+  const valorEstimado =
+    datos.proceso.valorEstimado === null || datos.proceso.valorEstimado === undefined
+      ? null
+      : Number(datos.proceso.valorEstimado);
+
   const ficha = [
     datos.proceso.expediente ? `Expediente ${datos.proceso.expediente}` : null,
-    typeof datos.proceso.valorEstimado === 'number'
-      ? `Valor estimado ${formatoPesos.format(datos.proceso.valorEstimado)}`
+    valorEstimado !== null && Number.isFinite(valorEstimado)
+      ? `Valor estimado ${formatoPesos.format(valorEstimado)}`
       : null,
   ]
     .filter(Boolean)
@@ -340,9 +348,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
           <div className="flex items-start gap-3">
             {/* Gradiente y no fondo plano: misma insignia que las cabeceras de
-                control interno y gestión legal. */}
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#003DA5] to-[#0051D5] grid place-items-center flex-shrink-0 shadow-md">
-              <FileText className="w-5 h-5 text-white" />
+                control interno y gestión legal.
+
+                Con flex y no `grid place-items-center`: el CSS del shell viene
+                precompilado y solo trae las utilidades que él usa, así que
+                `place-items-center` no aplicaba y el icono quedaba pegado a la
+                esquina en vez de centrado. Es el mismo motivo por el que la
+                trazabilidad lleva sus anchos en `style`. */}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#003DA5] to-[#0051D5] flex items-center justify-center flex-shrink-0 shadow-md">
+              <FileText className="w-5 h-5 text-white" aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black text-[#003DA5] m-0 tabular-nums">

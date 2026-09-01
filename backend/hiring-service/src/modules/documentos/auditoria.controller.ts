@@ -53,7 +53,11 @@ export class AuditoriaController {
                    ORDER BY a.etapa, a.orden`, [procesoId]),
         // Con el hash: es lo que permite verificar que el documento archivado
         // es el mismo que se subió.
-        em.query(`SELECT d.numeral, d.tipo, d.nombre, d.archivo_nombre_original,
+        // `archivo_url` y el tamaño viajan para que el expediente pueda ofrecer
+        // la descarga: sin ellos la pantalla enseña el nombre de un archivo que
+        // no hay forma de abrir.
+        em.query(`SELECT d.id, d.numeral, d.tipo, d.nombre, d.archivo_nombre_original,
+                         d.archivo_url, d.archivo_mime_type, d.archivo_tamano,
                          d.hash_sha256, d.subido_por, d.created_at
                     FROM hiring.documentos d
                     JOIN hiring.expedientes e ON e.id = d.expediente_id

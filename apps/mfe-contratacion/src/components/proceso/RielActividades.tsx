@@ -178,7 +178,7 @@ function Actividad({
         }`}
     >
       <span
-        className="w-4 h-4 rounded-full border-2 grid place-items-center flex-shrink-0 mt-0.5"
+        className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5"
         style={{ background: color.punto, borderColor: color.borde }}
         aria-hidden="true"
       >

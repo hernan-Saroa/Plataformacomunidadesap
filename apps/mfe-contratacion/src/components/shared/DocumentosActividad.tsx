@@ -80,7 +80,7 @@ export function DocumentosActividad({ procesoId, numeral, recargarToken }: Props
       <ul className="m-0 p-0 list-none space-y-1.5">
         {documentos.map((doc) => (
           <li key={doc.id} className="flex items-start gap-2.5">
-            <span className="w-7 h-7 rounded-md grid place-items-center text-[8.5px] font-black text-white shrink-0 bg-slate-500">
+            <span className="w-7 h-7 rounded-md flex items-center justify-center text-[8.5px] font-black text-white shrink-0 bg-slate-500">
               {ETIQUETA_MIME[doc.mimeType ?? ''] ?? <FileText className="w-3.5 h-3.5" />}
             </span>
 

@@ -1,8 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Download,
   FileText,
+  Folder,
+  FolderOpen,
   Hash,
   History,
   ShieldCheck,
@@ -14,6 +20,7 @@ import { ExpedienteAuditoria } from '../../types';
 import { Ayuda, Cargando, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga, momento, momentoConHora } from '../shared/fechas';
 import { CicloContrato } from '../shared/CicloContrato';
+import { ETAPAS } from '../proceso/StepperEtapas';
 
 interface Props {
   procesoId: string;
@@ -62,11 +69,252 @@ const Bloque = ({
   </div>
 );
 
+type DocumentoExpediente = ExpedienteAuditoria['documentos'][number];
+
+/**
+ * La etapa de un documento sale del numeral de la actividad que lo produjo:
+ * el «4» de «4.3». Es la única pista que trae el registro, y basta porque la
+ * matriz numera toda actividad como «etapa.orden».
+ */
+function etapaDe(doc: DocumentoExpediente): number | null {
+  if (!doc.numeral) return null;
+  const n = Number.parseInt(doc.numeral.split('.')[0], 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+/** Bytes a algo legible; el backend manda el bigint como texto. */
+function peso(bytes: number | string | null): string | null {
+  const n = typeof bytes === 'string' ? Number(bytes) : bytes;
+  if (n === null || n === undefined || Number.isNaN(n) || n <= 0) return null;
+  const u = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), u.length - 1);
+  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
+/**
+ * Un archivo del expediente, en una sola línea.
+ *
+ * El hash ocupaba un renglón bajo cada documento y hacía la lista el doble de
+ * larga por un dato que casi nunca se lee: ahora se copia con el botón, y el
+ * valor completo sigue disponible en el `title` para quien lo quiera ver.
+ */
+function ArchivoFila({ doc }: { doc: DocumentoExpediente }) {
+  const [copiado, setCopiado] = useState(false);
+  const descargable = doc.tipo === 'ADJUNTO' && !!doc.archivo_url;
+  const tamano = peso(doc.archivo_tamano);
+
+  const copiarHash = async () => {
+    if (!doc.hash_sha256) return;
+    try {
+      await navigator.clipboard.writeText(doc.hash_sha256);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      // Sin portapapeles (contexto no seguro) el hash sigue en el title.
+    }
+  };
+
+  return (
+    <li className="flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-white/70 group">
+      {doc.numeral && (
+        <span className="text-[10.5px] font-bold text-slate-400 w-7 flex-shrink-0 tabular-nums">
+          {doc.numeral}
+        </span>
+      )}
+
+      <FileText className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" aria-hidden="true" />
+
+      <span
+        className="flex-1 min-w-0 truncate text-[11.5px] text-slate-700"
+        title={doc.archivo_nombre_original ?? doc.nombre}
+      >
+        {doc.archivo_nombre_original ?? doc.nombre}
+      </span>
+
+      {tamano && (
+        <span className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums hidden sm:inline">
+          {tamano}
+        </span>
+      )}
+
+      <span className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums">
+        {momento(doc.created_at)}
+      </span>
+
+      {doc.hash_sha256 && (
+        <button
+          type="button"
+          onClick={copiarHash}
+          title={`SHA-256: ${doc.hash_sha256}`}
+          aria-label="Copiar huella de integridad"
+          className="p-1 rounded flex-shrink-0 text-slate-300 hover:text-[#0891B2] hover:bg-[#0891B2]/10
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0891B2]/40"
+        >
+          {copiado ? (
+            <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
+          ) : (
+            <Hash className="w-3.5 h-3.5" aria-hidden="true" />
+          )}
+        </button>
+      )}
+
+      {descargable ? (
+        <a
+          href={contratacionService.urlDescarga(doc.archivo_url!)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Descargar"
+          aria-label={`Descargar ${doc.archivo_nombre_original ?? doc.nombre}`}
+          className="p-1 rounded flex-shrink-0 text-slate-400 hover:text-[#0891B2] hover:bg-[#0891B2]/10
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0891B2]/40"
+        >
+          <Download className="w-3.5 h-3.5" aria-hidden="true" />
+        </a>
+      ) : (
+        // Los snapshots del formulario son contenido guardado, no un archivo:
+        // decirlo evita buscar una descarga que no existe.
+        <span
+          title="Contenido del formulario, sin archivo adjunto"
+          className="p-1 flex-shrink-0 text-slate-200"
+        >
+          <FileText className="w-3.5 h-3.5" aria-hidden="true" />
+        </span>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Carpeta de una etapa, con sus documentos dentro.
+ *
+ * Se despliega en el sitio en vez de abrir un modal: el auditor recorre varias
+ * etapas seguidas y un modal por carpeta le costaría un cierre por cada una.
+ */
+function CarpetaEtapa({
+  numero,
+  nombre,
+  documentos,
+}: {
+  numero: number | null;
+  nombre: string;
+  documentos: DocumentoExpediente[];
+}) {
+  const [abierta, setAbierta] = useState(false);
+  const vacia = documentos.length === 0;
+
+  return (
+    <div
+      className={`rounded-lg border transition-colors ${
+        abierta ? 'border-[#0891B2]/30 bg-[#0891B2]/[0.04]' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => !vacia && setAbierta((v) => !v)}
+        aria-expanded={abierta}
+        disabled={vacia}
+        className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left rounded-lg
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0891B2]/40
+          ${vacia ? 'cursor-default' : 'cursor-pointer hover:bg-[#0891B2]/[0.06]'}`}
+      >
+        {abierta ? (
+          <FolderOpen className="w-4 h-4 text-[#0891B2] flex-shrink-0" aria-hidden="true" />
+        ) : (
+          <Folder
+            className={`w-4 h-4 flex-shrink-0 ${vacia ? 'text-slate-300' : 'text-slate-400'}`}
+            aria-hidden="true"
+          />
+        )}
+
+        <span className="flex-1 min-w-0">
+          <span
+            className={`block text-[12.5px] font-bold truncate ${
+              vacia ? 'text-slate-400' : 'text-slate-800'
+            }`}
+          >
+            {numero === null ? nombre : `Etapa ${numero} · ${nombre}`}
+          </span>
+        </span>
+
+        <span
+          className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md flex-shrink-0 ${
+            vacia ? 'text-slate-400 bg-slate-100' : 'text-[#0891B2] bg-[#0891B2]/10'
+          }`}
+        >
+          {documentos.length}
+        </span>
+
+        {!vacia &&
+          (abierta ? (
+            <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" aria-hidden="true" />
+          ))}
+      </button>
+
+      {abierta && (
+        <ul className="m-0 px-2 pb-2 pt-0 list-none border-t border-[#0891B2]/15">
+          {documentos.map((d, i) => (
+            <ArchivoFila key={d.id ?? i} doc={d} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Bloque que arranca plegado: trazabilidad que no se lee de entrada. */
+const BloqueColapsable = ({
+  icono,
+  titulo,
+  cuantos,
+  children,
+}: {
+  icono: React.ReactNode;
+  titulo: string;
+  cuantos: number;
+  children: React.ReactNode;
+}) => {
+  const [abierto, setAbierto] = useState(false);
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        className="flex items-center gap-2 w-full text-left rounded
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0891B2]/40"
+      >
+        {icono}
+        <span className="text-xs font-bold text-slate-700">{titulo}</span>
+        <span className="text-[11px] font-bold text-slate-400">{cuantos}</span>
+        {abierto ? (
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+        )}
+      </button>
+      {abierto &&
+        (cuantos === 0 ? (
+          <p className="text-[11px] text-slate-400 m-0 pl-6">Sin registros</p>
+        ) : (
+          children
+        ))}
+    </div>
+  );
+};
+
 /**
  * Expediente electrónico único para auditoría (EFDS-1186).
  *
  * Todo en una pantalla y solo lectura: quien audita necesita ver el proceso
  * entero de una vez, no reconstruirlo actividad por actividad.
+ *
+ * Los documentos van primero y en carpetas por etapa, como en gestión legal y
+ * control interno: lo que se abre de un expediente son los archivos, y dejarlos
+ * bajo una lista de sesenta y tres actividades los escondía. La trazabilidad
+ * sigue completa, un clic más abajo.
  */
 export function PanelAuditoria({ procesoId }: Props) {
   const [datos, setDatos] = useState<ExpedienteAuditoria | null>(null);
@@ -84,6 +332,32 @@ export function PanelAuditoria({ procesoId }: Props) {
       .catch((e) => setError(e.message))
       .finally(() => setCargando(false));
   }, [procesoId]);
+
+  /**
+   * Una carpeta por cada etapa del catálogo, aunque esté vacía: el auditor debe
+   * poder afirmar que en una etapa no se archivó nada, y una carpeta ausente no
+   * distingue «sin documentos» de «no existe esa etapa».
+   */
+  const carpetas = useMemo(() => {
+    const docs = datos?.documentos ?? [];
+    const porEtapa = ETAPAS.map((e) => ({
+      numero: e.numero as number | null,
+      nombre: e.nombre,
+      documentos: docs.filter((d) => etapaDe(d) === e.numero),
+    }));
+
+    // Los documentos sin numeral —o con uno fuera del catálogo— no pueden
+    // desaparecer del expediente: van a una carpeta final.
+    const numeros = new Set(ETAPAS.map((e) => e.numero));
+    const sueltos = docs.filter((d) => {
+      const n = etapaDe(d);
+      return n === null || !numeros.has(n);
+    });
+
+    return sueltos.length > 0
+      ? [...porEtapa, { numero: null, nombre: 'Sin etapa asignada', documentos: sueltos }]
+      : porEtapa;
+  }, [datos]);
 
   if (cargando) {
     return <Cargando filas={6} />;
@@ -146,7 +420,28 @@ export function PanelAuditoria({ procesoId }: Props) {
         </div>
       )}
 
-      <Bloque
+      {/* Documentos por etapa: lo primero que se abre de un expediente. */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-slate-400" aria-hidden="true" />
+          <span className="text-xs font-bold text-slate-700">Documentos por etapa</span>
+          <span className="text-[11px] font-bold text-slate-400">
+            {datos.documentos.length}
+          </span>
+        </div>
+        <div className="space-y-1.5">
+          {carpetas.map((c) => (
+            <CarpetaEtapa
+              key={c.numero ?? 'sin-etapa'}
+              numero={c.numero}
+              nombre={c.nombre}
+              documentos={c.documentos}
+            />
+          ))}
+        </div>
+      </div>
+
+      <BloqueColapsable
         icono={<CheckCircle2 className="w-4 h-4 text-slate-400" />}
         titulo="Actividades trabajadas"
         cuantos={datos.actividades.length}
@@ -165,39 +460,7 @@ export function PanelAuditoria({ procesoId }: Props) {
             </li>
           ))}
         </ul>
-      </Bloque>
-
-      <Bloque
-        icono={<FileText className="w-4 h-4 text-slate-400" />}
-        titulo="Documentos del expediente"
-        cuantos={datos.documentos.length}
-      >
-        <ul className="m-0 p-0 list-none space-y-1.5">
-          {datos.documentos.map((d, i) => (
-            <li key={i} className="text-[11.5px] text-slate-600">
-              <div className="flex items-baseline gap-2">
-                {d.numeral && (
-                  <span className="font-bold text-slate-500 w-8 flex-shrink-0">{d.numeral}</span>
-                )}
-                <span className="flex-1 min-w-0 truncate">
-                  {d.archivo_nombre_original ?? d.nombre}
-                </span>
-                <span className="text-[10px] text-slate-400 flex-shrink-0">
-                  {momento(d.created_at)}
-                </span>
-              </div>
-              {d.hash_sha256 && (
-                <div className="flex items-center gap-1 pl-10 mt-0.5">
-                  <Hash className="w-2.5 h-2.5 text-slate-300 flex-shrink-0" />
-                  <code className="text-[9.5px] text-slate-400 font-mono truncate">
-                    {d.hash_sha256}
-                  </code>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Bloque>
+      </BloqueColapsable>
 
       <Bloque
         icono={<UserCog className="w-4 h-4 text-slate-400" />}
@@ -271,22 +534,29 @@ export function PanelAuditoria({ procesoId }: Props) {
         titulo="Trazabilidad"
         cuantos={datos.trazabilidad.length}
       >
-        <ul className="m-0 p-0 list-none space-y-1">
+        {/* Los anchos fijos (13rem para la fecha, w-24, w-48) abrían huecos de
+            media pantalla entre columnas. Ahora cada celda ocupa lo suyo y el
+            usuario, que es lo más largo y menos consultado, se lleva el resto. */}
+        <ul className="m-0 p-0 list-none divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white overflow-hidden">
           {datos.trazabilidad.map((t, i) => (
-            <li key={i} className="flex items-baseline gap-2 text-[11px] text-slate-500">
-              {/* Con hora: en una auditoría importa el orden dentro del día.
-                  El ancho va en estilo y no en clase: el CSS del shell viene
-                  precompilado y solo trae las utilidades que él usa, así que
-                  una `w-*` que no esté en su hoja no aplica. */}
-              <span
-                className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums whitespace-nowrap"
-                style={{ width: '13rem' }}
-              >
+            <li
+              key={i}
+              className="flex items-baseline gap-2.5 px-2.5 py-1 text-[11px] text-slate-500 hover:bg-slate-50"
+            >
+              {/* Con hora: en una auditoría importa el orden dentro del día. */}
+              <span className="text-[10px] text-slate-400 flex-shrink-0 tabular-nums whitespace-nowrap">
                 {momentoConHora(t.created_at)}
               </span>
-              <span className="font-bold text-slate-600 w-24 flex-shrink-0">{t.accion}</span>
-              <span className="w-48 flex-shrink-0 truncate">{t.entidad}</span>
-              <span className="flex-1 min-w-0 truncate text-[10px] text-slate-400">
+              <span
+                className="text-[9.5px] font-bold flex-shrink-0 px-1.5 py-0.5 rounded
+                  bg-slate-100 text-slate-600 uppercase tracking-wide"
+              >
+                {t.accion}
+              </span>
+              <span className="flex-shrink-0 text-slate-600 truncate max-w-[9rem]">
+                {t.entidad}
+              </span>
+              <span className="flex-1 min-w-0 truncate text-[10px] text-slate-400 text-right">
                 {t.usuario_nombre ?? '—'}
               </span>
             </li>

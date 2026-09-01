@@ -1534,10 +1534,15 @@ export interface ExpedienteAuditoria {
     updated_at: string | null;
   }[];
   documentos: {
+    id: string;
     numeral: string | null;
     tipo: string;
     nombre: string;
     archivo_nombre_original: string | null;
+    /** Null en los SNAPSHOT_FORMULARIO: son contenido, no archivo descargable. */
+    archivo_url: string | null;
+    archivo_mime_type: string | null;
+    archivo_tamano: number | string | null;
     /** Permite verificar que el archivado es el mismo que se subió. */
     hash_sha256: string | null;
     subido_por: string | null;

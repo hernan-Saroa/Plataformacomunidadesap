@@ -123,7 +123,7 @@ export function PanelExpediente({ procesoId, editable, recargarToken }: Props) {
                 className="flex items-start gap-3 px-4 py-2.5 border-b border-gray-50 last:border-b-0"
               >
                 <div
-                  className={`w-8 h-8 rounded-lg grid place-items-center text-[9px] font-black text-white shrink-0 ${
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-[9px] font-black text-white shrink-0 ${
                     esSnapshot ? 'bg-[#003DA5]' : 'bg-slate-500'
                   }`}
                 >
