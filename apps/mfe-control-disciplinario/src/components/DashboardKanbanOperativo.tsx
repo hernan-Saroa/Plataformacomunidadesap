@@ -38,6 +38,7 @@ import { WizardOficiosWorldClass } from './WizardOficiosWorldClass';
 import { WizardActasWorldClass } from './WizardActasWorldClass';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { ModalEliminarNoticia } from './ModalEliminarNoticia';
+import { ModalReenviarNoticia } from './ModalReenviarNoticia';
 import { ModalDevolverNoticia } from './ModalDevolverNoticia';
 import { ModalRemitirCompetencia } from './ModalRemitirCompetencia';
 import { SistemaComentarios } from './SistemaComentarios';
@@ -185,6 +186,7 @@ interface Noticia {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciado?: {
     id: string;
     nombre: string;
@@ -245,6 +247,7 @@ interface Proceso {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciado?: {
     id: string;
     nombre: string;
@@ -300,6 +303,7 @@ type ModalType =
   | 'aprobar-borrador'
   | 'archivar-noticia'
   | 'eliminar-noticia'
+  | 'reenviar-noticia'
   | 'editor-documentos'
   | 'subir-documentos'
   | 'gestion-autos'
@@ -674,6 +678,13 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                     </>
                   )}
                 </div>
+              )}
+
+              {/* Eliminar noticia devuelta — Radicador (p. ej. cuando es copia de otra) */}
+              {!esJefe && noticia.estado === 'devuelta' && onEliminarNoticia && canDelete && (
+                <KanbanActionRowTertiary>
+                  <KanbanButtonDestructive onClick={() => onEliminarNoticia(noticia)} icon={<Trash2 className="w-3.5 h-3.5" />} title="Eliminar noticia devuelta (solo si es copia de otra)" />
+                </KanbanActionRowTertiary>
               )}
             </KanbanActionSection>
           )}
@@ -1523,7 +1534,7 @@ function VistaLista({
                           {canArchive && esJefe && (
                             <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3 h-3" />} title="Archivar" />
                           )}
-                          {onEliminarNoticia && canDeleteNoticia && esJefe && noticia!.estado === 'devuelta' && (
+                          {onEliminarNoticia && canDeleteNoticia && noticia!.estado === 'devuelta' && (
                             <KanbanButtonDestructive compact onClick={() => onEliminarNoticia(noticia!)} icon={<Trash2 className="w-3 h-3" />} title="Eliminar" />
                           )}
                         </KanbanActionRowTertiary>
@@ -1804,7 +1815,7 @@ function VistaLista({
                                 {canArchive && esJefe && (
                                   <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
                                 )}
-                                {onEliminarNoticia && canDeleteNoticia && esJefe && noticia!.estado === 'devuelta' && (
+                                {onEliminarNoticia && canDeleteNoticia && noticia!.estado === 'devuelta' && (
                                   <KanbanButtonDestructive compact onClick={() => onEliminarNoticia(noticia!)} icon={<Trash2 className="w-3.5 h-3.5" />} title="Eliminar" />
                                 )}
                               </KanbanActionRowTertiary>
@@ -2936,6 +2947,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
+      conductas: Array.isArray((noticia as any).conductas) ? (noticia as any).conductas : [],
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
@@ -3669,6 +3681,7 @@ export function DashboardKanbanOperativo({
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
+      conductas: Array.isArray((noticia as any).conductas) ? (noticia as any).conductas : [],
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
@@ -4347,7 +4360,9 @@ export function DashboardKanbanOperativo({
             dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
             hechos: hechosEdit,
             conducta: conductaEdit,
-            conductas: conductaEdit ? [conductaEdit] : [],
+            conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+              ? data.conductas
+              : (conductaEdit ? [conductaEdit] : []),
             denunciante: denuncianteSingular,
             denunciantes: denunciantesPayload, // ✅ Enviar plural tambiÃ©n
             disciplinable: disciplinableSingular,
@@ -4392,7 +4407,9 @@ export function DashboardKanbanOperativo({
           dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
           hechos: hechosEdit,
           conducta: conductaEdit,
-          conductas: conductaEdit ? [conductaEdit] : [],
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+            ? data.conductas
+            : (conductaEdit ? [conductaEdit] : []),
           denunciante: denuncianteSingular,
           denunciantes: denunciantesPayload,
           disciplinable: disciplinableSingular,
@@ -4463,6 +4480,9 @@ export function DashboardKanbanOperativo({
           hechosSeparados: data.hechosSeparados,
           conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+            ? data.conductas
+            : (conductaEdit ? [conductaEdit] : []),
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
           adjuntos: adjToUse,
@@ -4672,9 +4692,18 @@ export function DashboardKanbanOperativo({
     setModalActivo('devolver-noticia');
   };
 
-  const handleReenviarNoticia = async (noticia: Noticia) => {
+  const handleReenviarNoticia = (noticia: Noticia) => {
+    setItemSeleccionado(noticia);
+    setModalActivo('reenviar-noticia');
+  };
+
+  const handleConfirmarReenvio = async (observaciones: string) => {
+    const noticia = itemSeleccionado;
+    setModalActivo(null);
+    setItemSeleccionado(null);
+
     try {
-      await disciplinaryService.changeNewsStatus(noticia.id, 'EN_VALORACION');
+      await disciplinaryService.resubmitNews(noticia.id, observaciones || undefined);
       // Solo actualizar estado local si el backend confirmó
       setItems(prev => prev.map(item => {
         if (item.id === noticia.id && item.tipo === 'noticia') {
@@ -4682,7 +4711,9 @@ export function DashboardKanbanOperativo({
         }
         return item;
       }));
-      toast.success('Noticia reenviada para valoración');
+      toast.success('Noticia reenviada al Jefe', {
+        description: 'El Jefe OCID fue notificado de la noticia corregida.',
+      });
     } catch (err) {
       console.error('[DashboardKanban] Error al reenviar noticia:', err);
       toast.error('Error al reenviar noticia');
@@ -6368,7 +6399,7 @@ export function DashboardKanbanOperativo({
 
         {/* MODALES - (mantener igual pero responsive) */}
         <AnimatePresence>
-          {modalActivo && modalActivo !== 'ver-detalles' && modalActivo !== 'convertir-proceso' && modalActivo !== 'devolver-noticia' && modalActivo !== 'devolver-competencia' && modalActivo !== 'archivar-noticia' && modalActivo !== 'eliminar-noticia' && modalActivo !== 'crear-noticia' && createPortal(
+          {modalActivo && modalActivo !== 'ver-detalles' && modalActivo !== 'convertir-proceso' && modalActivo !== 'devolver-noticia' && modalActivo !== 'devolver-competencia' && modalActivo !== 'archivar-noticia' && modalActivo !== 'eliminar-noticia' && modalActivo !== 'reenviar-noticia' && modalActivo !== 'crear-noticia' && createPortal(
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -7026,6 +7057,26 @@ export function DashboardKanbanOperativo({
                 setItemSeleccionado(null);
               }}
               onConfirm={handleConfirmarEliminar}
+            />
+          )}
+
+          {/* Modal Reenviar Noticia al Jefe */}
+          {modalActivo === 'reenviar-noticia' && itemSeleccionado && (
+            <ModalReenviarNoticia
+              key="modal-reenviar-noticia"
+              noticia={{
+                id: itemSeleccionado.id,
+                numeroRadicado: itemSeleccionado.numero,
+                denunciado: {
+                  nombre: itemSeleccionado.denunciado.nombre,
+                  identificacion: `${itemSeleccionado.denunciado.tipoIdentificacion} ${itemSeleccionado.denunciado.numeroIdentificacion}`
+                }
+              }}
+              onClose={() => {
+                setModalActivo(null);
+                setItemSeleccionado(null);
+              }}
+              onConfirm={handleConfirmarReenvio}
             />
           )}
 

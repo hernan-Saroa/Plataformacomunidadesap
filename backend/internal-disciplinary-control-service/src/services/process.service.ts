@@ -324,6 +324,9 @@ export class ProcessService {
     });
 
     actuaciones.forEach((actuacion) => {
+      if (!actuacion.processId) {
+        return;
+      }
       const actual = resumen.get(actuacion.processId);
 
       if (!actual) {
@@ -1164,6 +1167,52 @@ export class ProcessService {
     });
 
     return { proceso: procesoGuardado, tiempoAcumuladoDias };
+  }
+
+  /**
+   * EFDS-1564: devuelve el proceso a una etapa anterior porque se reversó la
+   * aprobación del auto que lo había hecho avanzar. No valida el orden de la
+   * transición (es un retroceso intencional).
+   */
+  async revertirEtapaProceso(
+    id: string,
+    etapaPrevia: string,
+    revertidoPorId: string,
+  ): Promise<DisciplinaryProcess> {
+    const proceso = await this.findById(id, false);
+
+    if (proceso.etapaActual === etapaPrevia) {
+      return proceso;
+    }
+
+    const etapaAnterior = proceso.etapaActual;
+    const stageConfig = await this.stageConfigurationRepository.findOne({
+      where: { etapa: etapaPrevia, activo: true },
+    });
+
+    const { fechaVencimiento } =
+      await this.terminosService.calculateVencimientoEtapa(etapaPrevia);
+
+    proceso.etapaActual = etapaPrevia;
+    proceso.fechaInicioEtapa = new Date();
+    proceso.fechaVencimientoEtapa = fechaVencimiento;
+    if (stageConfig) {
+      proceso.kanbanStage = stageConfig.id;
+    }
+
+    const procesoGuardado = await this.processRepository.save(proceso);
+
+    await this.actuacionesRepository.save({
+      processId: id,
+      tipo: 'cambio_etapa',
+      etapa: etapaPrevia,
+      descripcion: `El proceso regresó de la etapa ${etapaAnterior} a ${etapaPrevia} por la reversión de la aprobación de un auto.`,
+      responsableNombre: revertidoPorId,
+      fechaActuacion: new Date(),
+      observaciones: `Etapa anterior: ${etapaAnterior} | Etapa restaurada: ${etapaPrevia}`,
+    });
+
+    return procesoGuardado;
   }
 
   /**

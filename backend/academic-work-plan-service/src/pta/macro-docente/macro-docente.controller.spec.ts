@@ -46,13 +46,56 @@ describe('MacroDocenteController - getHistorial (F020)', () => {
       totalResultados: 1,
       failClosed: false,
     }));
-    expect(result).toEqual({ success: true, items: [{ docente_id: 'doc-1' }], total: 1, page: 1, limit: 50, pages: 1 });
+    // CONTROL_INTERNO no está en la lista blanca de acceso completo a datos
+    // sensibles del RUND (banco-docentes-sensitive-data.ts), así que cada item
+    // sale con la metadata de protección aunque no traiga campos sensibles.
+    expect(result).toEqual({
+      success: true,
+      items: [{ docente_id: 'doc-1', proteccion_datos: { acceso_completo: false, campos_sensibles: [], campos_enmascarados: [] } }],
+      total: 1,
+      page: 1,
+      limit: 50,
+      pages: 1,
+    });
   });
 
   it('usa page=1 y limit=50 por defecto cuando no vienen en el query', async () => {
     const { controller, service } = buildController();
     await controller.getHistorial(undefined, '2025-2', undefined, undefined, undefined, undefined, undefined, undefined, reqConUsuario);
     expect(service.getHistorial).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 50 }));
+  });
+
+  it('enmascara el documento de identidad para un rol sin acceso completo del RUND (REQ-RUND-F021)', async () => {
+    const { controller } = buildController({
+      getHistorial: jest.fn().mockResolvedValue({
+        items: [{ docente_id: 'doc-1', documento_identidad: '1234567890' }],
+        total: 1, page: 1, limit: 50, pages: 1,
+      }),
+    });
+
+    const result: any = await controller.getHistorial('doc-1', undefined, undefined, undefined, undefined, undefined, undefined, undefined, reqConUsuario);
+
+    expect(result.items[0].documento_identidad).toBe('******7890');
+    expect(result.items[0].proteccion_datos).toEqual({
+      acceso_completo: false,
+      campos_sensibles: ['DOCUMENTO_IDENTIDAD'],
+      campos_enmascarados: ['DOCUMENTO_IDENTIDAD'],
+    });
+  });
+
+  it('no enmascara el documento de identidad para un rol con acceso completo (GESTION_PROFESORAL)', async () => {
+    const { controller } = buildController({
+      getHistorial: jest.fn().mockResolvedValue({
+        items: [{ docente_id: 'doc-1', documento_identidad: '1234567890' }],
+        total: 1, page: 1, limit: 50, pages: 1,
+      }),
+    });
+    const reqGestionProfesoral = { user: { userId: 'user-2', roles: ['GESTION_PROFESORAL'] }, headers: {}, ip: '10.0.0.1' };
+
+    const result: any = await controller.getHistorial('doc-1', undefined, undefined, undefined, undefined, undefined, undefined, undefined, reqGestionProfesoral);
+
+    expect(result.items[0].documento_identidad).toBe('1234567890');
+    expect(result.items[0].proteccion_datos.acceso_completo).toBe(true);
   });
 });
 
@@ -71,7 +114,15 @@ describe('MacroDocenteController - getConsultaPuntual (F022)', () => {
       periodo: '2025-2',
       totalResultados: 2,
     }));
-    expect(result).toEqual({ success: true, items: [{ asignatura_codigo: 'A1' }, { asignatura_codigo: 'A2' }], total: 2 });
+    const sinAccesoCompleto = { acceso_completo: false, campos_sensibles: [], campos_enmascarados: [] };
+    expect(result).toEqual({
+      success: true,
+      items: [
+        { asignatura_codigo: 'A1', proteccion_datos: sinAccesoCompleto },
+        { asignatura_codigo: 'A2', proteccion_datos: sinAccesoCompleto },
+      ],
+      total: 2,
+    });
   });
 });
 
@@ -123,6 +174,21 @@ describe('MacroDocenteController - getHistorialExterno (acceso público por toke
       ip: '200.1.2.3',
     }));
     expect(result).toEqual({ success: true, items: [], total: 0, page: 1, limit: 50, pages: 1 });
+  });
+
+  it('enmascara el documento de identidad aunque el ente externo no tenga sesión (endpoint público, REQ-RUND-F021)', async () => {
+    const { controller } = buildController({
+      getHistorialParaAccesoExterno: jest.fn().mockResolvedValue({
+        items: [{ docente_id: 'doc-1', documento_identidad: '1234567890' }],
+        total: 1, page: 1, limit: 50, pages: 1,
+      }),
+    });
+    const reqExterno = { user: null, headers: {}, ip: '200.1.2.3' };
+
+    const result: any = await controller.getHistorialExterno('tok-1', undefined, undefined, undefined, reqExterno);
+
+    expect(result.items[0].documento_identidad).toBe('******7890');
+    expect(result.items[0].proteccion_datos.acceso_completo).toBe(false);
   });
 
   it('no llama getHistorialParaAccesoExterno si el token no es válido (validarAccesoExterno lanza)', async () => {

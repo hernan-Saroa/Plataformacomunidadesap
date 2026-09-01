@@ -17,7 +17,8 @@ import {
 import { Card, Badge } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
 import { apiClient } from '../services/api/apiClient';
-import { exportToCSV, exportToExcel } from '../utils/reportExport';
+import { exportToCSV } from '../utils/reportExport';
+import { exportRundReportToExcel, exportRundReportToPDF, type RundColumn } from '../utils/rundReportExport';
 import { UnifiedStatsCards, type StatCardData } from './UnifiedStatsCards';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { EmptyStatePremium } from './EmptyStatesPremium';
@@ -73,6 +74,50 @@ async function fetchDetalle(filters: Partial<FiltrosPlantaDocente>, page: number
     total: raw?.total ?? 0,
     pages: raw?.pages ?? 1,
   };
+}
+
+const FILTRO_LABELS: Record<keyof FiltrosPlantaDocente, string> = {
+  territorial: 'Territorial',
+  vinculacion: 'Tipo de vinculación',
+  categoria: 'Categoría',
+  genero: 'Género',
+  nivelFormacion: 'Nivel de formación',
+  nucleoTematico: 'Núcleo temático',
+  periodoCarga: 'Período académico',
+};
+
+function filtrosConEtiquetas(filtros: FiltrosPlantaDocente): Record<string, string | undefined> {
+  return Object.fromEntries(
+    (Object.keys(FILTRO_LABELS) as (keyof FiltrosPlantaDocente)[]).map((key) => [FILTRO_LABELS[key], filtros[key] || undefined]),
+  );
+}
+
+const AGREGADO_COLUMNAS: RundColumn[] = [
+  { header: 'Dimensión', key: 'dimension' },
+  { header: 'Valor', key: 'valor' },
+  { header: 'Total', key: 'total' },
+];
+
+const DETALLE_COLUMNAS: RundColumn[] = [
+  { header: 'Nombre completo', key: 'nombre_completo' },
+  { header: 'Territorial', key: 'territorial' },
+  { header: 'Tipo de vinculación', key: 'vinculacion' },
+  { header: 'Categoría', key: 'categoria' },
+  { header: 'Género', key: 'genero' },
+  { header: 'Nivel de formación', key: 'nivel_formacion' },
+  { header: 'Núcleo temático', key: 'nucleo_tematico' },
+];
+
+function buildAgregadoRows(stats: StatsResponse) {
+  return [
+    { dimension: 'Total', valor: 'Total', total: stats.total },
+    ...stats.por_territorial.map((r) => ({ dimension: 'Territorial', valor: r.territorial, total: r.total })),
+    ...stats.por_vinculacion.map((r) => ({ dimension: 'Tipo de vinculación', valor: r.vinculacion, total: r.total })),
+    ...stats.por_categoria.map((r) => ({ dimension: 'Categoría', valor: r.categoria, total: r.total })),
+    ...stats.por_genero.map((r) => ({ dimension: 'Género', valor: r.genero, total: r.total })),
+    ...stats.por_nivel_formacion.map((r) => ({ dimension: 'Nivel de formación', valor: r.nivel_formacion, total: r.total })),
+    ...stats.por_nucleo_tematico.map((r) => ({ dimension: 'Núcleo temático', valor: r.nucleo_tematico, total: r.total })),
+  ];
 }
 
 function distinctSorted(rows: { total: number }[] | undefined, key: string): string[] {
@@ -217,29 +262,42 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
       ]
     : [];
 
-  const exportarAgregados = (formato: 'csv' | 'excel') => {
+  const exportarAgregados = (formato: 'csv' | 'excel' | 'pdf') => {
     if (!stats) return;
-    const rows = [
-      { dimension: 'Total', valor: 'Total', total: stats.total },
-      ...stats.por_territorial.map((r) => ({ dimension: 'Territorial', valor: r.territorial, total: r.total })),
-      ...stats.por_vinculacion.map((r) => ({ dimension: 'Tipo de vinculación', valor: r.vinculacion, total: r.total })),
-      ...stats.por_categoria.map((r) => ({ dimension: 'Categoría', valor: r.categoria, total: r.total })),
-      ...stats.por_genero.map((r) => ({ dimension: 'Género', valor: r.genero, total: r.total })),
-      ...stats.por_nivel_formacion.map((r) => ({ dimension: 'Nivel de formación', valor: r.nivel_formacion, total: r.total })),
-      ...stats.por_nucleo_tematico.map((r) => ({ dimension: 'Núcleo temático', valor: r.nucleo_tematico, total: r.total })),
-    ];
-    if (formato === 'csv') exportToCSV(rows, 'reporte-planta-docente-agregado');
-    else exportToExcel(rows, 'reporte-planta-docente-agregado');
+    const rows = buildAgregadoRows(stats);
+    if (formato === 'csv') {
+      exportToCSV(rows, 'reporte-planta-docente-agregado');
+      toast.success('Reporte agregado exportado');
+      return;
+    }
+    const meta = {
+      titulo: 'Reporte de planta docente — Agregado',
+      filtros: filtrosConEtiquetas(appliedFiltros),
+      totalRegistros: rows.length,
+    };
+    if (formato === 'excel') exportRundReportToExcel(rows, AGREGADO_COLUMNAS, meta, 'RUND_Planta_Docente_Agregado');
+    else exportRundReportToPDF(rows, AGREGADO_COLUMNAS, meta, 'RUND_Planta_Docente_Agregado');
     toast.success('Reporte agregado exportado');
   };
 
-  const exportarDetalle = (formato: 'csv' | 'excel') => {
+  const exportarDetalle = (formato: 'csv' | 'excel' | 'pdf') => {
     if (!detalle.items.length) {
       toast.info('No hay detalle para exportar con el filtro actual');
       return;
     }
-    if (formato === 'csv') exportToCSV(detalle.items, 'reporte-planta-docente-detalle');
-    else exportToExcel(detalle.items, 'reporte-planta-docente-detalle');
+    if (formato === 'csv') {
+      exportToCSV(detalle.items, 'reporte-planta-docente-detalle');
+      toast.success('Detalle exportado (página actual)');
+      return;
+    }
+    const meta = {
+      titulo: 'Reporte de planta docente — Detalle',
+      subtitulo: `Página ${page} de ${detalle.pages} · ${detalle.total} docente(s) en total`,
+      filtros: filtrosConEtiquetas(appliedFiltros),
+      totalRegistros: detalle.items.length,
+    };
+    if (formato === 'excel') exportRundReportToExcel(detalle.items, DETALLE_COLUMNAS, meta, 'RUND_Planta_Docente_Detalle');
+    else exportRundReportToPDF(detalle.items, DETALLE_COLUMNAS, meta, 'RUND_Planta_Docente_Detalle');
     toast.success('Detalle exportado (página actual)');
   };
 
@@ -350,6 +408,12 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
               <FileSpreadsheet className="w-4 h-4 text-green-600" /> Exportar agregado (Excel)
             </button>
             <button
+              onClick={() => exportarAgregados('pdf')}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-gray-200 text-sm hover:bg-gray-50"
+            >
+              <FileText className="w-4 h-4 text-red-600" /> PDF
+            </button>
+            <button
               onClick={() => exportarAgregados('csv')}
               className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-gray-200 text-sm hover:bg-gray-50"
             >
@@ -378,6 +442,12 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50"
                 >
                   <Download className="w-3.5 h-3.5" /> Exportar página (Excel)
+                </button>
+                <button
+                  onClick={() => exportarDetalle('pdf')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50"
+                >
+                  <Download className="w-3.5 h-3.5" /> PDF
                 </button>
               </div>
             </div>

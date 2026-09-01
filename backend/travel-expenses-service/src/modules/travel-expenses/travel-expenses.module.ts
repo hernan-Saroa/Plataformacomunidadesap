@@ -5,6 +5,7 @@ import { TravelExpensesService } from './travel-expenses.service';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
+import { ConfigModule } from '../config/config.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity'
       SolicitudComisionEntity,
       DocumentoSoporteEntity,
     ]),
+    ConfigModule,
   ],
   controllers: [TravelExpensesController],
   providers: [TravelExpensesService],

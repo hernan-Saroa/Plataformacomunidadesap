@@ -1,4 +1,12 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  Index,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { SolicitudComisionEntity } from './solicitud-comision.entity';
 
 @Entity({ schema: 'travel_expenses', name: 'documentos_soporte' })
@@ -25,6 +33,14 @@ export class DocumentoSoporteEntity {
 
   @Column({ name: 'url_repositorio', type: 'varchar', length: 512 })
   urlRepositorio: string;
+
+  @Column({
+    name: 'tipo_mime',
+    type: 'varchar',
+    length: 100,
+    default: 'application/pdf',
+  })
+  tipoMime: string;
 
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;

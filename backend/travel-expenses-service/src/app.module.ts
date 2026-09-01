@@ -5,9 +5,14 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { TravelExpensesModule } from './modules/travel-expenses/travel-expenses.module';
+import { ConfigModule as ConfigParamModule } from './modules/config/config.module';
 import { ComisionadoEntity } from './entities/comisionado.entity';
 import { SolicitudComisionEntity } from './entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from './entities/documento-soporte.entity';
+import { CampoFormularioEntity } from './entities/config/campo-formulario.entity';
+import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
+import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
+import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-tipo-comisionado-documento.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 
@@ -26,12 +31,17 @@ import { PermissionsGuard } from './common/permissions.guard';
         ComisionadoEntity,
         SolicitudComisionEntity,
         DocumentoSoporteEntity,
+        CampoFormularioEntity,
+        ConfigTipoComisionadoEntity,
+        TipoDocumentoSoporteEntity,
+        ConfigTipoComisionadoDocumentoEntity,
       ],
       synchronize: false,
       logging: true,
     }),
     AuthModule,
     TravelExpensesModule,
+    ConfigParamModule,
   ],
   controllers: [AppController],
   providers: [

@@ -208,6 +208,7 @@ export class AutoController {
    * Enviar auto pliego de cargos aprobado a Oficina Jurídica
    */
   @Patch(':id/send-juridica')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID', 'JEFE_OCID')
   @ApiOperation({
     summary: 'Enviar Pliego de Cargos a Jurídica',
     description: 'Envía el auto pliego de cargos aprobado a la Oficina Jurídica, cerrando el proceso',
