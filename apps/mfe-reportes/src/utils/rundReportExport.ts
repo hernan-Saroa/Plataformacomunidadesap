@@ -106,10 +106,9 @@ export function exportRundReportToPDF(
   const doc = new jsPDF(orientation, 'mm', 'a4');
   const pageWidth = doc.internal.pageSize.width;
 
-  agregarEncabezadoInstitucional(doc, meta, pageWidth);
+  let y = agregarEncabezadoInstitucional(doc, meta, pageWidth);
 
   const filtrosTexto = filtrosAplicados(meta.filtros);
-  let y = 38;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(80, 80, 80);
@@ -135,7 +134,8 @@ export function exportRundReportToPDF(
   doc.save(`${sanitizeFilename(filenamePrefix)}_${timestampFilename()}.pdf`);
 }
 
-function agregarEncabezadoInstitucional(doc: jsPDF, meta: RundExportMeta, pageWidth: number): void {
+/** Dibuja el encabezado institucional y devuelve el Y a partir del cual es seguro seguir escribiendo (deja espacio para el subtítulo si lo hay). */
+function agregarEncabezadoInstitucional(doc: jsPDF, meta: RundExportMeta, pageWidth: number): number {
   doc.setFillColor(...AZUL_ESAP);
   doc.rect(14, 10, 22, 12, 'F');
   doc.setFontSize(8);
@@ -158,12 +158,14 @@ function agregarEncabezadoInstitucional(doc: jsPDF, meta: RundExportMeta, pageWi
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...AZUL_ESAP);
   doc.text(meta.titulo, 14, 31);
-  if (meta.subtitulo) {
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    doc.text(meta.subtitulo, 14, 36);
+  if (!meta.subtitulo) {
+    return 38;
   }
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
+  doc.text(meta.subtitulo, 14, 36);
+  return 43;
 }
 
 function agregarPiePaginaInstitucional(doc: jsPDF, pageWidth: number): void {
