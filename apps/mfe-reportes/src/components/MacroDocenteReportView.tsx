@@ -21,7 +21,8 @@ import { Card, Badge } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
 import { apiClient } from '../services/api/apiClient';
 import { getApiGatewayBaseUrl } from '../../config/environment';
-import { exportToCSV, exportToExcel } from '../utils/reportExport';
+import { exportToCSV } from '../utils/reportExport';
+import { exportRundReportToExcel, exportRundReportToPDF, type RundColumn } from '../utils/rundReportExport';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 
@@ -62,6 +63,29 @@ interface FiltrosMacroDocente {
 const FILTROS_VACIOS: FiltrosMacroDocente = {
   docenteId: '', docenteLabel: '', periodo: '', territorial: '', cetap: '', programa: '', nucleoTematico: '',
 };
+
+function filtrosConEtiquetas(filtros: FiltrosMacroDocente): Record<string, string | undefined> {
+  return {
+    'Docente': filtros.docenteLabel || undefined,
+    'Período académico': filtros.periodo || undefined,
+    'Territorial': filtros.territorial || undefined,
+    'CETAP': filtros.cetap || undefined,
+    'Programa': filtros.programa || undefined,
+    'Núcleo temático': filtros.nucleoTematico || undefined,
+  };
+}
+
+const HISTORIAL_COLUMNAS: RundColumn[] = [
+  { header: 'Docente', key: 'docente_nombre' },
+  { header: 'Documento', key: 'documento_identidad' },
+  { header: 'Período', key: 'periodo' },
+  { header: 'Territorial', key: 'territorial' },
+  { header: 'CETAP', key: 'cetap' },
+  { header: 'Programa', key: 'programa' },
+  { header: 'Núcleo temático', key: 'nucleo_tematico' },
+  { header: 'Asignatura', key: 'asignatura_nombre' },
+  { header: 'Horas', key: 'horas' },
+];
 
 interface HistorialRow {
   docente_id: string;
@@ -547,14 +571,26 @@ export function MacroDocenteReportView({ onClose }: { onClose?: () => void }) {
 
   const esConsultaPuntual = Boolean(appliedFiltros?.docenteId && appliedFiltros?.periodo);
 
-  const exportar = (formato: 'csv' | 'excel') => {
+  const exportar = (formato: 'csv' | 'excel' | 'pdf') => {
     if (!detalle.items.length) {
       toast.info('No hay datos para exportar con el filtro actual');
       return;
     }
     const nombre = esConsultaPuntual ? 'macro-docente-consulta-puntual' : 'macro-docente-historial';
-    if (formato === 'csv') exportToCSV(detalle.items, nombre);
-    else exportToExcel(detalle.items, nombre);
+    if (formato === 'csv') {
+      exportToCSV(detalle.items, nombre);
+      toast.success('Historial exportado (página actual)');
+      return;
+    }
+    const meta = {
+      titulo: esConsultaPuntual ? 'Macro Docente — Consulta puntual' : 'Macro Docente — Historial de asignaturas',
+      subtitulo: esConsultaPuntual ? undefined : `Página ${page} de ${detalle.pages} · ${detalle.total} registro(s) en total`,
+      filtros: appliedFiltros ? filtrosConEtiquetas(appliedFiltros) : {},
+      totalRegistros: detalle.items.length,
+    };
+    const prefix = esConsultaPuntual ? 'RUND_Macro_Docente_Consulta_Puntual' : 'RUND_Macro_Docente_Historial';
+    if (formato === 'excel') exportRundReportToExcel(detalle.items, HISTORIAL_COLUMNAS, meta, prefix);
+    else exportRundReportToPDF(detalle.items, HISTORIAL_COLUMNAS, meta, prefix);
     toast.success('Historial exportado (página actual)');
   };
 
@@ -685,6 +721,12 @@ export function MacroDocenteReportView({ onClose }: { onClose?: () => void }) {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" /> Excel
+                </button>
+                <button
+                  onClick={() => exportar('pdf')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 text-xs hover:bg-gray-50"
+                >
+                  <FileText className="w-3.5 h-3.5 text-red-600" /> PDF
                 </button>
                 <button
                   onClick={() => exportar('csv')}
