@@ -186,6 +186,7 @@ interface Noticia {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciado?: {
     id: string;
     nombre: string;
@@ -246,6 +247,7 @@ interface Proceso {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciado?: {
     id: string;
     nombre: string;
@@ -2945,6 +2947,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
+      conductas: Array.isArray((noticia as any).conductas) ? (noticia as any).conductas : [],
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
@@ -3678,6 +3681,7 @@ export function DashboardKanbanOperativo({
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
+      conductas: Array.isArray((noticia as any).conductas) ? (noticia as any).conductas : [],
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
@@ -4356,7 +4360,9 @@ export function DashboardKanbanOperativo({
             dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
             hechos: hechosEdit,
             conducta: conductaEdit,
-            conductas: conductaEdit ? [conductaEdit] : [],
+            conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+              ? data.conductas
+              : (conductaEdit ? [conductaEdit] : []),
             denunciante: denuncianteSingular,
             denunciantes: denunciantesPayload, // ✅ Enviar plural tambiÃ©n
             disciplinable: disciplinableSingular,
@@ -4401,7 +4407,9 @@ export function DashboardKanbanOperativo({
           dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
           hechos: hechosEdit,
           conducta: conductaEdit,
-          conductas: conductaEdit ? [conductaEdit] : [],
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+            ? data.conductas
+            : (conductaEdit ? [conductaEdit] : []),
           denunciante: denuncianteSingular,
           denunciantes: denunciantesPayload,
           disciplinable: disciplinableSingular,
@@ -4472,6 +4480,9 @@ export function DashboardKanbanOperativo({
           hechosSeparados: data.hechosSeparados,
           conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+            ? data.conductas
+            : (conductaEdit ? [conductaEdit] : []),
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
           adjuntos: adjToUse,
