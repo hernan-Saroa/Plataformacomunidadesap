@@ -15,6 +15,10 @@ vi.mock('../services/api/viaticosService', () => ({
     subirDocumento: vi.fn(),
     obtenerDepartamentos: vi.fn(),
     obtenerCiudadesPorDepartamento: vi.fn(),
+    obtenerParametrizacionFormulario: vi.fn().mockResolvedValue({ campos: [], configuraciones: {} }),
+    obtenerParametrizacionPorCodigoFormulario: vi.fn().mockResolvedValue(null),
+    obtenerChecklistDocumentos: vi.fn().mockResolvedValue({ obligatorios: [], opcionales: [] }),
+    finalizarSolicitud: vi.fn().mockResolvedValue({ id: 'sol-nueva', estadoSolicitud: 'RADICADA' }),
   },
 }));
 
@@ -52,6 +56,7 @@ const mockResumen = {
   enProcesoAprobacion: 0,
   enComisionActivas: 0,
   pendientesLegalizar: 0,
+  borradores: 0,
   montoTotalEjecutado: 1020000,
 };
 
@@ -74,7 +79,7 @@ const mockComisionado = {
 describe('ViaticosModulePremium', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    viaticosService.obtenerSolicitudes = vi.fn().mockResolvedValue(mockSolicitudes);
+    viaticosService.obtenerSolicitudes = vi.fn().mockResolvedValue({ solicitudes: mockSolicitudes, esSuperAdmin: false });
     viaticosService.obtenerResumenEstadistico = vi.fn().mockResolvedValue(mockResumen);
     viaticosService.consultarComisionado = vi.fn().mockResolvedValue(mockComisionado);
     viaticosService.crearSolicitudComision = vi.fn().mockResolvedValue({ id: 'sol-nueva' });
@@ -141,6 +146,18 @@ describe('ViaticosModulePremium', () => {
     fireEvent.change(screen.getByLabelText(/Viáticos/i), { target: { value: '560000' } });
     fireEvent.change(screen.getByLabelText(/Gastos de viaje/i), { target: { value: '120000' } });
     fireEvent.change(screen.getByLabelText(/Días/i), { target: { value: '5' } });
+  };
+
+  const guardarYBContinuar = async () => {
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
+    await screen.findByText(/3\. Documentos de la Comisión/i);
+  };
+
+  const irAlConfirmacion = async () => {
+    await llenarPaso2();
+    await guardarYBContinuar();
+    fireEvent.click(screen.getByText(/Siguiente/i));
+    await screen.findByText(/4\. Confirmación de la Solicitud/i);
   };
 
   it('debe renderizar el módulo con título y descripción', async () => {
@@ -225,7 +242,7 @@ describe('ViaticosModulePremium', () => {
 
     await abrirModalNueva();
 
-    expect(screen.getByText(/Paso 1 de 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/Paso 1 de 4/i)).toBeInTheDocument();
   });
 
   it('debe consultar comisionado por documento', async () => {
@@ -329,7 +346,7 @@ describe('ViaticosModulePremium', () => {
     expect(siguienteBtn).toBeEnabled();
     fireEvent.click(siguienteBtn);
 
-    expect(screen.getByText(/Paso 2 de 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/Paso 2 de 4/i)).toBeInTheDocument();
     expect(screen.getByText(/Objeto y Destino de la Comisión/i)).toBeInTheDocument();
   });
 
@@ -353,7 +370,7 @@ describe('ViaticosModulePremium', () => {
     const siguienteBtn = screen.getByText(/Siguiente/i);
     fireEvent.click(siguienteBtn);
 
-    expect(screen.getByText(/Paso 2 de 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/Paso 2 de 4/i)).toBeInTheDocument();
     expect(screen.getByText(/Objeto y Destino de la Comisión/i)).toBeInTheDocument();
   });
 
@@ -368,7 +385,7 @@ describe('ViaticosModulePremium', () => {
 
     fireEvent.click(screen.getByText(/Atrás/i));
 
-    expect(screen.getByText(/Paso 1 de 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/Paso 1 de 4/i)).toBeInTheDocument();
   });
 
   it('debe normalizar tildes del objeto de comisión conservando la letra', async () => {
@@ -551,8 +568,7 @@ describe('ViaticosModulePremium', () => {
     fireEvent.change(fechaInicio, { target: { value: '2026-09-05' } });
     fireEvent.change(fechaFin, { target: { value: '2026-09-01' } });
 
-    const submitBtn = screen.getByText(/Enviar Solicitud/i);
-    fireEvent.click(submitBtn);
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
 
     await waitFor(() => {
       expect(screen.getByText(/Debe ser posterior o igual a fecha inicio/i)).toBeInTheDocument();
@@ -568,7 +584,7 @@ describe('ViaticosModulePremium', () => {
 
     await irAlPaso2();
 
-    fireEvent.click(screen.getByText(/Enviar Solicitud/i));
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
 
     await waitFor(() => {
       expect(screen.getByText(/Debe indicar las fechas de inicio y fin/i)).toBeInTheDocument();
@@ -587,7 +603,7 @@ describe('ViaticosModulePremium', () => {
     fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: '2020-01-01' } });
     fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: '2020-01-05' } });
 
-    fireEvent.click(screen.getByText(/Enviar Solicitud/i));
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
 
     await waitFor(() => {
       expect(screen.getByText(/La fecha de inicio no puede ser anterior a hoy/i)).toBeInTheDocument();
@@ -613,6 +629,7 @@ describe('ViaticosModulePremium', () => {
     fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: inicioISO } });
     fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: finISO } });
 
+    await guardarYBContinuar();
     fireEvent.click(screen.getByText(/Siguiente/i));
 
     await screen.findByText(/Comisión Extemporánea/i);
@@ -625,15 +642,12 @@ describe('ViaticosModulePremium', () => {
       expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
     });
 
-    await llenarPaso2();
+    await irAlConfirmacion();
 
-    fireEvent.click(screen.getByText(/Siguiente/i));
-
-    const submitBtn = screen.getByText(/Enviar Solicitud/i);
-    fireEvent.click(submitBtn);
+    fireEvent.click(screen.getByText(/Finalizar y Radicar/i));
 
     await waitFor(() => {
-      expect(viaticosService.crearSolicitudComision).toHaveBeenCalled();
+      expect(viaticosService.finalizarSolicitud).toHaveBeenCalledWith('sol-nueva');
     });
   });
 
@@ -646,8 +660,7 @@ describe('ViaticosModulePremium', () => {
 
     await llenarPaso2();
 
-    fireEvent.click(screen.getByText(/Siguiente/i));
-    fireEvent.click(screen.getByText(/Enviar Solicitud/i));
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
 
     await waitFor(() => {
       expect(viaticosService.crearSolicitudComision).toHaveBeenCalled();
@@ -671,6 +684,8 @@ describe('ViaticosModulePremium', () => {
         diasComision: 5,
         creadoPorUsuarioId: expect.any(String),
         aceptaHabeasData: true,
+        modoBorrador: true,
+        tipoComision: 'TERRESTRE',
         documentos: [],
       }),
     );

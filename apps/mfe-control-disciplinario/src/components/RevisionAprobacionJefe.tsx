@@ -558,12 +558,12 @@ export function RevisionAprobacionJefe({
                       )}
 
                       {/* Botón Envío a jurídica para autos aprobados de pliego de cargos */}
-                      {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && borrador.estado === 'aprobado' && (
+                      {(borrador.titulo?.toLowerCase().includes('pliego') || borrador.plantilla?.toLowerCase().includes('pliego')) && borrador.estado === 'aprobado' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) && (
                         <div className="mt-2 flex justify-end">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR)) {
+                              if (authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA)) {
                                 setBorradorEnvioJuridica(borrador);
                               } else {
                                 toast.error('No tiene permisos para realizar envíos a jurídica');

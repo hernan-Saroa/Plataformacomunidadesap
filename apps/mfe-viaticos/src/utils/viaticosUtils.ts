@@ -1,6 +1,7 @@
 import {
   Comisionado,
   CreateSolicitudRequest,
+  DocumentoFormItem,
   EstadoSolicitudViatico,
   FormNuevaSolicitud,
   Geopolitica,
@@ -33,6 +34,7 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     montoGastosViaje: 0,
     diasComision: 1,
     aceptaHabeasData: false,
+    tipoComision: 'TERRESTRE',
   };
 }
 
@@ -152,8 +154,17 @@ export function mapearARequestCreacion(
   form: FormNuevaSolicitud,
   comisionado: Comisionado,
   creadoPorUsuarioId: string,
+  modoBorrador = false,
+  tipoComision = 'TERRESTRE',
 ): CreateSolicitudRequest {
   const aceptaHabeasData = form.aceptaHabeasData || comisionado.autorizacionHabeasData;
+  const documentos: DocumentoFormItem[] = (form.documentos || []).map((d) => ({
+    tipoDocumento: d.tipoDocumento,
+    nombreArchivoOriginal: d.nombreArchivoOriginal,
+    nombreArchivoSeguro: d.nombreArchivoSeguro,
+    urlRepositorio: d.urlRepositorio,
+    tipoMime: d.tipoMime,
+  }));
   return {
     comisionadoId: comisionado.id,
     destinoCiudad: form.destinoCiudad.trim(),
@@ -170,7 +181,9 @@ export function mapearARequestCreacion(
     creadoPorUsuarioId: creadoPorUsuarioId,
     aceptaHabeasData: aceptaHabeasData,
     ipRegistroHabeasData: aceptaHabeasData ? '127.0.0.1' : comisionado.ipRegistroHabeasData,
-    documentos: [],
+    modoBorrador,
+    tipoComision,
+    documentos,
   };
 }
 
@@ -185,6 +198,7 @@ export interface ConfigEstado {
  */
 export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
   BORRADOR: { label: 'Borrador', bg: 'bg-gray-100', text: 'text-gray-700' },
+  PENDIENTE: { label: 'Pendiente', bg: 'bg-yellow-100', text: 'text-yellow-800' },
   SOLICITADO: { label: 'Solicitado', bg: 'bg-blue-100', text: 'text-blue-800' },
   APROBADO_JEFE: { label: 'Aprobado Jefe', bg: 'bg-indigo-100', text: 'text-indigo-800' },
   APROBADO_TALENTO_HUMANO: { label: 'Aprobado TH', bg: 'bg-purple-100', text: 'text-purple-800' },
@@ -219,6 +233,26 @@ export function formatearMoneda(valor: number): string {
  */
 export function soloNumeros(valor: string): string {
   return valor.replace(/[^0-9]/g, '');
+}
+
+/**
+ * Infiere el tipo MIME de un archivo a partir de su nombre.
+ * Solo se reconoce PDF explícitamente; cualquier otra extensión
+ * retorna `application/octet-stream` (genérico).
+ */
+export function inferirTipoMime(nombreArchivo: string): string {
+  const extension = nombreArchivo.split('.').pop()?.toLowerCase() || '';
+  if (extension === 'pdf') return 'application/pdf';
+  return 'application/octet-stream';
+}
+
+/**
+ * Indica si un tipo MIME corresponde a un PDF válido.
+ */
+export function esPdfMime(tipoMime: string): boolean {
+  if (!tipoMime) return false;
+  const mime = tipoMime.toLowerCase();
+  return mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf');
 }
 
 /**

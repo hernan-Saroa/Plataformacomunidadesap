@@ -1,34 +1,51 @@
-import { IsString, Length, IsBoolean, IsIn, IsOptional, IsNumber, IsInt, Min } from 'class-validator';
+import {
+  IsString,
+  Length,
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsNumber,
+  IsInt,
+  Min,
+} from 'class-validator';
 
 export class CreateSolicitudDto {
+  @IsOptional()
   @IsString()
-  @Length(1, 250)
-  objetoComision: string;
+  @Length(0, 250)
+  objetoComision?: string;
 
+  @IsOptional()
   @IsString()
-  @Length(1, 100)
-  destinoCiudad: string;
+  @Length(0, 100)
+  destinoCiudad?: string;
 
+  @IsOptional()
   @IsString()
-  @Length(1, 100)
-  destinoDepartamento: string;
+  @Length(0, 100)
+  destinoDepartamento?: string;
 
+  @IsOptional()
   @IsString()
-  fechaInicio: string;
+  fechaInicio?: string;
 
+  @IsOptional()
   @IsString()
-  fechaFin: string;
+  fechaFin?: string;
 
+  @IsOptional()
   @IsString()
-  @Length(1, 100)
-  rubroPresupuestal: string;
+  @Length(0, 100)
+  rubroPresupuestal?: string;
 
+  @IsOptional()
   @IsString()
   @IsIn(['ALTA', 'MEDIA', 'BAJA'])
-  prioridad: string;
+  prioridad?: string;
 
+  @IsOptional()
   @IsBoolean()
-  requiereTiquetes: boolean;
+  requiereTiquetes?: boolean;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -65,5 +82,15 @@ export class CreateSolicitudDto {
     nombreArchivoOriginal: string;
     nombreArchivoSeguro: string;
     urlRepositorio: string;
+    tipoMime?: string;
   }>;
+
+  @IsOptional()
+  @IsBoolean()
+  modoBorrador?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
+  tipoComision?: string;
 }

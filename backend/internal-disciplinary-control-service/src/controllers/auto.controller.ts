@@ -208,6 +208,7 @@ export class AutoController {
    * Enviar auto pliego de cargos aprobado a Oficina Jurídica
    */
   @Patch(':id/send-juridica')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'JEFE_DE_LA_OCID', 'JEFE_OCID')
   @ApiOperation({
     summary: 'Enviar Pliego de Cargos a Jurídica',
     description: 'Envía el auto pliego de cargos aprobado a la Oficina Jurídica, cerrando el proceso',
@@ -221,6 +222,24 @@ export class AutoController {
       throw new Error('enviadoPorId es requerido');
     }
     return await this.autoService.sendPliegoToJuridica(id, enviadoPorId, enviadoPorEmail, enviadoPorNombre);
+  }
+
+  /**
+   * Reversar la aprobación de un Pliego de Cargos (solo mientras no se haya enviado a Jurídica)
+   */
+  @Patch(':id/revert-approval')
+  @ApiOperation({
+    summary: 'Reversar Aprobación de Pliego de Cargos',
+    description: 'El Jefe reversa la aprobación de un pliego de cargos aprobado, volviéndolo a borrador para corrección. No aplica si ya fue enviado a Jurídica.',
+  })
+  async revertApproval(
+    @Param('id') id: string,
+    @Query('revertidoPorId') revertidoPorId: string,
+  ): Promise<LegalAuto> {
+    if (!revertidoPorId) {
+      throw new Error('revertidoPorId es requerido');
+    }
+    return await this.autoService.revertApproval(id, revertidoPorId);
   }
 
   /**

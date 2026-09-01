@@ -21,10 +21,10 @@ export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
+      PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true;
@@ -34,14 +34,19 @@ export class PermissionsGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('No tiene permisos para acceder a este recurso.');
+      throw new ForbiddenException(
+        'No tiene permisos para acceder a este recurso.',
+      );
     }
 
     const userRoles = this.extractRoles(user);
     const isSuperAdmin = userRoles.some((role) => {
       if (typeof role !== 'string') return false;
       const normalized = role.toUpperCase().replace(/\s+/g, '_');
-      return SUPER_ADMIN_ROLES.includes(normalized) || SUPER_ADMIN_ROLES.includes(role.toUpperCase());
+      return (
+        SUPER_ADMIN_ROLES.includes(normalized) ||
+        SUPER_ADMIN_ROLES.includes(role.toUpperCase())
+      );
     });
 
     if (isSuperAdmin) {
@@ -49,14 +54,20 @@ export class PermissionsGuard implements CanActivate {
     }
 
     if (!user.permissions) {
-      throw new ForbiddenException('No tiene permisos para acceder a este recurso.');
+      throw new ForbiddenException(
+        'No tiene permisos para acceder a este recurso.',
+      );
     }
 
     const userPermissions = new Set(user.permissions);
-    const hasPermission = requiredPermissions.some((permission) => userPermissions.has(permission));
+    const hasPermission = requiredPermissions.some((permission) =>
+      userPermissions.has(permission),
+    );
 
     if (!hasPermission) {
-      throw new ForbiddenException('No tiene permisos para acceder a este recurso.');
+      throw new ForbiddenException(
+        'No tiene permisos para acceder a este recurso.',
+      );
     }
 
     return true;

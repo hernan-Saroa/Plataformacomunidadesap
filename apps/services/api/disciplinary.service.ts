@@ -54,6 +54,13 @@ export interface DisciplinaryNews {
     kanbanStage?: string;
     createdAt: string;
     updatedAt: string;
+    historialAuditoria?: {
+        id: string;
+        tipo: string;
+        usuario: string;
+        fecha: string;
+        observaciones?: string;
+    }[];
 }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
@@ -157,7 +164,8 @@ export interface ProcessStatistics {
 
 export interface DisciplinaryProcessActuacion {
     id: string;
-    processId: string;
+    processId: string | null;
+    newsId?: string | null;
     tipo: string;
     etapa?: string | null;
     descripcion: string;
@@ -614,12 +622,36 @@ if (fechaQuejaRaw) {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
+    async getNoticiaById(id: string): Promise<DisciplinaryNews> {
+        return apiClient.get<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
+    }
+
+    async getActuacionesNoticia(newsId: string): Promise<DisciplinaryProcessActuacion[]> {
+        return apiClient.get<DisciplinaryProcessActuacion[]>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`
+        );
+    }
+
+    async createActuacionNoticia(
+        newsId: string,
+        data: CreateDisciplinaryProcessActuacionDto
+    ): Promise<DisciplinaryProcessActuacion> {
+        return apiClient.post<DisciplinaryProcessActuacion>(
+            `${SERVICE_PREFIX}/disciplinary-news/${newsId}/actuaciones`,
+            data
+        );
+    }
+
     async archiveNews(id: string, reason: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/archive`, { reason });
     }
 
     async restoreNews(id: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/restore`, {});
+    }
+
+    async deleteNews(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-news/${id}`);
     }
 
     /**
@@ -631,6 +663,10 @@ if (fechaQuejaRaw) {
 
     async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
         return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
+    }
+
+    async resubmitNews(id: string, observaciones?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/resubmit`, { observaciones });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
