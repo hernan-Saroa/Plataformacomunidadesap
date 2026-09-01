@@ -70,3 +70,48 @@ export function getCatalogoPorSemestre(
 ): Promise<{ programa: any; semestres: SemestreCatalogo[] }> {
   return pedir(`${BASE}/programas/${encodeURIComponent(idPrograma)}/asignaturas`);
 }
+
+// ─── Grupos (EFDS-1370) ─────────────────────────────────────────────────────
+
+export interface Grupo {
+  idGrupo: string;
+  idAsignatura: string;
+  idPeriodo: string | null;
+  numeroGrupo: number;
+  idDocente: string | null;
+  cupoMaximo: number;
+  estado: string;
+  observaciones: string | null;
+}
+
+const BASE_GRUPOS = '/programacion-academica/grupos';
+
+async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
+  const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    ...init,
+  });
+  if (!res.ok) {
+    if (res.status === 403) throw new Error('No tiene permisos para gestionar grupos de esta asignatura.');
+    throw new Error(`No se pudo completar la operación (error ${res.status}).`);
+  }
+  const cuerpo = await res.json();
+  return (cuerpo?.data ?? cuerpo) as T;
+}
+
+export function getGrupos(idAsignatura: string): Promise<Grupo[]> {
+  return pedirJson<Grupo[]>(`${BASE_GRUPOS}?asignatura=${encodeURIComponent(idAsignatura)}`, { method: 'GET' });
+}
+
+/** Crea 1..N grupos. La numeración la asigna el backend (estrategia reemplazable). */
+export function crearGrupos(idAsignatura: string, cantidad: number): Promise<Grupo[]> {
+  return pedirJson<Grupo[]>(BASE_GRUPOS, {
+    method: 'POST',
+    body: JSON.stringify({ idAsignatura, cantidad }),
+  });
+}
+
+export function eliminarGrupo(idGrupo: string): Promise<{ eliminado: true }> {
+  return pedirJson(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, { method: 'DELETE' });
+}
