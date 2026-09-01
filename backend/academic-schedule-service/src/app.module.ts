@@ -6,6 +6,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { CatalogoModule } from './catalogo/catalogo.module.js';
 import { GruposModule } from './grupos/grupos.module.js';
+import { HorariosModule } from './horarios/horarios.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { GruposModule } from './grupos/grupos.module.js';
     }),
     CatalogoModule,
     GruposModule,
+    HorariosModule,
   ],
   controllers: [AppController],
   providers: [AppService],
