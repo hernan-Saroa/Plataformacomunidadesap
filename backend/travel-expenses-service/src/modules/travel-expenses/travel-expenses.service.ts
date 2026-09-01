@@ -265,7 +265,7 @@ export class TravelExpensesService {
 
       if (solapamiento) {
         throw new ConflictException(
-          'El comisionado ya tiene una solicitud activa en el rango de fechas indicado.',
+          `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
         );
       }
 
@@ -364,14 +364,33 @@ export class TravelExpensesService {
       throw new BadRequestException('Solicitud no encontrada.');
     }
 
-    const tipoMime = dto.tipoMime ?? this.inferirTipoMime(dto.nombreArchivoOriginal);
+    const file = dto.file;
+    const nombreArchivoOriginal =
+      (file ? file.originalname : undefined) || dto.nombreArchivoOriginal;
+
+    const tipoMime =
+      dto.tipoMime ||
+      (file ? file.mimetype : undefined) ||
+      this.inferirTipoMime(nombreArchivoOriginal || '');
+
+    if (!this.esTipoMimePdf(tipoMime)) {
+      throw new BadRequestException(
+        `El documento "${nombreArchivoOriginal || dto.tipoDocumento}" debe estar en formato PDF.`,
+      );
+    }
+
+    const nombreArchivoSeguro =
+      (file ? file.filename : undefined) || dto.nombreArchivoSeguro;
+    const urlRepositorio = file
+      ? `/uploads/${solicitudId}/${file.filename}`
+      : dto.urlRepositorio;
 
     const entity = this.documentoRepo.create({
       solicitudId,
       tipoDocumento: dto.tipoDocumento,
-      nombreArchivoOriginal: dto.nombreArchivoOriginal,
-      nombreArchivoSeguro: dto.nombreArchivoSeguro,
-      urlRepositorio: dto.urlRepositorio,
+      nombreArchivoOriginal,
+      nombreArchivoSeguro: nombreArchivoSeguro,
+      urlRepositorio,
       tipoMime,
     });
 
@@ -465,7 +484,7 @@ export class TravelExpensesService {
 
     if (solapamiento) {
       throw new ConflictException(
-        'El comisionado ya tiene una solicitud activa en el rango de fechas indicado.',
+        `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
       );
     }
 
@@ -499,6 +518,15 @@ export class TravelExpensesService {
     const extension = nombreArchivo.split('.').pop()?.toLowerCase() || '';
     if (extension === 'pdf') return 'application/pdf';
     return 'application/octet-stream';
+  }
+
+  private formatearFecha(fecha: Date): string {
+    if (!fecha) return 'N/D';
+    return new Date(fecha).toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
   }
 
   private async validarChecklistCompleto(

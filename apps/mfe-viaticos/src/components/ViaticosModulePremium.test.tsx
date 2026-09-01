@@ -83,6 +83,9 @@ describe('ViaticosModulePremium', () => {
     viaticosService.obtenerResumenEstadistico = vi.fn().mockResolvedValue(mockResumen);
     viaticosService.consultarComisionado = vi.fn().mockResolvedValue(mockComisionado);
     viaticosService.crearSolicitudComision = vi.fn().mockResolvedValue({ id: 'sol-nueva' });
+    viaticosService.finalizarSolicitud = vi.fn().mockResolvedValue({ id: 'sol-rad', estadoSolicitud: 'RADICADA' });
+    viaticosService.obtenerChecklistDocumentos = vi.fn().mockResolvedValue({ obligatorios: [], opcionales: [] });
+    viaticosService.subirDocumento = vi.fn().mockResolvedValue({ id: 'doc-001', tipoDocumento: 'CDP', tipoMime: 'application/pdf' });
     viaticosService.obtenerDepartamentos = vi.fn().mockResolvedValue([
       { idGeopolitica: 1, codGeopolitica: '5', codDepartamento: 5, nomDivGeopolitica: 'Antioquia', tipDivision: 'DEPTO' },
       { idGeopolitica: 2, codGeopolitica: '13', codDepartamento: 13, nomDivGeopolitica: 'Bolívar', tipDivision: 'DEPTO' },
@@ -767,6 +770,34 @@ describe('ViaticosModulePremium', () => {
     expect(screen.getByText('Carta de Invitación')).toBeInTheDocument();
     expect(screen.getByText('Resolución / Acto Administrativo')).toBeInTheDocument();
     expect(screen.getAllByText(/Subir/i)).toHaveLength(3);
+  });
+
+  it('debe mostrar el mensaje de solapamiento como error de validación al radicar', async () => {
+    viaticosService.finalizarSolicitud = vi.fn().mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          statusCode: 409,
+          message:
+            'Las fechas indicadas (01/09/2026 a 05/09/2026) se cruzan con la solicitud sol-existente en estado RADICADA (20/08/2026 a 23/08/2026). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.',
+          error: 'Conflict',
+        },
+      },
+    });
+
+    render(<ViaticosModulePremium />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
+    });
+
+    await irAlConfirmacion();
+
+    fireEvent.click(screen.getByText(/Finalizar y Radicar/i));
+
+    const banner = await screen.findByText(/se cruzan con la solicitud sol-existente/i);
+    expect(banner).toBeInTheDocument();
+    expect(viaticosService.finalizarSolicitud).toHaveBeenCalledWith('sol-nueva');
   });
 
   it('debe reiniciar el formulario al cerrar y reabrir el modal', async () => {

@@ -117,14 +117,6 @@ export interface DocumentoFormItem {
   tipoMime?: string;
 }
 
-export interface UploadDocumentoRequest {
-  tipoDocumento: string;
-  nombreArchivoOriginal: string;
-  nombreArchivoSeguro: string;
-  urlRepositorio: string;
-  tipoMime?: string;
-}
-
 /** Respuesta del backend al crear una solicitud (serialización camelCase). */
 export interface SolicitudComisionResponse {
   id: string;

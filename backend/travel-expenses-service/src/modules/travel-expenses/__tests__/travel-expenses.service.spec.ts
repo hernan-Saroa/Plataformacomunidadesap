@@ -535,6 +535,20 @@ describe('TravelExpensesService', () => {
           creadoPorUsuarioId: 'user-001',
         }),
       ).rejects.toThrow(ConflictException);
+
+      const respuesta = svc.crearSolicitud({
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: '2026-09-01',
+        fechaFin: '2026-09-05',
+        objetoComision: 'Comisión de gestión',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: false,
+        creadoPorUsuarioId: 'user-001',
+      });
+      await expect(respuesta).rejects.toThrow(/se cruzan con la solicitud sol-existente/);
     });
 
     it('debe crear solicitud exitosamente con consecutivo único', async () => {
@@ -791,6 +805,54 @@ describe('TravelExpensesService', () => {
       });
 
       expect(result).toBeDefined();
+      expect(documentoRepo.save).toHaveBeenCalled();
+    });
+
+    it('debe lanzar 400 si el archivo adjunto no es PDF', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 'sol-001' }),
+      };
+      const documentoRepo = { create: jest.fn(), save: jest.fn() };
+
+      const module = await createMockModule({ solicitudRepo, documentoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.subirDocumento('sol-001', {
+          tipoDocumento: 'CDP',
+          file: {
+            originalname: 'cdp.png',
+            mimetype: 'image/png',
+            filename: 'cdp.png',
+          },
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe persistir el archivo y construir urlRepositorio cuando se envía un file', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 'sol-001' }),
+      };
+      const documentoRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockImplementation((ent) => ent),
+      };
+
+      const module = await createMockModule({ solicitudRepo, documentoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.subirDocumento('sol-001', {
+        tipoDocumento: 'CDP',
+        file: {
+          originalname: 'cdp.pdf',
+          mimetype: 'application/pdf',
+          filename: 'cdp-123.pdf',
+        },
+      });
+
+      expect(result.tipoMime).toBe('application/pdf');
+      expect(result.nombreArchivoOriginal).toBe('cdp.pdf');
+      expect(result.urlRepositorio).toBe('/uploads/sol-001/cdp-123.pdf');
       expect(documentoRepo.save).toHaveBeenCalled();
     });
   });

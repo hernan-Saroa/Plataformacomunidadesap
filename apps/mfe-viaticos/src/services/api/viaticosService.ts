@@ -11,7 +11,6 @@ import {
   Geopolitica,
    ChecklistDocumentosResponse,
    FinalizarSolicitudResponse,
-   UploadDocumentoRequest,
  } from '../../types/viaticos';
 import {
   ParametrizacionFormulario,
@@ -411,19 +410,17 @@ export class ViaticosService {
     archivo: File,
     tipoMime?: string,
   ): Promise<DocumentoSoporte> {
-    const nombreSeguro = this.sanitizeFileName(archivo.name);
-    const payload: UploadDocumentoRequest = {
-      tipoDocumento: tipo,
-      nombreArchivoOriginal: archivo.name,
-      nombreArchivoSeguro: nombreSeguro,
-      urlRepositorio: `/uploads/${solicitudId}/${nombreSeguro}`,
-      tipoMime: tipoMime || undefined,
-    };
+    const formData = new FormData();
+    formData.append('tipoDocumento', tipo);
+    if (tipoMime) {
+      formData.append('tipoMime', tipoMime);
+    }
+    formData.append('archivo', archivo);
 
     try {
-      return await apiClient.post<DocumentoSoporte>(
+      return await apiClient.upload<DocumentoSoporte>(
         `/viaticos/api/v1/requests/${solicitudId}/documentos`,
-        payload,
+        formData,
       );
     } catch (error) {
       console.error('Error subiendo documento:', error);

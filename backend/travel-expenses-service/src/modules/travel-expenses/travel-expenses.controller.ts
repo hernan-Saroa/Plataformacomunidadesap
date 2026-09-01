@@ -5,6 +5,8 @@ import {
   Body,
   Param,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   Req,
   Header,
   Query,
@@ -12,6 +14,10 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as multer from 'multer';
+import { extname, join } from 'path';
+import { mkdirSync } from 'fs';
 import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
@@ -142,8 +148,30 @@ export class TravelExpensesController {
 
   @Post('requests/:id/documentos')
   @Permissions('travel_expenses:create_request')
-  subirDocumento(@Param('id') id: string, @Body() dto: UploadDocumentoDto) {
-    return this.service.subirDocumento(id, dto);
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      storage: multer.diskStorage({
+        destination: (req: any, _file: any, cb: any) => {
+          const dir = join(process.cwd(), 'uploads', req.params.id);
+          try {
+            mkdirSync(dir, { recursive: true });
+          } catch {}
+          cb(null, dir);
+        },
+        filename: (_req: any, file: any, cb: any) => {
+          const name = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          return cb(null, `${name}-${Date.now()}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  subirDocumento(
+    @Param('id') id: string,
+    @Body() dto: UploadDocumentoDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.service.subirDocumento(id, { ...dto, file });
   }
 
   @Post('requests/:id/finalizar')

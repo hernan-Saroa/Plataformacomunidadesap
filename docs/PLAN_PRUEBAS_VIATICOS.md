@@ -36,11 +36,12 @@
 
 ## 3. Casos de Prueba — Backend (`travel-expenses.service.spec.ts`, Jest)
 
-### TC-B-001: `finalizarSolicitud` lanza 404 si la solicitud no existe
+### TC-B-001: `finalizarSolicitud` / `crearSolicitud` lanza 409 con mensaje de validación enriquecido si hay solapamiento
 ```
-svc.finalizarSolicitud('no-existe')  // solicitudRepo.findOne -> null
+svc.crearSolicitud({ comisionadoId:'com-001', fechaInicio:'2026-09-01', fechaFin:'2026-09-05', ... })
+// solicitudRepo.createQueryBuilder('s').andWhere(...OVERLAPS...).getOne() -> { id:'sol-existente' }
 ```
-✅ **Esperado:** `throw NotFoundException('Solicitud no encontrada.')`
+✅ **Esperado:** `ConflictException` cuyo mensaje contiene `se cruzan con la solicitud sol-existente` y las fechas/estado de la solicitud conflictiva.
 
 ### TC-B-002: `finalizarSolicitud` lanza 400 si no está en estado PENDIENTE
 ```
@@ -52,7 +53,7 @@ svc.finalizarSolicitud('sol-001')
 ### TC-B-003: `finalizarSolicitud` lanza 400 si faltan soportes obligatorios
 ```
 documentoRepo.find -> []   // no hay CDP
-config.documentos -> [{ tipoRequisito: 'OBLIGATORIO', codigo: 'CDP' }]
+config.documentos -> [{ tipoRequisito: 'OBLIGATORIO', tipoDocumentoSoporte: { codigo: 'CDP', nombre: 'CDP', descripcion: null } }]
 ```
 ✅ **Esperado:** `throw BadRequestException('...Faltan por cargar... CDP')`
 
@@ -105,6 +106,14 @@ dto.objetoComision = ''
 solicitudRepo.createQueryBuilder mock con addOrderBy/offset/limit/getCount
 ```
 ✅ **Esperado:** `result.data` con `esCreadoPorMi` (true para superAdmin, undefined para usuario)
+
+### TC-B-012: `subirDocumento` persiste el archivo real y valida PDF
+```
+controller: @UploadedFile() file (Express.Multer.File), tipoDocumento en @Body
+file con mimetype image/png -> svc.subirDocumento(id, { tipoDocumento, file })
+file con mimetype application/pdf, filename 'cdp-123.pdf'
+```
+✅ **Esperado:** (no-PDF) `BadRequestException('El documento ... debe estar en formato PDF.')`; (PDF) entidad guardada con `urlRepositorio='/uploads/sol-001/cdp-123.pdf'`, `tipoMime='application/pdf'`. El file se escribe a `./uploads/<solicitudId>/<filename>` vía `multer.diskStorage` (controller), servido por gateway en `/<service>/uploads/*`.
 
 ---
 
@@ -210,19 +219,21 @@ obtenerChecklistDocumentos -> {obligatorios: PASAPORTE, CARTA_INVITACION, RESOLU
 | TC-F-011 | **Radicar cargando docs obligatorios PDF** | flujo completo OK | ✅ |
 | TC-F-012 | Checklist internacional (pasaporte/carta/resolución) | `INTERNACIONAL` | ✅ |
 | TC-F-013 | Filtro PENDIENTE + botón "Continuar" | visible | ✅ |
+| TC-F-014 | Solapamiento 409 → banner de validación con mensaje del backend | `errorValidacion` muestra `se cruzan con la solicitud` | ✅ |
 
-**Total ejecutable:** 24 casos (11 backend + 13 frontend).
-**Automatizados y pasados:** 24/24 ✅
-- Backend JUnit/Jest: `npx jest` → **28 passed** (incluye casos preexistentes).
-- Frontend Vitest: `npx vitest run` → **35 passed**.
-- Typecheck: backend `tsc --noEmit` → **exit 0**; frontend `tsc --noEmit` → sin errores propios (71 errores `TS2786` de `lucide-react` son preexistentes por mismatch de `@types/react` en archivos sin tocar; no afectan `vite build`/`vitest`).
+**Total ejecutable:** 26 casos (12 backend + 14 frontend).
+**Automatizados y pasados:** 26/26 ✅
+- Backend JUnit/Jest: `npx jest` → **30 passed** (incluye casos preexistentes).
+- Frontend Vitest: `npx vitest run` → **37 passed** (14 de esta HU + preexistentes).
+- Typecheck: backend `tsc --noEmit` → **exit 0**; frontend `tsc --noEmit` → sin errores propios (los errores `TS2786` de `lucide-react` son preexistentes por mismatch de `@types/react` en archivos sin tocar; no afectan `vite build`/`vitest`).
 
 ---
 
 ## 6. Pendientes de ambiente (no automatizados)
 
 - Aplicar migraciones `007_parametrizacion.sql`, `010_estados_checklist_documentos.sql` y `011_comision_internacional.sql` en la base (`synchronize: false`); el seed ya incluye los tipos de documento especiales (`PASAPORTE`, `CARTA_INVITACION`, `RESOLUCION_ACTO`) y `config_tipo_comisionado INTERNACIONAL/ACTO_ADMINISTRATIVO`.
-- Las pruebas de integración vía Gateway/HTTP (`tests/integration`) no se ejecutaron en este ciclo (requieren levantar los contenedores). El comportamiento HTTP está cubierto de forma indirecta por los tests unitarios del servicio.
+- **Almacenamiento real implementado** (HU actual): el endpoint `POST /requests/:id/documentos` usa `multer.diskStorage` (igual que `legal-management-service`/`internal-institutional-control-service`) para escribir `./uploads/<solicitudId>/<filename>`; el gateway sirve `/<service>/uploads/*` y exime JWT para `/<service>/uploads|files`. El frontend envía el archivo como `multipart/form-data` vía `apiClient.upload` y usa el `urlRepositorio` devuelto por el backend. Tests: `TC-B-012` (backend) y `TC-F-011` (frontend).
+- Las pruebas de integración vía Gateway/HTTP (`tests/integration`) no se ejecutaron en este ciclo (requieren levantar los contenedores). El comportamiento HTTP está cubierto de forma indirecta por los tests unitarios del servicio y del modal.
 
 ---
 
@@ -242,7 +253,8 @@ npx vitest run                 # 35/35
 ## 8. Evidencia de ejecución
 
 ```
-Backend  -> Test Suites: 2 passed | Tests: 28 passed
-Frontend -> Test Files   : 2 passed | Tests: 35 passed
+Backend  -> Test Suites: 2 passed | Tests: 30 passed
+Frontend -> Test Files  : 2 passed | Tests: 37 passed
 Backend tsc -> TSC_EXIT:0
+Frontend tsc -> 0 errores propios (solo preexistentes lucide TS2786)
 ```

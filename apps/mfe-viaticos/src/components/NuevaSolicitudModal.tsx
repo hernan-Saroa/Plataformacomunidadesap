@@ -491,9 +491,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       onCerrar();
     } catch (e: any) {
       console.error('Error radicando solicitud:', e);
-      setErrorValidacion(
+      const mensaje =
+        e?.response?.data?.message ||
         e?.message ||
-          'No fue posible radicar la solicitud. Verifique e intente nuevamente.',
+        'No fue posible radicar la solicitud. Verifique e intente nuevamente.';
+      setErrorValidacion(
+        Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
       );
     } finally {
       setFinalizando(false);
