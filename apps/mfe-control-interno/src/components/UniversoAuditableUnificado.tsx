@@ -786,6 +786,7 @@ interface TabUniversoAuditableProps {
   filtroRiesgo: NivelRiesgo | 'TODOS';
   filtroTipo: TipoProceso | 'TODOS';
   busqueda: string;
+  vigencia?: number;
   onFiltroRiesgoChange: (filtro: NivelRiesgo | 'TODOS') => void;
   onFiltroTipoChange: (filtro: TipoProceso | 'TODOS') => void;
   onBusquedaChange: (busqueda: string) => void;
@@ -805,6 +806,7 @@ interface TabUniversoAuditableProps {
 
 function TabUniversoAuditable({
   procesos,
+  vigencia,
   estadisticas,
   filtroRiesgo,
   filtroTipo,
@@ -826,6 +828,7 @@ function TabUniversoAuditable({
   return (
     <TabUniversoAuditableResponsive
       procesos={procesos as any}
+      vigencia={vigencia}
       estadisticas={estadisticas as any}
       busqueda={busqueda}
       filtroRiesgo={filtroRiesgo}
