@@ -217,6 +217,27 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     noticiaToEdit?.conductaPersonalizada || ''
   );
 
+  // ✅ Solo el Jefe, editando una noticia ya radicada, puede AGREGAR conductas
+  // adicionales. La conducta que puso el Radicador queda fija (no removible).
+  const esJefeEditandoConductas =
+    Boolean(isEditMode) &&
+    (authService.hasRole('JEFE_DE_LA_OCID') ||
+      authService.hasRole('JEFE_OCID') ||
+      authService.hasRole('SUPER_ADMIN'));
+
+  const conductasDesdeNoticia = (): string[] =>
+    Array.isArray(noticiaToEdit?.conductas)
+      ? (noticiaToEdit!.conductas as any[]).map(getConductaValue).filter(Boolean)
+      : [];
+
+  const [conductaOriginal] = useState<string>(getInitialConducta);
+  const [conductasAgregadas, setConductasAgregadas] = useState<string[]>(() => {
+    const orig = getInitialConducta();
+    return conductasDesdeNoticia().filter((c) => c && c !== orig);
+  });
+  const [nuevaConductaSel, setNuevaConductaSel] = useState<string>('');
+  const [nuevaConductaTexto, setNuevaConductaTexto] = useState<string>('');
+
   // ✅ Cálculo de la fecha de caducidad (5 años desde la fecha de los hechos)
   const calcularFechaCaducidad = (fechaHechos: string): string => {
     if (!fechaHechos) return '';
@@ -334,6 +355,11 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     setDenunciantes(getInitialDenunciantes());
     setConductaSeleccionada(getInitialConducta());
     setConductaPersonalizada(noticiaToEdit.conductaPersonalizada || '');
+    setConductasAgregadas(
+      conductasDesdeNoticia().filter((c) => c && c !== getInitialConducta()),
+    );
+    setNuevaConductaSel('');
+    setNuevaConductaTexto('');
     setEditingDenunciadoId(null);
     setEditingDenuncianteId(null);
     resetDenunciadoForm();
@@ -358,6 +384,27 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [adjuntosExistentes, setAdjuntosExistentes] = useState<string[]>([]);
   const [adjuntosParaEliminar, setAdjuntosParaEliminar] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const agregarConductaJefe = () => {
+    const valor = (nuevaConductaSel === 'Otro' ? nuevaConductaTexto : nuevaConductaSel).trim();
+    if (!valor) return;
+    if (nuevaConductaSel === 'Otro' && valor.length < 10) {
+      setErrors((prev) => ({ ...prev, nuevaConducta: 'La descripción debe tener al menos 10 caracteres' }));
+      return;
+    }
+    if (valor === conductaOriginal || conductasAgregadas.includes(valor)) {
+      setErrors((prev) => ({ ...prev, nuevaConducta: 'Esa conducta ya está en la lista' }));
+      return;
+    }
+    setConductasAgregadas((prev) => [...prev, valor]);
+    setNuevaConductaSel('');
+    setNuevaConductaTexto('');
+    setErrors((prev) => ({ ...prev, nuevaConducta: '' }));
+  };
+
+  const quitarConductaJefe = (valor: string) => {
+    setConductasAgregadas((prev) => prev.filter((c) => c !== valor));
+  };
 
   // ✅ NUEVO: Estado para apoderados
   const [mostrarApoderadoDenunciado, setMostrarApoderadoDenunciado] = useState(false);
@@ -812,7 +859,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       // ✅ NUEVO: Incluir conducta seleccionada
       conducta: conductaSeleccionada === 'Otro' ? conductaPersonalizada : conductaSeleccionada,
       conductaSeleccionada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : conductaSeleccionada,
-      conductaPersonalizada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : null
+      conductaPersonalizada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : null,
+      // ✅ El Jefe editando puede agregar conductas: la original (Radicador) va
+      // primero y no se puede quitar; las que agregó el Jefe van después.
+      ...(esJefeEditandoConductas
+        ? { conductas: [conductaOriginal, ...conductasAgregadas].filter(Boolean) }
+        : {}),
     };
 
     try {
@@ -2305,6 +2357,71 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Conducta Presuntamente Indisciplinaria *
                 </label>
+                {esJefeEditandoConductas ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border-2 border-gray-300 bg-gray-50">
+                      <span className="text-sm text-gray-800">{conductaOriginal || 'Sin conducta registrada'}</span>
+                      <span className="flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Radicador · fija</span>
+                    </div>
+                    {conductasAgregadas.map((c) => (
+                      <div key={c} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border-2 border-blue-200 bg-blue-50">
+                        <span className="text-sm text-gray-800">{c}</span>
+                        <button
+                          type="button"
+                          onClick={() => quitarConductaJefe(c)}
+                          className="flex-shrink-0 p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                          title="Quitar esta conducta"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="mt-2 rounded-lg border-2 border-dashed border-blue-300 p-3 space-y-2">
+                      <p className="text-xs font-bold text-blue-900">Agregar otra conducta</p>
+                      <select
+                        value={nuevaConductaSel}
+                        onChange={(e) => {
+                          setNuevaConductaSel(e.target.value);
+                          if (e.target.value !== 'Otro') setNuevaConductaTexto('');
+                        }}
+                        disabled={loadingConductas}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white disabled:bg-gray-100"
+                      >
+                        <option value="">{loadingConductas ? 'Cargando conductas...' : 'Seleccione una conducta...'}</option>
+                        {conductasIndisciplinarias.map((c) => (
+                          <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                        ))}
+                        {!catalogoTieneOtro && <option value="Otro">Otro</option>}
+                      </select>
+                      {nuevaConductaSel === 'Otro' && (
+                        <textarea
+                          value={nuevaConductaTexto}
+                          onChange={(e) => setNuevaConductaTexto(e.target.value)}
+                          placeholder="Especifique la conducta indisciplinaria (mínimo 10 caracteres)"
+                          rows={3}
+                          className="w-full px-3 py-2 text-sm border border-blue-300 rounded-lg bg-white resize-none"
+                        />
+                      )}
+                      {errors.nuevaConducta && (
+                        <p className="text-xs text-red-600 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {errors.nuevaConducta}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={agregarConductaJefe}
+                        disabled={!nuevaConductaSel || (nuevaConductaSel === 'Otro' && !nuevaConductaTexto.trim())}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-white disabled:opacity-50"
+                        style={{ background: '#003DA5' }}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Agregar conducta
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                <>
                 <select
                   value={conductaSeleccionada}
                   onChange={(e) => {
@@ -2339,7 +2456,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     {errors.conductas}
                   </p>
                 )}
-                
+
                 {/* ✅ NUEVO: Campo de texto para "Otro" */}
                 {conductaSeleccionada === 'Otro' && (
                   <div className="mt-3 bg-blue-50 border-2 border-blue-300 rounded-lg p-4 animate-fadeIn">
@@ -2376,6 +2493,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       Conducta seleccionada: <strong>{conductaSeleccionada}</strong>
                     </p>
                   </div>
+                )}
+                </>
                 )}
               </div>
 
