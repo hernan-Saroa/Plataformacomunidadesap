@@ -38,6 +38,13 @@ export class GrupoEntity {
   @Column({ type: 'text', nullable: true })
   observaciones: string | null;
 
+  /** EFDS-1371: ventana del ciclo de clases, propia de CADA grupo. */
+  @Column({ name: 'fecha_inicio', type: 'date', nullable: true })
+  fechaInicio: string | null;
+
+  @Column({ name: 'fecha_fin', type: 'date', nullable: true })
+  fechaFin: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
