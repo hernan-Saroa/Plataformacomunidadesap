@@ -19,7 +19,11 @@ import { HorariosModule } from './horarios/horarios.module.js';
         host: config.get<string>('DB_HOST', 'localhost'),
         port: Number(config.get<string>('DB_PORT', '5432')),
         username: config.get<string>('DB_USER', 'postgres'),
-        password: config.get<string>('DB_PASSWORD', 'postgres'),
+        // El repo usa DB_PASS (es lo que inyecta docker-compose y lo que lee el
+        // PTA). Se acepta DB_PASSWORD como alias para no romper a quien ya lo
+        // tenga puesto: leer solo DB_PASSWORD dejaba al servicio sin autenticar
+        // dentro de Docker.
+        password: config.get<string>('DB_PASS') ?? config.get<string>('DB_PASSWORD', 'postgres'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         autoLoadEntities: true,
         // Nunca true: este servicio LEE el catálogo de `academic_work_plan`, cuyo
