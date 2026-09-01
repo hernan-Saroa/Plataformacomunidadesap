@@ -94,7 +94,11 @@ async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     if (res.status === 403) throw new Error('No tiene permisos para gestionar grupos de esta asignatura.');
-    throw new Error(`No se pudo completar la operación (error ${res.status}).`);
+    // El backend explica el motivo (p. ej. contra qué sesión cruza la franja):
+    // se propaga tal cual, porque es lo que le dice al programador qué corregir.
+    let detalle = "";
+    try { const cuerpo = await res.json(); detalle = cuerpo?.message || cuerpo?.error || ""; } catch { /* sin cuerpo util */ }
+    throw new Error(detalle || `No se pudo completar la operación (error ${res.status}).`);
   }
   const cuerpo = await res.json();
   return (cuerpo?.data ?? cuerpo) as T;
@@ -114,4 +118,53 @@ export function crearGrupos(idAsignatura: string, cantidad: number): Promise<Gru
 
 export function eliminarGrupo(idGrupo: string): Promise<{ eliminado: true }> {
   return pedirJson(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, { method: 'DELETE' });
+}
+
+// ─── Horario / sesiones (EFDS-1371) ─────────────────────────────────────────
+
+/**
+ * Tipo de SESIÓN. No confundir con `modalidad` de la asignatura, que es dato
+ * maestro del SNIES y viene del catálogo: son campos distintos y de fuentes
+ * distintas. Una asignatura virtual puede tener sesiones presenciales.
+ */
+export type TipoSesion = 'presencial' | 'mediada_tecnologia';
+
+export interface Sesion {
+  idFranja: string;
+  idGrupo: string | null;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  tipoSesion: TipoSesion;
+  jornada: string | null;
+  aulaCodigo: string | null;
+  estado: string;
+}
+
+const BASE_HORARIOS = '/programacion-academica/horarios';
+
+export function getSesiones(idGrupo: string): Promise<Sesion[]> {
+  return pedirJson<Sesion[]>(`${BASE_HORARIOS}?grupo=${encodeURIComponent(idGrupo)}`, { method: 'GET' });
+}
+
+export function crearSesion(datos: {
+  idGrupo: string; diaSemana: string; horaInicio: string; horaFin: string;
+  tipoSesion: TipoSesion; aulaCodigo?: string | null;
+}): Promise<Sesion> {
+  return pedirJson<Sesion>(BASE_HORARIOS, { method: 'POST', body: JSON.stringify(datos) });
+}
+
+export function eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {
+  return pedirJson(`${BASE_HORARIOS}/${encodeURIComponent(idFranja)}`, { method: 'DELETE' });
+}
+
+/** Ventana del ciclo de clases, propia de cada grupo. */
+export function definirPeriodoGrupo(
+  idGrupo: string,
+  periodo: { fechaInicio: string | null; fechaFin: string | null },
+): Promise<any> {
+  return pedirJson(`${BASE_HORARIOS}/grupo/${encodeURIComponent(idGrupo)}/periodo`, {
+    method: 'PUT',
+    body: JSON.stringify(periodo),
+  });
 }

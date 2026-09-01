@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Layers3, Loader2, Plus, Trash2, User, Users } from 'lucide-react';
 
 import { crearGrupos, eliminarGrupo, getGrupos, type Grupo } from '../services/api/catalogoApi';
+import { CalendarioHorario } from './CalendarioHorario';
 
 /**
  * EFDS-1370 — Grupos de la asignatura seleccionada.
@@ -24,6 +25,8 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
   const [error, setError] = useState('');
   const [creando, setCreando] = useState(false);
   const [cantidad, setCantidad] = useState(1);
+  // EFDS-1371: el horario cuelga del GRUPO, asi que se abre desde el grupo elegido.
+  const [grupoSel, setGrupoSel] = useState<Grupo | null>(null);
 
   const recargar = () => {
     setCargando(true);
@@ -119,7 +122,13 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       ) : (
         <div className="divide-y divide-slate-100">
           {grupos.map((g) => (
-            <div key={g.idGrupo} className="p-4 flex items-center justify-between gap-3">
+            <div
+              key={g.idGrupo}
+              onClick={() => setGrupoSel(grupoSel?.idGrupo === g.idGrupo ? null : g)}
+              className={`p-4 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                grupoSel?.idGrupo === g.idGrupo ? "bg-blue-50/70" : "hover:bg-slate-50"
+              }`}
+            >
               <div className="flex items-center gap-3 min-w-0">
                 <span className="w-10 h-10 shrink-0 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center text-sm font-black">
                   {String(g.numeroGrupo).padStart(2, '0')}
@@ -142,7 +151,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                   {g.estado}
                 </span>
                 <button
-                  onClick={() => onEliminar(g)}
+                  onClick={(e) => { e.stopPropagation(); onEliminar(g); }}
                   title="Eliminar grupo"
                   className="p-2 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-600 hover:border-red-200 transition-colors"
                 >
@@ -151,6 +160,17 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* EFDS-1371: el horario cuelga del GRUPO. Se abre al elegir uno. */}
+      {grupoSel && (
+        <div className="p-4 border-t border-slate-200 bg-slate-50/40">
+          <CalendarioHorario
+            idGrupo={grupoSel.idGrupo}
+            numeroGrupo={grupoSel.numeroGrupo}
+            nombreAsignatura={nombreAsignatura}
+          />
         </div>
       )}
     </div>
