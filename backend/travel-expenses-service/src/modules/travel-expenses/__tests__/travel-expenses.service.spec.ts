@@ -374,6 +374,129 @@ describe('TravelExpensesService', () => {
       expect(comisionadoRepo.save).toHaveBeenCalled();
     });
 
+    it('debe permitir objetoComision vacío cuando el campo está oculto por configuración', async () => {
+      const comisionado = {
+        ...mockComisionado,
+        autorizacionHabeasData: true,
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-nueva' })),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue({
+              createQueryBuilder: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawOne: jest.fn().mockResolvedValue({ max: null }),
+              }),
+            }),
+          };
+          return cb(manager);
+        }),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const configService = {
+        obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue({
+          camposObligatorios: [],
+          camposOpcionales: [],
+          camposOcultos: ['objetoComision'],
+        }),
+        obtenerConfiguracionPorCodigoFormulario: jest.fn().mockResolvedValue(null),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource, configService });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.crearSolicitud({
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: '2026-09-01',
+        fechaFin: '2026-09-05',
+        objetoComision: '',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: false,
+        creadoPorUsuarioId: 'user-001',
+        modoBorrador: true,
+      });
+
+      expect(result).toBeDefined();
+      expect(solicitudRepo.save).toHaveBeenCalled();
+    });
+
+    it('debe permitir objetoComision vacío cuando el campo está como opcional por configuración', async () => {
+      const comisionado = { ...mockComisionado, autorizacionHabeasData: true };
+
+      const comisionadoRepo = { findOne: jest.fn().mockResolvedValue(comisionado), save: jest.fn() };
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        }),
+        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-opcional' })),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+      const dataSource = {
+        transaction: jest.fn().mockImplementation(async (cb) =>
+          cb({
+            getRepository: jest.fn().mockReturnValue({
+              createQueryBuilder: jest.fn().mockReturnValue({
+                select: jest.fn().mockReturnThis(),
+                where: jest.fn().mockReturnThis(),
+                getRawOne: jest.fn().mockResolvedValue({ max: null }),
+              }),
+            }),
+          }),
+        ),
+        createQueryBuilder: jest.fn(),
+      };
+      const configService = {
+        obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue({
+          camposObligatorios: [],
+          camposOpcionales: ['objetoComision'],
+          camposOcultos: [],
+        }),
+        obtenerConfiguracionPorCodigoFormulario: jest.fn().mockResolvedValue(null),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource, configService });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.crearSolicitud({
+        comisionadoId: 'com-001',
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        fechaInicio: '2026-09-01',
+        fechaFin: '2026-09-05',
+        objetoComision: '',
+        prioridad: 'ALTA',
+        rubroPresupuestal: 'Rubro 01',
+        requiereTiquetes: false,
+        creadoPorUsuarioId: 'user-001',
+        modoBorrador: true,
+      });
+
+      expect(result).toBeDefined();
+    });
+
     it('debe lanzar 409 si hay solapamiento de fechas', async () => {
       const comisionado = {
         ...mockComisionado,

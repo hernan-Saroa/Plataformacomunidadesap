@@ -212,8 +212,15 @@ export class TravelExpensesService {
       );
     }
 
+    const config =
+      await this.configService.obtenerConfiguracionPorTipo(comisionado.tipoComisionado);
+    const camposOcultos = new Set(config?.camposOcultos ?? []);
+    const camposOpcionales = new Set(config?.camposOpcionales ?? []);
+
     const objetoSanitizado = sanitizeObjetoComision(dto.objetoComision ?? '');
-    if (objetoSanitizado.length === 0) {
+    const objetoEsObligatorio =
+      !camposOcultos.has('objetoComision') && !camposOpcionales.has('objetoComision');
+    if (objetoEsObligatorio && objetoSanitizado.length === 0) {
       throw new BadRequestException(
         'El objeto de la comisión debe contener al menos un carácter válido.',
       );
