@@ -128,6 +128,9 @@ export function exportRundReportToPDF(
     styles: { fontSize: 7.5, cellPadding: 1.5 },
     headStyles: { fillColor: AZUL_ESAP, textColor: [255, 255, 255], fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [245, 245, 245] },
+    // Evita que una fila con celdas de varias líneas (nombres largos, núcleos temáticos largos)
+    // quede cortada entre dos páginas dejando texto huérfano al inicio de la siguiente.
+    rowPageBreak: 'avoid',
     didDrawPage: () => agregarPiePaginaInstitucional(doc, pageWidth),
   });
 
