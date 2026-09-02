@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Save, AlertCircle } from 'lucide-react';
 import viaticosService from '../../services/api/viaticosService';
 import { LiquidationParam } from '../../types/parametrizacion';
-import { formatearMoneda } from '../../utils/viaticosUtils';
+import { formatearMoneda, soloNumeros } from '../../utils/viaticosUtils';
 
 const PARAMETROS_MONETARIOS = new Set(['SMMLV_2026']);
 
@@ -103,12 +103,16 @@ export default function ParametrosLiquidacionAdmin() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">SMMLV 2026</label>
-            <input
-              type="number"
-              value={getParam('SMMLV_2026')?.valor || '1423500'}
-              onChange={(e) => cambiar('SMMLV_2026', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-            />
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={formatearMoneda(Number(getParam('SMMLV_2026')?.valor || '1423500'))}
+                onChange={(e) => cambiar('SMMLV_2026', String(Number(soloNumeros(e.target.value)) || 0))}
+                className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-right font-bold"
+              />
+            </div>
             <p className="text-[10px] text-slate-500 mt-1">{formatearValor('SMMLV_2026', getParam('SMMLV_2026')?.valor || '1423500')}</p>
           </div>
           <div>

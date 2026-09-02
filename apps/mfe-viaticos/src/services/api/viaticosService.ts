@@ -673,6 +673,15 @@ export class ViaticosService {
     }
   }
 
+  async obtenerCatalogoDepartamentos(): Promise<string[]> {
+    try {
+      return await apiClient.get<string[]>('/viaticos/api/v1/liquidation/config/catalogo-departamentos');
+    } catch (error) {
+      console.error('Error obteniendo catálogo de departamentos:', error);
+      return [];
+    }
+  }
+
   // ==================== PARÁMETROS GLOBALES ====================
 
   async obtenerParametrosLiquidacion(): Promise<LiquidationParam[]> {

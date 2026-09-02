@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, AlertCircle } from 'lucide-react';
 import viaticosService from '../../services/api/viaticosService';
 import { EscalaViatico } from '../../types/parametrizacion';
+import { formatearMoneda, soloNumeros } from '../../utils/viaticosUtils';
 
 export default function EscalasViaticosAdmin() {
   const [escalas, setEscalas] = useState<EscalaViatico[]>([]);
@@ -74,6 +75,14 @@ export default function EscalasViaticosAdmin() {
     }
   };
 
+  const inputMoneda = (valor: number) => formatearMoneda(valor);
+
+  const onChangeMoneda = (campo: string, valor: string) => {
+    const limpio = soloNumeros(valor);
+    const num = Number(limpio) || 0;
+    setForm((prev) => ({ ...prev, [campo]: num }));
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -115,9 +124,9 @@ export default function EscalasViaticosAdmin() {
                 <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                   <td className="px-3 py-2 font-medium">{e.decretoVigente}</td>
                   <td className="px-3 py-2">{e.anoVigencia}</td>
-                  <td className="px-3 py-2 text-right">${e.rangoMinimo.toLocaleString('es-CO')}</td>
-                  <td className="px-3 py-2 text-right">${e.rangoMaximo.toLocaleString('es-CO')}</td>
-                  <td className="px-3 py-2 text-right font-bold">${e.tarifaDiaria.toLocaleString('es-CO')}</td>
+                  <td className="px-3 py-2 text-right">{formatearMoneda(e.rangoMinimo)}</td>
+                  <td className="px-3 py-2 text-right">{formatearMoneda(e.rangoMaximo)}</td>
+                  <td className="px-3 py-2 text-right font-bold">{formatearMoneda(e.tarifaDiaria)}</td>
                   <td className="px-3 py-2 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => abrirEditar(e)} className="text-slate-500 hover:text-[#003DA5]">
@@ -170,31 +179,46 @@ export default function EscalasViaticosAdmin() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Rango Mínimo</label>
-                  <input
-                    type="number"
-                    value={form.rangoMinimo}
-                    onChange={(e) => setForm({ ...form, rangoMinimo: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={inputMoneda(form.rangoMinimo)}
+                      onChange={(e) => onChangeMoneda('rangoMinimo', e.target.value)}
+                      className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-right font-bold"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">{formatearMoneda(form.rangoMinimo)}</p>
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Rango Máximo</label>
-                  <input
-                    type="number"
-                    value={form.rangoMaximo}
-                    onChange={(e) => setForm({ ...form, rangoMaximo: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={inputMoneda(form.rangoMaximo)}
+                      onChange={(e) => onChangeMoneda('rangoMaximo', e.target.value)}
+                      className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-right font-bold"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">{formatearMoneda(form.rangoMaximo)}</p>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Tarifa Diaria</label>
-                <input
-                  type="number"
-                  value={form.tarifaDiaria}
-                  onChange={(e) => setForm({ ...form, tarifaDiaria: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={inputMoneda(form.tarifaDiaria)}
+                    onChange={(e) => onChangeMoneda('tarifaDiaria', e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-right font-bold"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">{formatearMoneda(form.tarifaDiaria)}</p>
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-5">

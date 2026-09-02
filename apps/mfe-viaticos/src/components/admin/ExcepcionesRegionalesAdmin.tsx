@@ -2,9 +2,46 @@ import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, AlertCircle } from 'lucide-react';
 import viaticosService from '../../services/api/viaticosService';
 import { TarifaRegionalExcepcion } from '../../types/parametrizacion';
+import { formatearMoneda, soloNumeros } from '../../utils/viaticosUtils';
+
+const DEPARTAMENTOS_COLOMBIA = [
+  'Amazonas',
+  'Antioquia',
+  'Arauca',
+  'Atlántico',
+  'Bolívar',
+  'Boyacá',
+  'Caldas',
+  'Caquetá',
+  'Casanare',
+  'Cauca',
+  'Cesar',
+  'Chocó',
+  'Córdoba',
+  'Cundinamarca',
+  'Guainía',
+  'Guaviare',
+  'Huila',
+  'La Guajira',
+  'Magdalena',
+  'Meta',
+  'Nariño',
+  'Norte de Santander',
+  'Putumayo',
+  'Quindío',
+  'Risaralda',
+  'San Andrés y Providencia',
+  'Santander',
+  'Sucre',
+  'Tolima',
+  'Valle del Cauca',
+  'Vaupés',
+  'Vichada',
+];
 
 export default function ExcepcionesRegionalesAdmin() {
   const [excepciones, setExcepciones] = useState<TarifaRegionalExcepcion[]>([]);
+  const [departamentos, setDepartamentos] = useState<string[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -21,8 +58,12 @@ export default function ExcepcionesRegionalesAdmin() {
     setCargando(true);
     setError(null);
     try {
-      const data = await viaticosService.obtenerExcepcionesRegionales();
+      const [data, deptos] = await Promise.all([
+        viaticosService.obtenerExcepcionesRegionales(),
+        viaticosService.obtenerCatalogoDepartamentos(),
+      ]);
       setExcepciones(data);
+      setDepartamentos(deptos);
     } catch (e) {
       setError('Error cargando excepciones');
     } finally {
@@ -52,6 +93,10 @@ export default function ExcepcionesRegionalesAdmin() {
 
   const guardar = async () => {
     try {
+      if (!form.departamento.trim()) {
+        setError('El departamento es obligatorio');
+        return;
+      }
       if (editando) {
         await viaticosService.actualizarExcepcionRegional(editando.id, form);
       } else {
@@ -72,6 +117,14 @@ export default function ExcepcionesRegionalesAdmin() {
     } catch (e) {
       setError('Error eliminando excepción');
     }
+  };
+
+  const inputMoneda = (valor: number) => formatearMoneda(valor);
+
+  const onChangeMoneda = (valor: string) => {
+    const limpio = soloNumeros(valor);
+    const num = Number(limpio) || 0;
+    setForm((prev) => ({ ...prev, tarifaDiaria: num }));
   };
 
   return (
@@ -115,7 +168,7 @@ export default function ExcepcionesRegionalesAdmin() {
                 <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                   <td className="px-3 py-2 font-medium">{e.departamento}</td>
                   <td className="px-3 py-2 text-center">{e.esNuevoDepartamento ? 'Sí' : 'No'}</td>
-                  <td className="px-3 py-2 text-right font-bold">${e.tarifaDiaria.toLocaleString('es-CO')}</td>
+                  <td className="px-3 py-2 text-right font-bold">{formatearMoneda(e.tarifaDiaria)}</td>
                   <td className="px-3 py-2">{e.decretoReferencia || '-'}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${e.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
@@ -155,12 +208,16 @@ export default function ExcepcionesRegionalesAdmin() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Departamento</label>
-                <input
-                  type="text"
+                <select
                   value={form.departamento}
                   onChange={(e) => setForm({ ...form, departamento: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                />
+                >
+                  <option value="">Seleccione un departamento</option>
+                  {departamentos.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -172,12 +229,17 @@ export default function ExcepcionesRegionalesAdmin() {
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Tarifa Diaria</label>
-                <input
-                  type="number"
-                  value={form.tarifaDiaria}
-                  onChange={(e) => setForm({ ...form, tarifaDiaria: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={inputMoneda(form.tarifaDiaria)}
+                    onChange={(e) => onChangeMoneda(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-right font-bold"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">{formatearMoneda(form.tarifaDiaria)}</p>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Decreto Referencia</label>

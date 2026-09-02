@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, AlertCircle } from 'lucide-react';
 import viaticosService from '../../services/api/viaticosService';
 import { TarifaInvestigador } from '../../types/parametrizacion';
+import { formatearMoneda, soloNumeros } from '../../utils/viaticosUtils';
 
 export default function TarifasInvestigadorAdmin() {
   const [tarifas, setTarifas] = useState<TarifaInvestigador[]>([]);
@@ -62,6 +63,14 @@ export default function TarifasInvestigadorAdmin() {
     }
   };
 
+  const inputMoneda = (valor: number) => formatearMoneda(valor);
+
+  const onChangeMoneda = (valor: string) => {
+    const limpio = soloNumeros(valor);
+    const num = Number(limpio) || 0;
+    setForm((prev) => ({ ...prev, tarifaDiaria: num }));
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -99,7 +108,7 @@ export default function TarifasInvestigadorAdmin() {
               {tarifas.map((t) => (
                 <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                   <td className="px-3 py-2 font-medium">{t.categoriaInvestigador}</td>
-                  <td className="px-3 py-2 text-right font-bold">${t.tarifaDiaria.toLocaleString('es-CO')}</td>
+                  <td className="px-3 py-2 text-right font-bold">{formatearMoneda(t.tarifaDiaria)}</td>
                   <td className="px-3 py-2 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => abrirEditar(t)} className="text-slate-500 hover:text-[#003DA5]">
@@ -136,18 +145,23 @@ export default function TarifasInvestigadorAdmin() {
                 <input
                   type="text"
                   value={form.categoriaInvestigador}
-                  onChange={(e) => setForm({ ...form, categoriaInvestigador: e.target.value })}
+                  onChange={(e) => setForm({ ...form, categoriaInvestigador: e.target.value.toUpperCase() })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
                 />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Tarifa Diaria</label>
-                <input
-                  type="number"
-                  value={form.tarifaDiaria}
-                  onChange={(e) => setForm({ ...form, tarifaDiaria: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={inputMoneda(form.tarifaDiaria)}
+                    onChange={(e) => onChangeMoneda(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-right font-bold"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">{formatearMoneda(form.tarifaDiaria)}</p>
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-5">

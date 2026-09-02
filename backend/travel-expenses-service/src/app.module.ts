@@ -16,6 +16,7 @@ import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-t
 import { EscalaViaticoEntity } from './entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from './entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from './entities/liquidation/tarifa-regional-excepcion.entity';
+import { LiquidationParamEntity } from './entities/liquidation/liquidation-param.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 import { LiquidationModule } from './modules/liquidation/liquidation.module';
@@ -42,6 +43,7 @@ import { LiquidationModule } from './modules/liquidation/liquidation.module';
         EscalaViaticoEntity,
         TarifaInvestigadorEntity,
         TarifaRegionalExcepcionEntity,
+        LiquidationParamEntity,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',

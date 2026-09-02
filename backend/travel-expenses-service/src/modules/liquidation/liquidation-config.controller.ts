@@ -94,6 +94,12 @@ export class LiquidationConfigController {
     return this.configService.obtenerExcepcionesRegionales();
   }
 
+  @Get('catalogo-departamentos')
+  @Permissions('travel_expenses:read')
+  obtenerCatalogoDepartamentos() {
+    return this.configService.obtenerCatalogoDepartamentos();
+  }
+
   @Post('excepciones-regionales')
   @Permissions('travel_expenses:manage_config')
   crearExcepcionRegional(@Body() dto: CreateTarifaRegionalExcepcionDto) {
