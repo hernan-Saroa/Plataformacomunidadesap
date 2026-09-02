@@ -91,6 +91,65 @@ Se admiten **varios aprobadores** porque es lo que evita que el flujo se trabe c
 único aprobador no está — la misma razón por la que el estándar los contempla. Basta con
 que apruebe uno.
 
+### El formulario tiene que ser simple
+
+Quien configura esto es el jefe de Contratación, no un administrador de sistemas. Si el
+formulario pide elegir entre `contratacion.actividad.approve` y `contratacion.modalidad.
+aprobar`, no lo va a usar: va a pedir que se lo configuremos nosotros, y volvemos al punto
+de partida.
+
+El panel de configuración de una actividad ya tiene dos bloques —«Qué se le pide al gestor»
+y «Formatos»—. La aprobación es un tercero, con la misma forma:
+
+```
+┌─ 3.5 · Definir modalidad de contratación ──────────────────┐
+│                                                             │
+│  Qué se le pide al gestor            [ ya existe ]         │
+│  Formatos del SIG                    [ ya existe ]         │
+│                                                             │
+│  ─────────────────────────────────────────────────────      │
+│  Aprobación                                                 │
+│                                                             │
+│  ○ No requiere aprobación                                   │
+│    El gestor la cierra cuando termina.                      │
+│                                                             │
+│  ● Requiere aprobación de:                                  │
+│                                                             │
+│      [+ Agregar quién aprueba]                              │
+│                                                             │
+│      Director de Contratación                    [quitar]   │
+│      Ana Lucía Osorio                            [quitar]   │
+│                                                             │
+│      Basta con que uno de ellos apruebe.                    │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Dos decisiones de forma que importan:
+
+**Un interruptor, no un formulario.** El estado por defecto es «no requiere» y se ve
+seleccionado. Marcar la otra opción despliega el selector; nada más aparece hasta entonces.
+
+**Al agregar, un solo buscador.** No se pregunta primero «¿rol o persona?». Se escribe y la
+lista muestra las dos cosas, separadas:
+
+```
+  Buscar:  dir|
+
+  ROLES
+    Director de Contratación
+    Directora Territorial
+
+  PERSONAS
+    Ana Lucía Osorio — Directora de Contratación
+```
+
+Quien configura piensa en «quiero que lo apruebe la Dirección», no en si eso es un rol o una
+persona. La distinción es nuestra, no suya.
+
+Y la frase **«Basta con que uno de ellos apruebe»** aparece sola en cuanto hay dos o más.
+Es la duda inmediata de cualquiera que agregue el segundo.
+
 ### Cómo queda la regla
 
 Se guarda en `hiring.reglas_actividad`, la tabla que ya declara qué exige cada actividad
@@ -140,6 +199,69 @@ El primer bloque sale de una consulta —roles con al menos un permiso del módu
 **un rol nuevo que el área cree y al que asigne permisos de contratación aparece solo**. El
 segundo existe para no dejar al jefe sin opción si el rol todavía no tiene permisos, pero
 avisa de que ese rol no podrá entrar al módulo.
+
+### Lo que aparece dentro de cada actividad
+
+Configurarlo es la parte pequeña. La grande es que cada una de las 63 actividades sepa
+comportarse cuando la regla está activa, y hoy ninguna lo hace: cada panel cierra su
+actividad a su manera.
+
+Para que esto no signifique tocar 35 paneles, el pie de la actividad se resuelve una vez y
+lo heredan todos. Tres estados y nada más:
+
+**1. Sin aprobación configurada** — como hoy:
+
+```
+  [ Registrar la actividad ]
+```
+
+**2. Con aprobación, antes de enviar:**
+
+```
+  [ Enviar a aprobación ]
+  Lo aprobará el Director de Contratación.
+```
+
+Se dice quién antes de pulsar. Si el gestor descubre a quién le llega *después* de enviarlo,
+ya no puede corregir el rumbo.
+
+**3. Enviada, esperando:**
+
+```
+  ⏳ En revisión · pendiente de aprobación
+     Enviada por ti hace 2 días · espera al Director de Contratación
+
+  [ Retirar de aprobación ]
+```
+
+El retiro existe porque el gestor se da cuenta de que se equivocó mientras espera, y sin él
+tendría que pedirle al aprobador que se lo devuelva para poder corregir.
+
+**4. Devuelta:**
+
+```
+  ⚠ Devuelta por Ana Lucía Osorio · hace 1 hora
+    «Falta el análisis del sector: el estudio de mercado
+     solo trae dos cotizaciones.»
+
+  [ Corregir y volver a enviar ]
+```
+
+La observación va arriba y completa, no truncada tras un «ver más». Es lo único que el
+gestor necesita leer en ese momento.
+
+**Y para el aprobador**, al abrir la actividad desde la alerta:
+
+```
+  ┌────────────────────────────────────────────────┐
+  │ Enviada por Juan Pérez · hace 2 días           │
+  │                                                 │
+  │ [ Aprobar ]   [ Devolver con observaciones ]   │
+  └────────────────────────────────────────────────┘
+```
+
+Ve lo mismo que el gestor —el formulario diligenciado y sus adjuntos— con la decisión
+arriba. Al pulsar «Devolver» se abre el campo de observaciones, que es obligatorio.
 
 ### Qué pasa en el riel
 
@@ -278,13 +400,29 @@ uniforme.
 | # | Qué | Alcance |
 | --- | --- | --- |
 | 1 | `EXIGE_APROBACION` en `TIPOS_REGLA` y en el CHECK de la tabla | migración pequeña |
-| 2 | Interruptor y selector en el panel de configuración de la actividad | front |
+| 2 | Endpoints de aprobar, devolver y retirar, genéricos por numeral | backend |
 | 3 | **Que el cierre de actividad consulte la regla** | el de más alcance |
-| 4 | Guard genérico: verifica rol/persona y que no sea quien ejecutó | backend |
-| 5 | La separación «quien ejecuta no aprueba» en las aprobaciones existentes | corrección transversal |
+| 4 | Guard: verifica rol/persona y que no sea quien ejecutó | backend |
+| 5 | Bloque de aprobación en el panel de configuración | front |
+| 6 | Pie de actividad con los cuatro estados, heredado por todos los paneles | front |
+| 7 | Las aprobaciones pendientes en la lista de Alertas | front + backend |
+| 8 | Avisos por la campana | backend |
+| 9 | Retirar la sección «Revisión» del menú | front, trivial |
+| 10 | La separación «quien ejecuta no aprueba» en las aprobaciones existentes | corrección transversal |
 
-El **3 es el crítico**: hoy ningún panel lee `reglas_actividad` al cerrar una actividad. Sin
-eso, lo que el jefe configure no tendría efecto.
+**El 3 es el crítico.** Hoy ningún panel lee `reglas_actividad` al cerrar una actividad, así
+que sin eso lo que el jefe configure no tendría ningún efecto.
+
+**El 6 parecía el de más riesgo y no lo es.** Son 63 actividades en 38 paneles, y la duda
+era si cada uno tendría su propio botón de cerrar —lo que habría convertido esto en 38
+modificaciones y 38 sitios donde equivocarse—.
+
+Comprobado: **31 de los 38 ya usan `PiezasPanel`**, el módulo compartido con `Boton`,
+`Aviso`, `Marco` y las demás piezas comunes. El pie de aprobación se añade ahí y lo heredan
+los 31. Quedan siete con estructura propia, que hay que mirar uno a uno.
+
+Es la misma razón por la que `PiezasPanel` se creó: «estaban duplicadas al final de cada
+panel; aquí se escriben una vez».
 
 ---
 
