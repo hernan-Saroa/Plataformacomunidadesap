@@ -65,6 +65,7 @@ import {
   DatosArchivoExpediente,
   DatosCierreFinanciero,
   AlertaVencimiento,
+  EstadisticasGestion,
   ExpedienteAuditoria,
   EstadoIncumplimiento,
   DatosIncumplimiento,
@@ -175,6 +176,26 @@ function conArchivo<T extends object>(datos: T, archivo: File): FormData {
   }
 
   return cuerpo;
+}
+
+/**
+ * Los filtros del reporte como cadena de consulta (EFDS-1189).
+ *
+ * Los omite cuando no hay nada que filtrar en vez de mandarlos vacíos: el
+ * backend trata `vigencia=` como «todas», pero una URL con parámetros vacíos se
+ * ve como si algo hubiera fallado, y esta misma cadena va en el enlace de
+ * descarga que el usuario tiene a la vista.
+ */
+function consultaEstadisticas(filtros: {
+  vigencia?: number | null;
+  modalidad?: string | null;
+}): string {
+  const partes = new URLSearchParams();
+  if (filtros.vigencia) partes.set('vigencia', String(filtros.vigencia));
+  if (filtros.modalidad) partes.set('modalidad', filtros.modalidad);
+
+  const consulta = partes.toString();
+  return consulta ? `?${consulta}` : '';
 }
 
 export const contratacionService = {
@@ -2164,6 +2185,20 @@ export const contratacionService = {
 
   /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
   alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),
+
+  /** Indicadores de gestión de la contratación (EFDS-1189). */
+  estadisticas: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
+    pedir<EstadisticasGestion>(`/estadisticas${consultaEstadisticas(filtros)}`),
+
+  /**
+   * El mismo reporte, descargable.
+   *
+   * Devuelve la URL en vez de descargar: la descarga la hace el navegador con
+   * un enlace, que es lo que le pone el nombre al archivo y muestra la barra de
+   * progreso. Traerlo con `fetch` obligaría a rearmar todo eso a mano.
+   */
+  urlEstadisticasCsv: (filtros: { vigencia?: number | null; modalidad?: string | null } = {}) =>
+    `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/estadisticas/csv${consultaEstadisticas(filtros)}`,
 
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };
