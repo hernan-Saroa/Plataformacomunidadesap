@@ -731,7 +731,14 @@ export class LegalService {
         return apiClient.put<any>(`${SERVICE_PREFIX}/pei/indicador/${id}`, data);
     }
 
-    async registrarAvanceIndicador(id: string, data: any): Promise<any> {
+    async registrarAvanceIndicador(id: string, data: any, evidenciaFile?: File): Promise<any> {
+        if (evidenciaFile) {
+            const formData = new FormData();
+            if (data.valor !== undefined) formData.append('valor', String(data.valor));
+            if (data.observaciones) formData.append('observaciones', data.observaciones);
+            formData.append('evidencia', evidenciaFile);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, formData);
+        }
         return apiClient.post<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, data);
     }
 
