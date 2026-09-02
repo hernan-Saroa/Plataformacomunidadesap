@@ -49,6 +49,7 @@ import { DisciplinaryBehaviorController } from './controllers/disciplinary-behav
 // Services
 import { NewsService } from './services/news.service';
 import { ProcessService } from './services/process.service';
+import { ProcessExportService } from './services/process-export.service';
 import { AutoService } from './services/auto.service';
 import { SequenceService } from './services/sequence.service';
 import { StorageService, getUploadRootDir } from './services/storage.service';
@@ -179,6 +180,7 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     AppService,
     NewsService,
     ProcessService,
+    ProcessExportService,
     AutoService,
     SequenceService,
     StorageService,
