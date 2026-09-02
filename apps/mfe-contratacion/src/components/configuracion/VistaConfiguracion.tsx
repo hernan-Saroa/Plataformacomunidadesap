@@ -8,15 +8,17 @@ import { Modal } from '../shared/Modal';
 
 import { DetalleActividad } from './DetalleActividad';
 import { MatrizGeneral } from './MatrizGeneral';
+import { MatrizRoles } from './MatrizRoles';
 import { TipologiasContrato } from './TipologiasContrato';
 import { PETICIONES, Peticion } from './peticiones';
 
 /**
  * Módulo de Configuración de Etapas.
  *
- * Una sola pantalla: la matriz. Pulsar una celda abre esa actividad en un
- * modal, se ajusta y se cierra — la tabla sigue debajo, con el sitio donde se
- * estaba mirando intacto.
+ * Tres pestañas sobre el mismo flujo: la matriz de actividades, las tipologías
+ * de contrato y la matriz de roles y permisos. En la primera, pulsar una celda
+ * abre esa actividad en un modal, se ajusta y se cierra — la tabla sigue
+ * debajo, con el sitio donde se estaba mirando intacto.
  *
  * Aquí se configura lo que cambia sin desplegar: si una actividad se recorre en
  * cada modalidad, y el texto que lee el gestor. Las condiciones que valida cada
@@ -33,8 +35,11 @@ export function VistaConfiguracion() {
   const [campos, setCampos] = useState<CampoConfigurable[]>([]);
   const [cargandoCampos, setCargandoCampos] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Matriz de actividades o tipologías de contrato: los dos son parámetros del flujo. */
-  const [pestana, setPestana] = useState<'matriz' | 'tipologias'>('matriz');
+  /**
+   * Las tres cosas que se parametrizan del flujo: qué actividades recorre cada
+   * modalidad, qué tipologías de contrato existen y qué puede hacer cada rol.
+   */
+  const [pestana, setPestana] = useState<'matriz' | 'tipologias' | 'roles'>('matriz');
 
   const actividad = useMemo(
     () => actividades.find((a) => a.numeral === seleccion) ?? null,
@@ -183,6 +188,7 @@ export function VistaConfiguracion() {
           [
             ['matriz', 'Matriz de actividades'],
             ['tipologias', 'Tipologías de contrato'],
+            ['roles', 'Roles y permisos'],
           ] as const
         ).map(([clave, etiqueta]) => (
           <button
@@ -200,11 +206,12 @@ export function VistaConfiguracion() {
         ))}
       </div>
 
-      {pestana === 'matriz' ? (
-        <MatrizGeneral onAbrir={abrirDetalle} />
-      ) : (
-        <TipologiasContrato />
-      )}
+      {pestana === 'matriz' && <MatrizGeneral onAbrir={abrirDetalle} />}
+      {pestana === 'tipologias' && <TipologiasContrato />}
+      {/* De solo lectura: los roles se administran desde la plataforma, y un
+          segundo sitio donde tocarlos dejaría dos verdades sin nada que las
+          mantuviera de acuerdo. Aquí se verifica la que rige. */}
+      {pestana === 'roles' && <MatrizRoles />}
 
       {/* La actividad se ajusta encima de la matriz, no en otra pantalla: al
           cerrar se vuelve a la tabla con la etapa desplegada y el sitio donde

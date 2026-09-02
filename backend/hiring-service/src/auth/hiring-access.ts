@@ -551,3 +551,56 @@ export function getHiringAccess(req: any): HiringAccess {
     puedeEditar: ROLES_ESCRITURA_ESTUDIO_PREVIO.some((r) => roles.includes(r)),
   };
 }
+
+// ------------------------------- los que faltaban del catálogo A4 --
+
+/**
+ * Los cuatro roles del formato de roles que ningún HU había necesitado
+ * (EFDS-1183).
+ *
+ * Los otros once se fueron declarando arriba a medida que una actividad los
+ * pedía. Estos no llegaron por una actividad sino por la matriz: el formato
+ * los lista, así que la matriz tiene que poder nombrarlos aunque hoy ningún
+ * endpoint los exija por sí solos.
+ */
+
+/**
+ * Estructurador Técnico: el enlace de contratación del área solicitante.
+ *
+ * La Hoja2 del formato lo describe como quien «estructura técnicamente los
+ * procesos» —estudio previo, anexo técnico, estudio de mercado y análisis del
+ * sector— y le da atributo de «Editor / Elabora estudios previos y pasa a
+ * aprobación del jefe de área».
+ */
+export const ROL_ESTRUCTURADOR_TECNICO = 'ESTRUCTURADOR_TECNICO';
+
+/**
+ * Apoyo a la Supervisión: los «administrativos y de apoyo» de la Hoja2.
+ *
+ * «Generamos informes, estadísticas, certificaciones de contratos, indicadores,
+ * seguimiento a la supervisión», con atributo «Consulta y reportes». Es el
+ * único rol del catálogo cuyo trabajo es enteramente de lectura.
+ */
+export const ROL_APOYO_SUPERVISION = 'APOYO_SUPERVISION';
+
+/**
+ * Ente u Organismo de Control: el único rol **externo** del catálogo.
+ *
+ * Ya se venía nombrando en el mapa de `permisos.ts` como cadena suelta, sin
+ * constante ni siembra. La consulta que le reconoce la Hoja2 se resuelve por
+ * `expediente.auditar` y no por el expediente de trabajo.
+ */
+export const ROL_ENTE_DE_CONTROL = 'ENTE_DE_CONTROL';
+
+/**
+ * Administrador del módulo: informes y configuración, nada más.
+ *
+ * Es el «Administrador» de la Hoja1, que en la rejilla solo tiene marcadas
+ * «Generar informes» y «Configurar». **No es `SUPER_ADMIN`**: ese es
+ * transversal a la plataforma y lo puede todo; este administra la
+ * parametrización de Contratación y no toca un solo proceso.
+ *
+ * El código lleva sufijo porque `auth.role` es de toda la plataforma y un
+ * `ADMINISTRADOR` a secas se leería como administrador de todo.
+ */
+export const ROL_ADMINISTRADOR_CONTRATACION = 'ADMINISTRADOR_CONTRATACION';
