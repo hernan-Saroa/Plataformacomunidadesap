@@ -7,14 +7,20 @@ Implementación del cálculo de autoliquidación de viáticos según **Decreto 3
 ## Estado de Pruebas Automatizadas
 
 ### Backend (NestJS)
-- **Tests unitarios**: 59/59 pasan
+- **Tests unitarios**: 91/91 pasan
 - **Cobertura**: Servicio de liquidación, controladores, entidades
 - **Comando**: `cd backend/travel-expenses-service && npx jest`
+- **Nuevas suites**:
+  - `liquidation-config.service.spec.ts` (16 tests) - CRUD configuraciones + parámetros
+  - `liquidation-config.controller.spec.ts` (16 tests) - Integración endpoints HTTP
+  - `liquidation.service.spec.ts` (59 tests) - Cálculo de liquidación
 
 ### Frontend (React + Vitest)
-- **Tests unitarios**: 35/37 pasan
-- **Tests fallidos**: 2 tests por timeout (problema preexistente de rendimiento, no funcional)
+- **Tests unitarios**: 41/41 pasan
+- **Tests fallidos**: 0
 - **Comando**: `cd apps/mfe-viaticos && npx vitest run`
+- **Nuevas suites**:
+  - `ParametrosLiquidacionAdmin.test.tsx` (4 tests) - Admin parámetros globales
 
 ## Configuración Previa
 
@@ -338,6 +344,100 @@ Usar valores que generen decimales:
 - `valorTotalViaticos` es entero
 - Usar `Math.round()` para redondeo
 
+## Casos de Prueba — Parametrización de Liquidación (Escenarios Gherkin)
+
+### Feature: Configuración de parámetros globales de liquidación
+
+**Como** administrador de viáticos  
+**Quiero** configurar parámetros globales (SMMLV, factores, TTL) y reglas por tipo  
+**Para** que los cálculos de viáticos se adapten a la normativa vigente
+
+---
+
+#### Scenario: Crear escala de viáticos
+```gherkin
+Dado que existe una escala de viáticos para el año 2026
+Cuando el administrador crea una nueva escala con:
+  | decretoVigente | anoVigencia | rangoMinimo | rangoMaximo | tarifaDiaria |
+  | Decreto 314    | 2026        | 4500000     | 5500000     | 650000       |
+Entonces el sistema guarda la escala correctamente
+Y devuelve HTTP 201 con la escala creada
+Y la escala queda activa por defecto
+```
+
+#### Scenario: Actualizar escala de viáticos
+```gherkin
+Dado que existe una escala activa para el año 2026
+Cuando el administrador actualiza la tarifa diaria a 700000
+Entonces el sistema persiste el cambio
+Y devuelve HTTP 200 con la escala actualizada
+Y el cache de escalas se invalida
+```
+
+#### Scenario: Eliminar escala (soft-delete)
+```gherkin
+Dado que existe una escala activa
+Cuando el administrador elimina la escala
+Entonces el sistema marca la escala como inactiva
+Y devuelve HTTP 200 con mensaje de éxito
+Y la escala no aparece en listados activos
+```
+
+#### Scenario: Crear tarifa de investigador
+```gherkin
+Dado que no existe tarifa para la categoría JUNIOR
+Cuando el administrador crea una tarifa:
+  | categoriaInvestigador | tarifaDiaria |
+  | JUNIOR               | 450000       |
+Entonces el sistema guarda la tarifa correctamente
+Y devuelve HTTP 201
+Y la tarifa queda activa
+```
+
+#### Scenario: Crear excepción regional
+```gherkin
+Dado que no existe excepción para Amazonas
+Cuando el administrador crea una excepción:
+  | departamento | esNuevoDepartamento | tarifaDiaria | decretoReferencia        |
+  | Amazonas     | true                | 380000       | Decreto 314 de 2026 Art. 5 |
+Entonces el sistema guarda la excepción correctamente
+Y devuelve HTTP 201
+Y la excepción queda activa
+```
+
+#### Scenario: Actualizar parámetros globales (transaccional)
+```gherkin
+Dado que existen parámetros globales configurados
+Cuando el administrador actualiza SMMLV a 1500000 y factor contratista a 0.75
+Entonces el sistema guarda ambos valores en una transacción
+Y devuelve HTTP 200 con los parámetros actualizados
+Y el cache de parámetros se invalida
+Y el nuevo SMMLV se refleja en el cálculo de viáticos
+```
+
+#### Scenario: Actualizar parámetros con fallo parcial
+```gherkin
+Dado que existe una falla en la base de datos
+Cuando el administrador intenta actualizar parámetros
+Entonces el sistema revierte todos los cambios
+Y devuelve HTTP 500
+Y no se persisten valores parciales
+```
+
+#### Scenario: Validar formato monetario en administración
+```gherkin
+Dado que el administrador abre el modal de escala
+Cuando ingresa valores monetarios con formato:
+  | campo           | valor ingresado | valor guardado |
+  | rangoMinimo     | $1.000.000      | 1000000        |
+  | tarifaDiaria    | $650.000        | 650000         |
+Entonces los inputs muestran el formato $X.XXX.XXX
+Y los valores numéricos se guardan correctamente
+Y la tabla muestra los valores formateados
+```
+
+---
+
 ## Casos de Prueba de Integración Frontend-Backend
 
 ### IF-01: Flujo completo de solicitud
@@ -367,14 +467,14 @@ Usar valores que generen decimales:
 ## Checklist de Aceptación
 
 ### Backend
-- [ ] Todos los endpoints responden correctamente
-- [ ] Cálculos matemáticos son exactos según Decreto 314 de 2026
-- [ ] Redondeo COP funciona correctamente
-- [ ] Validaciones de entrada funcionan
-- [ ] Caché TTL 5 minutos funciona
-- [ ] Excepción regional Art. 5 funciona
-- [ ] Swagger documenta todos los endpoints
-- [ ] Logs son claros para debugging
+- [x] Todos los endpoints responden correctamente
+- [x] Cálculos matemáticos son exactos según Decreto 314 de 2026
+- [x] Redondeo COP funciona correctamente
+- [x] Validaciones de entrada funcionan
+- [x] Caché TTL 5 minutos funciona
+- [x] Excepción regional Art. 5 funciona
+- [x] Swagger documenta todos los endpoints
+- [x] Logs son claros para debugging
 
 ### Frontend
 - [ ] Formulario se carga correctamente
