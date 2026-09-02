@@ -2,6 +2,9 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Put,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -11,18 +14,21 @@ import {
   Header,
   Query,
   Res,
+  BadRequestException,
 } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
+import { getUploadRootDir } from '../../common/storage.util';
 import { TravelExpensesService } from './travel-expenses.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { Permissions } from '../../common/permissions.decorator';
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
+import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { getClientIp } from '../../common/ip.util';
 
@@ -146,13 +152,23 @@ export class TravelExpensesController {
     return this.service.crearSolicitud(dto);
   }
 
+  @Put('requests/:id')
+  @Patch('requests/:id')
+  @Permissions('travel_expenses:create_request')
+  actualizarSolicitud(
+    @Param('id') id: string,
+    @Body() dto: UpdateSolicitudDto,
+  ) {
+    return this.service.actualizarSolicitud(id, dto);
+  }
+
   @Post('requests/:id/documentos')
   @Permissions('travel_expenses:create_request')
   @UseInterceptors(
     FileInterceptor('archivo', {
       storage: multer.diskStorage({
         destination: (req: any, _file: any, cb: any) => {
-          const dir = join(process.cwd(), 'uploads', req.params.id);
+          const dir = join(getUploadRootDir(), req.params.id);
           try {
             mkdirSync(dir, { recursive: true });
           } catch {}
@@ -163,6 +179,24 @@ export class TravelExpensesController {
           return cb(null, `${name}-${Date.now()}${extname(file.originalname)}`);
         },
       }),
+      fileFilter: (_req: any, file: any, cb: any) => {
+        const mime = String(file.mimetype || '').toLowerCase();
+        const nombre = String(file.originalname || '').toLowerCase();
+        const esPdf =
+          mime === 'application/pdf' ||
+          mime === 'pdf' ||
+          mime.endsWith('/pdf') ||
+          nombre.endsWith('.pdf');
+        if (!esPdf) {
+          return cb(
+            new BadRequestException(
+              `El documento "${file.originalname || ''}" debe estar en formato PDF. Solo se permiten archivos .pdf.`,
+            ),
+            false,
+          );
+        }
+        cb(null, true);
+      },
       limits: { fileSize: 50 * 1024 * 1024 },
     }),
   )
@@ -172,6 +206,15 @@ export class TravelExpensesController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.service.subirDocumento(id, { ...dto, file });
+  }
+
+  @Delete('requests/:id/documentos/:documentoId')
+  @Permissions('travel_expenses:create_request')
+  eliminarDocumento(
+    @Param('id') id: string,
+    @Param('documentoId') documentoId: string,
+  ) {
+    return this.service.eliminarDocumento(id, documentoId);
   }
 
   @Post('requests/:id/finalizar')
@@ -246,9 +289,10 @@ export class TravelExpensesController {
   @Permissions('travel_expenses:read')
   async exportarFormato023(
     @Param('id') id: string,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
-    const pdfBuffer = await this.service.exportarFormato023(id);
+    const pdfBuffer = await this.service.exportarFormato023(id, req);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="Formato-023-Solicitud-${id}.pdf"`,

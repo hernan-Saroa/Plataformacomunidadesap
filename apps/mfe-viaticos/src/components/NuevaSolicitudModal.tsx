@@ -1,14 +1,20 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  Download,
+  Eye,
+  FileText,
   Plane,
   Search,
   Send,
   ShieldCheck,
+  Trash2,
   User,
+  X,
 } from 'lucide-react';
 import {
   Comisionado,
@@ -66,6 +72,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   } | null>(null);
   const [departamentos, setDepartamentos] = useState<Geopolitica[]>([]);
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
+  // Departamento al que pertenecen las ciudades cargadas (evita recargarlas al
+  // navegar de vuelta o reanudar; garantiza que se carguen cuando hacen falta).
+  const [ciudadesDepto, setCiudadesDepto] = useState('');
   const [cargandoDepartamentos, setCargandoDepartamentos] = useState(false);
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
   const [usuarioActual, setUsuarioActual] = useState<{ userId: string; username: string } | null>(null);
@@ -78,6 +87,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [cargandoChecklist, setCargandoChecklist] = useState(false);
   const [subiendoDocs, setSubiendoDocs] = useState(false);
   const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
+  const [eliminandoDoc, setEliminandoDoc] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<{
+    url: string;
+    nombre: string;
+  } | null>(null);
   const [finalizando, setFinalizando] = useState(false);
   const refTokenCiudades = useRef(0);
 
@@ -183,6 +197,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       tipoComision: solicitud.tipoComision || 'TERRESTRE',
       esInternacional: Boolean(solicitud.esInternacional),
       documentos: (solicitud.documentosSoporte || []).map((d) => ({
+        id: d.id,
         tipoDocumento: d.tipoDocumento,
         nombreArchivoOriginal: d.nombreArchivoOriginal,
         nombreArchivoSeguro: d.nombreArchivoSeguro,
@@ -213,6 +228,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setAlertaAnticipacion(null);
       setDepartamentos([]);
       setCiudades([]);
+      setCiudadesDepto('');
       setUsuarioActual(null);
       setCargandoUsuario(false);
       setParametrizacion(null);
@@ -220,6 +236,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setSolicitudBorrador(null);
       setChecklist(null);
       setSubiendoDocs(false);
+      setEliminandoDoc(false);
+      setPreviewDoc(null);
       setFinalizando(false);
       void cargarDepartamentos();
       void cargarUsuarioActual();
@@ -266,11 +284,26 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const manejarCambioDepartamento = (nombre: string) => {
     actualizar('destinoDepartamento', nombre);
     actualizar('destinoCiudad', '');
+    // La carga de ciudades la centraliza el efecto sobre destinoDepartamento.
     setCiudades([]);
-    const nombreLimpio = nombre.trim();
-    if (!nombreLimpio) return;
-    const depto = departamentos.find((d) => d.nomDivGeopolitica.trim() === nombreLimpio);
+    setCiudadesDepto('');
+  };
+
+  // Carga las ciudades del departamento seleccionado cuando hace falta (al
+  // cambiar de departamento, al reanudar una solicitud o al volver atrás con el
+  // departamento ya definido). No recarga si ya están cargadas para ese depto.
+  useEffect(() => {
+    const nombreDepto = (form.destinoDepartamento || '').trim();
+    if (!nombreDepto) {
+      setCiudades([]);
+      setCiudadesDepto('');
+      return;
+    }
+    if (ciudadesDepto === nombreDepto) return;
+
+    const depto = departamentos.find((d) => d.nomDivGeopolitica.trim() === nombreDepto);
     if (!depto) return;
+
     const codigoDepto = Number(depto.codDepartamento ?? depto.codGeopolitica ?? depto.idGeopolitica);
     const token = ++refTokenCiudades.current;
     setCargandoCiudades(true);
@@ -279,12 +312,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       .then((data) => {
         if (token === refTokenCiudades.current) {
           setCiudades(data || []);
+          setCiudadesDepto(nombreDepto);
         }
       })
       .catch((e) => {
         if (token === refTokenCiudades.current) {
           console.error('Error cargando ciudades:', e);
           setCiudades([]);
+          setCiudadesDepto(nombreDepto);
         }
       })
       .finally(() => {
@@ -292,7 +327,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           setCargandoCiudades(false);
         }
       });
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.destinoDepartamento, departamentos, ciudadesDepto]);
 
   const consultarComisionado = async () => {
     const documento = form.documentoComisionado.trim();
@@ -349,6 +385,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       actualizar('diasComision', dias);
     }
   }, [form.fechaInicio, form.fechaFin]);
+
+  useEffect(() => {
+    if (!previewDoc) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [previewDoc]);
 
   const documentosObligatoriosActuales = (): string[] => {
     if (checklist?.obligatorios) return checklist.obligatorios.map((d) => d.codigo);
@@ -407,23 +452,51 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setEnviando(true);
     setErrorValidacion(null);
     try {
-      if (!solicitudBorrador) {
-        const payload = mapearARequestCreacion(
-          form,
-          comisionado,
-          usuarioActual?.userId || '',
-          true,
-          form.tipoComision || 'TERRESTRE',
+      const payload = mapearARequestCreacion(
+        form,
+        comisionado,
+        usuarioActual?.userId || '',
+        true,
+        form.tipoComision || 'TERRESTRE',
+      );
+      if (solicitudBorrador) {
+        // Ya existe un borrador: actualizar los campos editables (fechas,
+        // destino, montos, etc.) para no perder los cambios al volver atrás.
+        const actualizada = await viaticosService.actualizarSolicitud(
+          solicitudBorrador.id,
+          {
+            objetoComision: form.objetoComision,
+            destinoCiudad: form.destinoCiudad,
+            destinoDepartamento: form.destinoDepartamento,
+            fechaInicio: form.fechaInicio,
+            fechaFin: form.fechaFin,
+            rubroPresupuestal: form.rubroPresupuestal,
+            prioridad: form.prioridad,
+            requiereTiquetes: form.requiereTiquetes,
+            montoViaticos: form.montoViaticos,
+            montoGastosViaje: form.montoGastosViaje,
+            diasComision: form.diasComision,
+            tipoComision: form.esInternacional ? 'INTERNACIONAL' : (form.tipoComision || 'TERRESTRE'),
+            esInternacional: Boolean(form.esInternacional),
+          },
         );
+        setSolicitudBorrador({
+          ...actualizada,
+          comisionado: solicitudBorrador.comisionado,
+          documentosSoporte: (actualizada.documentosSoporte ||
+            solicitudBorrador.documentosSoporte ||
+            []) as DocumentoSoporte[],
+        });
+      } else {
         const creada = await viaticosService.crearSolicitudComision(payload);
-      setSolicitudBorrador({
-        ...creada,
-        documentosSoporte: (creada.documentosSoporte || []) as DocumentoSoporte[],
-      });
-    }
-    const tipoChecklist = form.esInternacional ? 'INTERNACIONAL' : comisionado.tipoComisionado;
-    await cargarChecklist(tipoChecklist);
-    setPaso(3);
+        setSolicitudBorrador({
+          ...creada,
+          documentosSoporte: (creada.documentosSoporte || []) as DocumentoSoporte[],
+        });
+      }
+      const tipoChecklist = form.esInternacional ? 'INTERNACIONAL' : comisionado.tipoComisionado;
+      await cargarChecklist(tipoChecklist);
+      setPaso(3);
     } catch (e) {
       console.error('Error guardando borrador:', e);
       setErrorValidacion('No fue posible guardar el borrador. Verifique e intente nuevamente.');
@@ -460,6 +533,47 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorDocumentos('No fue posible cargar el documento. Intente nuevamente.');
     } finally {
       setSubiendoDocs(false);
+    }
+  };
+
+  const abrirPrevisualizacion = (doc: DocumentoFormItem) => {
+    const url = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
+    if (!url) {
+      setErrorDocumentos('No hay una URL de acceso para este documento.');
+      return;
+    }
+    setPreviewDoc({
+      url,
+      nombre: doc.nombreArchivoOriginal || doc.tipoDocumento,
+    });
+  };
+
+  const eliminarDocumentoEspecifico = async (doc: DocumentoFormItem) => {
+    if (!solicitudBorrador) {
+      setErrorDocumentos('No hay una solicitud activa para gestionar documentos.');
+      return;
+    }
+    if (!doc.id) {
+      // Sin id persistido: solo se quita del estado local.
+      setForm((prev) => ({
+        ...prev,
+        documentos: (prev.documentos || []).filter((d) => d !== doc),
+      }));
+      return;
+    }
+    setEliminandoDoc(true);
+    setErrorDocumentos(null);
+    try {
+      await viaticosService.eliminarDocumento(solicitudBorrador.id, doc.id);
+      setForm((prev) => ({
+        ...prev,
+        documentos: (prev.documentos || []).filter((d) => d.id !== doc.id),
+      }));
+    } catch (e) {
+      console.error('Error eliminando documento:', e);
+      setErrorDocumentos('No fue posible eliminar el documento. Intente nuevamente.');
+    } finally {
+      setEliminandoDoc(false);
     }
   };
 
@@ -948,8 +1062,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const noPdf = cargados.some((d) => !esPdfMime(d.tipoMime || ''));
                     return (
                       <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
                             <p className="text-[10px] text-slate-400">{doc.codigo}</p>
                             {doc.descripcion && (
@@ -957,7 +1071,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             )}
                           </div>
                           {faltan ? (
-                            <label className="px-3 py-1.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors">
+                            <label className="px-3 py-1.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shrink-0">
                               <input
                                 type="file"
                                 accept="application/pdf"
@@ -970,18 +1084,41 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               Subir
                             </label>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <CheckCircle className="w-3 h-3" /> Cargado
-                              {noPdf && (
-                                <span className="text-red-600">(no PDF)</span>
-                              )}
-                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle className="w-3 h-3" /> Cargado
+                                {noPdf && (
+                                  <span className="text-red-600">(no PDF)</span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                title="Eliminar y volver a subir"
+                                aria-label="Eliminar documento"
+                                disabled={eliminandoDoc}
+                                onClick={() => cargados[0] && void eliminarDocumentoEspecifico(cargados[0])}
+                                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
                         </div>
                         {cargados.map((d) => (
-                          <p key={d.id} className="text-[10px] text-slate-500 mt-1 truncate">
-                            {d.nombreArchivoOriginal} · {d.tipoMime}
-                          </p>
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {d.nombreArchivoOriginal} · {d.tipoMime}
+                            </p>
+                            <button
+                              type="button"
+                              title="Previsualizar PDF"
+                              aria-label="Previsualizar documento"
+                              onClick={() => abrirPrevisualizacion(d)}
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         ))}
                       </div>
                     );
@@ -998,13 +1135,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const faltan = cargados.length === 0;
                     return (
                       <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
                             <p className="text-[10px] text-slate-400">{doc.codigo}</p>
                           </div>
                           {faltan ? (
-                            <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors">
+                            <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shrink-0">
                               <input
                                 type="file"
                                 accept="application/pdf"
@@ -1017,11 +1154,39 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               Subir
                             </label>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <CheckCircle className="w-3 h-3" /> Cargado
-                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle className="w-3 h-3" /> Cargado
+                              </span>
+                              <button
+                                type="button"
+                                title="Eliminar y volver a subir"
+                                aria-label="Eliminar documento"
+                                disabled={eliminandoDoc}
+                                onClick={() => cargados[0] && void eliminarDocumentoEspecifico(cargados[0])}
+                                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
                         </div>
+                        {cargados.map((d) => (
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {d.nombreArchivoOriginal} · {d.tipoMime}
+                            </p>
+                            <button
+                              type="button"
+                              title="Previsualizar PDF"
+                              aria-label="Previsualizar documento"
+                              onClick={() => abrirPrevisualizacion(d)}
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     );
                   })}
@@ -1256,6 +1421,53 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           </div>
         </div>
       )}
+
+      {previewDoc &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[99999] p-3 sm:p-6">
+            <div className="bg-white rounded-2xl w-full max-w-5xl h-[95vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-slate-100 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="p-2 bg-red-50 text-red-600 rounded-lg shrink-0">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">{previewDoc.nombre}</p>
+                    <p className="text-xs text-slate-400">Previsualización de documento PDF</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={previewDoc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 border border-slate-300 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1 hover:bg-slate-50"
+                  >
+                    <Download className="w-4 h-4" /> Abrir
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(null)}
+                    aria-label="Cerrar previsualización"
+                    className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 bg-slate-100 overflow-hidden">
+                <iframe
+                  src={previewDoc.url}
+                  title={previewDoc.nombre}
+                  className="w-full border-0 bg-white"
+                  style={{ flex: '1 1 0', minHeight: 0 }}
+                  tabIndex={0}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

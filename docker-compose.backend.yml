@@ -277,6 +277,9 @@ services:
       PORT: 3010
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
       REDIS_URL: redis://redis:6379
+      TRAVEL_EXPENSES_STORAGE_PATH: /app/uploads
+    volumes:
+      - ./backend/travel-expenses-service/uploads:/app/uploads
     ports:
       - "3010:3010"
 

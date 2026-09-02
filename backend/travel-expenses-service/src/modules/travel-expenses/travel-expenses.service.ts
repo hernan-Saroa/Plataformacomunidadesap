@@ -6,14 +6,18 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { existsSync, unlinkSync } from 'fs';
+import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
 import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
+import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
 import { sanitizeObjetoComision } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
+import { getUploadRootDir } from '../../common/storage.util';
 import { ConfigService } from '../config/config.service';
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 
@@ -212,14 +216,16 @@ export class TravelExpensesService {
       );
     }
 
-    const config =
-      await this.configService.obtenerConfiguracionPorTipo(comisionado.tipoComisionado);
+    const config = await this.configService.obtenerConfiguracionPorTipo(
+      comisionado.tipoComisionado,
+    );
     const camposOcultos = new Set(config?.camposOcultos ?? []);
     const camposOpcionales = new Set(config?.camposOpcionales ?? []);
 
     const objetoSanitizado = sanitizeObjetoComision(dto.objetoComision ?? '');
     const objetoEsObligatorio =
-      !camposOcultos.has('objetoComision') && !camposOpcionales.has('objetoComision');
+      !camposOcultos.has('objetoComision') &&
+      !camposOpcionales.has('objetoComision');
     if (objetoEsObligatorio && objetoSanitizado.length === 0) {
       throw new BadRequestException(
         'El objeto de la comisión debe contener al menos un carácter válido.',
@@ -274,7 +280,10 @@ export class TravelExpensesService {
       const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
       radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
 
-      const diasHabilesAnticipacion = contarDiasHabilesEntre(ahora, fechaInicio);
+      const diasHabilesAnticipacion = contarDiasHabilesEntre(
+        ahora,
+        fechaInicio,
+      );
       extemporanea = diasHabilesAnticipacion < 14;
       estadoSolicitud = extemporanea
         ? EstadoSolicitud.EXTEMPORANEA
@@ -317,13 +326,15 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
       diasComision: dto.diasComision ?? 1,
-       estadoSolicitud,
-       radicadoFueraJornada,
-       extemporanea,
-       esInternacional: dto.esInternacional ?? false,
-       tipoComision: dto.esInternacional ? 'INTERNACIONAL' : (dto.tipoComision ?? 'TERRESTRE'),
-       creadoPorUsuarioId: dto.creadoPorUsuarioId,
-     });
+      estadoSolicitud,
+      radicadoFueraJornada,
+      extemporanea,
+      esInternacional: dto.esInternacional ?? false,
+      tipoComision: dto.esInternacional
+        ? 'INTERNACIONAL'
+        : (dto.tipoComision ?? 'TERRESTRE'),
+      creadoPorUsuarioId: dto.creadoPorUsuarioId,
+    });
 
     const saved = await this.solicitudRepo.save(solicitud);
 
@@ -350,6 +361,84 @@ export class TravelExpensesService {
     }
 
     return response;
+  }
+
+  /**
+   * Actualiza los campos editables de una solicitud en estado PENDIENTE
+   * (borrador). Permite corregir fechas, destino, montos, etc. y persistir los
+   * cambios antes de radicar la solicitud.
+   */
+  async actualizarSolicitud(
+    solicitudId: string,
+    dto: UpdateSolicitudDto,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    if (solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE) {
+      throw new BadRequestException(
+        `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede editarse.`,
+      );
+    }
+
+    const fechaInicio = dto.fechaInicio
+      ? new Date(dto.fechaInicio)
+      : solicitud.fechaInicio;
+    const fechaFin = dto.fechaFin ? new Date(dto.fechaFin) : solicitud.fechaFin;
+    if (fechaFin < fechaInicio) {
+      throw new BadRequestException(
+        'La fecha fin no puede ser anterior a la fecha inicio.',
+      );
+    }
+
+    if (dto.objetoComision !== undefined) {
+      solicitud.objetoComision = sanitizeObjetoComision(
+        dto.objetoComision ?? '',
+      );
+    }
+    if (dto.destinoCiudad !== undefined) {
+      solicitud.destinoCiudad = dto.destinoCiudad ?? '';
+    }
+    if (dto.destinoDepartamento !== undefined) {
+      solicitud.destinoDepartamento = dto.destinoDepartamento ?? '';
+    }
+    if (dto.fechaInicio !== undefined) {
+      solicitud.fechaInicio = new Date(dto.fechaInicio);
+    }
+    if (dto.fechaFin !== undefined) {
+      solicitud.fechaFin = new Date(dto.fechaFin);
+    }
+    if (dto.rubroPresupuestal !== undefined) {
+      solicitud.rubroPresupuestal = dto.rubroPresupuestal ?? '';
+    }
+    if (dto.prioridad !== undefined) {
+      solicitud.prioridad = dto.prioridad ?? 'MEDIA';
+    }
+    if (dto.requiereTiquetes !== undefined) {
+      solicitud.requiereTiquetes = dto.requiereTiquetes;
+    }
+    if (dto.montoViaticos !== undefined) {
+      solicitud.montoViaticos = dto.montoViaticos;
+    }
+    if (dto.montoGastosViaje !== undefined) {
+      solicitud.montoGastosViaje = dto.montoGastosViaje;
+    }
+    if (dto.diasComision !== undefined) {
+      solicitud.diasComision = dto.diasComision;
+    }
+    if (dto.tipoComision !== undefined) {
+      solicitud.tipoComision = dto.tipoComision;
+    }
+    if (dto.esInternacional !== undefined) {
+      solicitud.esInternacional = dto.esInternacional;
+    }
+
+    return this.solicitudRepo.save(solicitud);
   }
 
   async subirDocumento(
@@ -397,11 +486,57 @@ export class TravelExpensesService {
     return this.documentoRepo.save(entity);
   }
 
-  async obtenerChecklistDocumentos(
-    tipoComisionado: string,
-  ): Promise<{
-     obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null }>;
-     opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null }>;
+  /**
+   * Elimina un documento de soporte: primero borra el registro de la BD y luego
+   * elimina el archivo físico del storage (uploads/{solicitudId}/{nombreArchivoSeguro}).
+   * Esto permite al usuario volver a cargar el documento (re-upload).
+   */
+  async eliminarDocumento(
+    solicitudId: string,
+    documentoId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const documento = await this.documentoRepo.findOne({
+      where: { id: documentoId, solicitudId },
+    });
+
+    if (!documento) {
+      throw new NotFoundException('Documento de soporte no encontrado.');
+    }
+
+    await this.documentoRepo.delete(documentoId);
+
+    const nombreArchivo = documento.nombreArchivoSeguro;
+    if (nombreArchivo) {
+      const rutaArchivo = join(getUploadRootDir(), solicitudId, nombreArchivo);
+      try {
+        if (existsSync(rutaArchivo)) {
+          unlinkSync(rutaArchivo);
+        }
+      } catch (error) {
+        console.warn(
+          `[travel-expenses] No se pudo eliminar el archivo físico ${rutaArchivo}:`,
+          error,
+        );
+      }
+    }
+
+    return {
+      success: true,
+      message: `Documento ${documento.tipoDocumento} eliminado correctamente.`,
+    };
+  }
+
+  async obtenerChecklistDocumentos(tipoComisionado: string): Promise<{
+    obligatorios: Array<{
+      codigo: string;
+      nombre: string;
+      descripcion: string | null;
+    }>;
+    opcionales: Array<{
+      codigo: string;
+      nombre: string;
+      descripcion: string | null;
+    }>;
   }> {
     const config =
       await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
@@ -413,13 +548,21 @@ export class TravelExpensesService {
       .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
       .map((d) => d.tipoDocumentoSoporte)
       .filter((d): d is NonNullable<typeof d> => Boolean(d))
-      .map((d) => ({ codigo: d.codigo, nombre: d.nombre, descripcion: d.descripcion }));
+      .map((d) => ({
+        codigo: d.codigo,
+        nombre: d.nombre,
+        descripcion: d.descripcion,
+      }));
 
     const opcionales = config.documentos
       .filter((d) => d.tipoRequisito === 'OPCIONAL')
       .map((d) => d.tipoDocumentoSoporte)
       .filter((d): d is NonNullable<typeof d> => Boolean(d))
-      .map((d) => ({ codigo: d.codigo, nombre: d.nombre, descripcion: d.descripcion }));
+      .map((d) => ({
+        codigo: d.codigo,
+        nombre: d.nombre,
+        descripcion: d.descripcion,
+      }));
 
     return { obligatorios, opcionales };
   }
@@ -534,9 +677,7 @@ export class TravelExpensesService {
     documentos: DocumentoSoporteEntity[],
   ): Promise<{ faltantes: string[]; noPdf: string[] }> {
     const config =
-      await this.configService.obtenerConfiguracionPorTipo(
-        tipoComisionado,
-      );
+      await this.configService.obtenerConfiguracionPorTipo(tipoComisionado);
     if (!config || !config.documentos) {
       return { faltantes: [], noPdf: [] };
     }
@@ -573,9 +714,7 @@ export class TravelExpensesService {
     if (!tipoMime) return false;
     const mime = tipoMime.toLowerCase();
     return (
-      mime === 'application/pdf' ||
-      mime === 'pdf' ||
-      mime.endsWith('/pdf')
+      mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf')
     );
   }
 
@@ -657,7 +796,7 @@ export class TravelExpensesService {
     return { camposFaltantes };
   }
 
-  async exportarFormato023(solicitudId: string): Promise<Buffer> {
+  async exportarFormato023(solicitudId: string, req?: any): Promise<Buffer> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
       relations: ['comisionado', 'documentosSoporte'],
@@ -681,23 +820,38 @@ export class TravelExpensesService {
       const drawHeader = () => {
         doc.fontSize(10).font('Helvetica-Bold');
         doc.fillColor('#003DA5');
-        doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', { align: 'center' });
+        doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', {
+          align: 'center',
+        });
         doc.fontSize(9).font('Helvetica');
         doc.fillColor('#333333');
-        doc.text('Sede Nacional - Bogotá - Calle 44 No. 53-37 CAN', { align: 'center' });
-        doc.text('PBX: +57 (1) 220 2790 · www.esap.edu.co', { align: 'center' });
+        doc.text('Sede Nacional - Bogotá - Calle 44 No. 53-37 CAN', {
+          align: 'center',
+        });
+        doc.text('PBX: +57 (1) 220 2790 · www.esap.edu.co', {
+          align: 'center',
+        });
         doc.moveDown(0.5);
 
-        doc.strokeColor('#003DA5').lineWidth(2).moveTo(50, doc.y).lineTo(562, doc.y).stroke();
+        doc
+          .strokeColor('#003DA5')
+          .lineWidth(2)
+          .moveTo(50, doc.y)
+          .lineTo(562, doc.y)
+          .stroke();
         doc.moveDown(1);
       };
 
-      const       drawTitle = () => {
+      const drawTitle = () => {
         doc.fillColor('#003DA5').fontSize(14).font('Helvetica-Bold');
-        doc.text('FORMATO 023 — SOLICITUD DE COMISIÓN DE VIÁTICOS', { align: 'center' });
+        doc.text('FORMATO 023 — SOLICITUD DE COMISIÓN DE VIÁTICOS', {
+          align: 'center',
+        });
         doc.fontSize(10).font('Helvetica');
         doc.fillColor('#666666');
-        doc.text('Código: EM-FO-023 · Versión: 1 · Fecha: 01/Ene/2026', { align: 'center' });
+        doc.text('Código: EM-FO-023 · Versión: 1 · Fecha: 01/Ene/2026', {
+          align: 'center',
+        });
         doc.moveDown(1);
       };
 
@@ -705,7 +859,12 @@ export class TravelExpensesService {
         doc.moveDown(0.5);
         doc.fillColor('#003DA5').fontSize(11).font('Helvetica-Bold');
         doc.text(title);
-        doc.strokeColor('#CCCCCC').lineWidth(0.5).moveTo(50, doc.y).lineTo(562, doc.y).stroke();
+        doc
+          .strokeColor('#CCCCCC')
+          .lineWidth(0.5)
+          .moveTo(50, doc.y)
+          .lineTo(562, doc.y)
+          .stroke();
         doc.moveDown(0.5);
       };
 
@@ -750,9 +909,13 @@ export class TravelExpensesService {
         comisionado?.segundoNombre,
         comisionado?.primerApellido,
         comisionado?.segundoApellido,
-      ].filter(Boolean).join(' ');
+      ]
+        .filter(Boolean)
+        .join(' ');
 
-      const tipoTransporte = solicitud.requiereTiquetes ? 'Aéreo / Terrestre' : 'Terrestre';
+      const tipoTransporte = solicitud.requiereTiquetes
+        ? 'Aéreo / Terrestre'
+        : 'Terrestre';
       const prioridad = solicitud.prioridad || 'MEDIA';
       const estado = solicitud.estadoSolicitud || 'RADICADA';
 
@@ -765,7 +928,10 @@ export class TravelExpensesService {
       drawField('Estado de la Solicitud', estado);
       drawField('Prioridad', prioridad);
       drawField('Extemporánea', solicitud.extemporanea ? 'SÍ' : 'NO');
-      drawField('Radicado Fuera de Jornada', solicitud.radicadoFueraJornada ? 'SÍ' : 'NO');
+      drawField(
+        'Radicado Fuera de Jornada',
+        solicitud.radicadoFueraJornada ? 'SÍ' : 'NO',
+      );
       doc.moveDown(0.3);
 
       drawSectionTitle('2. DATOS DEL COMISIONADO');
@@ -775,7 +941,10 @@ export class TravelExpensesService {
       drawField('Correo Electrónico', comisionado?.email || 'N/A');
       drawField('Teléfono de Contacto', comisionado?.telefonoContacto || 'N/A');
       drawField('Origen de Datos', comisionado?.origenDatos || 'N/A');
-      drawField('Autorización Hábeas Data', comisionado?.autorizacionHabeasData ? 'SÍ' : 'NO');
+      drawField(
+        'Autorización Hábeas Data',
+        comisionado?.autorizacionHabeasData ? 'SÍ' : 'NO',
+      );
       doc.moveDown(0.3);
 
       drawSectionTitle('3. DATOS DE LA COMISIÓN');
@@ -794,18 +963,35 @@ export class TravelExpensesService {
 
       drawSectionTitle('5. INFORMACIÓN PRESUPUESTAL');
       drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
-      drawField('Monto Viáticos', formatCurrency(Number(solicitud.montoViaticos)));
-      drawField('Monto Gastos de Viaje', formatCurrency(Number(solicitud.montoGastosViaje)));
-      drawField('Monto Total', formatCurrency(Number(solicitud.montoViaticos) + Number(solicitud.montoGastosViaje)));
+      drawField(
+        'Monto Viáticos',
+        formatCurrency(Number(solicitud.montoViaticos)),
+      );
+      drawField(
+        'Monto Gastos de Viaje',
+        formatCurrency(Number(solicitud.montoGastosViaje)),
+      );
+      drawField(
+        'Monto Total',
+        formatCurrency(
+          Number(solicitud.montoViaticos) + Number(solicitud.montoGastosViaje),
+        ),
+      );
       doc.moveDown(0.3);
 
       drawSectionTitle('6. DOCUMENTOS DE SOPORTE');
-      if (solicitud.documentosSoporte && solicitud.documentosSoporte.length > 0) {
+      if (
+        solicitud.documentosSoporte &&
+        solicitud.documentosSoporte.length > 0
+      ) {
         solicitud.documentosSoporte.forEach((documento, index) => {
-          doc.font('Helvetica-Bold').fillColor('#333333');
-          doc.text(`  ${index + 1}. ${documento.tipoDocumento}`);
-          doc.font('Helvetica').fillColor('#666666');
-          doc.text(`     Archivo: ${documento.nombreArchivoOriginal || 'N/A'}`);
+          const fileUrl = documento.urlRepositorio?.startsWith('http')
+            ? documento.urlRepositorio
+            : `${req?.protocol || 'http'}://${req?.get('host') || 'localhost:3010'}${documento.urlRepositorio}`;
+          const encodedUrl = encodeURI(fileUrl);
+          const displayText = `  ${index + 1}. ${documento.tipoDocumento} — ${documento.nombreArchivoOriginal || 'N/A'} (Abrir)`;
+          doc.font('Helvetica-Bold').fillColor('#003DA5');
+          doc.text(displayText, { link: encodedUrl });
         });
       } else {
         doc.font('Helvetica').fillColor('#666666');
@@ -843,7 +1029,10 @@ export class TravelExpensesService {
         `Documento generado automáticamente el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}`,
         { align: 'center' },
       );
-      doc.text('Sistema Integrado de Gestión ESAP — Módulo de Viáticos y Comisiones', { align: 'center' });
+      doc.text(
+        'Sistema Integrado de Gestión ESAP — Módulo de Viáticos y Comisiones',
+        { align: 'center' },
+      );
 
       doc.end();
     });

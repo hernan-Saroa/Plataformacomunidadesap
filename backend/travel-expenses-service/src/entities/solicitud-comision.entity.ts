@@ -88,14 +88,14 @@ export class SolicitudComisionEntity {
   @Column({ name: 'dias_comision', type: 'int', default: 1 })
   diasComision: number;
 
-   @Column({
-     name: 'estado_solicitud',
-     type: 'varchar',
-     length: 50,
-     enum: ESTADOS_SOLICITUD,
-     default: EstadoSolicitud.PENDIENTE,
-   })
-   estadoSolicitud: EstadoSolicitud;
+  @Column({
+    name: 'estado_solicitud',
+    type: 'varchar',
+    length: 50,
+    enum: ESTADOS_SOLICITUD,
+    default: EstadoSolicitud.PENDIENTE,
+  })
+  estadoSolicitud: EstadoSolicitud;
 
   @Column({ name: 'radicado_fuera_jornada', type: 'boolean', default: false })
   radicadoFueraJornada: boolean;
@@ -103,17 +103,22 @@ export class SolicitudComisionEntity {
   @Column({ name: 'extemporanea', type: 'boolean', default: false })
   extemporanea: boolean;
 
-    @Column({ name: 'tipo_comision', type: 'varchar', length: 50, default: 'TERRESTRE' })
-    tipoComision: string;
+  @Column({
+    name: 'tipo_comision',
+    type: 'varchar',
+    length: 50,
+    default: 'TERRESTRE',
+  })
+  tipoComision: string;
 
-    @Column({ name: 'es_internacional', type: 'boolean', default: false })
-    esInternacional: boolean;
+  @Column({ name: 'es_internacional', type: 'boolean', default: false })
+  esInternacional: boolean;
 
-   @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
-   creadoPorUsuarioId: string;
+  @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
+  creadoPorUsuarioId: string;
 
-   @CreateDateColumn({ name: 'creado_en' })
-   creadoEn: Date;
+  @CreateDateColumn({ name: 'creado_en' })
+  creadoEn: Date;
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;

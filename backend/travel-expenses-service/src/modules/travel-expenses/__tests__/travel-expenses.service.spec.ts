@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { TravelExpensesService } from '../travel-expenses.service';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -47,7 +51,9 @@ describe('TravelExpensesService', () => {
       dataSource = { transaction: jest.fn(), createQueryBuilder: jest.fn() },
       configService = {
         obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue(null),
-        obtenerConfiguracionPorCodigoFormulario: jest.fn().mockResolvedValue(null),
+        obtenerConfiguracionPorCodigoFormulario: jest
+          .fn()
+          .mockResolvedValue(null),
       },
     } = overrides;
 
@@ -151,7 +157,9 @@ describe('TravelExpensesService', () => {
       };
 
       const solicitudRepo = {
-        createQueryBuilder: jest.fn().mockReturnValue(mockSolicitudQb([entidad])),
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValue(mockSolicitudQb([entidad])),
       };
 
       const module = await createMockModule({ solicitudRepo });
@@ -193,7 +201,9 @@ describe('TravelExpensesService', () => {
       };
 
       const solicitudRepo = {
-        createQueryBuilder: jest.fn().mockReturnValue(mockSolicitudQb([entidad])),
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValue(mockSolicitudQb([entidad])),
       };
 
       const module = await createMockModule({ solicitudRepo });
@@ -231,7 +241,9 @@ describe('TravelExpensesService', () => {
       };
 
       const solicitudRepo = {
-        createQueryBuilder: jest.fn().mockReturnValue(mockSolicitudQb([entidad])),
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValue(mockSolicitudQb([entidad])),
       };
 
       const module = await createMockModule({ solicitudRepo });
@@ -391,7 +403,9 @@ describe('TravelExpensesService', () => {
           andWhere: jest.fn().mockReturnThis(),
           getOne: jest.fn().mockResolvedValue(null),
         }),
-        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-nueva' })),
+        create: jest
+          .fn()
+          .mockImplementation((ent) => ({ ...ent, id: 'sol-nueva' })),
         save: jest.fn().mockImplementation(async (ent) => ent),
       };
 
@@ -417,10 +431,17 @@ describe('TravelExpensesService', () => {
           camposOpcionales: [],
           camposOcultos: ['objetoComision'],
         }),
-        obtenerConfiguracionPorCodigoFormulario: jest.fn().mockResolvedValue(null),
+        obtenerConfiguracionPorCodigoFormulario: jest
+          .fn()
+          .mockResolvedValue(null),
       };
 
-      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource, configService });
+      const module = await createMockModule({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+        configService,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const result = await svc.crearSolicitud({
@@ -444,14 +465,19 @@ describe('TravelExpensesService', () => {
     it('debe permitir objetoComision vacío cuando el campo está como opcional por configuración', async () => {
       const comisionado = { ...mockComisionado, autorizacionHabeasData: true };
 
-      const comisionadoRepo = { findOne: jest.fn().mockResolvedValue(comisionado), save: jest.fn() };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
       const solicitudRepo = {
         createQueryBuilder: jest.fn().mockReturnValue({
           where: jest.fn().mockReturnThis(),
           andWhere: jest.fn().mockReturnThis(),
           getOne: jest.fn().mockResolvedValue(null),
         }),
-        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-opcional' })),
+        create: jest
+          .fn()
+          .mockImplementation((ent) => ({ ...ent, id: 'sol-opcional' })),
         save: jest.fn().mockImplementation(async (ent) => ent),
       };
       const dataSource = {
@@ -474,10 +500,17 @@ describe('TravelExpensesService', () => {
           camposOpcionales: ['objetoComision'],
           camposOcultos: [],
         }),
-        obtenerConfiguracionPorCodigoFormulario: jest.fn().mockResolvedValue(null),
+        obtenerConfiguracionPorCodigoFormulario: jest
+          .fn()
+          .mockResolvedValue(null),
       };
 
-      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource, configService });
+      const module = await createMockModule({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+        configService,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const result = await svc.crearSolicitud({
@@ -548,7 +581,9 @@ describe('TravelExpensesService', () => {
         requiereTiquetes: false,
         creadoPorUsuarioId: 'user-001',
       });
-      await expect(respuesta).rejects.toThrow(/se cruzan con la solicitud sol-existente/);
+      await expect(respuesta).rejects.toThrow(
+        /se cruzan con la solicitud sol-existente/,
+      );
     });
 
     it('debe crear solicitud exitosamente con consecutivo único', async () => {
@@ -857,6 +892,88 @@ describe('TravelExpensesService', () => {
     });
   });
 
+  describe('actualizarSolicitud', () => {
+    const baseSolicitud = {
+      id: 'sol-001',
+      comisionadoId: 'com-001',
+      destinoCiudad: 'Bogotá',
+      destinoDepartamento: 'Cundinamarca',
+      objetoComision: 'Comision de servicios',
+      prioridad: 'MEDIA',
+      rubroPresupuestal: 'Rubro 01',
+      requiereTiquetes: false,
+      montoViaticos: 560000,
+      montoGastosViaje: 120000,
+      diasComision: 5,
+      fechaInicio: new Date('2026-10-01T00:00:00'),
+      fechaFin: new Date('2026-10-05T00:00:00'),
+      estadoSolicitud: 'PENDIENTE',
+    };
+
+    it('debe actualizar los campos editables cuando la solicitud está en PENDIENTE', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({ ...baseSolicitud }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.actualizarSolicitud('sol-001', {
+        prioridad: 'ALTA',
+        fechaInicio: '2026-10-10',
+        fechaFin: '2026-10-12',
+        destinoCiudad: 'Medellín',
+        montoViaticos: 700000,
+      });
+
+      expect(result.prioridad).toBe('ALTA');
+      expect(result.destinoCiudad).toBe('Medellín');
+      expect(result.montoViaticos).toBe(700000);
+      expect(result.fechaInicio).toEqual(new Date('2026-10-10'));
+      expect(result.fechaFin).toEqual(new Date('2026-10-12'));
+      expect(solicitudRepo.save).toHaveBeenCalled();
+    });
+
+    it('debe lanzar 404 si la solicitud no existe', async () => {
+      const solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) };
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.actualizarSolicitud('no-existe', { prioridad: 'ALTA' }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('debe lanzar 400 si la solicitud no está en estado PENDIENTE', async () => {
+      const solicitudRepo = {
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ ...baseSolicitud, estadoSolicitud: 'RADICADA' }),
+      };
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.actualizarSolicitud('sol-001', { prioridad: 'ALTA' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe lanzar 400 si la fecha fin es anterior a la fecha inicio', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({ ...baseSolicitud }),
+      };
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(
+        svc.actualizarSolicitud('sol-001', {
+          fechaInicio: '2026-10-10',
+          fechaFin: '2026-10-05',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('finalizarSolicitud', () => {
     const comisionado = { ...mockComisionado, autorizacionHabeasData: true };
 
@@ -874,49 +991,93 @@ describe('TravelExpensesService', () => {
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await expect(svc.finalizarSolicitud('no-existe')).rejects.toThrow(NotFoundException);
+      await expect(svc.finalizarSolicitud('no-existe')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('debe lanzar 400 si la solicitud no está en estado PENDIENTE', async () => {
       const solicitudRepo = {
-        findOne: jest.fn().mockResolvedValue({ ...baseSolicitud, estadoSolicitud: 'RADICADA' }),
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ ...baseSolicitud, estadoSolicitud: 'RADICADA' }),
       };
       const module = await createMockModule({ solicitudRepo });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await expect(svc.finalizarSolicitud('sol-001')).rejects.toThrow(BadRequestException);
+      await expect(svc.finalizarSolicitud('sol-001')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe lanzar 400 si faltan soportes obligatorios', async () => {
-      const solicitudRepo = { findOne: jest.fn().mockResolvedValue(baseSolicitud) };
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(baseSolicitud),
+      };
       const documentoRepo = { find: jest.fn().mockResolvedValue([]) };
       const configService = {
         obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue({
-          documentos: [{ tipoRequisito: 'OBLIGATORIO', tipoDocumentoSoporte: { codigo: 'CDP', nombre: 'CDP', descripcion: null } }],
+          documentos: [
+            {
+              tipoRequisito: 'OBLIGATORIO',
+              tipoDocumentoSoporte: {
+                codigo: 'CDP',
+                nombre: 'CDP',
+                descripcion: null,
+              },
+            },
+          ],
         }),
       };
-      const module = await createMockModule({ solicitudRepo, documentoRepo, configService });
+      const module = await createMockModule({
+        solicitudRepo,
+        documentoRepo,
+        configService,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await expect(svc.finalizarSolicitud('sol-001')).rejects.toThrow(BadRequestException);
+      await expect(svc.finalizarSolicitud('sol-001')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe lanzar 400 si un soporte obligatorio no es PDF', async () => {
-      const solicitudRepo = { findOne: jest.fn().mockResolvedValue(baseSolicitud) };
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(baseSolicitud),
+      };
       const documentoRepo = {
         find: jest.fn().mockResolvedValue([
-          { solicitudId: 'sol-001', tipoDocumento: 'CDP', tipoMime: 'image/png' },
+          {
+            solicitudId: 'sol-001',
+            tipoDocumento: 'CDP',
+            tipoMime: 'image/png',
+          },
         ]),
       };
       const configService = {
         obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue({
-          documentos: [{ tipoRequisito: 'OBLIGATORIO', tipoDocumentoSoporte: { codigo: 'CDP', nombre: 'CDP', descripcion: null } }],
+          documentos: [
+            {
+              tipoRequisito: 'OBLIGATORIO',
+              tipoDocumentoSoporte: {
+                codigo: 'CDP',
+                nombre: 'CDP',
+                descripcion: null,
+              },
+            },
+          ],
         }),
       };
-      const module = await createMockModule({ solicitudRepo, documentoRepo, configService });
+      const module = await createMockModule({
+        solicitudRepo,
+        documentoRepo,
+        configService,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
-      await expect(svc.finalizarSolicitud('sol-001')).rejects.toThrow(BadRequestException);
+      await expect(svc.finalizarSolicitud('sol-001')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe radicar como RADICADA cuando el checklist está completo con PDFs', async () => {
@@ -931,15 +1092,32 @@ describe('TravelExpensesService', () => {
       };
       const documentoRepo = {
         find: jest.fn().mockResolvedValue([
-          { solicitudId: 'sol-001', tipoDocumento: 'CDP', tipoMime: 'application/pdf' },
+          {
+            solicitudId: 'sol-001',
+            tipoDocumento: 'CDP',
+            tipoMime: 'application/pdf',
+          },
         ]),
       };
       const configService = {
         obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue({
-          documentos: [{ tipoRequisito: 'OBLIGATORIO', tipoDocumentoSoporte: { codigo: 'CDP', nombre: 'CDP', descripcion: null } }],
+          documentos: [
+            {
+              tipoRequisito: 'OBLIGATORIO',
+              tipoDocumentoSoporte: {
+                codigo: 'CDP',
+                nombre: 'CDP',
+                descripcion: null,
+              },
+            },
+          ],
         }),
       };
-      const module = await createMockModule({ solicitudRepo, documentoRepo, configService });
+      const module = await createMockModule({
+        solicitudRepo,
+        documentoRepo,
+        configService,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const result = await svc.finalizarSolicitud('sol-001');
@@ -953,8 +1131,22 @@ describe('TravelExpensesService', () => {
       const configService = {
         obtenerConfiguracionPorTipo: jest.fn().mockResolvedValue({
           documentos: [
-            { tipoRequisito: 'OBLIGATORIO', tipoDocumentoSoporte: { codigo: 'CDP', nombre: 'CDP', descripcion: null } },
-            { tipoRequisito: 'OPCIONAL', tipoDocumentoSoporte: { codigo: 'SEGURIDAD_SOCIAL', nombre: 'Seguridad Social', descripcion: null } },
+            {
+              tipoRequisito: 'OBLIGATORIO',
+              tipoDocumentoSoporte: {
+                codigo: 'CDP',
+                nombre: 'CDP',
+                descripcion: null,
+              },
+            },
+            {
+              tipoRequisito: 'OPCIONAL',
+              tipoDocumentoSoporte: {
+                codigo: 'SEGURIDAD_SOCIAL',
+                nombre: 'Seguridad Social',
+                descripcion: null,
+              },
+            },
           ],
         }),
       };
@@ -973,10 +1165,15 @@ describe('TravelExpensesService', () => {
   describe('crearSolicitud (modo borrador)', () => {
     it('debe crear la solicitud en estado PENDIENTE y saltar la validación de solapamiento', async () => {
       const comisionado = { ...mockComisionado, autorizacionHabeasData: true };
-      const comisionadoRepo = { findOne: jest.fn().mockResolvedValue(comisionado), save: jest.fn() };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
       const solicitudRepo = {
         createQueryBuilder: jest.fn().mockReturnValue({}),
-        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-borrador' })),
+        create: jest
+          .fn()
+          .mockImplementation((ent) => ({ ...ent, id: 'sol-borrador' })),
         save: jest.fn().mockImplementation(async (ent) => ent),
       };
       const dataSource = {
@@ -995,7 +1192,11 @@ describe('TravelExpensesService', () => {
         createQueryBuilder: jest.fn(),
       };
 
-      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource });
+      const module = await createMockModule({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const result = await svc.crearSolicitud({
@@ -1019,10 +1220,15 @@ describe('TravelExpensesService', () => {
 
     it('debe marcar esInternacional=true y tipoComision=INTERNACIONAL cuando la comisión es internacional', async () => {
       const comisionado = { ...mockComisionado, autorizacionHabeasData: true };
-      const comisionadoRepo = { findOne: jest.fn().mockResolvedValue(comisionado), save: jest.fn() };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionado),
+        save: jest.fn(),
+      };
       const solicitudRepo = {
         createQueryBuilder: jest.fn().mockReturnValue({}),
-        create: jest.fn().mockImplementation((ent) => ({ ...ent, id: 'sol-int' })),
+        create: jest
+          .fn()
+          .mockImplementation((ent) => ({ ...ent, id: 'sol-int' })),
         save: jest.fn().mockImplementation(async (ent) => ent),
       };
       const dataSource = {
@@ -1040,7 +1246,11 @@ describe('TravelExpensesService', () => {
         createQueryBuilder: jest.fn(),
       };
 
-      const module = await createMockModule({ comisionadoRepo, solicitudRepo, dataSource });
+      const module = await createMockModule({
+        comisionadoRepo,
+        solicitudRepo,
+        dataSource,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const result = await svc.crearSolicitud({

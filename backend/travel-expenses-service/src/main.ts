@@ -1,16 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
-import { join } from 'path';
-import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
+import { ensureUploadRootDir } from './common/storage.util';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  const uploadsDir = join(__dirname, '..', 'uploads');
-  try {
-    mkdirSync(uploadsDir, { recursive: true });
-  } catch {}
+  // El upload (multer) y la servida estática comparten la misma raíz
+  // configurable por entorno (ver common/storage.util.ts). Así el storage puede
+  // apuntar a un disco/volumen dedicado en despliegue (TRAVEL_EXPENSES_STORAGE_PATH)
+  // y no quedar atado a los archivos del proyecto.
+  const uploadsDir = ensureUploadRootDir();
   app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
   app.getHttpAdapter().getInstance().disable?.('x-powered-by');
   app.enableCors({
