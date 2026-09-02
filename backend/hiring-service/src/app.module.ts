@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { HealthController } from './health/health.controller';
 import { HiringModule } from './modules/hiring/hiring.module';
@@ -119,6 +120,9 @@ import {
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    // El planificador de los avisos de vencimiento (EFDS-1185). Igual que en
+    // gestión legal y control interno, que ya programan sus propias revisiones.
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

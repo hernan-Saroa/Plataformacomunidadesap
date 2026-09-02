@@ -18,19 +18,17 @@ import { join } from 'path';
 import { CdpService } from './cdp.service';
 import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_GESTION_CDP,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_SOLICITUD_CDP,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   opcionesDeCarga,
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Ciclo del CDP — etapa 4 (EFDS-1148).
@@ -44,8 +42,8 @@ export class CdpController {
   constructor(private readonly service: CdpService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_GESTION_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.presupuesto.gestionar')
   @ApiOperation({
     summary: 'Estado del respaldo presupuestal del proceso',
     description:
@@ -56,8 +54,8 @@ export class CdpController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_SOLICITUD_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({ summary: 'Actividad 4.1 · Radicar la solicitud de CDP' })
   solicitar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -68,16 +66,16 @@ export class CdpController {
   }
 
   @Post('verificar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_GESTION_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({ summary: 'Actividad 4.2 · Verificar la disponibilidad presupuestal' })
   verificar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.verificar(procesoId, getHiringAccess(req));
   }
 
   @Post('expedir')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_GESTION_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({
     summary: 'Actividad 4.3 · Expedir el CDP',
     description:
@@ -92,8 +90,8 @@ export class CdpController {
   }
 
   @Post('documento')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_GESTION_CDP, ...ROLES_SOLICITUD_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar', 'contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -116,8 +114,8 @@ export class CdpController {
   }
 
   @Post('rechazar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_GESTION_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({ summary: 'Cerrar el ciclo por falta de disponibilidad en el rubro' })
   rechazar(
     @Param('id', ParseUUIDPipe) procesoId: string,

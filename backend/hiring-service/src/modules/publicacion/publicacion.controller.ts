@@ -19,12 +19,9 @@ import { unlink } from 'fs/promises';
 import { PublicacionService } from './publicacion.service';
 import { AnularPublicacionDto, RegistrarPublicacionDto } from './dto/publicacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_PUBLICACION_PLIEGO,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -32,6 +29,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Publicación del proyecto de pliego — actividad 5.2 (EFDS-1150).
@@ -46,8 +45,8 @@ export class PublicacionController {
   constructor(private readonly service: PublicacionService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Estado de la publicación y del plazo de publicidad',
     description:
@@ -58,8 +57,8 @@ export class PublicacionController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PUBLICACION_PLIEGO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -101,8 +100,8 @@ export class PublicacionController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PUBLICACION_PLIEGO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular la publicación registrada para corregirla',
     description:

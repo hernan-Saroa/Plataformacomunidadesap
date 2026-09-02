@@ -20,11 +20,12 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { HiringAccess } from '../../auth/hiring-access';
 import {
-  HiringAccess,
-  ROLES_ADMIN_MIPYME,
-  ROLES_PARTICIPACION,
-} from '../../auth/hiring-access';
+  PERMISO_ACTIVIDAD_EDITAR,
+  PERMISO_CONFIG_ADMINISTRAR,
+  tienePermiso,
+} from '../../auth/permisos';
 import { evaluarCondiciones } from './condiciones';
 import {
   DecidirLimitacionDto,
@@ -90,7 +91,7 @@ export class MipymeService {
       // Lo decide el backend, que ya tiene los roles del token: replicar la
       // matriz de permisos en el cliente la dejaría desactualizada en cuanto
       // cambie aquí.
-      puedeEditar: ROLES_ADMIN_MIPYME.some((r) => acceso?.roles.includes(r) ?? false),
+      puedeEditar: tienePermiso(acceso, PERMISO_CONFIG_ADMINISTRAR),
       // Orden explícito y no el que devuelva Postgres: primero el tope, que es
       // la condición que más discusión genera.
       parametros: [tope, minimo].map((p) => ({
@@ -206,9 +207,7 @@ export class MipymeService {
     const manager = em ?? this.dataSource.manager;
     const proceso = await this.exigirProceso(manager, procesoId);
 
-    const puedeGestionar = ROLES_PARTICIPACION.some(
-      (r) => acceso?.roles.includes(r) ?? false,
-    );
+    const puedeGestionar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
 
     if (!(await this.aplicaLimitacion(proceso.modalidad, em))) {
       return {

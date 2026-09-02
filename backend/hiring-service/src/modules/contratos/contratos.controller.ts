@@ -24,14 +24,12 @@ import {
   RechazarContratoDto,
 } from './dto/contrato.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_CONTRATO,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_SUSCRIBIR_CONTRATO,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Contrato electrónico — actividad 8.1 (EFDS-1161).
@@ -46,8 +44,8 @@ export class ContratosController {
   constructor(private readonly service: ContratosService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Contrato del proceso',
     description:
@@ -58,8 +56,8 @@ export class ContratosController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_CONTRATO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -101,8 +99,8 @@ export class ContratosController {
   }
 
   @Post('aceptar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_CONTRATO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Registrar la aceptación del proponente',
     description:
@@ -117,8 +115,8 @@ export class ContratosController {
   }
 
   @Post('firmar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_SUSCRIBIR_CONTRATO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -159,8 +157,8 @@ export class ContratosController {
   }
 
   @Post('rechazar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_CONTRATO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Registrar que el proponente no acepta la minuta',
     description:

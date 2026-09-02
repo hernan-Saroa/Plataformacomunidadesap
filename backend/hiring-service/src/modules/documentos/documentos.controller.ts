@@ -19,13 +19,12 @@ import { unlink } from 'fs/promises';
 import { DocumentosService } from './documentos.service';
 import { CargarDocumentoDto } from './dto/documentos.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_DOCUMENTOS_PROCESO,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Elaboración de los documentos del proceso — actividad 5.1 (EFDS-1149).
@@ -43,8 +42,8 @@ export class DocumentosController {
   constructor(private readonly service: DocumentosService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Documentos que exige la actividad y cuáles ya están cargados',
     description:
@@ -55,8 +54,8 @@ export class DocumentosController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DOCUMENTOS_PROCESO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -94,8 +93,8 @@ export class DocumentosController {
   }
 
   @Post(':documentoId/anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DOCUMENTOS_PROCESO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Sustituir un documento ya cargado',
     description:

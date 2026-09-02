@@ -4,12 +4,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PublicacionService } from './publicacion.service';
 import { GuardarPlazoDto } from './dto/publicacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_ADMIN_PLAZOS,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
+
 
 /**
  * Plazos de publicidad por modalidad (EFDS-1387).
@@ -27,8 +26,8 @@ export class PlazosController {
   constructor(private readonly service: PublicacionService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Plazos de publicidad por modalidad',
     description:
@@ -39,8 +38,8 @@ export class PlazosController {
   }
 
   @Put(':modalidad')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_PLAZOS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({
     summary: 'Fijar el plazo de publicidad de una modalidad',
     description:

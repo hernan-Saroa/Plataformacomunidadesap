@@ -24,14 +24,9 @@ import {
   RevocarDesiertaDto,
 } from './dto/desierta.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_ADJUDICAR,
-  ROLES_DECLARAR_DESIERTO,
-  ROLES_EVALUACION,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -39,6 +34,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Declaratoria desierta — etapa 7 (EFDS-1160, RF-ADJ-02).
@@ -54,13 +51,8 @@ export class DeclaratoriaDesiertaController {
   constructor(private readonly service: DeclaratoriaDesiertaService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(
-    ...ROLES_LECTURA_CONTRATACION,
-    ...ROLES_EVALUACION,
-    ...ROLES_ADJUDICAR,
-    ...ROLES_DECLARAR_DESIERTO,
-  )
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar', 'contratacion.adjudicacion.decidir', 'contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Estado de la declaratoria desierta',
     description:
@@ -71,8 +63,8 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DECLARAR_DESIERTO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -128,8 +120,8 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post('publicar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DECLARAR_DESIERTO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -174,8 +166,8 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post('revocar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DECLARAR_DESIERTO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Revocar la declaratoria desierta',
     description:

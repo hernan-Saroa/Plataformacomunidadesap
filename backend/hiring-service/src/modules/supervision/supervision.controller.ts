@@ -26,12 +26,9 @@ import { PermisosGuard } from '../../auth/permisos.guard';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PERMISO_SUPERVISION_REASIGNAR } from '../../auth/permisos';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_DESIGNAR_SUPERVISOR,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 /**
@@ -47,8 +44,8 @@ export class SupervisionController {
   constructor(private readonly service: SupervisionService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Supervisor del contrato',
     description:
@@ -59,8 +56,8 @@ export class SupervisionController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DESIGNAR_SUPERVISOR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.designacion.ordenar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -102,8 +99,8 @@ export class SupervisionController {
   }
 
   @Post('relevar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DESIGNAR_SUPERVISOR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.designacion.ordenar')
   @ApiOperation({
     summary: 'Relevar al supervisor vigente',
     description:
@@ -167,8 +164,8 @@ export class SupervisionController {
   }
 
   @Post('aviso')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DESIGNAR_SUPERVISOR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.designacion.ordenar')
   @ApiOperation({
     summary: 'Dejar constancia de que se le avisó al supervisor',
     description:

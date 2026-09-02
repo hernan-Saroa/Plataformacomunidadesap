@@ -23,9 +23,10 @@ import {
   RegistrarArlDto,
 } from './dto/legalizacion.dto';
 import {
-  ROLES_APROBAR_GARANTIAS,
-  ROLES_LEGALIZACION,
+
+
 } from '../../auth/hiring-access';
+import { PERMISO_ACTIVIDAD_APROBAR, PERMISO_ACTIVIDAD_EDITAR, tienePermiso } from '../../auth/permisos';
 
 /** Constitución de garantías (8.4) y registro de la ARL (8.5). */
 export const NUMERAL_GARANTIAS = '8.4';
@@ -143,8 +144,8 @@ export class LegalizacionService {
 
     // Qué puede hacer quien consulta, dicho por el servidor: la pantalla no
     // debe ofrecer un botón que va a responder 403.
-    const puedeCargar = ROLES_LEGALIZACION.some((r) => acceso.roles.includes(r));
-    const puedeAprobar = ROLES_APROBAR_GARANTIAS.some((r) => acceso.roles.includes(r));
+    const puedeCargar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
+    const puedeAprobar = tienePermiso(acceso, PERMISO_ACTIVIDAD_APROBAR);
 
     if (!contrato) {
       return {

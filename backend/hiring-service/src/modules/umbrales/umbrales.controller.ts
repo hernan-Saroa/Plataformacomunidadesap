@@ -4,12 +4,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UmbralesService } from './umbrales.service';
 import { ConsultarSugerenciaDto, CrearUmbralDto, GuardarSmmlvDto } from './dto/umbral.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_ADMIN_UMBRALES,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
+
 
 /**
  * Umbrales de cuantía por modalidad (EFDS-1147).
@@ -24,8 +23,8 @@ export class UmbralesController {
   constructor(private readonly service: UmbralesService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Umbrales vigentes por modalidad, con sus límites convertidos a pesos',
     description:
@@ -38,8 +37,8 @@ export class UmbralesController {
   // Se consulta antes de crear el proceso, así que no cuelga de ninguno: recibe
   // la cuantía y responde qué modalidad corresponde.
   @Get('sugerencia')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Modalidad que corresponde a una cuantía, con el umbral aplicado',
     description:
@@ -50,16 +49,16 @@ export class UmbralesController {
   }
 
   @Get('smmlv')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Salarios mínimos registrados, base de los umbrales en SMMLV' })
   smmlv() {
     return this.service.smmlv();
   }
 
   @Put('smmlv')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({ summary: 'Registrar o corregir el salario mínimo de un año' })
   guardarSmmlv(@Body() dto: GuardarSmmlvDto) {
     return this.service.guardarSmmlv(dto.anio, dto.valor);
@@ -68,16 +67,16 @@ export class UmbralesController {
   // Va después de las rutas fijas: `smmlv` no debe caer aquí como si fuera un
   // código de modalidad.
   @Get(':modalidad/historial')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Umbrales que ha tenido una modalidad, vigentes y cerrados' })
   historial(@Param('modalidad') modalidad: string) {
     return this.service.historial(modalidad);
   }
 
   @Put(':modalidad')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({
     summary: 'Abrir un umbral nuevo para la modalidad y cerrar el anterior',
     description:

@@ -19,11 +19,8 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import {
-  HiringAccess,
-  ROLES_ADMIN_PLAZOS,
-  ROLES_PUBLICACION_PLIEGO,
-} from '../../auth/hiring-access';
+import { HiringAccess } from '../../auth/hiring-access';
+import { PERMISO_ACTIVIDAD_EDITAR, PERMISO_CONFIG_ADMINISTRAR, tienePermiso } from '../../auth/permisos';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from './dias-habiles';
 import { festivosEntre } from './festivos-colombia';
 import {
@@ -147,7 +144,7 @@ export class PublicacionService {
       // Lo decide el backend, que ya tiene los roles del token: replicar la
       // matriz de permisos en el cliente la dejaría desactualizada en cuanto
       // cambie aquí, y la pantalla ofrecería acciones que la API rechaza.
-      puedeEditar: ROLES_ADMIN_PLAZOS.some((r) => acceso?.roles.includes(r) ?? false),
+      puedeEditar: tienePermiso(acceso, PERMISO_CONFIG_ADMINISTRAR),
       modalidades: modalidades.map((m) => {
         const plazo = porModalidad.get(m.codigo);
         return {
@@ -243,9 +240,7 @@ export class PublicacionService {
 
     // Quién puede hacer qué lo responde el backend, que ya tiene los roles del
     // token. Si la pantalla lo dedujera, ofrecería un botón que la API rechaza.
-    const puedeRegistrar = ROLES_PUBLICACION_PLIEGO.some(
-      (r) => acceso?.roles.includes(r) ?? false,
-    );
+    const puedeRegistrar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
 
     const aplica = await this.aplicaPublicacion(proceso.modalidad, em);
     if (!aplica) {

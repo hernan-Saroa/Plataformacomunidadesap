@@ -7,6 +7,7 @@ import { Permisos } from '../../auth/permisos.decorator';
 import { PERMISO_ALERTA_VER } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
 
+
 /** Alertas de vencimiento — transversal (EFDS-1185, RF-SIS-03). */
 @ApiTags('Transversal · Alertas de vencimiento')
 @Controller('alertas')

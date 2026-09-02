@@ -16,11 +16,12 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { HiringAccess } from '../../auth/hiring-access';
 import {
-  HiringAccess,
-  ROLES_GESTION_CDP,
-  ROLES_SOLICITUD_CDP,
-} from '../../auth/hiring-access';
+  PERMISO_ACTIVIDAD_EDITAR,
+  PERMISO_PRESUPUESTO_GESTIONAR,
+  tienePermiso,
+} from '../../auth/permisos';
 import { ExpedirCdpDto, RechazarCdpDto, SolicitarCdpDto } from './dto/cdp.dto';
 
 /** Actividad 4.4: el CDP cargado al expediente. */
@@ -292,8 +293,8 @@ export class CdpService {
     // token. Si la pantalla lo dedujera por su cuenta, ofrecería botones que la
     // API rechaza con un 403 cuando ya es tarde.
     const permisos = {
-      puedeSolicitar: ROLES_SOLICITUD_CDP.some((r) => acceso?.roles.includes(r) ?? false),
-      puedeGestionar: ROLES_GESTION_CDP.some((r) => acceso?.roles.includes(r) ?? false),
+      puedeSolicitar: tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR),
+      puedeGestionar: tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR),
     };
 
     const aplica = await this.aplicaCdp(proceso.modalidad, em);

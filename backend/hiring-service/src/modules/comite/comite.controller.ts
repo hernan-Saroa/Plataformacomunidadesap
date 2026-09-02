@@ -19,13 +19,12 @@ import { unlink } from 'fs/promises';
 import { ComiteService } from './comite.service';
 import { DesignarComiteDto, RevocarComiteDto } from './dto/comite.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_DESIGNAR_COMITE,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Comité evaluador — actividad 6.2 (EFDS-1156).
@@ -40,8 +39,8 @@ export class ComiteController {
   constructor(private readonly service: ComiteService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Comité evaluador del proceso',
     description:
@@ -52,8 +51,8 @@ export class ComiteController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DESIGNAR_COMITE)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.designacion.ordenar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -95,8 +94,8 @@ export class ComiteController {
   }
 
   @Post('revocar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DESIGNAR_COMITE)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.designacion.ordenar')
   @ApiOperation({
     summary: 'Revocar la designación vigente',
     description:

@@ -34,6 +34,7 @@ import {
 } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
 
+
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
 const MIME_PERMITIDOS = [
   'application/pdf',

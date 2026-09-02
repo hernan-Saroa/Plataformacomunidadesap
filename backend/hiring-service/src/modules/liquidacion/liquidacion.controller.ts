@@ -19,13 +19,12 @@ import { unlink } from 'fs/promises';
 import { LiquidacionService } from './liquidacion.service';
 import { AnularLiquidacionDto, LiquidarDto } from './dto/liquidacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_EJECUCION,
-  ROLES_LIQUIDAR,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Acta de liquidación — actividad 10.2 (EFDS-1172).
@@ -40,8 +39,8 @@ export class LiquidacionController {
   constructor(private readonly service: LiquidacionService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_EJECUCION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.seguimiento.ver')
   @ApiOperation({
     summary: 'Estado de la liquidación',
     description:
@@ -52,8 +51,8 @@ export class LiquidacionController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LIQUIDAR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -106,8 +105,8 @@ export class LiquidacionController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LIQUIDAR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular el acta de liquidación',
     description:

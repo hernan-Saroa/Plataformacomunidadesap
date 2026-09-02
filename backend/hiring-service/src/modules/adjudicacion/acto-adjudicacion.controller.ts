@@ -19,13 +19,9 @@ import { unlink } from 'fs/promises';
 import { ActoAdjudicacionService } from './acto-adjudicacion.service';
 import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_ADJUDICAR,
-  ROLES_EVALUACION,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -33,6 +29,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Acto de adjudicación — actividad 7.4 (EFDS-1159).
@@ -47,8 +45,8 @@ export class ActoAdjudicacionController {
   constructor(private readonly service: ActoAdjudicacionService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_EVALUACION, ...ROLES_ADJUDICAR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar', 'contratacion.adjudicacion.decidir')
   @ApiOperation({
     summary: 'Estado de la adjudicación',
     description:
@@ -59,8 +57,8 @@ export class ActoAdjudicacionController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADJUDICAR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.adjudicacion.decidir')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -99,8 +97,8 @@ export class ActoAdjudicacionController {
   }
 
   @Post('publicar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADJUDICAR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.adjudicacion.decidir')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -140,8 +138,8 @@ export class ActoAdjudicacionController {
   }
 
   @Post('revocar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADJUDICAR)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.adjudicacion.decidir')
   @ApiOperation({
     summary: 'Revocar el acto de adjudicación',
     description:

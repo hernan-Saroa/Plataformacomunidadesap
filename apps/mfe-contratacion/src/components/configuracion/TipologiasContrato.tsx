@@ -144,12 +144,21 @@ export function TipologiasContrato() {
       disabled={guardando}
       onClick={() => alternarGarantias(t)}
       aria-label={`${t.exigeGarantias ? 'Dejar de exigir' : 'Exigir'} garantías en ${t.nombre}`}
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold transition-colors disabled:opacity-50 ${
+      // Garantías sí/no es un dato, no una alarma: el verde saturado en once de
+      // doce filas convertía la columna en un semáforo encendido donde lo que
+      // hay que distinguir es justo la fila que NO las exige.
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-bold transition-colors disabled:opacity-50 ${
         t.exigeGarantias
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
-          : 'border-gray-200 bg-white text-slate-500 hover:bg-slate-50'
+          ? 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+          : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
       }`}
     >
+      <span
+        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+          t.exigeGarantias ? 'bg-emerald-500' : 'bg-amber-500'
+        }`}
+        aria-hidden="true"
+      />
       {t.exigeGarantias ? 'Sí las exige' : 'No las exige'}
     </button>
   );
@@ -160,11 +169,15 @@ export function TipologiasContrato() {
       disabled={guardando}
       onClick={() => alternarActiva(t)}
       aria-label={`${t.activo ? 'Retirar' : 'Volver a ofrecer'} ${t.nombre}`}
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold transition-colors disabled:opacity-50 ${
-        t.activo
-          ? 'text-slate-500 hover:text-red-600 hover:bg-red-50'
-          : 'text-[#003DA5] hover:bg-blue-50'
-      }`}
+      // Acción secundaria: gris en reposo y solo se tiñe al apuntarla. Retirar
+      // una tipología es reversible —el botón de al lado la vuelve a ofrecer—,
+      // así que no merece el peso visual de algo destructivo.
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold
+        border border-transparent transition-colors disabled:opacity-50 ${
+          t.activo
+            ? 'text-slate-400 hover:text-red-600 hover:bg-red-50 hover:border-red-100'
+            : 'text-[#003DA5] bg-blue-50/60 hover:bg-blue-100 border-blue-100'
+        }`}
     >
       {t.activo ? (
         <>
@@ -338,14 +351,19 @@ export function TipologiasContrato() {
         <div className="overflow-x-auto">
           {/* Anchos fijos: sin ellos, una descripción larga ensancha su columna
               y las demás bailan de fila en fila. */}
-          <table className="w-full text-left table-fixed min-w-[640px]">
+          {/* El nombre y su descripción son lo que se lee; el resto son datos
+              cortos de ancho conocido. Darles porcentaje dejaba las tres
+              columnas de la derecha medio vacías y partía el título en dos
+              líneas: ahora esas tres miden lo suyo y el nombre se queda el
+              sobrante. */}
+          <table className="w-full text-left table-fixed min-w-[720px]">
             <colgroup>
               <col />
-              <col className="w-[180px]" />
-              <col className="w-[120px]" />
-              <col className="w-[100px]" />
+              <col className="w-[220px]" />
+              <col className="w-[130px]" />
+              <col className="w-[110px]" />
             </colgroup>
-            <thead className="bg-slate-50 border-b border-gray-200">
+            <thead className="bg-white border-b-2 border-gray-200">
               <tr>
                 <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-500">
                   Tipología
@@ -365,11 +383,13 @@ export function TipologiasContrato() {
               {tipologias.map((t) => (
                 <tr
                   key={t.codigo}
-                  className={`border-b border-gray-100 last:border-0 ${
-                    t.activo ? '' : 'bg-slate-50'
-                  }`}
+                  className={`border-b border-gray-100 last:border-0 transition-colors
+                    hover:bg-[#003DA5]/[0.03] ${t.activo ? 'bg-white' : 'bg-slate-50'}`}
                 >
-                  <td className="px-3 py-2.5">
+                  {/* Todas las celdas arrancan arriba: con el título en dos
+                      líneas, el código y las píldoras quedaban centrados a media
+                      altura y las columnas dejaban de leerse como una fila. */}
+                  <td className="px-3 py-2.5 align-top">
                     <div className="flex items-start gap-2">
                       <FileSignature
                         className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
@@ -392,13 +412,13 @@ export function TipologiasContrato() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 align-top">
                     <code className="inline-block text-[10.5px] font-mono text-slate-600 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 break-all">
                       {t.codigo}
                     </code>
                   </td>
-                  <td className="px-3 py-2.5">{botonGarantias(t)}</td>
-                  <td className="px-3 py-2.5">{botonEstado(t)}</td>
+                  <td className="px-3 py-2.5 align-top">{botonGarantias(t)}</td>
+                  <td className="px-3 py-2.5 align-top">{botonEstado(t)}</td>
                 </tr>
               ))}
             </tbody>

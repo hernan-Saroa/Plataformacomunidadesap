@@ -8,7 +8,8 @@ import { DataSource, IsNull, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { UmbralModalidad } from '../../entities/umbral-modalidad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Smmlv } from '../../entities/smmlv.entity';
-import { HiringAccess, ROLES_ADMIN_UMBRALES } from '../../auth/hiring-access';
+import { HiringAccess } from '../../auth/hiring-access';
+import { PERMISO_CONFIG_ADMINISTRAR, tienePermiso } from '../../auth/permisos';
 import { CrearUmbralDto } from './dto/umbral.dto';
 
 /**
@@ -207,7 +208,7 @@ export class UmbralesService {
       // Lo decide el backend, que ya tiene los roles del token: replicar la
       // matriz de permisos en el cliente la dejaría desactualizada en cuanto
       // cambie aquí, y la pantalla ofrecería acciones que la API rechaza.
-      puedeEditar: ROLES_ADMIN_UMBRALES.some((r) => acceso?.roles.includes(r) ?? false),
+      puedeEditar: tienePermiso(acceso, PERMISO_CONFIG_ADMINISTRAR),
       modalidades: modalidades.map((m) => {
         const umbral = porModalidad.get(m.codigo);
         return {

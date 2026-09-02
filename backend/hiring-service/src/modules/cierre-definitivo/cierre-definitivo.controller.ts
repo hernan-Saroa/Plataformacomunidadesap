@@ -21,13 +21,12 @@ import {
   RevertirCierreDefinitivoDto,
 } from './dto/cierre-definitivo.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_CIERRE_DEFINITIVO,
-  ROLES_LECTURA_EJECUCION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Cierre definitivo del contrato (EFDS-1175).
@@ -42,8 +41,8 @@ export class CierreDefinitivoController {
   constructor(private readonly service: CierreDefinitivoService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_EJECUCION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.seguimiento.ver')
   @ApiOperation({
     summary: 'Estado del cierre definitivo',
     description:
@@ -54,8 +53,8 @@ export class CierreDefinitivoController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_CIERRE_DEFINITIVO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -93,8 +92,8 @@ export class CierreDefinitivoController {
   }
 
   @Post('revertir')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_CIERRE_DEFINITIVO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Revertir el cierre definitivo',
     description:

@@ -23,14 +23,12 @@ import {
   ReabrirExpedienteDto,
 } from './dto/archivo-expediente.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_ARCHIVO_EXPEDIENTE,
-  ROLES_LECTURA_EJECUCION,
-  ROLES_PUBLICACION_ACTA,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Publicación del acta y archivo del expediente — actividad 10.4 (EFDS-1174).
@@ -46,8 +44,8 @@ export class ArchivoExpedienteController {
   constructor(private readonly service: ArchivoExpedienteService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_EJECUCION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.seguimiento.ver')
   @ApiOperation({
     summary: 'Estado de la publicación del acta y del archivo',
     description:
@@ -58,8 +56,8 @@ export class ArchivoExpedienteController {
   }
 
   @Post('publicaciones')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PUBLICACION_ACTA)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.expediente.archivar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -105,8 +103,8 @@ export class ArchivoExpedienteController {
   }
 
   @Post('archivar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ARCHIVO_EXPEDIENTE)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.expediente.archivar')
   @ApiOperation({
     summary: 'Actividad 10.4 · Archivar el expediente contractual',
     description:
@@ -121,8 +119,8 @@ export class ArchivoExpedienteController {
   }
 
   @Post('reabrir')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ARCHIVO_EXPEDIENTE)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.expediente.archivar')
   @ApiOperation({
     summary: 'Reabrir el expediente archivado',
     description:

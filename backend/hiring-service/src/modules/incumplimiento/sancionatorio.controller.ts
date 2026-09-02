@@ -33,6 +33,7 @@ import {
   PERMISO_INCUMPLIMIENTO_TRAMITAR,
 } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
 const MENSAJE_CARGA = 'El documento se carga en PDF, Word o Excel';

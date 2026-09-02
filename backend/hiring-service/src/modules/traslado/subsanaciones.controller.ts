@@ -23,13 +23,9 @@ import {
   ResponderSubsanacionDto,
 } from './dto/subsanaciones.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_EVALUACION,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_TRASLADO,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -37,6 +33,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Subsanaciones y observaciones al informe — actividad 6.5 (EFDS-1158).
@@ -52,8 +50,8 @@ export class SubsanacionesController {
   constructor(private readonly service: SubsanacionesService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
   @ApiOperation({
     summary: 'Lo presentado contra el informe trasladado',
     description:
@@ -64,8 +62,8 @@ export class SubsanacionesController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_TRASLADO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -108,8 +106,8 @@ export class SubsanacionesController {
   }
 
   @Post(':subsanacionId/responder')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_TRASLADO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -156,8 +154,8 @@ export class SubsanacionesController {
   }
 
   @Post('cerrar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_TRASLADO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Cerrar el traslado',
     description:

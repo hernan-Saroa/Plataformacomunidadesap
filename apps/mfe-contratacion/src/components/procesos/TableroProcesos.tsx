@@ -59,7 +59,7 @@ export function TableroProcesos({ procesos, estadoDe, onAbrir }: Props) {
             >
               <header className="px-3 py-2.5 border-b border-gray-200 flex items-center gap-2">
                 <span
-                  className={`w-5 h-5 rounded-md grid place-items-center text-[10px] font-black tabular-nums flex-shrink-0 ${
+                  className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black tabular-nums flex-shrink-0 ${
                     vacia ? 'bg-gray-200 text-gray-500' : 'bg-[#E0EDFF] text-[#003DA5]'
                   }`}
                 >

@@ -23,12 +23,9 @@ import {
   RegistrarResultadoDto,
 } from './dto/evaluacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_EVALUACION,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -36,6 +33,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Evaluación de ofertas — actividad 6.3 (EFDS-1157).
@@ -51,8 +50,8 @@ export class EvaluacionController {
   constructor(private readonly service: EvaluacionService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
   @ApiOperation({
     summary: 'Estado de la evaluación del proceso',
     description:
@@ -63,8 +62,8 @@ export class EvaluacionController {
   }
 
   @Post('resultado')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.evaluacion.registrar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -104,8 +103,8 @@ export class EvaluacionController {
   }
 
   @Post('resultado/rectificar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.evaluacion.registrar')
   @ApiOperation({
     summary: 'Rectificar el resultado registrado',
     description:
@@ -120,8 +119,8 @@ export class EvaluacionController {
   }
 
   @Post('resultado/evidencias')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.evaluacion.registrar')
   @UseInterceptors(
     FileInterceptor(
       'file',

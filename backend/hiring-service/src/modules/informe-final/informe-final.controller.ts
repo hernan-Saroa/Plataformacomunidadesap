@@ -23,13 +23,12 @@ import {
   ElaborarInformeFinalDto,
 } from './dto/informe-final.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_INFORME_FINAL,
-  ROLES_LECTURA_EJECUCION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Informe final de ejecución — actividad 10.1 (EFDS-1171).
@@ -44,8 +43,8 @@ export class InformeFinalController {
   constructor(private readonly service: InformeFinalService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_EJECUCION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.seguimiento.ver')
   @ApiOperation({
     summary: 'Informe final del contrato',
     description:
@@ -56,8 +55,8 @@ export class InformeFinalController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_INFORME_FINAL)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.supervision.avalar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -98,8 +97,8 @@ export class InformeFinalController {
   }
 
   @Post('entregables')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_INFORME_FINAL)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.supervision.avalar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -134,8 +133,8 @@ export class InformeFinalController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_INFORME_FINAL)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.supervision.avalar')
   @ApiOperation({
     summary: 'Anular el informe vigente',
     description:
