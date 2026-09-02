@@ -3193,6 +3193,21 @@ export function DashboardKanbanOperativo({
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
 
+  // ✅ EXPORTAR INFORME DE VENCIMIENTOS (rol Radicador)
+  const [exportandoVencimientos, setExportandoVencimientos] = useState(false);
+  const handleExportarVencimientos = async () => {
+    setExportandoVencimientos(true);
+    try {
+      await disciplinaryService.exportarInformeVencimientos();
+      toast.success('Informe de vencimientos descargado');
+    } catch (error) {
+      console.error('Error exportando informe de vencimientos:', error);
+      toast.error('No se pudo generar el informe de vencimientos');
+    } finally {
+      setExportandoVencimientos(false);
+    }
+  };
+
   // ✅ CSS PARA SCROLL VERTICAL AZUL
   useEffect(() => {
     const style = document.createElement('style');
@@ -6127,6 +6142,19 @@ export function DashboardKanbanOperativo({
                   icon={<Plus style={{ width: 16, height: 16 }} />}
                 >
                   Nueva
+                </KanbanToolbarCTA>
+              )}
+
+              {(authService.hasRole('SECRETARIA_RADICADOR') || authService.isSuperAdmin()) && (
+                <KanbanToolbarCTA
+                  onClick={handleExportarVencimientos}
+                  icon={
+                    exportandoVencimientos
+                      ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
+                      : <Download style={{ width: 16, height: 16 }} />
+                  }
+                >
+                  Exportar
                 </KanbanToolbarCTA>
               )}
             </div>
