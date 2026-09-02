@@ -193,3 +193,7 @@ backend/hiring-service/uploads/
 package-lock.json
 
 .claude/
+# Material de presentacion: no es codigo ni documentacion tecnica.
+GUION_DEMO_PROGRAMACION_ACADEMICA.md
+INFORME_HORAS_*.md
+ADDENDUM_PLAN_*.md
