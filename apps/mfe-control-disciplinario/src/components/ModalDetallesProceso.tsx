@@ -4418,11 +4418,15 @@ export function ModalDetallesProceso({
 
                     {/* Acciones del Proceso — botón dinámico según estado del auto de pliego */}
                     {proceso.estadoActual === 'ACTIVO' && (() => {
-                      const autoPliego = archivosBackend.find(a =>
+                      // Preferir el auto real (tipo 'auto'); solo caer a cualquier
+                      // documento con "pliego" en el nombre si no hay auto.
+                      const esPliego = (a: Archivo) =>
                         a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
                         a.nombre?.includes('PLIEGO_CARGOS') ||
-                        a.nombre?.toLowerCase().includes('pliego')
-                      );
+                        a.nombre?.toLowerCase().includes('pliego');
+                      const autoPliego =
+                        archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
+                        archivosBackend.find(esPliego);
 
                       if (!autoPliego) {
                         return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
@@ -6358,11 +6362,13 @@ export function ModalDetallesProceso({
       <AnimatePresence>
         {/* Modal confirmación envío a jurídica */}
         {mostrarModalEnvioJuridica && (() => {
-          const autoPliego = archivosBackend.find(a =>
+          const esPliego = (a: Archivo) =>
             a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
             a.nombre?.includes('PLIEGO_CARGOS') ||
-            a.nombre?.toLowerCase().includes('pliego')
-          );
+            a.nombre?.toLowerCase().includes('pliego');
+          const autoPliego =
+            archivosBackend.find(a => a.tipo === 'auto' && esPliego(a)) ||
+            archivosBackend.find(esPliego);
           return (
             <motion.div
               initial={{ opacity: 0 }}
@@ -6432,6 +6438,8 @@ export function ModalDetallesProceso({
                             description: `El proceso ${proceso.numeroProceso} ha sido cerrado y archivado`,
                             duration: 5000,
                           });
+                          // Reflejar el cierre para que salga de Juzgamiento y no se pueda reenviar
+                          onActualizarProceso?.({ estadoActual: 'CERRADO' });
                           setMostrarModalEnvioJuridica(false);
                           onClose();
                         } catch (error: any) {
