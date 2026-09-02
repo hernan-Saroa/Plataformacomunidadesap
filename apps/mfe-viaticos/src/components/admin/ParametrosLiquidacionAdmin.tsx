@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { Save, AlertCircle } from 'lucide-react';
 import viaticosService from '../../services/api/viaticosService';
 import { LiquidationParam } from '../../types/parametrizacion';
+import { formatearMoneda } from '../../utils/viaticosUtils';
+
+const PARAMETROS_MONETARIOS = new Set(['SMMLV_2026']);
 
 export default function ParametrosLiquidacionAdmin() {
   const [params, setParams] = useState<Record<string, LiquidationParam>>({});
@@ -39,22 +42,32 @@ export default function ParametrosLiquidacionAdmin() {
     setError(null);
     setExito(null);
     try {
-      await viaticosService.actualizarParametrosLiquidacion({
-        smmlv: params['SMMLV_2026'] ? Number(params['SMMLV_2026'].valor) : undefined,
-        factorContratista: params['FACTOR_CONTRATISTA'] ? Number(params['FACTOR_CONTRATISTA'].valor) : undefined,
-        factorSinPernocta: params['FACTOR_SIN_PERNOCTA'] ? Number(params['FACTOR_SIN_PERNOCTA'].valor) : undefined,
-        cacheTtlMinutes: params['CACHE_TTL_MINUTES'] ? Number(params['CACHE_TTL_MINUTES'].valor) : undefined,
-      });
-      setExito('Parámetros actualizados correctamente');
+      const dto: any = {};
+      if (params['SMMLV_2026']) dto.smmlv = Number(params['SMMLV_2026'].valor);
+      if (params['FACTOR_CONTRATISTA']) dto.factorContratista = Number(params['FACTOR_CONTRATISTA'].valor);
+      if (params['FACTOR_SIN_PERNOCTA']) dto.factorSinPernocta = Number(params['FACTOR_SIN_PERNOCTA'].valor);
+      if (params['CACHE_TTL_MINUTES']) dto.cacheTtlMinutes = Number(params['CACHE_TTL_MINUTES'].valor);
+
+      const res = await viaticosService.actualizarParametrosLiquidacion(dto);
+      setExito(`Parámetros actualizados correctamente (${res.length} valores guardados)`);
       cargar();
-    } catch (e) {
-      setError('Error actualizando parámetros');
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || 'Error actualizando parámetros';
+      setError(msg);
     } finally {
       setGuardando(false);
     }
   };
 
   const getParam = (clave: string) => params[clave];
+
+  const formatearValor = (clave: string, valor: string) => {
+    const num = Number(valor);
+    if (PARAMETROS_MONETARIOS.has(clave) && Number.isFinite(num)) {
+      return formatearMoneda(num);
+    }
+    return valor;
+  };
 
   return (
     <div>
@@ -96,6 +109,7 @@ export default function ParametrosLiquidacionAdmin() {
               onChange={(e) => cambiar('SMMLV_2026', e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
             />
+            <p className="text-[10px] text-slate-500 mt-1">{formatearValor('SMMLV_2026', getParam('SMMLV_2026')?.valor || '1423500')}</p>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">Factor Contratista</label>
@@ -106,6 +120,7 @@ export default function ParametrosLiquidacionAdmin() {
               onChange={(e) => cambiar('FACTOR_CONTRATISTA', e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
             />
+            <p className="text-[10px] text-slate-500 mt-1">{getParam('FACTOR_CONTRATISTA')?.valor || '0.8'}</p>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">Factor Sin Pernocta</label>
@@ -116,6 +131,7 @@ export default function ParametrosLiquidacionAdmin() {
               onChange={(e) => cambiar('FACTOR_SIN_PERNOCTA', e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
             />
+            <p className="text-[10px] text-slate-500 mt-1">{getParam('FACTOR_SIN_PERNOCTA')?.valor || '0.5'}</p>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">Año Vigencia Escalas</label>
@@ -125,6 +141,7 @@ export default function ParametrosLiquidacionAdmin() {
               onChange={(e) => cambiar('ANO_VIGENCIA_ESCALAS', e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
             />
+            <p className="text-[10px] text-slate-500 mt-1">{getParam('ANO_VIGENCIA_ESCALAS')?.valor || '2026'}</p>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1">Cache TTL (minutos)</label>
@@ -134,6 +151,7 @@ export default function ParametrosLiquidacionAdmin() {
               onChange={(e) => cambiar('CACHE_TTL_MINUTES', e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
             />
+            <p className="text-[10px] text-slate-500 mt-1">{getParam('CACHE_TTL_MINUTES')?.valor || '5'}</p>
           </div>
         </div>
       )}

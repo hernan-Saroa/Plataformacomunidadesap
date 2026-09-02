@@ -1,6 +1,6 @@
 -- Seed: parámetros iniciales para autoliquidación de viáticos
 -- Decreto 314 de 2026
--- Ejecutar manualmente en desarrollo o mediante el seed runner (no incluir en migración)
+-- Idempotente: no duplica valores si la clave ya existe
 
 INSERT INTO travel_expenses.liquidation_params (clave, valor, tipo, descripcion) VALUES
     ('SMMLV_2026', '1423500', 'NUMBER', 'Salario mínimo mensual vigente 2026'),

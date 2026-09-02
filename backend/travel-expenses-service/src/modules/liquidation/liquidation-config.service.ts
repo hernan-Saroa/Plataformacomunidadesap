@@ -283,23 +283,48 @@ export class LiquidationConfigService {
   async actualizarParametrosLote(
     params: UpdateLiquidationParamsDto,
   ): Promise<LiquidationParamEntity[]> {
-    const updates: Promise<LiquidationParamEntity>[] = [];
-    if (params.smmlv !== undefined) {
-      updates.push(this.actualizarParametro('SMMLV_2026', String(params.smmlv)));
-    }
-    if (params.factorContratista !== undefined) {
-      updates.push(this.actualizarParametro('FACTOR_CONTRATISTA', String(params.factorContratista)));
-    }
-    if (params.factorSinPernocta !== undefined) {
-      updates.push(this.actualizarParametro('FACTOR_SIN_PERNOCTA', String(params.factorSinPernocta)));
-    }
-    if (params.cacheTtlMinutes !== undefined) {
-      updates.push(this.actualizarParametro('CACHE_TTL_MINUTES', String(params.cacheTtlMinutes)));
-    }
-
-    const resultados = await this.dataSource.transaction(async (manager) => {
-      const settled = await Promise.all(updates.map(p => p.catch(err => { throw err; })));
-      return settled;
+    const resultados: LiquidationParamEntity[] = [];
+    await this.dataSource.transaction(async (manager) => {
+      if (params.smmlv !== undefined) {
+        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'SMMLV_2026' } });
+        if (!entity) {
+          const nuevo = manager.create(LiquidationParamEntity, { clave: 'SMMLV_2026', valor: String(params.smmlv), tipo: 'NUMBER', descripcion: 'Salario mínimo mensual vigente 2026' });
+          resultados.push(await manager.save(nuevo));
+        } else {
+          entity.valor = String(params.smmlv);
+          resultados.push(await manager.save(entity));
+        }
+      }
+      if (params.factorContratista !== undefined) {
+        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'FACTOR_CONTRATISTA' } });
+        if (!entity) {
+          const nuevo = manager.create(LiquidationParamEntity, { clave: 'FACTOR_CONTRATISTA', valor: String(params.factorContratista), tipo: 'NUMBER', descripcion: 'Factor de descuento para contratistas' });
+          resultados.push(await manager.save(nuevo));
+        } else {
+          entity.valor = String(params.factorContratista);
+          resultados.push(await manager.save(entity));
+        }
+      }
+      if (params.factorSinPernocta !== undefined) {
+        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'FACTOR_SIN_PERNOCTA' } });
+        if (!entity) {
+          const nuevo = manager.create(LiquidationParamEntity, { clave: 'FACTOR_SIN_PERNOCTA', valor: String(params.factorSinPernocta), tipo: 'NUMBER', descripcion: 'Factor aplicado cuando no hay pernocta' });
+          resultados.push(await manager.save(nuevo));
+        } else {
+          entity.valor = String(params.factorSinPernocta);
+          resultados.push(await manager.save(entity));
+        }
+      }
+      if (params.cacheTtlMinutes !== undefined) {
+        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'CACHE_TTL_MINUTES' } });
+        if (!entity) {
+          const nuevo = manager.create(LiquidationParamEntity, { clave: 'CACHE_TTL_MINUTES', valor: String(params.cacheTtlMinutes), tipo: 'NUMBER', descripcion: 'Tiempo de vida del caché en memoria' });
+          resultados.push(await manager.save(nuevo));
+        } else {
+          entity.valor = String(params.cacheTtlMinutes);
+          resultados.push(await manager.save(entity));
+        }
+      }
     });
 
     await this.liquidationService.recargarParametros();

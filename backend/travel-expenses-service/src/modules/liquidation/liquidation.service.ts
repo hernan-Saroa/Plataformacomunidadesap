@@ -36,8 +36,8 @@ function setCached<T>(cache: Map<string, { data: T; expiry: number }>, key: stri
 @Injectable()
 export class LiquidationService {
   private readonly escalaCache = new Map<string, { data: EscalaViaticoEntity[]; expiry: number }>();
-  private readonly investigadorCache = new Map<string, { data: TarifaInvestigadorEntity[]; expiry: number }>();
-  private readonly regionalCache = new Map<string, { data: TarifaRegionalExcepcionEntity[]; expiry: number }>();
+  private readonly investigadorCache = new Map<string, { data: TarifaInvestigadorEntity; expiry: number }>();
+  private readonly regionalCache = new Map<string, { data: TarifaRegionalExcepcionEntity; expiry: number }>();
   private readonly paramsCache = new Map<string, { data: LiquidationParamEntity; expiry: number }>();
   private cacheTtlMs = 5 * 60 * 1000;
 

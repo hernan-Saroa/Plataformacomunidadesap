@@ -11,6 +11,7 @@ import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-t
 import { EscalaViaticoEntity } from './entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from './entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from './entities/liquidation/tarifa-regional-excepcion.entity';
+import { LiquidationParamEntity } from './entities/liquidation/liquidation-param.entity';
 
 async function seed() {
   const app = await NestFactory.createApplicationContext(AppModule);
@@ -790,6 +791,29 @@ async function seed() {
         { departamento: 'Vichada', esNuevoDepartamento: true, tarifaDiaria: 430000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
       ]);
       console.log(`✅ ${existingRegionales} tarifas regionales de excepción creadas.`);
+    }
+
+    const existingParams = await dataSource
+      .getRepository(LiquidationParamEntity)
+      .count();
+    if (existingParams === 0) {
+      await dataSource.getRepository(LiquidationParamEntity).save([
+        { clave: 'SMMLV_2026', valor: '1423500', tipo: 'NUMBER', descripcion: 'Salario mínimo mensual vigente 2026' },
+        { clave: 'FACTOR_CONTRATISTA', valor: '0.8', tipo: 'NUMBER', descripcion: 'Factor de descuento para contratistas' },
+        { clave: 'FACTOR_SIN_PERNOCTA', valor: '0.5', tipo: 'NUMBER', descripcion: 'Factor aplicado cuando no hay pernocta' },
+        { clave: 'ANO_VIGENCIA_ESCALAS', valor: '2026', tipo: 'NUMBER', descripcion: 'Año de vigencia de las escalas de viáticos' },
+        { clave: 'CACHE_TTL_MINUTES', valor: '5', tipo: 'NUMBER', descripcion: 'Tiempo de vida del caché en memoria' },
+      ]);
+      console.log(`✅ ${existingParams} parámetros de liquidación creados.`);
+    } else {
+      await dataSource.getRepository(LiquidationParamEntity).save([
+        { clave: 'SMMLV_2026', valor: '1423500', tipo: 'NUMBER', descripcion: 'Salario mínimo mensual vigente 2026' },
+        { clave: 'FACTOR_CONTRATISTA', valor: '0.8', tipo: 'NUMBER', descripcion: 'Factor de descuento para contratistas' },
+        { clave: 'FACTOR_SIN_PERNOCTA', valor: '0.5', tipo: 'NUMBER', descripcion: 'Factor aplicado cuando no hay pernocta' },
+        { clave: 'ANO_VIGENCIA_ESCALAS', valor: '2026', tipo: 'NUMBER', descripcion: 'Año de vigencia de las escalas de viáticos' },
+        { clave: 'CACHE_TTL_MINUTES', valor: '5', tipo: 'NUMBER', descripcion: 'Tiempo de vida del caché en memoria' },
+      ]);
+      console.log(`🔄 ${existingParams} parámetros de liquidación actualizados.`);
     }
 
     console.log('\n🎉 Seed finalizado correctamente.');
