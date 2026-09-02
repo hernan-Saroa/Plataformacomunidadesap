@@ -2615,6 +2615,57 @@ export interface AlertaVencimiento {
 }
 
 /**
+ * Estadísticas y reportes de gestión (EFDS-1189, numeral 3.1.a).
+ *
+ * Los cinco estados que informa no son los diez del ciclo del contrato: son el
+ * vocabulario con el que la entidad rinde cuentas. Quien pide el reporte
+ * pregunta cuántos contratos se suscribieron, no cuántos están perfeccionados
+ * y cuántos legalizados.
+ */
+export type EstadoDeGestion =
+  | 'SUSCRITO'
+  | 'EJECUCION'
+  | 'TERMINADO'
+  | 'LIQUIDADO'
+  | 'CERRADO';
+
+/** Cuántos y por cuánto. Es la forma de todos los cortes del reporte. */
+export interface ConteoValor {
+  /** Código con el que se agrupó: el estado, la modalidad o la tipología. */
+  clave: string;
+  /** Cómo se llama en la pantalla y en el archivo descargable. */
+  etiqueta: string;
+  cuantos: number;
+  valor: number;
+}
+
+export interface EstadisticasGestion {
+  /** Momento del corte: un informe sin fecha no se puede citar. */
+  generadoEn: string;
+  filtros: { vigencia: number | null; modalidad: string | null };
+  contratos: {
+    total: number;
+    valorTotal: number;
+    porEstado: ConteoValor[];
+    porModalidad: ConteoValor[];
+    porTipologia: ConteoValor[];
+  };
+  procesos: {
+    total: number;
+    porDesenlace: ConteoValor[];
+  };
+  presupuesto: {
+    contratado: number;
+    pagado: number;
+    porPagar: number;
+    /** Porcentaje de lo contratado que ya se pagó, con un decimal. */
+    porcentajeEjecutado: number;
+  };
+  /** Los años en que hay contratos, para que la pantalla ofrezca solo esos. */
+  vigenciasDisponibles: number[];
+}
+
+/**
  * Expediente completo del proceso para auditoría (EFDS-1186).
  *
  * Del incumplimiento solo llega el conteo: el detalle está bajo reserva legal
