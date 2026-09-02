@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, Printer
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -599,12 +599,6 @@ export function ModuloTerminosInformesV3() {
     setModalExportarOpen(false);
   };
 
-  const handleImprimirCalendario = () => {
-    const doc = construirPdfCalendario();
-    if (!doc) return;
-    window.open(doc.output('bloburl'), '_blank');
-  };
-
   return (
     <div className="space-y-4">
       {/* Header con ModuleHeader */}
@@ -634,13 +628,6 @@ export function ModuloTerminosInformesV3() {
             labelMobile: 'Exportar',
             icon: <Download className="w-4 h-4" />,
             onClick: () => setModalExportarOpen(true),
-            variant: 'outline' as const
-          },
-          {
-            label: 'Imprimir',
-            labelMobile: 'Imprimir',
-            icon: <Printer className="w-4 h-4" />,
-            onClick: handleImprimirCalendario,
             variant: 'outline' as const
           }
         ]}
