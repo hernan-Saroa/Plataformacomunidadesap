@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -7,10 +9,13 @@ import { AppService } from './app.service.js';
 import { CatalogoModule } from './catalogo/catalogo.module.js';
 import { GruposModule } from './grupos/grupos.module.js';
 import { HorariosModule } from './horarios/horarios.module.js';
+import { JwtStrategy } from './auth/jwt.strategy.js';
+import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -38,6 +43,13 @@ import { HorariosModule } from './horarios/horarios.module.js';
     HorariosModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    JwtStrategy,
+    // EFDS-1791: guard GLOBAL de token. El puerto 3013 se publica al host en los
+    // tres entornos; sin esto la API quedaba accesible sin autenticar y el RBAC
+    // se saltaba escribiendo una cabecera. El PTA ya tenia su equivalente.
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+  ],
 })
 export class AppModule {}
