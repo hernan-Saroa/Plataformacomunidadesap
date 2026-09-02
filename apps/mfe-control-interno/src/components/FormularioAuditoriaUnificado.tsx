@@ -224,14 +224,7 @@ const PROCESOS_INSTITUCIONALES_FALLBACK = [
 ];
 
 // Datos fallback si no se cargan del backend
-const AUDITORES_FALLBACK = [
-  { id: 'aud-001', nombre: 'Juan Pérez Gómez', cargo: 'Auditor Senior' },
-  { id: 'aud-002', nombre: 'Ana María López Silva', cargo: 'Auditor Junior' },
-  { id: 'aud-003', nombre: 'Carlos Ramírez Díaz', cargo: 'Auditor Senior' },
-  { id: 'aud-004', nombre: 'Diana López Vargas', cargo: 'Auditor Senior' },
-  { id: 'aud-005', nombre: 'Roberto Torres Sánchez', cargo: 'Auditor Líder' },
-  { id: 'aud-006', nombre: 'Fernando Ávila García', cargo: 'Jefe OCI' }
-];
+const AUDITORES_FALLBACK: AuditorOption[] = [];
 
 // Tipo para auditor
 interface AuditorOption {
