@@ -193,7 +193,8 @@ backend/hiring-service/uploads/
 package-lock.json
 
 .claude/
-# Material de presentacion: no es codigo ni documentacion tecnica.
+# Material de presentacion y de facturacion: no le sirve a quien lee el codigo.
+# (El addendum del plan SI se versiona: registra por que el modulo esta construido
+#  como esta, y eso lo necesita quien lea el codigo dentro de seis meses.)
 GUION_DEMO_PROGRAMACION_ACADEMICA.md
 INFORME_HORAS_*.md
-ADDENDUM_PLAN_*.md
