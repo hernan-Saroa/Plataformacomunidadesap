@@ -91,6 +91,19 @@ export class LegalService {
         return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
 
+    /**
+     * Verifica en vivo si un radicado ya existe en el sistema, sin la restricción por
+     * abogado sustanciador que aplica getExpedientes() a usuarios sin rol de vista global.
+     * excludeId se usa al editar, para no marcar como duplicado el propio expediente.
+     */
+    async existeRadicado(radicado: string, excludeId?: string): Promise<boolean> {
+        const res = await apiClient.get<{ existe: boolean }>(
+            `${SERVICE_PREFIX}/expedientes/radicado/${encodeURIComponent(radicado)}/existe`,
+            excludeId ? { excludeId } : undefined,
+        );
+        return !!res?.existe;
+    }
+
 
 
     async getJuzgamientoProcesos(): Promise<any[]> {
