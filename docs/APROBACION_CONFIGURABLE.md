@@ -160,6 +160,76 @@ El abogado diligencia la 3.5
 Es el mismo estado que hoy muestra la 3.1 en el riel, así que el gestor no aprende nada
 nuevo.
 
+### Basta con que apruebe uno
+
+Con varios aprobadores configurados —sean roles, personas o una mezcla— **basta con que uno
+apruebe**. No se exige unanimidad.
+
+La razón es la misma por la que se admiten varios: que el proceso no dependa de una persona.
+Exigir que aprueben todos convertiría cada ausencia en un bloqueo, y en la práctica llevaría
+a configurar un solo aprobador para evitarlo, perdiendo el respaldo.
+
+Si en algún caso el área necesitara aprobación conjunta —dos firmas sobre el mismo acto— eso
+no es este mecanismo: es un flujo de doble aprobación y tendría que modelarse aparte.
+
+### Todas empiezan sin aprobación
+
+Ninguna actividad nace marcada. La regla `EXIGE_APROBACION` **no se siembra para nadie**: el
+área la activa donde decida, cuando lo decida.
+
+Es deliberado. Sembrar once actividades «porque la matriz las sugiere» sería convertir una
+lectura nuestra del texto del Excel en el comportamiento por defecto del sistema, y nadie
+habría confirmado que esas once son las correctas. Es más fácil activar una que descubrir
+por qué el flujo se trabó en una que nadie pidió.
+
+Consecuencia: el día que esto se despliegue, **el flujo sigue comportándose igual que hoy**.
+Lo que cambia es que el jefe ya puede marcar la primera.
+
+### Quién aprueba, cómo se entera y cómo lo ve
+
+**Cómo se entera**
+
+Sobre `notifications-service`, el mismo que ya usa el aviso diario de vencimientos:
+
+| Cuándo | A quién | Qué dice |
+| --- | --- | --- |
+| Una actividad queda pendiente | a los aprobadores configurados | «El proceso CTO-2026-0001 tiene la actividad 3.5 esperando aprobación» |
+| Se aprueba | a quien la ejecutó | «Tu actividad 3.5 fue aprobada» |
+| Se devuelve | a quien la ejecutó | «Tu actividad 3.5 fue devuelta: <observaciones>» |
+
+Cuando el aprobador es un rol, el aviso va a **todos los que lo tengan**. Con «basta uno»,
+el primero que entra la resuelve y al resto le desaparece de la bandeja.
+
+**Cómo lo visualiza cada uno**
+
+El menú del módulo ya reserva la sección **«Revisión · Aprobación de documentos»**, hoy
+marcada como «Próx.». Es exactamente su sitio:
+
+```
+CONTRATACIÓN
+  Procesos
+  Revisión        ← aquí, con el número de pendientes
+  Expedientes
+```
+
+| Quién | Qué ve |
+| --- | --- |
+| **Quien ejecuta** (abogado, gestor) | La actividad queda «En revisión · pendiente de aprobación» en el riel —el mismo estado que hoy muestra la 3.1—. No puede seguir con ella; sí con las demás. |
+| **El aprobador** | La sección Revisión con las actividades que le esperan: proceso, actividad, quién la envió y desde cuándo. Al abrir una, ve lo diligenciado y sus adjuntos, y decide: aprobar o devolver con observaciones. |
+| **Quien solo consulta** (ente de control, auditoría) | En el expediente, la actividad con su estado y, en la trazabilidad, quién aprobó o devolvió, cuándo y con qué observaciones. |
+
+**Las observaciones**
+
+Al devolver son **obligatorias** —es la regla que ya aplica el estudio previo: devolver sin
+decir qué corregir deja al gestor adivinando—. Al aprobar son opcionales.
+
+Se guardan en `hiring.revisiones`, que ya tiene `decision`, `observaciones`,
+`version_revisada`, `revisado_por` y fecha. El `version_revisada` es lo que ata la
+aprobación a la versión exacta que se aprobó: editar después no la arrastra.
+
+Y quedan visibles en dos sitios: en el riel para quien tiene que corregir, y en la
+trazabilidad del expediente para quien audita.
+
 ### La regla que no se configura
 
 Quien ejecutó una actividad no puede aprobarla, aunque tenga el rol. Va en código, aplicada
@@ -196,15 +266,20 @@ eso, lo que el jefe configure no tendría efecto.
 
 ## Preguntas para el área
 
-1. **¿Rol o persona?** El diseño soporta ambos, pero conviene saber cuál será lo habitual.
-2. **¿Qué actividades marcar de entrada?** La matriz sugiere once; hay que confirmar cuáles
-   exigen aprobación formal y cuáles son trámite interno.
-3. **¿Y si la Dirección es una sola persona?** En una territorial pequeña el mismo abogado
+1. **¿Y si la Dirección es una sola persona?** En una territorial pequeña el mismo abogado
    tramita y aprueba. ¿Se bloquea —y el proceso espera a la Dirección central— o se permite
    dejando constancia explícita? La recomendación es lo primero: la segunda opción convierte
    el control en un registro de que se saltó.
-4. **¿Aprueba uno o todos?** Con varios aprobadores configurados, ¿basta con uno o hacen
-   falta todos?
+2. **¿Qué actividades se marcan primero?** El sistema arranca sin ninguna. La matriz sugiere
+   once, pero esa lista es una lectura del texto del Excel, no un dato confirmado.
+3. **¿El aviso va por correo, por la campana de la plataforma, o ambos?**
+   `notifications-service` soporta las dos; hoy el módulo solo usa correo para vencimientos.
+
+Ya resueltas con el área:
+
+- **Rol o persona:** los dos. Se elige por actividad.
+- **Cuántos aprueban:** basta con uno.
+- **Qué se marca de entrada:** nada. Todas las actividades empiezan sin aprobación.
 
 ---
 
