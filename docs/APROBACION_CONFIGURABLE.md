@@ -200,23 +200,47 @@ Sobre `notifications-service`, el mismo que ya usa el aviso diario de vencimient
 Cuando el aprobador es un rol, el aviso va a **todos los que lo tengan**. Con «basta uno»,
 el primero que entra la resuelve y al resto le desaparece de la bandeja.
 
+**Primero la campana, el correo después.** El aviso arranca solo dentro de la plataforma —la
+campana de notificaciones—, y el envío por correo se activa cuando el área lo pida. Es lo
+prudente: una actividad que se devuelve y se vuelve a enviar tres veces genera tres correos,
+y conviene ver el volumen real antes de mandarlos fuera. La campana no molesta a nadie
+mientras tanto.
+
 **Cómo lo visualiza cada uno**
 
-El menú del módulo ya reserva la sección **«Revisión · Aprobación de documentos»**, hoy
-marcada como «Próx.». Es exactamente su sitio:
+Las aprobaciones pendientes se muestran en **Alertas**, en la misma lista que los
+vencimientos y ordenadas por urgencia. No en una sección aparte.
 
 ```
-CONTRATACIÓN
-  Procesos
-  Revisión        ← aquí, con el número de pendientes
-  Expedientes
+ALERTAS (5)
+
+  [APROBAR]  CTO-2026-0004 · actividad 8.4        hace 5 horas
+  [VENCE]    Póliza CTO-2026-0002                 en 5 días
+  [APROBAR]  CTO-2026-0001 · actividad 3.5        hace 2 días
+  [VENCE]    CDP CTO-2026-0003                    en 12 días
 ```
+
+Una sola bandeja con todo lo que le reclama atención al usuario: no tiene que mirar en dos
+sitios para saber qué le espera. La etiqueta distingue si es un plazo que corre o una
+decisión que se le pide.
+
+Cada uno ve **solo lo suyo**: al aprobador le aparecen las actividades donde figura como tal
+—por rol o por persona—, no las de los demás.
 
 | Quién | Qué ve |
 | --- | --- |
 | **Quien ejecuta** (abogado, gestor) | La actividad queda «En revisión · pendiente de aprobación» en el riel —el mismo estado que hoy muestra la 3.1—. No puede seguir con ella; sí con las demás. |
-| **El aprobador** | La sección Revisión con las actividades que le esperan: proceso, actividad, quién la envió y desde cuándo. Al abrir una, ve lo diligenciado y sus adjuntos, y decide: aprobar o devolver con observaciones. |
+| **El aprobador** | La alerta en su lista. Al abrirla llega a la actividad, ve lo diligenciado y sus adjuntos, y decide: aprobar o devolver con observaciones. |
 | **Quien solo consulta** (ente de control, auditoría) | En el expediente, la actividad con su estado y, en la trazabilidad, quién aprobó o devolvió, cuándo y con qué observaciones. |
+
+**La sección «Revisión» del menú se retira**
+
+Hoy existe marcada como «Próx.». Se creó con la UI de aprobar y devolver del estudio previo
+(EFDS-1202/1246) pensada como bandeja del revisor, y nunca se construyó: en ese momento la
+3.1 era la única actividad aprobable y se resolvió dentro del riel.
+
+Era esta misma necesidad. Con las aprobaciones en Alertas queda sin función, y una entrada
+«Próx.» que no llega nunca solo hace dudar de si falta algo.
 
 **Las observaciones**
 
@@ -266,20 +290,24 @@ eso, lo que el jefe configure no tendría efecto.
 
 ## Preguntas para el área
 
-1. **¿Y si la Dirección es una sola persona?** En una territorial pequeña el mismo abogado
-   tramita y aprueba. ¿Se bloquea —y el proceso espera a la Dirección central— o se permite
-   dejando constancia explícita? La recomendación es lo primero: la segunda opción convierte
-   el control en un registro de que se saltó.
-2. **¿Qué actividades se marcan primero?** El sistema arranca sin ninguna. La matriz sugiere
-   once, pero esa lista es una lectura del texto del Excel, no un dato confirmado.
-3. **¿El aviso va por correo, por la campana de la plataforma, o ambos?**
-   `notifications-service` soporta las dos; hoy el módulo solo usa correo para vencimientos.
+1. **¿Puede quedar una actividad sin quien la apruebe?** Si en una Dirección Territorial hay
+   un solo abogado y esa misma persona diligencia la actividad, la regla «quien ejecuta no
+   aprueba» la dejaría bloqueada: no habría nadie más con el rol. Hace falta saber si ese
+   caso existe en la ESAP. Si existe, la salida limpia es que el aprobador configurado sea
+   alguien de la Dirección central, no relajar la regla.
+
+2. **¿Qué actividades se marcan primero?** El sistema arranca sin ninguna. Las candidatas
+   son las que la matriz describe con un acto de revisión o aprobación —3.4, 3.6, 4.2, 6.2,
+   8.1, 8.4, 9.1, 10.2—, pero esa lista sale de leer el texto de la columna «Descripción»
+   del Excel, no de un campo que lo declare. El área confirma cuáles.
 
 Ya resueltas con el área:
 
 - **Rol o persona:** los dos. Se elige por actividad.
 - **Cuántos aprueban:** basta con uno.
 - **Qué se marca de entrada:** nada. Todas las actividades empiezan sin aprobación.
+- **Dónde se ve:** en Alertas, en la misma lista que los vencimientos.
+- **Cómo avisa:** por la campana de la plataforma; el correo se activa después.
 
 ---
 
