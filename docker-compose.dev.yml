@@ -203,6 +203,13 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
 
+      OPENKM_BASE_URL: ${OPENKM_BASE_URL:-}
+      OPENKM_USERNAME: ${OPENKM_USERNAME:-}
+      OPENKM_PASSWORD: ${OPENKM_PASSWORD:-}
+      OPENKM_TIMEOUT_MS: ${OPENKM_TIMEOUT_MS:-15000}
+      RUND_DOCUMENT_MAX_SIZE_BYTES: ${RUND_DOCUMENT_MAX_SIZE_BYTES:-10485760}
+      RUND_DOCUMENT_ALLOW_LOCAL: ${RUND_DOCUMENT_ALLOW_LOCAL:-true}
+
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
 

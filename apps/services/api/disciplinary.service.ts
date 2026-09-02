@@ -1256,6 +1256,39 @@ if (fechaQuejaRaw) {
         window.URL.revokeObjectURL(downloadUrl);
     }
 
+    /**
+     * Descargar el informe de vencimientos de los procesos disciplinarios (Excel)
+     * Disponible solo para el rol Radicador (SECRETARIA_RADICADOR)
+     */
+    async exportarInformeVencimientos(): Promise<void> {
+        const endpoint = `/api/v1/disciplinary-processes/export`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const headers: HeadersInit = {
+            'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        };
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `Informe_Vencimientos_OCID_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
     // ==================== ESTADÍSTICAS DEL PROCESO ====================
 
     /**

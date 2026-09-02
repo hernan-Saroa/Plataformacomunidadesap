@@ -2057,6 +2057,7 @@ export async function vincularRundSoporte(docenteId: string, bloque: string, dat
   nombreArchivo?: string;
   fechaVencimiento?: string;
   cargadoPor?: string;
+  autogestionToken?: string;
 }, file?: File) {
   try {
     if (file) {
@@ -2067,8 +2068,10 @@ export async function vincularRundSoporte(docenteId: string, bloque: string, dat
       if (data.nombreArchivo) formData.append('nombreArchivo', data.nombreArchivo);
       if (data.fechaVencimiento) formData.append('fechaVencimiento', data.fechaVencimiento);
       if (data.cargadoPor) formData.append('cargadoPor', data.cargadoPor);
+      if (data.autogestionToken) formData.append('autogestionToken', data.autogestionToken);
       
-      const raw = await (apiClient as any).upload<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/soportes`, formData);
+      const suffix = data.autogestionToken ? '/autogestion' : '';
+      const raw = await (apiClient as any).upload<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/soportes${suffix}`, formData);
       return normalizeResult<any>(raw, null);
     } else {
       const raw = await apiClient.post<any>(`${BD_BASE}/${docenteId}/bloques/${bloque}/soportes`, data);

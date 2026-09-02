@@ -402,6 +402,7 @@ export enum Permissions {
   BANCO_DOCENTES_RUND_IMPORT = 'banco-docentes.rund.import',
   BANCO_DOCENTES_RUND_EXPORT = 'banco-docentes.rund.export',
   BANCO_DOCENTES_RUND_INVITE = 'banco-docentes.rund.invite',
+  BANCO_DOCENTES_RUND_DOCUMENTS_MANAGE = 'banco-docentes.rund.documents.manage',
 
   // Programación Académica (PTA)
   PTA_PROGRAMACION_ACADEMICA_MANAGE = 'pta.programacion-academica.manage',

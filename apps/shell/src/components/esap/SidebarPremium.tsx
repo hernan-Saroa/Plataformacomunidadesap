@@ -107,7 +107,7 @@ function getModuleAliases(module: string): string[] {
     'graduates-verification': ['graduates-verification', 'graduates'],
     'graduates-certificates': ['graduates-certificates'],
     'verification-certificates': ['verification-certificates'],
-    'banco-docentes-pta': ['banco-docentes-pta', 'gestion-profesoral', 'rund'],
+    'banco-docentes-pta': ['banco-docentes-pta', 'banco-docentes', 'gestion-profesoral', 'rund'],
     // 'gestion-profesoral': ['gestion-profesoral', 'banco-docentes-pta', 'rund'],
   };
   return map[module] || [module];
@@ -208,12 +208,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   // Secciones y visibilidad basada en módulos asignados
   const gestionPersonasModules: ModuleType[] = [
     'users-management',
+    'banco-docentes-pta',
     'carpeta-digital',
     'estructura-organizacional',
     'programas-academicos',
     'roles-administration',
     'audit',
     'reports',
+    'firma-electronica',
   ];
   const hasGestionPersonas = gestionPersonasModules.some(canShowModule);
 
@@ -224,11 +226,12 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     'gestion-profesoral',
     'pta',
     'certificados-laborales',
-    'firma-electronica',
     'control-interno',
     'control-disciplinario',
     'gestion-legal',
     'centro-alertas',
+    'contratacion',
+    'viaticos',
   ];
   const hasGestionAcademica = gestionAcademicaModules.some(canShowModule);
 

@@ -233,6 +233,7 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'contratacion': 'contratacion',
   'viaticos': 'viaticos',
   'banco-docentes-pta': 'banco-docentes-pta',
+  'banco-docentes': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
   'gestion-profesoral': 'gestion-profesoral',
   'registro-academico': 'graduates',

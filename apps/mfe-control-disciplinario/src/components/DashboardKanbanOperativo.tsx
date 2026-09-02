@@ -186,6 +186,7 @@ interface Noticia {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciado?: {
     id: string;
     nombre: string;
@@ -246,6 +247,7 @@ interface Proceso {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciado?: {
     id: string;
     nombre: string;
@@ -2945,6 +2947,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
+      conductas: Array.isArray((noticia as any).conductas) ? (noticia as any).conductas : [],
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
@@ -3189,6 +3192,21 @@ export function DashboardKanbanOperativo({
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(true);
   const busquedaInputRef = useRef<HTMLInputElement>(null);
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
+
+  // ✅ EXPORTAR INFORME DE VENCIMIENTOS (rol Radicador)
+  const [exportandoVencimientos, setExportandoVencimientos] = useState(false);
+  const handleExportarVencimientos = async () => {
+    setExportandoVencimientos(true);
+    try {
+      await disciplinaryService.exportarInformeVencimientos();
+      toast.success('Informe de vencimientos descargado');
+    } catch (error) {
+      console.error('Error exportando informe de vencimientos:', error);
+      toast.error('No se pudo generar el informe de vencimientos');
+    } finally {
+      setExportandoVencimientos(false);
+    }
+  };
 
   // ✅ CSS PARA SCROLL VERTICAL AZUL
   useEffect(() => {
@@ -3678,6 +3696,7 @@ export function DashboardKanbanOperativo({
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
+      conductas: Array.isArray((noticia as any).conductas) ? (noticia as any).conductas : [],
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
@@ -4356,7 +4375,9 @@ export function DashboardKanbanOperativo({
             dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
             hechos: hechosEdit,
             conducta: conductaEdit,
-            conductas: conductaEdit ? [conductaEdit] : [],
+            conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+              ? data.conductas
+              : (conductaEdit ? [conductaEdit] : []),
             denunciante: denuncianteSingular,
             denunciantes: denunciantesPayload, // ✅ Enviar plural tambiÃ©n
             disciplinable: disciplinableSingular,
@@ -4401,7 +4422,9 @@ export function DashboardKanbanOperativo({
           dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
           hechos: hechosEdit,
           conducta: conductaEdit,
-          conductas: conductaEdit ? [conductaEdit] : [],
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+            ? data.conductas
+            : (conductaEdit ? [conductaEdit] : []),
           denunciante: denuncianteSingular,
           denunciantes: denunciantesPayload,
           disciplinable: disciplinableSingular,
@@ -4472,6 +4495,9 @@ export function DashboardKanbanOperativo({
           hechosSeparados: data.hechosSeparados,
           conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+            ? data.conductas
+            : (conductaEdit ? [conductaEdit] : []),
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
           adjuntos: adjToUse,
@@ -6116,6 +6142,19 @@ export function DashboardKanbanOperativo({
                   icon={<Plus style={{ width: 16, height: 16 }} />}
                 >
                   Nueva
+                </KanbanToolbarCTA>
+              )}
+
+              {(authService.hasRole('SECRETARIA_RADICADOR') || authService.isSuperAdmin()) && (
+                <KanbanToolbarCTA
+                  onClick={handleExportarVencimientos}
+                  icon={
+                    exportandoVencimientos
+                      ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
+                      : <Download style={{ width: 16, height: 16 }} />
+                  }
+                >
+                  Exportar
                 </KanbanToolbarCTA>
               )}
             </div>

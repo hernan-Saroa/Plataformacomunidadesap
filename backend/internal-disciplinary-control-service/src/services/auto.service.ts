@@ -263,6 +263,9 @@ export class AutoService {
         await this.archiveProcess(auto.processId, aprobadoPorId);
       }
 
+      // EFDS-1564: recordar la etapa previa por si luego se reversa la aprobación.
+      const etapaAntesDeAprobar = auto.process?.etapaActual;
+
       // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
       if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
         await this.processService.changeStageByAutoApertura(
@@ -304,6 +307,18 @@ export class AutoService {
               datos_adicionales: { processId: auto.processId, radicadoProceso: auto.process.radicadoProceso, autoId: auto.id },
             })
             .catch(() => {});
+        }
+      }
+
+      // EFDS-1564: si la aprobación efectivamente movió la etapa del proceso, se
+      // guarda la etapa previa para poder devolver el proceso a ella si se reversa.
+      if (etapaAntesDeAprobar) {
+        const procesoTrasAprobar = await this.processService.findById(
+          auto.processId,
+          false,
+        );
+        if (procesoTrasAprobar.etapaActual !== etapaAntesDeAprobar) {
+          auto.etapaPreviaAprobacion = etapaAntesDeAprobar;
         }
       }
 
@@ -983,6 +998,19 @@ export class AutoService {
     auto.currentVersion += 1;
     auto.estado = AutoStatus.BORRADOR;
 
+    // EFDS-1564: devolver el proceso a la etapa en la que estaba antes de aprobar.
+    const etapaADevolver = auto.etapaPreviaAprobacion;
+    let etapaProcesoRevertida: string | null = null;
+    if (etapaADevolver) {
+      const procesoRevertido = await this.processService.revertirEtapaProceso(
+        auto.processId,
+        etapaADevolver,
+        revertidoPorId,
+      );
+      etapaProcesoRevertida = procesoRevertido.etapaActual;
+      auto.etapaPreviaAprobacion = null;
+    }
+
     const savedAuto = await this.autoRepository.save(auto);
 
     await this.versionRepository.save({
@@ -998,11 +1026,13 @@ export class AutoService {
     await this.actuacionesRepository.save({
       processId: auto.processId,
       tipo: 'reversion_aprobacion',
-      etapa: auto.process?.etapaActual,
+      etapa: etapaProcesoRevertida ?? auto.process?.etapaActual,
       descripcion: `Se reversó la aprobación del Pliego de Cargos (${auto.numero || 'sin número'}). El auto vuelve a borrador para corrección.`,
       responsableNombre: revertidoPorId,
       fechaActuacion: new Date(),
-      observaciones: 'La etapa del proceso no se modifica; solo se revierte el estado del auto.',
+      observaciones: etapaProcesoRevertida
+        ? `El proceso regresó a la etapa ${etapaProcesoRevertida}.`
+        : 'La etapa del proceso no se modifica; solo se revierte el estado del auto.',
     });
 
     const proceso = auto.process;

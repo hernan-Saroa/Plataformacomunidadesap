@@ -108,6 +108,7 @@ export interface NoticiaCompleta {
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
   conducta?: string;
+  conductas?: string[];
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: HechoSeparado[];
@@ -946,7 +947,16 @@ function TabGeneral({
           <Gavel className="w-4 h-4 text-red-600" />
           <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
         </div>
-        {n.conductaSeleccionada || n.conductaPersonalizada || n.conducta ? (
+        {Array.isArray(n.conductas) && n.conductas.length > 0 ? (
+          <ul className="space-y-1">
+            {n.conductas.map((c, i) => (
+              <li key={i} className="text-sm text-gray-900 flex items-start gap-1.5">
+                <span className="text-red-400 leading-5">•</span>
+                <span className={i === 0 ? 'font-bold' : ''}>{c}</span>
+              </li>
+            ))}
+          </ul>
+        ) : n.conductaSeleccionada || n.conductaPersonalizada || n.conducta ? (
           <>
             {n.conductaSeleccionada && (
               <p className="text-sm font-bold text-gray-900">{n.conductaSeleccionada}</p>

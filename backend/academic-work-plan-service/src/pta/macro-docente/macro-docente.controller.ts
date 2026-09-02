@@ -1,6 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Public } from '../../auth/public.decorator';
-import { getRequestRoleCodes } from '../banco-docentes/banco-docentes-sensitive-data';
+import {
+  canViewRundSensitiveData,
+  getRequestRoleCodes,
+  protectRundSensitiveData,
+} from '../banco-docentes/banco-docentes-sensitive-data';
 import { MacroDocentePermissionGuard } from './macro-docente-permission.guard';
 import { MACRO_DOCENTE_PERMISOS, RequierePermisoMacroDocente } from './macro-docente-permission.decorator';
 import { MacroDocenteService } from './macro-docente.service';
@@ -70,7 +74,9 @@ export class MacroDocenteController {
       ip: context.ip,
       failClosed: false,
     });
-    return { success: true, ...result };
+    const fullAccess = canViewRundSensitiveData(req?.user);
+    const items = result.items.map((item) => protectRundSensitiveData(item, fullAccess));
+    return { success: true, ...result, items };
   }
 
   /** REQ-RUND-F022 — "¿qué dictó el docente X en el período Y?" */
@@ -81,7 +87,7 @@ export class MacroDocenteController {
     @Query('periodo') periodo: string,
     @Req() req: any,
   ) {
-    const items = await this.service.getConsultaPuntual(docenteId, periodo);
+    const rawItems = await this.service.getConsultaPuntual(docenteId, periodo);
     const context = this.requestContext(req);
     await this.service.logConsulta({
       tipoConsulta: 'CONSULTA_PUNTUAL',
@@ -89,10 +95,12 @@ export class MacroDocenteController {
       roles: context.roles,
       docenteId,
       periodo,
-      totalResultados: items.length,
+      totalResultados: rawItems.length,
       ip: context.ip,
       failClosed: false,
     });
+    const fullAccess = canViewRundSensitiveData(req?.user);
+    const items = rawItems.map((item) => protectRundSensitiveData(item, fullAccess));
     return { success: true, items, total: items.length };
   }
 
@@ -161,6 +169,8 @@ export class MacroDocenteController {
       ip: context.ip,
       failClosed: true,
     });
-    return { success: true, ...result };
+    // Acceso público sin sesión ESAP: nunca tiene acceso completo a datos sensibles.
+    const items = result.items.map((item) => protectRundSensitiveData(item, false));
+    return { success: true, ...result, items };
   }
 }
