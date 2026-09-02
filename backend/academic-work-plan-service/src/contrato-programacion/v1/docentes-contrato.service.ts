@@ -47,6 +47,7 @@ export class DocentesContratoService {
          d."fechaInicioVinculacion"        AS vinculacion_desde,
          d."fechaFinVinculacion"           AS vinculacion_hasta,
          d."situacionAdministrativa"       AS situacion,
+         d."situacionCategoria"           AS situacion_categoria,
          d."estado"                        AS estado,
          d."nivelFormacion"                AS nivel_formacion,
          d."nucleoTematico"                AS nucleo_tematico
@@ -92,7 +93,9 @@ export class DocentesContratoService {
       vinculacion_desde: fechaISO(f.vinculacion_desde),
       // Nulo significa vinculación indefinida, no fecha faltante (RN-10).
       vinculacion_hasta: fechaISO(f.vinculacion_hasta),
-      situacion: clasificarSituacion(f.situacion),
+      // La categoria es el campo estructurado y manda; la descripcion aporta la
+      // vigencia, que vive dentro de la frase.
+      situacion: clasificarSituacion(f.situacion, new Date(), f.situacion_categoria),
       estado: f.estado ?? null,
       nivelFormacion: f.nivel_formacion ?? null,
       nucleoTematico: f.nucleo_tematico ?? null,

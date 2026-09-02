@@ -55,12 +55,25 @@ export function sigueVigente(vigenteHasta: string | null, hoy: Date = new Date()
   return fin.getTime() >= hoy.getTime();
 }
 
+/**
+ * @param descripcion  texto libre del RUND (trae la vigencia y la resolucion)
+ * @param hoy          fecha de referencia, inyectable para pruebas
+ * @param categoria    situacionCategoria: el campo ESTRUCTURADO del RUND
+ *
+ * ⚠️ La categoria manda sobre el texto libre. En los cargos directivos el texto
+ * trae el NOMBRE DEL CARGO --"Subdirectora Nacional Academica"-- y ninguna
+ * palabra revela que la persona esta en servicio: clasificar solo por texto los
+ * mandaba al fail-closed. La descripcion se sigue usando para la vigencia,
+ * porque la fecha vive dentro de esa frase y no en la categoria.
+ */
 export function clasificarSituacion(
   descripcion: string | null | undefined,
   hoy: Date = new Date(),
+  categoria?: string | null,
 ): SituacionDocenteDto {
   const original = descripcion ?? null;
-  const texto = normalizar(descripcion || '');
+  // Se evalua la categoria primero y el texto como respaldo.
+  const texto = normalizar([categoria || '', descripcion || ''].join(' '));
 
   // Sin dato: no se puede afirmar que esté disponible. Fail-closed.
   if (!texto) {

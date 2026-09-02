@@ -110,6 +110,30 @@ describe('EFDS-1372 :: situación administrativa', () => {
     expect(SITUACIONES_ASIGNABLES).toContain('periodo de prueba');
     expect(SITUACIONES_NO_ASIGNABLES.some((s) => s.categoria.includes('prueba'))).toBe(false);
   });
+
+  /**
+   * ⚠️ FIJA LA CONVENCIÓN DE FECHA: dd-mm-aaaa.
+   *
+   * Con "1-10-2026" no se distingue a ojo si se leyó bien: dd-mm da el 1 de
+   * octubre (futuro, bloquea) y mm-dd da el 10 de enero (pasado, dejaría pasar a
+   * un docente en sabático). El resultado parecía correcto sin que nadie lo
+   * hubiera fijado.
+   *
+   * Se usa una fecha AMBIGUA a propósito —3-5-2026, válida en ambas lecturas—
+   * para que el test falle si alguien invierte el orden.
+   */
+  it('EFDS-1372 :: la fecha se interpreta como dd-mm-aaaa, no mm-dd-aaaa', () => {
+    // 3 de mayo, no 5 de marzo.
+    expect(extraerVigencia('En Año Sabático hasta 3-5-2026')).toBe('2026-05-03');
+    expect(extraerVigencia('En comisión hasta 07/09/2026')).toBe('2026-09-07');
+
+    // Un día > 12 solo puede ser día: confirma el orden sin ambigüedad posible.
+    expect(extraerVigencia('En Periodo de Prueba hasta 17/07/2025')).toBe('2025-07-17');
+    expect(extraerVigencia('En comisión hasta 25/12/2026')).toBe('2026-12-25');
+
+    // Un mes > 12 no es fecha válida en dd-mm: se descarta en vez de invertirse.
+    expect(extraerVigencia('En comisión hasta 5-25-2026')).toBeNull();
+  });
 });
 
 /**

@@ -42,11 +42,13 @@ export const SITUACIONES_NO_ASIGNABLES: SituacionNoAsignable[] = [
 ];
 
 /**
- * Situaciones que SÍ permiten asignar, declaradas explícitamente.
+ * Categorias del RUND que SI permiten asignar.
  *
- * Existe para que el clasificador pueda distinguir "reconocida y asignable" de
- * "no reconocida": lo segundo es lo que dispara el fail-closed. Sin esta lista,
- * un valor normal como "Servicio Activo" caería en el cajón de lo desconocido.
+ * ⚠️ Se listan las CATEGORIAS (situacionCategoria), no las frases libres. El
+ * campo de texto trae el nombre del cargo --'Subdirectora Nacional Academica',
+ * 'Decana de Posgrados Resol. 1065'-- y ninguna palabra en el revela que la
+ * persona esta en servicio. Clasificar por el texto dejaba 5 cargos directivos
+ * cayendo en el fail-closed; lo detecto la prueba del agregado, no los ejemplos.
  */
 export const SITUACIONES_ASIGNABLES: string[] = [
   'servicio activo',
