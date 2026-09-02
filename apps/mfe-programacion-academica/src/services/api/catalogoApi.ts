@@ -47,12 +47,18 @@ async function pedir<T>(ruta: string): Promise<T> {
     credentials: 'include',
   });
   if (!res.ok) {
-    // 403 es un caso esperado (RN-08), no un fallo del sistema: se propaga con
-    // un mensaje que la UI pueda mostrar tal cual.
+    // El backend explica el motivo: qué código no existe, o de qué nivel es la
+    // asignatura que no puede ver. Se propaga tal cual porque es lo que le dice
+    // al programador qué corregir; el genérico solo queda de respaldo.
+    let detalle = "";
+    try {
+      const cuerpo = await res.json();
+      detalle = cuerpo?.message || cuerpo?.error || "";
+    } catch { /* respuesta sin cuerpo util */ }
     if (res.status === 403) {
-      throw new Error('No tiene permisos de programación sobre este nivel académico.');
+      throw new Error(detalle || "No tiene permisos de programación sobre este nivel académico.");
     }
-    throw new Error(`No se pudo consultar el catálogo (error ${res.status}).`);
+    throw new Error(detalle || `No se pudo consultar el catálogo (error ${res.status}).`);
   }
   const cuerpo = await res.json();
   return (cuerpo?.data ?? cuerpo) as T;
@@ -167,4 +173,31 @@ export function definirPeriodoGrupo(
     method: 'PUT',
     body: JSON.stringify(periodo),
   });
+}
+
+// ─── Búsqueda por código SNIES (EFDS-1369) ──────────────────────────────────
+
+/**
+ * Los siete campos maestros del SNIES, más contexto útil.
+ * TODOS son de solo lectura (RN-02): el backend rechaza cualquier escritura.
+ */
+export interface AsignaturaSnies {
+  codigo: string;
+  nombre: string;
+  creditos: number;
+  horasClase: number | null;
+  horasPta: number | null;
+  programa: { id: string; codigo: string; nombre: string };
+  pensum: string | null;
+  modalidad: string;
+  metodologia: string;
+  nivel: NivelAcademico;
+  semestre: { etiqueta: string; orden: number } | null;
+  tipoExcepcion: string | null;
+  soloLectura: boolean;
+}
+
+/** Autocompletado por llave maestra. El código no existente devuelve error controlado. */
+export function getAsignaturaPorCodigo(codigo: string): Promise<AsignaturaSnies> {
+  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}`);
 }

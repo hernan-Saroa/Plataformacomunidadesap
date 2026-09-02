@@ -35,6 +35,15 @@ export class AsignaturaCatalogoEntity {
   @Column({ name: 'horas_clase', type: 'int', nullable: true })
   horasClase: number | null;
 
+
+  /** Horas del PTA, ya con el factor de carga aplicado. Se expone tal cual. */
+  @Column({ name: 'horas_pta', type: 'int', nullable: true })
+  horasPta: number | null;
+
+  /** Excepción de la Circular 003: seminario_enfasis, opciones_grado_ap, seminario_opciones_apt. */
+  @Column({ name: 'tipo_excepcion', type: 'varchar', length: 40, nullable: true })
+  tipoExcepcion: string | null;
+
   @Column({ type: 'boolean', default: true })
   activa: boolean;
 }

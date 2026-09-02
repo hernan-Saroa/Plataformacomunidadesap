@@ -6,6 +6,9 @@ import { ProgramacionPermissionsService } from '../auth/programacion-permissions
 import { esNivelAcademico, NivelAcademico } from './nivel-academico.js';
 
 @Controller('catalogo')
+// RN-02: el catalogo es del SNIES y no admite escritura desde este modulo. El
+// guard rechaza POST/PUT/PATCH/DELETE por metodo, para que la proteccion no
+// dependa de que nadie exponga una ruta de escritura por descuido.
 export class CatalogoController {
   constructor(
     private readonly catalogoService: CatalogoService,
@@ -56,6 +59,19 @@ export class CatalogoController {
   async catalogoPorSemestre(@Req() req: Request, @Param('id') id: string) {
     const permisos = await this.permisosDe(req);
     const data = await this.catalogoService.catalogoPorSemestre(permisos, String(id));
+    return { success: true, data };
+  }
+
+  /**
+   * GET /catalogo/asignaturas/:codigo — autocompletado por llave maestra (AC-01).
+   *
+   * Devuelve los siete campos del SNIES. Todos de solo lectura (RN-02): el guard
+   * de la clase rechaza cualquier intento de escribirlos.
+   */
+  @Get('asignaturas/:codigo')
+  async porCodigo(@Req() req: Request, @Param('codigo') codigo: string) {
+    const permisos = await this.permisosDe(req);
+    const data = await this.catalogoService.buscarPorCodigo(permisos, codigo);
     return { success: true, data };
   }
 }
