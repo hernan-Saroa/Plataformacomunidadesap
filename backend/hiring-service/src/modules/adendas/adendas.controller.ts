@@ -19,12 +19,9 @@ import { unlink } from 'fs/promises';
 import { AdendasService } from './adendas.service';
 import { AnularAdendaDto, EmitirAdendaDto, PublicarAdendaDto } from './dto/adendas.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_ADENDAS,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -32,6 +29,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Adendas del proceso — actividad 5.6 (EFDS-1154).
@@ -46,8 +45,8 @@ export class AdendasController {
   constructor(private readonly service: AdendasService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Adendas del proceso, con su estado',
     description:
@@ -58,8 +57,8 @@ export class AdendasController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADENDAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -97,8 +96,8 @@ export class AdendasController {
   }
 
   @Post(':adendaId/publicar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADENDAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -146,8 +145,8 @@ export class AdendasController {
   }
 
   @Post(':adendaId/anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADENDAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular una adenda emitida por error',
     description:

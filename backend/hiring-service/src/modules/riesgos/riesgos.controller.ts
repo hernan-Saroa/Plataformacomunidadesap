@@ -19,13 +19,12 @@ import { unlink } from 'fs/promises';
 import { RiesgosService } from './riesgos.service';
 import { AnularAudienciaDto, RegistrarAudienciaDto } from './dto/riesgos.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_AUDIENCIA_RIESGOS,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Audiencia de asignación de riesgos — actividad 5.5 (EFDS-1153).
@@ -40,8 +39,8 @@ export class RiesgosController {
   constructor(private readonly service: RiesgosService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Estado de la audiencia de riesgos del proceso',
     description:
@@ -52,8 +51,8 @@ export class RiesgosController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_RIESGOS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -109,8 +108,8 @@ export class RiesgosController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_RIESGOS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular la audiencia registrada para corregirla',
     description:

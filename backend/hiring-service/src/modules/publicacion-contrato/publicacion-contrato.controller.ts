@@ -19,12 +19,9 @@ import { unlink } from 'fs/promises';
 import { PublicacionContratoService } from './publicacion-contrato.service';
 import { PublicarContratoDto } from './dto/publicacion-contrato.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_PUBLICACION_PLIEGO,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -32,6 +29,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Publicación del contrato — actividad 8.8 (EFDS-1166).
@@ -46,8 +45,8 @@ export class PublicacionContratoController {
   constructor(private readonly service: PublicacionContratoService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Publicaciones del contrato',
     description:
@@ -58,8 +57,8 @@ export class PublicacionContratoController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PUBLICACION_PLIEGO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',

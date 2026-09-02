@@ -13,7 +13,8 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { HiringAccess, ROLES_PARTICIPACION } from '../../auth/hiring-access';
+import { HiringAccess } from '../../auth/hiring-access';
+import { PERMISO_ACTIVIDAD_EDITAR, tienePermiso } from '../../auth/permisos';
 import { PublicacionService } from '../publicacion/publicacion.service';
 import {
   RegistrarObservacionDto,
@@ -57,9 +58,7 @@ export class ObservacionesService {
     const manager = em ?? this.dataSource.manager;
     const proceso = await this.exigirProceso(manager, procesoId);
 
-    const puedeGestionar = ROLES_PARTICIPACION.some(
-      (r) => acceso?.roles.includes(r) ?? false,
-    );
+    const puedeGestionar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
 
     if (!(await this.aplicaObservaciones(proceso.modalidad, em))) {
       return {

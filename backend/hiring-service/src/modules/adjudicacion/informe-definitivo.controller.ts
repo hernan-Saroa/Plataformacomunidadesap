@@ -19,13 +19,9 @@ import { unlink } from 'fs/promises';
 import { InformeDefinitivoService } from './informe-definitivo.service';
 import { AnularDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-definitivo.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_AUDIENCIA_ADJUDICACION,
-  ROLES_EVALUACION,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -33,6 +29,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Informe de evaluación definitivo — actividad 7.3 (EFDS-1159).
@@ -46,8 +44,8 @@ export class InformeDefinitivoController {
   constructor(private readonly service: InformeDefinitivoService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
   @ApiOperation({
     summary: 'Estado del informe definitivo',
     description:
@@ -58,8 +56,8 @@ export class InformeDefinitivoController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_ADJUDICACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -95,8 +93,8 @@ export class InformeDefinitivoController {
   }
 
   @Post('publicar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_ADJUDICACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -135,8 +133,8 @@ export class InformeDefinitivoController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_ADJUDICACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular el informe definitivo',
     description: 'Deja sin efecto el informe para poder generar otro; el anulado queda con su motivo.',

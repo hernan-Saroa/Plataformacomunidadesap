@@ -25,6 +25,7 @@ import {
   PERMISO_SEGUIMIENTO_VER,
 } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,

@@ -23,14 +23,12 @@ import {
   RegistrarArlDto,
 } from './dto/legalizacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_APROBAR_GARANTIAS,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_LEGALIZACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Pólizas, garantías y ARL — actividades 8.4 y 8.5 (EFDS-1164).
@@ -45,8 +43,8 @@ export class LegalizacionController {
   constructor(private readonly service: LegalizacionService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Legalización del contrato',
     description:
@@ -57,8 +55,8 @@ export class LegalizacionController {
   }
 
   @Post('garantias')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LEGALIZACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'La póliza se carga en PDF, Word o Excel')),
   )
@@ -96,8 +94,8 @@ export class LegalizacionController {
   }
 
   @Post('garantias/:garantiaId/aprobar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_APROBAR_GARANTIAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.approve')
   @ApiOperation({
     summary: 'Aprobar una póliza',
     description:
@@ -112,8 +110,8 @@ export class LegalizacionController {
   }
 
   @Post('garantias/:garantiaId/rechazar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_APROBAR_GARANTIAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.approve')
   @ApiOperation({
     summary: 'Devolver una póliza con su motivo',
     description: 'La póliza devuelta se conserva en el expediente; después se carga la corregida.',
@@ -128,8 +126,8 @@ export class LegalizacionController {
   }
 
   @Post('arl')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LEGALIZACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'El soporte se carga en PDF, Word o Excel')),
   )

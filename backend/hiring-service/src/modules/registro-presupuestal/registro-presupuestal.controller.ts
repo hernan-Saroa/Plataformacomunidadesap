@@ -18,14 +18,12 @@ import { unlink } from 'fs/promises';
 import { RegistroPresupuestalService } from './registro-presupuestal.service';
 import { ExpedirRpDto, RechazarRpDto, SolicitarRpDto } from './dto/registro-presupuestal.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_GESTION_CDP,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_SOLICITUD_CDP,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Registro presupuestal — actividad 8.3 (EFDS-1163).
@@ -41,8 +39,8 @@ export class RegistroPresupuestalController {
   constructor(private readonly service: RegistroPresupuestalService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Registro presupuestal del contrato',
     description:
@@ -53,8 +51,8 @@ export class RegistroPresupuestalController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_SOLICITUD_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Actividad 8.3 · Radicar la solicitud del RP',
     description: 'Solo sobre un contrato ya firmado por las dos partes.',
@@ -68,8 +66,8 @@ export class RegistroPresupuestalController {
   }
 
   @Post('verificar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_GESTION_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({
     summary: 'Verificar la disponibilidad',
     description:
@@ -80,8 +78,8 @@ export class RegistroPresupuestalController {
   }
 
   @Post('expedir')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_GESTION_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -122,8 +120,8 @@ export class RegistroPresupuestalController {
   }
 
   @Post('rechazar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_GESTION_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({
     summary: 'Rechazar la solicitud',
     description: 'Con el motivo: sin él, quien solicita no sabe si corregir el rubro o el valor.',

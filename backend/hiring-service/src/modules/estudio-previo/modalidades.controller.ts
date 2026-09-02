@@ -3,8 +3,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { EstudioPrevioService } from './estudio-previo.service';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import { ROLES_LECTURA_CONTRATACION } from '../../auth/hiring-access';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
+
+
 
 /**
  * Catálogo de modalidades de selección.
@@ -20,8 +22,8 @@ export class ModalidadesController {
   // Es un catálogo de lectura: quien consulta un proceso necesita ver el
   // nombre de su modalidad, aunque no pueda crear procesos.
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Modalidades vigentes, en el orden de la matriz de flujo' })
   listar() {
     return this.service.modalidades();

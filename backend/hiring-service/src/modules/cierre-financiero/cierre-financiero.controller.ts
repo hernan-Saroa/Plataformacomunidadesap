@@ -18,13 +18,12 @@ import { unlink } from 'fs/promises';
 import { CierreFinancieroService } from './cierre-financiero.service';
 import { CerrarFinancieramenteDto, RevertirCierreDto } from './dto/cierre-financiero.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_CIERRE_FINANCIERO,
-  ROLES_LECTURA_EJECUCION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Cierre financiero — actividad 10.3 (EFDS-1173).
@@ -39,8 +38,8 @@ export class CierreFinancieroController {
   constructor(private readonly service: CierreFinancieroService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_EJECUCION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.seguimiento.ver')
   @ApiOperation({
     summary: 'Estado del cierre financiero',
     description:
@@ -51,8 +50,8 @@ export class CierreFinancieroController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_CIERRE_FINANCIERO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -91,8 +90,8 @@ export class CierreFinancieroController {
   }
 
   @Post('revertir')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_CIERRE_FINANCIERO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({
     summary: 'Revertir el cierre financiero',
     description:

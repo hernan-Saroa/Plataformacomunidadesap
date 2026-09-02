@@ -19,13 +19,9 @@ import { unlink } from 'fs/promises';
 import { TrasladoService } from './traslado.service';
 import { AnularInformeDto, GenerarInformeDto, TrasladarInformeDto } from './dto/traslado.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_EVALUACION,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_TRASLADO,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -33,6 +29,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Traslado del informe de evaluación — actividad 6.4 (EFDS-1158).
@@ -48,8 +46,8 @@ export class TrasladoController {
   constructor(private readonly service: TrasladoService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
   @ApiOperation({
     summary: 'Estado del traslado del informe',
     description:
@@ -60,8 +58,8 @@ export class TrasladoController {
   }
 
   @Post('informe')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_TRASLADO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -101,8 +99,8 @@ export class TrasladoController {
   }
 
   @Post('trasladar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_TRASLADO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -144,8 +142,8 @@ export class TrasladoController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_TRASLADO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular el informe',
     description:

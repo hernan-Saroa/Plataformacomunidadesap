@@ -18,11 +18,8 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { Oferente } from '../../entities/oferente.entity';
-import {
-  HiringAccess,
-  ROL_ORDENADOR_GASTO,
-  ROL_SUPER_ADMIN,
-} from '../../auth/hiring-access';
+import { HiringAccess } from '../../auth/hiring-access';
+import { PERMISO_DESIGNACION_ORDENAR, tienePermiso } from '../../auth/permisos';
 import {
   AceptarContratoDto,
   FirmarContratoDto,
@@ -465,8 +462,7 @@ export class ContratosService {
       // contratista, que no tiene cuenta, pero no puede firmar por la entidad.
       if (
         dto.parte === 'ORDENADOR' &&
-        !acceso.roles.includes(ROL_ORDENADOR_GASTO) &&
-        !acceso.roles.includes(ROL_SUPER_ADMIN)
+        !tienePermiso(acceso, PERMISO_DESIGNACION_ORDENAR)
       ) {
         throw new ForbiddenException(
           'La firma del ordenador del gasto la registra él mismo: tu rol no puede comprometer a la entidad',

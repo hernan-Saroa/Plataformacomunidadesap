@@ -20,7 +20,7 @@ import { ExpedienteAuditoria } from '../../types';
 import { Ayuda, Cargando, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga, momento, momentoConHora } from '../shared/fechas';
 import { CicloContrato } from '../shared/CicloContrato';
-import { ETAPAS } from '../proceso/StepperEtapas';
+import { ETAPAS } from '../proceso/Etapas';
 
 interface Props {
   procesoId: string;

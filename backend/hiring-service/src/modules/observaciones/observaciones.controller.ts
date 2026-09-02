@@ -18,12 +18,9 @@ import { unlink } from 'fs/promises';
 import { ObservacionesService } from './observaciones.service';
 import { RegistrarObservacionDto, ResponderObservacionDto } from './dto/observacion.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_PARTICIPACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -31,6 +28,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Observaciones al proyecto de pliego — actividad 5.3 (EFDS-1151).
@@ -45,8 +44,8 @@ export class ObservacionesController {
   constructor(private readonly service: ObservacionesService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Observaciones del proceso con su resumen',
     description:
@@ -57,8 +56,8 @@ export class ObservacionesController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PARTICIPACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -98,8 +97,8 @@ export class ObservacionesController {
   }
 
   @Post(':observacionId/responder')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PARTICIPACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Responder una observación',
     description:
@@ -115,8 +114,8 @@ export class ObservacionesController {
   }
 
   @Post('cerrar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PARTICIPACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Dar por cumplida la recepción cuando no hubo observaciones',
     description:

@@ -19,12 +19,9 @@ import { unlink } from 'fs/promises';
 import { AperturaService } from './apertura.service';
 import { RegistrarAperturaDto } from './dto/apertura.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_SOLICITUD_CDP,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -32,6 +29,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Apertura formal del proceso — actividad 5.7 (EFDS-1152).
@@ -47,8 +46,8 @@ export class AperturaProcesoController {
   constructor(private readonly service: AperturaService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Estado de la apertura y qué falta para poder abrir',
     description:
@@ -59,8 +58,8 @@ export class AperturaProcesoController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_SOLICITUD_CDP)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileFieldsInterceptor(
       [

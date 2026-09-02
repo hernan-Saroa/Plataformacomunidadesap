@@ -18,12 +18,9 @@ import { unlink } from 'fs/promises';
 import { RegistroActividadService } from './registro-actividad.service';
 import { AnularRegistroDto, RegistrarActividadDto } from './dto/registro-actividad.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_DOCUMENTOS_PROCESO,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -31,6 +28,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Actividades que se cumplen dejando constancia (migración 051).
@@ -50,8 +49,8 @@ export class RegistroActividadController {
   constructor(private readonly service: RegistroActividadService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_DOCUMENTOS_PROCESO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Estado del registro de la actividad',
     description:
@@ -62,8 +61,8 @@ export class RegistroActividadController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DOCUMENTOS_PROCESO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -110,8 +109,8 @@ export class RegistroActividadController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_DOCUMENTOS_PROCESO)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular el registro vigente',
     description:

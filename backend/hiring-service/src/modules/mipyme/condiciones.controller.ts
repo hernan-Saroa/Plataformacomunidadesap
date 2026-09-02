@@ -4,12 +4,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MipymeService } from './mipyme.service';
 import { GuardarCondicionMipymeDto } from './dto/mipyme.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_ADMIN_MIPYME,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
+
 
 /**
  * Condiciones de la limitación a MIPYME (EFDS-1393).
@@ -27,8 +26,8 @@ export class CondicionesMipymeController {
   constructor(private readonly service: MipymeService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Tope de valor y mínimo de manifestaciones, con su marca de confirmado',
     description:
@@ -39,8 +38,8 @@ export class CondicionesMipymeController {
   }
 
   @Put(':clave')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_MIPYME)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({
     summary: 'Cambiar una de las dos condiciones',
     description:

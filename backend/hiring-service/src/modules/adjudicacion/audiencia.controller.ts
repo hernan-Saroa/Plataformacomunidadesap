@@ -24,13 +24,9 @@ import {
   CelebrarAudienciaDto,
 } from './dto/audiencia.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_AUDIENCIA_ADJUDICACION,
-  ROLES_EVALUACION,
-  ROLES_LECTURA_CONTRATACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -38,6 +34,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Audiencia de adjudicación y sobre económico — actividades 7.1 y 7.2.
@@ -52,8 +50,8 @@ export class AudienciaController {
   constructor(private readonly service: AudienciaService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION, ...ROLES_EVALUACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
   @ApiOperation({
     summary: 'Estado de la audiencia de adjudicación',
     description:
@@ -64,8 +62,8 @@ export class AudienciaController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_ADJUDICACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -104,8 +102,8 @@ export class AudienciaController {
   }
 
   @Post('piezas')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_ADJUDICACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -143,8 +141,8 @@ export class AudienciaController {
   }
 
   @Post('sobres')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_ADJUDICACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -184,8 +182,8 @@ export class AudienciaController {
   }
 
   @Post('anular')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_AUDIENCIA_ADJUDICACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Anular la audiencia registrada',
     description:

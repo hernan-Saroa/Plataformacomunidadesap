@@ -4,8 +4,10 @@ import { DataSource } from 'typeorm';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import { ROLES_LECTURA_CONTRATACION } from '../../auth/hiring-access';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
+
+
 
 const LIMITE_POR_DEFECTO = 50;
 const LIMITE_MAXIMO = 200;
@@ -26,8 +28,8 @@ export class PersonasController {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Personas para los selectores del estudio previo' })
   async listar(@Query('q') q?: string, @Query('limit') limit?: string) {
     const solicitado = limit ? parseInt(limit, 10) : LIMITE_POR_DEFECTO;

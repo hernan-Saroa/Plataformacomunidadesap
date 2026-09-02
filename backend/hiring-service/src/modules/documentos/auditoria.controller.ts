@@ -6,6 +6,7 @@ import { PermisosGuard } from '../../auth/permisos.guard';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PERMISO_EXPEDIENTE_AUDITAR } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 
 /**

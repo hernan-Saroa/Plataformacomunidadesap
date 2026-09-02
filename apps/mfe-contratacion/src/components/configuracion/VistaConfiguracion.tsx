@@ -1,10 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Settings } from 'lucide-react';
+import { AlertTriangle, FileSignature, Grid3x3, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadAplicable, CampoConfigurable, Modalidad } from '../../types';
 import { Modal } from '../shared/Modal';
+import { ModuleHeader } from '../shared/ModuleHeader';
+
+/** Cada pestaña con su ícono y color, como en control interno. */
+const PESTANAS = [
+  {
+    clave: 'matriz' as const,
+    etiqueta: 'Matriz de actividades',
+    icono: Grid3x3,
+    color: '#003DA5',
+  },
+  {
+    clave: 'tipologias' as const,
+    etiqueta: 'Tipologías de contrato',
+    icono: FileSignature,
+    color: '#7C3AED',
+  },
+];
 
 import { DetalleActividad } from './DetalleActividad';
 import { MatrizGeneral } from './MatrizGeneral';
@@ -174,30 +191,36 @@ export function VistaConfiguracion() {
         </div>
       )}
 
-      {/* Solo las pestañas, sin cabecera: el tab del menú ya dice dónde se
-          está, y repetirlo aquí solo empujaba el contenido hacia abajo. Dos
-          pestañas y no dos secciones del menú: la matriz y las tipologías son
-          parámetros del mismo flujo. */}
-      <div className="flex items-center gap-1 border-b border-gray-200 flex-wrap">
-        {(
-          [
-            ['matriz', 'Matriz de actividades'],
-            ['tipologias', 'Tipologías de contrato'],
-          ] as const
-        ).map(([clave, etiqueta]) => (
-          <button
-            key={clave}
-            type="button"
-            onClick={() => setPestana(clave)}
-            className={`px-3.5 py-2 text-[12.5px] font-bold border-b-2 -mb-px transition-colors ${
-              pestana === clave
-                ? 'border-[#003DA5] text-[#003DA5]'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {etiqueta}
-          </button>
-        ))}
+      {/* Cabecera y pestañas en píldora, como Configuraciones de control
+          interno y gestión legal: quien administra los tres módulos encontraba
+          aquí una pantalla que no se parecía a las otras dos. */}
+      <ModuleHeader
+        title="Configuraciones"
+        subtitle="Matriz de actividades y tipologías de contrato"
+        icon={<Settings className="w-5 h-5" />}
+        color="#003DA5"
+      />
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 inline-flex items-center gap-1 flex-wrap">
+        {PESTANAS.map(({ clave, etiqueta, icono: Icono, color }) => {
+          const activa = pestana === clave;
+          return (
+            <button
+              key={clave}
+              type="button"
+              onClick={() => setPestana(clave)}
+              aria-pressed={activa}
+              className={`px-4 py-2.5 rounded-lg text-[12.5px] font-bold flex items-center gap-2
+                transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
+                  activa ? 'text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              style={activa ? { background: color } : undefined}
+            >
+              <Icono className="w-4 h-4" aria-hidden="true" />
+              {etiqueta}
+            </button>
+          );
+        })}
       </div>
 
       {pestana === 'matriz' ? (

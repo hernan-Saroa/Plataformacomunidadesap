@@ -20,8 +20,8 @@ import { extname } from 'path';
 
 import { ConfiguracionService } from './configuracion.service';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import { ROLES_ADMIN_UMBRALES, ROLES_LECTURA_CONTRATACION } from '../../auth/hiring-access';
+
+
 import {
   ActualizarActividadDto,
   ActualizarCampoDto,
@@ -32,6 +32,8 @@ import {
   GuardarPlantillaDto,
   GuardarTipologiaDto,
 } from './dto/configuracion.dto';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
 
@@ -78,16 +80,16 @@ export class ConfiguracionController {
   constructor(private readonly service: ConfiguracionService) {}
 
   @Get('actividades')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Las 63 actividades de la matriz, agrupadas por etapa' })
   catalogo() {
     return this.service.catalogo();
   }
 
   @Get('tipologias')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Tipologías de contrato',
     description: 'Las tipologías con las que se elabora un contrato (EFDS-1161).',
@@ -97,8 +99,8 @@ export class ConfiguracionController {
   }
 
   @Post('tipologias')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({
     summary: 'Crear o ajustar una tipología',
     description:
@@ -109,8 +111,8 @@ export class ConfiguracionController {
   }
 
   @Put('tipologias/:codigo/retirar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({
     summary: 'Retirar una tipología de circulación',
     description: 'Los contratos que ya la usaron la conservan: se desactiva, no se borra.',
@@ -120,8 +122,8 @@ export class ConfiguracionController {
   }
 
   @Get('actividades/modalidad/:modalidad')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Actividades marcadas según apliquen o no a una modalidad',
   })
@@ -130,8 +132,8 @@ export class ConfiguracionController {
   }
 
   @Get('matriz')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'La matriz completa: cada actividad contra cada modalidad',
   })
@@ -140,8 +142,8 @@ export class ConfiguracionController {
   }
 
   @Get('flujo/:modalidad')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'El recorrido de una modalidad, etapa por etapa, con lo que se salta',
   })
@@ -150,8 +152,8 @@ export class ConfiguracionController {
   }
 
   @Get('reglas/:numeral')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Reglas vigentes de una actividad' })
   reglas(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
     return this.service.reglasDe(numeral, modalidad ?? null);
@@ -162,16 +164,16 @@ export class ConfiguracionController {
   // la edicion queda en el mismo rol que administra los umbrales.
 
   @Put('actividades/:numeral')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({ summary: 'Corregir el nombre o la descripcion de una actividad' })
   actualizarActividad(@Param('numeral') numeral: string, @Body() dto: ActualizarActividadDto) {
     return this.service.actualizarActividad(numeral, dto);
   }
 
   @Put('actividades/:numeral/aplicabilidad')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({ summary: 'Marcar si la actividad aplica a una modalidad' })
   cambiarAplicabilidad(@Param('numeral') numeral: string, @Body() dto: AplicabilidadDto) {
     return this.service.cambiarAplicabilidad(numeral, dto);
@@ -184,24 +186,24 @@ export class ConfiguracionController {
   // que varia entre ellas es si la recorre, que ya resuelve la aplicabilidad.
 
   @Get('actividades/:numeral/campos')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Lo que la actividad le pide al gestor' })
   campos(@Param('numeral') numeral: string) {
     return this.service.campos(numeral);
   }
 
   @Post('actividades/:numeral/campos')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({ summary: 'Agregar algo que el gestor tendra que hacer' })
   crearCampo(@Param('numeral') numeral: string, @Body() dto: CrearCampoDto) {
     return this.service.crearCampo(numeral, dto);
   }
 
   @Put('campos/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({
     summary: 'Corregir el texto de un campo o dejar de pedirlo',
     description:
@@ -218,16 +220,16 @@ export class ConfiguracionController {
   // endpoints administran cual corresponde a cada actividad y modalidad.
 
   @Get('plantillas')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({ summary: 'Formatos registrados, opcionalmente de una actividad' })
   plantillas(@Query('numeral') numeral?: string) {
     return this.service.plantillas(numeral);
   }
 
   @Post('plantillas')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @UseInterceptors(FileInterceptor('file', RECEPCION_ARCHIVO))
   @ApiOperation({
     summary: 'Registrar un formato del SIG con su archivo',
@@ -248,8 +250,8 @@ export class ConfiguracionController {
   }
 
   @Put('plantillas/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @UseInterceptors(FileInterceptor('file', RECEPCION_ARCHIVO))
   @ApiOperation({
     summary: 'Corregir un formato, cambiar su archivo o retirarlo de circulacion',
@@ -275,8 +277,8 @@ export class ConfiguracionController {
   }
 
   @Put('plantillas/:id/actividad')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_ADMIN_UMBRALES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
   @ApiOperation({
     summary: 'Asignar un formato de la biblioteca a una actividad',
     description:

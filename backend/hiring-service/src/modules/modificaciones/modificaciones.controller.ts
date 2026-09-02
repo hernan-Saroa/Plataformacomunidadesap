@@ -34,15 +34,13 @@ import {
   SolicitarRespaldoDto,
 } from './dto/modificaciones.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_EJECUCION,
-  ROLES_MODIFICACIONES,
-  ROLES_RESPALDO_ADICION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 import { ObjetoInmutableGuard } from './objeto-inmutable.guard';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Modificaciones contractuales — actividad 9.5 (EFDS-1176).
@@ -62,8 +60,8 @@ export class ModificacionesController {
   constructor(private readonly service: ModificacionesService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_EJECUCION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.seguimiento.ver')
   @ApiOperation({
     summary: 'Estado de las modificaciones del contrato',
     description:
@@ -74,8 +72,8 @@ export class ModificacionesController {
   }
 
   @Post('adiciones')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Actividad 9.5 · Solicitar una adición en dinero',
     description:
@@ -92,8 +90,8 @@ export class ModificacionesController {
   // ------------------------------- los demas tipos (EFDS-1177 y EFDS-1178) --
 
   @Post('prorrogas')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Actividad 9.5 · Solicitar una prórroga en tiempo',
     description:
@@ -108,8 +106,8 @@ export class ModificacionesController {
   }
 
   @Post('cesiones')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Actividad 9.5 · Solicitar la cesión del contrato',
     description:
@@ -124,8 +122,8 @@ export class ModificacionesController {
   }
 
   @Post('aclaratorios')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Actividad 9.5 · Solicitar un aclaratorio',
     description:
@@ -140,8 +138,8 @@ export class ModificacionesController {
   }
 
   @Post('suspensiones')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Actividad 9.5 · Solicitar la suspensión del contrato',
     description:
@@ -156,8 +154,8 @@ export class ModificacionesController {
   }
 
   @Post('reanudaciones')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Actividad 9.5 · Reanudar el contrato suspendido',
     description:
@@ -172,8 +170,8 @@ export class ModificacionesController {
   }
 
   @Post('terminaciones')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Actividad 9.5 · Terminar el contrato anticipadamente',
     description:
@@ -190,8 +188,8 @@ export class ModificacionesController {
   // ------------------------------------------- el CDP y el RP de la adición --
 
   @Post(':modificacionId/respaldo/:tipo')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_RESPALDO_ADICION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({
     summary: 'Solicitar el CDP o el RP de la adición',
     description:
@@ -214,8 +212,8 @@ export class ModificacionesController {
   }
 
   @Post(':modificacionId/respaldo/:tipo/verificar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_RESPALDO_ADICION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({ summary: 'Verificar la disponibilidad del CDP o del RP de la adición' })
   verificarRespaldo(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -232,8 +230,8 @@ export class ModificacionesController {
   }
 
   @Post(':modificacionId/respaldo/:tipo/expedir')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_RESPALDO_ADICION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({ summary: 'Expedir el CDP o el RP de la adición' })
   expedirRespaldo(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -252,8 +250,8 @@ export class ModificacionesController {
   }
 
   @Post(':modificacionId/respaldo/:tipo/rechazar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_RESPALDO_ADICION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.presupuesto.gestionar')
   @ApiOperation({
     summary: 'Rechazar el CDP o el RP de la adición',
     description: 'Por falta de disponibilidad en el rubro. Se puede volver a solicitar.',
@@ -277,8 +275,8 @@ export class ModificacionesController {
   // ------------------------------------------------------------ aprobación --
 
   @Post(':modificacionId/aprobar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -323,8 +321,8 @@ export class ModificacionesController {
   }
 
   @Post(':modificacionId/rechazar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({ summary: 'Rechazar una modificación en trámite' })
   rechazar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -336,8 +334,8 @@ export class ModificacionesController {
   }
 
   @Post(':modificacionId/revocar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @ApiOperation({
     summary: 'Revocar una modificación aprobada',
     description:
@@ -355,8 +353,8 @@ export class ModificacionesController {
   // ------------------------------------------------- publicación (RF-MOD-05) --
 
   @Post(':modificacionId/publicar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_MODIFICACIONES)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.modificacion.solicitar')
   @UseInterceptors(
     FileInterceptor(
       'file',

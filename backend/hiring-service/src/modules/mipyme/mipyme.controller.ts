@@ -18,12 +18,9 @@ import { unlink } from 'fs/promises';
 import { MipymeService } from './mipyme.service';
 import { DecidirLimitacionDto, RegistrarManifestacionDto } from './dto/mipyme.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_PARTICIPACION,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import {
   MIME_DOCUMENTOS,
   MIME_IMAGENES,
@@ -31,6 +28,8 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 const CARGA = opcionesDeCarga(
   [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
@@ -49,8 +48,8 @@ export class MipymeController {
   constructor(private readonly service: MipymeService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Manifestaciones, condiciones evaluadas y decisión',
     description:
@@ -61,8 +60,8 @@ export class MipymeController {
   }
 
   @Post('manifestaciones')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PARTICIPACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(FileInterceptor('file', CARGA))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -82,8 +81,8 @@ export class MipymeController {
   }
 
   @Post('decision')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_PARTICIPACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(FileInterceptor('file', CARGA))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

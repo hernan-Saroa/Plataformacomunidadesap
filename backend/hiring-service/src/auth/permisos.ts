@@ -95,6 +95,68 @@ export const PERMISO_ALERTA_VER = 'contratacion.alerta.ver';
  */
 export const PERMISO_EXPEDIENTE_AUDITAR = 'contratacion.expediente.auditar';
 
+// ------------------------- las competencias que no son del gestor --
+//
+// Los seis que sustituyeron a las listas `ROLES_*` con composición propia. El
+// resto del trámite —publicar el pliego, emitir adendas, liquidar— comparte
+// `actividad.edit` porque comparte también quién lo hace: el gestor con su
+// expediente. Estos seis existen porque la matriz los encarga a alguien más.
+
+/**
+ * Expedir el CDP y el RP, tramitar los pagos avalados y cerrar financieramente
+ * el contrato (etapas 4, 9.4 y 10.3).
+ *
+ * Uno solo para los tres momentos porque es la misma competencia: mover el
+ * presupuesto de la entidad, que es de la Dirección Financiera. Ni el gestor
+ * que liquidó ni el supervisor que vigiló.
+ */
+export const PERMISO_PRESUPUESTO_GESTIONAR = 'contratacion.presupuesto.gestionar';
+
+/**
+ * Designar el comité evaluador y al supervisor (actividades 6.2 y 8.2).
+ *
+ * Del Ordenador del Gasto: el gestor lleva el proceso, pero no elige a quién se
+ * encarga de evaluar ni de vigilar, y responde por a quién nombra.
+ */
+export const PERMISO_DESIGNACION_ORDENAR = 'contratacion.designacion.ordenar';
+
+/**
+ * Emitir el acto de adjudicación (actividad 7.4).
+ *
+ * Aparte de la designación aunque hoy lo tenga el mismo rol: adjudicar
+ * compromete a la entidad con un tercero, y es la decisión de fondo del
+ * proceso.
+ */
+export const PERMISO_ADJUDICACION_DECIDIR = 'contratacion.adjudicacion.decidir';
+
+/**
+ * Registrar el resultado de la evaluación (actividad 6.3).
+ *
+ * De las tres dimensiones del comité (RF-SIS-02). El gestor queda fuera porque
+ * no evaluó, y el permiso solo abre la puerta: quién puede registrar lo decide
+ * además la membresía del comité de ese proceso (EFDS-1438).
+ */
+export const PERMISO_EVALUACION_REGISTRAR = 'contratacion.evaluacion.registrar';
+
+/**
+ * Avalar la cuenta de cobro y suscribir el informe final (actividades 9.4 y
+ * 10.1).
+ *
+ * Aparte de `seguimiento.cargar` a propósito: cargar un informe documenta,
+ * avalar decide. Si quien radica la cuenta pudiera avalarla, el aval dejaría de
+ * ser una revisión —mismo criterio que las garantías (EFDS-1164)—.
+ */
+export const PERMISO_SUPERVISION_AVALAR = 'contratacion.supervision.avalar';
+
+/**
+ * Archivar y reabrir el expediente, y registrar la publicación del acta
+ * (actividad 10.4).
+ *
+ * La custodia es del Archivo de Gestión: reabrir un expediente archivado toca
+ * algo que ya se declaró completo ante entes de control.
+ */
+export const PERMISO_EXPEDIENTE_ARCHIVAR = 'contratacion.expediente.archivar';
+
 // ------------------------------------------------- de dónde salen hoy --
 
 /**
@@ -256,6 +318,26 @@ const ROLES_QUE_OTORGAN: Record<string, string[]> = {
     'ENTE_DE_CONTROL',
     'DIRECTOR_CONTRATACION',
     'ARCHIVO_GESTION_DC',
+    'SUPER_ADMIN',
+  ],
+
+  // Las seis competencias que no son del gestor. Espejan lo que la migración
+  // 060 sembró en auth.role_permissions, que es la fuente que manda; esto es
+  // el respaldo por si la consulta falla.
+  [PERMISO_PRESUPUESTO_GESTIONAR]: ['ESTRUCTURADOR_FINANCIERO', 'SUPER_ADMIN'],
+  [PERMISO_DESIGNACION_ORDENAR]: ['ORDENADOR_GASTO', 'SUPER_ADMIN'],
+  [PERMISO_ADJUDICACION_DECIDIR]: ['ORDENADOR_GASTO', 'SUPER_ADMIN'],
+  [PERMISO_EVALUACION_REGISTRAR]: [
+    'EVALUADOR_JURIDICO',
+    'EVALUADOR_FINANCIERO',
+    'EVALUADOR_TECNICO',
+    'SUPER_ADMIN',
+  ],
+  [PERMISO_SUPERVISION_AVALAR]: ['SUPERVISOR_CONTRATO', 'SUPER_ADMIN'],
+  [PERMISO_EXPEDIENTE_ARCHIVAR]: [
+    'ARCHIVO_GESTION_DC',
+    'GESTOR_CONTRATACION',
+    'DIRECTOR_CONTRATACION',
     'SUPER_ADMIN',
   ],
 };

@@ -21,13 +21,12 @@ import { unlink } from 'fs/promises';
 import { OfertasService } from './ofertas.service';
 import { FijarPlazoOfertasDto, RegistrarOferenteDto } from './dto/ofertas.dto';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Roles } from '../../auth/roles.decorator';
-import {
-  getHiringAccess,
-  ROLES_LECTURA_CONTRATACION,
-  ROLES_OFERTAS,
-} from '../../auth/hiring-access';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Recepción de ofertas — actividad 6.1 (EFDS-1155).
@@ -42,8 +41,8 @@ export class OfertasController {
   constructor(private readonly service: OfertasService) {}
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_LECTURA_CONTRATACION)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
   @ApiOperation({
     summary: 'Estado de la recepción de ofertas',
     description:
@@ -54,8 +53,8 @@ export class OfertasController {
   }
 
   @Put('plazo')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_OFERTAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Fijar o corregir el vencimiento del plazo',
     description:
@@ -70,8 +69,8 @@ export class OfertasController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_OFERTAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -109,8 +108,8 @@ export class OfertasController {
   }
 
   @Post('cerrar')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_OFERTAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Actividad 6.1 · Cerrar la recepción y publicar la lista',
     description:
@@ -121,8 +120,8 @@ export class OfertasController {
   }
 
   @Delete(':oferenteId')
-  @UseGuards(RolesGuard)
-  @Roles(...ROLES_OFERTAS)
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.actividad.edit')
   @ApiOperation({
     summary: 'Retirar una oferta registrada por error',
     description:
