@@ -475,6 +475,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3010
+      # Ruta del storage de archivos dentro del contenedor (se monta como volumen)
+      TRAVEL_EXPENSES_STORAGE_PATH: /app/uploads
 
       DB_HOST: db
       DB_PORT: 5432
@@ -488,6 +490,8 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+    volumes:
+      - ./backend/travel-expenses-service/uploads:/app/uploads
     ports:
       - "3010:3010"
     depends_on:

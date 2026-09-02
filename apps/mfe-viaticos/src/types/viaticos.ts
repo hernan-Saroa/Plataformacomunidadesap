@@ -48,6 +48,7 @@ export interface FormNuevaSolicitud {
   diasComision: number;
   aceptaHabeasData: boolean;
   tipoComision?: string;
+  esInternacional?: boolean;
   documentos?: DocumentoFormItem[];
 }
 
@@ -69,7 +70,15 @@ export interface Geopolitica {
   idPadre?: number;
 }
 
-export type TipoDocumentoSoporte = 'CDP' | 'RUT' | 'CERT_BANCARIA' | 'SEGURIDAD_SOCIAL' | 'CONTRATO_SECOP';
+export type TipoDocumentoSoporte =
+  | 'CDP'
+  | 'RUT'
+  | 'CERT_BANCARIA'
+  | 'SEGURIDAD_SOCIAL'
+  | 'CONTRATO_SECOP'
+  | 'PASAPORTE'
+  | 'CARTA_INVITACION'
+  | 'RESOLUCION_ACTO';
 
 /** Comisionado tal como lo serializa `ComisionadoEntity` (camelCase). */
 export interface Comisionado {
@@ -126,6 +135,7 @@ export interface SolicitudComisionResponse {
    diasComision: number;
    estadoSolicitud: string;
    tipoComision: string;
+   esInternacional: boolean;
    radicadoFueraJornada: boolean;
    extemporanea: boolean;
    creadoPorUsuarioId: string;
@@ -158,6 +168,7 @@ export interface CreateSolicitudRequest {
   ipRegistroHabeasData?: string;
   modoBorrador?: boolean;
   tipoComision?: string;
+  esInternacional?: boolean;
   documentos?: {
     tipoDocumento: TipoDocumentoSoporte;
     nombreArchivoOriginal: string;

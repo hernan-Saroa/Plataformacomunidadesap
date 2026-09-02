@@ -1,4 +1,5 @@
 import apiClient from './apiClient';
+import { buildApiUrl } from '../../../config/environment';
 import {
   SolicitudViatico,
   ResumenEstadisticoViaticos,
@@ -9,9 +10,9 @@ import {
   SolicitudListaResponse,
   EstadoSolicitudViatico,
   Geopolitica,
-  ChecklistDocumentosResponse,
-  FinalizarSolicitudResponse,
-} from '../../types/viaticos';
+   ChecklistDocumentosResponse,
+   FinalizarSolicitudResponse,
+ } from '../../types/viaticos';
 import {
   ParametrizacionFormulario,
   ConfigTipoComisionado,
@@ -404,6 +405,25 @@ export class ViaticosService {
     }
   }
 
+  /**
+   * Actualiza los campos editables de un borrador (estado PENDIENTE).
+   * Se usa al volver al paso 2 y guardar de nuevo (p. ej. al corregir fechas).
+   */
+  async actualizarSolicitud(
+    solicitudId: string,
+    data: Partial<CreateSolicitudRequest>,
+  ): Promise<SolicitudComisionResponse> {
+    try {
+      return await apiClient.put<SolicitudComisionResponse>(
+        `/viaticos/api/v1/requests/${solicitudId}`,
+        data,
+      );
+    } catch (error) {
+      console.error('Error actualizando solicitud de comisión:', error);
+      throw error;
+    }
+  }
+
   async subirDocumento(
     solicitudId: string,
     tipo: string,
@@ -412,28 +432,53 @@ export class ViaticosService {
   ): Promise<DocumentoSoporte> {
     const formData = new FormData();
     formData.append('tipoDocumento', tipo);
-    formData.append('nombreArchivoOriginal', archivo.name);
-    formData.append('nombreArchivoSeguro', this.sanitizeFileName(archivo.name));
-    formData.append('urlRepositorio', `/uploads/${solicitudId}/${this.sanitizeFileName(archivo.name)}`);
-    formData.append('archivo', archivo);
     if (tipoMime) {
       formData.append('tipoMime', tipoMime);
     }
+    formData.append('archivo', archivo);
 
     try {
-      return await apiClient.post<DocumentoSoporte>(
+      return await apiClient.upload<DocumentoSoporte>(
         `/viaticos/api/v1/requests/${solicitudId}/documentos`,
         formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        },
       );
     } catch (error) {
       console.error('Error subiendo documento:', error);
       throw error;
     }
+  }
+
+  /**
+   * Elimina un documento de soporte de la solicitud. El backend borra el
+   * registro de la BD y el archivo físico del storage, permitiendo volver a
+   * cargar el documento (re-upload).
+   */
+  async eliminarDocumento(
+    solicitudId: string,
+    documentoId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      return await apiClient.delete<{ success: boolean; message: string }>(
+        `/viaticos/api/v1/requests/${solicitudId}/documentos/${documentoId}`,
+      );
+    } catch (error) {
+      console.error('Error eliminando documento:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Construye la URL absoluta de acceso (previsualización / descarga) a partir
+   * del `urlRepositorio` guardado en BD (p. ej. `/uploads/{solicitudId}/{archivo}`).
+   * Funciona tanto en modo gateway (`/viaticos/uploads/...`) como en modo directo
+   * (`http://localhost:3010/uploads/...`).
+   */
+  obtenerUrlArchivo(urlRepositorio?: string): string {
+    if (!urlRepositorio) return '';
+    if (/^https?:\/\//i.test(urlRepositorio) || urlRepositorio.startsWith('blob:')) {
+      return urlRepositorio;
+    }
+    return buildApiUrl('viaticos', urlRepositorio);
   }
 
   private sanitizeFileName(name: string): string {
@@ -479,19 +524,9 @@ export class ViaticosService {
       throw error;
     }
   }
-
-  async exportarFormato023(solicitudId: string, codigo: string): Promise<void> {
+  async exportarFormato023(solicitudId: string, codigo: string): Promise<Blob> {
     try {
-      const blob = await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
-
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Formato-023-Solicitud-${codigo}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      return await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
     } catch (error) {
       console.error('Error exportando Formato 023:', error);
       throw error;

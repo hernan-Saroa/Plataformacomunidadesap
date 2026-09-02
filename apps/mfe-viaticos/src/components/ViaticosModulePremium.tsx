@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
-import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse } from '../types/viaticos';
+import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import ParametrizacionManager from './ParametrizacionManager';
@@ -39,6 +39,8 @@ export default function ViaticosModulePremium() {
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
   const [solicitudAResumir, setSolicitudAResumir] = useState<SolicitudComisionResponse | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
+  const [documentosSoporte, setDocumentosSoporte] = useState<DocumentoSoporte[]>([]);
+  const [cargandoDocumentos, setCargandoDocumentos] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [exportando, setExportando] = useState(false);
   const [esSuperAdmin, setEsSuperAdmin] = useState(false);
@@ -133,11 +135,28 @@ export default function ViaticosModulePremium() {
     cargarDatos();
   };
 
+  const handleVerDetalle = async (sol: SolicitudViatico) => {
+    setSolicitudSeleccionada(sol);
+    setCargandoDocumentos(true);
+    setDocumentosSoporte([]);
+    try {
+      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+      setDocumentosSoporte(completa.documentosSoporte || []);
+    } catch (e) {
+      console.error('Error cargando documentos de soporte:', e);
+    } finally {
+      setCargandoDocumentos(false);
+    }
+  };
+
   const handleExportarPDF = async (solicitud: SolicitudViatico) => {
     setExportando(true);
     try {
-      await viaticosService.exportarFormato023(solicitud.id, solicitud.codigo);
-      setMensajeExito(`Formato 023 de la solicitud ${solicitud.codigo} exportado correctamente.`);
+      const blob = await viaticosService.exportarFormato023(solicitud.id, solicitud.codigo);
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setMensajeExito(`Formato 023 de la solicitud ${solicitud.codigo} generado.`);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (error) {
       console.error('Error al exportar Formato 023:', error);
       setMensajeExito('Error al exportar el Formato 023. Intente nuevamente.');
@@ -382,9 +401,9 @@ export default function ViaticosModulePremium() {
                                    <Download className="w-3.5 h-3.5" />
                                    Exportar
                                  </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSolicitudSeleccionada(sol)}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleVerDetalle(sol)}
                                     className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center gap-1 transition-colors"
                                   >
                                     <Eye className="w-3.5 h-3.5 text-slate-500" />
@@ -484,8 +503,8 @@ export default function ViaticosModulePremium() {
           {/* ── MODAL DETALLE DE SOLICITUD ── */}
           {solicitudSeleccionada && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
                   <div>
                     <span className="font-mono text-xs font-bold text-blue-700">{solicitudSeleccionada.codigo}</span>
                     <h3 className="text-base font-black text-slate-900">{solicitudSeleccionada.nombreComisionado}</h3>
@@ -505,7 +524,7 @@ export default function ViaticosModulePremium() {
                     ✕
                   </button>
                 </div>
-                <div className="py-4 space-y-3 text-xs">
+                <div className="px-6 py-4 space-y-3 text-xs overflow-y-auto flex-1 min-h-0">
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-400 font-bold">Cargo:</span>
                     <span className="font-semibold text-slate-800">{solicitudSeleccionada.cargoComisionado}</span>
@@ -536,8 +555,45 @@ export default function ViaticosModulePremium() {
                       {solicitudSeleccionada.justificacion}
                     </p>
                   </div>
+                  {cargandoDocumentos ? (
+                    <div className="py-2 text-xs text-slate-400">Cargando archivos...</div>
+                  ) : (
+                    <div className="py-1">
+                      <span className="text-slate-400 font-bold block mb-1">Archivos adjuntos:</span>
+                      {documentosSoporte.length === 0 ? (
+                        <p className="text-xs text-slate-500">No hay documentos adjuntos.</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {documentosSoporte.map((doc) => {
+                            const urlArchivo = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
+                            return (
+                              <div
+                                key={doc.id}
+                                className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-semibold text-slate-800 truncate">{doc.nombreArchivoOriginal}</p>
+                                  <p className="text-[10px] text-slate-500">{doc.tipoDocumento}</p>
+                                </div>
+                                <div className="shrink-0 ml-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => window.open(urlArchivo, '_blank', 'noopener,noreferrer')}
+                                    className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200"
+                                    title="Abrir en nueva pestaña"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <div className="px-6 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
                   <button
                     type="button"
                     onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}

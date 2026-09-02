@@ -9,7 +9,11 @@ import {
   Min,
 } from 'class-validator';
 
-export class CreateSolicitudDto {
+/**
+ * Campos editables de una solicitud de comisión (borrador en estado PENDIENTE).
+ * Todos son opcionales: solo se actualizan los que llegan en el PATCH.
+ */
+export class UpdateSolicitudDto {
   @IsOptional()
   @IsString()
   @Length(0, 250)
@@ -61,33 +65,6 @@ export class CreateSolicitudDto {
   @IsInt()
   @Min(0)
   diasComision?: number;
-
-  @IsString()
-  comisionadoId: string;
-
-  @IsString()
-  creadoPorUsuarioId: string;
-
-  @IsOptional()
-  @IsBoolean()
-  aceptaHabeasData?: boolean;
-
-  @IsOptional()
-  @IsString()
-  ipRegistroHabeasData?: string;
-
-  @IsOptional()
-  documentos?: Array<{
-    tipoDocumento: string;
-    nombreArchivoOriginal: string;
-    nombreArchivoSeguro: string;
-    urlRepositorio: string;
-    tipoMime?: string;
-  }>;
-
-  @IsOptional()
-  @IsBoolean()
-  modoBorrador?: boolean;
 
   @IsOptional()
   @IsString()

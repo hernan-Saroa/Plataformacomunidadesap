@@ -1,24 +1,30 @@
-import { IsString, Length, IsOptional } from 'class-validator';
+import { IsString, Length, IsOptional, Allow } from 'class-validator';
 
 export class UploadDocumentoDto {
   @IsString()
   @Length(1, 50)
   tipoDocumento: string;
 
-  @IsString()
-  @Length(1, 255)
-  nombreArchivoOriginal: string;
-
-  @IsString()
-  @Length(1, 255)
-  nombreArchivoSeguro: string;
-
-  @IsString()
-  @Length(1, 512)
-  urlRepositorio: string;
-
   @IsOptional()
   @IsString()
   @Length(1, 100)
   tipoMime?: string;
+
+  @IsOptional()
+  @IsString()
+  nombreArchivoOriginal?: string;
+
+  @IsOptional()
+  @IsString()
+  nombreArchivoSeguro?: string;
+
+  @IsOptional()
+  @IsString()
+  urlRepositorio?: string;
+
+  // El archivo real llega vía @UploadedFile() (multer) y se adjunta al DTO en
+  // el controlador. @Allow() lo incluye en la whitelist para no romper con el
+  // ValidationPipe global (forbidNonWhitelisted: true).
+  @Allow()
+  file?: any;
 }
