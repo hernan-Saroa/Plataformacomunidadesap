@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   FileText, Calendar, User, Building, Clock, X, AlertCircle,
   CheckCircle, Target, Edit, Send, Download, Upload, MessageSquare,
-  Paperclip, AlertTriangle, Archive, Trash2, Eye, BellRing, Printer
+  Paperclip, AlertTriangle, Archive, Trash2, Eye, BellRing, Printer, Scale
 } from 'lucide-react';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
@@ -551,6 +551,19 @@ export function ModalDetalleSolicitudInforme({
                 <p className="text-xs text-gray-500">Destinatario del Informe</p>
               </div>
               <p className="text-sm font-bold text-gray-900">{solicitud.destinatario || 'No especificado'}</p>
+            </div>
+
+            {/* FUENTE INFORMATIVA */}
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 mb-1">
+                <Scale className="w-3.5 h-3.5 text-gray-500" />
+                <p className="text-xs text-gray-500">Fuente Informativa</p>
+              </div>
+              <p className="text-sm font-bold text-gray-900">
+                {solicitud.fundamentoNormativo && solicitud.fundamentoNormativo.length > 0
+                  ? solicitud.fundamentoNormativo.map(f => [f.tipo, f.cita].filter(Boolean).join(': ')).join('; ')
+                  : 'No especificado'}
+              </p>
             </div>
 
             {/* ETAPA ACTUAL Y CAMBIO DE ETAPA */}
