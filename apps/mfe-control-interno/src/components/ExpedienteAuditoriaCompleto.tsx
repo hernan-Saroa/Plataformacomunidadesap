@@ -2301,17 +2301,19 @@ function TabGeneral({
 
   const cargarProfesionales = async () => {
     try {
-      const data = await configuracionesProfesionalesOCIApi.getProfesionalesOCI();
+      const data = await configuracionesProfesionalesOCIApi.getAll();
       const arr = Array.isArray(data) ? data : (data as any)?.data || [];
       const limpios = arr
         .map((p: any) => {
+          const personaId = String(p.idTercero || p.personaId || p.persona?.id_person || p.id || '');
           const nombre = p.nombreCompleto ||
             (p.persona ? `${p.persona.nombre || ''} ${p.persona.apellido || ''}`.trim() : '') ||
             p.nombre || '';
           return {
             ...p,
+            _idPersona: personaId,
             _nombre: nombre,
-            _cargo: p.cargo || p.rol || 'Profesional OCI',
+            _cargo: p.cargo || p.rol || p.rolOcig || 'Profesional OCI',
             _email: p.email || p.persona?.email || '',
           };
         })
@@ -2329,20 +2331,35 @@ function TabGeneral({
     if (!selectedProfId) return;
     setReasignando(true);
     try {
-      const prof = profesionales.find((p: any) => String(p.id) === selectedProfId);
+      const prof = profesionales.find(
+        (p: any) => String(p._idPersona) === selectedProfId || String(p.id) === selectedProfId || String(p.idTercero) === selectedProfId
+      );
+      const personaId = prof?._idPersona || prof?.idTercero || selectedProfId;
       const nombre = prof?._nombre || 'Auditor';
       const email = prof?._email || '';
 
       await controlInternoService.updateAuditoria(auditoria.id, {
-        auditorLiderId: selectedProfId,
+        auditorLiderId: personaId,
         auditorLider: nombre,
         auditorLiderEmail: email,
+      });
+
+      // Actualizar estado local inmediatamente
+      onAuditoriaUpdated?.({
+        ...auditoria,
+        auditorLider: {
+          ...auditoria.auditorLider,
+          id: String(personaId),
+          nombre: nombre,
+          email: email || auditoria.auditorLider.email,
+        },
       });
 
       toast.success('✅ Auditor Líder reasignado', {
         description: `Asignado a ${nombre}`,
       });
       setShowReasignar(false);
+      setSelectedProfId('');
       if (onReload) onReload();
     } catch (err) {
       console.error('Error reasignando auditor:', err);
@@ -2361,20 +2378,31 @@ function TabGeneral({
     if (!selectedEquipoProfId) return;
     setReasignandoEquipo(true);
     try {
-      const prof = profesionales.find((p: any) => String(p.id) === selectedEquipoProfId);
+      const prof = profesionales.find(
+        (p: any) => String(p._idPersona) === selectedEquipoProfId || String(p.id) === selectedEquipoProfId || String(p.idTercero) === selectedEquipoProfId
+      );
+      const personaId = prof?._idPersona || prof?.idTercero || selectedEquipoProfId;
       const nombre = prof?._nombre || 'Auditor';
       const cargo = prof?._cargo || 'Auditor';
+      const email = prof?._email || '';
 
       const nuevoMiembro = {
-        id: String(prof?.id || Date.now()),
+        id: String(personaId),
         nombre: nombre,
-        rol: cargo
+        rol: cargo,
+        email: email,
       };
 
       const nuevoEquipo = [...auditoria.equipoAuditores, nuevoMiembro];
+      const equipoIds = nuevoEquipo.map((m: any) => String(m.id || m.personaId || '')).filter(Boolean);
 
       await controlInternoService.updateAuditoria(auditoria.id, {
-        equipoAuditores: nuevoEquipo
+        equipoAuditores: equipoIds,
+      });
+
+      onAuditoriaUpdated?.({
+        ...auditoria,
+        equipoAuditores: nuevoEquipo,
       });
 
       toast.success('✅ Auditor agregado al equipo', {
@@ -2856,7 +2884,7 @@ function TabGeneral({
                 >
                   <option value="">Seleccionar profesional...</option>
                   {profesionales.map((p: any) => (
-                    <option key={p.id} value={String(p.id)}>
+                    <option key={p.id || p._idPersona} value={String(p._idPersona || p.idTercero || p.id)}>
                       {p._nombre} — {p._cargo}
                     </option>
                   ))}
@@ -2891,7 +2919,7 @@ function TabGeneral({
                 >
                   <option value="">Seleccionar para el equipo...</option>
                   {profesionales.map((p: any) => (
-                    <option key={p.id} value={String(p.id)}>
+                    <option key={p.id || p._idPersona} value={String(p._idPersona || p.idTercero || p.id)}>
                       {p._nombre} — {p._cargo}
                     </option>
                   ))}
