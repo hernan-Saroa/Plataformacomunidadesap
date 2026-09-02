@@ -17,7 +17,7 @@ import { ConfiguracionProcesosModule } from './ConfiguracionProcesosModule';
 type TabActiva = 'NOTIFICACIONES' | 'CONFIG_AUDITORIAS' | 'CONFIG_KANBAN' | 'PROFESIONALES_OCI' | 'PROCESOS';
 
 const TABS_CONFIG = [
-  { id: 'NOTIFICACIONES' as TabActiva, icon: Bell, label: 'Notificaciones', color: '#F97316' },
+  // { id: 'NOTIFICACIONES' as TabActiva, icon: Bell, label: 'Notificaciones', color: '#F97316' },
   { id: 'CONFIG_AUDITORIAS' as TabActiva, icon: Sliders, label: 'Config. Auditorías', color: '#2962FF' },
   { id: 'CONFIG_KANBAN' as TabActiva, icon: Columns, label: 'Config. Kanban', color: '#7C3AED' },
   { id: 'PROFESIONALES_OCI' as TabActiva, icon: Users, label: 'Profesionales OCI', color: '#0891B2' },
@@ -25,7 +25,7 @@ const TABS_CONFIG = [
 ];
 
 export function ConfiguracionesModulePremium() {
-  const [tabActiva, setTabActiva] = useState<TabActiva>('NOTIFICACIONES');
+  const [tabActiva, setTabActiva] = useState<TabActiva>('CONFIG_AUDITORIAS');
 
   const activeTab = TABS_CONFIG.find(t => t.id === tabActiva) || TABS_CONFIG[0];
 
