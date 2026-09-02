@@ -2,18 +2,23 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  Calculator,
+  Calendar,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
   Download,
+  DollarSign,
   Eye,
   FileText,
   Plane,
+  Plus,
   Search,
   Send,
   ShieldCheck,
   Trash2,
   User,
+  Wallet,
   X,
 } from 'lucide-react';
 import {
@@ -28,6 +33,7 @@ import { ConfigTipoComisionado } from '../types/parametrizacion';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
+import LiquidacionPanel from './LiquidacionPanel';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
@@ -93,6 +99,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     nombre: string;
   } | null>(null);
   const [finalizando, setFinalizando] = useState(false);
+  const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
+  const [aplicaExcepcionRegional, setAplicaExcepcionRegional] = useState(false);
+  const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
+  const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
   const refTokenCiudades = useRef(0);
 
   const cargarDepartamentos = async () => {
@@ -239,6 +249,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setEliminandoDoc(false);
       setPreviewDoc(null);
       setFinalizando(false);
+      setCategoriaInvestigador('ASOCIADO');
+      setAplicaExcepcionRegional(false);
+      setAsignacionesBasicasText('');
+      setAsignacionesBasicas([]);
       void cargarDepartamentos();
       void cargarUsuarioActual();
       if (solicitudAResumir) {
@@ -274,6 +288,26 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const esCampoOculto = (clave: string): boolean => {
     if (!parametrizacion) return false;
     return parametrizacion.camposOcultos.includes(clave);
+  };
+
+  const actualizarAsignacionBasica = (indice: number, valor: number) => {
+    setAsignacionesBasicas((prev) => {
+      const nueva = [...prev];
+      nueva[indice] = valor;
+      return nueva;
+    });
+  };
+
+  const agregarAsignacionBasica = () => {
+    setAsignacionesBasicas((prev) => [...prev, 0]);
+  };
+
+  const eliminarAsignacionBasica = (indice: number) => {
+    setAsignacionesBasicas((prev) => prev.filter((_, i) => i !== indice));
+  };
+
+  const obtenerAsignacionesBasicasValidas = (): number[] => {
+    return asignacionesBasicas.filter((v) => Number.isFinite(v) && v > 0);
   };
 
   const documentosObligatoriosLista = (parametrizacion?.documentos ?? [])
@@ -923,11 +957,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               )}
 
               {(!esCampoOculto('montoViaticos') || !esCampoOculto('montoGastosViaje') || !esCampoOculto('diasComision')) && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    Valores estimados (COP)
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-slate-500" />
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Valores de la Comisión
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {!esCampoOculto('montoViaticos') && (
                       <div>
                         <label className={labelCls} htmlFor="montoViaticos">
@@ -945,6 +983,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             className={`${inputCls} pl-7 text-right font-bold`}
                           />
                         </div>
+                        <p className="text-[10px] text-slate-400 mt-1">Valor total estimado de viáticos</p>
                       </div>
                     )}
                     {!esCampoOculto('montoGastosViaje') && (
@@ -964,13 +1003,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             className={`${inputCls} pl-7 text-right font-bold`}
                           />
                         </div>
+                        <p className="text-[10px] text-slate-400 mt-1">Tiquetes, alojamiento, alimentación, etc.</p>
                       </div>
                     )}
-                    {!esCampoOculto('diasComision') && (
-                      <div>
-                        <label className={labelCls} htmlFor="diasComision">
-                          {renderLabel('diasComision', 'Días')}
-                        </label>
+                  </div>
+
+                  {!esCampoOculto('diasComision') && (
+                    <div className="max-w-[200px]">
+                      <label className={labelCls} htmlFor="diasComision">
+                        {renderLabel('diasComision', 'Días de comisión')}
+                      </label>
+                      <div className="relative">
+                        <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                         <input
                           id="diasComision"
                           type="text"
@@ -978,13 +1022,162 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           required={esCampoObligatorio('diasComision')}
                           value={form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)}
                           onChange={(e) => actualizar('diasComision', Number(soloNumeros(e.target.value)) || 0)}
-                          className={`${inputCls} text-right font-bold`}
+                          className={`${inputCls} pl-9 text-right font-bold`}
                         />
                       </div>
+                      <p className="text-[10px] text-slate-400 mt-1">Se calcula automáticamente desde las fechas</p>
+                    </div>
+                  )}
+
+                  {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
+                      <span className="text-xs font-bold text-slate-600">Total estimado</span>
+                      <span className="text-sm font-black text-slate-800">
+                        {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {comisionado?.tipoComisionado === 'INVESTIGADOR' && (
+                <div>
+                  <label className={labelCls} htmlFor="categoriaInvestigador">
+                    Categoría de Investigador
+                  </label>
+                  <SearchableSelect
+                    id="categoriaInvestigador"
+                    options={[
+                      { value: 'JUNIOR', label: 'Junior' },
+                      { value: 'ASOCIADO', label: 'Asociado' },
+                      { value: 'SENIOR', label: 'Senior' },
+                    ]}
+                    value={categoriaInvestigador}
+                    onChange={(valor) => setCategoriaInvestigador(valor)}
+                    placeholder="Seleccione categoría"
+                  />
+                </div>
+              )}
+
+              {comisionado?.tipoComisionado && !esCampoOculto('destinoDepartamento') && (
+                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aplicaExcepcionRegional}
+                    onChange={(e) => setAplicaExcepcionRegional(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
+                  />
+                  Aplica excepción regional (Art. 5 Decreto 314 de 2026)
+                </label>
+              )}
+
+              {comisionado?.tipoComisionado && !esCampoOculto('montoViaticos') && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Wallet className="w-4 h-4 text-slate-500" />
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Asignaciones Básicas Mensuales
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-3">
+                    Ingrese los salarios del comisionado. Para liquidación de doble rol, agregue ambos salarios. Se usará el mayor para el cálculo.
+                  </p>
+
+                  <div className="space-y-2">
+                    {asignacionesBasicas.length === 0 && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Salario básico mensual</label>
+                        <div className="relative max-w-xs">
+                          <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value=""
+                            onChange={(e) => {
+                              const val = Number(soloNumeros(e.target.value)) || 0;
+                              setAsignacionesBasicas([val]);
+                            }}
+                            className={`${inputCls} pl-7 text-right font-bold`}
+                          />
+                        </div>
+                      </div>
                     )}
+
+                    {asignacionesBasicas.length > 0 && (
+                      <div className="space-y-2">
+                        {asignacionesBasicas.map((valor, idx) => (
+                          <div key={idx} className="max-w-xs">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                              {idx === 0 ? 'Salario básico mensual' : `Salario ${idx + 1} (doble rol)`}
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="0"
+                                value={valor ? formatearMoneda(valor) : ''}
+                                onChange={(e) => {
+                                  const val = Number(soloNumeros(e.target.value)) || 0;
+                                  actualizarAsignacionBasica(idx, val);
+                                }}
+                                className={`${inputCls} pl-7 pr-8 text-right font-bold`}
+                              />
+                              {asignacionesBasicas.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => eliminarAsignacionBasica(idx)}
+                                  className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
+                                  title="Eliminar salario"
+                                  aria-label="Eliminar salario"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={agregarAsignacionBasica}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg text-[11px] font-bold transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Agregar salario (doble rol)
+                      </button>
+
+                      {obtenerAsignacionesBasicasValidas().length > 1 && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200">
+                          <Calculator className="w-3.5 h-3.5 text-slate-400" />
+                          <span>
+                            Mayor salario: <strong>{formatearMoneda(Math.max(...obtenerAsignacionesBasicasValidas()))}</strong>
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
+
+              <LiquidacionPanel
+                fechaInicio={form.fechaInicio}
+                fechaFin={form.fechaFin}
+                tipoComisionado={comisionado?.tipoComisionado || ''}
+                destinoCiudad={form.destinoCiudad}
+                destinoDepartamento={form.destinoDepartamento}
+                aplicaExcepcionRegional={aplicaExcepcionRegional}
+                categoriaInvestigador={categoriaInvestigador}
+                asignacionesBasicas={obtenerAsignacionesBasicasValidas()}
+                onAplicarValor={(monto, dias) => {
+                  actualizar('montoViaticos', monto);
+                  actualizar('diasComision', dias);
+                }}
+              />
 
                {!esCampoOculto('requiereTiquetes') && (
                  <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">

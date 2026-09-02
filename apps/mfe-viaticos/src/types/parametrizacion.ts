@@ -95,3 +95,41 @@ export interface ActualizarConfigTipoComisionadoDTO {
   documentosOpcionales?: string[];
   activo?: boolean;
 }
+
+export interface EscalaViatico {
+  id: number;
+  decretoVigente: string;
+  anoVigencia: number;
+  rangoMinimo: number;
+  rangoMaximo: number;
+  tarifaDiaria: number;
+  creadoEn: string;
+}
+
+export interface TarifaInvestigador {
+  id: number;
+  categoriaInvestigador: string;
+  tarifaDiaria: number;
+  creadoEn: string;
+}
+
+export interface TarifaRegionalExcepcion {
+  id: number;
+  departamento: string;
+  esNuevoDepartamento: boolean;
+  tarifaDiaria: number;
+  decretoReferencia: string | null;
+  activo: boolean;
+  creadoEn: string;
+}
+
+export interface LiquidationParam {
+  id: number;
+  clave: string;
+  valor: string;
+  tipo: string;
+  descripcion: string | null;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+

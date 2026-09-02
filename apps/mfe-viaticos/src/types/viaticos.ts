@@ -54,6 +54,8 @@ export interface FormNuevaSolicitud {
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
 
+export type CategoriaInvestigador = 'JUNIOR' | 'ASOCIADO' | 'SENIOR';
+
 /**
  * Registro de geopolítica (tabla `auth.geopolitica`) expuesto por el
  * microservicio de auth (estructura-organizacional). Se usa para los
@@ -306,4 +308,40 @@ export interface FinalizarSolicitudResponse {
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
   warningMessage?: string;
+}
+
+export interface DesgloseDiaLiquidacion {
+  dia: number;
+  fecha: string;
+  valor: number;
+  pernocta: boolean;
+}
+
+export interface LiquidacionResponse {
+  success: boolean;
+  data: {
+    salarioBaseAplicado: number;
+    decretoAplicado: string;
+    tarifaDiariaBase: number;
+    factorComisionado: number;
+    factorPernocta: number;
+    tarifaFinalAplicadaDia: number;
+    numeroDiasNoches: number;
+    valorTotalViaticos: number;
+    desgloseCalculo: DesgloseDiaLiquidacion[];
+    alertas?: string[];
+  };
+}
+
+export interface CalcularLiquidacionRequest {
+  comisionadoId?: string;
+  tipoComisionado: TipoComisionado;
+  asignacionesBasicas?: number[];
+  categoriaInvestigador?: CategoriaInvestigador;
+  fechaInicio: string;
+  fechaFin: string;
+  pernocta: boolean;
+  destinoCiudad?: string;
+  destinoDepartamento?: string;
+  aplicaExcepcionRegional?: boolean;
 }

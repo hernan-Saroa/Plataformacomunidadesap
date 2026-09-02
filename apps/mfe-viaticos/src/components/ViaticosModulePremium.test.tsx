@@ -33,8 +33,8 @@ const mockSolicitudes = [
     sedeOrigen: 'Sede Central Bogotá',
     ciudadDestino: 'Medellín',
     departamentoDestino: 'Antioquia',
-    fechaInicio: '2026-08-20',
-    fechaFin: '2026-08-23',
+    fechaInicio: '2026-09-03',
+    fechaFin: '2026-09-07',
     diasComision: 3,
     tipoComision: 'CAPACITACION_DOCENTE',
     medioTransporte: 'AEREO',
@@ -45,9 +45,9 @@ const mockSolicitudes = [
     estado: 'RESOLUCION_EMITIDA',
     requiereTiqueteAereo: true,
     numeroResolucion: 'RES-0452-2026',
-    fechaResolucion: '2026-08-15',
-    creadoEn: '2026-08-10',
-    actualizadoEn: '2026-08-15',
+    fechaResolucion: '2026-09-07',
+    creadoEn: '2026-09-05',
+    actualizadoEn: '2026-09-07',
   },
 ];
 
@@ -143,8 +143,8 @@ describe('ViaticosModulePremium', () => {
     await screen.findByText('Cartagena');
     fireEvent.click(screen.getByText('Cartagena'));
 
-    fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: '2026-09-01' } });
-    fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: '2026-09-05' } });
+    fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: '2026-09-03' } });
+    fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: '2026-09-07' } });
     await userEvent.type(screen.getByPlaceholderText(/Ej\. Rubro 01/i), 'Rubro 01');
     fireEvent.change(screen.getByLabelText(/Viáticos/i), { target: { value: '560000' } });
     fireEvent.change(screen.getByLabelText(/Gastos de viaje/i), { target: { value: '120000' } });
@@ -568,8 +568,8 @@ describe('ViaticosModulePremium', () => {
     const fechaInicio = screen.getByLabelText(/Fecha Inicio/i);
     const fechaFin = screen.getByLabelText(/Fecha Fin/i);
 
-    fireEvent.change(fechaInicio, { target: { value: '2026-09-05' } });
-    fireEvent.change(fechaFin, { target: { value: '2026-09-01' } });
+    fireEvent.change(fechaInicio, { target: { value: '2026-09-07' } });
+    fireEvent.change(fechaFin, { target: { value: '2026-09-03' } });
 
     fireEvent.click(screen.getByText(/Guardar y continuar/i));
 
@@ -676,8 +676,8 @@ describe('ViaticosModulePremium', () => {
         comisionadoId: 'com-001',
         destinoCiudad: 'Cartagena',
         destinoDepartamento: 'Bolívar',
-        fechaInicio: '2026-09-01',
-        fechaFin: '2026-09-05',
+        fechaInicio: '2026-09-03',
+        fechaFin: '2026-09-07',
         objetoComision: 'Comision de gestion institucional',
         prioridad: 'MEDIA',
         rubroPresupuestal: 'Rubro 01',
@@ -845,9 +845,9 @@ describe('ViaticosModulePremium', () => {
       expect(screen.getByText(/Carlos Eduardo Ramírez/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText(/Ver Detalle/i));
+    fireEvent.click(screen.getByTitle(/Ver Detalle/i));
 
-    expect(screen.getByText(/Justificación:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Justificación/i)).toBeInTheDocument();
     expect(screen.getByText(/Impartir módulo presencial\./i)).toBeInTheDocument();
   });
 

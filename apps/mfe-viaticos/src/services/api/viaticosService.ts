@@ -12,6 +12,9 @@ import {
   Geopolitica,
    ChecklistDocumentosResponse,
    FinalizarSolicitudResponse,
+   LiquidacionResponse,
+   CalcularLiquidacionRequest,
+   CategoriaInvestigador,
  } from '../../types/viaticos';
 import {
   ParametrizacionFormulario,
@@ -22,6 +25,10 @@ import {
   ActualizarCampoFormularioDTO,
   CrearConfigTipoComisionadoDTO,
   ActualizarConfigTipoComisionadoDTO,
+  EscalaViatico,
+  TarifaInvestigador,
+  TarifaRegionalExcepcion,
+  LiquidationParam,
 } from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
@@ -529,6 +536,164 @@ export class ViaticosService {
       return await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
     } catch (error) {
       console.error('Error exportando Formato 023:', error);
+      throw error;
+    }
+  }
+
+  async calcularLiquidacion(data: CalcularLiquidacionRequest): Promise<LiquidacionResponse> {
+    try {
+      return await apiClient.post<LiquidacionResponse>('/viaticos/api/v1/liquidation/calculate', data);
+    } catch (error) {
+      console.error('Error calculando liquidación:', error);
+      throw error;
+    }
+  }
+
+  // ==================== ESCALAS ====================
+
+  async obtenerEscalas(): Promise<EscalaViatico[]> {
+    try {
+      return await apiClient.get<EscalaViatico[]>('/viaticos/api/v1/liquidation/config/escalas');
+    } catch (error) {
+      console.error('Error obteniendo escalas:', error);
+      return [];
+    }
+  }
+
+  async obtenerEscalaPorId(id: number): Promise<EscalaViatico | null> {
+    try {
+      const res = await apiClient.get<{ escala: EscalaViatico | null }>(`/viaticos/api/v1/liquidation/config/escalas/${id}`);
+      return res.escala;
+    } catch (error) {
+      console.error('Error obteniendo escala:', error);
+      return null;
+    }
+  }
+
+  async crearEscala(dto: Partial<EscalaViatico>): Promise<EscalaViatico | null> {
+    try {
+      return await apiClient.post<EscalaViatico>('/viaticos/api/v1/liquidation/config/escalas', dto);
+    } catch (error) {
+      console.error('Error creando escala:', error);
+      throw error;
+    }
+  }
+
+  async actualizarEscala(id: number, dto: Partial<EscalaViatico>): Promise<EscalaViatico | null> {
+    try {
+      return await apiClient.put<EscalaViatico>(`/viaticos/api/v1/liquidation/config/escalas/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando escala:', error);
+      throw error;
+    }
+  }
+
+  async eliminarEscala(id: number): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/escalas/${id}`);
+    } catch (error) {
+      console.error('Error eliminando escala:', error);
+      throw error;
+    }
+  }
+
+  // ==================== TARIFAS INVESTIGADOR ====================
+
+  async obtenerTarifasInvestigadores(): Promise<TarifaInvestigador[]> {
+    try {
+      return await apiClient.get<TarifaInvestigador[]>('/viaticos/api/v1/liquidation/config/tarifas-investigadores');
+    } catch (error) {
+      console.error('Error obteniendo tarifas de investigadores:', error);
+      return [];
+    }
+  }
+
+  async crearTarifaInvestigador(dto: Partial<TarifaInvestigador>): Promise<TarifaInvestigador | null> {
+    try {
+      return await apiClient.post<TarifaInvestigador>('/viaticos/api/v1/liquidation/config/tarifas-investigadores', dto);
+    } catch (error) {
+      console.error('Error creando tarifa de investigador:', error);
+      throw error;
+    }
+  }
+
+  async actualizarTarifaInvestigador(id: number, dto: Partial<TarifaInvestigador>): Promise<TarifaInvestigador | null> {
+    try {
+      return await apiClient.put<TarifaInvestigador>(`/viaticos/api/v1/liquidation/config/tarifas-investigadores/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando tarifa de investigador:', error);
+      throw error;
+    }
+  }
+
+  async eliminarTarifaInvestigador(id: number): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/tarifas-investigadores/${id}`);
+    } catch (error) {
+      console.error('Error eliminando tarifa de investigador:', error);
+      throw error;
+    }
+  }
+
+  // ==================== EXCEPCIONES REGIONALES ====================
+
+  async obtenerExcepcionesRegionales(): Promise<TarifaRegionalExcepcion[]> {
+    try {
+      return await apiClient.get<TarifaRegionalExcepcion[]>('/viaticos/api/v1/liquidation/config/excepciones-regionales');
+    } catch (error) {
+      console.error('Error obteniendo excepciones regionales:', error);
+      return [];
+    }
+  }
+
+  async crearExcepcionRegional(dto: Partial<TarifaRegionalExcepcion>): Promise<TarifaRegionalExcepcion | null> {
+    try {
+      return await apiClient.post<TarifaRegionalExcepcion>('/viaticos/api/v1/liquidation/config/excepciones-regionales', dto);
+    } catch (error) {
+      console.error('Error creando excepción regional:', error);
+      throw error;
+    }
+  }
+
+  async actualizarExcepcionRegional(id: number, dto: Partial<TarifaRegionalExcepcion>): Promise<TarifaRegionalExcepcion | null> {
+    try {
+      return await apiClient.put<TarifaRegionalExcepcion>(`/viaticos/api/v1/liquidation/config/excepciones-regionales/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando excepción regional:', error);
+      throw error;
+    }
+  }
+
+  async eliminarExcepcionRegional(id: number): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/excepciones-regionales/${id}`);
+    } catch (error) {
+      console.error('Error eliminando excepción regional:', error);
+      throw error;
+    }
+  }
+
+  // ==================== PARÁMETROS GLOBALES ====================
+
+  async obtenerParametrosLiquidacion(): Promise<LiquidationParam[]> {
+    try {
+      return await apiClient.get<LiquidationParam[]>('/viaticos/api/v1/liquidation/config/parametros');
+    } catch (error) {
+      console.error('Error obteniendo parámetros de liquidación:', error);
+      return [];
+    }
+  }
+
+  async actualizarParametrosLiquidacion(dto: {
+    smmlv?: number;
+    factorContratista?: number;
+    factorSinPernocta?: number;
+    cacheTtlMinutes?: number;
+  }): Promise<LiquidationParam[]> {
+    try {
+      return await apiClient.put<LiquidationParam[]>('/viaticos/api/v1/liquidation/config/parametros', dto);
+    } catch (error) {
+      console.error('Error actualizando parámetros de liquidación:', error);
       throw error;
     }
   }
