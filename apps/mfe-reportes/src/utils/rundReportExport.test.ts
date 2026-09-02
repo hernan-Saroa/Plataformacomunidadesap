@@ -30,18 +30,21 @@ const pdfInstance = {
   line: vi.fn(),
   text: vi.fn(),
   splitTextToSize: vi.fn((value: string) => [value]),
-  autoTable: vi.fn(),
   save: vi.fn(),
   getCurrentPageInfo: vi.fn(() => ({ pageNumber: 1 })),
 };
 const jsPDFConstructorMock = vi.fn(function jsPDF() {
   return pdfInstance;
 });
+// jspdf-autotable v5 se usa como autoTable(doc, options) — ya no como doc.autoTable(options).
+const autoTableMock = vi.fn();
 
 vi.mock('jspdf', () => ({
   default: jsPDFConstructorMock,
 }));
-vi.mock('jspdf-autotable', () => ({}));
+vi.mock('jspdf-autotable', () => ({
+  default: (...args: any[]) => autoTableMock(...args),
+}));
 
 const { exportRundReportToExcel, exportRundReportToPDF } = await import('./rundReportExport');
 const COLUMNAS = [
@@ -121,8 +124,9 @@ describe('exportRundReportToPDF — REQ-RUND-F021', () => {
       'RUND_Planta_Docente_Detalle',
     );
 
-    expect(pdfInstance.autoTable).toHaveBeenCalledTimes(1);
-    const autoTableArgs = pdfInstance.autoTable.mock.calls[0][0];
+    expect(autoTableMock).toHaveBeenCalledTimes(1);
+    const [tableDoc, autoTableArgs] = autoTableMock.mock.calls[0];
+    expect(tableDoc).toBe(pdfInstance);
     expect(autoTableArgs.head).toEqual([['Nombre completo', 'Territorial']]);
     expect(autoTableArgs.body).toEqual([['Ana Pérez', 'Bogotá'], ['Luis Gómez', 'Antioquia']]);
 
@@ -142,8 +146,23 @@ describe('exportRundReportToPDF — REQ-RUND-F021', () => {
   it('no revienta con 0 filas y aun así arma la tabla solo con encabezados', () => {
     exportRundReportToPDF([], COLUMNAS, { titulo: 'Reporte', filtros: {}, totalRegistros: 0 }, 'reporte-vacio');
 
-    const autoTableArgs = pdfInstance.autoTable.mock.calls[0][0];
+    const autoTableArgs = autoTableMock.mock.calls[0][1];
     expect(autoTableArgs.head).toEqual([['Nombre completo', 'Territorial']]);
     expect(autoTableArgs.body).toEqual([]);
+  });
+
+  it('deja espacio suficiente para el subtítulo antes de la tabla, sin solaparlo con la línea de fecha de generación', () => {
+    exportRundReportToPDF(
+      ROWS,
+      COLUMNAS,
+      { titulo: 'Reporte', subtitulo: 'Página 1 de 3 · 62 docente(s) en total', filtros: {}, totalRegistros: 2 },
+      'reporte',
+    );
+
+    const [, autoTableArgs] = autoTableMock.mock.calls[0];
+    // El subtítulo se dibuja en y=36 (fontSize 9); startY de la tabla debe dejar
+    // al menos ~7mm después de eso para las 3 líneas de metadata (fecha/total/filtros),
+    // si no, "Fecha de generación" se monta encima del subtítulo (bug ya corregido).
+    expect(autoTableArgs.startY).toBeGreaterThanOrEqual(43 + 3 * 5);
   });
 });
