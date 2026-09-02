@@ -9,7 +9,7 @@
 
 1. Base con catálogo cargado: **14 programas, 427 asignaturas, 16 semestres**.
 2. Migraciones 001–010 del servicio aplicadas.
-3. Usuario de la demo con rol **`PROGRAMADOR_PREGRADO`**.
+3. Usuario de la demo con rol **`PROGRAMADOR_PREGRADO`**, autenticado (el servicio exige token).
 4. Confirmar que el grupo sembrado existe (red de seguridad):
 
 ```sql

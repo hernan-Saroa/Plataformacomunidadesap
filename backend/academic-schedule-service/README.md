@@ -45,36 +45,29 @@ El shell resuelve el remoto en desarrollo contra `localhost:3116`, según
 
 ---
 
-## ⚠️ Conflicto del puerto 5432 en Windows
+## La base de datos
 
-Si tiene **PostgreSQL instalado como servicio de Windows**, ese proceso se queda
-con el 5432 y **tapa** el puerto publicado por el contenedor `superapp-db`. Las
-conexiones a `localhost:5432` llegan al Postgres **local**, no al contenedor,
-aunque `docker port` muestre el mapeo.
-
-Síntomas: *"la autentificación password falló"*, o una base que existe pero
-aparece **vacía**.
-
-Elija una de las dos formas de trabajar:
-
-**A) Local, sin Docker** *(recomendada para desarrollo)*
-Use su Postgres local en el 5432 y prepare la base con `npm run db:migrate`.
-No necesita levantar ningún contenedor.
-
-**B) Contra el contenedor**
-Publique el contenedor en otro puerto y apunte `DB_PORT` ahí:
+El contenedor `superapp-db` se publica en el **55432**, no en el 5432, y así queda
+versionado en `docker-compose.dev.yml`. El valor por defecto de `.env.example` ya
+apunta ahí: no hace falta ningún paso manual.
 
 ```bash
-docker run -d --name pgfwd \
-  --network plataformacomunidadesap_superapp-net \
-  -p 55432:5432 alpine/socat \
-  tcp-listen:5432,fork,reuseaddr tcp-connect:superapp-db:5432
+docker compose -f docker-compose.dev.yml up -d db
+npm run db:migrate
 ```
 
-Luego `DB_PORT=55432` en su `.env`. Para quitarlo: `docker rm -f pgfwd`. No
-altera el contenedor ni su Postgres local.
+### ⚠️ Por qué 55432 y no 5432
 
----
+Un **PostgreSQL instalado como servicio de Windows** se queda con el 5432 a nivel
+de sistema y **tapa** el mapeo del contenedor: `docker ps` muestra la publicación,
+pero las conexiones llegan al Postgres local.
+
+El síntoma es traicionero: la base existe, autentica o no según el caso, y el
+módulo aparece **vacío sin error claro**. Publicar en 55432 elimina la disputa.
+**No lo devuelva a 5432.**
+
+Para apuntar a un PostgreSQL local, cambie host y puerto en `.env` y corra
+`npm run db:migrate` contra él: el runner es idempotente y crea todo.
 
 ## Migraciones
 
@@ -117,7 +110,12 @@ DELETE FROM "academic-schedule".grupo WHERE observaciones = 'DEMO';
 
 ## Autorización
 
-La identidad **llega por cabeceras del gateway** (`x-user-id`, `x-user-roles`
+El servicio exige **token válido**: hay un guard global (`JwtAuthGuard`) que
+rechaza con 401 cualquier petición sin token, salvo `/health`. Se agregó porque el
+puerto 3013 se publica al host en los tres entornos y sin él la API quedaba
+accesible sin autenticar (EFDS-1791).
+
+Ya con el token validado, la identidad efectiva **llega por cabeceras del gateway** (`x-user-id`, `x-user-roles`
 separadas por coma), **no** por `req.user`. Los permisos se resuelven siempre en
 el servidor contra `auth.role_permissions`; nunca se confía en algo que envíe el
 cliente.
@@ -137,7 +135,8 @@ perfiles, y es lo que hará posible el bloqueo transversal de franjas (RN-07).
 Para probar endpoints sin gateway:
 
 ```bash
-curl -H "x-user-roles: PROGRAMADOR_PREGRADO" \
+curl -H "Authorization: Bearer <token>" \
+     -H "x-user-roles: PROGRAMADOR_PREGRADO" \
      "http://localhost:3013/catalogo/programas?nivel=pregrado"
 ```
 
