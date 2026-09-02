@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -20,8 +21,7 @@ import { extname } from 'path';
 
 import { ConfiguracionService } from './configuracion.service';
 import { RolesGuard } from '../../auth/roles.guard';
-
-
+import { loQuePuedeHacer, matrizDeRoles } from '../../auth/matriz-roles';
 import {
   ActualizarActividadDto,
   ActualizarCampoDto,
@@ -294,5 +294,48 @@ export class ConfiguracionController {
       dto.numeral?.trim() || null,
       dto.modalidades,
     );
+  }
+
+  // ------------------------------ matriz de roles y permisos (EFDS-1183) ----
+
+  /**
+   * La matriz rol × permiso que el módulo aplica hoy.
+   *
+   * Se responde desde el código y no desde `auth.role_permissions` a propósito:
+   * lo que autoriza mientras el token no traiga los permisos es el mapa del
+   * módulo, así que enseñar la tabla mostraría una configuración que no está en
+   * vigor. Las migraciones 060 y 061 siembran la misma matriz en la base para
+   * que el backoffice de roles de la plataforma la administre desde ahí.
+   */
+  @Get('roles')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage', 'contratacion.proceso.view')
+  @ApiOperation({
+    summary: 'Los catorce roles del módulo con lo que cada uno puede hacer',
+    description:
+      'Las filas son el catálogo del formato de roles y las columnas los veintiocho ' +
+      'permisos del módulo. Viene sin confirmar mientras la Dirección de Contratación ' +
+      'no la ratifique.',
+  })
+  rolesYPermisos() {
+    return matrizDeRoles();
+  }
+
+  /**
+   * Qué puede hacer quien pregunta.
+   *
+   * Sin `PermisosGuard`: preguntar por lo propio no necesita permiso, y
+   * exigirlo dejaría sin respuesta justo a quien no tiene ninguno —que es quien
+   * más necesita que la pantalla no le ofrezca lo que va a negarle—.
+   */
+  @Get('mis-permisos')
+  @ApiOperation({
+    summary: 'Los roles y permisos del usuario autenticado',
+    description:
+      'Lo usa el microfrontend para esconder lo que el usuario no va a poder hacer, ' +
+      'en vez de ofrecérselo y responder 403 al pulsarlo.',
+  })
+  misPermisos(@Req() req: any) {
+    return loQuePuedeHacer(req.user);
   }
 }

@@ -2695,3 +2695,60 @@ export interface ExpedienteAuditoria {
     created_at: string;
   }[];
 }
+
+// ------------------------ matriz de roles y permisos (EFDS-1183) ----------
+
+/** Una de las diez columnas de permiso del formato de roles. */
+export type ColumnaDelFormato =
+  | 'Radicar'
+  | 'Editar'
+  | 'Adjuntar'
+  | 'Visualizar todos los procesos'
+  | 'Asignar / Reasignar'
+  | 'Aprobar'
+  | 'Archivar'
+  | 'Borrar'
+  | 'Generar informes'
+  | 'Configurar';
+
+/** Una columna de la rejilla: lo que se puede hacer. */
+export interface PermisoDelCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  /** El segmento central del código; agrupa la rejilla. */
+  recurso: string;
+  /** La columna de la Hoja1 que realiza, o `null` si el formato no la tenía. */
+  columna: ColumnaDelFormato | null;
+}
+
+/** Una fila de la rejilla: quién puede hacerlo. */
+export interface RolDelCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  /** Quién lo ejerce en la ESAP, según la Hoja2 del formato. */
+  quienLoEjerce: string;
+  procedencia: 'INTERNA' | 'EXTERNA';
+  /** Si la fila sale del anexo o la fijaron las historias del módulo. */
+  origen: 'FORMATO' | 'MODULO';
+  /** Lo que el rol hace y la rejilla todavía no puede mostrar. */
+  nota?: string;
+  permisos: string[];
+}
+
+export interface MatrizDeRoles {
+  /** Si la Dirección de Contratación ya la ratificó. */
+  confirmada: boolean;
+  permisos: PermisoDelCatalogo[];
+  roles: RolDelCatalogo[];
+  /** Los que lo otorgan todo sin ser del módulo. */
+  transversales: string[];
+}
+
+/** Lo que puede hacer quien está mirando la pantalla. */
+export interface MisPermisos {
+  roles: string[];
+  rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
+  permisos: string[];
+}

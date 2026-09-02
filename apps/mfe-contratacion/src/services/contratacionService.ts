@@ -1,6 +1,8 @@
 import { getApiGatewayBaseUrl } from '../../config/environment';
 import {
   ActividadProceso,
+  MatrizDeRoles,
+  MisPermisos,
   CamposFaltantesError,
   EstadoAdendas,
   EstadoApertura,
@@ -1577,6 +1579,24 @@ export const contratacionService = {
    * costaba 63 llamadas para dibujar una pantalla.
    */
   matriz: () => pedir<Matriz>('/configuracion/matriz'),
+
+  /**
+   * La matriz rol x permiso del modulo (EFDS-1183).
+   *
+   * Sale del codigo del backend y no de `auth.role_permissions`: lo que
+   * autoriza mientras el token no traiga los permisos es el mapa del modulo,
+   * asi que la tabla mostraria una configuracion que no esta en vigor.
+   */
+  matrizDeRoles: () => pedir<MatrizDeRoles>('/configuracion/roles'),
+
+  /**
+   * Lo que puede hacer quien esta mirando la pantalla.
+   *
+   * Sirve para esconder lo que va a negarse en vez de ofrecerlo y responder
+   * 403 al pulsarlo. Es la misma funcion que evalua el guard, asi que la
+   * pantalla no puede prometer algo que el backend luego niegue.
+   */
+  misPermisos: () => pedir<MisPermisos>('/configuracion/mis-permisos'),
 
   /** Lo que la actividad le pide al gestor. */
   campos: (numeral: string) =>
