@@ -827,4 +827,108 @@ describe('CertificatesService', () => {
     ).rejects.toThrow('servicio de correo no disponible');
     expect(save).not.toHaveBeenCalled();
   });
+
+  it('envia el certificado desde el autoservicio despues de validar el codigo', async () => {
+    const solicitud = {
+      id: 'solicitud-autoservicio',
+      id_number: '53062883',
+      document_type: 'CC',
+      email: 'empleado@esap.edu.co',
+      status: 'A',
+      validation_code: '123456',
+      validation_expires_at: new Date(Date.now() + 60_000),
+    } as unknown as CertificateRequest;
+    const certificado = {
+      id: 'certificado-autoservicio',
+      request: solicitud,
+    } as unknown as Certificate;
+    const update = jest.fn().mockResolvedValue(undefined);
+    (service as any).requestRepo = {
+      findOne: jest.fn().mockResolvedValue(solicitud),
+      save: jest.fn().mockResolvedValue(solicitud),
+      update,
+    };
+    jest
+      .spyOn(service as any, 'resolveEmploymentStatus')
+      .mockReturnValue('ACTIVO');
+    jest.spyOn(service, 'createCertificado').mockResolvedValue(certificado);
+    const enviar = jest
+      .spyOn(service as any, 'enviarCertificadoLaboralPorEmail')
+      .mockResolvedValue({ to: 'empleado@esap.edu.co' });
+
+    const result = await service.validarCodigoYGenerarCertificado(
+      '53062883',
+      '123456',
+      {
+        documentType: 'CC',
+        includeSalary: true,
+        includeTechnicalBonus: true,
+        includeFunctions: true,
+        publicBaseUrl: 'https://comunidad.esap.edu.co',
+      },
+    );
+
+    expect(update).toHaveBeenCalledWith(solicitud.id, {
+      validation_code: null,
+      validation_expires_at: null,
+    });
+    expect(enviar).toHaveBeenCalledWith(certificado, {
+      to: 'empleado@esap.edu.co',
+      includeSalary: true,
+      includeTechnicalBonus: true,
+      includeFunctions: true,
+      publicBaseUrl: 'https://comunidad.esap.edu.co',
+    });
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(
+      enviar.mock.invocationCallOrder[0],
+    );
+    expect(result).toMatchObject({
+      certificado,
+      emailSent: true,
+      email: 'empleado@esap.edu.co',
+    });
+  });
+
+  it('conserva el certificado generado si falla el correo del autoservicio', async () => {
+    const solicitud = {
+      id: 'solicitud-autoservicio',
+      id_number: '53062883',
+      document_type: 'CC',
+      email: 'empleado@esap.edu.co',
+      status: 'A',
+      validation_code: '123456',
+      validation_expires_at: new Date(Date.now() + 60_000),
+    } as unknown as CertificateRequest;
+    const certificado = {
+      id: 'certificado-autoservicio',
+      request: solicitud,
+    } as unknown as Certificate;
+    (service as any).requestRepo = {
+      findOne: jest.fn().mockResolvedValue(solicitud),
+      save: jest.fn().mockResolvedValue(solicitud),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    (service as any).logger = { warn: jest.fn() };
+    jest
+      .spyOn(service as any, 'resolveEmploymentStatus')
+      .mockReturnValue('ACTIVO');
+    jest.spyOn(service, 'createCertificado').mockResolvedValue(certificado);
+    jest
+      .spyOn(service as any, 'enviarCertificadoLaboralPorEmail')
+      .mockRejectedValue(new Error('notifications-service no disponible'));
+
+    const result = await service.validarCodigoYGenerarCertificado(
+      '53062883',
+      '123456',
+    );
+
+    expect(result).toMatchObject({
+      certificado,
+      emailSent: false,
+      email: 'empleado@esap.edu.co',
+    });
+    expect((service as any).logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('notifications-service no disponible'),
+    );
+  });
 });

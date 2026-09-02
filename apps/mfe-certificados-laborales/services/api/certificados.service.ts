@@ -372,6 +372,15 @@ export const certificadosService = {
       return apiClient.delete(`${SERVICE_PREFIX}/certificates/labor-functions/${id}`);
     },
 
+    async eliminarFuncionesLaboralesMasivas(ids: string[]): Promise<{
+      deleted: true;
+      deletedCount: number;
+      functionCount: number;
+      ids: string[];
+    }> {
+      return apiClient.post(`${SERVICE_PREFIX}/certificates/labor-functions/bulk/delete`, { ids });
+    },
+
     async validarFuncionesLaboralesMasivas(data: {
       rows: LaborFunctionProfilePayloadApi[];
       sourceSheet?: string;
