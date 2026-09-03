@@ -23,6 +23,8 @@ import {
   AsignarUsuariosDto,
   ToggleSedePeriodStatusDto,
   BulkToggleSedePeriodStatusDto,
+  CreateDependenciaDto,
+  UpdateDependenciaDto,
 } from './estructura-organizacional.dto';
 
 @Controller('estructura-organizacional')
@@ -266,5 +268,87 @@ export class EstructuraOrganizacionalController {
       body.territorialId,
       body.cetapId,
     );
+  }
+
+  // ==================== DEPENDENCIAS (transversal) ====================
+
+  /**
+   * Listado público de dependencias activas. Cualquier microservicio
+   * (viáticos, estructura organizacional, control interno) puede
+   * consumirlo. El listado se filtra server-side por código o por texto
+   * de búsqueda. Por defecto NO incluye inactivas.
+   */
+  @Public()
+  @Get('dependencias')
+  async findAllDependencias(
+    @Query('includeInactive') includeInactive?: string,
+    @Query('search') search?: string,
+    @Query('codigo') codigo?: string,
+  ) {
+    const dependencias = await this.estructuraService.findAllDependencias({
+      includeInactive: includeInactive === 'true',
+      search,
+      codigo,
+    });
+    return {
+      data: dependencias,
+      meta: { total: dependencias.length },
+    };
+  }
+
+  @Public()
+  @Get('dependencias/codigo/:codigo')
+  async findDependenciaByCodigo(@Param('codigo') codigo: string) {
+    const lista = await this.estructuraService.findAllDependencias({
+      codigo: codigo.toUpperCase(),
+    });
+    if (lista.length === 0) {
+      throw new BadRequestException(
+        `No existe la dependencia con código ${codigo}.`,
+      );
+    }
+    return { data: lista[0] };
+  }
+
+  @Public()
+  @Get('dependencias/:id')
+  async findDependenciaById(@Param('id') id: string) {
+    const dependencia = await this.estructuraService.findDependenciaById(
+      Number(id),
+    );
+    return { data: dependencia };
+  }
+
+  /**
+   * CRUD de dependencias: alta, edición y desactivación. Protegido por
+   * el JwtAuthGuard + RolesGuard global (cualquier usuario autenticado
+   * con permisos administrativos sobre estructura organizacional puede
+   * modificar el catálogo).
+   */
+  @Post('dependencias')
+  async createDependencia(@Body() dto: CreateDependenciaDto) {
+    const dependencia = await this.estructuraService.createDependencia(dto);
+    return { data: dependencia, message: 'Dependencia creada exitosamente' };
+  }
+
+  @Put('dependencias/:id')
+  async updateDependencia(
+    @Param('id') id: string,
+    @Body() dto: UpdateDependenciaDto,
+  ) {
+    const dependencia = await this.estructuraService.updateDependencia(
+      Number(id),
+      dto,
+    );
+    return {
+      data: dependencia,
+      message: 'Dependencia actualizada exitosamente',
+    };
+  }
+
+  @Delete('dependencias/:id')
+  async deleteDependencia(@Param('id') id: string) {
+    const res = await this.estructuraService.deleteDependencia(Number(id));
+    return res;
   }
 }

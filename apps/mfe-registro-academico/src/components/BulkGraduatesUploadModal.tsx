@@ -116,8 +116,12 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   sede: 'SEDE',
 };
 
-const MAX_ROWS = 1000;
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_SIZE_MB = 20;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+// Límite propio del formato XLSX; no representa un tope funcional de la carga.
+const XLSX_LAST_ROW = 1_048_576;
+// Tamaño de transporte por petición. Todos los lotes se procesan hasta terminar el archivo.
+const BULK_REQUEST_BATCH_SIZE = 100;
 
 const NUMERIC_FIELD_RULES: Record<
   'registro' | 'acta' | 'libro',
@@ -242,7 +246,7 @@ const TEMPLATE_RULES = [
   'DIPLOMA no se diligencia en la plantilla; el sistema lo asigna automáticamente al crear el graduado.',
   'CORREO es opcional, pero si se diligencia debe tener @ y un punto después del @.',
   'TELEFONO es opcional, pero si se diligencia solo debe contener números, mínimo 7 y máximo 10 dígitos.',
-  'El archivo debe ser .xlsx, con máximo 1000 filas y 10 MB.',
+  `El archivo debe ser .xlsx, sin límite fijo de filas y con un tamaño máximo de ${MAX_FILE_SIZE_MB} MB.`,
 ];
 
 const normalizeKey = (value: string) =>
@@ -898,6 +902,7 @@ export function BulkGraduatesUploadModal({
   const [rows, setRows] = useState<ParsedGraduateRow[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ processed: 0, total: 0 });
   const [importResult, setImportResult] = useState<BulkCreateGraduadosResponse | null>(null);
 
   const validSedeTerritorialOptions = useMemo(() => {
@@ -929,6 +934,7 @@ export function BulkGraduatesUploadModal({
   const resetState = () => {
     setSelectedFileName('');
     setRows([]);
+    setImportProgress({ processed: 0, total: 0 });
     setImportResult(null);
     if (inputRef.current) {
       inputRef.current.value = '';
@@ -1058,17 +1064,15 @@ export function BulkGraduatesUploadModal({
       listName: string,
       errorTitle: string,
     ) => {
-      for (let rowNumber = 2; rowNumber <= MAX_ROWS + 1; rowNumber += 1) {
-        graduatesSheet.getCell(`${targetColumn}${rowNumber}`).dataValidation = {
-          type: 'list',
-          allowBlank: false,
-          formulae: [listName],
-          showErrorMessage: true,
-          errorStyle: 'stop',
-          errorTitle,
-          error: 'Seleccione un valor del catálogo dinámico incluido en esta plantilla.',
-        };
-      }
+      graduatesSheet.dataValidations.add(`${targetColumn}2:${targetColumn}${XLSX_LAST_ROW}`, {
+        type: 'list',
+        allowBlank: false,
+        formulae: [listName],
+        showErrorMessage: true,
+        errorStyle: 'stop',
+        errorTitle,
+        error: 'Seleccione un valor del catálogo dinámico incluido en esta plantilla.',
+      });
     };
     addListValidation('C', 'LISTA_TITULOS_GRADUADOS', 'Título no válido');
     addListValidation('K', 'LISTA_TERRITORIALES_GRADUADOS', 'Territorial no válida');
@@ -1123,7 +1127,7 @@ export function BulkGraduatesUploadModal({
 
   const parseFile = async (file: File) => {
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      toast.error('El archivo supera el límite de 10 MB');
+      toast.error(`El archivo supera el límite de ${MAX_FILE_SIZE_MB} MB`);
       return;
     }
 
@@ -1165,10 +1169,6 @@ export function BulkGraduatesUploadModal({
       if (!jsonRows.length) {
         throw new Error('La hoja GRADUADOS no tiene filas de datos.');
       }
-      if (jsonRows.length > MAX_ROWS) {
-        throw new Error(`El archivo supera el límite de ${MAX_ROWS} filas.`);
-      }
-
       const duplicateKeys = new Set<string>();
       const parsedRows = jsonRows.map((row, index) =>
         buildParsedRow(row, index + 2, duplicateKeys, catalogs),
@@ -1205,12 +1205,41 @@ export function BulkGraduatesUploadModal({
   const handleImport = async () => {
     if (!readyToImport) return;
     setIsImporting(true);
+    setImportProgress({ processed: 0, total: validRows.length });
     setImportResult(null);
+    const result: BulkCreateGraduadosResponse = {
+      total: validRows.length,
+      createdCount: 0,
+      failedCount: 0,
+      created: [],
+      errors: [],
+    };
+    let processed = 0;
+
     try {
-      const result = await graduadosService.graduados.crearMasivo(
-        validRows.map((row) => row.payload!),
-        createdBy?.trim() || 'bulk_upload',
-      );
+      for (let start = 0; start < validRows.length; start += BULK_REQUEST_BATCH_SIZE) {
+        const batch = validRows.slice(start, start + BULK_REQUEST_BATCH_SIZE);
+        const batchResult = await graduadosService.graduados.crearMasivo(
+          batch.map((row) => row.payload!),
+          createdBy?.trim() || 'bulk_upload',
+        );
+
+        result.created.push(...batchResult.created);
+        result.createdCount += batchResult.createdCount;
+        result.failedCount += batchResult.failedCount;
+        result.errors.push(
+          ...batchResult.errors.map((error) => ({
+            ...error,
+            rowNumber: start + error.rowNumber,
+          })),
+        );
+        processed = Math.min(start + batch.length, validRows.length);
+        setImportProgress({
+          processed,
+          total: validRows.length,
+        });
+      }
+
       setImportResult(result);
       if (result.created.length > 0) {
         onImported(result.created);
@@ -1225,8 +1254,18 @@ export function BulkGraduatesUploadModal({
         });
       }
     } catch (error: any) {
+      if (processed > 0) {
+        result.total = processed;
+        setImportResult(result);
+        if (result.created.length > 0) {
+          onImported(result.created);
+        }
+      }
       toast.error('No se pudo completar la carga masiva', {
-        description: error?.response?.data?.message || error?.message,
+        description:
+          processed > 0
+            ? `Se procesaron ${processed} de ${validRows.length} filas antes de la interrupción. ${error?.response?.data?.message || error?.message || ''}`.trim()
+            : error?.response?.data?.message || error?.message,
       });
     } finally {
       setIsImporting(false);
@@ -1308,7 +1347,7 @@ export function BulkGraduatesUploadModal({
                     Archivo a importar
                   </p>
                   <p className="mt-1 text-xs leading-5" style={{ color: '#64748B' }}>
-                    Solo formato .xlsx. Máximo {MAX_ROWS} filas y 10 MB.
+                    Solo formato .xlsx. Sin límite fijo de filas, hasta {MAX_FILE_SIZE_MB} MB.
                   </p>
                 </div>
                 {isParsing ? (
@@ -1550,7 +1589,9 @@ export function BulkGraduatesUploadModal({
             style={{ background: '#003DA5' }}
           >
             {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {isImporting ? 'Importando...' : `Crear ${validRows.length} graduados`}
+            {isImporting
+              ? `Importando ${importProgress.processed}/${importProgress.total}...`
+              : `Crear ${validRows.length} graduados`}
           </button>
         </DialogFooter>
       </DialogContent>

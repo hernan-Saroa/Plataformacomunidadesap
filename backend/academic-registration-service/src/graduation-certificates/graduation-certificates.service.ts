@@ -141,6 +141,9 @@ export class GraduationCertificatesService {
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
   private readonly manualReviewExpirationBusinessDays = 15;
+  private readonly landingNameMinLength = 5;
+  private readonly companyNitMinLength = 9;
+  private readonly companyNitMaxLength = 10;
   private readonly publicManualReviewSupportMaxSizeBytes = 20 * 1024 * 1024;
   private readonly certificateNotAvailableMessage =
     'El certificado de grado aún no se encuentra disponible para expedición.';
@@ -1090,6 +1093,18 @@ export class GraduationCertificatesService {
     const normalizedRequesterType = this.normalizeRequesterType(
       dto.requesterType,
     );
+    this.validateLandingName(graduateLastName, 'El nombre del graduado');
+    if (normalizedRequesterType === 'COMPANY') {
+      this.validateLandingName(requesterName, 'El nombre de la empresa');
+      this.validateLandingName(companyName, 'El nombre de la empresa');
+      this.validateLandingName(
+        contactPerson,
+        'El nombre de la persona que solicita',
+      );
+      this.validateOptionalCompanyNit(companyNit);
+    } else {
+      this.validateLandingName(requesterName, 'El nombre del solicitante');
+    }
     const forceManualReview =
       dto.forceManualReview === true ||
       String(dto.forceManualReview || '').toLowerCase() === 'true';
@@ -2335,6 +2350,28 @@ export class GraduationCertificatesService {
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private validateLandingName(value: string, label: string): void {
+    const normalizedValue = value.trim().replace(/\s+/g, ' ');
+    if (normalizedValue.length < this.landingNameMinLength) {
+      throw new BadRequestException(
+        `${label} debe tener al menos ${this.landingNameMinLength} caracteres.`,
+      );
+    }
+  }
+
+  private validateOptionalCompanyNit(value: string): void {
+    if (!value) return;
+
+    const validNitPattern = new RegExp(
+      `^\\d{${this.companyNitMinLength},${this.companyNitMaxLength}}$`,
+    );
+    if (!validNitPattern.test(value)) {
+      throw new BadRequestException(
+        `El NIT debe tener ${this.companyNitMinLength} dígitos sin DV o ${this.companyNitMaxLength} dígitos si incluye el DV; escriba solo números, sin puntos ni guiones.`,
+      );
+    }
   }
 
   private normalizeDocumentNumber(value?: string | null): string {
@@ -4656,12 +4693,6 @@ export class GraduationCertificatesService {
         'Debe enviar al menos un graduado para la carga masiva.',
       );
     }
-    if (graduates.length > 1000) {
-      throw new BadRequestException(
-        'La carga masiva permite máximo 1000 graduados por archivo.',
-      );
-    }
-
     const created: Graduate[] = [];
     const errors: BulkCreateGraduateError[] = [];
     const seenInFile = new Set<string>();

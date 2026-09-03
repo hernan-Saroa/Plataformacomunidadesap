@@ -317,6 +317,10 @@ export class TerminosService {
 
         if (filtros.estado) {
             query.andWhere('termino.estado = :estado', { estado: filtros.estado });
+        } else {
+            // Por defecto los términos eliminados (soft delete) nunca deben listarse.
+            // Si se necesita consultarlos explícitamente, se debe pasar filtros.estado = 'ELIMINADO'.
+            query.andWhere('termino.estado != :estadoEliminado', { estadoEliminado: 'ELIMINADO' });
         }
 
         query.orderBy('termino.fechaVencimiento', 'ASC');
