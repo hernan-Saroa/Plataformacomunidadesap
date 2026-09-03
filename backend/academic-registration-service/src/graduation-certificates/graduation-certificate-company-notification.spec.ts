@@ -60,6 +60,36 @@ describe('GraduationCertificatesService company notifications', () => {
     ).rejects.toThrow('ya no está disponible en el catálogo de programas');
   });
 
+  it('rechaza solicitudes de graduado con un nombre de menos de 5 caracteres', async () => {
+    const service = createService();
+
+    await expect(
+      service.solicitarCertificadoLanding({
+        idNumber: '1234567',
+        lastName: 'aa',
+        requesterType: 'GRADUATE',
+        requesterName: 'aa',
+        requesterEmail: 'graduado@correo.com',
+      }),
+    ).rejects.toThrow('El nombre del graduado debe tener al menos 5 caracteres');
+  });
+
+  it('rechaza solicitudes de empresa con nombres de menos de 5 caracteres', async () => {
+    const service = createService();
+
+    await expect(
+      service.solicitarCertificadoLanding({
+        idNumber: '1234567',
+        lastName: 'Persona Graduada',
+        requesterType: 'COMPANY',
+        requesterName: 'aa',
+        requesterEmail: 'empresa@correo.com',
+        companyName: 'aa',
+        contactPerson: 'Persona Contacto',
+      }),
+    ).rejects.toThrow('El nombre de la empresa debe tener al menos 5 caracteres');
+  });
+
   it('avisa al correo del graduado creado al finalizar el flujo manual de empresa', async () => {
     const service = createService() as any;
     service.sendGraduateCompanyNotificationEmail = jest

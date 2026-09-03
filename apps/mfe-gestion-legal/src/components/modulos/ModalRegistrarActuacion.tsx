@@ -191,6 +191,7 @@ export function ModalRegistrarActuacion({
         tipo,
         descripcion,
         responsable,
+        responsableId,
         estado,
         observaciones,
         expedienteId,

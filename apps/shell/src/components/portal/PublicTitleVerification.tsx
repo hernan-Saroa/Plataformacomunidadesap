@@ -68,7 +68,9 @@ type CreatedReviewDetails = {
 
 const DOCUMENT_MIN_LENGTH = 5;
 const DOCUMENT_MAX_LENGTH = 20;
+const PERSON_NAME_MIN_LENGTH = 5;
 const PERSON_NAME_MAX_LENGTH = 80;
+const COMPANY_NAME_MIN_LENGTH = 5;
 const COMPANY_NAME_MAX_LENGTH = 120;
 const COMPANY_NIT_MIN_LENGTH = 9;
 const COMPANY_NIT_MAX_LENGTH = 10;
@@ -173,8 +175,8 @@ const getPersonNameValidationError = (value: string, fieldName: string) => {
     return `Por favor, ingrese ${fieldName}`;
   }
 
-  if (normalizedValue.length < 2) {
-    return `${fieldName} debe tener al menos 2 caracteres`;
+  if (normalizedValue.length < PERSON_NAME_MIN_LENGTH) {
+    return `${fieldName} debe tener al menos ${PERSON_NAME_MIN_LENGTH} caracteres`;
   }
 
   if (normalizedValue.length > PERSON_NAME_MAX_LENGTH) {
@@ -692,8 +694,8 @@ export function PublicTitleVerification({
         return "Por favor, ingrese el nombre de la empresa";
       }
 
-      if (normalizedRequesterName.length < 2) {
-        return "El nombre de la empresa debe tener al menos 2 caracteres";
+      if (normalizedRequesterName.length < COMPANY_NAME_MIN_LENGTH) {
+        return `El nombre de la empresa debe tener al menos ${COMPANY_NAME_MIN_LENGTH} caracteres`;
       }
 
       if (normalizedRequesterName.length > COMPANY_NAME_MAX_LENGTH) {
@@ -2060,6 +2062,7 @@ export function PublicTitleVerification({
                                 e.target.value.slice(0, COMPANY_NAME_MAX_LENGTH),
                               )
                             }
+                            minLength={COMPANY_NAME_MIN_LENGTH}
                             maxLength={COMPANY_NAME_MAX_LENGTH}
                             placeholder="Ej: Empresa Ejemplo S.A.S."
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
@@ -2112,6 +2115,7 @@ export function PublicTitleVerification({
                             onChange={(e) =>
                               handleContactPersonChange(e.target.value)
                             }
+                            minLength={PERSON_NAME_MIN_LENGTH}
                             maxLength={PERSON_NAME_MAX_LENGTH}
                             placeholder="Ej: María Fernanda Rodríguez"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
@@ -2150,6 +2154,7 @@ export function PublicTitleVerification({
                         onChange={(e) =>
                           handleGraduateNameChange(e.target.value)
                         }
+                        minLength={PERSON_NAME_MIN_LENGTH}
                         maxLength={PERSON_NAME_MAX_LENGTH}
                         placeholder="Ej: María Fernanda Rodríguez García"
                         className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
