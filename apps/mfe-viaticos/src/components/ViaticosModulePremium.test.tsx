@@ -19,6 +19,7 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerParametrizacionPorCodigoFormulario: vi.fn().mockResolvedValue(null),
     obtenerChecklistDocumentos: vi.fn().mockResolvedValue({ obligatorios: [], opcionales: [] }),
     finalizarSolicitud: vi.fn().mockResolvedValue({ id: 'sol-nueva', estadoSolicitud: 'RADICADA' }),
+    obtenerDependencias: vi.fn().mockResolvedValue([]),
   },
 }));
 
