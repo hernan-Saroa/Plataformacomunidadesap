@@ -39,6 +39,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/empresa/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/solicitar-revision-con-soporte/i,
+    // Catálogo dinámico usado por el selector público de títulos faltantes.
+    /^\/registro-academico\/api\/v\d+\/graduate-programs\/options\/?$/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/qr/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/numero/i,
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/estadisticas/i,

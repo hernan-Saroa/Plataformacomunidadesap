@@ -58,6 +58,19 @@ export class ExpedienteService {
         return expediente;
     }
 
+    /**
+     * Existencia de un radicado, sin restricción por abogado sustanciador (a diferencia de
+     * listarExpedientes) y sin cargar relaciones — pensado para validación en vivo mientras
+     * se diligencia el formulario, antes de intentar crear el expediente.
+     */
+    async existeRadicado(radicado: string, excludeId?: string): Promise<boolean> {
+        const expediente = await this.expedienteRepository.findOne({
+            where: { radicado },
+            select: ['id'],
+        });
+        return !!expediente && expediente.id !== excludeId;
+    }
+
     async agregarActuacion(expedienteId: string, data: Partial<Actuacion>): Promise<Actuacion> {
         const expediente = await this.findOne(expedienteId);
         if (!expediente) throw new NotFoundException('Expediente no encontrado');

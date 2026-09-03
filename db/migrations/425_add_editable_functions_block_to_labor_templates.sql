@@ -1,0 +1,18 @@
+-- Incorpora el bloque condicional de funciones en las plantillas laborales
+-- predeterminadas actuales. Solo modifica coincidencias exactas; cualquier
+-- plantilla personalizada permanece intacta.
+BEGIN;
+
+UPDATE certification.certificate_template_config
+SET certificate_content_html = $docente_nuevo$<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con cédula de ciudadanía No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administración Pública – ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO].</p><p>Actualmente desempeña la categoría de [CARGO] ubicado en [DEPENDENCIA].</p><section class="labor-functions-template-block" data-functions-template="true"><p>Conforme lo establece <em>el Manual Específico de Funciones y Competencias Laborales de los empleos de la planta de personal administrativo de la Escuela Superior de Administración Pública – ESAP -.</em></p><p>Las funciones para el cargo de son:</p><p>[FUNCIONES]</p></section><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignación salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>$docente_nuevo$,
+    updated_at = CURRENT_TIMESTAMP
+WHERE template_type = 'docente'
+  AND certificate_content_html = $docente_anterior$<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con cédula de ciudadanía No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administración Pública – ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO].</p><p>Actualmente desempeña la categoría de [CARGO] ubicado en [DEPENDENCIA].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignación salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>$docente_anterior$;
+
+UPDATE certification.certificate_template_config
+SET certificate_content_html = $administrador_nuevo$<p>Que [NOMBRE_EMPLEADO] identificado con cédula de ciudadanía No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administración Pública - ESAP mediante nombramiento [TIPO_DATO] desde el [FECHA_INICIO].</p><p>Actualmente, desempeña el cargo de [CARGO] ubicado en [DEPENDENCIA].</p><section class="labor-functions-template-block" data-functions-template="true"><p>Conforme lo establece <em>el Manual Específico de Funciones y Competencias Laborales de los empleos de la planta de personal administrativo de la Escuela Superior de Administración Pública – ESAP -.</em></p><p>Las funciones para el cargo de son:</p><p>[FUNCIONES]</p></section><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignación salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].</p>$administrador_nuevo$,
+    updated_at = CURRENT_TIMESTAMP
+WHERE template_type = 'administrador'
+  AND certificate_content_html = $administrador_anterior$<p>Que [NOMBRE_EMPLEADO] identificado con cédula de ciudadanía No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administración Pública - ESAP mediante nombramiento [TIPO_DATO] desde el [FECHA_INICIO].</p><p>Actualmente, desempeña el cargo de [CARGO] ubicado en [DEPENDENCIA].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignación salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].</p>$administrador_anterior$;
+
+COMMIT;

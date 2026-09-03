@@ -11,6 +11,8 @@ import {
   Settings,
   ToggleLeft,
   ToggleRight,
+  DollarSign,
+  Plane,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import {
@@ -24,8 +26,13 @@ import {
   TipoCampoFormulario,
   GrupoCampoFormulario,
 } from '../types/parametrizacion';
+import EscalasViaticosAdmin from './admin/EscalasViaticosAdmin';
+import TarifasInvestigadorAdmin from './admin/TarifasInvestigadorAdmin';
+import ExcepcionesRegionalesAdmin from './admin/ExcepcionesRegionalesAdmin';
+import ParametrosLiquidacionAdmin from './admin/ParametrosLiquidacionAdmin';
+import TicketsAdminPanel from './admin/TicketsAdminPanel';
 
-type TabActiva = 'campos' | 'configuraciones';
+type TabActiva = 'campos' | 'configuraciones' | 'escalas' | 'tarifas' | 'excepciones' | 'parametros' | 'tiquetes';
 
 const TIPOS_CAMPO: TipoCampoFormulario[] = ['TEXT', 'TEXTAREA', 'SELECT', 'DATE', 'NUMBER', 'BOOLEAN', 'CURRENCY', 'DOCUMENT'];
 const GRUPOS_CAMPO: GrupoCampoFormulario[] = ['comisionado', 'comision', 'valores', 'soportes'];
@@ -355,7 +362,7 @@ export default function ParametrizacionManager() {
       )}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex border-b border-slate-200">
+        <div className="flex border-b border-slate-200 overflow-x-auto whitespace-nowrap scrollbar-thin">
           <button
             type="button"
             onClick={() => setTabActiva('campos')}
@@ -381,6 +388,66 @@ export default function ParametrizacionManager() {
             <Settings className="w-4 h-4" />
             Configuraciones por Tipo
             <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px]">{configuraciones.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('escalas')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
+              tabActiva === 'escalas'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            Escalas Viáticos
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('tarifas')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
+              tabActiva === 'tarifas'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            Tarifas Investigador
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('excepciones')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
+              tabActiva === 'excepciones'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            Excepciones Regionales
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('parametros')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
+              tabActiva === 'parametros'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            Parámetros Globales
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('tiquetes')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
+              tabActiva === 'tiquetes'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Plane className="w-4 h-4" />
+            Tiquetes y Presupuesto
           </button>
         </div>
 
@@ -565,6 +632,12 @@ export default function ParametrizacionManager() {
                   )}
                 </div>
               )}
+              
+              {tabActiva === 'escalas' && <EscalasViaticosAdmin />}
+              {tabActiva === 'tarifas' && <TarifasInvestigadorAdmin />}
+              {tabActiva === 'excepciones' && <ExcepcionesRegionalesAdmin />}
+              {tabActiva === 'parametros' && <ParametrosLiquidacionAdmin />}
+              {tabActiva === 'tiquetes' && <TicketsAdminPanel />}
             </>
           )}
         </div>

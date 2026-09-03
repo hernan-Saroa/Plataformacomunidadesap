@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -35,7 +35,6 @@ import graduadosService, {
   type GraduateMatchSuggestion,
 } from "../../services/api/graduados.service";
 import { getPublicBaseUrl } from "../../config/environment";
-import { GRADUATE_PROGRAM_OPTIONS } from "../../constants/academicPrograms";
 // import { simularEnvioCorreo } from '../../utils/emailTemplates';
 // import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
 // import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';
@@ -121,6 +120,28 @@ const normalizeComparableText = (value: string) =>
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+
+const GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT =
+  "esap:graduate-program-catalog-changed";
+
+const normalizeProgramOptions = (values: unknown): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const programsByKey = new Map<string, string>();
+  values.forEach((value) => {
+    const programName = normalizeTextSpaces(String(value || ""));
+    const programKey = normalizeComparableText(programName);
+    if (programKey && !programsByKey.has(programKey)) {
+      programsByKey.set(programKey, programName);
+    }
+  });
+
+  return [...programsByKey.values()].sort((first, second) =>
+    first.localeCompare(second, "es", { sensitivity: "base" }),
+  );
+};
 
 const matchesExistingAcademicTitle = (
   programName: string,
@@ -221,6 +242,7 @@ export function PublicTitleVerification({
 }: PublicTitleVerificationProps) {
   const manualReviewPromptRef = useRef<HTMLDivElement | null>(null);
   const manualReviewSupportInputRef = useRef<HTMLInputElement | null>(null);
+  const programCatalogRequestIdRef = useRef(0);
   const todayInputDate = getTodayInputDate();
 
   // Scroll to top cuando se monta el componente
@@ -260,6 +282,12 @@ export function PublicTitleVerification({
   const [missingTitleBaseRecord, setMissingTitleBaseRecord] =
     useState<MissingTitleBaseRecord | null>(null);
   const [missingTitleProgramName, setMissingTitleProgramName] = useState("");
+  const [graduateProgramOptions, setGraduateProgramOptions] = useState<string[]>(
+    [],
+  );
+  const [isProgramCatalogLoading, setIsProgramCatalogLoading] = useState(false);
+  const [programCatalogError, setProgramCatalogError] = useState("");
+  const [programSelectionError, setProgramSelectionError] = useState("");
   const [manualReviewAlertMessage, setManualReviewAlertMessage] = useState("");
   const [manualReviewSupportFile, setManualReviewSupportFile] =
     useState<File | null>(null);
@@ -267,6 +295,88 @@ export function PublicTitleVerification({
     useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [graduationDateError, setGraduationDateError] = useState("");
+
+  const loadGraduateProgramOptions = useCallback(
+    async (showLoading = true): Promise<string[] | null> => {
+      const requestId = programCatalogRequestIdRef.current + 1;
+      programCatalogRequestIdRef.current = requestId;
+      if (showLoading) {
+        setIsProgramCatalogLoading(true);
+      }
+      setProgramCatalogError("");
+
+      try {
+        const response = await graduadosService.programas.listarOpciones();
+        const programOptions = normalizeProgramOptions(response);
+        if (requestId !== programCatalogRequestIdRef.current) {
+          return null;
+        }
+
+        setGraduateProgramOptions(programOptions);
+        if (programOptions.length === 0) {
+          setProgramCatalogError(
+            "No hay programas disponibles en el catálogo en este momento.",
+          );
+        }
+        return programOptions;
+      } catch (error) {
+        if (requestId !== programCatalogRequestIdRef.current) {
+          return null;
+        }
+
+        console.error("Error al cargar el catálogo público de programas:", error);
+        setProgramCatalogError(
+          "No se pudo actualizar el catálogo de programas. Intente nuevamente.",
+        );
+        return null;
+      } finally {
+        if (requestId === programCatalogRequestIdRef.current) {
+          setIsProgramCatalogLoading(false);
+        }
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void loadGraduateProgramOptions(false);
+
+    const refreshProgramCatalog = () => {
+      void loadGraduateProgramOptions(false);
+    };
+
+    window.addEventListener(
+      GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT,
+      refreshProgramCatalog,
+    );
+    window.addEventListener("focus", refreshProgramCatalog);
+
+    return () => {
+      window.removeEventListener(
+        GRADUATE_PROGRAM_CATALOG_CHANGE_EVENT,
+        refreshProgramCatalog,
+      );
+      window.removeEventListener("focus", refreshProgramCatalog);
+    };
+  }, [loadGraduateProgramOptions]);
+
+  useEffect(() => {
+    if (!missingTitleProgramName || programCatalogError) {
+      return;
+    }
+
+    const selectedProgramKey = normalizeComparableText(missingTitleProgramName);
+    const selectedProgramStillExists = graduateProgramOptions.some(
+      (programName) =>
+        normalizeComparableText(programName) === selectedProgramKey,
+    );
+    if (!selectedProgramStillExists) {
+      setMissingTitleProgramName("");
+      setProgramSelectionError(
+        "El programa seleccionado ya no está disponible. Seleccione otro título.",
+      );
+    }
+  }, [graduateProgramOptions, missingTitleProgramName, programCatalogError]);
 
   useEffect(() => {
     if (showManualReviewDialog) {
@@ -298,6 +408,7 @@ export function PublicTitleVerification({
 
   const handleMissingTitleChange = (title: string) => {
     setMissingTitleProgramName(title);
+    setProgramSelectionError("");
   };
 
   const resetManualReviewSupportFile = () => {
@@ -347,6 +458,7 @@ export function PublicTitleVerification({
     setManualReviewReason("no_matches");
     setMissingTitleBaseRecord(null);
     setMissingTitleProgramName("");
+    setProgramSelectionError("");
     setManualReviewAlertMessage("");
     resetManualReviewSupportFile();
   };
@@ -356,6 +468,7 @@ export function PublicTitleVerification({
     setManualReviewReason("no_matches");
     setMissingTitleBaseRecord(null);
     setMissingTitleProgramName("");
+    setProgramSelectionError("");
     setManualReviewAlertMessage("");
     resetManualReviewSupportFile();
   };
@@ -406,7 +519,9 @@ export function PublicTitleVerification({
     });
     setManualReviewReason("missing_title");
     setManualReviewAlertMessage("");
+    setProgramSelectionError("");
     setShowManualReviewDialog(true);
+    void loadGraduateProgramOptions();
   };
 
   const titleAlreadyExistsForMissingReview = (programName: string) => {
@@ -628,11 +743,18 @@ export function PublicTitleVerification({
       if (!normalizedMissingTitle) {
         return "Seleccione el título que desea enviar a revisión";
       }
-      if (
-        !(GRADUATE_PROGRAM_OPTIONS as readonly string[]).includes(
-          normalizedMissingTitle,
-        )
-      ) {
+      if (isProgramCatalogLoading) {
+        return "Espere mientras se actualiza el catálogo de programas";
+      }
+      if (programCatalogError) {
+        return "No fue posible validar el catálogo de programas. Actualícelo e intente nuevamente";
+      }
+      const normalizedMissingTitleKey =
+        normalizeComparableText(normalizedMissingTitle);
+      if (!graduateProgramOptions.some(
+        (programName) =>
+          normalizeComparableText(programName) === normalizedMissingTitleKey,
+      )) {
         return "Seleccione un título válido de la lista de programas";
       }
       if (
@@ -718,12 +840,42 @@ export function PublicTitleVerification({
       ? missingTitleBaseRecord
       : null;
     const missingTitleGraduationDate = graduateDocumentIssueDate;
+    let validatedMissingTitleProgramName = normalizeTextSpaces(
+      missingTitleProgramName,
+    );
+
+    if (isMissingTitleReview) {
+      const currentProgramOptions = await loadGraduateProgramOptions(false);
+      if (!currentProgramOptions) {
+        throw new Error(
+          "No fue posible validar el catálogo de programas. Actualícelo e intente nuevamente.",
+        );
+      }
+
+      const requestedProgramKey = normalizeComparableText(
+        validatedMissingTitleProgramName,
+      );
+      const currentProgramName = currentProgramOptions.find(
+        (programName) =>
+          normalizeComparableText(programName) === requestedProgramKey,
+      );
+      if (!currentProgramName) {
+        setMissingTitleProgramName("");
+        setProgramSelectionError(
+          "El programa seleccionado ya no está disponible. Seleccione otro título.",
+        );
+        throw new Error(
+          "El programa seleccionado fue modificado o eliminado. Seleccione otro título.",
+        );
+      }
+      validatedMissingTitleProgramName = currentProgramName;
+    }
 
     const requestPayload = buildRequestPayload({
       idNumber: missingTitleBase?.idNumber,
       graduationDate: missingTitleGraduationDate,
       programName: isMissingTitleReview
-        ? normalizeTextSpaces(missingTitleProgramName)
+        ? validatedMissingTitleProgramName
         : undefined,
       selectedGraduateId: missingTitleBase?.graduateId,
       selectedFullName: missingTitleBase?.fullName,
@@ -751,7 +903,7 @@ export function PublicTitleVerification({
         idNumber: missingTitleBase?.idNumber || graduateDocumentNumber,
         fullName: missingTitleBase?.fullName || graduateLastName.trim(),
         programName: isMissingTitleReview
-          ? normalizeTextSpaces(missingTitleProgramName)
+          ? validatedMissingTitleProgramName
           : undefined,
         graduationDate: missingTitleGraduationDate || undefined,
         graduateEmail:
@@ -915,6 +1067,7 @@ export function PublicTitleVerification({
     setShowManualReviewDialog(false);
     setMissingTitleBaseRecord(null);
     setMissingTitleProgramName("");
+    setProgramSelectionError("");
     setManualReviewAlertMessage("");
     resetManualReviewSupportFile();
     setIsGenerating(true);
@@ -2422,18 +2575,52 @@ export function PublicTitleVerification({
                           <select
                             id="missing-title-program"
                             value={missingTitleProgramName}
+                            disabled={isProgramCatalogLoading}
                             onChange={(event) =>
                               handleMissingTitleChange(event.target.value)
                             }
-                            className="h-10 w-full rounded-md border border-amber-200 bg-white px-3 text-sm text-gray-900 outline-none transition-colors focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                            className="h-10 w-full rounded-md border border-amber-200 bg-white px-3 text-sm text-gray-900 outline-none transition-colors focus:border-amber-400 focus:ring-2 focus:ring-amber-100 disabled:cursor-wait disabled:bg-gray-100"
                           >
                             <option value="">Seleccionar título</option>
-                            {GRADUATE_PROGRAM_OPTIONS.map((program) => (
+                            {graduateProgramOptions.map((program) => (
                               <option key={program} value={program}>
                                 {program}
                               </option>
                             ))}
                           </select>
+                          {isProgramCatalogLoading && (
+                            <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-blue-700">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Actualizando programas disponibles...
+                            </p>
+                          )}
+                          {programCatalogError && (
+                            <div
+                              role="alert"
+                              className="mt-2 flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <span className="font-semibold">
+                                {programCatalogError}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void loadGraduateProgramOptions();
+                                }}
+                                className="self-start font-bold underline underline-offset-2 sm:self-auto"
+                              >
+                                Reintentar
+                              </button>
+                            </div>
+                          )}
+                          {programSelectionError && (
+                            <p
+                              role="alert"
+                              className="mt-2 text-xs font-semibold leading-5 text-red-600"
+                            >
+                              {programSelectionError}
+                            </p>
+                          )}
                           <p className="mt-2 text-xs leading-5 text-gray-600">
                             Seleccione el título que no aparece en los
                             resultados para que el equipo de Verificación de títulos pueda
@@ -2560,7 +2747,11 @@ export function PublicTitleVerification({
                             isConfirmingSelection ||
                             (isMissingTitleManualReview &&
                               (!normalizeTextSpaces(missingTitleProgramName) ||
-                                selectedMissingTitleAlreadyExists))
+                                selectedMissingTitleAlreadyExists ||
+                                isProgramCatalogLoading ||
+                                Boolean(programCatalogError) ||
+                                graduateProgramOptions.length === 0 ||
+                                Boolean(programSelectionError)))
                           }
                           className="h-11 bg-[#1e5da8] text-sm font-semibold text-white hover:bg-[#174a86] disabled:opacity-50"
                         >

@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, Printer
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -69,6 +69,15 @@ function formatearFechaVencimiento(fecha: Date | string): string {
   const dia = String(d.getUTCDate()).padStart(2, '0');
   const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
   return `${dia}/${mes}/${d.getUTCFullYear()}`;
+}
+
+/** Convierte el fundamento normativo (norma/contrato/resolución) en un texto legible para las 3 vistas y las exportaciones. */
+export function formatearFuenteInformativa(fundamentoNormativo?: Array<{ tipo: string; cita: string }>): string {
+  if (!fundamentoNormativo || fundamentoNormativo.length === 0) return 'Sin especificar';
+  return fundamentoNormativo
+    .filter(f => f.tipo || f.cita)
+    .map(f => [f.tipo, f.cita].filter(Boolean).join(': '))
+    .join('; ') || 'Sin especificar';
 }
 
 function formatearDiasRestantes(diasRestantes: number): { texto: string; color: string; bg: string } {
@@ -213,6 +222,7 @@ export function ModuloTerminosInformesV3() {
         moduloOrigen: t.origenModulo, // Add this for filter compatibility
         enteSolicitante: t.enteSolicitante || (t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema'),
         destinatario: t.destinatario || '',
+        fundamentoNormativo: t.fundamentoNormativo || [],
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
         descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
@@ -473,14 +483,16 @@ export function ModuloTerminosInformesV3() {
     doc.setFont('helvetica', 'bold');
     doc.text('CALENDARIO DE VENCIMIENTOS — TÉRMINOS E INFORMES', pageWidth / 2, 13, { align: 'center' });
 
-    const DIAS_RESTANTES_COL = 4;
+    const DIAS_RESTANTES_COL = 6;
 
     autoTable(doc, {
       startY: 26,
-      head: [['ID', 'Tipo de Actividad', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado']],
+      head: [['ID', 'Nombre de Informe', 'Destinatario de Informe', 'Fuente Informativa', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado']],
       body: solicitudesFiltradas.map((s) => [
         s.id,
         s.asunto || 'Sin asunto',
+        s.destinatario || 'Sin asignar',
+        formatearFuenteInformativa(s.fundamentoNormativo),
         s.responsable,
         formatearFechaVencimiento(s.fechaVencimiento),
         formatearDiasRestantes(s.diasRestantes).texto,
@@ -534,9 +546,9 @@ export function ModuloTerminosInformesV3() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Términos e Informes');
 
-    const headers = ['ID', 'Tipo de Actividad', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado'];
+    const headers = ['ID', 'Nombre de Informe', 'Destinatario de Informe', 'Fuente Informativa', 'Responsable', 'Fecha Límite', 'Días Restantes', 'Estado'];
     worksheet.columns = [
-      { width: 16 }, { width: 40 }, { width: 22 }, { width: 14 }, { width: 18 }, { width: 14 }
+      { width: 16 }, { width: 40 }, { width: 26 }, { width: 30 }, { width: 22 }, { width: 14 }, { width: 18 }, { width: 14 }
     ];
 
     headers.forEach((header, index) => {
@@ -552,13 +564,15 @@ export function ModuloTerminosInformesV3() {
       const row = worksheet.getRow(index + 2);
       row.getCell(1).value = s.id;
       row.getCell(2).value = s.asunto || 'Sin asunto';
-      row.getCell(3).value = s.responsable;
-      row.getCell(4).value = formatearFechaVencimiento(s.fechaVencimiento);
-      row.getCell(5).value = formatearDiasRestantes(s.diasRestantes).texto;
-      row.getCell(6).value = s.etapa;
+      row.getCell(3).value = s.destinatario || 'Sin asignar';
+      row.getCell(4).value = formatearFuenteInformativa(s.fundamentoNormativo);
+      row.getCell(5).value = s.responsable;
+      row.getCell(6).value = formatearFechaVencimiento(s.fechaVencimiento);
+      row.getCell(7).value = formatearDiasRestantes(s.diasRestantes).texto;
+      row.getCell(8).value = s.etapa;
 
       const fillColor = index % 2 === 0 ? 'FFFFFFFF' : 'FFF5F5F5';
-      for (let col = 1; col <= 6; col++) {
+      for (let col = 1; col <= 8; col++) {
         row.getCell(col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
       }
     });
@@ -583,12 +597,6 @@ export function ModuloTerminosInformesV3() {
 
     toast.success('Exportado a Excel exitosamente');
     setModalExportarOpen(false);
-  };
-
-  const handleImprimirCalendario = () => {
-    const doc = construirPdfCalendario();
-    if (!doc) return;
-    window.open(doc.output('bloburl'), '_blank');
   };
 
   return (
@@ -620,13 +628,6 @@ export function ModuloTerminosInformesV3() {
             labelMobile: 'Exportar',
             icon: <Download className="w-4 h-4" />,
             onClick: () => setModalExportarOpen(true),
-            variant: 'outline' as const
-          },
-          {
-            label: 'Imprimir',
-            labelMobile: 'Imprimir',
-            icon: <Printer className="w-4 h-4" />,
-            onClick: handleImprimirCalendario,
             variant: 'outline' as const
           }
         ]}
@@ -1077,7 +1078,7 @@ interface VistaListaProps {
   onEliminar?: (id: string) => void;
 }
 
-function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
+export function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
   const grupos = agruparPorPeriodo(solicitudes);
 
   return (
@@ -1087,7 +1088,9 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID</th>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Tipo de Actividad</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Nombre de Informe</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Destinatario de Informe</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Fuente Informativa</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Responsable</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Fecha Límite</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Días Restantes</th>
@@ -1098,7 +1101,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
           {grupos.map((grupo) => (
             <tbody key={grupo.clave}>
               <tr className="bg-blue-50">
-                <td colSpan={7} className="px-4 py-2 text-xs font-bold uppercase tracking-wide" style={{ color: '#003DA5' }}>
+                <td colSpan={9} className="px-4 py-2 text-xs font-bold uppercase tracking-wide" style={{ color: '#003DA5' }}>
                   📅 {grupo.etiqueta} ({grupo.items.length})
                 </td>
               </tr>
@@ -1110,6 +1113,12 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                   <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{solicitud.id}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     <div className="line-clamp-2">{solicitud.asunto || 'Sin asunto'}</div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    <div className="line-clamp-2">{solicitud.destinatario || 'Sin asignar'}</div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    <div className="line-clamp-2">{formatearFuenteInformativa(solicitud.fundamentoNormativo)}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.responsable}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">

@@ -1017,11 +1017,13 @@ export class NewsService {
     };
     const formatDateOnly = (date: Date | string | undefined | null): string => {
       if (!date) return 'No especificada';
+      // fechaHechos / fechaCaducidad son fechas sin hora, guardadas a medianoche.
+      // Formatear en UTC para no restar un día al convertir a America/Bogota (UTC-5).
       return new Date(date).toLocaleDateString('es-CO', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
-        timeZone: 'America/Bogota',
+        timeZone: 'UTC',
       });
     };
 

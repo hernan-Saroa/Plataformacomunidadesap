@@ -91,6 +91,19 @@ export class LegalService {
         return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
 
+    /**
+     * Verifica en vivo si un radicado ya existe en el sistema, sin la restricción por
+     * abogado sustanciador que aplica getExpedientes() a usuarios sin rol de vista global.
+     * excludeId se usa al editar, para no marcar como duplicado el propio expediente.
+     */
+    async existeRadicado(radicado: string, excludeId?: string): Promise<boolean> {
+        const res = await apiClient.get<{ existe: boolean }>(
+            `${SERVICE_PREFIX}/expedientes/radicado/${encodeURIComponent(radicado)}/existe`,
+            excludeId ? { excludeId } : undefined,
+        );
+        return !!res?.existe;
+    }
+
 
 
     async getJuzgamientoProcesos(): Promise<any[]> {
@@ -322,6 +335,7 @@ export class LegalService {
         descripcion: string;
         fechaActuacion: string;
         responsable?: string;
+        responsableId?: string;
         estado?: string;
         observaciones?: string;
         documentosAsociados?: string[];
@@ -335,6 +349,7 @@ export class LegalService {
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
             if (data.responsable) formData.append('responsable', data.responsable);
+            if (data.responsableId) formData.append('responsableId', data.responsableId);
             if (data.estado) formData.append('estado', data.estado);
             if (data.observaciones) formData.append('observaciones', data.observaciones);
             if (data.documentosAsociados) {
@@ -731,7 +746,14 @@ export class LegalService {
         return apiClient.put<any>(`${SERVICE_PREFIX}/pei/indicador/${id}`, data);
     }
 
-    async registrarAvanceIndicador(id: string, data: any): Promise<any> {
+    async registrarAvanceIndicador(id: string, data: any, evidenciaFile?: File): Promise<any> {
+        if (evidenciaFile) {
+            const formData = new FormData();
+            if (data.valor !== undefined) formData.append('valor', String(data.valor));
+            if (data.observaciones) formData.append('observaciones', data.observaciones);
+            formData.append('evidencia', evidenciaFile);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, formData);
+        }
         return apiClient.post<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/avance`, data);
     }
 

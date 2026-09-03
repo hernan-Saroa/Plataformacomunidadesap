@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -2553,6 +2553,26 @@ export class BancoDocentesService implements OnModuleInit {
     await this.invitacionRepo.save(invitacion);
 
     return result;
+  }
+
+  /** Autoriza exclusivamente la carga documental posterior a una autogestión validada por OTP. */
+  async authorizeAutogestionDocumentUpload(docenteId: string, token: string): Promise<string> {
+    const invitacion = token
+      ? await this.invitacionRepo.findOne({ where: { tokenAcceso: token } })
+      : null;
+    if (!invitacion || invitacion.estado !== 'Gestionada' || invitacion.fechaExpiracion < new Date()) {
+      throw new ForbiddenException('La sesión de autogestión no autoriza la carga documental.');
+    }
+    const resolvedId = await this.resolveDocenteId(docenteId);
+    const docente = await this.docenteRepo.findOne({ where: { id: resolvedId } });
+    const invitationEmail = invitacion.correoInstitucional.toLowerCase();
+    const ownsProfile = [docente?.correoInstitucional, docente?.correoAlternativo]
+      .filter(Boolean)
+      .some((email) => String(email).toLowerCase() === invitationEmail);
+    if (!ownsProfile) {
+      throw new ForbiddenException('La invitación no corresponde al perfil docente indicado.');
+    }
+    return `AUTOGESTION:${invitacion.id}`;
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•

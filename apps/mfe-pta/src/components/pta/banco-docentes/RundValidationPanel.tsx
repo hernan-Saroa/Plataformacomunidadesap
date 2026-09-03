@@ -10,6 +10,7 @@ import { apiClient } from '../../../../../shell/src/services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
+import { RundDocumentManager } from './RundDocumentManager';
 
 // ============================================================================
 // CATALOGO BR-039 / RUND CONSTANTS
@@ -318,6 +319,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
   const [docStatus, setDocStatus] = useState<Record<string, 'Aprobado' | 'Rechazado'>>({});
   const [mockUploadedDocs, setMockUploadedDocs] = useState<Record<string, string>>({});
   const [viewingDoc, setViewingDoc] = useState<{ url: string, nombre: string, campo: string, displayUrl?: string, loading?: boolean, error?: string } | null>(null);
+
+  useEffect(() => {
+    const objectUrl = viewingDoc?.displayUrl;
+    return () => {
+      if (objectUrl?.startsWith('blob:')) URL.revokeObjectURL(objectUrl);
+    };
+  }, [viewingDoc?.displayUrl]);
   const [isEditing, setIsEditing] = useState(false);
   const auth = useAuth();
 
@@ -431,6 +439,30 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
     const periodo = docenteSnapshot?.periodoCarga;
     return periodo ? String(periodo) : null;
   }, [docenteSnapshot?.periodoCarga]);
+
+  const canManageDocuments = useMemo(() => {
+    const role = String(auth.userRole || auth.session?.rol || '').trim().toUpperCase();
+    return auth.isSuperUser
+      || ['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN'].includes(role)
+      || auth.hasAnyPermission([
+        'banco-docentes.rund.documents.manage',
+        'banco-docentes.rund.manage',
+      ]);
+  }, [auth]);
+
+  const canEditRund = useMemo(() => {
+    const role = String(auth.userRole || auth.session?.rol || '').trim().toUpperCase();
+    return auth.isSuperUser
+      || ['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN'].includes(role)
+      || auth.hasAnyPermission(['banco-docentes.rund.edit', 'banco-docentes.rund.manage']);
+  }, [auth]);
+
+  const canValidateRund = useMemo(() => {
+    const role = String(auth.userRole || auth.session?.rol || '').trim().toUpperCase();
+    return auth.isSuperUser
+      || ['GESTION_PROFESORAL', 'SUPER_ADMIN'].includes(role)
+      || auth.hasAnyPermission(['banco-docentes.rund.validate', 'banco-docentes.rund.manage']);
+  }, [auth]);
 
   const openDocViewer = async (url: string, nombre: string, campo: string, tipoSoporte?: string) => {
     // Si la URL es 'mock', intentar buscar el doc real desde el backend
@@ -1013,7 +1045,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Shield style={{ color: '#003DA5' }} size={20} />
             Validación Integral RUND
-            {auth.hasPermission('banco-docentes.rund.edit') && (
+            {canEditRund && (
               <button 
                 onClick={() => setIsEditing(true)}
                 style={{ marginLeft: 16, padding: '4px 12px', borderRadius: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
@@ -1056,6 +1088,13 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
           </div>
         </div>
       </div>
+
+      <RundDocumentManager
+        docenteId={tarjetaRund.docenteId}
+        canManage={canManageDocuments}
+        onView={(url, name, label) => openDocViewer(url, name, label)}
+        onChanged={fetchRundData}
+      />
 
       {/* Horizontal Tabs Layout */}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 450 }}>
@@ -1188,29 +1227,34 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                                       >
                                         <Eye size={14}/> Ver
                                       </button>
-                                      <button
-                                        style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E5E7EB', background: 'white', color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                                        title="Modificar documento"
-                                        onClick={() => {
-                                          const el = document.getElementById(`upload-${c.campo}`);
-                                          if (el) el.click();
-                                        }}
-                                      >
-                                        <Edit2 size={13} />
-                                      </button>
-                                      <input 
-                                        id={`upload-${c.campo}`}
-                                        type="file" 
-                                        style={{ display: 'none' }} 
-                                        disabled={rundActionLoading === `subir-${c.campo}`}
-                                        onChange={(e) => {
-                                          if (e.target.files && e.target.files.length > 0) {
-                                            const file = e.target.files[0];
-                                            handleUploadFile(file, c.tipoSoporte as string, c.campo);
-                                          }
-                                          e.target.value = '';
-                                        }}
-                                      />
+                                      {canManageDocuments && (
+                                        <>
+                                          <button
+                                            style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #E5E7EB', background: 'white', color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                            title="Reemplazar documento"
+                                            onClick={() => {
+                                              const el = document.getElementById(`upload-${c.campo}`);
+                                              if (el) el.click();
+                                            }}
+                                          >
+                                            <Edit2 size={13} />
+                                          </button>
+                                          <input
+                                            id={`upload-${c.campo}`}
+                                            type="file"
+                                            accept="application/pdf,.pdf"
+                                            style={{ display: 'none' }}
+                                            disabled={rundActionLoading === `subir-${c.campo}`}
+                                            onChange={(e) => {
+                                              if (e.target.files && e.target.files.length > 0) {
+                                                const file = e.target.files[0];
+                                                handleUploadFile(file, c.tipoSoporte as string, c.campo);
+                                              }
+                                              e.target.value = '';
+                                            }}
+                                          />
+                                        </>
+                                      )}
                                     </>
                                   )}
                                </div>
@@ -1230,9 +1274,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                                     <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>{c.documento}</div>
                                     <div style={{ fontSize: 10, color: isRequired ? '#DC2626' : '#94A3B8', fontWeight: 600 }}>{isRequired ? 'Soporte Obligatorio' : 'Opcional'}</div>
                                   </div>
-                                  <label style={{ padding: '6px 12px', borderRadius: 6, background: rundActionLoading === `subir-${c.campo}` ? '#E2E8F0' : 'white', border: '1px solid #CBD5E1', color: '#475569', fontSize: 11, fontWeight: 600, cursor: rundActionLoading === `subir-${c.campo}` ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', opacity: rundActionLoading === `subir-${c.campo}` ? 0.7 : 1 }}>
+                                  {canManageDocuments ? <label style={{ padding: '6px 12px', borderRadius: 6, background: rundActionLoading === `subir-${c.campo}` ? '#E2E8F0' : 'white', border: '1px solid #CBD5E1', color: '#475569', fontSize: 11, fontWeight: 600, cursor: rundActionLoading === `subir-${c.campo}` ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', opacity: rundActionLoading === `subir-${c.campo}` ? 0.7 : 1 }}>
                                     <input 
-                                      type="file" 
+                                      type="file"
+                                      accept="application/pdf,.pdf"
                                       style={{ display: 'none' }} 
                                       disabled={rundActionLoading === `subir-${c.campo}`}
                                       onChange={(e) => {
@@ -1244,7 +1289,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                                       }}
                                     />
                                     <UploadCloud size={14}/> {rundActionLoading === `subir-${c.campo}` ? 'Cargando...' : 'Subir'}
-                                  </label>
+                                  </label> : <span style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>Solo consulta</span>}
                                </div>
                             )}
                           </div>
@@ -1260,7 +1305,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 12, fontSize: 11, fontWeight: 800, background: '#FEF2F2', color: '#DC2626' }}><ShieldAlert size={14}/> Rechazado</span>
                                ) : (
                                  <div style={{ display: 'flex', gap: 8 }}>
-                                    {auth.hasPermission('banco-docentes.rund.validate') && (
+                                    {canValidateRund && (
                                       <button 
                                         onClick={() => setDocStatus(prev => ({ ...prev, [c.campo]: 'Aprobado' }))}
                                         style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #10B981', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
@@ -1268,7 +1313,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                                         <CheckCircle size={14} /> Aprobar
                                       </button>
                                     )}
-                                    {auth.hasPermission('banco-docentes.rund.validate') && (
+                                    {canValidateRund && (
                                       <button 
                                         onClick={() => setDocStatus(prev => ({ ...prev, [c.campo]: 'Rechazado' }))}
                                         style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
@@ -1320,12 +1365,12 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                       
                       {canApprove && (
                         <>
-                          {auth.hasPermission('banco-docentes.rund.validate') && (
+                          {canValidateRund && (
                             <button onClick={() => setDevolverRundBloque(b.bloque)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
                               <ShieldAlert size={16} /> Devolver
                             </button>
                           )}
-                          {auth.hasPermission('banco-docentes.rund.validate') && (
+                          {canValidateRund && (
                             <button onClick={() => handleAprobarRund(b.bloque)} disabled={rundActionLoading === b.bloque} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 10px rgba(0, 61, 165, 0.3)' }}>
                               <CheckCircle size={16} /> Guardar Validaciones
                             </button>
@@ -1409,7 +1454,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                  ¿El documento cumple con los requisitos normativos para <strong style={{ color: '#0F172A' }}>{viewingDoc.campo}</strong>?
                </div>
                <div style={{ display: 'flex', gap: 12 }}>
-                 {auth.hasPermission('banco-docentes.rund.validate') && (
+                 {canValidateRund && (
                    <button 
                      onClick={() => {
                        setDocStatus(prev => ({ ...prev, [viewingDoc.campo]: 'Rechazado' }));
@@ -1420,7 +1465,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente }: { do
                      <ShieldAlert size={16} /> Rechazar Documento
                    </button>
                  )}
-                 {auth.hasPermission('banco-docentes.rund.validate') && (
+                 {canValidateRund && (
                    <button 
                      onClick={() => {
                        setDocStatus(prev => ({ ...prev, [viewingDoc.campo]: 'Aprobado' }));

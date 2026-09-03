@@ -316,7 +316,11 @@ export function AutogestionDocenteRUND() {
         for (const [key, file] of entries) {
           const [bloque, tipoSoporte] = key.split('__');
           setUploadProgress(`Subiendo documentos (${done + 1}/${entries.length})…`);
-          const up = await vincularRundSoporte(docenteId, bloque, { tipoSoporte, cargadoPor: form.correoInstitucional || email }, file);
+          const up = await vincularRundSoporte(docenteId, bloque, {
+            tipoSoporte,
+            cargadoPor: form.correoInstitucional || email,
+            autogestionToken: sessionToken || undefined,
+          }, file);
           if (!(up as any)?.success) {
             console.warn('[RUND] Falló la carga de un soporte', key, up);
           }

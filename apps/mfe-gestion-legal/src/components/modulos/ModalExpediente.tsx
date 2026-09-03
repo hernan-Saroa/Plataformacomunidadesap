@@ -1275,6 +1275,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         descripcion: data.descripcion,
         fechaActuacion: data.fecha ? new Date(data.fecha).toISOString() : new Date().toISOString(),
         responsable: data.responsable,
+        responsableId: data.responsableId || undefined,
         estado: data.estado,
         observaciones: data.observaciones,
         file: file,
