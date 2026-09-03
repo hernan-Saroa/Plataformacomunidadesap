@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import {
   Comisionado,
+  Dependencia,
   DocumentoFormItem,
   DocumentoSoporte,
   FormNuevaSolicitud,
@@ -82,6 +83,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   } | null>(null);
   const [departamentos, setDepartamentos] = useState<Geopolitica[]>([]);
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
+  const [dependencias, setDependencias] = useState<Dependencia[]>([]);
+  const [cargandoDependencias, setCargandoDependencias] = useState(false);
   // Departamento al que pertenecen las ciudades cargadas (evita recargarlas al
   // navegar de vuelta o reanudar; garantiza que se carguen cuando hacen falta).
   const [ciudadesDepto, setCiudadesDepto] = useState('');
@@ -146,6 +149,27 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setDepartamentos([]);
     } finally {
       setCargandoDepartamentos(false);
+    }
+  };
+
+  const cargarDependencias = async () => {
+    setCargandoDependencias(true);
+    try {
+      const data = await viaticosService.obtenerDependencias();
+      setDependencias(data);
+      // Si por defecto todavía es DEP-PLAN-01 y existe en el catálogo,
+      // lo conservamos; si no, seleccionamos la primera activa.
+      if (data.length > 0) {
+        const existe = data.some((d) => d.codDependencia === dependenciaId);
+        if (!existe) {
+          setDependenciaId(data[0].codDependencia);
+        }
+      }
+    } catch (e) {
+      console.error('Error cargando dependencias:', e);
+      setDependencias([]);
+    } finally {
+      setCargandoDependencias(false);
     }
   };
 
@@ -284,6 +308,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setSoporteExcepcionPdf(null);
       setErrorExcepcion(null);
       void cargarDepartamentos();
+      void cargarDependencias();
       void cargarUsuarioActual();
       if (solicitudAResumir) {
         void cargarSolicitudAResumir(solicitudAResumir);
@@ -1378,19 +1403,27 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                              className={inputCls}
                            />
                          </div>
-                         <div>
-                           <label className={labelCls} htmlFor="dependenciaId">
-                             Dependencia (ID)
-                           </label>
-                           <input
-                             id="dependenciaId"
-                             type="text"
-                             value={dependenciaId}
-                             onChange={(e) => setDependenciaId(e.target.value.toUpperCase())}
-                             placeholder="DEP-PLAN-01"
-                             className={inputCls}
-                           />
-                         </div>
+                          <div>
+                            <label className={labelCls} htmlFor="dependenciaId">
+                              Dependencia solicitante
+                            </label>
+                            <SearchableSelect
+                              id="dependenciaId"
+                              options={dependencias.map((dep) => ({
+                                value: dep.codDependencia,
+                                label: `${dep.codDependencia} — ${dep.nomDependencia}`,
+                              }))}
+                              value={dependenciaId}
+                              onChange={(valor) => setDependenciaId(valor)}
+                              placeholder="Seleccione dependencia..."
+                              disabled={cargandoDependencias}
+                              loading={cargandoDependencias}
+                              emptyText={cargandoDependencias ? 'Cargando...' : 'No hay dependencias disponibles'}
+                            />
+                            {cargandoDependencias && (
+                              <p className="text-[11px] text-slate-400 mt-1">Cargando dependencias...</p>
+                            )}
+                          </div>
                          <div>
                            <label className={labelCls} htmlFor="tipoTransporte">
                              Tipo de transporte
