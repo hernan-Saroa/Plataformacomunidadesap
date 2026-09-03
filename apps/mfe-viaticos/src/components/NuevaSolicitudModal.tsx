@@ -90,7 +90,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [ciudadesDepto, setCiudadesDepto] = useState('');
   const [cargandoDepartamentos, setCargandoDepartamentos] = useState(false);
   const [cargandoCiudades, setCargandoCiudades] = useState(false);
-  const [usuarioActual, setUsuarioActual] = useState<{ userId: string; username: string } | null>(null);
+  const [usuarioActual, setUsuarioActual] = useState<{
+    userId: string;
+    username: string;
+    roles?: string[];
+    dependencia?: { codDependencia?: string; nomDependencia?: string } | null;
+  } | null>(null);
+  const [esAdminViaticos, setEsAdminViaticos] = useState(false);
   const [cargandoUsuario, setCargandoUsuario] = useState(false);
   const [parametrizacion, setParametrizacion] = useState<ConfigTipoComisionado | null>(null);
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
@@ -116,7 +122,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [tipoTransporte, setTipoTransporte] = useState<TipoTransporteTiquete>('AEREO');
   const [montoEstimadoTiquete, setMontoEstimadoTiquete] = useState<number>(0);
   const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá');
-  const [dependenciaId, setDependenciaId] = useState<string>('DEP-PLAN-01');
+  const [dependenciaId, setDependenciaId] = useState<string>('');
   const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
   const [validandoTiquete, setValidandoTiquete] = useState(false);
   const [numeroActoExcepcion, setNumeroActoExcepcion] = useState('');
@@ -153,12 +159,24 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const cargarDependencias = async () => {
+    // Los usuarios con rol de "enlace" no pueden elegir dependencia: el campo
+    // se bloquea a la dependencia asociada a su persona. Solo los admins
+    // (ADMIN / SUPER_ADMIN / ADMINISTRATIVO) ven el catálogo completo.
+    if (!esAdminViaticos) {
+      const codPropio = usuarioActual?.dependencia?.codDependencia || '';
+      setDependencias([]);
+      setCargandoDependencias(false);
+      if (codPropio) {
+        setDependenciaId(codPropio);
+      }
+      return;
+    }
     setCargandoDependencias(true);
     try {
       const data = await viaticosService.obtenerDependencias();
       setDependencias(data);
-      // Si por defecto todavía es DEP-PLAN-01 y existe en el catálogo,
-      // lo conservamos; si no, seleccionamos la primera activa.
+      // Si el valor actual no existe en el catálogo (caso normal al abrir
+      // el modal vacío o al reanudar), seleccionamos la primera activa.
       if (data.length > 0) {
         const existe = data.some((d) => d.codDependencia === dependenciaId);
         if (!existe) {
@@ -178,7 +196,30 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     try {
       const usuario = await authService.getCurrentUser();
       if (usuario) {
-        setUsuarioActual({ userId: usuario.userId, username: usuario.username });
+        const roles = (usuario.roles || []).map((r) =>
+          String(r || '').toUpperCase().replace(/\s+/g, '_'),
+        );
+        const esAdmin = roles.some((r) =>
+          [
+            'ADMIN',
+            'SUPER_ADMIN',
+            'ADMINISTRATIVO',
+            'SUPER_ADMINISTRADOR',
+            'SUPER_ADMINISTRADOR',
+          ].includes(r),
+        );
+        setEsAdminViaticos(esAdmin);
+        setUsuarioActual({
+          userId: usuario.userId,
+          username: usuario.username,
+          roles: usuario.roles,
+          dependencia: usuario.person?.dependencia
+            ? {
+                codDependencia: usuario.person.dependencia.codDependencia,
+                nomDependencia: usuario.person.dependencia.nomDependencia,
+              }
+            : null,
+        });
       }
     } catch (e) {
       console.error('Error cargando usuario actual:', e);
@@ -285,6 +326,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setCiudades([]);
       setCiudadesDepto('');
       setUsuarioActual(null);
+      setEsAdminViaticos(false);
       setCargandoUsuario(false);
       setParametrizacion(null);
       setDocumentosFaltantes([]);
@@ -301,15 +343,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
       setOrigenCiudad('Bogotá');
-      setDependenciaId('DEP-PLAN-01');
+      setDependenciaId('');
       setValidacionTiquete(null);
       setValidandoTiquete(false);
       setNumeroActoExcepcion('');
       setSoporteExcepcionPdf(null);
       setErrorExcepcion(null);
       void cargarDepartamentos();
-      void cargarDependencias();
-      void cargarUsuarioActual();
+      // La carga de dependencias depende del rol: primero resolvemos el
+      // usuario para saber si es admin (catálogo completo) o enlace
+      // (solo su dependencia bloqueada).
+      void (async () => {
+        await cargarUsuarioActual();
+        await cargarDependencias();
+      })();
       if (solicitudAResumir) {
         void cargarSolicitudAResumir(solicitudAResumir);
       }
@@ -1407,21 +1454,45 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             <label className={labelCls} htmlFor="dependenciaId">
                               Dependencia solicitante
                             </label>
-                            <SearchableSelect
-                              id="dependenciaId"
-                              options={dependencias.map((dep) => ({
-                                value: dep.codDependencia,
-                                label: `${dep.codDependencia} — ${dep.nomDependencia}`,
-                              }))}
-                              value={dependenciaId}
-                              onChange={(valor) => setDependenciaId(valor)}
-                              placeholder="Seleccione dependencia..."
-                              disabled={cargandoDependencias}
-                              loading={cargandoDependencias}
-                              emptyText={cargandoDependencias ? 'Cargando...' : 'No hay dependencias disponibles'}
-                            />
-                            {cargandoDependencias && (
-                              <p className="text-[11px] text-slate-400 mt-1">Cargando dependencias...</p>
+                            {esAdminViaticos ? (
+                              <>
+                                <SearchableSelect
+                                  id="dependenciaId"
+                                  options={dependencias.map((dep) => ({
+                                    value: dep.codDependencia,
+                                    label: `${dep.codDependencia} — ${dep.nomDependencia}`,
+                                  }))}
+                                  value={dependenciaId}
+                                  onChange={(valor) => setDependenciaId(valor)}
+                                  placeholder="Seleccione dependencia..."
+                                  disabled={cargandoDependencias}
+                                  loading={cargandoDependencias}
+                                  emptyText={cargandoDependencias ? 'Cargando...' : 'No hay dependencias disponibles'}
+                                />
+                                {cargandoDependencias && (
+                                  <p className="text-[11px] text-slate-400 mt-1">Cargando dependencias...</p>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div
+                                  id="dependenciaId"
+                                  className={`${inputCls} bg-slate-50 cursor-not-allowed flex items-center justify-between`}
+                                  aria-readonly="true"
+                                >
+                                  <span className="truncate">
+                                    {dependenciaId
+                                      ? `${dependenciaId}${usuarioActual?.dependencia?.nomDependencia ? ` — ${usuarioActual.dependencia.nomDependencia}` : ''}`
+                                      : 'Sin dependencia asignada a su usuario'}
+                                  </span>
+                                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-2">
+                                    Enlace
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                  Como usuario enlace, la dependencia se asigna automáticamente desde su perfil y no puede modificarse.
+                                </p>
+                              </>
                             )}
                           </div>
                          <div>

@@ -11,6 +11,11 @@ export interface UsuarioActual {
     first_name?: string;
     last_name?: string;
     email?: string;
+    dependencia?: {
+      idDependencia?: number;
+      codDependencia?: string;
+      nomDependencia?: string;
+    } | null;
   };
 }
 
@@ -28,6 +33,11 @@ export class AuthService {
           first_name?: string;
           last_name?: string;
           email?: string;
+          dependencia?: {
+            idDependencia?: number;
+            codDependencia?: string;
+            nomDependencia?: string;
+          } | null;
         };
       }>('/auth/api/v1/verify');
       if (!data?.id) return null;

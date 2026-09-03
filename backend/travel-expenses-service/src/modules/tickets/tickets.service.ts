@@ -431,7 +431,7 @@ export class TicketsService {
       presupuestoReservado: 0,
       presupuestoDisponible: dto.presupuestoInicial,
       holguraPorcentaje: holgura,
-      activo: true,
+      activo: dto.activo ?? true,
     });
     return this.saldoRepo.save(entity);
   }

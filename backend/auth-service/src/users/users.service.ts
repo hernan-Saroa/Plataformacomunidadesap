@@ -54,7 +54,12 @@ export class UsersService {
   async findAuthUserById(userId: string): Promise<User | null> {
     return this.userRepo.findOne({
       where: { id_user: userId },
-      relations: ['person', 'roles', 'roles.permissions'],
+      relations: [
+        'person',
+        'person.dependencia',
+        'roles',
+        'roles.permissions',
+      ],
     });
   }
 

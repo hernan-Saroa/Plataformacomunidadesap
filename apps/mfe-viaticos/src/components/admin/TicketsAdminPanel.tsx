@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import viaticosService from '../../services/api/viaticosService';
 import { Geopolitica, RutaRestringida, SaldoTiquete } from '../../types/viaticos';
+import { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import { formatearMoneda, soloNumeros } from '../../utils/viaticosUtils';
 import SearchableSelect, {
   SearchableSelectOption,
@@ -88,9 +89,34 @@ export default function TicketsAdminPanel() {
     }
   };
 
+  // Catálogo transversal de dependencias desde auth.dependencias (mismo
+  // origen que la pantalla de Configuración General > Dependencias).
+  // Se consume en el select del modal de "Nuevo saldo por dependencia"
+  // para evitar que el admin digite IDs/nombres a mano y mantener la
+  // trazabilidad con el catálogo oficial.
+  const [dependencias, setDependencias] = useState<Dependencia[]>([]);
+  const [cargandoDependencias, setCargandoDependencias] = useState(false);
+  const cargarDependencias = async () => {
+    setCargandoDependencias(true);
+    try {
+      const lista = await viaticosService.obtenerDependencias();
+      setDependencias(lista);
+    } catch (e) {
+      console.error('Error cargando dependencias:', e);
+      setDependencias([]);
+    } finally {
+      setCargandoDependencias(false);
+    }
+  };
+
   const opcionesCiudades: SearchableSelectOption[] = ciudades.map((c) => ({
     value: (c.nomDivGeopolitica || '').toUpperCase(),
     label: c.nomDivGeopolitica,
+  }));
+
+  const opcionesDependencias: SearchableSelectOption[] = dependencias.map((d) => ({
+    value: d.codDependencia,
+    label: `${d.codDependencia} — ${d.nomDependencia}`,
   }));
 
   useEffect(() => {
@@ -102,6 +128,12 @@ export default function TicketsAdminPanel() {
       void cargarCiudades();
     }
   }, [rutasModalAbierto]);
+
+  useEffect(() => {
+    if (saldosModalAbierto) {
+      void cargarDependencias();
+    }
+  }, [saldosModalAbierto]);
 
   const cargarTodo = async () => {
     setCargando(true);
@@ -764,44 +796,35 @@ export default function TicketsAdminPanel() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">
-                  ID de la dependencia *
+                  Dependencia *
                 </label>
-                <input
-                  type="text"
+                <SearchableSelect
+                  id="saldo-dependencia"
+                  options={opcionesDependencias}
                   value={formSaldo.dependenciaId}
-                  disabled={!!saldoEditando}
-                  onChange={(e) =>
+                  onChange={(valor) => {
+                    const dep = dependencias.find((d) => d.codDependencia === valor);
                     setFormSaldo({
                       ...formSaldo,
-                      dependenciaId: e.target.value.toUpperCase(),
-                    })
+                      dependenciaId: valor,
+                      nombreDependencia: dep?.nomDependencia ?? formSaldo.nombreDependencia,
+                    });
+                  }}
+                  placeholder="Buscar y seleccionar dependencia..."
+                  disabled={!!saldoEditando}
+                  loading={cargandoDependencias}
+                  emptyText={
+                    cargandoDependencias
+                      ? 'Cargando dependencias...'
+                      : 'No hay dependencias activas. Cree primero la dependencia en Configuración General > Dependencias.'
                   }
-                  placeholder="DEP-PLAN-01"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs disabled:bg-slate-50 disabled:text-slate-500"
                 />
                 {saldoEditando && (
                   <p className="text-[10px] text-slate-500 mt-1">
-                    El ID no se puede modificar una vez creado.
+                    La dependencia no se puede modificar para preservar la trazabilidad
+                    con los movimientos presupuestales históricos.
                   </p>
                 )}
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Nombre de la dependencia *
-                </label>
-                <input
-                  type="text"
-                  value={formSaldo.nombreDependencia}
-                  onChange={(e) =>
-                    setFormSaldo({
-                      ...formSaldo,
-                      nombreDependencia: e.target.value,
-                    })
-                  }
-                  placeholder="Subdirección Académica"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs"
-                />
               </div>
 
               <div>

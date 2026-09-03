@@ -72,30 +72,7 @@ export interface Geopolitica {
   idPadre?: number;
 }
 
-/**
- * Dependencia ESAP. Catálogo transversal en `auth.dependencias` que
- * consume el módulo de viáticos para asociar el cupo presupuestal de
- * tiquetes a la dependencia solicitante.
- */
-export interface Dependencia {
-  idDependencia: number;
-  idEmpresa: number;
-  codDependencia: string;
-  nomDependencia: string;
-  dirDependencia: string | null;
-  dirEmail: string | null;
-  urlDependencia: string | null;
-  idGeopolitica: number | null;
-  idSede: number | null;
-  idCargo: number | null;
-  idTercero: number | null;
-  tipUnidad: number | null;
-  genTipUnidad: string | null;
-  descripcion: string | null;
-  activo: boolean;
-  creadoEn: string;
-  actualizadoEn: string;
-}
+export type { Dependencia } from '../../../shell/src/services/api/dependencias.service';
 
 export type TipoDocumentoSoporte =
   | 'CDP'

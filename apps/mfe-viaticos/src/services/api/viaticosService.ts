@@ -21,8 +21,8 @@ import {
    RutaRestringida,
    ExcepcionTiquete,
    CreateExcepcionTiqueteRequest,
-   Dependencia,
   } from '../../types/viaticos';
+import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
   ConfigTipoComisionado,
@@ -59,29 +59,6 @@ function extraerListaGeopolitica(res: unknown): Geopolitica[] {
   const nested = obj.data as Record<string, unknown> | undefined;
   if (nested && Array.isArray(nested.data)) {
     return nested.data as Geopolitica[];
-  }
-  return [];
-}
-
-/**
- * Extrae la lista de dependencias de la respuesta del API. El auth-service
- * envuelve con { data: { data: [...] }, meta }, por lo que la lista puede
- * estar en `res.data.data`, `res.data` o `res` como array directo.
- */
-function extraerListaDependencias(res: unknown): Dependencia[] {
-  if (Array.isArray(res)) {
-    return res as Dependencia[];
-  }
-  if (!res || typeof res !== 'object') {
-    return [];
-  }
-  const obj = res as Record<string, unknown>;
-  if (Array.isArray(obj.data)) {
-    return obj.data as Dependencia[];
-  }
-  const nested = obj.data as Record<string, unknown> | undefined;
-  if (nested && Array.isArray(nested.data)) {
-    return nested.data as Dependencia[];
   }
   return [];
 }
@@ -304,26 +281,24 @@ export class ViaticosService {
 
   /**
    * Lista dependencias activas consumiendo `auth.dependencias` vía
-   * `estructura-organizacional/dependencias`. Catálogo transversal que
-   * alimenta el `SearchableSelect` de la dependencia solicitante en
-   * `NuevaSolicitudModal` y la pestaña "Dependencias" de
-   * `ParametrizacionManager`.
+   * el servicio transversal `dependenciasService` (shell). El shell
+   * se encarga de serializar `includeInactive`/`search` y de hacer
+   * el unwrapping robusto de la respuesta del auth-service.
+   *
+   * Catálogo que alimenta el `SearchableSelect` de la dependencia
+   * solicitante en `NuevaSolicitudModal` y la pestaña "Dependencias"
+   * de `ParametrizacionManager`.
    *
    * Si el microservicio de auth no responde, retorna [] para que la UI
    * muestre el estado vacío y ofrezca reintentar (no recurrimos a un
    * fallback estático porque la dependencia es por instancia
    * organizacional del cliente, no del catálogo de ciudades).
    */
-  async obtenerDependencias(options: { includeInactive?: boolean; search?: string } = {}): Promise<Dependencia[]> {
+  async obtenerDependencias(
+    options: { includeInactive?: boolean; search?: string } = {},
+  ): Promise<Dependencia[]> {
     try {
-      const params: Record<string, string> = {};
-      if (options.includeInactive) params.includeInactive = 'true';
-      if (options.search) params.search = options.search;
-      const res = await apiClient.get<unknown>(
-        '/auth/api/v1/estructura-organizacional/dependencias',
-        { params },
-      );
-      return extraerListaDependencias(res);
+      return await dependenciasService.listar(options);
     } catch (error) {
       console.warn('[viaticos] dependencias auth no disponibles:', error);
       return [];
