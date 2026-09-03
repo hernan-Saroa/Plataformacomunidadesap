@@ -24,9 +24,11 @@ interface Props {
  * Osorio»— y no códigos de permiso. La regla que se guarda sí los lleva, pero
  * eso es asunto del backend.
  *
- * Un solo buscador para roles y personas, sin preguntar antes cuál de los dos:
- * quien configura piensa en «que lo apruebe la Dirección», y si eso es un rol o
- * una persona es una distinción nuestra, no suya.
+ * El buscador separa roles y personas en dos pestañas. La primera versión los
+ * mezclaba en una lista —parecía más simple, porque quien configura piensa en
+ * «que lo apruebe la Dirección»— pero en pantalla no se distinguían: «Super
+ * Administrador» y «Super User» aparecían seguidos sin nada que dijera cuál era
+ * cuál.
  */
 export function AprobacionActividad({ numeral }: Props) {
   const [requiere, setRequiere] = useState(false);
@@ -39,6 +41,16 @@ export function AprobacionActividad({ numeral }: Props) {
   const [texto, setTexto] = useState('');
   const [roles, setRoles] = useState<{ code: string; name: string }[]>([]);
   const [personas, setPersonas] = useState<{ id: string; nombre: string; cargo?: string }[]>([]);
+
+  /**
+   * Roles o personas, en pestañas y no en una lista mezclada.
+   *
+   * Mezclarlos parecía más simple —quien configura piensa en «que lo apruebe la
+   * Dirección»— pero en pantalla no se distinguían: «Super Administrador» y
+   * «Super User» aparecían seguidos sin que nada dijera cuál era el rol y cuál
+   * la persona. Elegir primero acota la búsqueda y deja claro qué se elige.
+   */
+  const [donde, setDonde] = useState<'roles' | 'personas'>('roles');
 
   const leer = () => {
     setCargando(true);
@@ -201,7 +213,33 @@ export function AprobacionActividad({ numeral }: Props) {
           )}
 
           {buscando ? (
-            <div className="rounded-lg border border-gray-200 bg-white p-2 space-y-1.5">
+            <div className="rounded-lg border border-gray-200 bg-white p-2 space-y-2">
+              {/* Elegir primero entre rol y persona: mezclados en una sola lista,
+                  «Super Administrador» y «Super User» aparecían juntos y no
+                  había forma de saber cuál era cuál. */}
+              <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5">
+                {(
+                  [
+                    ['roles', 'Roles'],
+                    ['personas', 'Personas'],
+                  ] as const
+                ).map(([id, etiqueta]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setDonde(id)}
+                    aria-pressed={donde === id}
+                    className={`flex-1 px-3 py-1.5 rounded-md text-[11.5px] font-bold transition-colors ${
+                      donde === id
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+
               <label className="relative block">
                 <Search
                   className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -212,18 +250,17 @@ export function AprobacionActividad({ numeral }: Props) {
                   type="search"
                   value={texto}
                   onChange={(e) => setTexto(e.target.value)}
-                  placeholder="Buscar un rol o una persona"
-                  aria-label="Buscar quién aprueba"
+                  placeholder={
+                    donde === 'roles' ? 'Buscar un rol' : 'Buscar una persona por su nombre'
+                  }
+                  aria-label={donde === 'roles' ? 'Buscar un rol' : 'Buscar una persona'}
                   className={`${campo} pl-8`}
                 />
               </label>
 
-              {coincidencias.length > 0 && (
-                <>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide m-0 px-1">
-                    Roles
-                  </p>
-                  {coincidencias.map((r) => (
+              {donde === 'roles' ? (
+                coincidencias.length > 0 ? (
+                  coincidencias.map((r) => (
                     <button
                       key={r.code}
                       type="button"
@@ -239,43 +276,38 @@ export function AprobacionActividad({ numeral }: Props) {
                     >
                       {r.name}
                     </button>
-                  ))}
-                </>
-              )}
-
-              {personas.length > 0 && (
-                <>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide m-0 px-1 pt-1">
-                    Personas
+                  ))
+                ) : (
+                  <p className="text-[11.5px] text-slate-400 m-0 px-1 py-2">
+                    Ningún rol coincide con «{texto}».
                   </p>
-                  {personas.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        guardar(true, [
-                          ...aprobadores,
-                          { clase: 'persona', id: p.id, nombre: p.nombre },
-                        ]);
-                        setBuscando(false);
-                        setTexto('');
-                      }}
-                      className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-50"
-                    >
-                      <span className="block text-[12px] text-slate-700">{p.nombre}</span>
-                      {p.cargo && (
-                        <span className="block text-[10.5px] text-slate-400">{p.cargo}</span>
-                      )}
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {coincidencias.length === 0 && personas.length === 0 && (
+                )
+              ) : personas.length > 0 ? (
+                personas.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      guardar(true, [
+                        ...aprobadores,
+                        { clase: 'persona', id: p.id, nombre: p.nombre },
+                      ]);
+                      setBuscando(false);
+                      setTexto('');
+                    }}
+                    className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-50"
+                  >
+                    <span className="block text-[12px] text-slate-700">{p.nombre}</span>
+                    {p.cargo && (
+                      <span className="block text-[10.5px] text-slate-400">{p.cargo}</span>
+                    )}
+                  </button>
+                ))
+              ) : (
                 <p className="text-[11.5px] text-slate-400 m-0 px-1 py-2">
                   {texto.trim().length < 2
-                    ? 'Escribe al menos dos letras para buscar personas.'
-                    : `Ningún rol ni persona coincide con «${texto}».`}
+                    ? 'Escribe al menos dos letras del nombre.'
+                    : `Ninguna persona coincide con «${texto}».`}
                 </p>
               )}
 
