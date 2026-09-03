@@ -12,6 +12,15 @@ import {
   Geopolitica,
    ChecklistDocumentosResponse,
    FinalizarSolicitudResponse,
+   LiquidacionResponse,
+   CalcularLiquidacionRequest,
+   CategoriaInvestigador,
+   TicketValidationResult,
+   ValidateTicketRequest,
+   SaldoTiquete,
+   RutaRestringida,
+   ExcepcionTiquete,
+   CreateExcepcionTiqueteRequest,
  } from '../../types/viaticos';
 import {
   ParametrizacionFormulario,
@@ -22,6 +31,10 @@ import {
   ActualizarCampoFormularioDTO,
   CrearConfigTipoComisionadoDTO,
   ActualizarConfigTipoComisionadoDTO,
+  EscalaViatico,
+  TarifaInvestigador,
+  TarifaRegionalExcepcion,
+  LiquidationParam,
 } from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
@@ -235,6 +248,33 @@ export class ViaticosService {
     }
     return fallbackGeopolitica().filter(
       (g) => g.tipDivision === 'CIUDAD' && g.codDepartamento === idDepartamento,
+    );
+  }
+
+  /**
+   * Devuelve la lista plana de ciudades (tipDivision = 'CIUDAD') usando
+   * `auth.geopolitica`. Se consume en el panel admin de parametrización
+   * de tiquetes para alimentar los `SearchableSelect` de origen / destino
+   * de rutas restringidas.
+   *
+   * Si la API no está disponible, recurre al catálogo estático
+   * (`fallbackGeopolitica`) para no bloquear la operación.
+   */
+  async obtenerTodasCiudades(): Promise<Geopolitica[]> {
+    try {
+      const res = await apiClient.get<unknown>(
+        '/auth/api/v1/estructura-organizacional/geopolitica/ciudades',
+      );
+      const lista = extraerListaGeopolitica(res)
+        .filter((g) => g.tipDivision === 'CIUDAD' && g.nomDivGeopolitica?.trim());
+      if (lista.length > 0) {
+        return lista;
+      }
+    } catch (error) {
+      console.warn('[viaticos] ciudades auth no disponibles, usando catálogo local:', error);
+    }
+    return fallbackGeopolitica().filter(
+      (g) => g.tipDivision === 'CIUDAD' && g.nomDivGeopolitica?.trim(),
     );
   }
 
@@ -529,6 +569,388 @@ export class ViaticosService {
       return await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
     } catch (error) {
       console.error('Error exportando Formato 023:', error);
+      throw error;
+    }
+  }
+
+  async calcularLiquidacion(data: CalcularLiquidacionRequest): Promise<LiquidacionResponse> {
+    try {
+      return await apiClient.post<LiquidacionResponse>('/viaticos/api/v1/liquidation/calculate', data);
+    } catch (error) {
+      console.error('Error calculando liquidación:', error);
+      throw error;
+    }
+  }
+
+  // ==================== ESCALAS ====================
+
+  async obtenerEscalas(): Promise<EscalaViatico[]> {
+    try {
+      return await apiClient.get<EscalaViatico[]>('/viaticos/api/v1/liquidation/config/escalas');
+    } catch (error) {
+      console.error('Error obteniendo escalas:', error);
+      return [];
+    }
+  }
+
+  async obtenerEscalaPorId(id: number): Promise<EscalaViatico | null> {
+    try {
+      const res = await apiClient.get<{ escala: EscalaViatico | null }>(`/viaticos/api/v1/liquidation/config/escalas/${id}`);
+      return res.escala;
+    } catch (error) {
+      console.error('Error obteniendo escala:', error);
+      return null;
+    }
+  }
+
+  async crearEscala(dto: Partial<EscalaViatico>): Promise<EscalaViatico | null> {
+    try {
+      return await apiClient.post<EscalaViatico>('/viaticos/api/v1/liquidation/config/escalas', dto);
+    } catch (error) {
+      console.error('Error creando escala:', error);
+      throw error;
+    }
+  }
+
+  async actualizarEscala(id: number, dto: Partial<EscalaViatico>): Promise<EscalaViatico | null> {
+    try {
+      return await apiClient.put<EscalaViatico>(`/viaticos/api/v1/liquidation/config/escalas/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando escala:', error);
+      throw error;
+    }
+  }
+
+  async eliminarEscala(id: number): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/escalas/${id}`);
+    } catch (error) {
+      console.error('Error eliminando escala:', error);
+      throw error;
+    }
+  }
+
+  // ==================== TARIFAS INVESTIGADOR ====================
+
+  async obtenerTarifasInvestigadores(): Promise<TarifaInvestigador[]> {
+    try {
+      return await apiClient.get<TarifaInvestigador[]>('/viaticos/api/v1/liquidation/config/tarifas-investigadores');
+    } catch (error) {
+      console.error('Error obteniendo tarifas de investigadores:', error);
+      return [];
+    }
+  }
+
+  async crearTarifaInvestigador(dto: Partial<TarifaInvestigador>): Promise<TarifaInvestigador | null> {
+    try {
+      return await apiClient.post<TarifaInvestigador>('/viaticos/api/v1/liquidation/config/tarifas-investigadores', dto);
+    } catch (error) {
+      console.error('Error creando tarifa de investigador:', error);
+      throw error;
+    }
+  }
+
+  async actualizarTarifaInvestigador(id: number, dto: Partial<TarifaInvestigador>): Promise<TarifaInvestigador | null> {
+    try {
+      return await apiClient.put<TarifaInvestigador>(`/viaticos/api/v1/liquidation/config/tarifas-investigadores/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando tarifa de investigador:', error);
+      throw error;
+    }
+  }
+
+  async eliminarTarifaInvestigador(id: number): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/tarifas-investigadores/${id}`);
+    } catch (error) {
+      console.error('Error eliminando tarifa de investigador:', error);
+      throw error;
+    }
+  }
+
+  // ==================== EXCEPCIONES REGIONALES ====================
+
+  async obtenerExcepcionesRegionales(): Promise<TarifaRegionalExcepcion[]> {
+    try {
+      return await apiClient.get<TarifaRegionalExcepcion[]>('/viaticos/api/v1/liquidation/config/excepciones-regionales');
+    } catch (error) {
+      console.error('Error obteniendo excepciones regionales:', error);
+      return [];
+    }
+  }
+
+  async crearExcepcionRegional(dto: Partial<TarifaRegionalExcepcion>): Promise<TarifaRegionalExcepcion | null> {
+    try {
+      return await apiClient.post<TarifaRegionalExcepcion>('/viaticos/api/v1/liquidation/config/excepciones-regionales', dto);
+    } catch (error) {
+      console.error('Error creando excepción regional:', error);
+      throw error;
+    }
+  }
+
+  async actualizarExcepcionRegional(id: number, dto: Partial<TarifaRegionalExcepcion>): Promise<TarifaRegionalExcepcion | null> {
+    try {
+      return await apiClient.put<TarifaRegionalExcepcion>(`/viaticos/api/v1/liquidation/config/excepciones-regionales/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando excepción regional:', error);
+      throw error;
+    }
+  }
+
+  async eliminarExcepcionRegional(id: number): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(`/viaticos/api/v1/liquidation/config/excepciones-regionales/${id}`);
+    } catch (error) {
+      console.error('Error eliminando excepción regional:', error);
+      throw error;
+    }
+  }
+
+  async obtenerCatalogoDepartamentos(): Promise<string[]> {
+    try {
+      return await apiClient.get<string[]>('/viaticos/api/v1/liquidation/config/catalogo-departamentos');
+    } catch (error) {
+      console.error('Error obteniendo catálogo de departamentos:', error);
+      return [];
+    }
+  }
+
+  // ==================== PARÁMETROS GLOBALES ====================
+
+  async obtenerParametrosLiquidacion(): Promise<LiquidationParam[]> {
+    try {
+      return await apiClient.get<LiquidationParam[]>('/viaticos/api/v1/liquidation/config/parametros');
+    } catch (error) {
+      console.error('Error obteniendo parámetros de liquidación:', error);
+      return [];
+    }
+  }
+
+  async actualizarParametrosLiquidacion(dto: {
+    smmlv?: number;
+    factorContratista?: number;
+    factorSinPernocta?: number;
+    cacheTtlMinutes?: number;
+  }): Promise<LiquidationParam[]> {
+    try {
+      return await apiClient.put<LiquidationParam[]>('/viaticos/api/v1/liquidation/config/parametros', dto);
+    } catch (error) {
+      console.error('Error actualizando parámetros de liquidación:', error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // TIQUETES (RF-LIQ-003 / RF-LIQ-004)
+  // ========================================================================
+
+  /**
+   * Valida de forma proactiva si una solicitud de tiquete es viable.
+   * No muta el saldo; sólo devuelve flags y semáforo.
+   */
+  async validarTiquete(data: ValidateTicketRequest): Promise<TicketValidationResult> {
+    try {
+      return await apiClient.post<TicketValidationResult>(
+        '/viaticos/api/v1/tickets/validate',
+        data,
+      );
+    } catch (error) {
+      console.error('Error validando tiquete:', error);
+      // Respuesta neutra para que el frontend no bloquee por error de red.
+      return {
+        is_valid: false,
+        requires_route_exception: false,
+        requires_budget_exception: false,
+        force_land_transport: false,
+        saldo_actual_dependencia: 0,
+        holgura_aplicada_porcentaje: 15,
+        monto_reserva_con_holgura: data.montoEstimadoTiquete,
+        ruta_restringida_encontrada: null,
+        message: 'No fue posible validar el tiquete con el servidor.',
+        nivel_alerta: 'ROJO',
+        mensaje_alerta:
+          'No fue posible contactar el servicio de validación de tiquetes.',
+      };
+    }
+  }
+
+  async obtenerSaldosTiquetes(): Promise<SaldoTiquete[]> {
+    try {
+      return await apiClient.get<SaldoTiquete[]>('/viaticos/api/v1/tickets/saldos');
+    } catch (error) {
+      console.error('Error obteniendo saldos de tiquetes:', error);
+      return [];
+    }
+  }
+
+  async crearSaldoTiquete(
+    dto: Partial<SaldoTiquete>,
+  ): Promise<SaldoTiquete | null> {
+    try {
+      return await apiClient.post<SaldoTiquete>(
+        '/viaticos/api/v1/tickets/saldos',
+        dto,
+      );
+    } catch (error) {
+      console.error('Error creando saldo de tiquetes:', error);
+      throw error;
+    }
+  }
+
+  async actualizarSaldoTiquete(
+    id: string,
+    dto: Partial<SaldoTiquete>,
+  ): Promise<SaldoTiquete | null> {
+    try {
+      return await apiClient.put<SaldoTiquete>(
+        `/viaticos/api/v1/tickets/saldos/${id}`,
+        dto,
+      );
+    } catch (error) {
+      console.error('Error actualizando saldo de tiquetes:', error);
+      throw error;
+    }
+  }
+
+  async eliminarSaldoTiquete(
+    id: string,
+  ): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(
+        `/viaticos/api/v1/tickets/saldos/${id}`,
+      );
+    } catch (error) {
+      console.error('Error eliminando saldo de tiquetes:', error);
+      throw error;
+    }
+  }
+
+  async obtenerSaldoTiquetePorDependencia(
+    dependenciaId: string,
+  ): Promise<SaldoTiquete | null> {
+    try {
+      return await apiClient.get<SaldoTiquete>(
+        `/viaticos/api/v1/tickets/saldos/${encodeURIComponent(dependenciaId)}`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo saldo de tiquetes:', error);
+      return null;
+    }
+  }
+
+  async obtenerRutasRestringidas(): Promise<RutaRestringida[]> {
+    try {
+      return await apiClient.get<RutaRestringida[]>(
+        '/viaticos/api/v1/tickets/rutas-restringidas',
+      );
+    } catch (error) {
+      console.error('Error obteniendo rutas restringidas:', error);
+      return [];
+    }
+  }
+
+  async crearRutaRestringida(
+    dto: Partial<RutaRestringida>,
+  ): Promise<RutaRestringida | null> {
+    try {
+      return await apiClient.post<RutaRestringida>(
+        '/viaticos/api/v1/tickets/rutas-restringidas',
+        dto,
+      );
+    } catch (error) {
+      console.error('Error creando ruta restringida:', error);
+      throw error;
+    }
+  }
+
+  async actualizarRutaRestringida(
+    id: number,
+    dto: Partial<RutaRestringida>,
+  ): Promise<RutaRestringida | null> {
+    try {
+      return await apiClient.put<RutaRestringida>(
+        `/viaticos/api/v1/tickets/rutas-restringidas/${id}`,
+        dto,
+      );
+    } catch (error) {
+      console.error('Error actualizando ruta restringida:', error);
+      throw error;
+    }
+  }
+
+  async eliminarRutaRestringida(
+    id: number,
+  ): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(
+        `/viaticos/api/v1/tickets/rutas-restringidas/${id}`,
+      );
+    } catch (error) {
+      console.error('Error eliminando ruta restringida:', error);
+      throw error;
+    }
+  }
+
+  async registrarExcepcionTiquete(
+    dto: CreateExcepcionTiqueteRequest,
+  ): Promise<ExcepcionTiquete | null> {
+    try {
+      return await apiClient.post<ExcepcionTiquete>(
+        '/viaticos/api/v1/tickets/excepciones',
+        dto,
+      );
+    } catch (error) {
+      console.error('Error registrando excepción de tiquete:', error);
+      throw error;
+    }
+  }
+
+  // RF-LIQ-004 — Holgura global parametrizable
+
+  async obtenerHolguraGlobal(): Promise<{
+    id: number;
+    clave: string;
+    valor: string;
+    tipo: string;
+    descripcion: string | null;
+  } | null> {
+    try {
+      const res = await apiClient.get<{
+        id: number;
+        clave: string;
+        valor: string;
+        tipo: string;
+        descripcion: string | null;
+      } | null>('/viaticos/api/v1/tickets/config/holgura');
+      return res;
+    } catch (error) {
+      console.error('Error obteniendo holgura global:', error);
+      return null;
+    }
+  }
+
+  async actualizarHolguraGlobal(
+    holguraPorcentaje: number,
+  ): Promise<{
+    id: number;
+    clave: string;
+    valor: string;
+    tipo: string;
+    descripcion: string | null;
+  } | null> {
+    try {
+      return await apiClient.put<{
+        id: number;
+        clave: string;
+        valor: string;
+        tipo: string;
+        descripcion: string | null;
+      }>(
+        '/viaticos/api/v1/tickets/config/holgura',
+        { holguraPorcentaje },
+      );
+    } catch (error) {
+      console.error('Error actualizando holgura global:', error);
       throw error;
     }
   }

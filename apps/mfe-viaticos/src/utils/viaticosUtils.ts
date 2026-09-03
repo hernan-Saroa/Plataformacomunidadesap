@@ -223,11 +223,12 @@ export function getConfigEstado(estado: string): ConfigEstado {
 }
 
 /**
- * Formatea un valor numérico como moneda colombiana.
+ * Formatea un valor numérico o numérico-string como moneda colombiana.
  */
-export function formatearMoneda(valor: number): string {
-  if (!Number.isFinite(valor)) return '$0';
-  return `$${Math.round(valor).toLocaleString('es-CO')}`;
+export function formatearMoneda(valor: number | string): string {
+  const num = typeof valor === 'string' ? Number(valor) : valor;
+  if (!Number.isFinite(num)) return '$0';
+  return `$${Math.round(num).toLocaleString('es-CO')}`;
 }
 
 /**

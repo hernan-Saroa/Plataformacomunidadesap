@@ -13,8 +13,17 @@ import { CampoFormularioEntity } from './entities/config/campo-formulario.entity
 import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-tipo-comisionado-documento.entity';
+import { EscalaViaticoEntity } from './entities/liquidation/escala-viatico.entity';
+import { TarifaInvestigadorEntity } from './entities/liquidation/tarifa-investigador.entity';
+import { TarifaRegionalExcepcionEntity } from './entities/liquidation/tarifa-regional-excepcion.entity';
+import { LiquidationParamEntity } from './entities/liquidation/liquidation-param.entity';
+import { SaldoTiqueteEntity } from './entities/tickets/saldo-tiquete.entity';
+import { RutaRestringidaEntity } from './entities/tickets/ruta-restringida.entity';
+import { ExcepcionTiqueteEntity } from './entities/tickets/excepcion-tiquete.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
+import { LiquidationModule } from './modules/liquidation/liquidation.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
 
 @Module({
   imports: [
@@ -35,13 +44,22 @@ import { PermissionsGuard } from './common/permissions.guard';
         ConfigTipoComisionadoEntity,
         TipoDocumentoSoporteEntity,
         ConfigTipoComisionadoDocumentoEntity,
+        EscalaViaticoEntity,
+        TarifaInvestigadorEntity,
+        TarifaRegionalExcepcionEntity,
+        LiquidationParamEntity,
+        SaldoTiqueteEntity,
+        RutaRestringidaEntity,
+        ExcepcionTiqueteEntity,
       ],
       synchronize: false,
-      logging: true,
+      logging: process.env.NODE_ENV !== 'production',
     }),
     AuthModule,
     TravelExpensesModule,
     ConfigParamModule,
+    LiquidationModule,
+    TicketsModule,
   ],
   controllers: [AppController],
   providers: [
