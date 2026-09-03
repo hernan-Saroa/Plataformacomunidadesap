@@ -7289,7 +7289,7 @@ export function DashboardKanbanOperativo({
         {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (
           <ModalDetallesProceso
             proceso={itemSeleccionado as Proceso}
-            onClose={() => { setModalActivo(null); setItemSeleccionado(null); }}
+            onClose={() => { setModalActivo(null); setItemSeleccionado(null); cargarDatos(); }}
             onReabrir={() => {
               setModalActivo('ver-detalles');
             }}

@@ -490,10 +490,13 @@ export const certificadosService = {
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
         includeFunctions?: boolean;
+        publicBaseUrl?: string;
       },
     ): Promise<{
       mensaje: string;
       certificado: any;
+      emailSent: boolean;
+      email: string;
     }> {
       return apiClient.post(`${SERVICE_PREFIX}/certificates/autoservicio/validar-codigo`,
         {
@@ -503,6 +506,7 @@ export const certificadosService = {
           ...(options?.includeSalary !== undefined ? { includeSalary: options.includeSalary } : {}),
           ...(options?.includeTechnicalBonus !== undefined ? { includeTechnicalBonus: options.includeTechnicalBonus } : {}),
           ...(options?.includeFunctions !== undefined ? { includeFunctions: options.includeFunctions } : {}),
+          ...(options?.publicBaseUrl ? { publicBaseUrl: options.publicBaseUrl } : {}),
         },
         { requiresAuth: false }
       );

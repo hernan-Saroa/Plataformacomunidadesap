@@ -15,7 +15,7 @@ import { DocumentConversionService } from './document-conversion.service';
 import { PdfModifierService } from './pdf-modifier.service';
 import { ProcessService } from './process.service';
 import { SequenceService } from './sequence.service';
-import { JuridicaEmailService } from './juridica-email.service';
+import { JuridicaEmailService, EmailAdjunto } from './juridica-email.service';
 import { NotificationClientService } from './notification-client.service';
 import {
   DisciplinaryProcess,
@@ -880,12 +880,23 @@ export class AutoService {
     enviadoPorEmail?: string, 
     enviadoPorNombre?: string
   ): Promise<void> {
-    const auto = await this.findById(id, ['process']);
+    const auto = await this.findById(id, ['process', 'process.news']);
 
     if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
       throw new HttpException(
         'Esta operación solo aplica para autos de pliego de cargos',
         HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Idempotencia: si el proceso ya fue cerrado (enviado a Jurídica), no
+    // reenviar y devolver un mensaje claro en vez del confuso "el auto debe
+    // estar aprobado". El cierre lo hace cerrarPorPliegoCargos de forma síncrona
+    // en el primer envío, así que un segundo intento lo ve CERRADO.
+    if (auto.process?.estado === ProcessStatus.CERRADO) {
+      throw new HttpException(
+        'Este proceso ya fue enviado a la Oficina Jurídica.',
+        HttpStatus.CONFLICT,
       );
     }
 
@@ -939,12 +950,40 @@ export class AutoService {
         .catch(() => {});
     }
 
-    // Enviar correo a jurídica vía notifications-service (async, sin bloquear)
-    this.juridicaEmailService.enviarCorreoJuridica(auto.processId, datosConsolidados).then((enviado) => {
-      if (enviado) {
-        this.processService.marcarCorreoJuridicaEnviado(auto.processId);
+    // Enviar correo a jurídica vía notifications-service (async, sin bloquear).
+    // Adjunta todos los documentos del expediente: autos aprobados/firmados/
+    // notificados + evidencias + adjuntos de la noticia.
+    (async () => {
+      let adjuntos: EmailAdjunto[] = [];
+      try {
+        const [evidencias, autosProceso] = await Promise.all([
+          this.processService.getEvidenceByProcessId(auto.processId),
+          this.findByProcessId(auto.processId),
+        ]);
+        const autosDocumentables = (autosProceso || []).filter((a) =>
+          [AutoStatus.APROBADO, AutoStatus.FIRMADO, AutoStatus.NOTIFICADO].includes(a.estado),
+        );
+        const adjuntosNoticia = Array.isArray((auto.process as any)?.news?.adjuntos)
+          ? (auto.process as any).news.adjuntos
+          : [];
+        adjuntos = await this.juridicaEmailService.recolectarAdjuntosExpediente(
+          evidencias,
+          autosDocumentables,
+          adjuntosNoticia,
+        );
+      } catch (err: any) {
+        console.error(`No se pudieron recolectar los adjuntos del expediente: ${err?.message}`);
       }
-    }).catch((err) => {
+
+      const enviado = await this.juridicaEmailService.enviarCorreoJuridica(
+        auto.processId,
+        datosConsolidados,
+        adjuntos,
+      );
+      if (enviado) {
+        await this.processService.marcarCorreoJuridicaEnviado(auto.processId);
+      }
+    })().catch((err) => {
       console.error(`Error async enviando correo jurídica: ${err.message}`);
     });
   }
