@@ -71,6 +71,7 @@ export interface ProcesoAuditableExport {
   frecuenciaSugerida?: string;
   ultimaAuditoria?: string;
   auditable?: boolean;
+  tiempoUltimaAuditoria?: number;
 }
 
 export interface EstadisticasExport {
@@ -849,6 +850,23 @@ export async function exportarUniversoAuditableExcel(
       { width: 12 },  // Auditable
     ];
 
+    const getUltimaAuditoria = (option?: number): string => {
+      switch (option) {
+        case 1:
+          return '<= 1 año';
+        case 2:
+          return '> 1 año y <= 2 años';
+        case 3:
+          return '> 2 años y <= 3 años';
+        case 4:
+          return '> 3 años y <= 4 años';
+        case 5:
+          return '> 4 años';
+        default:
+          return 'Sin registro';
+      }
+    };
+
     // --- Datos de procesos (empiezan en fila 8) ---
     procesos.forEach((proceso, idx) => {
       const rowNum = 8 + idx;
@@ -868,7 +886,7 @@ export async function exportarUniversoAuditableExcel(
         proceso.nivelRiesgo || 'BAJO',
         proceso.scoreRiesgo ?? proceso.puntajeRiesgo ?? 0,
         proceso.frecuenciaAuditoria || proceso.frecuenciaSugerida || '-',
-        proceso.ultimaAuditoria || 'Sin registro',
+        getUltimaAuditoria(proceso.tiempoUltimaAuditoria),
         proceso.auditable !== undefined ? (proceso.auditable ? 'Sí' : 'No') : 'Sí'
       ];
 
