@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Get,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -28,8 +22,15 @@ export class LiquidationController {
   @Post('calculate')
   @Permissions('travel_expenses:read')
   @ApiOperation({ summary: 'Calcula la autoliquidación de viáticos' })
-  @ApiResponse({ status: 200, description: 'Cálculo exitoso', type: LiquidacionResponseDto })
-  @ApiResponse({ status: 400, description: 'Datos inválidos o fechas incorrectas' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cálculo exitoso',
+    type: LiquidacionResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Datos inválidos o fechas incorrectas',
+  })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   @ApiResponse({ status: 403, description: 'Permisos insuficientes' })
   calcular(@Body() dto: CalcularLiquidacionDto) {
@@ -38,7 +39,14 @@ export class LiquidationController {
 
   @Get('health')
   @ApiOperation({ summary: 'Health check del servicio de liquidación' })
-  @ApiResponse({ status: 200, description: 'Servicio activo', schema: { type: 'object', properties: { status: { type: 'string' }, service: { type: 'string' } } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Servicio activo',
+    schema: {
+      type: 'object',
+      properties: { status: { type: 'string' }, service: { type: 'string' } },
+    },
+  })
   health() {
     return { status: 'ok', service: 'liquidation' };
   }

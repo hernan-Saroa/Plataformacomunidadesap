@@ -17,9 +17,13 @@ import { EscalaViaticoEntity } from './entities/liquidation/escala-viatico.entit
 import { TarifaInvestigadorEntity } from './entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from './entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from './entities/liquidation/liquidation-param.entity';
+import { SaldoTiqueteEntity } from './entities/tickets/saldo-tiquete.entity';
+import { RutaRestringidaEntity } from './entities/tickets/ruta-restringida.entity';
+import { ExcepcionTiqueteEntity } from './entities/tickets/excepcion-tiquete.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 import { LiquidationModule } from './modules/liquidation/liquidation.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
 
 @Module({
   imports: [
@@ -44,6 +48,9 @@ import { LiquidationModule } from './modules/liquidation/liquidation.module';
         TarifaInvestigadorEntity,
         TarifaRegionalExcepcionEntity,
         LiquidationParamEntity,
+        SaldoTiqueteEntity,
+        RutaRestringidaEntity,
+        ExcepcionTiqueteEntity,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -52,6 +59,7 @@ import { LiquidationModule } from './modules/liquidation/liquidation.module';
     TravelExpensesModule,
     ConfigParamModule,
     LiquidationModule,
+    TicketsModule,
   ],
   controllers: [AppController],
   providers: [

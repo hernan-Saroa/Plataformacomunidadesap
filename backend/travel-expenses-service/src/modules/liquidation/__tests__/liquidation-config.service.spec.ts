@@ -7,10 +7,7 @@ import { TarifaInvestigadorEntity } from '../../../entities/liquidation/tarifa-i
 import { TarifaRegionalExcepcionEntity } from '../../../entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from '../../../entities/liquidation/liquidation-param.entity';
 import { LiquidationService } from '../liquidation.service';
-import {
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('LiquidationConfigService', () => {
   let service: LiquidationConfigService;
@@ -53,10 +50,22 @@ describe('LiquidationConfigService', () => {
       providers: [
         LiquidationConfigService,
         { provide: getDataSourceToken(), useValue: mockDataSource },
-        { provide: getRepositoryToken(EscalaViaticoEntity), useValue: mockEscalaRepo },
-        { provide: getRepositoryToken(TarifaInvestigadorEntity), useValue: mockInvestigadorRepo },
-        { provide: getRepositoryToken(TarifaRegionalExcepcionEntity), useValue: mockRegionalRepo },
-        { provide: getRepositoryToken(LiquidationParamEntity), useValue: mockParamRepo },
+        {
+          provide: getRepositoryToken(EscalaViaticoEntity),
+          useValue: mockEscalaRepo,
+        },
+        {
+          provide: getRepositoryToken(TarifaInvestigadorEntity),
+          useValue: mockInvestigadorRepo,
+        },
+        {
+          provide: getRepositoryToken(TarifaRegionalExcepcionEntity),
+          useValue: mockRegionalRepo,
+        },
+        {
+          provide: getRepositoryToken(LiquidationParamEntity),
+          useValue: mockParamRepo,
+        },
         { provide: LiquidationService, useValue: mockLiquidationService },
       ],
     }).compile();
@@ -71,7 +80,14 @@ describe('LiquidationConfigService', () => {
   describe('obtenerEscalas', () => {
     it('debe retornar escalas activas ordenadas', async () => {
       const mockEscalas = [
-        { id: 1, anoVigencia: 2026, rangoMinimo: 1000, rangoMaximo: 2000, tarifaDiaria: 500, activo: true },
+        {
+          id: 1,
+          anoVigencia: 2026,
+          rangoMinimo: 1000,
+          rangoMaximo: 2000,
+          tarifaDiaria: 500,
+          activo: true,
+        },
       ];
       mockEscalaRepo.find.mockResolvedValue(mockEscalas);
 
@@ -86,7 +102,13 @@ describe('LiquidationConfigService', () => {
 
   describe('crearEscala', () => {
     it('debe crear una escala exitosamente', async () => {
-      const dto = { decretoVigente: 'Decreto 314', anoVigencia: 2026, rangoMinimo: 1000, rangoMaximo: 2000, tarifaDiaria: 500 };
+      const dto = {
+        decretoVigente: 'Decreto 314',
+        anoVigencia: 2026,
+        rangoMinimo: 1000,
+        rangoMaximo: 2000,
+        tarifaDiaria: 500,
+      };
       mockEscalaRepo.findOne.mockResolvedValue(null);
       const savedEntity = { id: 1, ...dto, activo: true };
       mockEscalaRepo.create.mockReturnValue(savedEntity);
@@ -98,16 +120,32 @@ describe('LiquidationConfigService', () => {
     });
 
     it('debe lanzar BadRequestException si ya existe escala activa para el año', async () => {
-      const dto = { decretoVigente: 'Decreto 314', anoVigencia: 2026, rangoMinimo: 1000, rangoMaximo: 2000, tarifaDiaria: 500 };
+      const dto = {
+        decretoVigente: 'Decreto 314',
+        anoVigencia: 2026,
+        rangoMinimo: 1000,
+        rangoMaximo: 2000,
+        tarifaDiaria: 500,
+      };
       mockEscalaRepo.findOne.mockResolvedValue({ id: 1, anoVigencia: 2026 });
 
-      await expect(service.crearEscala(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.crearEscala(dto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe('actualizarEscala', () => {
     it('debe actualizar una escala existente', async () => {
-      const existing = { id: 1, decretoVigente: 'Decreto 314', anoVigencia: 2026, rangoMinimo: 1000, rangoMaximo: 2000, tarifaDiaria: 500, activo: true };
+      const existing = {
+        id: 1,
+        decretoVigente: 'Decreto 314',
+        anoVigencia: 2026,
+        rangoMinimo: 1000,
+        rangoMaximo: 2000,
+        tarifaDiaria: 500,
+        activo: true,
+      };
       mockEscalaRepo.findOne.mockResolvedValue(existing);
       const updated = { ...existing, tarifaDiaria: 600 };
       mockEscalaRepo.save.mockResolvedValue(updated);
@@ -118,7 +156,9 @@ describe('LiquidationConfigService', () => {
 
     it('debe lanzar NotFoundException si la escala no existe', async () => {
       mockEscalaRepo.findOne.mockResolvedValue(null);
-      await expect(service.actualizarEscala(999, { tarifaDiaria: 600 })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.actualizarEscala(999, { tarifaDiaria: 600 }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -130,14 +170,22 @@ describe('LiquidationConfigService', () => {
 
       const result = await service.eliminarEscala(1);
       expect(result.message).toBe('Escala eliminada correctamente');
-      expect(mockEscalaRepo.save).toHaveBeenCalledWith({ ...existing, activo: false });
+      expect(mockEscalaRepo.save).toHaveBeenCalledWith({
+        ...existing,
+        activo: false,
+      });
     });
   });
 
   describe('obtenerTarifasInvestigadores', () => {
     it('debe retornar tarifas activas', async () => {
       const mockTarifas = [
-        { id: 1, categoriaInvestigador: 'JUNIOR', tarifaDiaria: 450000, activo: true },
+        {
+          id: 1,
+          categoriaInvestigador: 'JUNIOR',
+          tarifaDiaria: 450000,
+          activo: true,
+        },
       ];
       mockInvestigadorRepo.find.mockResolvedValue(mockTarifas);
 
@@ -150,7 +198,12 @@ describe('LiquidationConfigService', () => {
     it('debe crear una tarifa exitosamente', async () => {
       const dto = { categoriaInvestigador: 'JUNIOR', tarifaDiaria: 450000 };
       mockInvestigadorRepo.findOne.mockResolvedValue(null);
-      const savedEntity = { id: 1, categoriaInvestigador: 'JUNIOR', tarifaDiaria: 450000, activo: true };
+      const savedEntity = {
+        id: 1,
+        categoriaInvestigador: 'JUNIOR',
+        tarifaDiaria: 450000,
+        activo: true,
+      };
       mockInvestigadorRepo.create.mockReturnValue(savedEntity);
       mockInvestigadorRepo.save.mockResolvedValue(savedEntity);
 
@@ -160,9 +213,14 @@ describe('LiquidationConfigService', () => {
 
     it('debe lanzar BadRequestException si ya existe tarifa para la categoría', async () => {
       const dto = { categoriaInvestigador: 'JUNIOR', tarifaDiaria: 450000 };
-      mockInvestigadorRepo.findOne.mockResolvedValue({ id: 1, categoriaInvestigador: 'JUNIOR' });
+      mockInvestigadorRepo.findOne.mockResolvedValue({
+        id: 1,
+        categoriaInvestigador: 'JUNIOR',
+      });
 
-      await expect(service.crearTarifaInvestigador(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.crearTarifaInvestigador(dto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -180,7 +238,12 @@ describe('LiquidationConfigService', () => {
 
   describe('crearExcepcionRegional', () => {
     it('debe crear una excepción exitosamente', async () => {
-      const dto = { departamento: 'Amazonas', esNuevoDepartamento: true, tarifaDiaria: 380000, decretoReferencia: 'Decreto 314' };
+      const dto = {
+        departamento: 'Amazonas',
+        esNuevoDepartamento: true,
+        tarifaDiaria: 380000,
+        decretoReferencia: 'Decreto 314',
+      };
       mockRegionalRepo.findOne.mockResolvedValue(null);
       const savedEntity = { id: 1, ...dto, activo: true };
       mockRegionalRepo.create.mockReturnValue(savedEntity);
@@ -191,10 +254,19 @@ describe('LiquidationConfigService', () => {
     });
 
     it('debe lanzar BadRequestException si ya existe excepción para el departamento', async () => {
-      const dto = { departamento: 'Amazonas', esNuevoDepartamento: true, tarifaDiaria: 380000 };
-      mockRegionalRepo.findOne.mockResolvedValue({ id: 1, departamento: 'Amazonas' });
+      const dto = {
+        departamento: 'Amazonas',
+        esNuevoDepartamento: true,
+        tarifaDiaria: 380000,
+      };
+      mockRegionalRepo.findOne.mockResolvedValue({
+        id: 1,
+        departamento: 'Amazonas',
+      });
 
-      await expect(service.crearExcepcionRegional(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.crearExcepcionRegional(dto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -214,9 +286,18 @@ describe('LiquidationConfigService', () => {
     it('debe actualizar parámetros en una transacción', async () => {
       mockDataSource.transaction.mockImplementation(async (cb: any) => {
         const mockManager = {
-          findOne: jest.fn()
-            .mockResolvedValueOnce({ id: 1, clave: 'SMMLV_2026', valor: '1300000' })
-            .mockResolvedValueOnce({ id: 2, clave: 'FACTOR_CONTRATISTA', valor: '0.8' }),
+          findOne: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 1,
+              clave: 'SMMLV_2026',
+              valor: '1300000',
+            })
+            .mockResolvedValueOnce({
+              id: 2,
+              clave: 'FACTOR_CONTRATISTA',
+              valor: '0.8',
+            }),
           create: jest.fn().mockReturnValue({}),
           save: jest.fn().mockResolvedValue({}),
         };

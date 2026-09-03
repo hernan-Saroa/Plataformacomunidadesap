@@ -749,17 +749,83 @@ async function seed() {
       .count();
     if (existingEscalas === 0) {
       await dataSource.getRepository(EscalaViaticoEntity).save([
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 0, rangoMaximo: 1917184, tarifaDiaria: 173886 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 1917185, rangoMaximo: 3012670, tarifaDiaria: 237646 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 3012671, rangoMaximo: 4022982, tarifaDiaria: 288347 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 5102610, rangoMaximo: 6162456, tarifaDiaria: 385283 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 6162457, rangoMaximo: 9293915, tarifaDiaria: 434866 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 9293916, rangoMaximo: 12989690, tarifaDiaria: 528210 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 12989691, rangoMaximo: 15423452, tarifaDiaria: 712557 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 15423453, rangoMaximo: 18986843, tarifaDiaria: 926311 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 18986844, rangoMaximo: 22958733, tarifaDiaria: 1120464 },
-        { decretoVigente: 'Decreto 314 de 2026', anoVigencia: 2026, rangoMinimo: 22958734, rangoMaximo: 999999999, tarifaDiaria: 1319516 },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 0,
+          rangoMaximo: 1917184,
+          tarifaDiaria: 173886,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 1917185,
+          rangoMaximo: 3012670,
+          tarifaDiaria: 237646,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 3012671,
+          rangoMaximo: 4022982,
+          tarifaDiaria: 288347,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 4022983,
+          rangoMaximo: 5102609,
+          tarifaDiaria: 335520,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 5102610,
+          rangoMaximo: 6162456,
+          tarifaDiaria: 385283,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 6162457,
+          rangoMaximo: 9293915,
+          tarifaDiaria: 434866,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 9293916,
+          rangoMaximo: 12989690,
+          tarifaDiaria: 528210,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 12989691,
+          rangoMaximo: 15423452,
+          tarifaDiaria: 712557,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 15423453,
+          rangoMaximo: 18986843,
+          tarifaDiaria: 926311,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 18986844,
+          rangoMaximo: 22958733,
+          tarifaDiaria: 1120464,
+        },
+        {
+          decretoVigente: 'Decreto 314 de 2026',
+          anoVigencia: 2026,
+          rangoMinimo: 22958734,
+          rangoMaximo: 999999999,
+          tarifaDiaria: 1319516,
+        },
       ]);
       console.log(`✅ ${existingEscalas} escalas de viáticos creadas.`);
     }
@@ -773,7 +839,9 @@ async function seed() {
         { categoriaInvestigador: 'ASOCIADO', tarifaDiaria: 420000 },
         { categoriaInvestigador: 'SENIOR', tarifaDiaria: 650000 },
       ]);
-      console.log(`✅ ${existingTarifasInv} tarifas de investigadores creadas.`);
+      console.log(
+        `✅ ${existingTarifasInv} tarifas de investigadores creadas.`,
+      );
     }
 
     const existingRegionales = await dataSource
@@ -781,16 +849,66 @@ async function seed() {
       .count();
     if (existingRegionales === 0) {
       await dataSource.getRepository(TarifaRegionalExcepcionEntity).save([
-        { departamento: 'Amazonas', esNuevoDepartamento: true, tarifaDiaria: 380000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
-        { departamento: 'Arauca', esNuevoDepartamento: true, tarifaDiaria: 360000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
-        { departamento: 'Casanare', esNuevoDepartamento: true, tarifaDiaria: 370000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
-        { departamento: 'Putumayo', esNuevoDepartamento: true, tarifaDiaria: 390000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
-        { departamento: 'Guaviare', esNuevoDepartamento: true, tarifaDiaria: 400000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
-        { departamento: 'Guainía', esNuevoDepartamento: true, tarifaDiaria: 410000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
-        { departamento: 'Vaupés', esNuevoDepartamento: true, tarifaDiaria: 420000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
-        { departamento: 'Vichada', esNuevoDepartamento: true, tarifaDiaria: 430000, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5', activo: true },
+        {
+          departamento: 'Amazonas',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 380000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
+        {
+          departamento: 'Arauca',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 360000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
+        {
+          departamento: 'Casanare',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 370000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
+        {
+          departamento: 'Putumayo',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 390000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
+        {
+          departamento: 'Guaviare',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 400000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
+        {
+          departamento: 'Guainía',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 410000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
+        {
+          departamento: 'Vaupés',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 420000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
+        {
+          departamento: 'Vichada',
+          esNuevoDepartamento: true,
+          tarifaDiaria: 430000,
+          decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          activo: true,
+        },
       ]);
-      console.log(`✅ ${existingRegionales} tarifas regionales de excepción creadas.`);
+      console.log(
+        `✅ ${existingRegionales} tarifas regionales de excepción creadas.`,
+      );
     }
 
     const existingParams = await dataSource
@@ -798,22 +916,74 @@ async function seed() {
       .count();
     if (existingParams === 0) {
       await dataSource.getRepository(LiquidationParamEntity).save([
-        { clave: 'SMMLV_2026', valor: '1423500', tipo: 'NUMBER', descripcion: 'Salario mínimo mensual vigente 2026' },
-        { clave: 'FACTOR_CONTRATISTA', valor: '0.8', tipo: 'NUMBER', descripcion: 'Factor de descuento para contratistas' },
-        { clave: 'FACTOR_SIN_PERNOCTA', valor: '0.5', tipo: 'NUMBER', descripcion: 'Factor aplicado cuando no hay pernocta' },
-        { clave: 'ANO_VIGENCIA_ESCALAS', valor: '2026', tipo: 'NUMBER', descripcion: 'Año de vigencia de las escalas de viáticos' },
-        { clave: 'CACHE_TTL_MINUTES', valor: '5', tipo: 'NUMBER', descripcion: 'Tiempo de vida del caché en memoria' },
+        {
+          clave: 'SMMLV_2026',
+          valor: '1423500',
+          tipo: 'NUMBER',
+          descripcion: 'Salario mínimo mensual vigente 2026',
+        },
+        {
+          clave: 'FACTOR_CONTRATISTA',
+          valor: '0.8',
+          tipo: 'NUMBER',
+          descripcion: 'Factor de descuento para contratistas',
+        },
+        {
+          clave: 'FACTOR_SIN_PERNOCTA',
+          valor: '0.5',
+          tipo: 'NUMBER',
+          descripcion: 'Factor aplicado cuando no hay pernocta',
+        },
+        {
+          clave: 'ANO_VIGENCIA_ESCALAS',
+          valor: '2026',
+          tipo: 'NUMBER',
+          descripcion: 'Año de vigencia de las escalas de viáticos',
+        },
+        {
+          clave: 'CACHE_TTL_MINUTES',
+          valor: '5',
+          tipo: 'NUMBER',
+          descripcion: 'Tiempo de vida del caché en memoria',
+        },
       ]);
       console.log(`✅ ${existingParams} parámetros de liquidación creados.`);
     } else {
       await dataSource.getRepository(LiquidationParamEntity).save([
-        { clave: 'SMMLV_2026', valor: '1423500', tipo: 'NUMBER', descripcion: 'Salario mínimo mensual vigente 2026' },
-        { clave: 'FACTOR_CONTRATISTA', valor: '0.8', tipo: 'NUMBER', descripcion: 'Factor de descuento para contratistas' },
-        { clave: 'FACTOR_SIN_PERNOCTA', valor: '0.5', tipo: 'NUMBER', descripcion: 'Factor aplicado cuando no hay pernocta' },
-        { clave: 'ANO_VIGENCIA_ESCALAS', valor: '2026', tipo: 'NUMBER', descripcion: 'Año de vigencia de las escalas de viáticos' },
-        { clave: 'CACHE_TTL_MINUTES', valor: '5', tipo: 'NUMBER', descripcion: 'Tiempo de vida del caché en memoria' },
+        {
+          clave: 'SMMLV_2026',
+          valor: '1423500',
+          tipo: 'NUMBER',
+          descripcion: 'Salario mínimo mensual vigente 2026',
+        },
+        {
+          clave: 'FACTOR_CONTRATISTA',
+          valor: '0.8',
+          tipo: 'NUMBER',
+          descripcion: 'Factor de descuento para contratistas',
+        },
+        {
+          clave: 'FACTOR_SIN_PERNOCTA',
+          valor: '0.5',
+          tipo: 'NUMBER',
+          descripcion: 'Factor aplicado cuando no hay pernocta',
+        },
+        {
+          clave: 'ANO_VIGENCIA_ESCALAS',
+          valor: '2026',
+          tipo: 'NUMBER',
+          descripcion: 'Año de vigencia de las escalas de viáticos',
+        },
+        {
+          clave: 'CACHE_TTL_MINUTES',
+          valor: '5',
+          tipo: 'NUMBER',
+          descripcion: 'Tiempo de vida del caché en memoria',
+        },
       ]);
-      console.log(`🔄 ${existingParams} parámetros de liquidación actualizados.`);
+      console.log(
+        `🔄 ${existingParams} parámetros de liquidación actualizados.`,
+      );
     }
 
     console.log('\n🎉 Seed finalizado correctamente.');

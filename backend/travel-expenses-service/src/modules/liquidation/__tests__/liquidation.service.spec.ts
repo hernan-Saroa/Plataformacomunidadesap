@@ -12,13 +12,15 @@ import {
 } from '../../../dto/liquidation/calcular-liquidacion.dto';
 
 describe('LiquidationService - unit by process', () => {
-  const createMockModule = (overrides: {
-    escalaRepo?: any;
-    investigadorRepo?: any;
-    regionalRepo?: any;
-    paramRepo?: any;
-    dataSource?: any;
-  } = {}) => {
+  const createMockModule = (
+    overrides: {
+      escalaRepo?: any;
+      investigadorRepo?: any;
+      regionalRepo?: any;
+      paramRepo?: any;
+      dataSource?: any;
+    } = {},
+  ) => {
     const {
       escalaRepo = { find: jest.fn() },
       investigadorRepo = { findOne: jest.fn() },
@@ -31,10 +33,22 @@ describe('LiquidationService - unit by process', () => {
       providers: [
         LiquidationService,
         { provide: getDataSourceToken(), useValue: dataSource },
-        { provide: getRepositoryToken(EscalaViaticoEntity), useValue: escalaRepo },
-        { provide: getRepositoryToken(TarifaInvestigadorEntity), useValue: investigadorRepo },
-        { provide: getRepositoryToken(TarifaRegionalExcepcionEntity), useValue: regionalRepo },
-        { provide: getRepositoryToken(LiquidationParamEntity), useValue: paramRepo },
+        {
+          provide: getRepositoryToken(EscalaViaticoEntity),
+          useValue: escalaRepo,
+        },
+        {
+          provide: getRepositoryToken(TarifaInvestigadorEntity),
+          useValue: investigadorRepo,
+        },
+        {
+          provide: getRepositoryToken(TarifaRegionalExcepcionEntity),
+          useValue: regionalRepo,
+        },
+        {
+          provide: getRepositoryToken(LiquidationParamEntity),
+          useValue: paramRepo,
+        },
       ],
     }).compile();
   };
@@ -47,9 +61,16 @@ describe('LiquidationService - unit by process', () => {
   describe('1) Determinación de salario base', () => {
     it('FUNCIONARIO: usa la asignación básica enviada', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -66,9 +87,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('DOBLE ROL: selecciona la asignación más alta', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 5102610, rangoMaximo: 6162456, tarifaDiaria: 385283, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 5102610,
+              rangoMaximo: 6162456,
+              tarifaDiaria: 385283,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -85,9 +113,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('ESTUDIANTE: usa SMMLV 2026 como salario base', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 0, rangoMaximo: 1917184, tarifaDiaria: 173886, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 0,
+              rangoMaximo: 1917184,
+              tarifaDiaria: 173886,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -103,7 +138,13 @@ describe('LiquidationService - unit by process', () => {
 
     it('INVESTIGADOR: usa la tarifa de investigador como base', async () => {
       const svc = await buildSvc({
-        investigadorRepo: { findOne: jest.fn().mockResolvedValue({ categoriaInvestigador: 'SENIOR', tarifaDiaria: 650000, activo: true }) },
+        investigadorRepo: {
+          findOne: jest.fn().mockResolvedValue({
+            categoriaInvestigador: 'SENIOR',
+            tarifaDiaria: 650000,
+            activo: true,
+          }),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -122,9 +163,16 @@ describe('LiquidationService - unit by process', () => {
   describe('2) Búsqueda de escala por rango salarial', () => {
     it('aplica el rango correcto para 4.500.000', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -141,9 +189,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('aplica el rango superior para salario alto', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 22958734, rangoMaximo: 999999999, tarifaDiaria: 1319516, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 22958734,
+              rangoMaximo: 999999999,
+              tarifaDiaria: 1319516,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -160,9 +215,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('falla si no existe rango para el salario', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 0, rangoMaximo: 1000, tarifaDiaria: 100, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 0,
+              rangoMaximo: 1000,
+              tarifaDiaria: 100,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       await expect(
@@ -174,16 +236,25 @@ describe('LiquidationService - unit by process', () => {
           pernocta: true,
           destinoCiudad: 'Bogotá',
         }),
-      ).rejects.toThrow('No se encontró una escala de viáticos para el salario base 5000000');
+      ).rejects.toThrow(
+        'No se encontró una escala de viáticos para el salario base 5000000',
+      );
     });
   });
 
   describe('3) Factor por tipo de comisionado', () => {
     it('FUNCIONARIO aplica factor 1.0', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -201,9 +272,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('DOCENTE aplica factor 1.0', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -220,9 +298,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('CONTRATISTA aplica factor 0.8 y redondea COP', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 6162457, rangoMaximo: 9293915, tarifaDiaria: 434866, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 6162457,
+              rangoMaximo: 9293915,
+              tarifaDiaria: 434866,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -240,9 +325,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('ESTUDIANTE aplica factor 1.0', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 0, rangoMaximo: 1917184, tarifaDiaria: 173886, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 0,
+              rangoMaximo: 1917184,
+              tarifaDiaria: 173886,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -258,7 +350,13 @@ describe('LiquidationService - unit by process', () => {
 
     it('INVESTIGADOR aplica factor 1.0', async () => {
       const svc = await buildSvc({
-        investigadorRepo: { findOne: jest.fn().mockResolvedValue({ categoriaInvestigador: 'SENIOR', tarifaDiaria: 650000, activo: true }) },
+        investigadorRepo: {
+          findOne: jest.fn().mockResolvedValue({
+            categoriaInvestigador: 'SENIOR',
+            tarifaDiaria: 650000,
+            activo: true,
+          }),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -277,9 +375,16 @@ describe('LiquidationService - unit by process', () => {
   describe('4) Factor de pernocta (regla 50%)', () => {
     it('sin pernocta aplica 50% y genera alerta', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -298,9 +403,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('con pernocta aplica 100%', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -319,9 +431,16 @@ describe('LiquidationService - unit by process', () => {
   describe('5) Cálculo de días/noches', () => {
     it('sin pernocta cuenta 1 día', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -338,9 +457,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('con pernocta cuenta diferencia de días', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -359,9 +485,16 @@ describe('LiquidationService - unit by process', () => {
   describe('6) Generación de desglose diario', () => {
     it('genera un item por día con pernocta', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -386,9 +519,16 @@ describe('LiquidationService - unit by process', () => {
 
     it('genera un solo item sin pernocta', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -408,9 +548,16 @@ describe('LiquidationService - unit by process', () => {
   describe('7) Redondeo COP', () => {
     it('redondea tarifa final de contratista a entero', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 6162457, rangoMaximo: 9293915, tarifaDiaria: 434866, anoVigencia: 2026 },
-        ]) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 6162457,
+              rangoMaximo: 9293915,
+              tarifaDiaria: 434866,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -431,7 +578,12 @@ describe('LiquidationService - unit by process', () => {
     it('consulta BD solo la primera vez y reutiliza cache', async () => {
       const escalaRepo = {
         find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
+          {
+            rangoMinimo: 4022983,
+            rangoMaximo: 5102609,
+            tarifaDiaria: 335520,
+            anoVigencia: 2026,
+          },
         ]),
       };
 
@@ -463,7 +615,15 @@ describe('LiquidationService - unit by process', () => {
     it('aplica tarifa regional cuando está activa', async () => {
       const svc = await buildSvc({
         escalaRepo: { find: jest.fn().mockResolvedValue([]) },
-        regionalRepo: { findOne: jest.fn().mockResolvedValue({ departamento: 'Amazonas', esNuevoDepartamento: true, tarifaDiaria: 380000, activo: true, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5' }) },
+        regionalRepo: {
+          findOne: jest.fn().mockResolvedValue({
+            departamento: 'Amazonas',
+            esNuevoDepartamento: true,
+            tarifaDiaria: 380000,
+            activo: true,
+            decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          }),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -478,15 +638,32 @@ describe('LiquidationService - unit by process', () => {
       });
 
       expect(result.data.tarifaDiariaBase).toBe(380000);
-      expect(result.data.decretoAplicado).toBe('Decreto 314 de 2026 - Artículo 5');
+      expect(result.data.decretoAplicado).toBe(
+        'Decreto 314 de 2026 - Artículo 5',
+      );
     });
 
     it('ignora excepción regional cuando aplicaExcepcionRegional=false', async () => {
       const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([
-          { rangoMinimo: 4022983, rangoMaximo: 5102609, tarifaDiaria: 335520, anoVigencia: 2026 },
-        ]) },
-        regionalRepo: { findOne: jest.fn().mockResolvedValue({ departamento: 'Amazonas', esNuevoDepartamento: true, tarifaDiaria: 380000, activo: true, decretoReferencia: 'Decreto 314 de 2026 - Artículo 5' }) },
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 4022983,
+              rangoMaximo: 5102609,
+              tarifaDiaria: 335520,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
+        regionalRepo: {
+          findOne: jest.fn().mockResolvedValue({
+            departamento: 'Amazonas',
+            esNuevoDepartamento: true,
+            tarifaDiaria: 380000,
+            activo: true,
+            decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
+          }),
+        },
       });
 
       const result = await svc.calcularLiquidacion({
@@ -519,7 +696,9 @@ describe('LiquidationService - unit by process', () => {
           pernocta: true,
           destinoCiudad: 'Bogotá',
         }),
-      ).rejects.toThrow('La fecha fin no puede ser anterior a la fecha inicio.');
+      ).rejects.toThrow(
+        'La fecha fin no puede ser anterior a la fecha inicio.',
+      );
     });
 
     it('falla si es investigador sin categoría', async () => {

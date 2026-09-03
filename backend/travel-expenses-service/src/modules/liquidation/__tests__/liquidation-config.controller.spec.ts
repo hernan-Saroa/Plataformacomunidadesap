@@ -36,7 +36,9 @@ describe('LiquidationConfigController (integration)', () => {
       ],
     }).compile();
 
-    controller = module.get<LiquidationConfigController>(LiquidationConfigController);
+    controller = module.get<LiquidationConfigController>(
+      LiquidationConfigController,
+    );
     service = module.get<LiquidationConfigService>(LiquidationConfigService);
   });
 
@@ -47,7 +49,15 @@ describe('LiquidationConfigController (integration)', () => {
   describe('GET /liquidation/config/escalas', () => {
     it('debe retornar lista de escalas', async () => {
       const mockEscalas = [
-        { id: 1, decretoVigente: 'Decreto 314', anoVigencia: 2026, rangoMinimo: 1000, rangoMaximo: 2000, tarifaDiaria: 500, activo: true },
+        {
+          id: 1,
+          decretoVigente: 'Decreto 314',
+          anoVigencia: 2026,
+          rangoMinimo: 1000,
+          rangoMaximo: 2000,
+          tarifaDiaria: 500,
+          activo: true,
+        },
       ];
       jest.spyOn(service, 'obtenerEscalas').mockResolvedValue(mockEscalas);
 
@@ -58,7 +68,13 @@ describe('LiquidationConfigController (integration)', () => {
 
   describe('POST /liquidation/config/escalas', () => {
     it('debe crear una escala', async () => {
-      const dto = { decretoVigente: 'Decreto 314', anoVigencia: 2026, rangoMinimo: 1000, rangoMaximo: 2000, tarifaDiaria: 500 };
+      const dto = {
+        decretoVigente: 'Decreto 314',
+        anoVigencia: 2026,
+        rangoMinimo: 1000,
+        rangoMaximo: 2000,
+        tarifaDiaria: 500,
+      };
       const created = { id: 1, ...dto, activo: true };
       jest.spyOn(service, 'crearEscala').mockResolvedValue(created);
 
@@ -72,7 +88,9 @@ describe('LiquidationConfigController (integration)', () => {
       const updated = { id: 1, tarifaDiaria: 600 };
       jest.spyOn(service, 'actualizarEscala').mockResolvedValue(updated);
 
-      const result = await controller.actualizarEscala('1', { tarifaDiaria: 600 });
+      const result = await controller.actualizarEscala('1', {
+        tarifaDiaria: 600,
+      });
       expect(result).toEqual(updated);
     });
   });
@@ -90,9 +108,16 @@ describe('LiquidationConfigController (integration)', () => {
   describe('GET /liquidation/config/tarifas-investigadores', () => {
     it('debe retornar lista de tarifas', async () => {
       const mockTarifas = [
-        { id: 1, categoriaInvestigador: 'JUNIOR', tarifaDiaria: 450000, activo: true },
+        {
+          id: 1,
+          categoriaInvestigador: 'JUNIOR',
+          tarifaDiaria: 450000,
+          activo: true,
+        },
       ];
-      jest.spyOn(service, 'obtenerTarifasInvestigadores').mockResolvedValue(mockTarifas);
+      jest
+        .spyOn(service, 'obtenerTarifasInvestigadores')
+        .mockResolvedValue(mockTarifas);
 
       const result = await controller.obtenerTarifasInvestigadores();
       expect(result).toEqual(mockTarifas);
@@ -102,7 +127,12 @@ describe('LiquidationConfigController (integration)', () => {
   describe('POST /liquidation/config/tarifas-investigadores', () => {
     it('debe crear una tarifa', async () => {
       const dto = { categoriaInvestigador: 'JUNIOR', tarifaDiaria: 450000 };
-      const created = { id: 1, categoriaInvestigador: 'JUNIOR', tarifaDiaria: 450000, activo: true };
+      const created = {
+        id: 1,
+        categoriaInvestigador: 'JUNIOR',
+        tarifaDiaria: 450000,
+        activo: true,
+      };
       jest.spyOn(service, 'crearTarifaInvestigador').mockResolvedValue(created);
 
       const result = await controller.crearTarifaInvestigador(dto);
@@ -113,17 +143,25 @@ describe('LiquidationConfigController (integration)', () => {
   describe('PUT /liquidation/config/tarifas-investigadores/:id', () => {
     it('debe actualizar una tarifa', async () => {
       const updated = { id: 1, tarifaDiaria: 500000 };
-      jest.spyOn(service, 'actualizarTarifaInvestigador').mockResolvedValue(updated);
+      jest
+        .spyOn(service, 'actualizarTarifaInvestigador')
+        .mockResolvedValue(updated);
 
-      const result = await controller.actualizarTarifaInvestigador('1', { tarifaDiaria: 500000 });
+      const result = await controller.actualizarTarifaInvestigador('1', {
+        tarifaDiaria: 500000,
+      });
       expect(result).toEqual(updated);
     });
   });
 
   describe('DELETE /liquidation/config/tarifas-investigadores/:id', () => {
     it('debe eliminar (soft-delete) una tarifa', async () => {
-      const response = { message: 'Tarifa de investigador eliminada correctamente' };
-      jest.spyOn(service, 'eliminarTarifaInvestigador').mockResolvedValue(response);
+      const response = {
+        message: 'Tarifa de investigador eliminada correctamente',
+      };
+      jest
+        .spyOn(service, 'eliminarTarifaInvestigador')
+        .mockResolvedValue(response);
 
       const result = await controller.eliminarTarifaInvestigador('1');
       expect(result).toEqual(response);
@@ -135,7 +173,9 @@ describe('LiquidationConfigController (integration)', () => {
       const mockExcepciones = [
         { id: 1, departamento: 'Amazonas', tarifaDiaria: 380000, activo: true },
       ];
-      jest.spyOn(service, 'obtenerExcepcionesRegionales').mockResolvedValue(mockExcepciones);
+      jest
+        .spyOn(service, 'obtenerExcepcionesRegionales')
+        .mockResolvedValue(mockExcepciones);
 
       const result = await controller.obtenerExcepcionesRegionales();
       expect(result).toEqual(mockExcepciones);
@@ -144,7 +184,11 @@ describe('LiquidationConfigController (integration)', () => {
 
   describe('POST /liquidation/config/excepciones-regionales', () => {
     it('debe crear una excepción', async () => {
-      const dto = { departamento: 'Amazonas', esNuevoDepartamento: true, tarifaDiaria: 380000 };
+      const dto = {
+        departamento: 'Amazonas',
+        esNuevoDepartamento: true,
+        tarifaDiaria: 380000,
+      };
       const created = { id: 1, ...dto, activo: true };
       jest.spyOn(service, 'crearExcepcionRegional').mockResolvedValue(created);
 
@@ -156,17 +200,25 @@ describe('LiquidationConfigController (integration)', () => {
   describe('PUT /liquidation/config/excepciones-regionales/:id', () => {
     it('debe actualizar una excepción', async () => {
       const updated = { id: 1, tarifaDiaria: 400000 };
-      jest.spyOn(service, 'actualizarExcepcionRegional').mockResolvedValue(updated);
+      jest
+        .spyOn(service, 'actualizarExcepcionRegional')
+        .mockResolvedValue(updated);
 
-      const result = await controller.actualizarExcepcionRegional('1', { tarifaDiaria: 400000 });
+      const result = await controller.actualizarExcepcionRegional('1', {
+        tarifaDiaria: 400000,
+      });
       expect(result).toEqual(updated);
     });
   });
 
   describe('DELETE /liquidation/config/excepciones-regionales/:id', () => {
     it('debe eliminar (soft-delete) una excepción', async () => {
-      const response = { message: 'Excepción regional eliminada correctamente' };
-      jest.spyOn(service, 'eliminarExcepcionRegional').mockResolvedValue(response);
+      const response = {
+        message: 'Excepción regional eliminada correctamente',
+      };
+      jest
+        .spyOn(service, 'eliminarExcepcionRegional')
+        .mockResolvedValue(response);
 
       const result = await controller.eliminarExcepcionRegional('1');
       expect(result).toEqual(response);
@@ -191,9 +243,14 @@ describe('LiquidationConfigController (integration)', () => {
         { id: 1, clave: 'SMMLV_2026', valor: '1500000' },
         { id: 2, clave: 'FACTOR_CONTRATISTA', valor: '0.75' },
       ];
-      jest.spyOn(service, 'actualizarParametrosLote').mockResolvedValue(updatedParams);
+      jest
+        .spyOn(service, 'actualizarParametrosLote')
+        .mockResolvedValue(updatedParams);
 
-      const result = await controller.actualizarParametros({ smmlv: 1500000, factorContratista: 0.75 });
+      const result = await controller.actualizarParametros({
+        smmlv: 1500000,
+        factorContratista: 0.75,
+      });
       expect(result).toEqual(updatedParams);
     });
   });
@@ -201,7 +258,9 @@ describe('LiquidationConfigController (integration)', () => {
   describe('GET /liquidation/config/catalogo-departamentos', () => {
     it('debe retornar catálogo de departamentos', async () => {
       const mockDeptos = ['Amazonas', 'Antioquia', 'Cundinamarca'];
-      jest.spyOn(service, 'obtenerCatalogoDepartamentos').mockResolvedValue(mockDeptos);
+      jest
+        .spyOn(service, 'obtenerCatalogoDepartamentos')
+        .mockResolvedValue(mockDeptos);
 
       const result = await controller.obtenerCatalogoDepartamentos();
       expect(result).toEqual(mockDeptos);

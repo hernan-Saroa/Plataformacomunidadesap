@@ -345,3 +345,83 @@ export interface CalcularLiquidacionRequest {
   destinoDepartamento?: string;
   aplicaExcepcionRegional?: boolean;
 }
+
+// =========================================================================
+// RF-LIQ-003 / RF-LIQ-004 — Gestión de tiquetes con restricciones y saldo
+// =========================================================================
+
+/** Tipo de transporte aceptado por el validador de tiquetes. */
+export type TipoTransporteTiquete = 'AEREO' | 'TERRESTRE';
+
+/** Nivel del semáforo de saldo presupuestal. */
+export type NivelAlertaTiquete = 'VERDE' | 'AMARILLO' | 'ROJO';
+
+/** Tipos de excepción que pueden firmar Dirección Nacional o Sindicato. */
+export type TipoExcepcionTiquete = 'RUTA_CORTA' | 'PRESUPUESTO_AGOTADO';
+export type AutorizadoPorTiquete = 'DIRECTOR_NACIONAL' | 'SINDICATO';
+
+export interface ValidateTicketRequest {
+  dependenciaId: string;
+  origenCiudad: string;
+  destinoCiudad: string;
+  tipoTransporte: TipoTransporteTiquete;
+  montoEstimadoTiquete: number;
+  sedeOrigen?: string;
+}
+
+export interface RutaRestringida {
+  id: number;
+  origenCiudad: string;
+  destinoCiudad: string;
+  descripcionRestriccion: string | null;
+  activo: boolean;
+}
+
+export interface SaldoTiquete {
+  id: string;
+  dependenciaId: string;
+  nombreDependencia: string;
+  presupuestoInicial: number;
+  presupuestoReservado: number;
+  presupuestoDisponible: number;
+  holguraPorcentaje: number;
+  activo: boolean;
+}
+
+export interface ExcepcionTiquete {
+  id: string;
+  solicitudId: string;
+  tipoExcepcion: TipoExcepcionTiquete;
+  autorizadoPor: AutorizadoPorTiquete;
+  numeroDocumentoSoporte: string;
+  documentoSoporteUrl?: string | null;
+  comentarios?: string | null;
+  creadoEn: string;
+}
+
+export interface TicketValidationResult {
+  is_valid: boolean;
+  requires_route_exception: boolean;
+  requires_budget_exception: boolean;
+  force_land_transport: boolean;
+  saldo_actual_dependencia: number;
+  holgura_aplicada_porcentaje: number;
+  monto_reserva_con_holgura: number;
+  ruta_restringida_encontrada: {
+    origen: string;
+    destino: string;
+    descripcion: string;
+  } | null;
+  message: string;
+  nivel_alerta: NivelAlertaTiquete;
+  mensaje_alerta: string;
+}
+
+export interface CreateExcepcionTiqueteRequest {
+  solicitudId: string;
+  tipoExcepcion: TipoExcepcionTiquete;
+  autorizadoPor: AutorizadoPorTiquete;
+  numeroDocumentoSoporte: string;
+  documentoSoporteUrl?: string;
+  comentarios?: string;
+}

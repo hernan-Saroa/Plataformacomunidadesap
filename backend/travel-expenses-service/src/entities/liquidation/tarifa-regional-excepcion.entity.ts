@@ -12,7 +12,9 @@ import {
  * Aplica según Art. 5 del Decreto 314 de 2026 para departamentos nuevos.
  */
 @Entity({ schema: 'travel_expenses', name: 'tarifas_regionales_excepcion' })
-@Index('idx_tarifas_regionales_excepcion_depto', ['departamento'], { unique: true })
+@Index('idx_tarifas_regionales_excepcion_depto', ['departamento'], {
+  unique: true,
+})
 export class TarifaRegionalExcepcionEntity {
   @PrimaryGeneratedColumn('increment')
   id: number;
@@ -26,7 +28,12 @@ export class TarifaRegionalExcepcionEntity {
   @Column({ name: 'tarifa_diaria', type: 'numeric', precision: 12, scale: 2 })
   tarifaDiaria: number;
 
-  @Column({ name: 'decreto_referencia', type: 'varchar', length: 100, nullable: true })
+  @Column({
+    name: 'decreto_referencia',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
   decretoReferencia: string | null;
 
   @Column({ name: 'activo', type: 'boolean', default: true })

@@ -12,6 +12,7 @@ import {
   Eye,
   FileText,
   Plane,
+  PlaneTakeoff,
   Plus,
   Search,
   Send,
@@ -28,12 +29,15 @@ import {
   FormNuevaSolicitud,
   Geopolitica,
   SolicitudComisionResponse,
+  TicketValidationResult,
+  TipoTransporteTiquete,
 } from '../types/viaticos';
 import { ConfigTipoComisionado } from '../types/parametrizacion';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
 import LiquidacionPanel from './LiquidacionPanel';
+import TicketBudgetWidget from './TicketBudgetWidget';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
@@ -104,6 +108,23 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
   const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
   const refTokenCiudades = useRef(0);
+
+  // ========== Estado RF-LIQ-003 / RF-LIQ-004 (tiquetes y presupuesto) ==========
+  const [tipoTransporte, setTipoTransporte] = useState<TipoTransporteTiquete>('AEREO');
+  const [montoEstimadoTiquete, setMontoEstimadoTiquete] = useState<number>(0);
+  const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá');
+  const [dependenciaId, setDependenciaId] = useState<string>('DEP-PLAN-01');
+  const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
+  const [validandoTiquete, setValidandoTiquete] = useState(false);
+  const [numeroActoExcepcion, setNumeroActoExcepcion] = useState('');
+  const [soporteExcepcionPdf, setSoporteExcepcionPdf] = useState<{
+    nombre: string;
+    tamano: number;
+    base64: string;
+  } | null>(null);
+  const [subiendoExcepcion, setSubiendoExcepcion] = useState(false);
+  const [errorExcepcion, setErrorExcepcion] = useState<string | null>(null);
+  const refTokenValidacionTiquete = useRef(0);
 
   const cargarDepartamentos = async () => {
     setCargandoDepartamentos(true);
@@ -253,6 +274,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setAplicaExcepcionRegional(false);
       setAsignacionesBasicasText('');
       setAsignacionesBasicas([]);
+      setTipoTransporte('AEREO');
+      setMontoEstimadoTiquete(0);
+      setOrigenCiudad('Bogotá');
+      setDependenciaId('DEP-PLAN-01');
+      setValidacionTiquete(null);
+      setValidandoTiquete(false);
+      setNumeroActoExcepcion('');
+      setSoporteExcepcionPdf(null);
+      setErrorExcepcion(null);
       void cargarDepartamentos();
       void cargarUsuarioActual();
       if (solicitudAResumir) {
@@ -420,6 +450,58 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   }, [form.fechaInicio, form.fechaFin]);
 
+  // RF-LIQ-003/004 — Validación reactiva de ruta restringida y saldo
+  // presupuestal de tiquetes. Se ejecuta cada vez que el usuario cambia
+  // algún dato que pueda alterar la decisión (ruta, transporte, monto,
+  // dependencia). Sólo se dispara si requiere tiquetes.
+  useEffect(() => {
+    if (!form.requiereTiquetes) {
+      setValidacionTiquete(null);
+      return;
+    }
+    if (!form.destinoCiudad || !origenCiudad || !dependenciaId) {
+      return;
+    }
+    if (!Number.isFinite(montoEstimadoTiquete) || montoEstimadoTiquete <= 0) {
+      // Sin monto estimado no podemos calcular la reserva con holgura.
+      return;
+    }
+    const token = ++refTokenValidacionTiquete.current;
+    setValidandoTiquete(true);
+    void viaticosService
+      .validarTiquete({
+        dependenciaId,
+        origenCiudad,
+        destinoCiudad: form.destinoCiudad,
+        tipoTransporte,
+        montoEstimadoTiquete,
+      })
+      .then((res) => {
+        if (token === refTokenValidacionTiquete.current) {
+          setValidacionTiquete(res);
+          // Regla: si el saldo está en cero y el usuario eligió aéreo,
+          // forzamos terrestre. Para desactivar el bloqueo el usuario
+          // debe aportar una excepción firmada por Dirección Nacional.
+          if (res.force_land_transport && tipoTransporte === 'AEREO') {
+            setTipoTransporte('TERRESTRE');
+          }
+        }
+      })
+      .finally(() => {
+        if (token === refTokenValidacionTiquete.current) {
+          setValidandoTiquete(false);
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    form.requiereTiquetes,
+    form.destinoCiudad,
+    origenCiudad,
+    dependenciaId,
+    tipoTransporte,
+    montoEstimadoTiquete,
+  ]);
+
   useEffect(() => {
     if (!previewDoc) return;
     const original = document.body.style.overflow;
@@ -455,6 +537,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const error = validarFechasSolicitud(form.fechaInicio, form.fechaFin);
       if (error) {
         setErrorValidacion(error);
+        return;
+      }
+      // RF-LIQ-003/004 — Bloquea avance si requiere excepción y no se
+      // aportó el PDF firmado por Dirección Nacional o Sindicato.
+      if (
+        form.requiereTiquetes &&
+        validacionTiquete &&
+        (validacionTiquete.requires_route_exception ||
+          validacionTiquete.requires_budget_exception) &&
+        (!numeroActoExcepcion.trim() || !soporteExcepcionPdf)
+      ) {
+        setErrorValidacion(
+          'Debe registrar el número de acto de excepción y adjuntar el PDF firmado por Dirección Nacional o Sindicato antes de continuar.',
+        );
         return;
       }
       if (comisionado && parametrizacion) {
@@ -582,6 +678,43 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     });
   };
 
+  /**
+   * RF-LIQ-003 — Carga el PDF de excepción firmado por Dirección Nacional
+   * o Sindicato. Convierte el archivo a base64 para transportarlo dentro
+   * del formulario y poder enviarlo al backend cuando se radique la
+   * solicitud.
+   */
+  const cargarSoporteExcepcion = async (archivo: File) => {
+    setErrorExcepcion(null);
+    if (!esPdfMime(archivo.type) && !esPdfMime(inferirTipoMime(archivo.name))) {
+      setErrorExcepcion('El soporte de excepción debe estar en formato PDF.');
+      return;
+    }
+    if (archivo.size > 50 * 1024 * 1024) {
+      setErrorExcepcion('El archivo excede el tamaño máximo permitido (50 MB).');
+      return;
+    }
+    setSubiendoExcepcion(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error);
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.readAsDataURL(archivo);
+      });
+      setSoporteExcepcionPdf({
+        nombre: archivo.name,
+        tamano: archivo.size,
+        base64,
+      });
+    } catch (e) {
+      console.error('Error leyendo PDF de excepción:', e);
+      setErrorExcepcion('No fue posible leer el archivo. Intente nuevamente.');
+    } finally {
+      setSubiendoExcepcion(false);
+    }
+  };
+
   const eliminarDocumentoEspecifico = async (doc: DocumentoFormItem) => {
     if (!solicitudBorrador) {
       setErrorDocumentos('No hay una solicitud activa para gestionar documentos.');
@@ -631,9 +764,40 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       );
       return;
     }
+    if (
+      form.requiereTiquetes &&
+      validacionTiquete &&
+      (validacionTiquete.requires_route_exception ||
+        validacionTiquete.requires_budget_exception) &&
+      (!numeroActoExcepcion.trim() || !soporteExcepcionPdf)
+    ) {
+      setErrorValidacion(
+        'Debe registrar el número de acto de excepción y adjuntar el PDF firmado por Dirección Nacional o Sindicato antes de radicar.',
+      );
+      return;
+    }
     setFinalizando(true);
     setErrorValidacion(null);
     try {
+      // RF-LIQ-003/004 — Registra la excepción firmada antes de radicar
+      // para que la trazabilidad quede asociada a la solicitud.
+      if (
+        form.requiereTiquetes &&
+        validacionTiquete &&
+        (validacionTiquete.requires_route_exception ||
+          validacionTiquete.requires_budget_exception)
+      ) {
+        await viaticosService.registrarExcepcionTiquete({
+          solicitudId: solicitudBorrador.id,
+          tipoExcepcion: validacionTiquete.requires_route_exception
+            ? 'RUTA_CORTA'
+            : 'PRESUPUESTO_AGOTADO',
+          autorizadoPor: 'DIRECTOR_NACIONAL',
+          numeroDocumentoSoporte: numeroActoExcepcion.trim(),
+          documentoSoporteUrl: soporteExcepcionPdf?.base64,
+          comentarios: `Generada automáticamente al radicar la solicitud ${solicitudBorrador.consecutivoUnico}`,
+        });
+      }
       const radicada = await viaticosService.finalizarSolicitud(solicitudBorrador.id);
       onSolicitudCreada(radicada as unknown as SolicitudComisionResponse);
       onCerrar();
@@ -1180,15 +1344,174 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               />
 
                {!esCampoOculto('requiereTiquetes') && (
-                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
-                   <input
-                     type="checkbox"
-                     checked={form.requiereTiquetes}
-                     onChange={(e) => actualizar('requiereTiquetes', e.target.checked)}
-                     className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
-                   />
-                   {esCampoObligatorio('requiereTiquetes') ? 'La comisión requiere tiquetes aéreos / pasajes *' : 'La comisión requiere tiquetes aéreos / pasajes'}
-                 </label>
+                 <div className="space-y-3">
+                   <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
+                     <input
+                       type="checkbox"
+                       checked={form.requiereTiquetes}
+                       onChange={(e) => actualizar('requiereTiquetes', e.target.checked)}
+                       className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
+                     />
+                     {esCampoObligatorio('requiereTiquetes') ? 'La comisión requiere tiquetes aéreos / pasajes *' : 'La comisión requiere tiquetes aéreos / pasajes'}
+                   </label>
+
+                   {form.requiereTiquetes && (
+                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                       <div className="flex items-center gap-2">
+                         <PlaneTakeoff className="w-4 h-4 text-slate-500" />
+                         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                           Tiquetes y disponibilidad presupuestal (RF-LIQ-003/004)
+                         </p>
+                       </div>
+
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                         <div>
+                           <label className={labelCls} htmlFor="origenCiudad">
+                             Ciudad de origen
+                           </label>
+                           <input
+                             id="origenCiudad"
+                             type="text"
+                             value={origenCiudad}
+                             onChange={(e) => setOrigenCiudad(e.target.value)}
+                             placeholder="Bogotá"
+                             className={inputCls}
+                           />
+                         </div>
+                         <div>
+                           <label className={labelCls} htmlFor="dependenciaId">
+                             Dependencia (ID)
+                           </label>
+                           <input
+                             id="dependenciaId"
+                             type="text"
+                             value={dependenciaId}
+                             onChange={(e) => setDependenciaId(e.target.value.toUpperCase())}
+                             placeholder="DEP-PLAN-01"
+                             className={inputCls}
+                           />
+                         </div>
+                         <div>
+                           <label className={labelCls} htmlFor="tipoTransporte">
+                             Tipo de transporte
+                           </label>
+                           <SearchableSelect
+                             id="tipoTransporte"
+                             options={[
+                               { value: 'AEREO', label: 'Aéreo' },
+                               { value: 'TERRESTRE', label: 'Terrestre' },
+                             ]}
+                             value={tipoTransporte}
+                             onChange={(valor) => setTipoTransporte(valor as TipoTransporteTiquete)}
+                             placeholder="Seleccione transporte"
+                           />
+                           {validacionTiquete?.force_land_transport && (
+                             <p className="text-[10px] text-red-600 font-semibold mt-1 flex items-start gap-1">
+                               <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                               Transporte aéreo bloqueado: el saldo de la dependencia está en cero. Aporte excepción firmada por Dirección Nacional para reactivar la opción aérea.
+                             </p>
+                           )}
+                         </div>
+                         <div>
+                           <label className={labelCls} htmlFor="montoEstimadoTiquete">
+                             Costo estimado del tiquete (COP)
+                           </label>
+                           <div className="relative">
+                             <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                             <input
+                               id="montoEstimadoTiquete"
+                               type="text"
+                               inputMode="numeric"
+                               placeholder="450000"
+                               value={montoEstimadoTiquete ? formatearMoneda(montoEstimadoTiquete) : ''}
+                               onChange={(e) =>
+                                 setMontoEstimadoTiquete(Number(soloNumeros(e.target.value)) || 0)
+                               }
+                               className={`${inputCls} pl-7 text-right font-bold`}
+                             />
+                           </div>
+                         </div>
+                       </div>
+
+                       <TicketBudgetWidget
+                         validacion={validacionTiquete}
+                         cargando={validandoTiquete}
+                         montoEstimadoDisplay={formatearMoneda(montoEstimadoTiquete)}
+                       />
+
+                       {(validacionTiquete?.requires_route_exception ||
+                         validacionTiquete?.requires_budget_exception) && (
+                         <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+                           <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
+                             Soporte de excepción requerido
+                           </p>
+                           <p className="text-[11px] text-amber-800 leading-relaxed">
+                             {validacionTiquete.requires_route_exception
+                               ? 'La ruta seleccionada es restringida. Adjunte el PDF de excepción firmado por Dirección Nacional o Sindicato.'
+                               : 'El saldo de la dependencia no alcanza para cubrir el tiquete con la holgura de mercado. Adjunte el PDF de excepción firmado por Dirección Nacional.'}
+                           </p>
+                           <div>
+                             <label className={labelCls} htmlFor="numeroActoExcepcion">
+                               Número de acto / resolución de excepción *
+                             </label>
+                             <input
+                               id="numeroActoExcepcion"
+                               type="text"
+                               required
+                               value={numeroActoExcepcion}
+                               onChange={(e) => setNumeroActoExcepcion(e.target.value.toUpperCase())}
+                               placeholder="Resolución 023-2026"
+                               className={inputCls}
+                             />
+                           </div>
+                           <div>
+                             <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                               PDF de soporte firmado por Dirección Nacional o Sindicato *
+                             </label>
+                             {soporteExcepcionPdf ? (
+                               <div className="flex items-center justify-between bg-white border border-emerald-200 rounded-lg px-3 py-2">
+                                 <div className="min-w-0">
+                                   <p className="text-xs font-bold text-emerald-700 truncate">
+                                     {soporteExcepcionPdf.nombre}
+                                   </p>
+                                   <p className="text-[10px] text-slate-500">
+                                     {(soporteExcepcionPdf.tamano / 1024).toFixed(1)} KB · PDF
+                                   </p>
+                                 </div>
+                                 <button
+                                   type="button"
+                                   onClick={() => setSoporteExcepcionPdf(null)}
+                                   className="text-red-500 hover:text-red-700"
+                                   title="Quitar soporte"
+                                 >
+                                   <Trash2 className="w-3.5 h-3.5" />
+                                 </button>
+                               </div>
+                             ) : (
+                               <label className="px-3 py-1.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors">
+                                 <input
+                                   type="file"
+                                   accept="application/pdf"
+                                   hidden
+                                   onChange={(e) => {
+                                     const file = e.target.files?.[0];
+                                     if (file) void cargarSoporteExcepcion(file);
+                                   }}
+                                 />
+                                 {subiendoExcepcion ? 'Cargando…' : 'Adjuntar PDF'}
+                               </label>
+                             )}
+                           </div>
+                           {errorExcepcion && (
+                             <p className="text-[11px] text-red-700 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
+                               {errorExcepcion}
+                             </p>
+                           )}
+                         </div>
+                       )}
+                     </div>
+                   )}
+                 </div>
                )}
 
                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">

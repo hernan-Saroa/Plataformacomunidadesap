@@ -1,9 +1,4 @@
-import {
-  IsNumber,
-  IsOptional,
-  Min,
-  Max,
-} from 'class-validator';
+import { IsNumber, IsOptional, Min, Max } from 'class-validator';
 
 export class UpdateLiquidationParamsDto {
   @IsOptional()

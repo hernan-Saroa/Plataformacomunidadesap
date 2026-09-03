@@ -47,7 +47,10 @@ export class LiquidationConfigController {
 
   @Put('escalas/:id')
   @Permissions('travel_expenses:manage_config')
-  actualizarEscala(@Param('id') id: string, @Body() dto: UpdateEscalaViaticoDto) {
+  actualizarEscala(
+    @Param('id') id: string,
+    @Body() dto: UpdateEscalaViaticoDto,
+  ) {
     return this.configService.actualizarEscala(Number(id), dto);
   }
 

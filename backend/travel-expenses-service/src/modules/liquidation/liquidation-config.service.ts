@@ -52,9 +52,7 @@ export class LiquidationConfigService {
     return this.escalaRepo.findOne({ where: { id } });
   }
 
-  async crearEscala(
-    dto: CreateEscalaViaticoDto,
-  ): Promise<EscalaViaticoEntity> {
+  async crearEscala(dto: CreateEscalaViaticoDto): Promise<EscalaViaticoEntity> {
     const solapada = await this.escalaRepo.findOne({
       where: { anoVigencia: dto.anoVigencia, activo: true },
     });
@@ -124,7 +122,10 @@ export class LiquidationConfigService {
     dto: CreateTarifaInvestigadorDto,
   ): Promise<TarifaInvestigadorEntity> {
     const existente = await this.investigadorRepo.findOne({
-      where: { categoriaInvestigador: dto.categoriaInvestigador.toUpperCase(), activo: true },
+      where: {
+        categoriaInvestigador: dto.categoriaInvestigador.toUpperCase(),
+        activo: true,
+      },
     });
     if (existente) {
       throw new BadRequestException(
@@ -153,7 +154,10 @@ export class LiquidationConfigService {
 
     if (dto.categoriaInvestigador) {
       const existe = await this.investigadorRepo.findOne({
-        where: { categoriaInvestigador: dto.categoriaInvestigador.toUpperCase(), activo: true },
+        where: {
+          categoriaInvestigador: dto.categoriaInvestigador.toUpperCase(),
+          activo: true,
+        },
       });
       if (existe && existe.id !== id) {
         throw new BadRequestException(
@@ -184,7 +188,9 @@ export class LiquidationConfigService {
 
   // ==================== EXCEPCIONES REGIONALES ====================
 
-  async obtenerExcepcionesRegionales(): Promise<TarifaRegionalExcepcionEntity[]> {
+  async obtenerExcepcionesRegionales(): Promise<
+    TarifaRegionalExcepcionEntity[]
+  > {
     return this.regionalRepo.find({
       where: { activo: true },
       order: { departamento: 'ASC' },
@@ -323,9 +329,16 @@ export class LiquidationConfigService {
     const resultados: LiquidationParamEntity[] = [];
     await this.dataSource.transaction(async (manager) => {
       if (params.smmlv !== undefined) {
-        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'SMMLV_2026' } });
+        const entity = await manager.findOne(LiquidationParamEntity, {
+          where: { clave: 'SMMLV_2026' },
+        });
         if (!entity) {
-          const nuevo = manager.create(LiquidationParamEntity, { clave: 'SMMLV_2026', valor: String(params.smmlv), tipo: 'NUMBER', descripcion: 'Salario mínimo mensual vigente 2026' });
+          const nuevo = manager.create(LiquidationParamEntity, {
+            clave: 'SMMLV_2026',
+            valor: String(params.smmlv),
+            tipo: 'NUMBER',
+            descripcion: 'Salario mínimo mensual vigente 2026',
+          });
           resultados.push(await manager.save(nuevo));
         } else {
           entity.valor = String(params.smmlv);
@@ -333,9 +346,16 @@ export class LiquidationConfigService {
         }
       }
       if (params.factorContratista !== undefined) {
-        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'FACTOR_CONTRATISTA' } });
+        const entity = await manager.findOne(LiquidationParamEntity, {
+          where: { clave: 'FACTOR_CONTRATISTA' },
+        });
         if (!entity) {
-          const nuevo = manager.create(LiquidationParamEntity, { clave: 'FACTOR_CONTRATISTA', valor: String(params.factorContratista), tipo: 'NUMBER', descripcion: 'Factor de descuento para contratistas' });
+          const nuevo = manager.create(LiquidationParamEntity, {
+            clave: 'FACTOR_CONTRATISTA',
+            valor: String(params.factorContratista),
+            tipo: 'NUMBER',
+            descripcion: 'Factor de descuento para contratistas',
+          });
           resultados.push(await manager.save(nuevo));
         } else {
           entity.valor = String(params.factorContratista);
@@ -343,9 +363,16 @@ export class LiquidationConfigService {
         }
       }
       if (params.factorSinPernocta !== undefined) {
-        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'FACTOR_SIN_PERNOCTA' } });
+        const entity = await manager.findOne(LiquidationParamEntity, {
+          where: { clave: 'FACTOR_SIN_PERNOCTA' },
+        });
         if (!entity) {
-          const nuevo = manager.create(LiquidationParamEntity, { clave: 'FACTOR_SIN_PERNOCTA', valor: String(params.factorSinPernocta), tipo: 'NUMBER', descripcion: 'Factor aplicado cuando no hay pernocta' });
+          const nuevo = manager.create(LiquidationParamEntity, {
+            clave: 'FACTOR_SIN_PERNOCTA',
+            valor: String(params.factorSinPernocta),
+            tipo: 'NUMBER',
+            descripcion: 'Factor aplicado cuando no hay pernocta',
+          });
           resultados.push(await manager.save(nuevo));
         } else {
           entity.valor = String(params.factorSinPernocta);
@@ -353,9 +380,16 @@ export class LiquidationConfigService {
         }
       }
       if (params.cacheTtlMinutes !== undefined) {
-        const entity = await manager.findOne(LiquidationParamEntity, { where: { clave: 'CACHE_TTL_MINUTES' } });
+        const entity = await manager.findOne(LiquidationParamEntity, {
+          where: { clave: 'CACHE_TTL_MINUTES' },
+        });
         if (!entity) {
-          const nuevo = manager.create(LiquidationParamEntity, { clave: 'CACHE_TTL_MINUTES', valor: String(params.cacheTtlMinutes), tipo: 'NUMBER', descripcion: 'Tiempo de vida del caché en memoria' });
+          const nuevo = manager.create(LiquidationParamEntity, {
+            clave: 'CACHE_TTL_MINUTES',
+            valor: String(params.cacheTtlMinutes),
+            tipo: 'NUMBER',
+            descripcion: 'Tiempo de vida del caché en memoria',
+          });
           resultados.push(await manager.save(nuevo));
         } else {
           entity.valor = String(params.cacheTtlMinutes);

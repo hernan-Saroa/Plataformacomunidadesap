@@ -27,7 +27,9 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Travel Expenses Service API')
-    .setDescription('API para gestión de viáticos y autoliquidación según Decreto 314 de 2026')
+    .setDescription(
+      'API para gestión de viáticos y autoliquidación según Decreto 314 de 2026',
+    )
     .setVersion('1.0')
     .addBearerAuth()
     .build();
