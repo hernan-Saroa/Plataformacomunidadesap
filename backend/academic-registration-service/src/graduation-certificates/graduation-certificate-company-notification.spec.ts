@@ -90,6 +90,22 @@ describe('GraduationCertificatesService company notifications', () => {
     ).rejects.toThrow('El nombre de la empresa debe tener al menos 5 caracteres');
   });
 
+  it('mantiene el NIT de empresa opcional y acepta 9 o 10 dígitos', () => {
+    const service = createService() as any;
+
+    expect(() => service.validateOptionalCompanyNit('')).not.toThrow();
+    expect(() => service.validateOptionalCompanyNit('900123456')).not.toThrow();
+    expect(() => service.validateOptionalCompanyNit('9001234567')).not.toThrow();
+  });
+
+  it('rechaza un NIT diligenciado con menos de 9 dígitos', () => {
+    const service = createService() as any;
+
+    expect(() => service.validateOptionalCompanyNit('12345678')).toThrow(
+      'El NIT debe tener 9 dígitos sin DV o 10 dígitos si incluye el DV',
+    );
+  });
+
   it('procesa cargas de más de 1000 graduados sin un límite fijo de registros', async () => {
     const service = createService() as any;
     service.crearGraduado = jest.fn(async (graduate) => graduate);
