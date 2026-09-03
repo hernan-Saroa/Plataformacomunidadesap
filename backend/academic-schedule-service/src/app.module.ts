@@ -9,6 +9,7 @@ import { AppService } from './app.service.js';
 import { CatalogoModule } from './catalogo/catalogo.module.js';
 import { GruposModule } from './grupos/grupos.module.js';
 import { HorariosModule } from './horarios/horarios.module.js';
+import { AsignacionesModule } from './asignaciones/asignaciones.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 
@@ -41,6 +42,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
     CatalogoModule,
     GruposModule,
     HorariosModule,
+    AsignacionesModule,
   ],
   controllers: [AppController],
   providers: [
