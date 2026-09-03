@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
 import { LaborFunctionProfile } from './labor-function-profile.entity';
 import { LaborFunction } from './labor-function.entity';
@@ -534,7 +534,12 @@ export class LaborFunctionsService {
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
     const allProfiles = await this.profileRepo.find({
       relations: ['functions'],
-      order: { position_code: 'ASC', grade_code: 'ASC', department_name: 'ASC' },
+      order: {
+        created_at: 'DESC',
+        position_code: 'ASC',
+        grade_code: 'ASC',
+        department_name: 'ASC',
+      },
     });
     const filtered = search
       ? allProfiles.filter((profile) =>
@@ -699,6 +704,64 @@ export class LaborFunctionsService {
     }
     await this.profileRepo.remove(profile);
     return { id, deleted: true };
+  }
+
+  async removeMany(ids: unknown) {
+    if (!Array.isArray(ids) || !ids.length) {
+      throw new BadRequestException(
+        'Selecciona al menos un registro de funciones para eliminar.',
+      );
+    }
+
+    const normalizedIds = Array.from(
+      new Set(ids.map((id) => String(id ?? '').trim()).filter(Boolean)),
+    );
+    if (!normalizedIds.length) {
+      throw new BadRequestException(
+        'Selecciona al menos un registro de funciones para eliminar.',
+      );
+    }
+    if (normalizedIds.length > 5000) {
+      throw new BadRequestException(
+        'Solo se pueden eliminar hasta 5.000 registros por operación.',
+      );
+    }
+    const invalidIds = normalizedIds.filter(
+      (id) =>
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          id,
+        ),
+    );
+    if (invalidIds.length) {
+      throw new BadRequestException(
+        'La selección contiene identificadores de registro inválidos.',
+      );
+    }
+
+    return await this.dataSource.transaction(async (manager) => {
+      const profiles = manager.getRepository(LaborFunctionProfile);
+      const selectedProfiles = await profiles.find({
+        where: { id: In(normalizedIds) },
+        relations: ['functions'],
+      });
+      if (selectedProfiles.length !== normalizedIds.length) {
+        throw new NotFoundException(
+          'Uno o más registros seleccionados ya no existen. No se eliminó ningún registro; actualiza la matriz y vuelve a seleccionarlos.',
+        );
+      }
+
+      const functionCount = selectedProfiles.reduce(
+        (total, profile) => total + (profile.functions?.length || 0),
+        0,
+      );
+      await profiles.remove(selectedProfiles);
+      return {
+        deleted: true as const,
+        deletedCount: selectedProfiles.length,
+        functionCount,
+        ids: normalizedIds,
+      };
+    });
   }
 
   private assertBulkSize(rows: LaborFunctionProfilePayload[]) {

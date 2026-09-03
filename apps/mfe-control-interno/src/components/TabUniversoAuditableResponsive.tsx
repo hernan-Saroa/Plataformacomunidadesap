@@ -142,7 +142,7 @@ function getColorRiesgo(nivel: NivelRiesgo) {
 export function TabUniversoAuditableResponsive({
   procesos,
   estadisticas,
-  vigencia = new Date().getFullYear(),
+  vigencia,
   busqueda,
   filtroRiesgo,
   filtroTipo,
@@ -159,7 +159,8 @@ export function TabUniversoAuditableResponsive({
   puedeEditar = true,
   puedeEliminar = true
 }: TabUniversoAuditableResponsiveProps) {
-  
+  console.log('TabUniversoAuditableResponsive - Vigencia', vigencia);
+
   const { isMobile, isTablet } = useResponsive();
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(!isMobile);
   const [refreshing, setRefreshing] = useState(false);
