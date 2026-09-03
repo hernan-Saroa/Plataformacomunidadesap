@@ -38,6 +38,7 @@ export function AprobacionActividad({ numeral }: Props) {
   const [buscando, setBuscando] = useState(false);
   const [texto, setTexto] = useState('');
   const [roles, setRoles] = useState<{ code: string; name: string }[]>([]);
+  const [personas, setPersonas] = useState<{ id: string; nombre: string; cargo?: string }[]>([]);
 
   const leer = () => {
     setCargando(true);
@@ -70,8 +71,42 @@ export function AprobacionActividad({ numeral }: Props) {
     return roles
       .filter((r) => !yaElegidos.has(r.code))
       .filter((r) => !q || r.name.toLowerCase().includes(q) || r.code.toLowerCase().includes(q))
-      .slice(0, 8);
+      .slice(0, 6);
   }, [roles, texto, yaElegidos]);
+
+  /*
+   * Las personas se buscan en el servidor y los roles en memoria porque no son
+   * comparables: los roles del módulo son quince y caben enteros, las personas
+   * son miles. Se espera a que se escriban dos letras para no pedir la lista
+   * completa en cuanto se abre el buscador.
+   */
+  useEffect(() => {
+    const q = texto.trim();
+    if (q.length < 2) {
+      setPersonas([]);
+      return;
+    }
+
+    const t = setTimeout(() => {
+      contratacionService
+        .personas(q)
+        .then((lista: any[]) =>
+          setPersonas(
+            lista
+              .map((p) => ({
+                id: p.id ?? p.idPerson ?? p.id_person,
+                nombre: p.nombre ?? p.nombreCompleto ?? p.full_name ?? '',
+                cargo: p.cargo ?? p.email ?? undefined,
+              }))
+              .filter((p) => p.id && p.nombre && !yaElegidos.has(p.id))
+              .slice(0, 6),
+          ),
+        )
+        .catch(() => setPersonas([]));
+    }, 250);
+
+    return () => clearTimeout(t);
+  }, [texto, yaElegidos]);
 
   const guardar = async (nuevoRequiere: boolean, nuevos: Aprobador[]) => {
     setGuardando(true);
@@ -208,9 +243,39 @@ export function AprobacionActividad({ numeral }: Props) {
                 </>
               )}
 
-              {coincidencias.length === 0 && (
+              {personas.length > 0 && (
+                <>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide m-0 px-1 pt-1">
+                    Personas
+                  </p>
+                  {personas.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        guardar(true, [
+                          ...aprobadores,
+                          { clase: 'persona', id: p.id, nombre: p.nombre },
+                        ]);
+                        setBuscando(false);
+                        setTexto('');
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded hover:bg-slate-50"
+                    >
+                      <span className="block text-[12px] text-slate-700">{p.nombre}</span>
+                      {p.cargo && (
+                        <span className="block text-[10.5px] text-slate-400">{p.cargo}</span>
+                      )}
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {coincidencias.length === 0 && personas.length === 0 && (
                 <p className="text-[11.5px] text-slate-400 m-0 px-1 py-2">
-                  Ningún rol coincide con «{texto}».
+                  {texto.trim().length < 2
+                    ? 'Escribe al menos dos letras para buscar personas.'
+                    : `Ningún rol ni persona coincide con «${texto}».`}
                 </p>
               )}
 

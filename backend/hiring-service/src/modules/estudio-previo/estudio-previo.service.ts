@@ -19,6 +19,7 @@ import { Revision } from '../../entities/revision.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
@@ -162,13 +163,29 @@ export class EstudioPrevioService {
   }
 
   /**
-   * Listado con el avance de cada proceso: sin esto la vista solo podría
-   * mostrar en qué etapa está, que es lo menos útil para el gestor —
-   * lo que importa es qué actividades le faltan y qué lo bloquea.
+   * Los procesos que le corresponde ver a quien consulta, con su avance.
+   *
+   * El listado trae qué actividades faltan y qué bloquea cada proceso: en qué
+   * etapa está es lo menos útil para el gestor.
+   *
+   * Y trae solo los suyos, salvo que tenga «ver todos» (EFDS-1183). El formato
+   * de roles marca «Visualizar todos los procesos» con una sola X —el Jefe de
+   * Oficina—, y sin este filtro cualquiera con acceso al módulo veía el
+   * expediente de toda la entidad.
+   *
+   * `acceso` es opcional para no romper a quien ya llamaba sin él; sin acceso
+   * se devuelve todo, que es el comportamiento anterior.
    */
-  async listarProcesos() {
+  async listarProcesos(acceso?: HiringAccess) {
+    const verTodos =
+      !acceso || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+
     const procesos = await this.dataSource.getRepository(Proceso).find({
       relations: ['expediente'],
+      // `createdBy` guarda el nombre de usuario de quien radicó: es lo que hoy
+      // relaciona un proceso con una persona, porque la asignación a un abogado
+      // todavía no existe.
+      where: verTodos ? {} : { createdBy: acceso!.userName },
       order: { createdAt: 'DESC' },
       take: 100,
     });

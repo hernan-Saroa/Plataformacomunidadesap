@@ -69,8 +69,8 @@ export class EstudioPrevioController {
 
   @Get()
   @ApiOperation({ summary: 'Listar procesos' })
-  listar() {
-    return this.service.listarProcesos();
+  listar(@Req() req: any) {
+    return this.service.listarProcesos(getHiringAccess(req));
   }
 
   @Get(':id')

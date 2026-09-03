@@ -30,7 +30,15 @@ const RASGOS: Record<
  * mira todos juntos: una póliza que vence no se descubre entrando proceso por
  * proceso.
  */
-export function VistaAlertas() {
+interface Props {
+  /**
+   * Abre el proceso de la alerta. El numeral llega cuando es una aprobación
+   * pendiente, para caer directamente en la actividad que hay que resolver.
+   */
+  onAbrir?: (procesoId: string, numeral?: string) => void;
+}
+
+export function VistaAlertas({ onAbrir }: Props = {}) {
   const [alertas, setAlertas] = useState<AlertaVencimiento[]>([]);
   const [dias, setDias] = useState(30);
   const [cargando, setCargando] = useState(true);
@@ -128,7 +136,7 @@ export function VistaAlertas() {
         ) : (
           <ul className="m-0 p-0 list-none divide-y divide-gray-100">
             {alertas.map((a, i) => (
-              <Fila key={`${a.procesoId}-${a.tipo}-${i}`} a={a} />
+              <Fila key={`${a.procesoId}-${a.tipo}-${i}`} a={a} onAbrir={onAbrir} />
             ))}
           </ul>
         )}
@@ -164,13 +172,28 @@ const Resumen = ({
   </div>
 );
 
-function Fila({ a }: { a: AlertaVencimiento }) {
+function Fila({
+  a,
+  onAbrir,
+}: {
+  a: AlertaVencimiento;
+  onAbrir?: (procesoId: string, numeral?: string) => void;
+}) {
   const rasgo = RASGOS[a.tipo];
   const vencido = a.estado === 'VENCIDO';
   const esAprobacion = a.tipo === 'APROBACION_PENDIENTE';
 
+  // En una aprobación la descripción empieza por el numeral —«3.5 · Definir
+  // modalidad»—, que es lo que permite abrir la actividad y no solo el proceso.
+  const numeral = esAprobacion ? a.descripcion.split('·')[0].trim() : undefined;
+
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
+    <li
+      onClick={() => onAbrir?.(a.procesoId, numeral)}
+      className={`flex items-center gap-3 px-4 py-3 ${
+        onAbrir ? 'cursor-pointer hover:bg-slate-50 transition-colors' : ''
+      }`}
+    >
       <span
         className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: `${rasgo.color}12` }}

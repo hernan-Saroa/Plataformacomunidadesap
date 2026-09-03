@@ -234,7 +234,18 @@ export default function ContratacionModulePremium() {
       );
     }
 
-    if (seccion === 'alertas') return <VistaAlertas />;
+    if (seccion === 'alertas')
+      return (
+        // La alerta lleva al proceso y, si es una aprobación, a la actividad
+        // concreta: quien recibe el aviso quiere resolverlo, no buscarlo.
+        <VistaAlertas
+          onAbrir={(id, numeral) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad(numeral ?? null);
+          }}
+        />
+      );
     if (seccion === 'expedientes') return <VistaExpedientes />;
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;
