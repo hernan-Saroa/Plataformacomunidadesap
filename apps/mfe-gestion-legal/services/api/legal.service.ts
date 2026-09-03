@@ -335,6 +335,7 @@ export class LegalService {
         descripcion: string;
         fechaActuacion: string;
         responsable?: string;
+        responsableId?: string;
         estado?: string;
         observaciones?: string;
         documentosAsociados?: string[];
@@ -348,6 +349,7 @@ export class LegalService {
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
             if (data.responsable) formData.append('responsable', data.responsable);
+            if (data.responsableId) formData.append('responsableId', data.responsableId);
             if (data.estado) formData.append('estado', data.estado);
             if (data.observaciones) formData.append('observaciones', data.observaciones);
             if (data.documentosAsociados) {
