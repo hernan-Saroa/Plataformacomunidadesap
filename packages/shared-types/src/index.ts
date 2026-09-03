@@ -76,6 +76,7 @@ export interface Persona {
   ciudad?: string;
   departamento?: string;
   foto?: string;
+  idDependencia?: number | null;
 }
 
 export interface UsuarioRol {
@@ -130,6 +131,7 @@ export interface CrearUsuarioRequest {
   // Configuración
   estado: 'Activo' | 'Inactivo';
   enviarEmailBienvenida: boolean;
+  idDependencia?: number | null;
 }
 
 export interface ListarUsuariosParams {
