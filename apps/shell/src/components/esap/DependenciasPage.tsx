@@ -10,7 +10,7 @@
  * monta directamente sobre `auth-service` vía `dependenciasService`,
  * evitando que se renderice el shell de viáticos.
  */
-import { Building2 } from 'lucide-react';
+import { Building2, BriefcaseBusiness } from 'lucide-react';
 import DependenciasAdminPanel from './admin/DependenciasAdminPanel';
 
 export default function DependenciasPage() {
@@ -19,15 +19,14 @@ export default function DependenciasPage() {
       <header className="px-6 py-5 border-b border-slate-200 bg-white">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl text-white shadow-sm flex-shrink-0" style={{ backgroundColor: 'rgb(0, 61, 165)' }}>
-            <Building2 className="w-5 h-5" />
+            <BriefcaseBusiness className="w-5 h-5" />
           </div>
           <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-bold text-slate-800 tracking-tight truncate">
               Dependencias
             </h1>
             <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-              Configuración general · Catálogo transversal ESAP utilizado para asignar el
-              cupo presupuestal de tiquetes por dependencia solicitante.
+              Catálogo transversal de dependencias ESAP.
             </p>
           </div>
         </div>

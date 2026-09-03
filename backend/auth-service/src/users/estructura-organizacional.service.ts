@@ -2064,14 +2064,37 @@ export class EstructuraOrganizacionalService {
         );
       }
     }
-    const entity = this.dependenciaRepo.create({
-      ...dto,
-      codDependencia: codigo,
-      idEmpresa: 1,
-      activo: dto.activo ?? true,
-      genTipUnidad: dto.genTipUnidad ?? 'TIUORG',
-    });
-    return this.dependenciaRepo.save(entity);
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.query(
+        `SELECT pg_advisory_xact_lock(hashtext('estructura-dependencia-create'))`,
+      );
+
+      const [maxRow] = await queryRunner.query(
+        `SELECT COALESCE(MAX(id_dependencia), 0) + 1 AS next_id
+           FROM auth.dependencias`,
+      );
+      const nextId = Number(maxRow?.next_id || 1);
+
+      const entity = this.dependenciaRepo.create({
+        ...dto,
+        idDependencia: nextId,
+        codDependencia: codigo,
+        idEmpresa: 1,
+        activo: dto.activo ?? true,
+        genTipUnidad: dto.genTipUnidad ?? 'TIUORG',
+      });
+      return await queryRunner.manager.save(Dependencia, entity);
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async updateDependencia(

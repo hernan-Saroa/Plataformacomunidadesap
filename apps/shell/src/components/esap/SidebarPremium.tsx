@@ -39,6 +39,7 @@ import {
   BarChart3,
   Gavel,
   Rows4,
+  BriefcaseBusiness,
   Plane
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -1185,7 +1186,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         className="overflow-hidden"
                       >
                         {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
-                        {renderMenuItem('dependencias', <Building2 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                        {renderMenuItem('dependencias', <BriefcaseBusiness className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                       </motion.div>
                     )}
                   </AnimatePresence>
