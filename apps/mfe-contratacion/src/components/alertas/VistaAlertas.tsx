@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BellRing, FileCheck2, Landmark, ShieldAlert, Timer } from 'lucide-react';
+import { BellRing, ClipboardCheck, FileCheck2, Landmark, ShieldAlert, Timer } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { Cargando } from '../shared/PiezasPanel';
@@ -17,6 +17,10 @@ const RASGOS: Record<
   CDP: { etiqueta: 'CDP', icono: Landmark, color: '#0891B2' },
   REGISTRO_PRESUPUESTAL: { etiqueta: 'RP', icono: Landmark, color: '#0891B2' },
   LIQUIDACION: { etiqueta: 'Liquidación', icono: FileCheck2, color: '#D97706' },
+  // Verde y no rojo: no es un plazo que corre en contra, es una decisión que se
+  // le pide a quien mira. Comparte lista con los vencimientos porque son las
+  // dos cosas que le reclaman atención, pero no son lo mismo.
+  APROBACION_PENDIENTE: { etiqueta: 'Aprobar', icono: ClipboardCheck, color: '#059669' },
 };
 
 /**
@@ -59,11 +63,12 @@ export function VistaAlertas() {
           </span>
           <div className="min-w-0">
             <h2 className="text-base font-bold m-0" style={{ color: '#DC2626' }}>
-              Alertas de vencimiento
+              Alertas
             </h2>
             <p className="text-[12.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
-              Pólizas, CDP, registros presupuestales y plazos de liquidación que están por
-              vencer o ya vencieron. Lo más urgente arriba.
+              Lo que te espera: pólizas, CDP, registros presupuestales y plazos de
+              liquidación por vencer, y las actividades que te toca aprobar. Lo más urgente
+              arriba.
             </p>
           </div>
         </div>
@@ -115,9 +120,9 @@ export function VistaAlertas() {
         ) : alertas.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <FileCheck2 className="w-8 h-8 mx-auto text-emerald-300 mb-2" aria-hidden="true" />
-            <p className="text-[12.5px] font-bold text-slate-700 m-0">Nada por vencer</p>
+            <p className="text-[12.5px] font-bold text-slate-700 m-0">Nada pendiente</p>
             <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">
-              Ninguna póliza, CDP ni plazo vence en los próximos {dias} días.
+              No tienes actividades por aprobar, y nada vence en los próximos {dias} días.
             </p>
           </div>
         ) : (
@@ -162,6 +167,7 @@ const Resumen = ({
 function Fila({ a }: { a: AlertaVencimiento }) {
   const rasgo = RASGOS[a.tipo];
   const vencido = a.estado === 'VENCIDO';
+  const esAprobacion = a.tipo === 'APROBACION_PENDIENTE';
 
   return (
     <li className="flex items-center gap-3 px-4 py-3">
@@ -194,13 +200,21 @@ function Fila({ a }: { a: AlertaVencimiento }) {
 
       <div className="text-right flex-shrink-0">
         <span
-          className={`block text-[12px] font-bold ${vencido ? 'text-red-600' : 'text-amber-600'}`}
+          className={`block text-[12px] font-bold ${
+            esAprobacion ? 'text-emerald-700' : vencido ? 'text-red-600' : 'text-amber-600'
+          }`}
         >
-          {vencido
-            ? `Venció hace ${Math.abs(a.diasRestantes)} días`
-            : a.diasRestantes === 0
-              ? 'Vence hoy'
-              : `En ${a.diasRestantes} días`}
+          {/* Una aprobación no vence: lleva esperando. Decir «vence en -3 días»
+              sería contar al revés algo que no tiene plazo. */}
+          {esAprobacion
+            ? a.diasRestantes === 0
+              ? 'Esperando desde hoy'
+              : `Esperando ${Math.abs(a.diasRestantes)} días`
+            : vencido
+              ? `Venció hace ${Math.abs(a.diasRestantes)} días`
+              : a.diasRestantes === 0
+                ? 'Vence hoy'
+                : `En ${a.diasRestantes} días`}
         </span>
         <span className="block text-[10.5px] text-slate-400 tabular-nums">
           {fechaLarga(a.vence.slice(0, 10))}

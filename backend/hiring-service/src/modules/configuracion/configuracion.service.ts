@@ -18,6 +18,7 @@ import {
   ActualizarActividadDto,
   AplicabilidadDto,
   GuardarReglaDto,
+  GuardarAprobacionDto,
   ActualizarCampoDto,
   CrearCampoDto,
   EstadoPlantillaDto,
@@ -719,6 +720,102 @@ export class ConfiguracionService {
       where: { numeral },
       order: { orden: 'ASC' },
     });
+  }
+
+  // ------------------------------------------- aprobación de la actividad ---
+
+  /**
+   * Si la actividad requiere aprobación y quién la da (EFDS-1183).
+   *
+   * Devuelve los aprobadores con su nombre legible y no solo el código: la
+   * pantalla los pinta y no debería tener que resolver un `DIRECTOR_CONTRATACION`
+   * a «Director de Contratación» por su cuenta.
+   */
+  async aprobacionDe(numeral: string) {
+    const regla = await this.dataSource.getRepository(ReglaActividad).findOne({
+      where: { numeral, tipo: 'EXIGE_APROBACION', vigenteHasta: IsNull() },
+    });
+
+    if (!regla) return { requiereAprobacion: false, aprobadores: [] };
+
+    const config = (regla.config ?? {}) as Record<string, unknown>;
+    const codigos = Array.isArray(config.roles) ? (config.roles as string[]) : [];
+    const personas = Array.isArray(config.personas) ? (config.personas as string[]) : [];
+
+    const nombres: { code: string; name: string }[] = codigos.length
+      ? await this.dataSource.query(
+          `SELECT code, name FROM auth.role WHERE code = ANY($1::text[])`,
+          [codigos],
+        )
+      : [];
+
+    return {
+      requiereAprobacion: true,
+      aprobadores: [
+        ...codigos.map((code) => ({
+          clase: 'rol' as const,
+          id: code,
+          // Si el rol se borró después de configurarlo, se muestra su código en
+          // vez de nada: quien administra necesita ver que ahí hay algo roto.
+          nombre: nombres.find((n) => n.code === code)?.name ?? code,
+        })),
+        ...personas.map((id) => ({ clase: 'persona' as const, id, nombre: id })),
+      ],
+    };
+  }
+
+  /**
+   * Fija quién aprueba la actividad, o retira la exigencia.
+   *
+   * La regla anterior se deroga con `vigenteHasta` en vez de borrarse: un
+   * proceso aprobado en marzo debe seguir auditándose con la regla de marzo, y
+   * borrar el registro haría que la trazabilidad apuntara a algo que ya no
+   * existe.
+   */
+  async guardarAprobacion(numeral: string, dto: GuardarAprobacionDto) {
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ReglaActividad);
+
+      const vigente = await repo.findOne({
+        where: { numeral, tipo: 'EXIGE_APROBACION', vigenteHasta: IsNull() },
+      });
+
+      if (vigente) {
+        vigente.vigenteHasta = new Date();
+        await repo.save(vigente);
+      }
+
+      if (!dto.requiereAprobacion) {
+        return { requiereAprobacion: false, aprobadores: [] };
+      }
+
+      await repo.save(
+        repo.create({
+          numeral,
+          modalidad: null,
+          tipo: 'EXIGE_APROBACION',
+          config: { roles: dto.roles ?? [], personas: dto.personas ?? [] },
+          mensaje: 'Esta actividad requiere aprobación antes de darse por terminada',
+          orden: 100,
+        } as Partial<ReglaActividad>),
+      );
+
+      return this.aprobacionDe(numeral);
+    });
+  }
+
+  /**
+   * Roles que pueden aparecer como aprobadores.
+   *
+   * Los que tienen algún permiso del módulo, resueltos por la vista
+   * `hiring.roles_del_modulo`. Sin ese filtro el selector mostraría los cuarenta
+   * y un roles del sistema —incluidos «Revisor Verificacion Titulos» y uno
+   * llamado «asd»— y quien configura tendría que distinguirlos.
+   */
+  rolesDelModulo(): Promise<{ code: string; name: string }[]> {
+    return this.dataSource.query(
+      `SELECT code, name FROM hiring.roles_del_modulo ORDER BY name`,
+    );
   }
 
   /**

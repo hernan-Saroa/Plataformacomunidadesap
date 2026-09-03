@@ -2145,5 +2145,63 @@ export const contratacionService = {
   /** Vencimientos próximos y ya cumplidos (EFDS-1185). */
   alertas: (dias = 30) => pedir<AlertaVencimiento[]>(`/alertas?dias=${dias}`),
 
+  // ------------------------------------ aprobación de actividades (EFDS-1183)
+  //
+  // Un solo juego de métodos para las 63 actividades: el numeral viaja en la
+  // ruta y la regla configurada dice quién aprueba, así que marcar una
+  // actividad nueva no exige tocar el servicio.
+
+  /** Cómo está configurada la aprobación de una actividad, para el panel de configuración. */
+  aprobacionDeActividad: (numeral: string) =>
+    pedir<{
+      requiereAprobacion: boolean;
+      aprobadores: { clase: 'rol' | 'persona'; id: string; nombre: string }[];
+    }>(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`),
+
+  guardarAprobacionDeActividad: (
+    numeral: string,
+    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[] },
+  ) =>
+    pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Roles que pueden aparecer como aprobadores: los que trabajan en el módulo. */
+  rolesAprobadores: () =>
+    pedir<{ code: string; name: string }[]>('/configuracion/roles-aprobadores'),
+
+  /** Si la actividad requiere aprobación y si quien mira puede darla. */
+  aprobadoresDeActividad: (procesoId: string, numeral: string) =>
+    pedir<{
+      requiereAprobacion: boolean;
+      aprobadores: { roles: string[]; personas: string[] } | null;
+      puedoAprobar: boolean;
+    }>(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/aprobadores`),
+
+  enviarAprobacion: (procesoId: string, numeral: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/enviar-aprobacion`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  retirarAprobacion: (procesoId: string, numeral: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/retirar-aprobacion`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  aprobarActividad: (procesoId: string, numeral: string, observaciones?: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  devolverActividad: (procesoId: string, numeral: string, observaciones: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/devolver`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
   urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
 };

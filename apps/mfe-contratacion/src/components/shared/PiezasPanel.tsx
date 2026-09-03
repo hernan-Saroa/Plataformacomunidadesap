@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Check, FileText, Lock, Paperclip } from 'lucide-react';
+import { AlertTriangle, Check, FileText, Lock, Paperclip, Undo2 } from 'lucide-react';
 
 /**
  * Piezas comunes de los paneles de actividad.
@@ -256,3 +256,164 @@ export const Cargando = ({ filas = 3 }: { filas?: number }) => (
     ))}
   </div>
 );
+
+/**
+ * El pie de aprobación de una actividad (EFDS-1183).
+ *
+ * Va aquí y no en cada panel por la misma razón que el resto de estas piezas:
+ * son treinta y ocho paneles y el trámite es idéntico en todos. Lo único que
+ * cambia es qué actividad se está trabajando.
+ *
+ * Cuando el área no ha configurado aprobación para la actividad, se comporta
+ * como hasta ahora: un botón que la cierra. Ese es el estado por defecto, así
+ * que los paneles que lo adopten no cambian de comportamiento hasta que alguien
+ * marque la actividad en Configuración.
+ */
+export const PieAprobacion = ({
+  estado,
+  requiereAprobacion,
+  quienAprueba,
+  puedoAprobar,
+  esMia,
+  observaciones,
+  devueltaPor,
+  guardando,
+  onRegistrar,
+  onEnviar,
+  onRetirar,
+  onAprobar,
+  onDevolver,
+  etiquetaRegistrar = 'Registrar la actividad',
+}: {
+  estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+  requiereAprobacion: boolean;
+  /** Nombres legibles de quien aprueba, para decirlo antes de enviar. */
+  quienAprueba?: string[];
+  puedoAprobar?: boolean;
+  /** Si la envió quien está mirando: solo él puede retirarla. */
+  esMia?: boolean;
+  observaciones?: string | null;
+  devueltaPor?: string | null;
+  guardando?: boolean;
+  onRegistrar?: () => void;
+  onEnviar?: () => void;
+  onRetirar?: () => void;
+  onAprobar?: () => void;
+  onDevolver?: () => void;
+  etiquetaRegistrar?: string;
+}) => {
+  const [motivo, setMotivo] = React.useState('');
+  const [devolviendo, setDevolviendo] = React.useState(false);
+
+  // Sin aprobación configurada la actividad se cierra como siempre.
+  if (!requiereAprobacion) {
+    return (
+      <Boton icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />} onClick={onRegistrar} disabled={guardando}>
+        {etiquetaRegistrar}
+      </Boton>
+    );
+  }
+
+  if (estado === 'EN_REVISION') {
+    return (
+      <div className="space-y-2.5">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-3">
+          <p className="text-[12.5px] font-bold text-blue-900 m-0">
+            En revisión · pendiente de aprobación
+          </p>
+          {quienAprueba?.length ? (
+            <p className="text-[11.5px] text-blue-900 m-0 mt-0.5 leading-relaxed">
+              Espera a {quienAprueba.join(' o ')}.
+            </p>
+          ) : null}
+        </div>
+
+        {/* Quien la envió puede retirarla mientras nadie la ha resuelto: sin
+            esto tendría que pedirle al aprobador que se la devuelva para poder
+            corregir un error que ya vio. */}
+        {esMia ? (
+          <BotonSecundario icono={<Undo2 className="w-3.5 h-3.5" />} onClick={onRetirar} disabled={guardando}>
+            Retirar de aprobación
+          </BotonSecundario>
+        ) : null}
+
+        {puedoAprobar ? (
+          <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2.5">
+            <p className="text-[12.5px] font-bold text-slate-800 m-0">Tu decisión</p>
+
+            {devolviendo ? (
+              <>
+                <textarea
+                  rows={3}
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                  placeholder="Qué debe corregirse"
+                  aria-label="Observaciones de la devolución"
+                  className={campo}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <BotonSecundario
+                    icono={<Undo2 className="w-3.5 h-3.5" />}
+                    onClick={() => onDevolver?.()}
+                    disabled={guardando || !motivo.trim()}
+                  >
+                    Devolver
+                  </BotonSecundario>
+                  <button
+                    type="button"
+                    onClick={() => setDevolviendo(false)}
+                    className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 px-2"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Boton
+                  icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                  onClick={onAprobar}
+                  disabled={guardando}
+                >
+                  Aprobar
+                </Boton>
+                <BotonSecundario
+                  icono={<Undo2 className="w-3.5 h-3.5" />}
+                  onClick={() => setDevolviendo(true)}
+                  disabled={guardando}
+                >
+                  Devolver con observaciones
+                </BotonSecundario>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {/* La observación de la devolución, completa y arriba: es lo único que el
+          gestor necesita leer para saber qué corregir. */}
+      {estado === 'DEVUELTO' && observaciones ? (
+        <Aviso tono="aviso" titulo={`Devuelta${devueltaPor ? ` por ${devueltaPor}` : ''}`}>
+          {observaciones}
+        </Aviso>
+      ) : null}
+
+      <Boton icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />} onClick={onEnviar} disabled={guardando}>
+        {estado === 'DEVUELTO' ? 'Corregir y volver a enviar' : 'Enviar a aprobación'}
+      </Boton>
+
+      {/* Se dice quién aprobará antes de pulsar: descubrirlo después de enviar
+          ya no le sirve al gestor para nada. */}
+      {quienAprueba?.length ? (
+        <p className="text-[11px] text-slate-500 m-0">
+          {quienAprueba.length === 1 ? 'La aprobará' : 'La aprobará alguno de'}{' '}
+          {quienAprueba.join(' o ')}.
+        </p>
+      ) : null}
+    </div>
+  );
+};

@@ -29,6 +29,7 @@ import {
   AsignarPlantillaDto,
   CrearCampoDto,
   EstadoPlantillaDto,
+  GuardarAprobacionDto,
   GuardarPlantillaDto,
   GuardarTipologiaDto,
 } from './dto/configuracion.dto';
@@ -191,6 +192,43 @@ export class ConfiguracionController {
   @ApiOperation({ summary: 'Lo que la actividad le pide al gestor' })
   campos(@Param('numeral') numeral: string) {
     return this.service.campos(numeral);
+  }
+
+  // ------------------------------------------ aprobación de la actividad ----
+
+  @Get('actividades/:numeral/aprobacion')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
+  @ApiOperation({ summary: 'Si la actividad requiere aprobación y quién la da' })
+  aprobacion(@Param('numeral') numeral: string) {
+    return this.service.aprobacionDe(numeral);
+  }
+
+  @Put('actividades/:numeral/aprobacion')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({
+    summary: 'Configurar la aprobación de la actividad',
+    description:
+      'Los procesos ya aprobados no cambian: la regla anterior se deroga y la nueva rige de ahora en adelante.',
+  })
+  guardarAprobacion(
+    @Param('numeral') numeral: string,
+    @Body() dto: GuardarAprobacionDto,
+  ) {
+    return this.service.guardarAprobacion(numeral, dto);
+  }
+
+  @Get('roles-aprobadores')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.proceso.view')
+  @ApiOperation({
+    summary: 'Roles que pueden aparecer como aprobadores',
+    description:
+      'Los que tienen algún permiso del módulo. Sin este filtro el selector mostraría los cuarenta y un roles del sistema, incluidos los de otros módulos.',
+  })
+  rolesAprobadores() {
+    return this.service.rolesDelModulo();
   }
 
   @Post('actividades/:numeral/campos')

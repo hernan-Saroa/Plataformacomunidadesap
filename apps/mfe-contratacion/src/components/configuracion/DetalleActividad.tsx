@@ -5,11 +5,12 @@ import { ActividadAplicable, CampoConfigurable, Modalidad } from '../../types';
 
 import { CabeceraActividad } from './CabeceraActividad';
 import { FormatosActividad } from './FormatosActividad';
+import { AprobacionActividad } from './AprobacionActividad';
 import { QueSePide } from './QueSePide';
 import { VistaPrevia } from './VistaPrevia';
 import { Peticion } from './peticiones';
 
-type Pestana = 'configurar' | 'formatos' | 'previa';
+type Pestana = 'configurar' | 'aprobacion' | 'formatos' | 'previa';
 
 /**
  * Nota sobre los formatos: aquí solo se ven los que ya están asignados a la
@@ -86,6 +87,7 @@ export function DetalleActividad({
             {(
               [
                 ['configurar', 'Qué se pide'],
+                ['aprobacion', 'Aprobación'],
                 ['formatos', 'Formatos'],
                 ['previa', 'Cómo lo verá el gestor'],
               ] as [Pestana, string][]
@@ -117,6 +119,8 @@ export function DetalleActividad({
               onQuitar={onQuitarCampo}
             />
           )}
+
+          {pestana === 'aprobacion' && <AprobacionActividad numeral={actividad.numeral} />}
 
           {pestana === 'formatos' && (
             <FormatosActividad

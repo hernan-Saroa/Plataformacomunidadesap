@@ -38,6 +38,7 @@ import { ModificacionesModule } from './modules/modificaciones/modificaciones.mo
 import { SeguimientoModule } from './modules/seguimiento/seguimiento.module';
 import { RegistroActividadModule } from './modules/registro-actividad/registro-actividad.module';
 import { AlertasModule } from './modules/alertas/alertas.module';
+import { AprobacionModule } from './modules/aprobacion/aprobacion.module';
 import { IncumplimientoModule } from './modules/incumplimiento/incumplimiento.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -177,6 +178,7 @@ import {
     SeguimientoModule,
     RegistroActividadModule,
     AlertasModule,
+    AprobacionModule,
     IncumplimientoModule,
   ],
   controllers: [HealthController],
