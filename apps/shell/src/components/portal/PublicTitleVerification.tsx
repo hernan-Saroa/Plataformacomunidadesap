@@ -1040,7 +1040,7 @@ export function PublicTitleVerification({
 
       setGeneratedCertificate(null);
       setReviewRequestCreated(false);
-      setMatchSuggestions(response.suggestions.slice(0, 3));
+      setMatchSuggestions(response.suggestions);
       setSelectedSuggestionId("");
 
       toast.info("Seleccione la persona correcta para continuar", {
@@ -1091,7 +1091,7 @@ export function PublicTitleVerification({
 
       setGeneratedCertificate(null);
       setReviewRequestCreated(false);
-      setMatchSuggestions(response.suggestions.slice(0, 3));
+      setMatchSuggestions(response.suggestions);
       setSelectedSuggestionId("");
 
       toast.info("Seleccione la persona correcta para continuar", {
@@ -2345,19 +2345,51 @@ export function PublicTitleVerification({
                       <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                         <CheckCircle className="w-4 h-4 text-white" />
                       </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-900 mb-1">
-                          Selección obligatoria de coincidencias
-                        </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-900">
+                            Selección obligatoria de coincidencias
+                          </p>
+                          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                            {matchSuggestions.length}{" "}
+                            {matchSuggestions.length === 1
+                              ? "título encontrado"
+                              : "títulos encontrados"}
+                          </span>
+                        </div>
                         <p className="text-xs text-gray-600">
-                          Seleccione la persona correcta entre las coincidencias
-                          encontradas con el documento de identificación antes de
-                          generar el certificado.
+                          Seleccione el título o registro académico correcto entre
+                          las coincidencias encontradas con el documento de
+                          identificación antes de generar el certificado.
                         </p>
+                        {matchSuggestions.length > 3 && (
+                          <p className="mt-1.5 text-[11px] font-medium text-blue-700">
+                            Todos los títulos están disponibles. Desplácese dentro
+                            de la lista para consultar los demás.
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div
+                      className={`space-y-3 ${
+                        matchSuggestions.length > 3
+                          ? "max-h-[17rem] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-slate-50/70 p-2 pr-3 shadow-inner"
+                          : ""
+                      }`}
+                      role={matchSuggestions.length > 3 ? "region" : undefined}
+                      aria-label={
+                        matchSuggestions.length > 3
+                          ? "Lista desplazable de títulos encontrados"
+                          : undefined
+                      }
+                      tabIndex={matchSuggestions.length > 3 ? 0 : undefined}
+                      style={
+                        matchSuggestions.length > 3
+                          ? { scrollbarGutter: "stable" }
+                          : undefined
+                      }
+                    >
                       {matchSuggestions.map((suggestion, index) => {
                         const isSelected =
                           selectedSuggestionId === suggestion.graduateId;
