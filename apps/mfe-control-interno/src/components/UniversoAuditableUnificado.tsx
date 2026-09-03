@@ -234,6 +234,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
         horasEstimadas: horasEst,
         frecuenciaSugerida: frecuencia,
         frecuenciaAuditoria: frecuencia as any,
+        tiempoUltimaAuditoria: ev.tiempoUltimaAuditoria,
         _evaluacionRiesgo: {
           ponderacionFinalDafp: ev.ponderacionFinalDafp,
           nivelCriticidadDafp: ev.nivelCriticidadDafp,
