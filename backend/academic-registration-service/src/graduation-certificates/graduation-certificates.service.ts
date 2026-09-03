@@ -4677,12 +4677,6 @@ export class GraduationCertificatesService {
         'Debe enviar al menos un graduado para la carga masiva.',
       );
     }
-    if (graduates.length > 1000) {
-      throw new BadRequestException(
-        'La carga masiva permite máximo 1000 graduados por archivo.',
-      );
-    }
-
     const created: Graduate[] = [];
     const errors: BulkCreateGraduateError[] = [];
     const seenInFile = new Set<string>();

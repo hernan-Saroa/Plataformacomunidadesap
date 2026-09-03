@@ -90,6 +90,21 @@ describe('GraduationCertificatesService company notifications', () => {
     ).rejects.toThrow('El nombre de la empresa debe tener al menos 5 caracteres');
   });
 
+  it('procesa cargas de más de 1000 graduados sin un límite fijo de registros', async () => {
+    const service = createService() as any;
+    service.crearGraduado = jest.fn(async (graduate) => graduate);
+    const graduates = Array.from({ length: 1001 }, (_, index) => ({
+      idNumber: String(1000000 + index),
+      programName: `Programa ${index}`,
+    }));
+
+    const result = await service.crearGraduadosMasivamente({ graduates });
+
+    expect(result.total).toBe(1001);
+    expect(result.createdCount).toBe(1001);
+    expect(result.failedCount).toBe(0);
+  });
+
   it('avisa al correo del graduado creado al finalizar el flujo manual de empresa', async () => {
     const service = createService() as any;
     service.sendGraduateCompanyNotificationEmail = jest
