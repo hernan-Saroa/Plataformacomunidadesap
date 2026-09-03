@@ -159,7 +159,11 @@ export function ModuloTerminosInformesV3() {
     return solicitudes
       .filter(s => s.etapa === 'CUMPLIDO')
       .map(s => ({
-        id: s.id,
+        // `id` debe ser el identificador único real en backend (UUID), no el radicado visible:
+        // dos términos distintos pueden compartir numeroRadicado (mismo expediente, distinto
+        // módulo/actuación), y usar el radicado como identidad podía restaurar/eliminar el
+        // término equivocado. `codigo` sigue siendo el radicado para mostrar en pantalla.
+        id: s.metadata?.uuid || s.id,
         codigo: s.id,
         nombre: s.asunto || 'Sin título',
         tipo: s.tipoInforme || 'Término',
@@ -175,12 +179,12 @@ export function ModuloTerminosInformesV3() {
   }, [solicitudes]);
 
   // ✅ Función para restaurar una solicitud archivada
+  // `itemId` ya es el UUID real de backend (ver itemsArchivados), no el radicado visible.
   const handleRestaurar = async (itemId: string) => {
     try {
-      const backendId = solicitudes.find(s => s.id === itemId)?.metadata?.uuid || itemId;
-      await legalService.updateTermino(backendId, { estado: 'PENDIENTE', closedAt: null });
+      await legalService.updateTermino(itemId, { estado: 'PENDIENTE', closedAt: null });
       toast.success('Término restaurado exitosamente');
-      fetchData();
+      await fetchData();
     } catch (e) {
       toast.error('Error al restaurar término');
     }
@@ -196,12 +200,14 @@ export function ModuloTerminosInformesV3() {
     if (!terminoAEliminar) return;
     try {
       const { id, permanente } = terminoAEliminar;
-      const backendId = solicitudes.find(s => s.id === id)?.metadata?.uuid || id;
-      await legalService.eliminarTermino(backendId);
+      // `id` ya es el UUID real de backend, asignado en el momento del clic (ver handleEliminar,
+      // VistaTimeline/VistaLista y ModalDetalleSolicitudInforme). No se vuelve a buscar por el id
+      // visible (radicado), que puede repetirse entre varios términos del mismo expediente.
+      await legalService.eliminarTermino(id);
       toast.success(permanente ? 'Término eliminado permanentemente' : 'Término eliminado');
       setModalDetalleOpen(false);
       setModalEliminarOpen(false);
-      fetchData();
+      await fetchData();
     } catch (e) {
       toast.error('Error al eliminar término');
     }
@@ -410,27 +416,34 @@ export function ModuloTerminosInformesV3() {
     }
   };
 
+  // `id` ya es el UUID real de backend, resuelto en el punto de clic (VistaTimeline/VistaLista/
+  // ModalDetalleSolicitudInforme pasan solicitud.metadata?.uuid || solicitud.id).
   const handleArchivar = async (id: string) => {
     try {
-      const solicitud = solicitudes.find(s => s.id === id);
-      if (!solicitud) return;
-      const backendId = solicitud.metadata?.uuid || solicitud.id;
-      await legalService.updateTermino(backendId, { estado: 'CUMPLIDO', closedAt: new Date() });
+      await legalService.updateTermino(id, { estado: 'CUMPLIDO', closedAt: new Date() });
       toast.success('El término ha sido archivado (CUMPLIDO)');
       setModalDetalleOpen(false);
-      fetchData();
+      await fetchData();
     } catch (e) {
       toast.error('Error al archivar el término');
     }
   };
 
+  // `id` ya es el UUID real de backend (ver VistaTimeline/VistaLista/ModalDetalleSolicitudInforme).
   const handleEliminar = async (id: string) => {
     setTerminoAEliminar({ id: id, permanente: false });
     setModalEliminarOpen(true);
   };
 
+  // Universo de solicitudes "vigentes" (sin archivadas ni eliminadas), previo a búsqueda/filtros
+  // de UI. Es la base tanto de la lista visible como del total mostrado en "Mostrando X de Y".
+  const solicitudesActivas = useMemo(
+    () => solicitudes.filter(s => s.etapa !== 'CUMPLIDO' && s.etapa !== 'ELIMINADO'),
+    [solicitudes]
+  );
+
   const solicitudesFiltradas = useMemo(() => {
-    let resultado = [...solicitudes].filter(s => s.etapa !== 'CUMPLIDO' && s.etapa !== 'ELIMINADO');
+    let resultado = [...solicitudesActivas];
 
     if (busqueda) {
       resultado = resultado.filter(s =>
@@ -460,7 +473,7 @@ export function ModuloTerminosInformesV3() {
 
     // Always sort by urgency (less days remaining first)
     return resultado.sort((a, b) => a.diasRestantes - b.diasRestantes);
-  }, [solicitudes, busqueda, filtroSemaforo, filtroEtapa, filtroModuloOrigen]);
+  }, [solicitudesActivas, busqueda, filtroSemaforo, filtroEtapa, filtroModuloOrigen]);
 
   const solicitudesCriticas = solicitudesFiltradas.filter(s => s.diasRestantes <= 2).length;
   const solicitudesUrgentes = solicitudesFiltradas.filter(s => s.diasRestantes > 2 && s.diasRestantes <= 5).length;
@@ -714,7 +727,7 @@ export function ModuloTerminosInformesV3() {
             ]
           }
         ]}
-        totalItems={solicitudes.length}
+        totalItems={solicitudesActivas.length}
         filteredItems={solicitudesFiltradas.length}
         onClearFilters={() => {
           setBusqueda('');
@@ -722,7 +735,7 @@ export function ModuloTerminosInformesV3() {
           setFiltroEtapa('TODAS');
           setFiltroModuloOrigen('TODOS');
         }}
-        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudes.length} solicitudes`}
+        counterText={`Mostrando ${solicitudesFiltradas.length} de ${solicitudesActivas.length} solicitudes`}
       />
 
       {/* Contenido principal */}
@@ -843,7 +856,7 @@ interface VistaTimelineProps {
   onEliminar?: (id: string) => void;
 }
 
-function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
+export function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
   // Ordenar por fecha límite
   const solicitudesOrdenadas = [...solicitudes].sort((a, b) =>
     new Date(a.fechaVencimiento).getTime() - new Date(b.fechaVencimiento).getTime()
@@ -933,7 +946,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                   </button>
                   {onArchivar && (
                   <button
-                    onClick={() => onArchivar(solicitud.id)}
+                    onClick={() => onArchivar(solicitud.metadata?.uuid || solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100"
                     title="Archivar (marcar como Cumplido)"
                   >
@@ -943,7 +956,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                   )}
                   {onEliminar && (
                   <button
-                    onClick={() => onEliminar(solicitud.id)}
+                    onClick={() => onEliminar(solicitud.metadata?.uuid || solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
                     title="Eliminar término"
                   >
@@ -1151,7 +1164,7 @@ export function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }
                       </button>
                       {onArchivar && (
                       <Button
-                        onClick={() => onArchivar(solicitud.id)}
+                        onClick={() => onArchivar(solicitud.metadata?.uuid || solicitud.id)}
                         size="sm"
                         variant="outline"
                         title="Archivar (Cumplido)"
@@ -1162,7 +1175,7 @@ export function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }
                       )}
                       {onEliminar && (
                       <Button
-                        onClick={() => onEliminar(solicitud.id)}
+                        onClick={() => onEliminar(solicitud.metadata?.uuid || solicitud.id)}
                         size="sm"
                         variant="outline"
                         title="Eliminar"
