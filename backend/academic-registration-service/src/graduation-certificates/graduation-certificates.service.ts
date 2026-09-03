@@ -27,6 +27,7 @@ import {
   SubmitReviewDecisionDto,
 } from './dto/approve-request.dto';
 import {
+  GRADUATE_MANAGEMENT_LIMITS,
   normalizeAndValidateGraduateManagementUpdate,
   normalizeAndValidateGraduateReviewPayload,
   normalizeReviewNotes,
@@ -2220,28 +2221,43 @@ export class GraduationCertificatesService {
     const actaNumber = this.normalizeGraduateNumericControl(
       payload.actaNumber || payload.numActa,
       'ACTA',
-      2,
+      GRADUATE_MANAGEMENT_LIMITS.numFolio.max,
     );
     const numActa = this.normalizeGraduateNumericControl(
       payload.numActa || payload.actaNumber,
       'ACTA',
-      2,
+      GRADUATE_MANAGEMENT_LIMITS.numFolio.max,
     );
     const numFolio = this.normalizeGraduateNumericControl(
       payload.numFolio,
-      'ACTA',
-      2,
+      'FOLIO',
+      GRADUATE_MANAGEMENT_LIMITS.numFolio.max,
     );
     const numLibro = this.normalizeGraduateNumericControl(
       payload.numLibro,
       'LIBRO',
-      2,
+      GRADUATE_MANAGEMENT_LIMITS.numLibro.max,
     );
     const numRegistro = this.normalizeGraduateNumericControl(
       payload.numRegistro,
       'REGISTRO',
-      3,
+      GRADUATE_MANAGEMENT_LIMITS.numRegistro.max,
     );
+    if (options.strictBulk && !numRegistro) {
+      throw new BadRequestException(
+        `REGISTRO es obligatorio y debe tener entre ${GRADUATE_MANAGEMENT_LIMITS.numRegistro.min} y ${GRADUATE_MANAGEMENT_LIMITS.numRegistro.max} dígitos.`,
+      );
+    }
+    if (options.strictBulk && !numFolio) {
+      throw new BadRequestException(
+        `FOLIO es obligatorio y debe tener entre ${GRADUATE_MANAGEMENT_LIMITS.numFolio.min} y ${GRADUATE_MANAGEMENT_LIMITS.numFolio.max} dígitos.`,
+      );
+    }
+    if (options.strictBulk && !numLibro) {
+      throw new BadRequestException(
+        `LIBRO es obligatorio y debe tener entre ${GRADUATE_MANAGEMENT_LIMITS.numLibro.min} y ${GRADUATE_MANAGEMENT_LIMITS.numLibro.max} dígitos.`,
+      );
+    }
     const email = (payload.email || '').trim().toLowerCase();
     if (email && !this.isValidGraduateEmail(email)) {
       throw new BadRequestException('El correo no tiene un formato válido.');
