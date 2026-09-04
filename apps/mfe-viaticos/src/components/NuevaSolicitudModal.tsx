@@ -1053,8 +1053,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   if (esModoConsolidacion && solicitudAResumir) {
     return (
-      <div className="min-h-full flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
+      <div className="min-h-full flex items-center justify-center p-3 sm:p-4">
+        <div className="bg-white rounded-2xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
           <ConsolidacionExpediente
             solicitud={solicitudAResumir}
             onConsolidada={(resultado) => onSolicitudConsolidada?.(resultado)}
@@ -1066,8 +1066,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   }
 
   return (
-    <div className="min-h-full flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+    <div className="min-h-full flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-50 text-[#003DA5] rounded-xl">
@@ -1373,7 +1373,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {!esCampoOculto('montoViaticos') && (
                       <div>
                         <label className={labelCls} htmlFor="montoViaticos">
@@ -1391,12 +1391,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             aria-readonly="true"
                             title="Calculado automáticamente por el Autoliquidador (no editable)"
                             onChange={(e) => actualizar('montoViaticos', Number(soloNumeros(e.target.value)) || 0)}
-                            className={`${inputCls} pl-7 pr-24 text-right font-bold bg-slate-100 cursor-not-allowed`}
+                            className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
                           />
-                          <span className="absolute right-2.5 top-2 text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5">
-                            Automático
-                          </span>
                         </div>
+                        <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                          <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
+                        </span>
                         <p className="text-[10px] text-slate-400 mt-1">
                           Calculado automáticamente por el Autoliquidador (no editable).
                         </p>
@@ -1425,7 +1425,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </div>
 
                   {!esCampoOculto('diasComision') && (
-                    <div className="max-w-[200px]">
+                    <div className="w-full sm:max-w-[200px]">
                       <label className={labelCls} htmlFor="diasComision">
                         {renderLabel('diasComision', 'Días de comisión')}
                       </label>
@@ -1500,62 +1500,45 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </p>
 
                   <div className="space-y-2">
-                    {asignacionesBasicas.length === 0 && (
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Salario básico mensual</label>
-                        <div className="relative max-w-xs">
+                    {/* Input de salario UNIFICADO: siempre se renderiza el mismo
+                        campo (idx 0) para no perder el foco al escribir el primer
+                        dígito. El "doble rol" agrega más campos. */}
+                    {(asignacionesBasicas.length === 0 ? [0] : asignacionesBasicas).map((valor, idx) => (
+                      <div key={idx} className="w-full sm:max-w-xs">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                          {asignacionesBasicas.length > 1
+                            ? idx === 0
+                              ? 'Salario básico mensual'
+                              : `Salario ${idx + 1} (doble rol)`
+                            : 'Salario básico mensual'}
+                        </label>
+                        <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
                           <input
                             type="text"
                             inputMode="numeric"
                             placeholder="0"
-                            value=""
+                            value={valor ? formatearMoneda(valor) : ''}
                             onChange={(e) => {
                               const val = Number(soloNumeros(e.target.value)) || 0;
-                              setAsignacionesBasicas([val]);
+                              actualizarAsignacionBasica(idx, val);
                             }}
-                            className={`${inputCls} pl-7 text-right font-bold`}
+                            className={`${inputCls} pl-7 pr-8 text-right font-bold`}
                           />
+                          {asignacionesBasicas.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => eliminarAsignacionBasica(idx)}
+                              className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
+                              title="Eliminar salario"
+                              aria-label="Eliminar salario"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
-                    )}
-
-                    {asignacionesBasicas.length > 0 && (
-                      <div className="space-y-2">
-                        {asignacionesBasicas.map((valor, idx) => (
-                          <div key={idx} className="max-w-xs">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                              {idx === 0 ? 'Salario básico mensual' : `Salario ${idx + 1} (doble rol)`}
-                            </label>
-                            <div className="relative">
-                              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                placeholder="0"
-                                value={valor ? formatearMoneda(valor) : ''}
-                                onChange={(e) => {
-                                  const val = Number(soloNumeros(e.target.value)) || 0;
-                                  actualizarAsignacionBasica(idx, val);
-                                }}
-                                className={`${inputCls} pl-7 pr-8 text-right font-bold`}
-                              />
-                              {asignacionesBasicas.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => eliminarAsignacionBasica(idx)}
-                                  className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
-                                  title="Eliminar salario"
-                                  aria-label="Eliminar salario"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    ))}
 
                     <div className="flex items-center gap-2">
                       <button

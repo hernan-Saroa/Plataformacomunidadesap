@@ -41,6 +41,30 @@ function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
   return count;
 }
 
+/**
+ * Traduce el estado interno de una solicitud a una etiqueta humana para los
+ * mensajes orientados al usuario (evita exponer códigos internos).
+ */
+function etiquetaEstadoHumana(estado?: string): string {
+  const mapa: Record<string, string> = {
+    PENDIENTE: 'borrador/pendiente',
+    RADICADA: 'radicada',
+    EXTEMPORANEA: 'extemporánea',
+    DEVUELTA: 'devuelta para subsanar',
+    SOLICITADO: 'en revisión del Grupo de Viáticos',
+    APROBADO_JEFE: 'aprobada por el jefe inmediato',
+    APROBADO_TALENTO_HUMANO: 'aprobada por Talento Humano',
+    RESOLUCION_EMITIDA: 'con resolución emitida',
+    TIQUETES_COMPRADOS: 'con tiquetes gestionados',
+    EN_COMISION: 'en comisión',
+    PENDIENTE_LEGALIZACION: 'pendiente de legalización',
+    LEGALIZADO: 'legalizada',
+    RECHAZADO: 'rechazada',
+  };
+  if (!estado) return 'en trámite';
+  return mapa[estado.toUpperCase()] ?? estado;
+}
+
 @Injectable()
 export class TravelExpensesService {
   constructor(
@@ -274,7 +298,7 @@ export class TravelExpensesService {
 
       if (solapamiento) {
         throw new ConflictException(
-          `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
+          this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
         );
       }
 
@@ -646,7 +670,7 @@ export class TravelExpensesService {
 
     if (solapamiento) {
       throw new ConflictException(
-        `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
+        this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
       );
     }
 
@@ -689,6 +713,25 @@ export class TravelExpensesService {
       month: '2-digit',
       year: 'numeric',
     });
+  }
+
+  /**
+   * Mensaje de conflicto de fechas orientado al usuario: NO expone UUIDs ni
+   * códigos internos; muestra el consecutivo real (p. ej. COM-2026-0001) y el
+   * estado en lenguaje humano para mejorar la experiencia.
+   */
+  private mensajeConflictoFechas(
+    solapada: SolicitudComisionEntity,
+    fechaInicio: Date,
+    fechaFin: Date,
+  ): string {
+    const referencia = solapada.consecutivoUnico || solapada.id;
+    const estado = etiquetaEstadoHumana(solapada.estadoSolicitud);
+    return (
+      `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) ` +
+      `se cruzan con la solicitud ${referencia} (${estado}, ${this.formatearFecha(solapada.fechaInicio)} a ${this.formatearFecha(solapada.fechaFin)}). ` +
+      `Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`
+    );
   }
 
   private async validarChecklistCompleto(

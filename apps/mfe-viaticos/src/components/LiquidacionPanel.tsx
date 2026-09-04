@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
+  HelpCircle,
   XCircle,
   RefreshCw,
 } from 'lucide-react';
@@ -126,6 +127,50 @@ export default function LiquidacionPanel({
 
       {expandido && (
         <div className="px-4 pb-4 space-y-3 border-t border-slate-100">
+          {/* Ayuda: explica la norma y por qué se define ese valor. */}
+          <details className="group text-[11px] text-slate-600">
+            <summary className="cursor-pointer list-none flex items-center gap-1.5 py-2 font-bold text-slate-700 hover:text-slate-900 select-none">
+              <HelpCircle className="w-3.5 h-3.5 text-[#003DA5] shrink-0" />
+              ¿Cómo se define el valor de viáticos? (Decreto 314 de 2026)
+              <ChevronDown className="w-3.5 h-3.5 ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="space-y-1.5 bg-slate-50 border border-slate-200 rounded-xl p-3 leading-relaxed">
+              <p>
+                El sistema aplica automáticamente el <strong>Decreto 314 de 2026</strong>{' '}
+                (escala salarial de viáticos) según los datos de la comisión:
+              </p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>
+                  <strong>Tarifa diaria base:</strong> se ubica según su asignación básica
+                  mensual (si hay doble rol se usa el mayor salario). Los{' '}
+                  <em>estudiantes</em> usan el SMMLV y los <em>investigadores</em> la tarifa
+                  de su categoría (Junior / Asociado / Senior).
+                </li>
+                <li>
+                  <strong>Factor por tipo de comisionado:</strong> los{' '}
+                  <em>contratistas</em> aplican el 80 % (deducción del 20 %).
+                </li>
+                <li>
+                  <strong>Factor por pernocta:</strong> si la comisión <strong>no</strong>{' '}
+                  pernocta se reconoce el 50 % (día de viaje sin noche).
+                </li>
+                <li>
+                  <strong>Excepción regional (Art. 5):</strong> si el destino es un
+                  departamento nuevo creado por la Constitución, se usa su tarifa especial.
+                </li>
+                <li>
+                  <strong>Días/noches a liquidar:</strong> se calculan desde las fechas
+                  indicadas y la pernocta.
+                </li>
+              </ul>
+              <p className="text-slate-500">
+                El total se <strong>aplica automáticamente</strong> al campo “Viáticos”
+                (no editable). Modifique fechas, pernocta, salario o categoría para ver
+                cómo se recalcula.
+              </p>
+            </div>
+          </details>
+
           {!puedeCalcular ? (
             <p className="text-xs text-slate-400 py-2">
               Complete las fechas y el tipo de comisionado para calcular la liquidación.
@@ -187,7 +232,7 @@ export default function LiquidacionPanel({
               )}
 
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Total Proyectado SIIF Nación</p>
                     <p className="text-xl font-black text-blue-900">{formatearMoneda(resultado.data.valorTotalViaticos)}</p>
@@ -208,8 +253,8 @@ export default function LiquidacionPanel({
                 </summary>
                 <div className="mt-2 space-y-1">
                   {resultado.data.desgloseCalculo.map((dia) => (
-                    <div key={dia.dia} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100">
-                      <span className="text-slate-600">
+                    <div key={dia.dia} className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100">
+                      <span className="text-slate-600 min-w-0">
                         Día {dia.dia} · {dia.fecha} {dia.pernocta ? '· Pernocta' : '· Sin pernocta'}
                       </span>
                       <span className="font-bold text-slate-800">{formatearMoneda(dia.valor)}</span>
