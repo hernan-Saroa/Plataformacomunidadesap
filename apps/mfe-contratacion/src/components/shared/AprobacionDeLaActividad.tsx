@@ -39,7 +39,7 @@ const campo =
  * El trámite de aprobación de una actividad, encima del panel que la trabaja.
  *
  * Va aquí y no dentro de cada panel por la misma razón por la que
- * `DocumentosActividad` vive en `DetalleProceso`: son treinta y ocho paneles,
+ * `DocumentosDeLaActividad` vive en `DetalleProceso`: son treinta y ocho paneles,
  * ninguno conoce su propio numeral y el trámite es idéntico en todos. Montarlo
  * una vez evita repetirlo —y evita que se olvide en los que vengan después.
  *

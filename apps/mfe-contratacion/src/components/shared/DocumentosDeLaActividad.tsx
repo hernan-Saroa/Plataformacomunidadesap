@@ -27,6 +27,14 @@ interface Props {
    * de 1», que es justo la contradicción que hay que evitar.
    */
   pie?: (faltan: number) => React.ReactNode;
+  /**
+   * Solo lo que quedó en el expediente, sin las filas de formatos.
+   *
+   * Para las actividades cuyo panel ya reparte sus formatos documento por
+   * documento —el estudio previo y la elaboración de documentos—: listarlos
+   * otra vez aquí sería pedir dos veces lo mismo.
+   */
+  soloExpediente?: boolean;
 }
 
 const MIME_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
@@ -51,16 +59,36 @@ export function DocumentosDeLaActividad({
   recargarToken,
   onCambio,
   pie,
+  soloExpediente = false,
 }: Props) {
   const [estado, setEstado] = useState<EstadoDocumentosActividad | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const inputAdicional = useRef<HTMLInputElement>(null);
 
+  /**
+   * Lo que la actividad dejó en el expediente sin pasar por un formato: lo que
+   * sube el panel del CDP, la copia del formulario al enviarlo.
+   *
+   * Antes lo listaba un segundo componente montado justo debajo, con su propio
+   * marco y su propio radio de borde. Eran dos listas de archivos seguidas para
+   * la misma actividad, y el gestor tenía que deducir cuál era cuál.
+   */
+  const [delExpediente, setDelExpediente] = useState<DocumentoCargado[]>([]);
+
   const leer = useCallback(
     () =>
-      contratacionService
-        .documentosDeActividad(procesoId, numeral)
-        .then(setEstado)
+      Promise.all([
+        contratacionService.documentosDeActividad(procesoId, numeral),
+        contratacionService.obtenerExpediente(procesoId).catch(() => null),
+      ])
+        .then(([documentos, expediente]) => {
+          setEstado(documentos);
+          setDelExpediente(
+            ((expediente as any)?.documentos ?? []).filter(
+              (d: any) => d.numeral === numeral && d.tipo !== 'ADJUNTO',
+            ),
+          );
+        })
         // Silencioso: es un panel de apoyo, y un fallo al listarlos no debe
         // tapar la actividad que el gestor está trabajando.
         .catch(() => setEstado(null)),
@@ -111,14 +139,24 @@ export function DocumentosDeLaActividad({
   // dejárselo a `empty:hidden`: esa pseudoclase solo aplica cuando el elemento
   // no tiene ningún hijo, y React deja dentro un nodo de comentario. El marco
   // se dibujaba igual, vacío, en toda actividad sin documentos.
-  if (!estado || (estado.requeridos.length === 0 && estado.adicionales.length === 0)) {
+  const sinNada = soloExpediente
+    ? delExpediente.length === 0
+    : !estado ||
+      (estado.requeridos.length === 0 &&
+        estado.adicionales.length === 0 &&
+        delExpediente.length === 0);
+
+  if (!estado || sinNada) {
     const soloDecision = pie?.(0);
     return soloDecision ? (
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">{soloDecision}</div>
     ) : null;
   }
 
-  const faltan = estado.requeridos.filter((r) => !r.cargado).length;
+  // En modo solo-expediente el panel ya reparte sus formatos: aquí no se
+  // cuentan, y por tanto tampoco bloquean la aprobación desde este bloque.
+  const requeridos = soloExpediente ? [] : estado.requeridos;
+  const faltan = requeridos.filter((r) => !r.cargado).length;
   const decision = pie?.(faltan);
 
   return (
@@ -131,7 +169,7 @@ export function DocumentosDeLaActividad({
           </p>
         </div>
 
-        {estado.requeridos.length > 0 && (
+        {requeridos.length > 0 && (
           <span
             className={`text-[10.5px] font-bold rounded-md px-1.5 py-0.5 shrink-0 ${
               faltan === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
@@ -139,12 +177,12 @@ export function DocumentosDeLaActividad({
           >
             {faltan === 0
               ? 'Completos'
-              : `Falta ${faltan} de ${estado.requeridos.length}`}
+              : `Falta ${faltan} de ${requeridos.length}`}
           </span>
         )}
       </div>
 
-      {estado.requeridos.map((doc) => (
+      {requeridos.map((doc) => (
         <FilaRequerido
           key={doc.plantillaId}
           documento={doc}
@@ -155,12 +193,12 @@ export function DocumentosDeLaActividad({
         />
       ))}
 
-      {estado.adicionales.length > 0 && (
+      {((!soloExpediente && estado.adicionales.length > 0) || delExpediente.length > 0) && (
         <div className="space-y-1.5 pt-1">
           <p className="text-[11px] font-bold text-slate-500 m-0">
             Otros documentos adjuntos
           </p>
-          {estado.adicionales.map((doc) => (
+          {(soloExpediente ? [] : estado.adicionales).map((doc) => (
             <FilaAdicional
               key={doc.id}
               documento={doc}
@@ -169,12 +207,24 @@ export function DocumentosDeLaActividad({
               onRetirar={() => retirar(doc.id)}
             />
           ))}
+
+          {/* Lo que llegó al expediente por otra vía. No se puede retirar desde
+              aquí: lo generó el propio proceso, no un adjunto del gestor. */}
+          {delExpediente.map((doc) => (
+            <FilaAdicional
+              key={doc.id}
+              documento={doc}
+              ocupada={false}
+              puedeRetirar={false}
+              onRetirar={() => undefined}
+            />
+          ))}
         </div>
       )}
 
       {/* Adjuntar algo que ningún formato pedía, en segundo plano: la lista de
           arriba es lo que hay que resolver. */}
-      {estado.puedeCargar && (
+      {estado.puedeCargar && !soloExpediente && (
         <div className="pt-0.5">
           <input
             ref={inputAdicional}

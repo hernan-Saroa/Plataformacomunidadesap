@@ -42,7 +42,6 @@ import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
-import { DocumentosActividad } from '../shared/DocumentosActividad';
 import { DocumentosDeLaActividad } from '../shared/DocumentosDeLaActividad';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
@@ -905,15 +904,24 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           </div>
 
           {/* Los documentos que la actividad entrega, debajo del panel: primero
-              se trabaja, después se adjunta. Salvo donde el panel ya los
-              reparte por su cuenta, que los duplicaría. */}
-          {actividadSeleccionada &&
-          !NUMERALES_CON_FORMATOS_PROPIOS.includes(actividadSeleccionada.numeral) ? (
+              se trabaja, después se adjunta.
+
+              Un solo bloque, con los formatos requeridos y lo demás que quedó
+              en el expediente como dos secciones dentro del mismo marco. Antes
+              eran dos componentes apilados con estilos distintos, y había que
+              deducir cuál lista era cuál.
+
+              Donde el panel ya reparte sus formatos —3.1 y 5.1— se monta en
+              modo `soloExpediente`, para listar lo demás sin duplicarlos. */}
+          {actividadSeleccionada ? (
             <div className="mt-3">
               <DocumentosDeLaActividad
                 procesoId={procesoId}
                 numeral={actividadSeleccionada.numeral}
                 recargarToken={tokenExpediente}
+                soloExpediente={NUMERALES_CON_FORMATOS_PROPIOS.includes(
+                  actividadSeleccionada.numeral,
+                )}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
                 pie={(faltan) =>
                   !NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) ? (
@@ -930,18 +938,6 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             </div>
           ) : null}
 
-          {/* Todo lo demás que quedó en el expediente: lo que sube el panel del
-              CDP, la copia del formulario al enviar. */}
-          {actividadSeleccionada ? (
-            <DocumentosActividad
-              procesoId={procesoId}
-              numeral={actividadSeleccionada.numeral}
-              recargarToken={tokenExpediente}
-              omitirAdjuntos={
-                !NUMERALES_CON_FORMATOS_PROPIOS.includes(actividadSeleccionada.numeral)
-              }
-            />
-          ) : null}
         </div>
 
         {expedienteAbierto && (
