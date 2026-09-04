@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Check, ClipboardCheck, Send, Undo2, X } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
+import { HistorialRevisiones } from './HistorialRevisiones';
 
 interface Props {
   procesoId: string;
@@ -125,10 +126,16 @@ export function AprobacionDeLaActividad({
     if (parte === 'decision') return null;
     return marco(
       'ok',
-      encabezado(
-        'Actividad aprobada',
-        a.decididaPor ? `La aprobó ${a.decididaPor}.` : undefined,
-      ),
+      <>
+        {encabezado(
+          'Actividad aprobada',
+          a.decididaPor ? `La aprobó ${a.decididaPor}.` : undefined,
+        )}
+
+        {/* Aprobada no quiere decir que fuera a la primera: el recorrido
+            explica por qué tardó lo que tardó. */}
+        <HistorialRevisiones revisiones={a.revisiones} />
+      </>,
     );
   }
 
@@ -243,6 +250,10 @@ export function AprobacionDeLaActividad({
                 </button>
               </div>
             )}
+
+            {/* Las vueltas anteriores, plegadas: quien va a decidir necesita
+                saber si ya pidió esto mismo antes y no se lo corrigieron. */}
+            <HistorialRevisiones revisiones={a.revisiones} />
           </div>
         </div>
       );
@@ -290,6 +301,11 @@ export function AprobacionDeLaActividad({
             a.observaciones,
           )
         : encabezado('Esta actividad requiere aprobación', quien)}
+
+      {/* Las vueltas anteriores, para el gestor que corrige: si ya se la
+          devolvieron por lo mismo dos veces, conviene que lo vea antes de
+          volver a enviarla. */}
+      <HistorialRevisiones revisiones={a.revisiones} />
 
       <button type="button" className={primario} onClick={a.enviar} disabled={a.guardando}>
         <Send className="w-3.5 h-3.5" aria-hidden="true" />

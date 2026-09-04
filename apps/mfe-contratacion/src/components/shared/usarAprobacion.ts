@@ -3,6 +3,16 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 
+/** Una decisión ya tomada sobre la actividad. */
+export interface RevisionDeActividad {
+  decision: 'APROBADO' | 'DEVUELTO';
+  observaciones: string | null;
+  revisadoPor: string;
+  /** Sobre qué versión del documento se pronunció. */
+  versionRevisada: number;
+  fecha: string;
+}
+
 /** Lo que un panel necesita saber para pintar el pie de aprobación. */
 export interface Aprobacion {
   cargando: boolean;
@@ -16,6 +26,14 @@ export interface Aprobacion {
   /** Por qué se devolvió, si se devolvió. */
   observaciones: string | null;
   decididaPor: string | null;
+  /**
+   * Todas las decisiones tomadas, de la más nueva a la más vieja.
+   *
+   * Una actividad puede devolverse varias veces: sin el recorrido, quien va a
+   * aprobar no sabe qué se pidió corregir en las rondas anteriores ni cuántas
+   * hubo.
+   */
+  revisiones: RevisionDeActividad[];
   guardando: boolean;
   enviar: () => Promise<void>;
   retirar: () => Promise<void>;
@@ -48,6 +66,7 @@ export function usarAprobacion(
   const [esMia, setEsMia] = useState(false);
   const [observaciones, setObservaciones] = useState<string | null>(null);
   const [decididaPor, setDecididaPor] = useState<string | null>(null);
+  const [revisiones, setRevisiones] = useState<RevisionDeActividad[]>([]);
   const [guardando, setGuardando] = useState(false);
 
   const leer = useCallback(() => {
@@ -62,6 +81,7 @@ export function usarAprobacion(
         setEsMia(!!r.esMia);
         setObservaciones(r.observaciones ?? null);
         setDecididaPor(r.decididaPor ?? null);
+        setRevisiones((r as any).revisiones ?? []);
       })
       .catch(() => {
         // Sin respuesta se asume que no requiere aprobación: dejar el panel
@@ -104,6 +124,7 @@ export function usarAprobacion(
     esMia,
     observaciones,
     decididaPor,
+    revisiones,
     guardando,
     enviar: () =>
       accion(

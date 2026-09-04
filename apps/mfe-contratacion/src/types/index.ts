@@ -2724,6 +2724,20 @@ export interface ExpedienteAuditoria {
     resuelta_at: string | null;
   }[];
   casosIncumplimiento: number;
+  /**
+   * Cada vuelta que dio la aprobación de cada actividad.
+   *
+   * La lista de actividades solo dice en qué estado quedó cada una: sin esto,
+   * una aprobada a la primera y otra devuelta tres veces se ven idénticas.
+   */
+  revisiones: {
+    numeral: string;
+    decision: 'APROBADO' | 'DEVUELTO';
+    observaciones: string | null;
+    version_revisada: number;
+    revisado_por: string;
+    created_at: string;
+  }[];
   trazabilidad: {
     accion: string;
     entidad: string;

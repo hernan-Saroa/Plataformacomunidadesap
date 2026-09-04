@@ -30,13 +30,14 @@ export class AuditoriaController {
   @ApiOperation({
     summary: 'Expediente completo del proceso, solo lectura',
     description:
-      'Proceso, contrato, actividades, documentos con su hash, supervisiones, modificaciones y trazabilidad completa.',
+      'Proceso, contrato, actividades con sus revisiones de aprobación, documentos con su hash, supervisiones, modificaciones y trazabilidad completa.',
   })
   async consultar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     const acceso = getHiringAccess(req);
     const em = this.dataSource.manager;
 
-    const [proceso, contrato, actividades, documentos, supervisiones, modificaciones, casos, traza] =
+    const [proceso, contrato, actividades, documentos, supervisiones, modificaciones, casos, traza,
+      revisiones] =
       await Promise.all([
         em.query(`SELECT id, radicado, objeto, modalidad, valor_estimado, etapa, fecha_radicacion,
                          created_by, created_at
@@ -86,6 +87,20 @@ export class AuditoriaController {
                     FROM hiring.trazabilidad
                    WHERE proceso_id = $1
                    ORDER BY created_at`, [procesoId]),
+        /*
+         * Cada vuelta que dio la aprobación de cada actividad.
+         *
+         * La lista de actividades solo dice en qué estado quedó cada una: para
+         * el auditor, una actividad aprobada a la primera y otra devuelta tres
+         * veces se veían idénticas. Aquí está el motivo de cada devolución y
+         * quién la firmó.
+         */
+        em.query(`SELECT pa.numeral, r.decision, r.observaciones, r.version_revisada,
+                         r.revisado_por, r.created_at
+                    FROM hiring.revisiones r
+                    JOIN hiring.proceso_actividades pa ON pa.id = r.proceso_actividad_id
+                   WHERE pa.proceso_id = $1
+                   ORDER BY r.created_at`, [procesoId]),
       ]);
 
     // Consultar el expediente completo también deja rastro: quien audita queda
@@ -110,6 +125,7 @@ export class AuditoriaController {
       supervisiones,
       modificaciones,
       casosIncumplimiento: casos[0]?.total ?? 0,
+      revisiones,
       trazabilidad: traza,
     };
   }

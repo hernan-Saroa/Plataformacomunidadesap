@@ -19,6 +19,7 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   esMia: false,
   observaciones: null,
   decididaPor: null,
+  revisiones: [],
   ...cambios,
 });
 
@@ -226,6 +227,47 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /Esconder la decisión/ }));
     expect(esconder).toHaveBeenCalled();
+  });
+
+  it('muestra el recorrido completo, no solo la última decisión', async () => {
+    montar(
+      estado({
+        estado: 'DEVUELTO',
+        observaciones: 'Falta la ficha técnica.',
+        decididaPor: 'Ana Prieto',
+        revisiones: [
+          {
+            decision: 'DEVUELTO',
+            observaciones: 'Falta la ficha técnica.',
+            revisadoPor: 'Ana Prieto',
+            versionRevisada: 2,
+            fecha: '2026-09-03T10:00:00.000Z',
+          },
+          {
+            decision: 'DEVUELTO',
+            observaciones: 'El valor no coincide con el estudio de mercado.',
+            revisadoPor: 'Ana Prieto',
+            versionRevisada: 1,
+            fecha: '2026-09-01T09:00:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    // Sin desplegar solo se anuncia; la observación vieja no puede tapar la
+    // vigente, que es la que hay que corregir ahora.
+    const abrir = await screen.findByRole('button', { name: /Ver el historial/ });
+    expect(screen.queryByText(/no coincide con el estudio de mercado/)).toBeNull();
+
+    await userEvent.click(abrir);
+    expect(screen.getByText(/no coincide con el estudio de mercado/)).toBeInTheDocument();
+  });
+
+  it('sin revisiones previas no anuncia ningún historial', async () => {
+    montar(estado({ estado: 'BORRADOR' }));
+
+    await screen.findByRole('button', { name: /Enviar a aprobación/ });
+    expect(screen.queryByRole('button', { name: /Ver el historial|Ver la decisión/ })).toBeNull();
   });
 
   it('sin quien la recoja no se ofrece esconderla', async () => {

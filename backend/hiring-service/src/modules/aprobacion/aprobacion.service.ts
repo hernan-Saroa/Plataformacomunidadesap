@@ -99,13 +99,22 @@ export class AprobacionService {
 
     const aprobadores = await this.aprobadoresDe(numeral, proceso?.modalidad ?? null, em);
 
-    // La última decisión, para poder mostrar por qué se devolvió.
-    const revision = actividad
-      ? await em.getRepository(Revision).findOne({
+    /*
+     * Todas las decisiones, no solo la última.
+     *
+     * Una actividad puede devolverse varias veces antes de aprobarse, y hasta
+     * ahora solo se leía la más reciente: quien iba a decidir no veía qué se
+     * había pedido corregir en las rondas anteriores, aunque la base lo guarda
+     * desde el principio. Se ordenan de la más nueva a la más vieja porque la
+     * última es la que manda sobre el estado actual.
+     */
+    const revisiones = actividad
+      ? await em.getRepository(Revision).find({
           where: { procesoActividadId: actividad.id },
           order: { createdAt: 'DESC' },
         })
-      : null;
+      : [];
+    const revision = revisiones[0] ?? null;
 
     const enviadoPorId = (actividad as any)?.enviadoPorId;
     const esMia =
@@ -129,6 +138,20 @@ export class AprobacionService {
       esMia,
       observaciones: revision?.decision === 'DEVUELTO' ? revision.observaciones : null,
       decididaPor: revision?.revisadoPor ?? null,
+      /*
+       * El recorrido completo del trámite.
+       *
+       * Se manda siempre, aunque la pantalla lo pinte plegado: son unas pocas
+       * filas por actividad y pedirlas aparte obligaría a una segunda consulta
+       * justo cuando el aprobador va a decidir.
+       */
+      revisiones: revisiones.map((r) => ({
+        decision: r.decision,
+        observaciones: r.observaciones ?? null,
+        revisadoPor: r.revisadoPor,
+        versionRevisada: r.versionRevisada,
+        fecha: r.createdAt,
+      })),
     };
   }
 
