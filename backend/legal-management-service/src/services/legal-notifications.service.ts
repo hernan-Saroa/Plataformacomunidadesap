@@ -811,6 +811,12 @@ export class LegalNotificationsService {
    * Notifica al responsable de un término/informe que su vencimiento está próximo
    * (alerta automática por regla global, por anticipación personalizada del término,
    * o recordatorio programado manualmente por el usuario).
+   *
+   * Retorna `true` si la notificación se pudo despachar (a responsable o, en su defecto,
+   * al rol de respaldo), y `false` si algo falló. El caller (AlertasVencimientoTerminosService)
+   * usa este valor para decidir si marca la alerta como enviada — si retorna `false`, la
+   * alerta NO se marca como enviada y se reintentará en la siguiente corrida del cron, en
+   * vez de perderse silenciosamente.
    */
   async notifyTerminoProximoAVencer(params: {
     terminoId: string;
@@ -819,7 +825,7 @@ export class LegalNotificationsService {
     numeroRadicado?: string | null;
     horasRestantes: number;
     origen: 'automatica' | 'personalizada' | 'manual';
-  }): Promise<void> {
+  }): Promise<boolean> {
     const meta = MODULE_META.TERMINOS_INFORMES;
     const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
     const diasRestantes = Math.round(params.horasRestantes / 24);
@@ -840,15 +846,11 @@ export class LegalNotificationsService {
       `[NOTIFY] Vencimiento de término (${params.origen}) — id=${params.terminoId} radicado=${params.numeroRadicado || 'N/A'} horasRestantes=${params.horasRestantes}`,
     );
 
-    if (!params.responsableId) {
-      this.logger.warn(`Término ${params.terminoId} sin responsableId asignado — no se pudo notificar`);
-      return;
-    }
-
+    const mensaje = `El término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''} ${textoAnticipacion}.`;
     const dto = {
       tipo_notificacion: 'TERMINO_PROXIMO_A_VENCER',
       titulo: titulos[params.origen],
-      mensaje: `El término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''} ${textoAnticipacion}.`,
+      mensaje,
       descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — ${textoAnticipacion}`,
       icono: meta.icon,
       color: params.horasRestantes < 0 ? '#DC2626' : meta.color,
@@ -867,15 +869,80 @@ export class LegalNotificationsService {
     };
 
     try {
-      await this.notificationClient.notifyUserById(params.responsableId, dto);
-      const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
-      if (detail?.email) {
-        const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
-        const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
-        await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+      if (params.responsableId) {
+        // El in-app es la parte que determina el resultado (y por tanto si se reintenta o no).
+        // El correo se envía en su propio try/catch: si falla (SMTP caído, no tiene email, etc.)
+        // NO debe hacer que se reintente todo el envío, porque eso duplicaría la notificación
+        // in-app que ya se entregó correctamente.
+        await this.notificationClient.notifyUserById(params.responsableId, dto);
+        try {
+          const detail = await this.notificationClient.getUserDetailsById(params.responsableId);
+          if (detail?.email) {
+            const emailSubject = `${titulos[params.origen]} — ${params.numeroRadicado || params.nombreActuacion}`;
+            const emailHtml = buildTerminoVencimientoEmailHtml(params.nombreActuacion, params.numeroRadicado ?? null, textoAnticipacion, url);
+            await this.notificationClient.sendEmail(detail.email, emailSubject, emailHtml);
+          }
+        } catch (emailErr: any) {
+          this.logger.warn(`In-app entregado, pero falló el correo de vencimiento del término ${params.terminoId}: ${emailErr?.message}`);
+        }
+      } else {
+        // Sin responsable asignado: en vez de descartar la alerta en silencio, se avisa
+        // al Jefe de Gestión Legal para que quede visible y se pueda asignar responsable.
+        this.logger.warn(`Término ${params.terminoId} sin responsableId asignado — notificando al rol ${ROLE_JEFE} como respaldo`);
+        await this.notificationClient.notifyByRole(ROLE_JEFE, {
+          ...dto,
+          titulo: `${titulos[params.origen]} (sin responsable asignado)`,
+          mensaje: `${mensaje} Este término no tiene responsable asignado.`,
+        });
       }
+      return true;
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar vencimiento del término ${params.terminoId}: ${err?.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Notifica al Jefe de Gestión Legal (y a Resuelve) que se creó un nuevo término/informe,
+   * de forma incondicional — igual que `notifyProcesoCreado` en los demás módulos — para que
+   * la creación quede visible dentro de la plataforma incluso cuando el término aún no tiene
+   * responsable asignado (`notifyResponsableAsignadoTermino` solo se dispara cuando sí lo tiene).
+   */
+  async notifyTerminoCreado(params: {
+    terminoId: string;
+    nombreActuacion: string;
+    numeroRadicado?: string | null;
+    origenModulo: string;
+    responsableNombre?: string | null;
+  }): Promise<void> {
+    const meta = MODULE_META.TERMINOS_INFORMES;
+    const url = buildUrl('TERMINOS_INFORMES', params.numeroRadicado || undefined);
+    this.logger.log(`[NOTIFY] Término creado — id=${params.terminoId} radicado=${params.numeroRadicado || 'N/A'} origen=${params.origenModulo}`);
+
+    const dto = {
+      tipo_notificacion: 'TERMINO_CREADO',
+      titulo: `Nuevo término en ${meta.label}`,
+      mensaje: `Se creó el término "${params.nombreActuacion}"${params.numeroRadicado ? ` (${params.numeroRadicado})` : ''}${params.responsableNombre ? `, asignado a ${params.responsableNombre}` : ', sin responsable asignado'}.`,
+      descripcion_corta: `${params.numeroRadicado || params.nombreActuacion} — creado`,
+      icono: meta.icon,
+      color: meta.color,
+      prioridad: 'Media' as const,
+      categoria: meta.categoria,
+      tiene_accion: true,
+      texto_boton_accion: 'Ver término',
+      url_accion: url,
+      datos_adicionales: {
+        modulo: 'TERMINOS_INFORMES',
+        terminoId: params.terminoId,
+        numeroRadicado: params.numeroRadicado,
+        origenModulo: params.origenModulo,
+      },
+    };
+
+    try {
+      await this.notificationClient.notifyByRoles([ROLE_JEFE, ROLE_RESUELVE], dto);
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar creación de término ${params.terminoId}: ${err?.message}`);
     }
   }
 }

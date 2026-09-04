@@ -121,6 +121,22 @@ export class TerminosService {
         }).catch((err) => this.logger.warn(`No se pudo notificar asignación de responsable del término ${termino.id}: ${err?.message}`));
     }
 
+    /**
+     * Dispara (sin bloquear el flujo) la notificación de creación de un término, incondicional
+     * — se envía exista o no responsable asignado — para que la creación quede visible dentro
+     * de la plataforma para el Jefe/Resuelve de Gestión Legal. Complementa, no reemplaza, a
+     * `notificarAsignacionResponsable` (que solo aplica cuando SÍ hay responsable).
+     */
+    private notificarCreacionTermino(termino: TerminoProcesal): void {
+        this.legalNotifications.notifyTerminoCreado({
+            terminoId: termino.id,
+            nombreActuacion: termino.nombreActuacion,
+            numeroRadicado: termino.numeroRadicado,
+            origenModulo: termino.origenModulo,
+            responsableNombre: termino.responsableNombre,
+        }).catch((err) => this.logger.warn(`No se pudo notificar creación del término ${termino.id}: ${err?.message}`));
+    }
+
     async create(data: Partial<TerminoProcesal>): Promise<TerminoProcesal> {
         // Si no viene referenciaId pero sí numeroRadicado, intentamos resolverlo
         // consultando el módulo correspondiente. Esto es necesario porque la columna
@@ -186,6 +202,7 @@ export class TerminosService {
 
         const termino = this.terminoRepository.create(data);
         const guardado = await this.terminoRepository.save(termino);
+        this.notificarCreacionTermino(guardado);
         this.notificarAsignacionResponsable(guardado, false);
         return guardado;
     }
@@ -246,6 +263,7 @@ export class TerminosService {
         // Check if exists to update
         let termino = await this.terminoRepository.findOne({ where: { referenciaId, origenModulo: origen } });
         const responsableAnterior = termino?.responsableId ?? null;
+        const esNuevo = !termino;
 
         if (termino) {
             termino.numeroRadicado = radicado;
@@ -285,6 +303,10 @@ export class TerminosService {
         }
 
         const guardado = await this.terminoRepository.save(termino);
+
+        if (esNuevo) {
+            this.notificarCreacionTermino(guardado);
+        }
 
         if (guardado.responsableId && guardado.responsableId !== responsableAnterior) {
             this.notificarAsignacionResponsable(guardado, !!responsableAnterior);

@@ -974,7 +974,7 @@ export function ModalDetalleSolicitudInforme({
       {/* Modal de Alertas y Recordatorio de Vencimiento */}
       {mostrarModalRecordatorio && (
         <Dialog open={mostrarModalRecordatorio} onOpenChange={() => setMostrarModalRecordatorio(false)}>
-          <DialogContent hideCloseButton className="max-w-md">
+          <DialogContent hideCloseButton size="md">
             <DialogTitle className="sr-only">Alertas y Recordatorio de Vencimiento</DialogTitle>
             <DialogDescription className="sr-only">
               Programar un recordatorio manual o definir una anticipación de alerta personalizada para este término
