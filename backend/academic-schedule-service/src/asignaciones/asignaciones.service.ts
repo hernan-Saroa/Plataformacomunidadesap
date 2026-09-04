@@ -9,6 +9,7 @@ import {
   type GrupoParaAsignar,
   type MotivoRechazo,
 } from './reglas-asignacion.js';
+import { resolverSituacion } from './situacion-docente.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -23,6 +24,34 @@ export interface ResultadoAsignacion {
   asignado: boolean;
   idAsignacion?: string;
   motivos?: MotivoRechazo[];
+}
+
+/**
+ * Vista de SOLO LECTURA del docente para el panel de asignación (RN-09).
+ *
+ * El RUND no se escribe desde aquí: esto es lo que la decanatura ve para decidir.
+ * Si `idGrupo` acompaña la consulta, `motivos` trae la evaluación en seco contra
+ * ese grupo — los mismos motivos que bloquearían la asignación, sin guardarla.
+ */
+export interface DocenteConsulta {
+  documento: string;
+  nombre: string;
+  escalafon: string | null;
+  vinculacionDesde: string | null;
+  /** Nulo = vinculación indefinida, no dato faltante (RN-10). */
+  vinculacionHasta: string | null;
+  horasPta: number;
+  situacion: {
+    descripcion: string | null;
+    categoria: string | null;
+    asignable: boolean;
+    motivo: string | null;
+    vigenteHasta: string | null;
+  };
+  /** Presente solo si se consultó con `idGrupo`. Todos los motivos, no el primero. */
+  motivos?: MotivoRechazo[];
+  /** true solo si no hay ningún motivo de bloqueo contra el grupo consultado. */
+  asignableAlGrupo?: boolean;
 }
 
 /**
@@ -145,19 +174,58 @@ export class AsignacionesService {
   }
 
   /**
+   * Consulta de SOLO LECTURA del docente para el panel (RN-09).
+   *
+   * La situación se resuelve en el servidor sobre el campo estructurado
+   * `situacionCategoria`; el cliente nunca la envía. Con `idGrupo`, además evalúa
+   * en seco las reglas de bloqueo y devuelve TODOS los motivos.
+   */
+  async consultarDocente(documento: string, idGrupo?: string): Promise<DocenteConsulta> {
+    const docente = await this.cargarDocente(documento);
+    const situacion = resolverSituacion(docente.categoriaRaw, docente.situacionRaw);
+
+    const base: DocenteConsulta = {
+      documento: String(documento).trim(),
+      nombre: docente.nombre,
+      escalafon: docente.escalafon,
+      vinculacionDesde: docente.vinculacionDesde,
+      vinculacionHasta: docente.vinculacionHasta,
+      horasPta: docente.horasPta,
+      situacion: {
+        descripcion: docente.situacionRaw,
+        categoria: situacion.categoria,
+        asignable: situacion.asignable,
+        motivo: situacion.motivo,
+        vigenteHasta: situacion.vigenteHasta,
+      },
+    };
+
+    if (!idGrupo) return base;
+
+    docente.situacionAsignable = situacion.asignable;
+    docente.situacionMotivo = situacion.motivo;
+    const grupo = await this.cargarGrupo(idGrupo, 0);
+    const ocupadas = await this.franjasOcupadas(docente.idDocente);
+    const consumidas = await this.horasConsumidas(docente.idDocente, idGrupo);
+    const motivos = evaluarAsignacion(docente, grupo, ocupadas, consumidas);
+
+    return { ...base, motivos, asignableAlGrupo: motivos.length === 0 };
+  }
+
+  /**
    * Asigna, o rechaza con TODOS los motivos.
    *
-   * @param situacionAsignable resultado del clasificador del contrato PROG↔PTA
+   * La situación administrativa se resuelve AQUÍ, sobre el campo estructurado del
+   * RUND: el cliente no la envía. Confiar en una `asignable` del cliente sería un
+   * bypass del bloqueo duro.
    */
-  async asignar(
-    dto: AsignarDocenteDto,
-    situacion: { asignable: boolean; motivo: string | null },
-  ): Promise<ResultadoAsignacion> {
+  async asignar(dto: AsignarDocenteDto): Promise<ResultadoAsignacion> {
     if (!dto?.idGrupo || !dto?.documento) {
       throw new BadRequestException('Debe indicar el grupo y el documento del docente.');
     }
 
     const docente = await this.cargarDocente(dto.documento);
+    const situacion = resolverSituacion(docente.categoriaRaw, docente.situacionRaw);
     docente.situacionAsignable = situacion.asignable;
     docente.situacionMotivo = situacion.motivo;
 
