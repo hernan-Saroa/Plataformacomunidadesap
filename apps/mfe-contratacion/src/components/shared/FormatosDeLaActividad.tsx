@@ -36,6 +36,8 @@ export function useFormatosDeLaActividad(numeral: string, modalidad?: string | n
  */
 export function useFormatosAsignados(numeral: string, modalidad?: string | null) {
   const [formatos, setFormatos] = useState<PlantillaFormato[]>([]);
+  /** Los de la actividad sin filtrar, para distinguir por qué no hay ninguno. */
+  const [hayDeOtrasModalidades, setHayDeOtras] = useState(false);
 
   useEffect(() => {
     contratacionService
@@ -44,7 +46,21 @@ export function useFormatosAsignados(numeral: string, modalidad?: string | null)
       .catch(() => setFormatos([]));
   }, [numeral, modalidad]);
 
-  return formatos;
+  useEffect(() => {
+    if (!modalidad) return setHayDeOtras(false);
+
+    // Solo cuando el filtro dejó la lista vacía: saber que la actividad sí
+    // tiene formatos, pero ninguno para esta modalidad, es lo que separa «no
+    // se ha subido nada» de «está mal configurado».
+    if (formatos.length > 0) return setHayDeOtras(false);
+
+    contratacionService
+      .plantillasDeActividad(numeral)
+      .then((todos) => setHayDeOtras(todos.length > 0))
+      .catch(() => setHayDeOtras(false));
+  }, [numeral, modalidad, formatos.length]);
+
+  return { formatos, hayDeOtrasModalidades };
 }
 
 /** El enlace de descarga de un formato, con su código del SIG. */
@@ -81,7 +97,7 @@ export function FormatosDeLaActividad({
   instruccion = 'Descarga el formato oficial, diligéncialo y carga aquí el documento firmado.',
   sinFormatos = 'Los documentos se redactan por fuera y se cargan aquí. Cuando Contratación suba los formatos oficiales a la biblioteca de plantillas, podrás descargarlos desde este panel.',
 }: Props) {
-  const formatos = useFormatosAsignados(numeral, modalidad);
+  const { formatos, hayDeOtrasModalidades } = useFormatosAsignados(numeral, modalidad);
 
   // Que el formato exista y que se pueda descargar son cosas distintas: el
   // asignado sin archivo igual anuncia que aquí se entrega ese documento, y
@@ -93,6 +109,22 @@ export function FormatosDeLaActividad({
     // Cadena vacía: callar. Quien monta esto en todas las actividades no puede
     // permitirse una caja explicando la ausencia en las treinta y ocho; quien
     // lo pone en un panel concreto sí quiere decir por qué no hay formato.
+    // Que la actividad tenga formatos pero ninguno alcance a esta modalidad no
+    // es lo mismo que no tener ninguno: uno se resuelve subiendo el formato y
+    // el otro corrigiendo a qué modalidades aplica. Se dice, aunque quien monta
+    // esto haya pedido callar en el caso normal.
+    if (hayDeOtrasModalidades) {
+      return (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 flex items-start gap-2.5">
+          <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <p className="text-[11px] text-amber-900 m-0 leading-relaxed">
+            Esta actividad tiene formatos, pero ninguno aplica a la modalidad de este proceso.
+            Revísalo en la biblioteca de plantillas o continúa sin formato.
+          </p>
+        </div>
+      );
+    }
+
     if (sinFormatos === '') return null;
 
     return (

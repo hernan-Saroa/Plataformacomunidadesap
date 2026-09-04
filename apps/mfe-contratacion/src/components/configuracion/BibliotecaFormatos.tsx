@@ -13,7 +13,7 @@ import {
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { PlantillaFormato } from '../../types';
+import { Modalidad, PlantillaFormato } from '../../types';
 import { Modal } from '../shared/Modal';
 
 import { NOMBRE_ETAPA } from './simbolos';
@@ -236,6 +236,7 @@ function Filtro({
 export function BibliotecaFormatos() {
   const [formatos, setFormatos] = useState<PlantillaFormato[]>([]);
   const [actividades, setActividades] = useState<ActividadCatalogo[]>([]);
+  const [modalidades, setModalidades] = useState<Modalidad[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   /** Qué subconjunto se está mirando: todos, una etapa, o los que no se ven. */
@@ -271,6 +272,14 @@ export function BibliotecaFormatos() {
         ),
       )
       .catch(() => setActividades([]));
+
+    // Para decir a qué modalidades aplica cada formato. Vacío significa todas,
+    // que es lo habitual: solo el estudio previo tiene uno por tipo de
+    // contratación.
+    contratacionService
+      .modalidades()
+      .then(setModalidades)
+      .catch(() => setModalidades([]));
   }, []);
 
   // La etapa de un formato es la de su actividad: el numeral «5.4» vive en la
@@ -316,6 +325,28 @@ export function BibliotecaFormatos() {
       toast.success(numeral ? `Asignado a la actividad ${numeral}` : 'Devuelto a la biblioteca');
     } catch (err: any) {
       toast.error(err.message ?? 'No se pudo asignar');
+    }
+  };
+
+  /**
+   * A qué modalidades aplica el formato. Lista vacía significa todas.
+   *
+   * Va junto a la asignación y no en el formulario de alta porque es una
+   * decisión sobre dónde se usa el formato, no sobre el formato en sí: el
+   * mismo archivo puede servir a todas las modalidades y dejar de servir a
+   * alguna sin que cambie ni su código ni su versión.
+   */
+  const cambiarModalidades = async (formato: PlantillaFormato, modalidad: string) => {
+    const actuales = formato.modalidades ?? [];
+    const siguientes = actuales.includes(modalidad)
+      ? actuales.filter((m) => m !== modalidad)
+      : [...actuales, modalidad];
+
+    try {
+      await contratacionService.asignarPlantilla(formato.id, formato.numeral, siguientes);
+      await cargar();
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudieron guardar las modalidades');
     }
   };
 
@@ -477,7 +508,9 @@ export function BibliotecaFormatos() {
                 key={f.id}
                 formato={f}
                 actividades={actividades}
+                modalidades={modalidades}
                 onAsignar={(numeral) => asignar(f, numeral)}
+                onAlternarModalidad={(m) => cambiarModalidades(f, m)}
                 onEditar={() => setEditando(f)}
                 onCambiarEstado={() => cambiarEstado(f)}
               />
@@ -495,6 +528,9 @@ export function BibliotecaFormatos() {
                     Actividad en la que se ofrece
                   </th>
                   <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                    Modalidades
+                  </th>
+                  <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
                     Archivo
                   </th>
                   <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
@@ -509,7 +545,9 @@ export function BibliotecaFormatos() {
                     key={f.id}
                     formato={f}
                     actividades={actividades}
+                    modalidades={modalidades}
                     onAsignar={(numeral) => asignar(f, numeral)}
+                    onAlternarModalidad={(m) => cambiarModalidades(f, m)}
                     onEditar={() => setEditando(f)}
                     onCambiarEstado={() => cambiarEstado(f)}
                   />
@@ -534,13 +572,17 @@ export function BibliotecaFormatos() {
 function Fila({
   formato,
   actividades,
+  modalidades,
   onAsignar,
+  onAlternarModalidad,
   onEditar,
   onCambiarEstado,
 }: {
   formato: PlantillaFormato;
   actividades: ActividadCatalogo[];
+  modalidades: Modalidad[];
   onAsignar: (numeral: string) => void;
+  onAlternarModalidad: (modalidad: string) => void;
   onEditar: () => void;
   onCambiarEstado: () => void;
 }) {
@@ -575,6 +617,14 @@ function Fila({
         </div>
       </td>
 
+      <td className="px-4 py-2.5">
+        <SelectorModalidades
+          formato={formato}
+          modalidades={modalidades}
+          onAlternar={onAlternarModalidad}
+        />
+      </td>
+
       {/* Sin archivo el formato está declarado pero no se puede descargar: se
           dice, porque un botón que no baja nada se lee como un fallo. */}
       <td className="px-4 py-2.5">
@@ -595,17 +645,104 @@ function Fila({
   );
 }
 
+/**
+ * A qué modalidades aplica el formato.
+ *
+ * Desplegable y no once casillas en la fila: lo habitual es que un formato
+ * sirva para todas —por eso vacío significa todas— y solo el estudio previo
+ * tiene uno por tipo de contratación. Mostrarlas siempre haría que la tabla
+ * gritara una excepción.
+ */
+function SelectorModalidades({
+  formato,
+  modalidades,
+  onAlternar,
+}: {
+  formato: PlantillaFormato;
+  modalidades: Modalidad[];
+  onAlternar: (modalidad: string) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const elegidas = formato.modalidades ?? [];
+
+  const resumen =
+    elegidas.length === 0
+      ? 'Todas'
+      : elegidas.length === 1
+        ? (modalidades.find((m) => m.codigo === elegidas[0])?.nombre ?? elegidas[0])
+        : `${elegidas.length} modalidades`;
+
+  return (
+    <div className="relative w-56">
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        title={
+          elegidas.length === 0
+            ? 'Aplica a todas las modalidades'
+            : elegidas
+                .map((c) => modalidades.find((m) => m.codigo === c)?.nombre ?? c)
+                .join(' · ')
+        }
+        className={`w-full text-left rounded-md border px-2.5 py-1.5 text-[11.5px] transition-colors ${
+          elegidas.length === 0
+            ? 'border-gray-200 bg-white text-slate-500 hover:border-[#003DA5]'
+            : 'border-[#003DA5]/30 bg-[#E0EDFF] text-[#003DA5] font-bold'
+        }`}
+      >
+        {resumen}
+      </button>
+
+      {abierto && (
+        <>
+          {/* Cierra al pulsar fuera: sin esto habría que volver al botón, y con
+              varias filas abiertas la tabla se vuelve ilegible. */}
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={() => setAbierto(false)}
+            className="fixed inset-0 z-10 cursor-default"
+          />
+          <div className="absolute z-20 mt-1 w-72 max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg p-1.5 space-y-0.5">
+            <p className="text-[10.5px] text-slate-500 px-2 py-1 m-0 leading-snug">
+              Sin ninguna marcada, el formato aplica a todas.
+            </p>
+            {modalidades.map((m) => (
+              <label
+                key={m.codigo}
+                className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={elegidas.includes(m.codigo)}
+                  onChange={() => onAlternar(m.codigo)}
+                  className="mt-0.5"
+                />
+                <span className="text-[11.5px] text-slate-700 leading-snug">{m.nombre}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** El mismo formato de la tabla, apilado para la pantalla del teléfono. */
 function TarjetaFormato({
   formato,
   actividades,
+  modalidades,
   onAsignar,
+  onAlternarModalidad,
   onEditar,
   onCambiarEstado,
 }: {
   formato: PlantillaFormato;
   actividades: ActividadCatalogo[];
+  modalidades: Modalidad[];
   onAsignar: (numeral: string) => void;
+  onAlternarModalidad: (modalidad: string) => void;
   onEditar: () => void;
   onCambiarEstado: () => void;
 }) {
@@ -634,6 +771,14 @@ function TarjetaFormato({
           actividades={actividades}
           valor={formato.numeral}
           onCambio={onAsignar}
+        />
+      </div>
+
+      <div className="mt-2">
+        <SelectorModalidades
+          formato={formato}
+          modalidades={modalidades}
+          onAlternar={onAlternarModalidad}
         />
       </div>
 

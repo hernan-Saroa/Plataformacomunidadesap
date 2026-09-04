@@ -13,6 +13,9 @@ import { Plantilla } from '../../entities/plantilla.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { PermisosService } from '../../auth/permisos.service';
+import { access } from 'fs/promises';
+import { basename, join } from 'path';
+import { STORAGE_PATH } from '../archivos';
 
 /** Un documento que la actividad pide, con lo que se haya entregado de él. */
 export interface DocumentoDeLaActividad {
@@ -85,27 +88,32 @@ export class DocumentosActividadService {
         })
       : [];
 
-    const requeridos: DocumentoDeLaActividad[] = aplicables.map((f) => {
-      // El más reciente de ese formato: al sustituir uno se guarda otro, y lo
-      // que la fila debe mostrar es lo que vale ahora.
-      const cargado = documentos.find((d) => d.plantillaId === f.id);
-      return {
-        plantillaId: f.id,
-        codigo: f.codigo,
-        nombre: f.nombre,
-        version: f.version,
-        formatoUrl: f.archivoUrl ?? null,
-        cargado: cargado
-          ? {
-              id: cargado.id,
-              nombre: cargado.archivoNombreOriginal ?? cargado.nombre,
-              descargaUrl: cargado.archivoUrl ?? null,
-              subidoPor: cargado.subidoPor ?? null,
-              cargadoAt: cargado.createdAt.toISOString(),
-            }
-          : null,
-      };
-    });
+    const requeridos: DocumentoDeLaActividad[] = await Promise.all(
+      aplicables.map(async (f) => {
+        // El más reciente de ese formato: al sustituir uno se guarda otro, y
+        // lo que la fila debe mostrar es lo que vale ahora.
+        const cargado = documentos.find((d) => d.plantillaId === f.id);
+        return {
+          plantillaId: f.id,
+          codigo: f.codigo,
+          nombre: f.nombre,
+          version: f.version,
+          // Solo si el archivo está de verdad en disco. Un enlace que devuelve
+          // 404 es peor que no ofrecerlo: el gestor no sabe si falló la red,
+          // si perdió el permiso o si el formato no existe.
+          formatoUrl: (await this.archivoExiste(f.archivoUrl)) ? f.archivoUrl : null,
+          cargado: cargado
+            ? {
+                id: cargado.id,
+                nombre: cargado.archivoNombreOriginal ?? cargado.nombre,
+                descargaUrl: cargado.archivoUrl ?? null,
+                subidoPor: cargado.subidoPor ?? null,
+                cargadoAt: cargado.createdAt.toISOString(),
+              }
+            : null,
+        };
+      }),
+    );
 
     // Lo que se subió sin formato detrás. Se lista aparte y no se pierde: son
     // anexos legítimos, pero no son lo que la actividad exige.
@@ -135,6 +143,29 @@ export class DocumentosActividadService {
        */
       puedeCargar: acceso ? await this.puedeCargar(acceso) : true,
     };
+  }
+
+  /**
+   * Si el archivo del formato está en disco.
+   *
+   * La ruta guardada y el archivo pueden separarse: una restauración de base
+   * sin los adjuntos, un despliegue con volumen nuevo, o un borrado a mano.
+   * Ofrecer entonces «Descargar el formato en blanco» lleva a un 404 crudo, y
+   * el gestor no puede distinguirlo de un fallo de la plataforma.
+   */
+  private async archivoExiste(url: string | null | undefined): Promise<boolean> {
+    if (!url) return false;
+
+    // Solo el nombre: la ruta pública es `/files/<archivo>` y el disco es
+    // STORAGE_PATH. Quedarse con el basename evita que una ruta manipulada
+    // salga del directorio.
+    const nombre = basename(url);
+    try {
+      await access(join(STORAGE_PATH, nombre));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Si el usuario tiene el permiso de cargar documentos del módulo. */
