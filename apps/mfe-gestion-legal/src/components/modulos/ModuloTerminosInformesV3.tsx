@@ -564,17 +564,25 @@ export function ModuloTerminosInformesV3() {
       { width: 16 }, { width: 40 }, { width: 26 }, { width: 30 }, { width: 22 }, { width: 14 }, { width: 18 }, { width: 14 }
     ];
 
+    worksheet.mergeCells(1, 1, 1, headers.length);
+    const titleCell = worksheet.getCell(1, 1);
+    titleCell.value = 'CALENDARIO DE VENCIMIENTOS — TÉRMINOS E INFORMES';
+    titleCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 14 };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003DA5' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(1).height = 28;
+
     headers.forEach((header, index) => {
-      const cell = worksheet.getCell(1, index + 1);
+      const cell = worksheet.getCell(2, index + 1);
       cell.value = header;
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003DA5' } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     });
-    worksheet.getRow(1).height = 22;
+    worksheet.getRow(2).height = 22;
 
     solicitudesFiltradas.forEach((s, index) => {
-      const row = worksheet.getRow(index + 2);
+      const row = worksheet.getRow(index + 3);
       row.getCell(1).value = s.id;
       row.getCell(2).value = s.asunto || 'Sin asunto';
       row.getCell(3).value = s.destinatario || 'Sin asignar';

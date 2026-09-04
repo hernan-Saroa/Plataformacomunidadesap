@@ -26,6 +26,7 @@ import { PermisosProvider } from '../config/PermisosContext';
 import { ConfiguracionesSIGLProvider } from '../config/ConfiguracionesSIGLContext';
 import { legalService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
+import ExcelJS from 'exceljs';
 
 function crearSolicitud(overrides: Partial<SolicitudInforme> = {}): SolicitudInforme {
   return {
@@ -361,5 +362,51 @@ describe('ModuloTerminosInformesV3 · Eliminar término desde el Timeline de Ven
 
     await waitFor(() => expect(legalService.eliminarTermino).toHaveBeenCalledWith('uuid-a'));
     expect(legalService.eliminarTermino).not.toHaveBeenCalledWith('uuid-b');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Regresión: el Excel exportado no incluía el título del reporte en el encabezado, a diferencia
+// del PDF (que sí lo tiene). Este test monta el módulo completo, dispara la exportación real a
+// Excel (mockeando solo la descarga vía window.URL.createObjectURL) y relee el .xlsx generado
+// con ExcelJS para verificar que la fila 1 contiene el mismo título que el PDF.
+// ---------------------------------------------------------------------------------------------
+describe('ModuloTerminosInformesV3 · Exportar a Excel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(legalService.getTerminosListado).mockReset();
+  });
+
+  it('el Excel exportado incluye el título del reporte en el encabezado, igual que el PDF', async () => {
+    const user = userEvent.setup();
+    vi.mocked(legalService.getTerminosListado).mockResolvedValue([
+      crearTerminoBackend({ id: 'uuid-1', numeroRadicado: 'PD-2024-100' }),
+    ]);
+
+    // jsdom no implementa Blob.arrayBuffer(), así que capturamos el ArrayBuffer directamente
+    // del constructor de Blob en lugar de leerlo de vuelta desde el objeto Blob.
+    let excelBufferCapturado: ArrayBuffer | null = null;
+    const OriginalBlob = window.Blob;
+    window.Blob = vi.fn((parts: BlobPart[], options?: BlobPropertyBag) => {
+      excelBufferCapturado = parts[0] as ArrayBuffer;
+      return new OriginalBlob(parts, options);
+    }) as unknown as typeof Blob;
+    window.URL.createObjectURL = vi.fn(() => '#');
+    window.URL.revokeObjectURL = vi.fn();
+
+    await montarYEsperarCarga();
+
+    await user.click(screen.getAllByText('Exportar')[0]);
+    await user.click(await screen.findByText('Excel'));
+
+    await waitFor(() => expect(excelBufferCapturado).not.toBeNull());
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(excelBufferCapturado!) as unknown as ArrayBuffer);
+    const worksheet = workbook.getWorksheet('Términos e Informes')!;
+
+    expect(worksheet.getCell(1, 1).value).toBe('CALENDARIO DE VENCIMIENTOS — TÉRMINOS E INFORMES');
+    expect(worksheet.getCell(2, 1).value).toBe('ID');
+    expect(worksheet.getCell(3, 1).value).toBe('PD-2024-100');
   });
 });
