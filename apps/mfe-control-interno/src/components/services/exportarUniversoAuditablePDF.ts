@@ -641,8 +641,10 @@ const EXCEL_COLORS = {
 
 // Colores para niveles de riesgo
 const RISK_COLORS: Record<string, string> = {
+  'EXTREMO': EXCEL_COLORS.danger,
   'CRÍTICO': EXCEL_COLORS.danger,
   'ALTO': 'FFFF6B6B',
+  'MODERADO': EXCEL_COLORS.warning,
   'MEDIO': EXCEL_COLORS.warning,
   'BAJO': EXCEL_COLORS.success,
   'MUY BAJO': 'FF00D4AA',
