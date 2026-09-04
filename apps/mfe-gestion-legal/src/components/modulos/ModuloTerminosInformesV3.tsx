@@ -11,7 +11,7 @@ import ExcelJS from 'exceljs';
 import {
   Calendar, Search, Filter, FileText, AlertTriangle, Clock, CheckCircle,
   List, Calendar as CalendarIcon, TrendingUp, Link, Plus, Eye,
-  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download
+  ChevronLeft, ChevronRight, CalendarDays, Archive, Trash2, Download, FileSpreadsheet
 } from 'lucide-react';
 import { CardSIGL } from '../design-system/CardSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
@@ -823,25 +823,46 @@ export function ModuloTerminosInformesV3() {
       {/* Modal Seleccionar Formato de Exportación */}
       {modalExportarOpen && (
         <Dialog open={modalExportarOpen} onOpenChange={setModalExportarOpen}>
-          <DialogContent hideCloseButton className="max-w-md">
+          <DialogContent hideCloseButton className="max-w-sm">
             <DialogTitle>Exportar términos e informes</DialogTitle>
             <DialogDescription>
               Seleccione el formato en el que desea descargar {solicitudesFiltradas.length} término{solicitudesFiltradas.length === 1 ? '' : 's'}.
             </DialogDescription>
 
-            <div className="flex gap-3 pt-2">
-              <Button variant="outline" onClick={handleExportarPDF} className="flex-1 flex-col h-auto py-4 gap-1">
-                <FileText className="w-6 h-6" />
-                <span className="font-semibold">PDF</span>
+            <div className="flex justify-center gap-4 py-3">
+              <Button
+                variant="outline"
+                onClick={handleExportarPDF}
+                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-red-300 hover:bg-red-50/60"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+                  <FileText className="w-5 h-5" />
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className="text-sm font-semibold text-gray-900">PDF</span>
+                  <span className="text-xs text-gray-500">Documento</span>
+                </span>
               </Button>
-              <Button variant="outline" onClick={handleExportarExcel} className="flex-1 flex-col h-auto py-4 gap-1">
-                <Download className="w-6 h-6" />
-                <span className="font-semibold">Excel (.xlsx)</span>
+              <Button
+                variant="outline"
+                onClick={handleExportarExcel}
+                className="w-32 h-auto flex-col gap-2 py-4 border-gray-200 hover:border-green-300 hover:bg-green-50/60"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-50 text-green-600">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </span>
+                <span className="flex flex-col items-center leading-tight">
+                  <span className="text-sm font-semibold text-gray-900">Excel</span>
+                  <span className="text-xs text-gray-500">.xlsx</span>
+                </span>
               </Button>
             </div>
-            <Button variant="outline" onClick={() => setModalExportarOpen(false)} className="w-full">
-              Cancelar
-            </Button>
+
+            <div className="flex justify-center border-t border-gray-100 pt-3">
+              <Button variant="ghost" onClick={() => setModalExportarOpen(false)} className="text-gray-500 hover:text-gray-700">
+                Cancelar
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}
