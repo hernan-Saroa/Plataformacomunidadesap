@@ -101,12 +101,14 @@ export class DocumentosActividadService {
           // Solo si el archivo está de verdad en disco. Un enlace que devuelve
           // 404 es peor que no ofrecerlo: el gestor no sabe si falló la red,
           // si perdió el permiso o si el formato no existe.
-          formatoUrl: (await this.archivoExiste(f.archivoUrl)) ? f.archivoUrl : null,
+          formatoUrl: (await this.archivoExiste(f.archivoUrl))
+            ? this.rutaDescarga(f.archivoUrl)
+            : null,
           cargado: cargado
             ? {
                 id: cargado.id,
                 nombre: cargado.archivoNombreOriginal ?? cargado.nombre,
-                descargaUrl: cargado.archivoUrl ?? null,
+                descargaUrl: this.rutaDescarga(cargado.archivoUrl),
                 subidoPor: cargado.subidoPor ?? null,
                 cargadoAt: cargado.createdAt.toISOString(),
               }
@@ -122,7 +124,7 @@ export class DocumentosActividadService {
       .map((d) => ({
         id: d.id,
         nombre: d.archivoNombreOriginal ?? d.nombre,
-        descargaUrl: d.archivoUrl ?? null,
+        descargaUrl: this.rutaDescarga(d.archivoUrl),
         subidoPor: d.subidoPor ?? null,
         cargadoAt: d.createdAt.toISOString(),
       }));
@@ -146,6 +148,19 @@ export class DocumentosActividadService {
   }
 
   /**
+   * La ruta con la que la pantalla descarga el archivo.
+   *
+   * La columna guarda prefijos distintos segun que modulo escribiera: los
+   * paneles ponen `hiring/files/` y la biblioteca de formatos `/files/`. El
+   * cliente le antepone el prefijo del servicio a lo que reciba, asi que
+   * devolver la columna cruda da un 404 en la mitad de los casos. Se rearma
+   * desde el nombre, que es lo unico que el controlador necesita.
+   */
+  private rutaDescarga(url: string | null | undefined): string | null {
+    return url ? `/files/${basename(url)}` : null;
+  }
+
+  /**
    * Si el archivo del formato está en disco.
    *
    * La ruta guardada y el archivo pueden separarse: una restauración de base
@@ -156,9 +171,10 @@ export class DocumentosActividadService {
   private async archivoExiste(url: string | null | undefined): Promise<boolean> {
     if (!url) return false;
 
-    // Solo el nombre: la ruta pública es `/files/<archivo>` y el disco es
-    // STORAGE_PATH. Quedarse con el basename evita que una ruta manipulada
-    // salga del directorio.
+    // Solo el nombre. La columna guarda prefijos distintos segun quien
+    // escribiera —`hiring/files/`, `/files/`— y en disco todos son el mismo
+    // directorio; el basename los iguala y evita que una ruta manipulada
+    // salga de STORAGE_PATH.
     const nombre = basename(url);
     try {
       await access(join(STORAGE_PATH, nombre));
@@ -233,7 +249,7 @@ export class DocumentosActividadService {
           numeral,
           tipo: 'ADJUNTO',
           nombre: plantilla?.nombre ?? archivo.originalname,
-          archivoUrl: `/archivos/${archivo.filename}`,
+          archivoUrl: `hiring/files/${archivo.filename}`,
           archivoNombreOriginal: archivo.originalname,
           archivoMimeType: archivo.mimetype,
           archivoTamano: archivo.size,
