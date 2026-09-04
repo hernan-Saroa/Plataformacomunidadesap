@@ -102,8 +102,20 @@ export class TravelExpensesService {
       query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
     }
 
+    // Orden por prioridad de estado (vista general): Radicadas → Extemporáneas →
+    // Solicitadas (en revisión) → Pendientes → resto. Dentro del mismo estado
+    // se ordena por fecha de creación (más reciente primero).
     query
-      .orderBy('s.extemporanea', 'DESC')
+      .orderBy(
+        `CASE s.estado_solicitud
+           WHEN 'RADICADA' THEN 1
+           WHEN 'EXTEMPORANEA' THEN 2
+           WHEN 'SOLICITADO' THEN 3
+           WHEN 'PENDIENTE' THEN 4
+           ELSE 5
+         END`,
+        'ASC',
+      )
       .addOrderBy('s.estadoSolicitud', 'ASC')
       .addOrderBy('s.creadoEn', 'DESC');
 

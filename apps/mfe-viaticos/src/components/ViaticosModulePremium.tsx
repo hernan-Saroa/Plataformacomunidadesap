@@ -30,6 +30,22 @@ import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
 
 type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
 
+/**
+ * Orden de la vista general de solicitudes por estado (según requerimiento):
+ * 1) Radicadas, 2) Extemporáneas, 3) Solicitadas (en revisión), 4) Pendientes
+ * (borradores) y el resto al final.
+ */
+const ORDEN_ESTADOS_TABLA: Record<string, number> = {
+  RADICADA: 1,
+  EXTEMPORANEA: 2,
+  SOLICITADO: 3,
+  PENDIENTE: 4,
+};
+
+function prioridadEstadoTabla(estado: string): number {
+  return ORDEN_ESTADOS_TABLA[estado] ?? 5;
+}
+
 export default function ViaticosModulePremium() {
   const [seccion, setSeccion] = useState<Seccion>('solicitudes');
   const [solicitudes, setSolicitudes] = useState<SolicitudViatico[]>([]);
@@ -109,17 +125,25 @@ export default function ViaticosModulePremium() {
     },
   ];
 
-  const solicitudesFiltradas = solicitudes.filter((sol) => {
-    const termino = busqueda.toLowerCase();
-    const cumpleBusqueda =
-      !termino ||
-      sol.nombreComisionado.toLowerCase().includes(termino) ||
-      sol.codigo.toLowerCase().includes(termino) ||
-      sol.ciudadDestino.toLowerCase().includes(termino) ||
-      sol.dependencia.toLowerCase().includes(termino);
-    const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
-    return cumpleBusqueda && cumpleEstado;
-  });
+  const solicitudesFiltradas = solicitudes
+    .filter((sol) => {
+      const termino = busqueda.toLowerCase();
+      const cumpleBusqueda =
+        !termino ||
+        sol.nombreComisionado.toLowerCase().includes(termino) ||
+        sol.codigo.toLowerCase().includes(termino) ||
+        sol.ciudadDestino.toLowerCase().includes(termino) ||
+        sol.dependencia.toLowerCase().includes(termino);
+      const cumpleEstado = filtroEstado === 'TODOS' || sol.estado === filtroEstado;
+      return cumpleBusqueda && cumpleEstado;
+    })
+    // Orden por prioridad de estado y, dentro del mismo estado, por fecha de
+    // creación (más reciente primero).
+    .sort(
+      (a, b) =>
+        prioridadEstadoTabla(a.estado) - prioridadEstadoTabla(b.estado) ||
+        (a.creadoEn < b.creadoEn ? 1 : -1),
+    );
 
   const getBadgeEstado = (estado: string) => {
     const c = getConfigEstado(estado);
