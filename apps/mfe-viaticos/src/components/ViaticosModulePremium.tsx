@@ -205,6 +205,7 @@ export default function ViaticosModulePremium() {
           }}
           onSolicitudCreada={handleSolicitudCreada}
           solicitudAResumir={solicitudAResumir}
+          esSuperAdmin={esSuperAdmin}
         />
       ) : (
         <>

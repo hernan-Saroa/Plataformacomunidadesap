@@ -62,11 +62,36 @@ interface Props {
   onCerrar: () => void;
   onSolicitudCreada: (solicitud: SolicitudComisionResponse) => void;
   solicitudAResumir?: SolicitudComisionResponse | null;
+  /** Usuario elevado según el backend de viáticos (mismo flag que usa
+   * `ViaticosModulePremium` desde `obtenerSolicitudes()`). Si se entrega,
+   * es la fuente autoritativa para decidir si se muestra el catálogo
+   * completo de dependencias. */
+  esSuperAdmin?: boolean;
+}
+
+interface UsuarioContexto {
+  esSuperAdmin: boolean;
+  dependencia: {
+    idDependencia?: number;
+    codDependencia?: string;
+    nomDependencia?: string;
+  } | null;
 }
 
 const PASOS = ['Comisionado', 'Objeto y Destino', 'Documentos', 'Confirmación'];
 
-export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, solicitudAResumir }: Props) {
+/**
+ * Detecta por rol si el usuario es SUPER_ADMIN (o variantes normalizadas
+ * como SUPERADMIN / SUPER_ADMINISTRADOR). Es un respaldo cuando el shell
+ * no ha entregado aún el flag `esSuperAdmin` del backend de viáticos.
+ */
+const tieneRolSuperAdmin = (roles: string[] = []): boolean =>
+  roles.some((r) => {
+    const limpio = String(r).replace(/[^a-zA-Z]/g, '').toUpperCase();
+    return limpio.includes('SUPER') && limpio.includes('ADMIN');
+  });
+
+export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, solicitudAResumir, esSuperAdmin }: Props) {
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
@@ -94,9 +119,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     userId: string;
     username: string;
     roles?: string[];
-    dependencia?: { codDependencia?: string; nomDependencia?: string } | null;
+    dependencia?: {
+      idDependencia?: number;
+      codDependencia?: string;
+      nomDependencia?: string;
+    } | null;
   } | null>(null);
-  const [esAdminViaticos, setEsAdminViaticos] = useState(false);
+  const [esSuperAdminViaticos, setEsSuperAdminViaticos] = useState(false);
   const [cargandoUsuario, setCargandoUsuario] = useState(false);
   const [parametrizacion, setParametrizacion] = useState<ConfigTipoComisionado | null>(null);
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
@@ -158,71 +187,107 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   };
 
-  const cargarDependencias = async () => {
-    // Los usuarios con rol de "enlace" no pueden elegir dependencia: el campo
-    // se bloquea a la dependencia asociada a su persona. Solo los admins
-    // (ADMIN / SUPER_ADMIN / ADMINISTRATIVO) ven el catálogo completo.
-    if (!esAdminViaticos) {
-      const codPropio = usuarioActual?.dependencia?.codDependencia || '';
-      setDependencias([]);
-      setCargandoDependencias(false);
-      if (codPropio) {
-        setDependenciaId(codPropio);
+  const cargarDependencias = async (ctx: UsuarioContexto) => {
+    // Usuario elevado (superadmin según el backend de viáticos): ve el
+    // catálogo completo de dependencias para elegir la solicitante.
+    if (ctx.esSuperAdmin) {
+      setCargandoDependencias(true);
+      try {
+        const data = await viaticosService.obtenerDependencias();
+        setDependencias(data);
+        // Si el valor actual no existe en el catálogo (caso normal al abrir
+        // el modal vacío o al reanudar), seleccionamos la primera activa.
+        if (data.length > 0) {
+          const existe = data.some((d) => d.codDependencia === dependenciaId);
+          if (!existe) {
+            setDependenciaId(data[0].codDependencia);
+          }
+        }
+      } catch (e) {
+        console.error('Error cargando dependencias:', e);
+        setDependencias([]);
+      } finally {
+        setCargandoDependencias(false);
       }
       return;
     }
-    setCargandoDependencias(true);
-    try {
-      const data = await viaticosService.obtenerDependencias();
-      setDependencias(data);
-      // Si el valor actual no existe en el catálogo (caso normal al abrir
-      // el modal vacío o al reanudar), seleccionamos la primera activa.
-      if (data.length > 0) {
-        const existe = data.some((d) => d.codDependencia === dependenciaId);
-        if (!existe) {
-          setDependenciaId(data[0].codDependencia);
+
+    // Cualquier otro rol: el campo queda bloqueado a la dependencia asociada
+    // a su persona. Nunca se muestra el catálogo ni se permite cambiarla.
+    setDependencias([]);
+    setCargandoDependencias(false);
+    let codPropio = ctx.dependencia?.codDependencia || '';
+    let nomPropio = ctx.dependencia?.nomDependencia || '';
+    const idPropio = ctx.dependencia?.idDependencia;
+
+    // Si la sesión sólo trajo idDependencia numérica (sin el objeto anidado
+    // con codDependencia), la resolvemos contra el catálogo para poder
+    // mostrarla y enviarla al validar tiquetes.
+    if (!codPropio && idPropio != null) {
+      setCargandoDependencias(true);
+      try {
+        const catalogo = await viaticosService.obtenerDependencias();
+        const match = catalogo.find(
+          (d) => Number(d.idDependencia) === Number(idPropio),
+        );
+        if (match) {
+          codPropio = match.codDependencia;
+          nomPropio = match.nomDependencia;
         }
+      } catch (e) {
+        console.error('Error resolviendo la dependencia del usuario:', e);
+      } finally {
+        setCargandoDependencias(false);
       }
-    } catch (e) {
-      console.error('Error cargando dependencias:', e);
-      setDependencias([]);
-    } finally {
-      setCargandoDependencias(false);
+    }
+
+    if (codPropio) {
+      setDependenciaId(codPropio);
+      // Refleja el código/nombre resuelto para el campo bloqueado.
+      setUsuarioActual((prev) =>
+        prev
+          ? {
+              ...prev,
+              dependencia: {
+                ...(prev.dependencia || {}),
+                codDependencia: codPropio,
+                nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
+              },
+            }
+          : prev,
+      );
     }
   };
 
-  const cargarUsuarioActual = async () => {
+  const cargarUsuarioActual = async (): Promise<UsuarioContexto> => {
     setCargandoUsuario(true);
     try {
       const usuario = await authService.getCurrentUser();
       if (usuario) {
-        const roles = (usuario.roles || []).map((r) =>
-          String(r || '').toUpperCase().replace(/\s+/g, '_'),
-        );
-        const esAdmin = roles.some((r) =>
-          [
-            'ADMIN',
-            'SUPER_ADMIN',
-            'ADMINISTRATIVO',
-            'SUPER_ADMINISTRADOR',
-            'SUPER_ADMINISTRADOR',
-          ].includes(r),
-        );
-        setEsAdminViaticos(esAdmin);
+        const dependencia = usuario.person?.dependencia
+          ? {
+            idDependencia: usuario.person.dependencia.idDependencia,
+            codDependencia: usuario.person.dependencia.codDependencia,
+            nomDependencia: usuario.person.dependencia.nomDependencia,
+          }
+          : null;
+        // Respaldo por rol (se complementa con el flag del backend de
+        // viáticos en el efecto de apertura del modal).
+        const superAdmin = tieneRolSuperAdmin(usuario.roles);
         setUsuarioActual({
           userId: usuario.userId,
           username: usuario.username,
           roles: usuario.roles,
-          dependencia: usuario.person?.dependencia
-            ? {
-                codDependencia: usuario.person.dependencia.codDependencia,
-                nomDependencia: usuario.person.dependencia.nomDependencia,
-              }
-            : null,
+          dependencia,
         });
+        return { esSuperAdmin: superAdmin, dependencia };
       }
+      setUsuarioActual(null);
+      return { esSuperAdmin: false, dependencia: null };
     } catch (e) {
       console.error('Error cargando usuario actual:', e);
+      setUsuarioActual(null);
+      return { esSuperAdmin: false, dependencia: null };
     } finally {
       setCargandoUsuario(false);
     }
@@ -326,7 +391,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setCiudades([]);
       setCiudadesDepto('');
       setUsuarioActual(null);
-      setEsAdminViaticos(false);
+      setEsSuperAdminViaticos(false);
       setCargandoUsuario(false);
       setParametrizacion(null);
       setDocumentosFaltantes([]);
@@ -351,11 +416,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorExcepcion(null);
       void cargarDepartamentos();
       // La carga de dependencias depende del rol: primero resolvemos el
-      // usuario para saber si es admin (catálogo completo) o enlace
-      // (solo su dependencia bloqueada).
+      // usuario y su dependencia asociada. El usuario elevado —superadmin
+      // según el backend de viáticos (el mismo flag que usa
+      // `ViaticosModulePremium` desde `obtenerSolicitudes()`) o por rol
+      // SUPER_ADMIN— ve el catálogo completo; el resto queda bloqueado a la
+      // dependencia de su persona. El contexto resuelto se pasa directo a
+      // `cargarDependencias` para evitar lecturas de estado ajenas a su
+      // render (stale closure) que todavía están en null/false la primera
+      // vez que se abre el modal.
       void (async () => {
-        await cargarUsuarioActual();
-        await cargarDependencias();
+        const ctx = await cargarUsuarioActual();
+        const superAdmin = ctx.esSuperAdmin || esSuperAdmin === true;
+        setEsSuperAdminViaticos(superAdmin);
+        await cargarDependencias({ ...ctx, esSuperAdmin: superAdmin });
       })();
       if (solicitudAResumir) {
         void cargarSolicitudAResumir(solicitudAResumir);
@@ -1454,7 +1527,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             <label className={labelCls} htmlFor="dependenciaId">
                               Dependencia solicitante
                             </label>
-                            {esAdminViaticos ? (
+                            {esSuperAdminViaticos ? (
                               <>
                                 <SearchableSelect
                                   id="dependenciaId"
@@ -1486,11 +1559,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                       : 'Sin dependencia asignada a su usuario'}
                                   </span>
                                   <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-2">
-                                    Enlace
+                                    Automática
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-slate-500 mt-1">
-                                  Como usuario enlace, la dependencia se asigna automáticamente desde su perfil y no puede modificarse.
+                                  Su dependencia se asigna automáticamente desde su perfil y no puede modificarse.
                                 </p>
                               </>
                             )}
