@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ClipboardCheck, Send, Undo2 } from 'lucide-react';
+import { Check, ClipboardCheck, Send, Undo2, X } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 
@@ -26,6 +26,16 @@ interface Props {
    * exactamente el caso legítimo.
    */
   faltanDocumentos?: number;
+  /**
+   * Cierra la tarjeta de decisión y la deja como burbuja.
+   *
+   * Quien no va a resolver ahora —el gestor que solo viene a cargar un
+   * documento— puede quitarla de en medio sin perderla de vista: la burbuja
+   * sigue diciendo que hay algo pendiente.
+   */
+  onEsconder?: () => void;
+  /** Avisa de si hay decisión que tomar, para pintar la burbuja. */
+  onHayDecision?: (hay: boolean) => void;
 }
 
 const boton =
@@ -57,10 +67,27 @@ export function AprobacionDeLaActividad({
   onCambio,
   parte,
   faltanDocumentos = 0,
+  onEsconder,
+  onHayDecision,
 }: Props) {
   const a = usarAprobacion(procesoId, numeral, onCambio);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
+
+  /**
+   * Si hay algo que decidir aquí, hacia quien monta el bloque.
+   *
+   * Lo necesita el contenedor para saber si abre la columna y si pinta la
+   * burbuja: sin el aviso reservaría sitio para una decisión que quizá no
+   * existe, o dejaría una burbuja flotando sin nada detrás.
+   */
+  const hayDecision =
+    parte === 'decision' && !a.cargando && a.requiereAprobacion &&
+    a.estado === 'EN_REVISION' && a.puedoAprobar;
+
+  React.useEffect(() => {
+    onHayDecision?.(hayDecision);
+  }, [hayDecision, onHayDecision]);
 
   // Mientras carga tampoco: un bloque que aparece tarde desplaza el panel
   // justo cuando el gestor ya empezó a leerlo.
@@ -111,77 +138,112 @@ export function AprobacionDeLaActividad({
     if (parte === 'decision') {
       if (!a.puedoAprobar) return null;
 
+      // Marco propio, y no el de los documentos: aprobar o devolver es el acto
+      // que cierra la actividad, no un anexo más del expediente. Dentro de la
+      // caja de adjuntos, bajo «Adjuntar otro documento», se leía como uno.
       return (
-        <div className="space-y-2.5">
-          <div>
-            <p className="text-[12.5px] font-bold text-slate-800 m-0">Tu decisión</p>
-            <p className="text-[11px] text-slate-500 m-0 mt-0.5">
+        <div className="rounded-xl border border-[#003DA5]/25 bg-white overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+          <div className="flex items-start gap-2.5 px-4 py-3 bg-[#EFF5FF] border-b border-[#003DA5]/15">
+            <ClipboardCheck
+              className="w-4 h-4 text-[#003DA5] mt-0.5 flex-shrink-0"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-bold text-[#00307f] m-0">Tu decisión</p>
+              <p className="text-[11px] text-[#1E40AF]/80 m-0 mt-0.5">
+                Sobre la actividad {numeral}
+              </p>
+            </div>
+
+            {/* Esconderla es reversible y la burbuja la devuelve: el gestor que
+                solo viene a cargar un documento no necesita el bloque encima. */}
+            {onEsconder ? (
+              <button
+                type="button"
+                onClick={onEsconder}
+                aria-label="Esconder la decisión"
+                title="Esconder"
+                className="flex-shrink-0 -mt-0.5 -mr-1 p-1 rounded-md text-[#003DA5]/60 hover:text-[#003DA5] hover:bg-[#003DA5]/10 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+
+          <div className="px-4 py-3.5 space-y-2.5">
+            <p
+              className={`text-[11px] m-0 leading-relaxed ${
+                faltanDocumentos > 0 ? 'text-amber-700 font-bold' : 'text-slate-500'
+              }`}
+            >
               {faltanDocumentos > 0
                 ? `${
                     faltanDocumentos === 1
                       ? 'Falta un formato por cargar'
                       : `Faltan ${faltanDocumentos} formatos por cargar`
                   }. Puedes devolverla para que lo carguen.`
-                : 'Revisa los documentos de arriba antes de resolver.'}
+                : 'Revisa los documentos antes de resolver.'}
             </p>
-          </div>
 
-          {devolviendo ? (
-            <>
-              <textarea
-                rows={3}
-                value={motivo}
-                onChange={(e) => setMotivo(e.target.value)}
-                placeholder="Qué debe corregirse"
-                aria-label="Observaciones de la devolución"
-                className={campo}
-              />
-              <div className="flex flex-wrap gap-2">
+            {devolviendo ? (
+              <>
+                <textarea
+                  rows={3}
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                  placeholder="Qué debe corregirse"
+                  aria-label="Observaciones de la devolución"
+                  className={campo}
+                />
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    className={`${secundario} justify-center w-full`}
+                    onClick={() => a.devolver(motivo)}
+                    disabled={a.guardando || !motivo.trim()}
+                  >
+                    <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    Devolver
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDevolviendo(false)}
+                    className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 py-1"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Apilados y a todo el ancho: en una columna de 17rem, dos
+                 botones en fila se parten a media palabra. */
+              <div className="flex flex-col gap-1.5">
                 <button
                   type="button"
-                  className={secundario}
-                  onClick={() => a.devolver(motivo)}
-                  disabled={a.guardando || !motivo.trim()}
+                  className={`${primario} justify-center w-full`}
+                  onClick={a.aprobar}
+                  disabled={a.guardando || faltanDocumentos > 0}
+                  title={
+                    faltanDocumentos > 0
+                      ? 'No se puede aprobar mientras falten formatos por cargar'
+                      : undefined
+                  }
+                >
+                  <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
+                  Aprobar
+                </button>
+                <button
+                  type="button"
+                  className={`${secundario} justify-center w-full`}
+                  onClick={() => setDevolviendo(true)}
+                  disabled={a.guardando}
                 >
                   <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Devolver
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDevolviendo(false)}
-                  className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 px-2"
-                >
-                  Cancelar
+                  Devolver con observaciones
                 </button>
               </div>
-            </>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={primario}
-                onClick={a.aprobar}
-                disabled={a.guardando || faltanDocumentos > 0}
-                title={
-                  faltanDocumentos > 0
-                    ? 'No se puede aprobar mientras falten formatos por cargar'
-                    : undefined
-                }
-              >
-                <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
-                Aprobar
-              </button>
-              <button
-                type="button"
-                className={secundario}
-                onClick={() => setDevolviendo(true)}
-                disabled={a.guardando}
-              >
-                <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-                Devolver con observaciones
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       );
     }
@@ -192,7 +254,9 @@ export function AprobacionDeLaActividad({
         {encabezado(
           'En revisión · pendiente de aprobación',
           a.puedoAprobar
-            ? 'Te toca resolverla: la decisión está al final, bajo los documentos.'
+            ? // Ya no se dice dónde está la decisión: la tarjeta la acompaña
+              // a la vista, y si la esconde, la burbuja se la devuelve.
+              'Te toca resolverla.'
             : a.quienAprueba.length
               ? `Espera a ${a.quienAprueba.join(' o ')}.`
               : undefined,

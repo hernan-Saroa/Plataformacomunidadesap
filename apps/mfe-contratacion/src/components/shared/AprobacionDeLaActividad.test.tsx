@@ -172,4 +172,68 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
 
     expect(await screen.findByRole('button', { name: /Aprobar/ })).toBeEnabled();
   });
+
+  it('avisa de que hay decisión, para que el contenedor abra la columna', async () => {
+    const avisar = vi.fn();
+    vi.spyOn(contratacionService, 'aprobadoresDeActividad').mockResolvedValue(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true }) as never,
+    );
+    render(
+      <AprobacionDeLaActividad
+        procesoId={PROCESO}
+        numeral="5.9"
+        parte="decision"
+        onHayDecision={avisar}
+      />,
+    );
+
+    await waitFor(() => expect(avisar).toHaveBeenCalledWith(true));
+  });
+
+  it('no avisa de decisión cuando el rol no aprueba', async () => {
+    const avisar = vi.fn();
+    vi.spyOn(contratacionService, 'aprobadoresDeActividad').mockResolvedValue(
+      estado({ estado: 'EN_REVISION', puedoAprobar: false }) as never,
+    );
+    render(
+      <AprobacionDeLaActividad
+        procesoId={PROCESO}
+        numeral="5.9"
+        parte="decision"
+        onHayDecision={avisar}
+      />,
+    );
+
+    // Sin esto, el contenedor reservaría la columna y pintaría una burbuja
+    // para alguien que no tiene nada que resolver.
+    await waitFor(() => expect(avisar).toHaveBeenCalled());
+    expect(avisar).not.toHaveBeenCalledWith(true);
+  });
+
+  it('se puede esconder, y solo cuando alguien sabe recogerla', async () => {
+    const esconder = vi.fn();
+    vi.spyOn(contratacionService, 'aprobadoresDeActividad').mockResolvedValue(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true }) as never,
+    );
+    render(
+      <AprobacionDeLaActividad
+        procesoId={PROCESO}
+        numeral="5.9"
+        parte="decision"
+        onEsconder={esconder}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /Esconder la decisión/ }));
+    expect(esconder).toHaveBeenCalled();
+  });
+
+  it('sin quien la recoja no se ofrece esconderla', async () => {
+    // El botón desaparecería la tarjeta sin dejar burbuja: sería una forma de
+    // perder de vista lo que hay que resolver.
+    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision', 0);
+
+    await screen.findByRole('button', { name: /Aprobar/ });
+    expect(screen.queryByRole('button', { name: /Esconder/ })).toBeNull();
+  });
 });

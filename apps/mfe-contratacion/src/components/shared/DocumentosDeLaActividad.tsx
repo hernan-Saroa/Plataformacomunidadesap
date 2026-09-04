@@ -16,17 +16,13 @@ interface Props {
   recargarToken?: number;
   onCambio?: () => void;
   /**
-   * Los botones de aprobar o devolver, si la actividad los pide.
+   * Cuántos formatos requeridos siguen sin cargar, para quien monte el bloque.
    *
-   * Van dentro de este bloque y no encima del panel porque quien decide tiene
-   * que ver primero lo que le cargaron: con la decisión arriba aprobaría sin
-   * haber mirado el documento.
-   *
-   * Es una función y no un nodo porque necesita saber cuántos formatos faltan:
-   * sin ese dato el botón de aprobar quedaba activo debajo del aviso «Falta 1
-   * de 1», que es justo la contradicción que hay que evitar.
+   * Lo necesita la decisión de aprobación, que vive fuera de este componente:
+   * sin el dato, el botón de aprobar quedaba activo aunque el encabezado de
+   * aquí dijera «Falta 1 de 1».
    */
-  pie?: (faltan: number) => React.ReactNode;
+  onFaltantes?: (faltan: number) => void;
   /**
    * Solo lo que quedó en el expediente, sin las filas de formatos.
    *
@@ -58,7 +54,7 @@ export function DocumentosDeLaActividad({
   numeral,
   recargarToken,
   onCambio,
-  pie,
+  onFaltantes,
   soloExpediente = false,
 }: Props) {
   const [estado, setEstado] = useState<EstadoDocumentosActividad | null>(null);
@@ -98,6 +94,18 @@ export function DocumentosDeLaActividad({
   useEffect(() => {
     leer();
   }, [leer, recargarToken]);
+
+  /**
+   * Cuántos formatos faltan, hacia quien monta el bloque.
+   *
+   * La decisión de aprobación vive fuera —es un acto sobre la actividad, no un
+   * documento más— pero necesita el dato para no dejar aprobar sin soporte.
+   */
+  useEffect(() => {
+    if (!onFaltantes) return;
+    const requeridos = soloExpediente ? [] : (estado?.requeridos ?? []);
+    onFaltantes(requeridos.filter((r) => !r.cargado).length);
+  }, [estado, soloExpediente, onFaltantes]);
 
   const cargar = async (archivo: File, plantillaId: string | undefined, clave: string) => {
     setOcupado(clave);
@@ -146,18 +154,15 @@ export function DocumentosDeLaActividad({
         estado.adicionales.length === 0 &&
         delExpediente.length === 0);
 
-  if (!estado || sinNada) {
-    const soloDecision = pie?.(0);
-    return soloDecision ? (
-      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">{soloDecision}</div>
-    ) : null;
-  }
+  // Sin documentos el bloque no se pinta. La decisión ya no depende de esto:
+  // vive fuera, en su propia franja, y se monta aunque no haya nada que
+  // adjuntar.
+  if (!estado || sinNada) return null;
 
   // En modo solo-expediente el panel ya reparte sus formatos: aquí no se
-  // cuentan, y por tanto tampoco bloquean la aprobación desde este bloque.
+  // cuentan, y por tanto tampoco bloquean la aprobación.
   const requeridos = soloExpediente ? [] : estado.requeridos;
   const faltan = requeridos.filter((r) => !r.cargado).length;
-  const decision = pie?.(faltan);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 space-y-3">
@@ -251,8 +256,6 @@ export function DocumentosDeLaActividad({
         </div>
       )}
 
-      {/* La decisión, al final de todo lo que hay que revisar. */}
-      {decision ? <div className="border-t border-gray-100 pt-3">{decision}</div> : null}
     </div>
   );
 }

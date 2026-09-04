@@ -44,6 +44,7 @@ import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosDeLaActividad } from '../shared/DocumentosDeLaActividad';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
+import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 
@@ -363,6 +364,30 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
+  /**
+   * Formatos requeridos sin cargar en la actividad abierta.
+   *
+   * Lo cuenta el bloque de documentos y lo necesita la decisión, que está en
+   * otra franja: sin el dato, Aprobar quedaba activo aunque la lista de arriba
+   * dijera «Falta 1 de 1».
+   */
+  const [faltanFormatos, setFaltanFormatos] = useState(0);
+  /**
+   * Si la actividad abierta espera una decisión de quien está mirando.
+   *
+   * Lo dice la propia pieza de aprobación, que es la que conoce el estado y el
+   * rol. El contenedor solo necesita el sí o el no para abrir la columna: sin
+   * el dato reservaría 17rem en las actividades que nadie tiene que aprobar.
+   */
+  const [hayDecision, setHayDecision] = useState(false);
+  /**
+   * La decisión apartada a la burbuja, por voluntad de quien mira.
+   *
+   * Se guarda por numeral y no como un booleano suelto: esconderla en una
+   * actividad no debe esconderla en la siguiente, que es otra decisión y otro
+   * expediente.
+   */
+  const [decisionEscondida, setDecisionEscondida] = useState<string | null>(null);
   /** Documentos por numeral, para mostrar el contador en cada actividad. */
   const [adjuntosPorNumeral, setAdjuntosPorNumeral] = useState<Record<string, number>>({});
 
@@ -673,13 +698,29 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       )}
 
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
-      <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
+      {/* `con-decision` abre la tercera columna solo cuando hay algo que
+          resolver y nadie la ha apartado: en las demás actividades ese ancho
+          se lo queda el formulario, que es quien lo necesita. */}
+      <div
+        className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''} ${
+          hayDecision && decisionEscondida !== expandida ? 'con-decision' : ''
+        }`}
+      >
         <RielActividades
           etapa={etapaVista}
           etapaActual={datos.proceso.etapa}
           actividades={actividades}
           seleccionada={expandida}
-          onSeleccionar={setExpandida}
+          onSeleccionar={(numeral) => {
+            // El contador de formatos se reinicia al cambiar de actividad: si
+            // se arrastrara el de la anterior, la decisión de esta se
+            // bloquearía o se abriría por documentos que no son suyos. Lo
+            // mismo con la decisión: hasta que la nueva actividad diga que la
+            // tiene, no se reserva la columna.
+            setFaltanFormatos(0);
+            setHayDecision(false);
+            setExpandida(numeral);
+          }}
         />
 
         <div className="min-w-0">
@@ -923,22 +964,39 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                   actividadSeleccionada.numeral,
                 )}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
-                pie={(faltan) =>
-                  !NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) ? (
-                    <AprobacionDeLaActividad
-                      procesoId={procesoId}
-                      numeral={actividadSeleccionada.numeral}
-                      onCambio={() => setTokenExpediente((t) => t + 1)}
-                      parte="decision"
-                      faltanDocumentos={faltan}
-                    />
-                  ) : null
-                }
+                onFaltantes={setFaltanFormatos}
               />
             </div>
           ) : null}
 
         </div>
+
+        {/* La decisión, en columna propia y a la altura del trabajo.
+            Aprobar o devolver es el acto que cierra la actividad, no un
+            documento más: dentro de la caja de adjuntos, bajo «Adjuntar otro
+            documento», se leía como un anexo. Y al final de la pila vertical
+            había que buscarla con desplazamiento, justo lo que el aprobador
+            viene a hacer.
+
+            Se monta aunque esté escondida: es la pieza la que sabe si hay algo
+            que decidir, y el contenedor lo necesita para pintar la burbuja. */}
+        {actividadSeleccionada &&
+        !NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) ? (
+          <div
+            className="panel-decision"
+            hidden={decisionEscondida === actividadSeleccionada.numeral}
+          >
+            <AprobacionDeLaActividad
+              procesoId={procesoId}
+              numeral={actividadSeleccionada.numeral}
+              onCambio={() => setTokenExpediente((t) => t + 1)}
+              parte="decision"
+              faltanDocumentos={faltanFormatos}
+              onHayDecision={setHayDecision}
+              onEsconder={() => setDecisionEscondida(actividadSeleccionada.numeral)}
+            />
+          </div>
+        ) : null}
 
         {expedienteAbierto && (
           <div className="panel-expediente bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -951,6 +1009,16 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         )}
       </div>
 
+      {/* La decisión apartada no desaparece: queda como burbuja, que dice que
+          sigue pendiente y la devuelve de un clic. Sin ella, esconder la
+          tarjeta sería una forma de perder de vista lo que hay que resolver. */}
+      {hayDecision && actividadSeleccionada && decisionEscondida === actividadSeleccionada.numeral ? (
+        <BurbujaDecision
+          numeral={actividadSeleccionada.numeral}
+          faltanDocumentos={faltanFormatos}
+          onAbrir={() => setDecisionEscondida(null)}
+        />
+      ) : null}
     </div>
   );
 }
