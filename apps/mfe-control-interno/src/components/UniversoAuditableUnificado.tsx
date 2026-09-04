@@ -728,7 +728,6 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
             }
             return exito; // ✅ Retornar resultado para que el formulario sepa si fue exitoso
           }}
-          mode="create"
         />
       )}
       

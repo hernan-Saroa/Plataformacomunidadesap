@@ -55,7 +55,7 @@ export class TareasNotasService {
         return saved;
     }
 
-    private async notificarTareaAsignada(tarea: TareaExpediente): Promise<void> {
+    private async notificarTareaAsignada(tarea: TareaExpediente, esReasignacion = false): Promise<void> {
         if (!tarea.responsableId) return;
 
         const expediente = await this.expedienteRepository.findOne({
@@ -71,12 +71,13 @@ export class TareasNotasService {
             expediente?.tipoProceso === 'Disciplinario';
         const moduloVista = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
         const url = `/gestion-legal?modulo=${moduloVista}&radicado=${encodeURIComponent(radicado)}`;
+        const accion = esReasignacion ? 'reasignó' : 'asignó';
 
         await this.notificationClient.sendMany([{
             id_usuario_destinatario: tarea.responsableId,
-            tipo_notificacion: 'TAREA_ASIGNADA',
-            titulo: 'Nueva tarea asignada',
-            mensaje: `Se te asignó la tarea "${tarea.titulo}" en el proceso ${radicado}.`,
+            tipo_notificacion: esReasignacion ? 'TAREA_REASIGNADA' : 'TAREA_ASIGNADA',
+            titulo: esReasignacion ? 'Tarea reasignada' : 'Nueva tarea asignada',
+            mensaje: `Se te ${accion} la tarea "${tarea.titulo}" en el proceso ${radicado}.`,
             descripcion_corta: `Tarea "${tarea.titulo}" en ${radicado}`,
             icono: 'ClipboardList',
             color: '#6366F1',
@@ -90,10 +91,32 @@ export class TareasNotasService {
                 expedienteId: tarea.expedienteId,
                 radicado,
                 tareaTitulo: tarea.titulo,
+                esReasignacion,
             },
         }]);
 
-        this.logger.log(`Notificación de tarea asignada enviada — Tarea: ${tarea.titulo}, Responsable: ${tarea.responsableId}`);
+        this.logger.log(`Notificación de tarea ${esReasignacion ? 'reasignada' : 'asignada'} enviada — Tarea: ${tarea.titulo}, Responsable: ${tarea.responsableId}`);
+
+        const detalle = await this.notificationClient.getUserDetailsById(tarea.responsableId);
+        if (detalle?.email) {
+            const emailHtml = `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <h2 style="color: #6366F1; border-bottom: 2px solid #6366F1; padding-bottom: 10px;">${esReasignacion ? 'Tarea Reasignada' : 'Nueva Tarea Asignada'}</h2>
+                    <p>Estimado(a) funcionario(a),</p>
+                    <p>Se te ${accion} la tarea <strong>"${tarea.titulo}"</strong> en el proceso <strong>${radicado}</strong>.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}${url}"
+                           style="background-color: #6366F1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                            Ver Proceso
+                        </a>
+                    </div>
+                    <p style="font-size: 12px; color: #777; border-top: 1px solid #e0e0e0; padding-top: 10px; margin-top: 30px;">
+                        Este es un correo automático de la Plataforma de Gestión Legal ESAP. Por favor no responda a este mensaje.
+                    </p>
+                </div>
+            `;
+            await this.notificationClient.sendEmail(detalle.email, `Tarea ${esReasignacion ? 'reasignada' : 'asignada'}: ${tarea.titulo}`, emailHtml);
+        }
     }
 
     async updateTarea(id: string, data: Partial<TareaExpediente>): Promise<TareaExpediente> {
@@ -104,6 +127,9 @@ export class TareasNotasService {
             data.fechaCompletada = new Date();
         }
 
+        const seReasignaResponsable =
+            !!data.responsableId && data.responsableId !== tarea.responsableId;
+
         await this.tareaRepository.update(id, data);
         const updated = await this.findTareaById(id);
 
@@ -111,6 +137,13 @@ export class TareasNotasService {
         if (data.estado === 'completada' && tarea.estado !== 'completada') {
             this.notificarTareaCompletada(updated).catch(err =>
                 this.logger.warn(`Error enviando notificación de tarea completada: ${err?.message}`)
+            );
+        }
+
+        // Notificar al nuevo responsable cuando se reasigna la tarea
+        if (seReasignaResponsable) {
+            this.notificarTareaAsignada(updated, true).catch(err =>
+                this.logger.warn(`Error enviando notificación de tarea reasignada: ${err?.message}`)
             );
         }
 

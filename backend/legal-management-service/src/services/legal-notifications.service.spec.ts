@@ -312,3 +312,440 @@ describe('LegalNotificationsService — notifyTerminoCreado()', () => {
         })).resolves.toBeUndefined();
     });
 });
+
+// Cobertura de notifyProfesionalAsignado(): es el método que se dispara cuando se asigna/
+// reasigna un abogado (rol RESUELVE_GESTION_LEGAL) a un proceso de Defensa Judicial. Cubre
+// el bug reportado de que el usuario RESUELVE no recibía ni notificación in-app ni correo.
+describe('LegalNotificationsService — notifyProfesionalAsignado()', () => {
+    let service: LegalNotificationsService;
+    let mockNotificationClient: any;
+
+    beforeEach(async () => {
+        mockNotificationClient = {
+            notifyUserById: jest.fn().mockResolvedValue(undefined),
+            notifyByRole: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn().mockResolvedValue({ id_user: 'abogado-1', email: 'abogado@esap.edu.co' }),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [
+                LegalNotificationsService,
+                { provide: NotificationClientService, useValue: mockNotificationClient },
+            ],
+        }).compile();
+
+        service = module.get<LegalNotificationsService>(LegalNotificationsService);
+    });
+
+    afterEach(() => jest.clearAllMocks());
+
+    const baseParams = {
+        modulo: 'DEFENSA_JUDICIAL' as const,
+        radicado: 'RAD-200',
+        procesoId: 'proc-1',
+        abogadoId: 'abogado-1',
+        asignadoPor: 'Jefe Jurídico',
+    };
+
+    it('debe notificar in-app al abogado (categoria "gestion-legal") con tipo_notificacion PROCESO_ASIGNADO', async () => {
+        await service.notifyProfesionalAsignado(baseParams);
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+            'abogado-1',
+            expect.objectContaining({ tipo_notificacion: 'PROCESO_ASIGNADO', categoria: 'gestion-legal' }),
+        );
+    });
+
+    it('debe notificar in-app al rol JEFE_GESTION_LEGAL además de al abogado', async () => {
+        await service.notifyProfesionalAsignado(baseParams);
+
+        expect(mockNotificationClient.notifyByRole).toHaveBeenCalledWith(
+            'JEFE_GESTION_LEGAL',
+            expect.objectContaining({ tipo_notificacion: 'PROCESO_ASIGNADO' }),
+        );
+    });
+
+    it('debe enviar también un correo al abogado asignado cuando tiene email registrado', async () => {
+        await service.notifyProfesionalAsignado(baseParams);
+
+        expect(mockNotificationClient.getUserDetailsById).toHaveBeenCalledWith('abogado-1');
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado@esap.edu.co',
+            expect.stringContaining('RAD-200'),
+            expect.stringContaining('RAD-200'),
+        );
+    });
+
+    it('NO debe enviar correo si el abogado no tiene email registrado (pero sí debe notificar in-app)', async () => {
+        mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'abogado-1', email: null });
+
+        await service.notifyProfesionalAsignado(baseParams);
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalled();
+        expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('debe usar tipo_notificacion PROCESO_REASIGNADO y el texto "reasignado" cuando esReasignacion=true', async () => {
+        await service.notifyProfesionalAsignado({ ...baseParams, esReasignacion: true });
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+            'abogado-1',
+            expect.objectContaining({ tipo_notificacion: 'PROCESO_REASIGNADO' }),
+        );
+        const emailHtml = mockNotificationClient.sendEmail.mock.calls[0][2];
+        expect(emailHtml).toContain('Reasignado');
+    });
+
+    it('no debe mencionar a "asignadoPor" en el mensaje/correo cuando asignadoPor es el mismo abogado', async () => {
+        await service.notifyProfesionalAsignado({ ...baseParams, asignadoPor: 'abogado-1' });
+
+        const dto = mockNotificationClient.notifyUserById.mock.calls[0][1];
+        expect(dto.mensaje).not.toContain('por abogado-1');
+    });
+
+    it('no debe propagar el error si notifyUserById falla (no debe romper el flujo de asignación)', async () => {
+        mockNotificationClient.notifyUserById.mockRejectedValue(new Error('notifications-service caído'));
+
+        await expect(service.notifyProfesionalAsignado(baseParams)).resolves.toBeUndefined();
+    });
+
+    it('no debe propagar el error si falla el envío del correo al abogado', async () => {
+        mockNotificationClient.sendEmail.mockRejectedValue(new Error('SMTP caído'));
+
+        await expect(service.notifyProfesionalAsignado(baseParams)).resolves.toBeUndefined();
+        expect(mockNotificationClient.notifyByRole).not.toHaveBeenCalled();
+    });
+});
+
+// Auditoría de cobertura completa: además de los dos bugs reportados (asignación de proceso
+// y de tarea), se revisaron el resto de notificaciones directas a un usuario en el módulo de
+// Gestión Legal (no las de broadcast a un rol, que por convención del código son solo in-app)
+// y se les agregó el correo faltante siguiendo el mismo patrón. Cada bloque de abajo prueba
+// que ahora sí llega el correo al RESUELVE/abogado afectado.
+describe('LegalNotificationsService — notifyEtapaAvanzada() [abogado]', () => {
+    let service: LegalNotificationsService;
+    let mockNotificationClient: any;
+
+    beforeEach(async () => {
+        mockNotificationClient = {
+            notifyUserById: jest.fn().mockResolvedValue(undefined),
+            notifyByRole: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn().mockResolvedValue({ id_user: 'abogado-1', email: 'abogado@esap.edu.co' }),
+            getUsersDetailsByRole: jest.fn().mockResolvedValue([]),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [LegalNotificationsService, { provide: NotificationClientService, useValue: mockNotificationClient }],
+        }).compile();
+        service = module.get<LegalNotificationsService>(LegalNotificationsService);
+    });
+
+    afterEach(() => jest.clearAllMocks());
+
+    it('debe notificar in-app y por correo al abogado del proceso que avanzó de etapa', async () => {
+        await service.notifyEtapaAvanzada({
+            modulo: 'DEFENSA_JUDICIAL',
+            radicado: 'RAD-300',
+            procesoId: 'proc-1',
+            etapaNombre: 'Contestación',
+            abogadoId: 'abogado-1',
+        });
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+            'abogado-1',
+            expect.objectContaining({ tipo_notificacion: 'EXPEDIENTE_ETAPA_AVANZADA' }),
+        );
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado@esap.edu.co',
+            expect.stringContaining('RAD-300'),
+            expect.stringContaining('Contestación'),
+        );
+    });
+
+    it('sin abogadoId: no debe intentar resolver correo (nada que notificar)', async () => {
+        await service.notifyEtapaAvanzada({
+            modulo: 'DEFENSA_JUDICIAL',
+            radicado: 'RAD-300',
+            procesoId: 'proc-1',
+            etapaNombre: 'Contestación',
+        });
+
+        expect(mockNotificationClient.getUserDetailsById).not.toHaveBeenCalled();
+        expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+    });
+});
+
+describe('LegalNotificationsService — notifyObservacionAgregada()', () => {
+    let service: LegalNotificationsService;
+    let mockNotificationClient: any;
+
+    beforeEach(async () => {
+        mockNotificationClient = {
+            notifyUserById: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn().mockResolvedValue({ id_user: 'abogado-1', email: 'abogado@esap.edu.co' }),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [LegalNotificationsService, { provide: NotificationClientService, useValue: mockNotificationClient }],
+        }).compile();
+        service = module.get<LegalNotificationsService>(LegalNotificationsService);
+    });
+
+    afterEach(() => jest.clearAllMocks());
+
+    it('debe notificar in-app y por correo al abogado cuando se agrega una observación a su proceso', async () => {
+        await service.notifyObservacionAgregada({
+            radicado: 'RAD-400',
+            procesoId: 'proc-1',
+            abogadoId: 'abogado-1',
+            autorNombre: 'Jefe Jurídico',
+        });
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+            'abogado-1',
+            expect.objectContaining({ tipo_notificacion: 'OBSERVACION_PROCESO' }),
+        );
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado@esap.edu.co',
+            expect.stringContaining('RAD-400'),
+            expect.stringContaining('Jefe Jurídico'),
+        );
+    });
+
+    it('NO debe enviar correo si el abogado no tiene email registrado', async () => {
+        mockNotificationClient.getUserDetailsById.mockResolvedValue({ id_user: 'abogado-1', email: null });
+
+        await service.notifyObservacionAgregada({
+            radicado: 'RAD-400',
+            procesoId: 'proc-1',
+            abogadoId: 'abogado-1',
+            autorNombre: 'Jefe Jurídico',
+        });
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalled();
+        expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+    });
+});
+
+describe('LegalNotificationsService — notifyProfesionalesProcesoAnexado()', () => {
+    let service: LegalNotificationsService;
+    let mockNotificationClient: any;
+
+    beforeEach(async () => {
+        mockNotificationClient = {
+            notifyUserById: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn((id: string) => Promise.resolve({ id_user: id, email: `${id}@esap.edu.co` })),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [LegalNotificationsService, { provide: NotificationClientService, useValue: mockNotificationClient }],
+        }).compile();
+        service = module.get<LegalNotificationsService>(LegalNotificationsService);
+    });
+
+    afterEach(() => jest.clearAllMocks());
+
+    const baseParams = {
+        modulo: 'DEFENSA_JUDICIAL' as const,
+        radicadoAnexado: 'RAD-ANEX',
+        radicadoPrincipal: 'RAD-PRIN',
+        procesoPrincipalId: 'proc-prin',
+        procesoAnexadoId: 'proc-anex',
+        anexadoPor: 'Jefe Jurídico',
+    };
+
+    it('debe notificar in-app y por correo al abogado principal y al abogado anexado cuando son distintos', async () => {
+        await service.notifyProfesionalesProcesoAnexado({
+            ...baseParams,
+            abogadoPrincipalId: 'abogado-principal',
+            abogadoAnexadoId: 'abogado-anexado',
+        });
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith('abogado-principal', expect.any(Object));
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith('abogado-anexado', expect.any(Object));
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado-principal@esap.edu.co',
+            expect.any(String),
+            expect.any(String),
+        );
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado-anexado@esap.edu.co',
+            expect.any(String),
+            expect.any(String),
+        );
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledTimes(2);
+    });
+
+    it('NO debe duplicar notificación/correo cuando el abogado principal y el anexado son el mismo', async () => {
+        await service.notifyProfesionalesProcesoAnexado({
+            ...baseParams,
+            abogadoPrincipalId: 'abogado-1',
+            abogadoAnexadoId: 'abogado-1',
+        });
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledTimes(1);
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it('no debe propagar el error si falla la notificación de uno de los abogados', async () => {
+        mockNotificationClient.notifyUserById.mockRejectedValue(new Error('notifications-service caído'));
+
+        await expect(service.notifyProfesionalesProcesoAnexado({
+            ...baseParams,
+            abogadoPrincipalId: 'abogado-principal',
+        })).resolves.toBeUndefined();
+    });
+});
+
+describe('LegalNotificationsService — notifyRiesgoAsignado()', () => {
+    let service: LegalNotificationsService;
+    let mockNotificationClient: any;
+
+    beforeEach(async () => {
+        mockNotificationClient = {
+            notifyUserById: jest.fn().mockResolvedValue(undefined),
+            notifyByRole: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn().mockResolvedValue({ id_user: 'abogado-1', email: 'abogado@esap.edu.co' }),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [LegalNotificationsService, { provide: NotificationClientService, useValue: mockNotificationClient }],
+        }).compile();
+        service = module.get<LegalNotificationsService>(LegalNotificationsService);
+    });
+
+    afterEach(() => jest.clearAllMocks());
+
+    const baseParams = {
+        riesgoId: 'riesgo-1',
+        codigo: 'R-001',
+        nombreRiesgo: 'Pérdida de proceso',
+        abogadoId: 'abogado-1',
+        asignadoPor: 'Jefe Jurídico',
+    };
+
+    it('debe notificar in-app y por correo al abogado responsable del riesgo', async () => {
+        await service.notifyRiesgoAsignado(baseParams);
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+            'abogado-1',
+            expect.objectContaining({ tipo_notificacion: 'RIESGO_ASIGNADO' }),
+        );
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado@esap.edu.co',
+            expect.stringContaining('R-001'),
+            expect.stringContaining('Pérdida de proceso'),
+        );
+    });
+
+    it('también debe notificar in-app al rol JEFE_GESTION_LEGAL', async () => {
+        await service.notifyRiesgoAsignado(baseParams);
+
+        expect(mockNotificationClient.notifyByRole).toHaveBeenCalledWith(
+            'JEFE_GESTION_LEGAL',
+            expect.objectContaining({ tipo_notificacion: 'RIESGO_ASIGNADO' }),
+        );
+    });
+
+    it('usa tipo_notificacion RIESGO_REASIGNADO cuando esReasignacion=true', async () => {
+        await service.notifyRiesgoAsignado({ ...baseParams, esReasignacion: true });
+
+        const dto = mockNotificationClient.notifyUserById.mock.calls[0][1];
+        expect(dto.tipo_notificacion).toBe('RIESGO_REASIGNADO');
+    });
+});
+
+describe('LegalNotificationsService — notifyRiesgoZonaCritica()', () => {
+    let service: LegalNotificationsService;
+    let mockNotificationClient: any;
+
+    beforeEach(async () => {
+        mockNotificationClient = {
+            notifyUserById: jest.fn().mockResolvedValue(undefined),
+            notifyByRole: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn().mockResolvedValue({ id_user: 'abogado-1', email: 'abogado@esap.edu.co' }),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [LegalNotificationsService, { provide: NotificationClientService, useValue: mockNotificationClient }],
+        }).compile();
+        service = module.get<LegalNotificationsService>(LegalNotificationsService);
+    });
+
+    afterEach(() => jest.clearAllMocks());
+
+    it('debe notificar in-app y por correo al responsable cuando el riesgo entra en zona crítica', async () => {
+        await service.notifyRiesgoZonaCritica({
+            riesgoId: 'riesgo-1',
+            codigo: 'R-001',
+            nombreRiesgo: 'Pérdida de proceso',
+            zonaResidual: 'EXTREMO',
+            abogadoId: 'abogado-1',
+            modificadoPor: 'Jefe Jurídico',
+        });
+
+        expect(mockNotificationClient.notifyUserById).toHaveBeenCalledWith(
+            'abogado-1',
+            expect.objectContaining({ tipo_notificacion: 'RIESGO_ZONA_CRITICA' }),
+        );
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado@esap.edu.co',
+            expect.stringContaining('R-001'),
+            expect.stringContaining('EXTREMO'),
+        );
+    });
+
+    it('sin abogadoId: no debe intentar resolver ni enviar correo, pero sí debe notificar a jefatura', async () => {
+        await service.notifyRiesgoZonaCritica({
+            riesgoId: 'riesgo-1',
+            codigo: 'R-001',
+            nombreRiesgo: 'Pérdida de proceso',
+            zonaResidual: 'ALTO',
+            abogadoId: undefined as any,
+            modificadoPor: 'Jefe Jurídico',
+        });
+
+        expect(mockNotificationClient.getUserDetailsById).not.toHaveBeenCalled();
+        expect(mockNotificationClient.sendEmail).not.toHaveBeenCalled();
+        expect(mockNotificationClient.notifyByRole).toHaveBeenCalled();
+    });
+});
+
+describe('LegalNotificationsService — notifyRiesgoProvisionModificada()', () => {
+    let service: LegalNotificationsService;
+    let mockNotificationClient: any;
+
+    beforeEach(async () => {
+        mockNotificationClient = {
+            notifyUserById: jest.fn().mockResolvedValue(undefined),
+            notifyByRole: jest.fn().mockResolvedValue(undefined),
+            getUserDetailsById: jest.fn().mockResolvedValue({ id_user: 'abogado-1', email: 'abogado@esap.edu.co' }),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [LegalNotificationsService, { provide: NotificationClientService, useValue: mockNotificationClient }],
+        }).compile();
+        service = module.get<LegalNotificationsService>(LegalNotificationsService);
+    });
+
+    afterEach(() => jest.clearAllMocks());
+
+    it('debe notificar in-app y por correo al abogado cuando cambia la provisión contable del riesgo', async () => {
+        await service.notifyRiesgoProvisionModificada({
+            riesgoId: 'riesgo-1',
+            codigo: 'R-001',
+            nombreRiesgo: 'Pérdida de proceso',
+            provisionAnterior: 1000000,
+            provisionNueva: 5000000,
+            abogadoId: 'abogado-1',
+            modificadoPor: 'Jefe Jurídico',
+        });
+
+        expect(mockNotificationClient.sendEmail).toHaveBeenCalledWith(
+            'abogado@esap.edu.co',
+            expect.stringContaining('R-001'),
+            expect.stringContaining('aumentado'),
+        );
+    });
+});

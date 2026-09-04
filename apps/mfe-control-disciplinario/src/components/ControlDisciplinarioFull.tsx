@@ -375,7 +375,7 @@ export function ControlDisciplinarioFull() {
     });
   }, [borradores]);
 
-  const handleDevolverBorrador = useCallback(async (borradorId: string, motivo: string, comentarios: string, _archivos: File[]) => {
+  const handleDevolverBorrador = useCallback(async (borradorId: string, motivo: string, comentarios: string, archivos: File[]) => {
     const borrador = borradores.find(b => b.id === borradorId);
 
     if (borrador?.autoId) {
@@ -383,6 +383,16 @@ export function ControlDisciplinarioFull() {
         const userId = authService.getCurrentUser()?.id || '';
         const observaciones = `${motivo}${comentarios ? ` — ${comentarios}` : ''}`;
         await disciplinaryService.devolverAuto(borrador.autoId, userId, observaciones);
+
+        if (archivos.length > 0) {
+          try {
+            await disciplinaryService.uploadRejectionDocument(borrador.autoId, archivos[0]);
+          } catch {
+            toast.warning('El auto se devolvió, pero no se pudo adjuntar el documento', {
+              description: 'Intenta subirlo de nuevo desde la devolución si es necesario.',
+            });
+          }
+        }
       } catch {
         toast.error('Error al devolver el auto', {
           description: 'No se pudo conectar con el servidor. Intente nuevamente.',

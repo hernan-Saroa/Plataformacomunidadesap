@@ -198,6 +198,8 @@ interface Archivo {
   extension: Extension;
   version?: number;
   observacionesDevolucion?: string;
+  archivoDevolucionUrl?: string;
+  archivoDevolucionNombre?: string;
   fechaEnvioRevision?: string;
   etapaProceso?: string;
   downloadUrl?: string | null;
@@ -2087,6 +2089,112 @@ function ModalNuevaTarea({
   );
 }
 
+// ==================== MODAL: DETALLE DE DEVOLUCIÓN (solo lectura) ====================
+// Réplica del cuadro que ve el Jefe OCID al devolver un auto (ModalDevolucion en
+// ModalRevisionAuto.tsx), pero mostrando los datos ya guardados en lugar de un formulario.
+function ModalDetalleDevolucion({
+  archivo,
+  onClose,
+}: {
+  archivo: Archivo;
+  onClose: () => void;
+}) {
+  const texto = archivo.observacionesDevolucion || '';
+  const separador = ' — ';
+  const idxSeparador = texto.indexOf(separador);
+  const motivo = idxSeparador >= 0 ? texto.slice(0, idxSeparador) : texto;
+  const comentarios = idxSeparador >= 0 ? texto.slice(idxSeparador + separador.length) : '';
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        transition={{ duration: 0.2 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] overflow-y-auto p-6"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: '#FEE2E2' }}>
+            <RotateCcw className="w-6 h-6" style={{ color: '#DC2626' }} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold" style={{ color: '#1F2937' }}>
+              Auto Devuelto
+            </h3>
+            <p className="text-sm" style={{ color: '#6B7280' }}>
+              Motivo de devolución indicado por el Jefe OCID
+            </p>
+          </div>
+        </div>
+
+        {/* Motivo */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
+            Motivo de Devolución
+          </label>
+          <div className="w-full p-3 border-2 rounded-xl" style={{ borderColor: '#E5E7EB', color: '#1F2937', background: '#F9FAFB' }}>
+            {motivo || 'No especificado'}
+          </div>
+        </div>
+
+        {/* Comentarios */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
+            Comentarios Detallados
+          </label>
+          <div className="w-full min-h-[8rem] p-3 border-2 rounded-xl whitespace-pre-wrap" style={{ borderColor: '#E5E7EB', color: '#1F2937', background: '#F9FAFB' }}>
+            {comentarios || 'Sin comentarios adicionales'}
+          </div>
+        </div>
+
+        {/* Archivos */}
+        <div className="mb-6">
+          <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
+            Archivos de Soporte
+          </label>
+          {archivo.archivoDevolucionUrl ? (
+            <a
+              href={resolveControlDisciplinarioUrl(archivo.archivoDevolucionUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-3 rounded-xl hover:opacity-80 transition-opacity"
+              style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#003DA5' }}
+            >
+              <Paperclip className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm font-semibold flex-1 truncate">{archivo.archivoDevolucionNombre || 'Documento de soporte'}</span>
+              <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+            </a>
+          ) : (
+            <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: '#F9FAFB', border: '1px dashed #E5E7EB', color: '#9CA3AF' }}>
+              <Paperclip className="w-4 h-4" />
+              <span className="text-sm">No se adjuntó ningún documento en la devolución</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity"
+            style={{ background: '#003DA5' }}
+          >
+            Cerrar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
 export function ModalDetallesProceso({
   proceso, onClose, onReabrir,
   onGestionAutos, onGestionEvidencias, onGestionOficios, onGestionActas,
@@ -2119,6 +2227,7 @@ export function ModalDetallesProceso({
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [archivoDetalleDevolucion, setArchivoDetalleDevolucion] = useState<Archivo | null>(null);
   const [noticia, setNoticia] = useState<ApiNoticia | null>(null);
   const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
   const [actuacionesLoading, setActuacionesLoading] = useState(false);
@@ -2277,6 +2386,9 @@ export function ModalDetallesProceso({
           urlExterna: doc.urlExterna || null,
           archivoNombre: doc.archivoNombre || doc.nombre,
           fileType: doc.fileType || null,
+          observacionesDevolucion: estado === 'devuelto' ? (doc.descripcion || undefined) : undefined,
+          archivoDevolucionUrl: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentUrl || undefined) : undefined,
+          archivoDevolucionNombre: estado === 'devuelto' ? (doc.metadatos?.rejectionDocumentName || undefined) : undefined,
         };
       });
 
@@ -3790,9 +3902,27 @@ export function ModalDetallesProceso({
             })()}
             <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full hidden sm:inline"
               style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
-            <span className="flex items-center gap-0.5 text-[9px] font-semibold" style={{ color: est.color }}>
-              {est.icon}{est.text}
-            </span>
+            {fueDevuelto && archivo.observacionesDevolucion ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setArchivoDetalleDevolucion(archivo);
+                }}
+                className="flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-md border text-[9px] font-bold transition-colors"
+                style={{ color: est.color, borderColor: est.color, backgroundColor: `${est.color}14` }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = `${est.color}2A`}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = `${est.color}14`}
+                title="Ver motivo y comentario de la devolución"
+              >
+                {est.icon}{est.text}
+                <Eye className="w-2.5 h-2.5" />
+              </button>
+            ) : (
+              <span className="flex items-center gap-0.5 text-[9px] font-semibold" style={{ color: est.color }}>
+                {est.icon}{est.text}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 ml-1">
             {/* {estaEnRevision && (
@@ -3853,17 +3983,6 @@ export function ModalDetallesProceso({
             )}
           </div>
         </div>
-        {fueDevuelto && archivo.observacionesDevolucion && (
-          <div className="mx-2.5 mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[10px] font-bold text-red-800">Observaciones de devolución:</p>
-                <p className="text-[10px] text-red-700 mt-0.5 leading-relaxed">{archivo.observacionesDevolucion}</p>
-              </div>
-            </div>
-          </div>
-        )}
         {estaEnRevision && (
           <div className="mx-2.5 mb-2 px-3 py-2 rounded-lg border" style={{ background: '#EFF6FF', borderColor: '#BFDBFE' }}>
             <div className="flex items-center gap-2">
@@ -6302,6 +6421,15 @@ export function ModalDetallesProceso({
             mostrarBotonDevolver={true}
             tituloModal="Revisión y Aprobación de Auto"
             descripcionModal="Revisar documento antes de aprobar o devolver al profesional"
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {archivoDetalleDevolucion && (
+          <ModalDetalleDevolucion
+            archivo={archivoDetalleDevolucion}
+            onClose={() => setArchivoDetalleDevolucion(null)}
           />
         )}
       </AnimatePresence>

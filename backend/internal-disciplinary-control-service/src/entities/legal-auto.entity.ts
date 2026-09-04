@@ -132,6 +132,12 @@ export class LegalAuto {
   @Column({ type: 'text', nullable: true })
   rejection_comments: string;
 
+  @Column({ type: 'text', nullable: true })
+  rejectionDocumentUrl: string; // Documento de soporte adjuntado por el Jefe al devolver el auto
+
+  @Column({ type: 'text', nullable: true })
+  rejectionDocumentName: string;
+
   @Column({ type: 'int', nullable: true })
   prorrogaMeses: number | null; // 3 o 6 — Solo aplica para AUTO_PRORROGA
 

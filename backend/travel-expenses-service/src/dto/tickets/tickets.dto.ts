@@ -139,6 +139,10 @@ export class CreateSaldoTiqueteDto {
   @Min(0)
   @Max(100)
   holguraPorcentaje?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
 }
 
 export class UpdateSaldoTiqueteDto {
