@@ -16,6 +16,16 @@ interface Props {
    * pieza pinta ambas cosas juntas, como antes.
    */
   parte?: 'aviso' | 'decision';
+  /**
+   * Formatos requeridos que la actividad aún no ha cargado.
+   *
+   * Aprobar queda bloqueado mientras quede alguno: el bloque de documentos ya
+   * avisa «Falta 1 de 1» justo encima, y dejar el botón activo debajo de ese
+   * aviso era pedirle a quien aprueba que diera el visto bueno sin soporte.
+   * Devolver sí sigue disponible, porque devolver por falta de soporte es
+   * exactamente el caso legítimo.
+   */
+  faltanDocumentos?: number;
 }
 
 const boton =
@@ -41,7 +51,13 @@ const campo =
  *
  * Si el área no configuró aprobación para la actividad, no se pinta nada.
  */
-export function AprobacionDeLaActividad({ procesoId, numeral, onCambio, parte }: Props) {
+export function AprobacionDeLaActividad({
+  procesoId,
+  numeral,
+  onCambio,
+  parte,
+  faltanDocumentos = 0,
+}: Props) {
   const a = usarAprobacion(procesoId, numeral, onCambio);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
@@ -100,7 +116,13 @@ export function AprobacionDeLaActividad({ procesoId, numeral, onCambio, parte }:
           <div>
             <p className="text-[12.5px] font-bold text-slate-800 m-0">Tu decisión</p>
             <p className="text-[11px] text-slate-500 m-0 mt-0.5">
-              Revisa los documentos de arriba antes de resolver.
+              {faltanDocumentos > 0
+                ? `${
+                    faltanDocumentos === 1
+                      ? 'Falta un formato por cargar'
+                      : `Faltan ${faltanDocumentos} formatos por cargar`
+                  }. Puedes devolverla para que lo carguen.`
+                : 'Revisa los documentos de arriba antes de resolver.'}
             </p>
           </div>
 
@@ -139,7 +161,12 @@ export function AprobacionDeLaActividad({ procesoId, numeral, onCambio, parte }:
                 type="button"
                 className={primario}
                 onClick={a.aprobar}
-                disabled={a.guardando}
+                disabled={a.guardando || faltanDocumentos > 0}
+                title={
+                  faltanDocumentos > 0
+                    ? 'No se puede aprobar mientras falten formatos por cargar'
+                    : undefined
+                }
               >
                 <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
                 Aprobar

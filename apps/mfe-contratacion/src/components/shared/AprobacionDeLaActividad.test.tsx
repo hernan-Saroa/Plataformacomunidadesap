@@ -25,12 +25,18 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
 const montar = (
   respuesta: Record<string, unknown>,
   parte?: 'aviso' | 'decision',
+  faltanDocumentos?: number,
 ) => {
   vi.spyOn(contratacionService, 'aprobadoresDeActividad').mockResolvedValue(
     respuesta as never,
   );
   return render(
-    <AprobacionDeLaActividad procesoId={PROCESO} numeral="5.9" parte={parte} />,
+    <AprobacionDeLaActividad
+      procesoId={PROCESO}
+      numeral="5.9"
+      parte={parte}
+      faltanDocumentos={faltanDocumentos}
+    />,
   );
 };
 
@@ -141,5 +147,29 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
     // Dejar la pantalla en un estado de espera porque una consulta falló
     // impediría trabajar una actividad que quizá ni exige aprobación.
     await waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
+  it('no deja aprobar mientras falte un formato por cargar', async () => {
+    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision', 1);
+
+    // El bloque de documentos avisa «Falta 1 de 1» justo encima: dejar el
+    // botón activo debajo de ese aviso era pedir el visto bueno sin soporte.
+    expect(await screen.findByRole('button', { name: /Aprobar/ })).toBeDisabled();
+  });
+
+  it('deja devolver aunque falten formatos, que es el caso legítimo', async () => {
+    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision', 2);
+
+    // Devolver por falta de soporte es exactamente para lo que sirve devolver.
+    expect(
+      await screen.findByRole('button', { name: /Devolver con observaciones/ }),
+    ).toBeEnabled();
+    expect(screen.getByText(/Faltan 2 formatos por cargar/)).toBeInTheDocument();
+  });
+
+  it('deja aprobar cuando ya están todos los formatos', async () => {
+    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision', 0);
+
+    expect(await screen.findByRole('button', { name: /Aprobar/ })).toBeEnabled();
   });
 });

@@ -21,8 +21,12 @@ interface Props {
    * Van dentro de este bloque y no encima del panel porque quien decide tiene
    * que ver primero lo que le cargaron: con la decisión arriba aprobaría sin
    * haber mirado el documento.
+   *
+   * Es una función y no un nodo porque necesita saber cuántos formatos faltan:
+   * sin ese dato el botón de aprobar quedaba activo debajo del aviso «Falta 1
+   * de 1», que es justo la contradicción que hay que evitar.
    */
-  pie?: React.ReactNode;
+  pie?: (faltan: number) => React.ReactNode;
 }
 
 const MIME_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
@@ -100,18 +104,22 @@ export function DocumentosDeLaActividad({
     }
   };
 
-  // Sin documentos no se pinta el marco, pero el pie sí sigue: la decisión
-  // puede existir aunque la actividad no exija ningún formato, y el propio pie
-  // decide si tiene algo que mostrar.
+  // Sin documentos no se pinta el marco, pero la decisión sí sigue: puede
+  // existir aunque la actividad no exija ningún formato.
+  //
+  // Se comprueba si el pie devuelve algo antes de montar el marco, en vez de
+  // dejárselo a `empty:hidden`: esa pseudoclase solo aplica cuando el elemento
+  // no tiene ningún hijo, y React deja dentro un nodo de comentario. El marco
+  // se dibujaba igual, vacío, en toda actividad sin documentos.
   if (!estado || (estado.requeridos.length === 0 && estado.adicionales.length === 0)) {
-    return pie ? (
-      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 empty:hidden">
-        {pie}
-      </div>
+    const soloDecision = pie?.(0);
+    return soloDecision ? (
+      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">{soloDecision}</div>
     ) : null;
   }
 
   const faltan = estado.requeridos.filter((r) => !r.cargado).length;
+  const decision = pie?.(faltan);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 space-y-3">
@@ -194,7 +202,7 @@ export function DocumentosDeLaActividad({
       )}
 
       {/* La decisión, al final de todo lo que hay que revisar. */}
-      {pie ? <div className="border-t border-gray-100 pt-3">{pie}</div> : null}
+      {decision ? <div className="border-t border-gray-100 pt-3">{decision}</div> : null}
     </div>
   );
 }
