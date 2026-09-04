@@ -480,6 +480,15 @@ export function BancoDocentesBulkUpload({ onBack, onSuccess, periodos = [], peri
             {/* La tarjeta se ajusta a su contenido; las tablas internas (vista previa y
                 errores) tienen su propio scroll acotado, así no queda espacio en blanco. */}
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+              {!isSimulated && result?.data?.soporteCargaMasivaId && (
+                <div className="px-6 py-3 bg-blue-50 border-b border-blue-100 flex items-center gap-3">
+                  <Shield className="w-4 h-4 text-[#003DA5] shrink-0" />
+                  <p className="text-xs text-blue-900">
+                    Archivo conservado como soporte trazable de la importación.
+                    <span className="ml-2 font-mono font-semibold">{result.data.soporteCargaMasivaId}</span>
+                  </p>
+                </div>
+              )}
               {/* Status banner */}
               {isAllIdentical ? (
                 <div className="px-8 py-5 flex items-center justify-between gap-4 flex-wrap bg-blue-50/40 border-b border-blue-100">

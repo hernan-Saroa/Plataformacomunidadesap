@@ -54,7 +54,12 @@ export class UsersService {
   async findAuthUserById(userId: string): Promise<User | null> {
     return this.userRepo.findOne({
       where: { id_user: userId },
-      relations: ['person', 'roles', 'roles.permissions'],
+      relations: [
+        'person',
+        'person.dependencia',
+        'roles',
+        'roles.permissions',
+      ],
     });
   }
 
@@ -379,17 +384,18 @@ export class UsersService {
 
   private async savePerson(
     manager: EntityManager,
-    data: {
-      firstName: string;
-      lastName: string;
-      identificationNumber: string;
-      identificationType: string;
-      email: string;
-      phone?: string | null;
-      gender?: string | null;
-      idSeccional?: number | null;
-      idSede?: number | null;
-    },
+     data: {
+       firstName: string;
+       lastName: string;
+       identificationNumber: string;
+       identificationType: string;
+       email: string;
+       phone?: string | null;
+       gender?: string | null;
+       idSeccional?: number | null;
+       idSede?: number | null;
+       idDependencia?: number | null;
+     },
   ): Promise<Person> {
     const personRepo = manager.getRepository(Person);
     const legacyPersonId = await this.getNextLegacyPersonId(manager);
@@ -413,9 +419,10 @@ export class UsersService {
       email: this.normalizeEmail(data.email),
       phone: this.normalizeOptionalText(data.phone),
       gender: this.normalizeGender(data.gender),
-      idSeccional: data.idSeccional ?? null,
-      idSede: data.idSede ?? null,
-    };
+       idSeccional: data.idSeccional ?? null,
+       idSede: data.idSede ?? null,
+       idDependencia: data.idDependencia ?? null,
+     };
 
     if (legacyPersonId !== null) {
       personData.idTercero = legacyPersonId;
@@ -434,26 +441,28 @@ export class UsersService {
           gen_tercero,
           dir_email,
           tel_celular,
-          id_seccional,
-          id_sede,
-          fec_creacion,
-          fec_modificacion
+           id_seccional,
+           id_sede,
+           id_dependencia,
+           fec_creacion,
+           fec_modificacion
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_DATE, CURRENT_DATE)
-      `,
-      [
-        personData.id,
-        personData.identification_number,
-        personData.identification_type,
-        personData.full_name,
-        personData.first_name,
-        personData.last_name,
-        personData.gender,
-        personData.email,
-        personData.phone,
-        personData.idSeccional,
-        personData.idSede,
-      ],
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_DATE, CURRENT_DATE)
+       `,
+       [
+         personData.id,
+         personData.identification_number,
+         personData.identification_type,
+         personData.full_name,
+         personData.first_name,
+         personData.last_name,
+         personData.gender,
+         personData.email,
+         personData.phone,
+         personData.idSeccional,
+         personData.idSede,
+         personData.idDependencia,
+       ],
     );
 
     return personRepo.create(personData);
@@ -708,7 +717,7 @@ export class UsersService {
 
   async findAll(): Promise<User[]> {
     return this.userRepo.find({
-      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles']
+      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'person.dependencia', 'roles']
     });
   }
 
@@ -729,6 +738,7 @@ export class UsersService {
       .leftJoinAndSelect('seccional.ubicacion', 'seccionalUbicacion')
       .leftJoinAndSelect('person.sede', 'sede')
       .leftJoinAndSelect('sede.geopolitica', 'sedeGeopolitica')
+      .leftJoinAndSelect('person.dependencia', 'dependencia')
       .leftJoinAndSelect('user.roles', 'roles')
       .distinct(true);
 
@@ -878,17 +888,18 @@ export class UsersService {
           normalizedDocument,
         );
 
-        const savedPerson = await this.savePerson(manager, {
-          firstName: dto.first_name,
-          lastName: dto.last_name,
-          identificationNumber: normalizedDocument,
-          identificationType: normalizedIdentificationType,
-          email: normalizedEmail,
-          phone: dto.phone,
-          gender: dto.gender,
-          idSeccional: dto.idSeccional,
-          idSede: dto.idSede,
-        });
+         const savedPerson = await this.savePerson(manager, {
+           firstName: dto.first_name,
+           lastName: dto.last_name,
+           identificationNumber: normalizedDocument,
+           identificationType: normalizedIdentificationType,
+           email: normalizedEmail,
+           phone: dto.phone,
+           gender: dto.gender,
+           idSeccional: dto.idSeccional,
+           idSede: dto.idSede,
+           idDependencia: dto.idDependencia,
+         });
 
         const passwordHash = await bcrypt.hash('123456', 10);
         const userRepo = manager.getRepository(User);
@@ -1042,10 +1053,14 @@ export class UsersService {
       setClauses.push(`id_seccional = $${paramIndex++}`);
       values.push(dto.idSeccional || null);
     }
-    if (dto.idSede !== undefined) {
-      setClauses.push(`id_sede = $${paramIndex++}`);
-      values.push(dto.idSede || null);
-    }
+      if (dto.idSede !== undefined) {
+        setClauses.push(`id_sede = $${paramIndex++}`);
+        values.push(dto.idSede || null);
+      }
+      if (dto.idDependencia !== undefined) {
+        setClauses.push(`id_dependencia = $${paramIndex++}`);
+        values.push(dto.idDependencia || null);
+      }
 
     // Ejecutar la actualización si hay campos para actualizar
     if (setClauses.length > 0) {
@@ -1071,7 +1086,7 @@ export class UsersService {
 
     const updatedUser = await this.userRepo.findOne({
       where: { id_user: user.id_user },
-      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles']
+      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'person.dependencia', 'roles']
     });
 
     if (!updatedUser) {
@@ -1193,6 +1208,10 @@ export class UsersService {
       if (dto.idSede !== undefined) {
         setClauses.push(`id_sede = $${paramIndex++}`);
         values.push(dto.idSede || null);
+      }
+      if (dto.idDependencia !== undefined) {
+        setClauses.push(`id_dependencia = $${paramIndex++}`);
+        values.push(dto.idDependencia || null);
       }
       if (dto.birth_date !== undefined) {
         setClauses.push(`fec_nacimiento = $${paramIndex++}`);

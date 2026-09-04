@@ -1986,6 +1986,20 @@ export async function bulkUploadBancoDocentes(file: File, dryRun = false, omitEr
   }
 }
 
+export async function getBancoDocentesBulkHistory(limit = 50) {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/bulk/historial`, { limit });
+    return normalizeResult<any[]>(raw, []);
+  } catch (error) {
+    console.error('[mfe-pta][getBancoDocentesBulkHistory] Error:', error);
+    return { success: false, data: [], message: getApiErrorMessage(error, 'No fue posible consultar el historial de cargas.') };
+  }
+}
+
+export async function downloadBancoDocentesBulkSupport(cargaId: string): Promise<Blob> {
+  return apiClient.getBlob(`${BD_BASE}/bulk/${encodeURIComponent(cargaId)}/soporte`);
+}
+
 export async function exportBancoDocentes(): Promise<Blob> {
   const baseUrl = (apiClient as any).baseURL || '';
   const res = await fetch(`${baseUrl}${BD_BASE}/export`, {

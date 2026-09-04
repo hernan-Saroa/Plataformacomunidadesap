@@ -25,8 +25,9 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     objetoComision: '',
     destinoCiudad: '',
     destinoDepartamento: '',
-    fechaInicio: '',
-    fechaFin: '',
+    // Fechas por defecto: inicio HOY y fin el día siguiente (ajuste de forma).
+    fechaInicio: hoyISO(),
+    fechaFin: siguienteDiaISO(),
     rubroPresupuestal: '',
     prioridad: 'MEDIA',
     requiereTiquetes: true,
@@ -132,6 +133,16 @@ export function hoyISO(): string {
 }
 
 /**
+ * Fecha del día siguiente en formato yyyy-mm-dd (hora local).
+ * Se usa como fecha fin por defecto en el formulario de nueva solicitud.
+ */
+export function siguienteDiaISO(): string {
+  const dia = new Date();
+  dia.setDate(dia.getDate() + 1);
+  return `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, '0')}-${String(dia.getDate()).padStart(2, '0')}`;
+}
+
+/**
  * Valida el rango de fechas de la solicitud.
  * 1. Deben estar definidas.
  * 2. La fecha de inicio no puede ser anterior a hoy.
@@ -212,6 +223,11 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
   RECHAZADO: { label: 'Rechazado', bg: 'bg-red-100', text: 'text-red-800' },
   RADICADA: { label: 'Radicada', bg: 'bg-slate-100', text: 'text-slate-700' },
   EXTEMPORANEA: { label: 'Extemporánea', bg: 'bg-red-100', text: 'text-red-700' },
+  DEVUELTA: {
+    label: 'Devuelta (subsanar)',
+    bg: 'bg-orange-100',
+    text: 'text-orange-800',
+  },
 };
 
 export function getConfigEstado(estado: string): ConfigEstado {

@@ -11,7 +11,10 @@ import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
-import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
+import {
+  EstadoSolicitud,
+  ESTADOS_SOLO_LECTURA,
+} from '../../entities/estado-solicitud.enum';
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
@@ -36,6 +39,30 @@ function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
     fecha.setDate(fecha.getDate() + 1);
   }
   return count;
+}
+
+/**
+ * Traduce el estado interno de una solicitud a una etiqueta humana para los
+ * mensajes orientados al usuario (evita exponer códigos internos).
+ */
+function etiquetaEstadoHumana(estado?: string): string {
+  const mapa: Record<string, string> = {
+    PENDIENTE: 'borrador/pendiente',
+    RADICADA: 'radicada',
+    EXTEMPORANEA: 'extemporánea',
+    DEVUELTA: 'devuelta para subsanar',
+    SOLICITADO: 'en revisión del Grupo de Viáticos',
+    APROBADO_JEFE: 'aprobada por el jefe inmediato',
+    APROBADO_TALENTO_HUMANO: 'aprobada por Talento Humano',
+    RESOLUCION_EMITIDA: 'con resolución emitida',
+    TIQUETES_COMPRADOS: 'con tiquetes gestionados',
+    EN_COMISION: 'en comisión',
+    PENDIENTE_LEGALIZACION: 'pendiente de legalización',
+    LEGALIZADO: 'legalizada',
+    RECHAZADO: 'rechazada',
+  };
+  if (!estado) return 'en trámite';
+  return mapa[estado.toUpperCase()] ?? estado;
 }
 
 @Injectable()
@@ -75,8 +102,20 @@ export class TravelExpensesService {
       query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
     }
 
+    // Orden por prioridad de estado (vista general): Radicadas → Extemporáneas →
+    // Solicitadas (en revisión) → Pendientes → resto. Dentro del mismo estado
+    // se ordena por fecha de creación (más reciente primero).
     query
-      .orderBy('s.extemporanea', 'DESC')
+      .orderBy(
+        `CASE s.estado_solicitud
+           WHEN 'RADICADA' THEN 1
+           WHEN 'EXTEMPORANEA' THEN 2
+           WHEN 'SOLICITADO' THEN 3
+           WHEN 'PENDIENTE' THEN 4
+           ELSE 5
+         END`,
+        'ASC',
+      )
       .addOrderBy('s.estadoSolicitud', 'ASC')
       .addOrderBy('s.creadoEn', 'DESC');
 
@@ -271,7 +310,7 @@ export class TravelExpensesService {
 
       if (solapamiento) {
         throw new ConflictException(
-          `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
+          this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
         );
       }
 
@@ -453,6 +492,10 @@ export class TravelExpensesService {
       throw new BadRequestException('Solicitud no encontrada.');
     }
 
+    // RF-LIQ-004 — Inmutabilidad: un expediente ya consolidado (SOLICITADO o
+    // superior) está en modo solo lectura y no admite subida de nuevos PDFs.
+    this.verificarExpedienteModificable(solicitud, 'subir documentos de soporte');
+
     const file = dto.file;
     const nombreArchivoOriginal =
       (file ? file.originalname : undefined) || dto.nombreArchivoOriginal;
@@ -495,6 +538,18 @@ export class TravelExpensesService {
     solicitudId: string,
     documentoId: string,
   ): Promise<{ success: boolean; message: string }> {
+    // RF-LIQ-004 — Inmutabilidad: bloquea la eliminación de soportes cuando el
+    // expediente ya fue consolidado (modo solo lectura).
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+    if (solicitud) {
+      this.verificarExpedienteModificable(
+        solicitud,
+        'eliminar documentos de soporte',
+      );
+    }
+
     const documento = await this.documentoRepo.findOne({
       where: { id: documentoId, solicitudId },
     });
@@ -627,7 +682,7 @@ export class TravelExpensesService {
 
     if (solapamiento) {
       throw new ConflictException(
-        `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
+        this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
       );
     }
 
@@ -670,6 +725,25 @@ export class TravelExpensesService {
       month: '2-digit',
       year: 'numeric',
     });
+  }
+
+  /**
+   * Mensaje de conflicto de fechas orientado al usuario: NO expone UUIDs ni
+   * códigos internos; muestra el consecutivo real (p. ej. COM-2026-0001) y el
+   * estado en lenguaje humano para mejorar la experiencia.
+   */
+  private mensajeConflictoFechas(
+    solapada: SolicitudComisionEntity,
+    fechaInicio: Date,
+    fechaFin: Date,
+  ): string {
+    const referencia = solapada.consecutivoUnico || solapada.id;
+    const estado = etiquetaEstadoHumana(solapada.estadoSolicitud);
+    return (
+      `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) ` +
+      `se cruzan con la solicitud ${referencia} (${estado}, ${this.formatearFecha(solapada.fechaInicio)} a ${this.formatearFecha(solapada.fechaFin)}). ` +
+      `Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`
+    );
   }
 
   private async validarChecklistCompleto(
@@ -716,6 +790,25 @@ export class TravelExpensesService {
     return (
       mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf')
     );
+  }
+
+  /**
+   * RF-LIQ-004 — Verifica que el expediente NO esté en modo solo lectura.
+   * Una vez consolidado (estado SOLICITADO o superior) ningún enlace puede
+   * alterar los datos ni subir/eliminar archivos del expediente.
+   *
+   * @throws BadRequestException cuando el expediente está bloqueado.
+   */
+  private verificarExpedienteModificable(
+    solicitud: SolicitudComisionEntity,
+    accion: string,
+  ): void {
+    const estado = solicitud.estadoSolicitud as EstadoSolicitud;
+    if (ESTADOS_SOLO_LECTURA.has(estado)) {
+      throw new BadRequestException(
+        `El expediente ${solicitud.consecutivoUnico ?? solicitud.id} tiene estado ${solicitud.estadoSolicitud} (solo lectura). No puede ${accion} en un expediente ya consolidado.`,
+      );
+    }
   }
 
   async obtenerParametrizacionFormulario(): Promise<{

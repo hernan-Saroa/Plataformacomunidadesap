@@ -56,7 +56,10 @@ describe('TerminosService', () => {
         mockProcesoCoactivoRepo = { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
         mockActuacionRepo = { find: jest.fn().mockResolvedValue([]) };
         mockDataSource = { query: jest.fn().mockResolvedValue([]) };
-        mockLegalNotifications = { notifyResponsableAsignadoTermino: jest.fn().mockResolvedValue(undefined) };
+        mockLegalNotifications = {
+            notifyResponsableAsignadoTermino: jest.fn().mockResolvedValue(undefined),
+            notifyTerminoCreado: jest.fn().mockResolvedValue(undefined),
+        };
         mockSequenceService = { generateRadicado: jest.fn().mockResolvedValue('TERM-2026-0001') };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -281,6 +284,28 @@ describe('TerminosService', () => {
             await service.create({ nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' } as any);
 
             expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
+
+        it('debe notificar la creación del término (a Jefe/Resuelve) incluso sin responsableId asignado', async () => {
+            const result = await service.create({ nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' } as any);
+
+            expect(mockLegalNotifications.notifyTerminoCreado).toHaveBeenCalledWith(
+                expect.objectContaining({ terminoId: result.id, nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' }),
+            );
+        });
+
+        it('debe notificar la creación del término también cuando sí viene con responsableId', async () => {
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-1', public_id: null, nombre: 'Juan Pérez' }]);
+
+            await service.create({
+                nombreActuacion: 'Con responsable',
+                origenModulo: 'MANUAL',
+                responsableId: 'resp-1',
+            } as any);
+
+            expect(mockLegalNotifications.notifyTerminoCreado).toHaveBeenCalledWith(
+                expect.objectContaining({ nombreActuacion: 'Con responsable', responsableNombre: 'Juan Pérez' }),
+            );
         });
 
         // -------------------------------------------------------------
@@ -516,6 +541,30 @@ describe('TerminosService', () => {
             );
 
             expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
+
+        it('debe notificar la creación cuando el término es nuevo (aunque no tenga responsable)', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue(null);
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-14', 'RAD-14', 'Actuación nueva', localDate(2026, 1, 1), 15,
+            );
+
+            expect(mockLegalNotifications.notifyTerminoCreado).toHaveBeenCalledWith(
+                expect.objectContaining({ nombreActuacion: 'Actuación nueva', origenModulo: 'DEFENSA' }),
+            );
+        });
+
+        it('NO debe notificar creación cuando el término ya existía (solo se está sincronizando/actualizando)', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({
+                id: 't-15', referenciaId: 'ref-15', origenModulo: 'DEFENSA', responsableId: null, responsableNombre: null, observaciones: null,
+            });
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-15', 'RAD-15', 'Actuación existente', localDate(2026, 1, 1), 15,
+            );
+
+            expect(mockLegalNotifications.notifyTerminoCreado).not.toHaveBeenCalled();
         });
     });
 
