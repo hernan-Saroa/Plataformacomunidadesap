@@ -1,9 +1,14 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
 import { CorreoJuridicoHistorial } from '../entities/correo-juridico-historial.entity';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 import { CorreoTrackingToken } from '../entities/correo-tracking-token.entity';
+import { Documento } from '../entities/documento.entity';
+import { DocumentoConsulta } from '../entities/documento-consulta.entity';
+import { Expediente } from '../entities/expediente.entity';
+import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { ActuacionService } from './actuacion.service';
 import { CorreosJuridicosService } from './correos-juridicos.service';
 import { MicrosoftGraphService } from './microsoft-graph.service';
@@ -25,6 +30,10 @@ describe('CorreosJuridicosService', () => {
     let mockAdjuntoRepo: any;
     let mockHistorialRepo: any;
     let mockTrackingRepo: any;
+    let mockDocumentoRepo: any;
+    let mockDocumentoConsultaRepo: any;
+    let mockExpedienteRepo: any;
+    let mockConsultaRepo: any;
     let mockGraphService: any;
     let mockSmartService: any;
     let mockActuacionService: any;
@@ -66,6 +75,20 @@ describe('CorreosJuridicosService', () => {
             create: jest.fn((data) => data),
             delete: jest.fn(),
         };
+        mockDocumentoRepo = {
+            save: jest.fn((data) => Promise.resolve({ id: 'doc-1', ...data })),
+            create: jest.fn((data) => data),
+        };
+        mockDocumentoConsultaRepo = {
+            save: jest.fn((data) => Promise.resolve({ id: 'doc-consulta-1', ...data })),
+            create: jest.fn((data) => data),
+        };
+        mockExpedienteRepo = {
+            update: jest.fn().mockResolvedValue({ affected: 1 }),
+        };
+        mockConsultaRepo = {
+            update: jest.fn().mockResolvedValue({ affected: 1 }),
+        };
         mockGraphService = {
             sendEmail: jest.fn(),
             getEmails: jest.fn(),
@@ -81,6 +104,8 @@ describe('CorreosJuridicosService', () => {
             classify: jest.fn(),
             analyzeUrgency: jest.fn().mockReturnValue(false),
             extractEntities: jest.fn().mockReturnValue({}),
+            resolveModuleForCategory: jest.fn().mockReturnValue('Buzón General'),
+            train: jest.fn().mockResolvedValue(undefined),
         };
         mockActuacionService = { create: jest.fn(), registrarActuacion: jest.fn() };
         mockNotificationClient = { notifyByRoles: jest.fn().mockResolvedValue(undefined) };
@@ -92,6 +117,10 @@ describe('CorreosJuridicosService', () => {
                 { provide: getRepositoryToken(AdjuntoCorreo), useValue: mockAdjuntoRepo },
                 { provide: getRepositoryToken(CorreoJuridicoHistorial), useValue: mockHistorialRepo },
                 { provide: getRepositoryToken(CorreoTrackingToken), useValue: mockTrackingRepo },
+                { provide: getRepositoryToken(Documento), useValue: mockDocumentoRepo },
+                { provide: getRepositoryToken(DocumentoConsulta), useValue: mockDocumentoConsultaRepo },
+                { provide: getRepositoryToken(Expediente), useValue: mockExpedienteRepo },
+                { provide: getRepositoryToken(ConsultaJuridica), useValue: mockConsultaRepo },
                 { provide: MicrosoftGraphService, useValue: mockGraphService },
                 { provide: SmartClassificationService, useValue: mockSmartService },
                 { provide: ActuacionService, useValue: mockActuacionService },
@@ -124,6 +153,7 @@ describe('CorreosJuridicosService', () => {
                 [],
                 { requestReadReceipt: false, requestDeliveryReceipt: false },
                 'juridica@esap.gov.co',
+                undefined,
             );
         });
 
@@ -301,6 +331,250 @@ describe('CorreosJuridicosService', () => {
 
             expect(result.leido).toBe(true);
             expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ leido: true }));
+        });
+    });
+
+    describe('derivarANuevoProceso() — derivar comunicación a un proceso RECIÉN CREADO', () => {
+        const correoBase = {
+            id: 'correo-1',
+            asunto: 'Solicitud de concepto',
+            remitenteEmail: 'externo@test.com',
+            remitenteNombre: 'Externo',
+        };
+
+        it('lanza BadRequestException si no se indica procesoId', async () => {
+            await expect(service.derivarANuevoProceso('correo-1', '' as any, 'DEFENSA')).rejects.toThrow(BadRequestException);
+            expect(mockCorreoRepo.findOne).not.toHaveBeenCalled();
+        });
+
+        it('lanza NotFoundException si el correo no existe', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue(null);
+            await expect(service.derivarANuevoProceso('no-existe', 'proc-1', 'DEFENSA')).rejects.toThrow(NotFoundException);
+        });
+
+        it('DEFENSA: vincula el correo al expediente y copia todos los adjuntos (caso feliz)', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([
+                { id: 'adj-1', nombre: 'oficio.pdf', contentType: 'application/pdf', tamanio: 100 },
+            ]);
+            jest.spyOn(service, 'downloadAttachment').mockResolvedValue({
+                name: 'oficio.pdf', contentType: 'application/pdf', contentBytes: Buffer.from('x').toString('base64'), size: 1,
+            });
+
+            const result = await service.derivarANuevoProceso('correo-1', 'exp-1', 'DEFENSA');
+
+            expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ expedienteId: 'exp-1', moduloDestino: 'DEFENSA_JUDICIAL' }));
+            expect(mockExpedienteRepo.update).toHaveBeenCalledWith({ id: 'exp-1' }, { origenComunicacionId: 'correo-1' });
+            expect(mockConsultaRepo.update).not.toHaveBeenCalled();
+            expect(mockDocumentoRepo.save).toHaveBeenCalledTimes(1);
+            expect(mockDocumentoConsultaRepo.save).not.toHaveBeenCalled();
+            expect(result).toEqual(expect.objectContaining({ vinculado: true, documentosCopiados: 1, documentosTotal: 1 }));
+            expect(mockHistorialRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+                tipoEvento: 'PROCESO_CREADO',
+                descripcion: expect.stringContaining('1 documento(s) adjuntado(s)'),
+            }));
+        });
+
+        it('DISCIPLINARIO: vincula el correo al expediente (comparte tabla con Defensa)', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([]);
+
+            const result = await service.derivarANuevoProceso('correo-1', 'exp-disc-1', 'DISCIPLINARIO');
+
+            expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ expedienteId: 'exp-disc-1', moduloDestino: 'JUZGAMIENTO_DISCIPLINARIO' }));
+            expect(mockExpedienteRepo.update).toHaveBeenCalledWith({ id: 'exp-disc-1' }, { origenComunicacionId: 'correo-1' });
+            expect(result.documentosTotal).toBe(0);
+            expect(result.documentosCopiados).toBe(0);
+            expect(result.vinculado).toBe(true);
+        });
+
+        it('ASESORIA: vincula el correo a la consulta jurídica y copia adjuntos a documentos_consulta', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([
+                { id: 'adj-1', nombre: 'derecho-peticion.pdf', contentType: 'application/pdf', tamanio: 50 },
+            ]);
+            jest.spyOn(service, 'downloadAttachment').mockResolvedValue({
+                name: 'derecho-peticion.pdf', contentType: 'application/pdf', contentBytes: Buffer.from('y').toString('base64'), size: 1,
+            });
+
+            const result = await service.derivarANuevoProceso('correo-1', 'consulta-1', 'ASESORIA');
+
+            expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ consultaId: 'consulta-1', moduloDestino: 'ASESORIA_JURIDICA' }));
+            expect(mockConsultaRepo.update).toHaveBeenCalledWith({ id: 'consulta-1' }, { origenComunicacionId: 'correo-1' });
+            expect(mockExpedienteRepo.update).not.toHaveBeenCalled();
+            expect(mockDocumentoConsultaRepo.save).toHaveBeenCalledTimes(1);
+            expect(mockDocumentoRepo.save).not.toHaveBeenCalled();
+            expect(result.documentosCopiados).toBe(1);
+        });
+
+        it('usa DEFENSA_JUDICIAL por defecto si targetModule es desconocido/no reconocido', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([]);
+
+            await service.derivarANuevoProceso('correo-1', 'exp-x', 'algo-raro');
+
+            expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ expedienteId: 'exp-x', moduloDestino: 'DEFENSA_JUDICIAL' }));
+        });
+
+        it('BUG CORREGIDO: si falla la trazabilidad inversa (origen_comunicacion_id) el correo igual queda vinculado y la función no lanza', async () => {
+            // Reproduce el bug reportado: el proceso se crea, pero antes la comunicación no
+            // quedaba vinculada porque un fallo en la actualización del proceso (p. ej. una
+            // migración de BD pendiente en el ambiente) abortaba todo antes de guardar el correo.
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([]);
+            mockExpedienteRepo.update.mockRejectedValue(new Error('column "origen_comunicacion_id" does not exist'));
+            jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+
+            const result = await service.derivarANuevoProceso('correo-1', 'exp-migracion-pendiente', 'DEFENSA');
+
+            expect(result.vinculado).toBe(true);
+            expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ expedienteId: 'exp-migracion-pendiente' }));
+        });
+
+        it('copia parcial: si un adjunto falla al descargarse, los demás igual se copian y el correo queda vinculado', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([
+                { id: 'adj-ok', nombre: 'ok.pdf', contentType: 'application/pdf', tamanio: 10 },
+                { id: 'adj-falla', nombre: 'falla.pdf', contentType: 'application/pdf', tamanio: 10 },
+            ]);
+            jest.spyOn(service, 'downloadAttachment').mockImplementation(async (id: string) => {
+                if (id === 'adj-falla') throw new Error('Graph API: mensaje ya no existe en el buzón');
+                return { name: 'ok.pdf', contentType: 'application/pdf', contentBytes: Buffer.from('z').toString('base64'), size: 1 };
+            });
+            jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+            const result = await service.derivarANuevoProceso('correo-1', 'exp-1', 'DEFENSA');
+
+            expect(result.vinculado).toBe(true);
+            expect(result.documentosCopiados).toBe(1);
+            expect(result.documentosTotal).toBe(2);
+            expect(mockHistorialRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+                descripcion: expect.stringContaining('1/2 documento(s) adjuntado(s)'),
+            }));
+        });
+
+        it('todos los adjuntos fallan: la comunicación igual queda vinculada, sin lanzar excepción', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([
+                { id: 'adj-1', nombre: 'a.pdf', contentType: 'application/pdf', tamanio: 10 },
+                { id: 'adj-2', nombre: 'b.pdf', contentType: 'application/pdf', tamanio: 10 },
+            ]);
+            jest.spyOn(service, 'downloadAttachment').mockRejectedValue(new Error('token expirado'));
+            jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+            const result = await service.derivarANuevoProceso('correo-1', 'exp-1', 'DEFENSA');
+
+            expect(result.vinculado).toBe(true);
+            expect(result.documentosCopiados).toBe(0);
+            expect(result.documentosTotal).toBe(2);
+            expect(mockCorreoRepo.save).toHaveBeenCalledWith(expect.objectContaining({ expedienteId: 'exp-1' }));
+        });
+
+        it('sin adjuntos: queda vinculado y el mensaje de historial no menciona documentos', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([]);
+
+            const result = await service.derivarANuevoProceso('correo-1', 'exp-1', 'DEFENSA');
+
+            expect(result.documentosTotal).toBe(0);
+            expect(mockHistorialRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+                descripcion: 'Proceso creado a partir de esta comunicación (DEFENSA_JUDICIAL)',
+            }));
+        });
+
+        it('propaga la excepción si el guardado del vínculo (correoRepo.save) falla, sin intentar copiar adjuntos', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ ...correoBase });
+            mockCorreoRepo.save.mockRejectedValue(new Error('FK violation: expediente no existe'));
+
+            await expect(service.derivarANuevoProceso('correo-1', 'exp-inexistente', 'DEFENSA')).rejects.toThrow('FK violation');
+            expect(mockAdjuntoRepo.find).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('linkToProcess() — asociar comunicación a un proceso EXISTENTE', () => {
+        it('lanza NotFoundException si el correo no existe', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue(null);
+            await expect(service.linkToProcess('no-existe', 'proc-1', 'DEFENSA')).rejects.toThrow(NotFoundException);
+        });
+
+        it('ASESORIA: asocia el correo a la consulta y no lanza aunque falle la copia de un adjunto', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ id: 'correo-2', asunto: 'Consulta' });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([{ id: 'adj-1', nombre: 'x.pdf', contentType: 'application/pdf', tamanio: 5 }]);
+            jest.spyOn(service, 'downloadAttachment').mockRejectedValue(new Error('sin acceso'));
+            jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+            jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+
+            const result = await service.linkToProcess('correo-2', 'consulta-9', 'ASESORIA');
+
+            expect(result).toEqual(expect.objectContaining({ consultaId: 'consulta-9', moduloDestino: 'ASESORIA_JURIDICA' }));
+            expect(mockDocumentoConsultaRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('DEFENSA: asocia al expediente y crea Actuación con el primer adjunto', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ id: 'correo-3', asunto: 'Demanda', remitenteNombre: 'Juzgado', fechaRecepcion: new Date() });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([{ id: 'adj-9', nombre: 'demanda.pdf' }]);
+
+            const result = await service.linkToProcess('correo-3', 'exp-9', 'DEFENSA');
+
+            expect(result).toEqual(expect.objectContaining({ expedienteId: 'exp-9', moduloDestino: 'DEFENSA_JUDICIAL' }));
+            expect(mockActuacionService.registrarActuacion).toHaveBeenCalledWith('exp-9', expect.objectContaining({
+                tipoActuacion: 'OFICIO',
+                documentoNombre: 'demanda.pdf',
+            }));
+        });
+
+        it('no lanza si registrarActuacion falla (la Actuación es complementaria, no bloqueante)', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ id: 'correo-4', asunto: 'Demanda', fechaRecepcion: new Date() });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockAdjuntoRepo.find.mockResolvedValue([]);
+            mockActuacionService.registrarActuacion.mockRejectedValue(new Error('actuacion service caído'));
+            jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+
+            await expect(service.linkToProcess('correo-4', 'exp-10', 'DISCIPLINARIO'))
+                .resolves.toEqual(expect.objectContaining({ expedienteId: 'exp-10' }));
+        });
+    });
+
+    describe('updateClassification() — corrección manual de categoría', () => {
+        it('lanza NotFoundException si el correo no existe', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue(null);
+            await expect(service.updateClassification('no-existe', 'OFICIO')).rejects.toThrow(NotFoundException);
+        });
+
+        it('BUG CORREGIDO: al corregir la categoría, moduloSugerido queda sincronizado (antes se quedaba con el valor viejo)', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({
+                id: 'correo-5', asunto: 'Solicitud', cuerpoTexto: 'texto', categoria: 'CORREO', moduloSugerido: 'Buzón General', isTrained: false,
+            });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+            mockSmartService.resolveModuleForCategory.mockReturnValue('MOD-03: Asesoría Jurídica');
+
+            const result = await service.updateClassification('correo-5', 'CONSULTA');
+
+            expect(mockSmartService.resolveModuleForCategory).toHaveBeenCalledWith('CONSULTA', 'Solicitud', 'texto');
+            expect(result.moduloSugerido).toBe('MOD-03: Asesoría Jurídica');
+            expect(result.categoria).toBe('CONSULTA');
+            expect(result.isTrained).toBe(true);
+        });
+
+        it('marca isTrained y reentrena el clasificador con el texto corregido', async () => {
+            mockCorreoRepo.findOne.mockResolvedValue({ id: 'correo-6', asunto: 'Oficio recibido', cuerpoTexto: 'cuerpo', categoria: 'CORREO' });
+            mockCorreoRepo.save.mockImplementation(async (data) => data);
+
+            await service.updateClassification('correo-6', 'OFICIO');
+
+            expect(mockSmartService.train).toHaveBeenCalledWith('Oficio recibido cuerpo', 'OFICIO');
+            const saved = mockCorreoRepo.save.mock.calls[0][0];
+            expect(saved.tipo).toBe('OFICIO');
         });
     });
 });

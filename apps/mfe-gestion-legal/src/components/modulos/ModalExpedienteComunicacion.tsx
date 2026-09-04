@@ -205,10 +205,18 @@ export function ModalExpedienteComunicacion({
     }
     setDerivando(true);
     try {
-      await correosJuridicosService.derivarNuevoProceso(comunicacion.id, procesoId, modulo);
-      toast.success('✅ Proceso creado y comunicación derivada', {
-        description: 'Los documentos de la comunicación se agregaron al proceso',
-      });
+      const { documentosCopiados, documentosTotal } = await correosJuridicosService.derivarNuevoProceso(comunicacion.id, procesoId, modulo);
+      if (documentosTotal > 0 && documentosCopiados < documentosTotal) {
+        toast.warning('⚠️ Proceso creado y comunicación vinculada', {
+          description: `Solo se pudieron copiar ${documentosCopiados} de ${documentosTotal} documento(s) adjunto(s). Adjunte los faltantes manualmente en el proceso.`,
+        });
+      } else {
+        toast.success('✅ Proceso creado y comunicación derivada', {
+          description: documentosTotal > 0
+            ? `${documentosCopiados} documento(s) de la comunicación se agregaron al proceso`
+            : 'La comunicación quedó vinculada al proceso',
+        });
+      }
       setCreando(null);
       onDerivado?.();
       onClose();
@@ -970,6 +978,14 @@ export function ModalExpedienteComunicacion({
                         </div>
                         {/* SECCIÓN DE DERIVACIÓN MANUAL END */}
                       </div>
+                    </Card>
+                  ) : comunicacion.tipo === 'ENVIADO' ? (
+                    <Card className="p-6 bg-gray-50 border-gray-200 text-center">
+                      <Send className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+                      <p className="text-gray-600 font-medium">No aplica para correos enviados</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        La clasificación automática solo se calcula para comunicaciones recibidas, no para las que ustedes envían.
+                      </p>
                     </Card>
                   ) : (
                     <Card className="p-6 bg-gray-50 border-gray-200">
