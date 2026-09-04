@@ -48,6 +48,7 @@ export interface ProcesoAuditableUI {
   scoreRiesgo: number;
   frecuenciaSugerida: string;
   horasEstimadas: number;
+  tiempoUltimaAuditoria: number;
   // Campos del backend que mantenemos para el mapeo inverso
   _backendId?: string;
   _codigo?: string;
