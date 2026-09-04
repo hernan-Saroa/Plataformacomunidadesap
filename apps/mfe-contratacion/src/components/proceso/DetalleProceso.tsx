@@ -428,6 +428,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    * el dato reservaría 17rem en las actividades que nadie tiene que aprobar.
    */
   const [hayDecision, setHayDecision] = useState(false);
+
+  /**
+   * Si la actividad abierta tiene aprobadores configurados.
+   *
+   * Lo dice el bloque de aprobacion, que ya lo consulta, y lo necesita el
+   * panel de trabajo para nombrar su boton: donde alguien revisa, registrar
+   * envia a aprobacion en vez de cerrar.
+   */
+  const [pideAprobacion, setPideAprobacion] = useState(false);
   /**
    * La decisión apartada a la burbuja, por voluntad de quien mira.
    *
@@ -788,6 +797,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             // esta por documentos que no son suyos.
             setFaltanFormatos(0);
             setHayDecision(false);
+            setPideAprobacion(false);
             setExpandida(numeral);
           }}
         />
@@ -803,6 +813,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               numeral={actividadSeleccionada.numeral}
               onCambio={() => setTokenExpediente((t) => t + 1)}
               parte="aviso"
+              onRequiereAprobacion={setPideAprobacion}
             />
           ) : null}
 
@@ -941,6 +952,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 procesoId={procesoId}
                 numeral={actividadSeleccionada.numeral}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
+                requiereAprobacion={pideAprobacion}
               />
             ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
               actividadSeleccionada?.numeral === NUMERAL_ARL ? (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ClipboardCheck, Send, Undo2, X } from 'lucide-react';
+import { Check, ClipboardCheck, Undo2, X } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 import { HistorialRevisiones } from './HistorialRevisiones';
@@ -37,6 +37,14 @@ interface Props {
   onEsconder?: () => void;
   /** Avisa de si hay decisión que tomar, para pintar la burbuja. */
   onHayDecision?: (hay: boolean) => void;
+  /**
+   * Si la actividad tiene aprobadores configurados, hacia el contenedor.
+   *
+   * Lo necesita el panel de trabajo para nombrar su boton: donde alguien
+   * revisa, registrar envia a aprobacion y decirlo antes de pulsar evita que
+   * el gestor crea que ya cerro la actividad.
+   */
+  onRequiereAprobacion?: (requiere: boolean) => void;
 }
 
 const boton =
@@ -70,6 +78,7 @@ export function AprobacionDeLaActividad({
   faltanDocumentos = 0,
   onEsconder,
   onHayDecision,
+  onRequiereAprobacion,
 }: Props) {
   const a = usarAprobacion(procesoId, numeral, onCambio);
   const [motivo, setMotivo] = useState('');
@@ -89,6 +98,11 @@ export function AprobacionDeLaActividad({
   React.useEffect(() => {
     onHayDecision?.(hayDecision);
   }, [hayDecision, onHayDecision]);
+
+  React.useEffect(() => {
+    if (a.cargando) return;
+    onRequiereAprobacion?.(a.requiereAprobacion);
+  }, [a.cargando, a.requiereAprobacion, onRequiereAprobacion]);
 
   // Mientras carga tampoco: un bloque que aparece tarde desplaza el panel
   // justo cuando el gestor ya empezó a leerlo.
@@ -307,10 +321,15 @@ export function AprobacionDeLaActividad({
           volver a enviarla. */}
       <HistorialRevisiones revisiones={a.revisiones} />
 
-      <button type="button" className={primario} onClick={a.enviar} disabled={a.guardando}>
-        <Send className="w-3.5 h-3.5" aria-hidden="true" />
-        {a.estado === 'DEVUELTO' ? 'Corregir y volver a enviar' : 'Enviar a aprobación'}
-      </button>
+      {/* Sin boton: la actividad se envia al registrarla, abajo. Tener aqui un
+          envio aparte permitia mandar a revision una actividad vacia —este
+          bloque no sabe si el trabajo esta hecho, y el de abajo si—, y dejaba
+          dos formas de cerrar la misma actividad que se ignoraban entre si. */}
+      <p className="text-[11.5px] text-slate-600 m-0">
+        {a.estado === 'DEVUELTO'
+          ? 'Corrige lo señalado abajo y vuelve a registrar la actividad: con eso se envía de nuevo.'
+          : 'Se envía sola al registrar la actividad, abajo.'}
+      </p>
 
       {a.estado === 'DEVUELTO' && a.quienAprueba.length ? (
         <p className="text-[11px] text-slate-500 m-0">{quien}</p>

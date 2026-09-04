@@ -37,8 +37,14 @@ const estado = (parcial: Partial<EstadoRegistroActividad> = {}): EstadoRegistroA
   ...parcial,
 });
 
-const pintar = (numeral = '5.10') =>
-  render(<PanelRegistroActividad procesoId="p-1" numeral={numeral} />);
+const pintar = (numeral = '5.10', requiereAprobacion = false) =>
+  render(
+    <PanelRegistroActividad
+      procesoId="p-1"
+      numeral={numeral}
+      requiereAprobacion={requiereAprobacion}
+    />,
+  );
 
 describe('PanelRegistroActividad · las actividades que se cumplen dejando constancia', () => {
   beforeEach(() => {
@@ -192,5 +198,25 @@ describe('PanelRegistroActividad · las actividades que se cumplen dejando const
 
     expect(await screen.findByText(/Registros anulados/)).toBeInTheDocument();
     expect(screen.getByText(/Se cargó el acta equivocada/)).toBeInTheDocument();
+  });
+
+  it('dice que el registro envia a aprobacion cuando alguien la revisa', async () => {
+    // El envio dejo de ser un boton aparte: registrar es lo que manda la
+    // actividad a revision, y el gestor tiene que saberlo antes de pulsar.
+    pintar('5.10', true);
+
+    expect(
+      await screen.findByRole('button', { name: /Registrar y enviar a aprobación/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Registrar la actividad$/ })).toBeNull();
+  });
+
+  it('donde nadie revisa el registro cierra la actividad y lo dice asi', async () => {
+    pintar('5.10', false);
+
+    expect(
+      await screen.findByRole('button', { name: /Registrar la actividad/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /enviar a aprobación/ })).toBeNull();
   });
 });

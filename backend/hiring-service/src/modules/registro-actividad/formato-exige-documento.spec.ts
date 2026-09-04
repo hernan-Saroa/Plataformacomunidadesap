@@ -17,7 +17,7 @@ describe('RegistroActividadService · el formato asignado exige el documento', (
 
   /** El helper es privado: se llega por el nombre, que es lo que se prueba. */
   const preguntar = (em: unknown, numeral: string, modalidad: string | null) =>
-    (new RegistroActividadService({} as never) as never as {
+    (new RegistroActividadService({} as never, {} as never) as never as {
       tieneFormatoAsignado(em: unknown, n: string, m: string | null): Promise<boolean>;
     }).tieneFormatoAsignado(em, numeral, modalidad);
 

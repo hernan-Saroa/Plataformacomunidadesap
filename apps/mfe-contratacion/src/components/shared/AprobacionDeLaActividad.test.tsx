@@ -60,7 +60,10 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
 
     // Descubrir quién la aprueba una vez enviada ya no le sirve al gestor.
     expect(await screen.findByText(/La aprobará Director de Contratación/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Enviar a aprobación/ })).toBeInTheDocument();
+    // El envío no vive aquí: lo hace el registro, que es el que sabe si el
+    // trabajo está hecho. Este bloque solo dice por dónde sale.
+    expect(await screen.findByText(/Se envía sola al registrar la actividad/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Enviar a aprobación/ })).toBeNull();
   });
 
   it('deja retirar solo a quien la envió', async () => {
@@ -124,9 +127,9 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
 
     expect(await screen.findByText(/Devuelta por Ana Lucía Prieto/)).toBeInTheDocument();
     expect(screen.getByText(/Falta la firma del ordenador del gasto/)).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /Corregir y volver a enviar/ }),
-    ).toBeInTheDocument();
+    // Corregir se hace abajo, en el panel de trabajo, y volver a registrar
+    // la reenvia: aqui solo se dice por donde sale.
+    expect(screen.getByText(/vuelve a registrar la actividad/)).toBeInTheDocument();
   });
 
   it('una vez aprobada no vuelve a ofrecer enviarla', async () => {
@@ -266,7 +269,7 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
   it('sin revisiones previas no anuncia ningún historial', async () => {
     montar(estado({ estado: 'BORRADOR' }));
 
-    await screen.findByRole('button', { name: /Enviar a aprobación/ });
+    await screen.findByText(/Se envía sola al registrar la actividad/);
     expect(screen.queryByRole('button', { name: /Ver el historial|Ver la decisión/ })).toBeNull();
   });
 

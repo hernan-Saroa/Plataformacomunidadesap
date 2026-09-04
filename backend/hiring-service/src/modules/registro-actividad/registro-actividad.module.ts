@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AprobacionModule } from '../aprobacion/aprobacion.module';
 import { RegistroActividadService } from './registro-actividad.service';
 import { RegistroActividadController } from './registro-actividad.controller';
 
@@ -31,6 +32,9 @@ import { Expediente } from '../../entities/expediente.entity';
       Documento,
       Expediente,
     ]),
+    // El registro decide si la actividad queda cerrada o pasa a revision, y
+    // quien revisa lo dice la matriz: la regla vive en aprobacion, no aqui.
+    AprobacionModule,
   ],
   controllers: [RegistroActividadController],
   providers: [RegistroActividadService],

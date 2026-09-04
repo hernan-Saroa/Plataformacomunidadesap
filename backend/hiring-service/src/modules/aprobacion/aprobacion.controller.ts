@@ -28,7 +28,7 @@ export class AprobacionController {
   @ApiOperation({
     summary: 'Quién aprueba esta actividad',
     description:
-      'Null si no requiere aprobación. La pantalla lo usa para decidir si ofrece «Registrar» o «Enviar a aprobación».',
+      'Null si no requiere aprobación. La pantalla lo usa para nombrar el botón del registro: donde alguien revisa, registrar envía a aprobación.',
   })
   async aprobadores(
     @Param('id', ParseUUIDPipe) procesoId: string,

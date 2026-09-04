@@ -20,6 +20,14 @@ interface Props {
   procesoId: string;
   numeral: string;
   onCambio?: () => void;
+  /**
+   * Si la actividad tiene aprobadores configurados.
+   *
+   * Cambia el nombre del boton, no lo que hace: donde alguien revisa, el
+   * registro deja la actividad esperando visto bueno en vez de cerrarla, y el
+   * gestor tiene que saberlo antes de pulsar, no despues.
+   */
+  requiereAprobacion?: boolean;
 }
 
 /**
@@ -30,7 +38,12 @@ interface Props {
  * es lo mismo: cuándo pasó, qué pasó y con qué se respalda. La pantalla lo dice
  * en vez de aparentar que el dato viene de SECOP II o de Active Document.
  */
-export function PanelRegistroActividad({ procesoId, numeral, onCambio }: Props) {
+export function PanelRegistroActividad({
+  procesoId,
+  numeral,
+  onCambio,
+  requiereAprobacion = false,
+}: Props) {
   const [estado, setEstado] = useState<EstadoRegistroActividad | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -236,18 +249,22 @@ export function PanelRegistroActividad({ procesoId, numeral, onCambio }: Props) 
             }
           />
 
-          {/* El registro cierra la actividad; la aprobación, si el área la
-              configuró, la pide `AprobacionDeLaActividad` encima del panel.
-              Se separan porque los treinta y ocho paneles cierran su actividad
-              de formas distintas —el del CDP expide, el de garantías aprueba
-              pólizas— y el trámite de revisión es el mismo en todos. */}
-          <Boton
-            icono={<FilePlus2 className="w-3.5 h-3.5" />}
-            onClick={registrar}
-            disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
-          >
-            Registrar la actividad
-          </Boton>
+          {/* Este boton es el unico punto que sabe si el trabajo esta hecho
+              —comprueba la fecha, la nota y el soporte—, asi que es el que
+              cierra la actividad o la manda a revision. Antes habia ademas un
+              envio suelto arriba que no comprobaba nada: se podia mandar a
+              aprobacion una actividad vacia, y las dos formas de cerrarla se
+              ignoraban entre si. A la derecha porque es donde termina la
+              lectura del formulario. */}
+          <div className="flex justify-end">
+            <Boton
+              icono={<FilePlus2 className="w-3.5 h-3.5" />}
+              onClick={registrar}
+              disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
+            >
+              {requiereAprobacion ? 'Registrar y enviar a aprobación' : 'Registrar la actividad'}
+            </Boton>
+          </div>
         </>
       )}
 

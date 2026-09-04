@@ -17,6 +17,7 @@ import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { admiteRegistro, faltaParaRegistrar } from './admite-registro';
 import { AnularRegistroDto, RegistrarActividadDto } from './dto/registro-actividad.dto';
 
@@ -37,7 +38,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class RegistroActividadService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly aprobacion: AprobacionService,
+  ) {}
 
   /**
    * Si la actividad tiene un formato del SIG asignado que le aplique.
@@ -192,7 +196,14 @@ export class RegistroActividadService {
         } as Partial<RegistroActividad>),
       );
 
-      await this.marcarActividad(em, procesoId, numeral, true, acceso);
+      await this.marcarActividad(
+        em,
+        procesoId,
+        numeral,
+        true,
+        acceso,
+        proceso.modalidad ?? null,
+      );
       await this.traza(
         em,
         procesoId,
@@ -285,18 +296,42 @@ export class RegistroActividadService {
     );
   }
 
+  /**
+   * En qué estado queda la actividad al registrarla.
+   *
+   * El registro es el único punto que sabe si el trabajo está hecho: comprueba
+   * la fecha, la nota y el soporte antes de guardar. Por eso es el que decide,
+   * y no un envío aparte que no comprueba nada.
+   *
+   * Si la matriz le configuró aprobadores, el registro la deja EN_REVISION y
+   * quien decide la encuentra en su bandeja. Si no, la cierra en APROBADO como
+   * hasta ahora, que es la otra forma de terminar que existe: donde nadie
+   * revisa, el propio registro es el cierre.
+   *
+   * Antes se cerraba siempre en APROBADO, hubiera o no quien revisara, así que
+   * una actividad con aprobador configurado se daba por buena sin que nadie la
+   * mirara y el envío quedaba como un paso que ya no cambiaba nada.
+   */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     numeral: string,
     cumplida: boolean,
     acceso: HiringAccess,
+    modalidad: string | null = null,
   ) {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
 
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
+    const revisan = cumplida
+      ? await this.aprobacion.aprobadoresDe(numeral, modalidad, em)
+      : null;
+    const estado = !cumplida ? 'BORRADOR' : revisan ? 'EN_REVISION' : 'APROBADO';
+
+    // Solo quien revisa aprueba: en EN_REVISION nadie ha decidido todavía, y
+    // sellar ahí al gestor como revisor sería firmar en nombre de otro.
+    const cierra = cumplida && !revisan;
 
     if (!actividad) {
       await em.save(
@@ -305,15 +340,20 @@ export class RegistroActividadService {
           numeral,
           estado: estado as any,
           datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
+          ...(cumplida ? { enviadoPor: acceso.userName } : {}),
+          ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
       return;
     }
 
     actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : (null as any);
-    actividad.revisadoAt = cumplida ? new Date() : (null as any);
+    if (cumplida) {
+      actividad.enviadoPor = acceso.userName;
+      (actividad as any).enviadoPorId = acceso.userId;
+    }
+    actividad.revisadoPor = cierra ? acceso.userName : (null as any);
+    actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
   }
 
