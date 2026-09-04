@@ -336,6 +336,46 @@ const TIENEN_PANEL = (numeral: string): boolean =>
   NUMERALES_ETAPA_10.includes(numeral) ||
   NUMERALES_CON_REGISTRO.includes(numeral);
 
+/**
+ * La actividad por la que va el proceso: la primera disponible sin aprobar.
+ *
+ * Al entrar por «Ver etapa» nadie decía cuál abrir y la pantalla recibía al
+ * gestor con «Elige una actividad», obligándole a buscar en el riel el punto
+ * al que el proceso ya había llegado —un dato que la propia pantalla conoce.
+ *
+ * Vive fuera del componente y recibe lo que necesita porque tiene que poder
+ * calcularse antes de pintar nada: la actividad que se abre sola se decide en
+ * un efecto, y un efecto no puede colgar de que los datos ya hayan llegado.
+ * Aplica la misma regla que el riel, con los mismos ayudantes, para que no
+ * abra una actividad que el riel muestra bloqueada.
+ */
+export const actividadEnCurso = (
+  catalogo: any[],
+  estadoDelEstudio: string,
+): string | null => {
+  if (catalogo.length === 0) return null;
+
+  const flujo: PasoDelFlujo[] = catalogo.map((act: any) => ({
+    numeral: act.numeral,
+    estado: act.numeral === '3.1' ? estadoDelEstudio : act.estado,
+    aplica: act.aplica !== false,
+    construida: TIENEN_PANEL(act.numeral),
+  }));
+  const disponibles = actividadesDisponibles(flujo);
+
+  for (const act of catalogo) {
+    if (!TIENEN_PANEL(act.numeral)) continue;
+    if (act.numeral === '3.1') {
+      if (estadoDelEstudio !== 'APROBADO') return '3.1';
+      continue;
+    }
+    const aplica = act.aplica !== false;
+    if (!aplica || !disponibles.has(act.numeral)) continue;
+    if (estadoDeActividad(aplica, act.estado, true) !== 'aprobada') return act.numeral;
+  }
+  return null;
+};
+
 const formatoPesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
   currency: 'COP',
@@ -441,6 +481,19 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       vigente = false;
     };
   }, [procesoId]);
+
+  // Se abre sola al entrar, no en cada refresco: una vez el gestor ha elegido,
+  // mandar la pantalla de vuelta a la actividad en curso sería quitarle lo que
+  // estaba mirando. Va aquí arriba, con el resto de los efectos y antes de las
+  // salidas tempranas, porque un hook que solo corre cuando ya hay datos
+  // cambia el número de hooks entre renders y React rompe la pantalla.
+  useEffect(() => {
+    if (abiertaLaPrimera || expandida || !datos) return;
+    const enCurso = actividadEnCurso(catalogo, datos.estado);
+    if (!enCurso) return;
+    setAbiertaLaPrimera(true);
+    setExpandida(enCurso);
+  }, [abiertaLaPrimera, expandida, datos, catalogo]);
 
   if (cargando) {
     return (
@@ -558,26 +611,6 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   );
 
   const actividades = delCatalogo;
-
-  /**
-   * La actividad por la que va el proceso: la primera disponible sin aprobar.
-   *
-   * Al entrar por «Ver etapa» nadie decía cuál abrir y la pantalla recibía al
-   * gestor con «Elige una actividad», obligándole a buscar en el riel el punto
-   * al que el proceso ya había llegado —un dato que la propia pantalla conoce.
-   * Solo se usa para el arranque: en cuanto se pulsa algo manda la elección.
-   */
-  const enCurso =
-    actividades.find((a) => a.disponible && a.estado !== 'aprobada')?.numeral ?? null;
-
-  // Se abre sola al entrar, no en cada refresco: una vez el gestor ha elegido,
-  // mandar la pantalla de vuelta a la actividad en curso sería quitarle lo que
-  // estaba mirando.
-  useEffect(() => {
-    if (abiertaLaPrimera || expandida || !enCurso) return;
-    setAbiertaLaPrimera(true);
-    setExpandida(enCurso);
-  }, [abiertaLaPrimera, expandida, enCurso]);
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
