@@ -354,6 +354,14 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
+  /**
+   * Si ya se abrió la actividad en curso al entrar.
+   *
+   * Se hace una sola vez y no cada vez que llegan datos: si se repitiera, el
+   * riel volvería a saltar a la actividad en curso cada vez que el expediente
+   * se refresca, deshaciendo lo que el gestor acabara de elegir.
+   */
+  const [abiertaLaPrimera, setAbiertaLaPrimera] = useState(false);
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
   /**
    * Qué etapa se está mirando. Nula hasta que alguien elija: mientras tanto se
@@ -550,6 +558,26 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   );
 
   const actividades = delCatalogo;
+
+  /**
+   * La actividad por la que va el proceso: la primera disponible sin aprobar.
+   *
+   * Al entrar por «Ver etapa» nadie decía cuál abrir y la pantalla recibía al
+   * gestor con «Elige una actividad», obligándole a buscar en el riel el punto
+   * al que el proceso ya había llegado —un dato que la propia pantalla conoce.
+   * Solo se usa para el arranque: en cuanto se pulsa algo manda la elección.
+   */
+  const enCurso =
+    actividades.find((a) => a.disponible && a.estado !== 'aprobada')?.numeral ?? null;
+
+  // Se abre sola al entrar, no en cada refresco: una vez el gestor ha elegido,
+  // mandar la pantalla de vuelta a la actividad en curso sería quitarle lo que
+  // estaba mirando.
+  useEffect(() => {
+    if (abiertaLaPrimera || expandida || !enCurso) return;
+    setAbiertaLaPrimera(true);
+    setExpandida(enCurso);
+  }, [abiertaLaPrimera, expandida, enCurso]);
 
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
