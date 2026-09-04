@@ -126,13 +126,19 @@ export class AprobacionService {
     return {
       requiereAprobacion: aprobadores !== null,
       aprobadores: aprobadores
-        ? { ...aprobadores, roles: await this.nombresDeRoles(aprobadores.roles) }
+        ? {
+            ...aprobadores,
+            roles: await this.nombresDeRoles(aprobadores.roles),
+            // Con su nombre, no con el identificador: una actividad designada
+            // solo a una persona decía «aún no se ha designado quién aprueba».
+            personas: await this.nombresDePersonas(aprobadores.personas),
+          }
         : null,
       // Se resuelve aquí y no en el cliente: la pantalla no debería replicar la
       // regla de quién puede aprobar, porque quedaría desactualizada en cuanto
       // cambie aquí.
       puedoAprobar: aprobadores
-        ? this.puedeAprobar(aprobadores, acceso) && !esMia
+        ? this.puedeAprobar(aprobadores, acceso, await this.personaDe(acceso.userId)) && !esMia
         : false,
       estado: actividad?.estado ?? 'BORRADOR',
       esMia,
@@ -175,11 +181,59 @@ export class AprobacionService {
     );
   }
 
-  /** Si el usuario está entre los aprobadores configurados. */
-  puedeAprobar(aprobadores: Aprobadores, acceso: HiringAccess): boolean {
+  /**
+   * Los nombres de las personas designadas como aprobadoras.
+   *
+   * Igual que con los roles: un identificador no es algo que el gestor deba
+   * leer, y si la persona ya no está en el directorio se deja el suyo antes
+   * que callar que la configuración apunta a alguien que no existe.
+   */
+  private async nombresDePersonas(ids: string[]): Promise<string[]> {
+    if (!ids.length) return [];
+
+    const filas = await this.dataSource.query(
+      `SELECT p.id_person AS id, COALESCE(p.nom_largo, p.nom_tercero) AS nombre
+         FROM auth.personas p
+        WHERE p.id_person = ANY($1::uuid[])`,
+      [ids],
+    );
+
+    return ids.map((id) => filas.find((f: any) => f.id === id)?.nombre ?? id);
+  }
+
+  /**
+   * Si el usuario está entre los aprobadores configurados.
+   *
+   * Basta con estar en uno de los grupos: designar dos roles y una persona es
+   * decir que cualquiera de ellos puede resolverla, no que hagan falta las
+   * tres firmas. Una aprobación conjunta —que varios tengan que decidir antes
+   * de cerrar— no existe hoy y no se puede simular con esta lista.
+   *
+   * `personaId` y no `userId`: el buscador guarda el `id_person` del
+   * directorio, mientras que la sesión trae el `id_user` de la cuenta. Son
+   * distintos, así que compararlos entre sí nunca coincidía y designar a
+   * alguien por su nombre no le daba la aprobación.
+   */
+  puedeAprobar(aprobadores: Aprobadores, acceso: HiringAccess, personaId?: string | null): boolean {
     if (acceso.roles?.includes('SUPER_ADMIN')) return true;
-    if (aprobadores.personas.includes(acceso.userId)) return true;
+    if (personaId && aprobadores.personas.includes(personaId)) return true;
     return aprobadores.roles.some((rol) => acceso.roles?.includes(rol));
+  }
+
+  /**
+   * La persona del directorio a la que pertenece la cuenta.
+   *
+   * `auth.user.id_person` es lo que enlaza una con otra; sin esa traducción,
+   * un aprobador designado por su nombre no se reconoce al decidir.
+   */
+  private async personaDe(userId: string | undefined): Promise<string | null> {
+    if (!userId) return null;
+
+    const [fila] = await this.dataSource.query(
+      `SELECT id_person FROM auth."user" WHERE id_user = $1`,
+      [userId],
+    );
+    return fila?.id_person ?? null;
   }
 
   // ------------------------------------------------------------ el trámite --
@@ -302,9 +356,9 @@ export class AprobacionService {
         );
       }
 
-      if (!this.puedeAprobar(aprobadores, acceso)) {
+      if (!this.puedeAprobar(aprobadores, acceso, await this.personaDe(acceso.userId))) {
         throw new ForbiddenException(
-          'Tu rol no está entre los que aprueban esta actividad',
+          'No estás entre quienes aprueban esta actividad',
         );
       }
 

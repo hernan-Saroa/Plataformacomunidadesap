@@ -76,7 +76,12 @@ export function usarAprobacion(
       .then((r) => {
         setRequiere(r.requiereAprobacion);
         setPuedoAprobar(r.puedoAprobar);
-        setQuienAprueba(r.aprobadores?.roles ?? []);
+        // Roles y personas: designar solo a alguien por su nombre dejaba la
+        // lista vacía, y el gestor leía que nadie la aprobaba.
+        setQuienAprueba([
+          ...(r.aprobadores?.roles ?? []),
+          ...((r.aprobadores as { personas?: string[] } | null)?.personas ?? []),
+        ]);
         setEstado((r.estado as Aprobacion['estado']) ?? 'BORRADOR');
         setEsMia(!!r.esMia);
         setObservaciones(r.observaciones ?? null);

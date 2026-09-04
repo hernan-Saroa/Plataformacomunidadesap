@@ -752,6 +752,17 @@ export class ConfiguracionService {
         )
       : [];
 
+    // La pantalla listaba el identificador de la persona, que no dice nada:
+    // quien administra no puede comprobar a quién designó.
+    const quienes: { id: string; nombre: string }[] = personas.length
+      ? await this.dataSource.query(
+          `SELECT p.id_person AS id, COALESCE(p.nom_largo, p.nom_tercero) AS nombre
+             FROM auth.personas p
+            WHERE p.id_person = ANY($1::uuid[])`,
+          [personas],
+        )
+      : [];
+
     return {
       requiereAprobacion: true,
       aprobadores: [
@@ -762,7 +773,11 @@ export class ConfiguracionService {
           // vez de nada: quien administra necesita ver que ahí hay algo roto.
           nombre: nombres.find((n) => n.code === code)?.name ?? code,
         })),
-        ...personas.map((id) => ({ clase: 'persona' as const, id, nombre: id })),
+        ...personas.map((id) => ({
+          clase: 'persona' as const,
+          id,
+          nombre: quienes.find((q) => q.id === id)?.nombre ?? id,
+        })),
       ],
     };
   }
