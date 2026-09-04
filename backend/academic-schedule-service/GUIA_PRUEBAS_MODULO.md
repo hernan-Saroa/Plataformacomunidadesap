@@ -102,20 +102,69 @@ posgrado. **Esto sirve solo en desarrollo**: depende del secreto por defecto.
 
 ### Camino B — usuario real (para probar por la interfaz)
 
-La UI no habla con el 3013 directamente: usa rutas relativas
-`/programacion-academica/...` que resuelve el api-gateway. Ese camino exige
-auth-service, gateway y shell levantados, y un usuario real con su hash de
-contraseña emitido por el auth-service, más su fila en `auth.user_roles`
-apuntando al rol.
+Este es el camino del demo. Está verificado de extremo a extremo.
 
-No documento un `INSERT` completo aquí porque no lo he ejecutado y un hash
-inventado no va a funcionar. Si necesita el camino por UI, cree el usuario por el
-flujo del auth-service y luego vincúlelo:
+**Credenciales del usuario de pruebas:**
+
+```
+usuario:  qa.programacion
+clave:    Programacion2026*
+rol:      PROGRAMADOR_PREGRADO
+```
+
+Si la base ya lo tiene, salte al §5. Si no, créelo con el endpoint del
+auth-service — **nunca con un `INSERT` a mano**: la contraseña se guarda como
+hash bcrypt y el servicio es quien sabe generarlo.
+
+```bash
+curl -s -X POST http://localhost:3001/new-person \
+  -H "Content-Type: application/json" \
+  -d '{
+    "firstName": "Ana Lucia",
+    "lastName": "Programadora QA",
+    "documentNumber": "1020304050",
+    "email": "qa.programacion@esap.edu.co",
+    "username": "qa.programacion",
+    "password": "Programacion2026*",
+    "roles": ["Programador(a) de Pregrado"]
+  }'
+```
+
+Dos detalles que ahorran tiempo:
+
+- `POST /new-person` es **público**. No necesita un administrador previo, lo cual
+  importa porque en una base recién migrada no hay ningún usuario con quien
+  autenticarse para crear el primero.
+- El campo `roles` va por **nombre**, no por código: `Programador(a) de Pregrado`,
+  no `PROGRAMADOR_PREGRADO`. Con el código, el usuario se crea **sin rol** y
+  después todo responde 403 sin explicar por qué.
+
+Verifique el vínculo:
 
 ```sql
-INSERT INTO auth.user_roles (id_user, id_rol, is_active)
-SELECT '<id del usuario>', id, true FROM auth.role WHERE code = 'PROGRAMADOR_PREGRADO';
+SELECT u.username, r.code
+FROM auth.user_roles ur
+JOIN auth."user" u ON u.id_user = ur.id_user
+JOIN auth.role r ON r.id = ur.id_rol
+WHERE u.username = 'qa.programacion';
 ```
+
+### Levantar el stack completo (necesario solo para el camino B)
+
+La UI no habla con el 3013 directamente. Levante todo por compose, que además es
+como se despliega:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d db auth-service api-gateway academic-schedule-service frontend
+```
+
+> ⚠️ **No levante estos servicios "a mano" con `npm run start:dev`.** Los `.env`
+> locales de cada microservicio **no están alineados entre sí**: el
+> `academic-schedule-service` apunta al contenedor (`55432`) y el auth-service al
+> PostgreSQL de Windows (`5432`), que son **bases distintas** — y además usan
+> `JWT_SECRET` distintos, así que el token del login sale rechazado con 401.
+> Por compose los tres comparten `DB_HOST: db` y el mismo secreto, y no hay
+> desajuste.
 
 ---
 
@@ -332,7 +381,65 @@ falla en vez de una solicitud de permiso.
 
 ---
 
-## 7. Pruebas automatizadas
+## 7. Recorrido por navegador (camino B)
+
+Con el stack levantado (§3), abra **http://localhost/** e ingrese con
+`qa.programacion` / `Programacion2026*`.
+
+| Paso | Qué debe ver |
+|---|---|
+| 1. Login | Entra al backoffice |
+| 2. Sidebar | Aparece **Programación Académica** |
+| 3. Abrir el módulo | Carga el micro-frontend |
+| 4. Nivel y programa | Solo pregrado. Posgrado no está disponible para este rol |
+| 5. Catálogo | Asignaturas del programa por semestre |
+| 6. Buscar por código | `ASIG-00132` → 384 h |
+| 7. Grupos | Crear uno o varios de una asignatura |
+| 8. Horario | Franja 11:05–12:35 se acepta; un solape se rechaza |
+
+### Las rutas del gateway llevan `/api/v1`
+
+El navegador no llama al 3013. Llama a nginx, que reenvía al gateway:
+
+```
+http://localhost/services/programacion-academica/api/v1/catalogo/programas?nivel=pregrado
+```
+
+El segmento **`/api/v1` es obligatorio** — el gateway enruta como
+`/{servicio}/api/v{version}/{ruta}`. Sin él responde **404**, no 401 ni 403:
+
+| Ruta | Resultado |
+|---|---|
+| `/programacion-academica/catalogo/programas` | 404 |
+| `/programacion-academica/api/catalogo/programas` | 404 |
+| `/programacion-academica/api/v1/catalogo/programas` | **200** |
+
+Vale la pena tenerlo presente al depurar: **por API directa al 3013 la ruta sin
+`/api/v1` funciona igual**, así que un error de prefijo no se ve hasta pasar por
+el gateway — es decir, hasta abrir el navegador.
+
+### Cómo viaja la sesión
+
+El login responde con una cookie **HttpOnly** `esap_access_token`; no devuelve el
+token en el cuerpo. El servicio la acepta tanto por esa cookie como por
+`Authorization: Bearer`. Para reproducir el camino del navegador con `curl`:
+
+```bash
+TOK=$(curl -s -i -X POST http://localhost/services/auth/api/v1/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"qa.programacion","password":"Programacion2026*"}' \
+  | grep -i "^set-cookie: esap_access_token=" | sed 's/.*esap_access_token=//; s/;.*//' | tr -d '\r')
+
+curl -s -H "Cookie: esap_access_token=$TOK" \
+  "http://localhost/services/programacion-academica/api/v1/catalogo/programas?nivel=pregrado"
+```
+
+Con esa misma sesión, `?nivel=posgrado` responde **403** y sin cookie responde
+**401**: RN-08 se aplica igual por la interfaz que por API directa.
+
+---
+
+## 8. Pruebas automatizadas
 
 ```bash
 cd backend/academic-schedule-service
@@ -341,7 +448,7 @@ npm test
 
 ---
 
-## 8. Qué NO está implementado
+## 9. Qué NO está implementado
 
 Lo siguiente **no es un defecto**: está fuera del alcance de estas cuatro HU.
 
@@ -366,7 +473,7 @@ Dos precisiones que evitan reportes de bug equivocados:
 
 ---
 
-## 9. Si algo no cuadra
+## 10. Si algo no cuadra
 
 | Síntoma | Causa habitual |
 |---|---|
