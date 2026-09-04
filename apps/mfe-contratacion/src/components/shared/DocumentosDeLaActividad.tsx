@@ -95,7 +95,7 @@ export function DocumentosDeLaActividad({ procesoId, numeral, recargarToken, onC
   const faltan = estado.requeridos.filter((r) => !r.cargado).length;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 space-y-3 mb-3">
+    <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />

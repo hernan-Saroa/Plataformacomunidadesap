@@ -502,7 +502,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           // Antes se daba por en curso todo lo aplicable, así que el riel
           // encendía en azul las nueve actividades de las etapas 4 y 5 desde el
           // minuto uno y el color dejaba de informar.
-          estado: estadoDeActividad(aplica, act.estado),
+          estado: estadoDeActividad(aplica, act.estado, alcanzada),
           disponible: aplica && alcanzada,
           detalle: !aplica
             ? 'No aplica a esta modalidad'
@@ -683,31 +683,16 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         />
 
         <div className="min-w-0">
-          {/* Aprobación y documentos, encima del panel: los treinta y ocho
-              paneles no conocen su numeral y este sitio sí. Ninguno pinta nada
-              si no hay formatos asignados ni aprobación configurada. */}
-          {actividadSeleccionada ? (
-            <>
-              {!NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) && (
-                <AprobacionDeLaActividad
-                  procesoId={procesoId}
-                  numeral={actividadSeleccionada.numeral}
-                  onCambio={() => setTokenExpediente((t) => t + 1)}
-                />
-              )}
-              {/* Salvo donde el panel ya los muestra con su propio texto: el
-                  estudio previo explica que se elige entre cuatro formatos según
-                  el tipo de contratación, y la 5.1 los reparte documento por
-                  documento. Repetirlos aquí los duplicaría en pantalla. */}
-              {!NUMERALES_CON_FORMATOS_PROPIOS.includes(actividadSeleccionada.numeral) && (
-                <DocumentosDeLaActividad
-                  procesoId={procesoId}
-                  numeral={actividadSeleccionada.numeral}
-                  recargarToken={tokenExpediente}
-                  onCambio={() => setTokenExpediente((t) => t + 1)}
-                />
-              )}
-            </>
+          {/* La aprobación va encima porque decide si el panel de abajo sirve
+              de algo: sin visto bueno la actividad no se cierra. Los documentos
+              van después del panel, que es donde se trabaja. */}
+          {actividadSeleccionada &&
+          !NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) ? (
+            <AprobacionDeLaActividad
+              procesoId={procesoId}
+              numeral={actividadSeleccionada.numeral}
+              onCambio={() => setTokenExpediente((t) => t + 1)}
+            />
           ) : null}
 
           {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
@@ -957,9 +942,23 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             </div>
           )}
 
-          {/* Todo lo que quedó en el expediente, venga de donde venga: lo que
-              sube el panel del CDP, la copia del formulario al enviar. El
-              bloque de arriba solo muestra lo que exigen los formatos. */}
+          {/* Los documentos que la actividad entrega, debajo del panel: primero
+              se trabaja, después se adjunta. Salvo donde el panel ya los
+              reparte por su cuenta, que los duplicaría. */}
+          {actividadSeleccionada &&
+          !NUMERALES_CON_FORMATOS_PROPIOS.includes(actividadSeleccionada.numeral) ? (
+            <div className="mt-3">
+              <DocumentosDeLaActividad
+                procesoId={procesoId}
+                numeral={actividadSeleccionada.numeral}
+                recargarToken={tokenExpediente}
+                onCambio={() => setTokenExpediente((t) => t + 1)}
+              />
+            </div>
+          ) : null}
+
+          {/* Todo lo demás que quedó en el expediente: lo que sube el panel del
+              CDP, la copia del formulario al enviar. */}
           {actividadSeleccionada ? (
             <DocumentosActividad
               procesoId={procesoId}
