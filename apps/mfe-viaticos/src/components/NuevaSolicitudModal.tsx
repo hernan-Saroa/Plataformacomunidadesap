@@ -27,8 +27,10 @@ import {
   Dependencia,
   DocumentoFormItem,
   DocumentoSoporte,
+  ESTADOS_CONSOLIDABLES,
   FormNuevaSolicitud,
   Geopolitica,
+  ResultadoConsolidacion,
   SolicitudComisionResponse,
   TicketValidationResult,
   TipoTransporteTiquete,
@@ -39,6 +41,7 @@ import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
 import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
+import ConsolidacionExpediente from './ConsolidacionExpediente';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
@@ -61,6 +64,12 @@ interface Props {
   abierta: boolean;
   onCerrar: () => void;
   onSolicitudCreada: (solicitud: SolicitudComisionResponse) => void;
+  /**
+   * Callback de consolidación (RF-LIQ-004): se dispara cuando un expediente en
+   * estado RADICADA/EXTEMPORANEA/DEVUELTA se consolida con éxito (→ SOLICITADO).
+   * El padre refresca la bandeja y muestra el mensaje de éxito.
+   */
+  onSolicitudConsolidada?: (resultado: ResultadoConsolidacion) => void;
   solicitudAResumir?: SolicitudComisionResponse | null;
   /** Usuario elevado según el backend de viáticos (mismo flag que usa
    * `ViaticosModulePremium` desde `obtenerSolicitudes()`). Si se entrega,
@@ -91,7 +100,7 @@ const tieneRolSuperAdmin = (roles: string[] = []): boolean =>
     return limpio.includes('SUPER') && limpio.includes('ADMIN');
   });
 
-export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, solicitudAResumir, esSuperAdmin }: Props) {
+export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, onSolicitudConsolidada, solicitudAResumir, esSuperAdmin }: Props) {
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
@@ -988,6 +997,34 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
     return etiquetaBase;
   };
+
+  // ========================================================================
+  // RF-LIQ-004 — Modo de consolidación del expediente ("Paso 4: Resumen de
+  // Expediente y Envío"). Cuando el modal se abre con una solicitud ya
+  // radicada (RADICADA / EXTEMPORANEA / DEVUELTA), NO se muestra el asistente
+  // de creación sino la vista de consolidación que permite revisar el
+  // expediente completo y enviarlo a revisión del Grupo de Viáticos.
+  // ========================================================================
+  const esModoConsolidacion = Boolean(
+    solicitudAResumir &&
+      (ESTADOS_CONSOLIDABLES as readonly string[]).includes(
+        solicitudAResumir.estadoSolicitud,
+      ),
+  );
+
+  if (esModoConsolidacion && solicitudAResumir) {
+    return (
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
+          <ConsolidacionExpediente
+            solicitud={solicitudAResumir}
+            onConsolidada={(resultado) => onSolicitudConsolidada?.(resultado)}
+            onCerrar={onCerrar}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full flex items-center justify-center p-4">

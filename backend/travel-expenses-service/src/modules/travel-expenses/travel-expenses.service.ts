@@ -11,7 +11,10 @@ import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
-import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
+import {
+  EstadoSolicitud,
+  ESTADOS_SOLO_LECTURA,
+} from '../../entities/estado-solicitud.enum';
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
@@ -453,6 +456,10 @@ export class TravelExpensesService {
       throw new BadRequestException('Solicitud no encontrada.');
     }
 
+    // RF-LIQ-004 — Inmutabilidad: un expediente ya consolidado (SOLICITADO o
+    // superior) está en modo solo lectura y no admite subida de nuevos PDFs.
+    this.verificarExpedienteModificable(solicitud, 'subir documentos de soporte');
+
     const file = dto.file;
     const nombreArchivoOriginal =
       (file ? file.originalname : undefined) || dto.nombreArchivoOriginal;
@@ -495,6 +502,18 @@ export class TravelExpensesService {
     solicitudId: string,
     documentoId: string,
   ): Promise<{ success: boolean; message: string }> {
+    // RF-LIQ-004 — Inmutabilidad: bloquea la eliminación de soportes cuando el
+    // expediente ya fue consolidado (modo solo lectura).
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+    if (solicitud) {
+      this.verificarExpedienteModificable(
+        solicitud,
+        'eliminar documentos de soporte',
+      );
+    }
+
     const documento = await this.documentoRepo.findOne({
       where: { id: documentoId, solicitudId },
     });
@@ -716,6 +735,25 @@ export class TravelExpensesService {
     return (
       mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf')
     );
+  }
+
+  /**
+   * RF-LIQ-004 — Verifica que el expediente NO esté en modo solo lectura.
+   * Una vez consolidado (estado SOLICITADO o superior) ningún enlace puede
+   * alterar los datos ni subir/eliminar archivos del expediente.
+   *
+   * @throws BadRequestException cuando el expediente está bloqueado.
+   */
+  private verificarExpedienteModificable(
+    solicitud: SolicitudComisionEntity,
+    accion: string,
+  ): void {
+    const estado = solicitud.estadoSolicitud as EstadoSolicitud;
+    if (ESTADOS_SOLO_LECTURA.has(estado)) {
+      throw new BadRequestException(
+        `El expediente ${solicitud.consecutivoUnico ?? solicitud.id} tiene estado ${solicitud.estadoSolicitud} (solo lectura). No puede ${accion} en un expediente ya consolidado.`,
+      );
+    }
   }
 
   async obtenerParametrizacionFormulario(): Promise<{

@@ -212,6 +212,11 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
   RECHAZADO: { label: 'Rechazado', bg: 'bg-red-100', text: 'text-red-800' },
   RADICADA: { label: 'Radicada', bg: 'bg-slate-100', text: 'text-slate-700' },
   EXTEMPORANEA: { label: 'Extemporánea', bg: 'bg-red-100', text: 'text-red-700' },
+  DEVUELTA: {
+    label: 'Devuelta (subsanar)',
+    bg: 'bg-orange-100',
+    text: 'text-orange-800',
+  },
 };
 
 export function getConfigEstado(estado: string): ConfigEstado {

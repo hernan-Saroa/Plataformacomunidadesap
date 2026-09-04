@@ -21,6 +21,8 @@ import {
    RutaRestringida,
    ExcepcionTiquete,
    CreateExcepcionTiqueteRequest,
+   ResumenConsolidacion,
+   ResultadoConsolidacion,
   } from '../../types/viaticos';
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
 import {
@@ -589,6 +591,51 @@ export class ViaticosService {
     } catch (error) {
       console.error('Error finalizando solicitud:', error);
       throw error;
+    }
+  }
+
+  /**
+   * RF-LIQ-004 — Previsualiza la integridad del expediente sin mutarlo.
+   * Devuelve el checklist estructurado (Formato 023, autoliquidación,
+   * tiquetes/presupuesto y documentos por rol) que alimenta el "Paso 4:
+   * Resumen de Expediente y Envío".
+   */
+  async obtenerResumenConsolidacion(
+    solicitudId: string,
+  ): Promise<ResumenConsolidacion | null> {
+    try {
+      return await apiClient.get<ResumenConsolidacion>(
+        `/viaticos/api/v1/requests/${solicitudId}/consolidacion/preview`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo resumen de consolidación:', error);
+      return null;
+    }
+  }
+
+  /**
+   * RF-LIQ-004 — Consolida el expediente y lo envía a revisión del Grupo de
+   * Viáticos (estado SOLICITADO = solo lectura).
+   *
+   * Si el backend responde HTTP 422 (expediente incompleto) se propaga el
+   * error enriquecido con `errors` (arreglo de faltantes) para que la UI los
+   * muestre detalladamente junto al botón deshabilitado.
+   */
+  async consolidarSolicitud(
+    solicitudId: string,
+  ): Promise<ResultadoConsolidacion> {
+    try {
+      return await apiClient.post<ResultadoConsolidacion>(
+        `/viaticos/api/v1/requests/${solicitudId}/submit`,
+        {},
+      );
+    } catch (error) {
+      console.error('Error consolidando el expediente:', error);
+      // Enriquecer el error para que la capa de presentación acceda a la
+      // lista de elementos faltantes devuelta en el cuerpo 422.
+      const err: any = error;
+      err.errors = err?.response?.data?.errors ?? err?.info?.errors ?? [];
+      throw err;
     }
   }
   async exportarFormato023(solicitudId: string, codigo: string): Promise<Blob> {

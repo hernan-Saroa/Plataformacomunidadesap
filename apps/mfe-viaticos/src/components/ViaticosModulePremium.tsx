@@ -18,10 +18,11 @@ import {
   UserCheck,
   Settings,
   Download,
+  Send,
 } from 'lucide-react';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
-import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte } from '../types/viaticos';
+import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import ParametrizacionManager from './ParametrizacionManager';
@@ -135,6 +136,33 @@ export default function ViaticosModulePremium() {
     cargarDatos();
   };
 
+  /**
+   * RF-LIQ-004 — Maneja la consolidación exitosa del expediente: refresca la
+   * bandeja y muestra el aviso de que el expediente quedó en revisión del
+   * Grupo de Viáticos (estado SOLICITADO / solo lectura).
+   */
+  const handleSolicitudConsolidada = (
+    resultado: ResultadoConsolidacion,
+  ) => {
+    const ref = resultado.consecutivoUnico || 'el expediente';
+    setMensajeExito(
+      `El expediente ${ref} fue consolidado y enviado a revisión del Grupo de Viáticos.`,
+    );
+    setSolicitudAResumir(null);
+    cargarDatos();
+  };
+
+  /** Abre el modal en modo consolidación (Paso 4) para un expediente radicado. */
+  const handleConsolidar = async (sol: SolicitudViatico) => {
+    try {
+      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+      setSolicitudAResumir(completa);
+    } catch (e) {
+      console.error('Error abriendo consolidación:', e);
+      setMensajeExito('No fue posible abrir el expediente para consolidación.');
+    }
+  };
+
   const handleVerDetalle = async (sol: SolicitudViatico) => {
     setSolicitudSeleccionada(sol);
     setCargandoDocumentos(true);
@@ -204,6 +232,7 @@ export default function ViaticosModulePremium() {
             setSolicitudAResumir(null);
           }}
           onSolicitudCreada={handleSolicitudCreada}
+          onSolicitudConsolidada={handleSolicitudConsolidada}
           solicitudAResumir={solicitudAResumir}
           esSuperAdmin={esSuperAdmin}
         />
@@ -430,6 +459,17 @@ export default function ViaticosModulePremium() {
                                       aria-label="Continuar solicitud"
                                     >
                                       <FileText className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                  {['RADICADA', 'EXTEMPORANEA', 'DEVUELTA'].includes(sol.estado) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleConsolidar(sol)}
+                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors"
+                                      title="Consolidar y enviar a revisión (RF-LIQ-004)"
+                                      aria-label="Consolidar y enviar a revisión"
+                                    >
+                                      <Send className="w-3.5 h-3.5" />
                                     </button>
                                   )}
                                 </div>

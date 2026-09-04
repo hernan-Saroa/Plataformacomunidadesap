@@ -11,7 +11,8 @@ export type EstadoSolicitudViatico =
   | 'LEGALIZADO'
   | 'RECHAZADO'
   | 'RADICADA'
-  | 'EXTEMPORANEA';
+  | 'EXTEMPORANEA'
+  | 'DEVUELTA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -426,4 +427,66 @@ export interface CreateExcepcionTiqueteRequest {
   numeroDocumentoSoporte: string;
   documentoSoporteUrl?: string;
   comentarios?: string;
+}
+
+// =========================================================================
+// RF-LIQ-004 — Consolidación y cierre de expediente (Etapa 3)
+// =========================================================================
+
+/** Estados en los que el expediente puede consolidarse (enviarse a revisión). */
+export const ESTADOS_CONSOLIDABLES = [
+  'RADICADA',
+  'EXTEMPORANEA',
+  'DEVUELTA',
+] as const;
+
+export type GrupoValidacion =
+  | 'FORMATO_023'
+  | 'AUTOLIQUIDACION'
+  | 'TIQUETES'
+  | 'DOCUMENTOS';
+
+/** Ítem del checklist de integridad del expediente devuelto por el backend. */
+export interface ConsolidacionValidacionItem {
+  codigo: string;
+  etiqueta: string;
+  grupo: GrupoValidacion;
+  estado: 'OK' | 'FALTA';
+  detalle?: string;
+}
+
+/** Estado de un documento del checklist de soporte en la consolidación. */
+export interface ConsolidacionDocumentoEstado {
+  codigo: string;
+  nombre: string;
+  cargado: boolean;
+  pdf: boolean;
+}
+
+/**
+ * Resumen de integridad del expediente (GET /requests/:id/consolidacion/preview).
+ * Alimenta el "Paso 4: Resumen de Expediente y Envío" de `NuevaSolicitudModal`.
+ */
+export interface ResumenConsolidacion {
+  solicitudId: string;
+  consecutivoUnico: string;
+  estadoSolicitud: string;
+  esConsolidable: boolean;
+  requiereEstado: string[];
+  errores: string[];
+  items: ConsolidacionValidacionItem[];
+  documentos: ConsolidacionDocumentoEstado[];
+}
+
+/**
+ * Resultado de la consolidación exitosa (POST /requests/:id/submit).
+ * El expediente queda en estado SOLICITADO (solo lectura).
+ */
+export interface ResultadoConsolidacion {
+  success: boolean;
+  id: string;
+  consecutivoUnico: string;
+  estadoAnterior: string;
+  estadoSolicitud: EstadoSolicitudViatico;
+  mensaje: string;
 }
