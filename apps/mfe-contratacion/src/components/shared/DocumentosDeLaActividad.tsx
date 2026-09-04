@@ -15,6 +15,14 @@ interface Props {
   /** Cambia cuando la actividad guarda algo, para volver a leer. */
   recargarToken?: number;
   onCambio?: () => void;
+  /**
+   * Los botones de aprobar o devolver, si la actividad los pide.
+   *
+   * Van dentro de este bloque y no encima del panel porque quien decide tiene
+   * que ver primero lo que le cargaron: con la decisión arriba aprobaría sin
+   * haber mirado el documento.
+   */
+  pie?: React.ReactNode;
 }
 
 const MIME_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
@@ -33,7 +41,13 @@ const boton =
  * Lo que se sube sin corresponder a ningún formato va abajo como adicional:
  * hay anexos que ninguna plantilla previó.
  */
-export function DocumentosDeLaActividad({ procesoId, numeral, recargarToken, onCambio }: Props) {
+export function DocumentosDeLaActividad({
+  procesoId,
+  numeral,
+  recargarToken,
+  onCambio,
+  pie,
+}: Props) {
   const [estado, setEstado] = useState<EstadoDocumentosActividad | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const inputAdicional = useRef<HTMLInputElement>(null);
@@ -86,10 +100,15 @@ export function DocumentosDeLaActividad({ procesoId, numeral, recargarToken, onC
     }
   };
 
-  // Sin formatos asignados ni adjuntos, no hay nada que decir. Se monta en las
-  // treinta y ocho actividades: un bloque vacío en todas sería ruido.
+  // Sin documentos no se pinta el marco, pero el pie sí sigue: la decisión
+  // puede existir aunque la actividad no exija ningún formato, y el propio pie
+  // decide si tiene algo que mostrar.
   if (!estado || (estado.requeridos.length === 0 && estado.adicionales.length === 0)) {
-    return null;
+    return pie ? (
+      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5 empty:hidden">
+        {pie}
+      </div>
+    ) : null;
   }
 
   const faltan = estado.requeridos.filter((r) => !r.cargado).length;
@@ -122,6 +141,7 @@ export function DocumentosDeLaActividad({ procesoId, numeral, recargarToken, onC
           key={doc.plantillaId}
           documento={doc}
           ocupada={ocupado === doc.plantillaId || ocupado === doc.cargado?.id}
+          puedeCargar={estado.puedeCargar}
           onCargar={(archivo) => cargar(archivo, doc.plantillaId, doc.plantillaId)}
           onRetirar={() => doc.cargado && retirar(doc.cargado.id)}
         />
@@ -137,38 +157,44 @@ export function DocumentosDeLaActividad({ procesoId, numeral, recargarToken, onC
               key={doc.id}
               documento={doc}
               ocupada={ocupado === doc.id}
+              puedeRetirar={estado.puedeCargar}
               onRetirar={() => retirar(doc.id)}
             />
           ))}
         </div>
       )}
 
-      {/* Adjuntar algo que ningún formato pedía. Se ofrece siempre, y en
-          segundo plano: la lista de arriba es lo que hay que resolver. */}
-      <div className="pt-0.5">
-        <input
-          ref={inputAdicional}
-          type="file"
-          className="hidden"
-          accept={MIME_ACEPTADOS}
-          onChange={(e) => {
-            const archivo = e.target.files?.[0];
-            // Se limpia: si tras un error se elige el mismo archivo, sin esto
-            // el onChange no se dispara y la pantalla parecería colgada.
-            e.target.value = '';
-            if (archivo) cargar(archivo, undefined, 'adicional');
-          }}
-        />
-        <button
-          type="button"
-          disabled={ocupado === 'adicional'}
-          onClick={() => inputAdicional.current?.click()}
-          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-[#003DA5] transition-colors disabled:opacity-50"
-        >
-          <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-          {ocupado === 'adicional' ? 'Cargando…' : 'Adjuntar otro documento'}
-        </button>
-      </div>
+      {/* Adjuntar algo que ningún formato pedía, en segundo plano: la lista de
+          arriba es lo que hay que resolver. */}
+      {estado.puedeCargar && (
+        <div className="pt-0.5">
+          <input
+            ref={inputAdicional}
+            type="file"
+            className="hidden"
+            accept={MIME_ACEPTADOS}
+            onChange={(e) => {
+              const archivo = e.target.files?.[0];
+              // Se limpia: si tras un error se elige el mismo archivo, sin esto
+              // el onChange no se dispara y la pantalla parecería colgada.
+              e.target.value = '';
+              if (archivo) cargar(archivo, undefined, 'adicional');
+            }}
+          />
+          <button
+            type="button"
+            disabled={ocupado === 'adicional'}
+            onClick={() => inputAdicional.current?.click()}
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-[#003DA5] transition-colors disabled:opacity-50"
+          >
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+            {ocupado === 'adicional' ? 'Cargando…' : 'Adjuntar otro documento'}
+          </button>
+        </div>
+      )}
+
+      {/* La decisión, al final de todo lo que hay que revisar. */}
+      {pie ? <div className="border-t border-gray-100 pt-3">{pie}</div> : null}
     </div>
   );
 }
@@ -177,11 +203,14 @@ export function DocumentosDeLaActividad({ procesoId, numeral, recargarToken, onC
 function FilaRequerido({
   documento,
   ocupada,
+  puedeCargar,
   onCargar,
   onRetirar,
 }: {
   documento: DocumentoRequeridoPorFormato;
   ocupada: boolean;
+  /** Quien solo aprueba ve la fila, pero no los botones que le rechazarían. */
+  puedeCargar: boolean;
   onCargar: (archivo: File) => void;
   onRetirar: () => void;
 }) {
@@ -267,29 +296,38 @@ function FilaRequerido({
         }}
       />
 
-      <div className="mt-2.5 flex flex-wrap gap-2">
-        {cargado ? (
-          <button
-            type="button"
-            disabled={ocupada}
-            onClick={onRetirar}
-            className={`${boton} border border-amber-300 bg-white text-amber-700 hover:bg-amber-50`}
-          >
-            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-            {ocupada ? 'Retirando…' : 'Retirar y cargar otro'}
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={ocupada}
-            onClick={() => input.current?.click()}
-            className={`${boton} bg-[#003DA5] text-white hover:bg-[#002e7d]`}
-          >
-            <Paperclip className="w-3.5 h-3.5" aria-hidden="true" />
-            {ocupada ? 'Cargando…' : 'Cargar documento'}
-          </button>
-        )}
-      </div>
+      {/* Sin permiso no se pinta ningún botón: ofrecerle «Cargar» a quien solo
+          aprueba sería ofrecerle algo que el servicio va a rechazarle, y no
+          entendería por qué al pulsarlo no pasa nada. */}
+      {puedeCargar ? (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {cargado ? (
+            <button
+              type="button"
+              disabled={ocupada}
+              onClick={onRetirar}
+              className={`${boton} border border-amber-300 bg-white text-amber-700 hover:bg-amber-50`}
+            >
+              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+              {ocupada ? 'Retirando…' : 'Retirar y cargar otro'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={ocupada}
+              onClick={() => input.current?.click()}
+              className={`${boton} bg-[#003DA5] text-white hover:bg-[#002e7d]`}
+            >
+              <Paperclip className="w-3.5 h-3.5" aria-hidden="true" />
+              {ocupada ? 'Cargando…' : 'Cargar documento'}
+            </button>
+          )}
+        </div>
+      ) : !cargado ? (
+        <p className="text-[11px] text-slate-500 m-0 mt-2">
+          Pendiente de que el gestor lo cargue.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -298,10 +336,12 @@ function FilaRequerido({
 function FilaAdicional({
   documento,
   ocupada,
+  puedeRetirar,
   onRetirar,
 }: {
   documento: DocumentoCargado;
   ocupada: boolean;
+  puedeRetirar: boolean;
   onRetirar: () => void;
 }) {
   return (
@@ -330,15 +370,17 @@ function FilaAdicional({
         </a>
       )}
 
-      <button
-        type="button"
-        disabled={ocupada}
-        onClick={onRetirar}
-        title="Retirar del expediente"
-        className="shrink-0 p-1 rounded-md text-slate-400 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-50"
-      >
-        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-      </button>
+      {puedeRetirar && (
+        <button
+          type="button"
+          disabled={ocupada}
+          onClick={onRetirar}
+          title="Retirar del expediente"
+          className="shrink-0 p-1 rounded-md text-slate-400 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+        >
+          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }

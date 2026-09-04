@@ -44,8 +44,12 @@ export class DocumentosActividadController {
     description:
       'Las filas salen de los formatos asignados a la actividad, filtrados por la modalidad del proceso. Responde con lista vacía cuando no hay ninguno: es la respuesta correcta, no un error.',
   })
-  estado(@Param('id', ParseUUIDPipe) procesoId: string, @Param('numeral') numeral: string) {
-    return this.service.estado(procesoId, numeral);
+  estado(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('numeral') numeral: string,
+    @Req() req: any,
+  ) {
+    return this.service.estado(procesoId, numeral, getHiringAccess(req));
   }
 
   @Post()

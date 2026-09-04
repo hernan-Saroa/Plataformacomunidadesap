@@ -7,6 +7,15 @@ interface Props {
   procesoId: string;
   numeral: string;
   onCambio?: () => void;
+  /**
+   * `aviso` va encima del panel y dice en qué estado está; `decision` va
+   * debajo de los documentos, con los botones.
+   *
+   * Se parte en dos porque quien aprueba tiene que ver lo que le cargaron
+   * antes de decidir, y con todo arriba decidiría a ciegas. Sin esta prop la
+   * pieza pinta ambas cosas juntas, como antes.
+   */
+  parte?: 'aviso' | 'decision';
 }
 
 const boton =
@@ -32,7 +41,7 @@ const campo =
  *
  * Si el área no configuró aprobación para la actividad, no se pinta nada.
  */
-export function AprobacionDeLaActividad({ procesoId, numeral, onCambio }: Props) {
+export function AprobacionDeLaActividad({ procesoId, numeral, onCambio, parte }: Props) {
   const a = usarAprobacion(procesoId, numeral, onCambio);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
@@ -70,6 +79,7 @@ export function AprobacionDeLaActividad({ procesoId, numeral, onCambio }: Props)
     : 'Aún no se ha designado quién la aprueba.';
 
   if (a.estado === 'APROBADO') {
+    if (parte === 'decision') return null;
     return marco(
       'ok',
       encabezado(
@@ -80,12 +90,85 @@ export function AprobacionDeLaActividad({ procesoId, numeral, onCambio }: Props)
   }
 
   if (a.estado === 'EN_REVISION') {
+    // El aviso va encima del panel y la decisión al final de los documentos:
+    // quien aprueba tiene que ver lo que le cargaron antes de resolver.
+    if (parte === 'decision') {
+      if (!a.puedoAprobar) return null;
+
+      return (
+        <div className="space-y-2.5">
+          <div>
+            <p className="text-[12.5px] font-bold text-slate-800 m-0">Tu decisión</p>
+            <p className="text-[11px] text-slate-500 m-0 mt-0.5">
+              Revisa los documentos de arriba antes de resolver.
+            </p>
+          </div>
+
+          {devolviendo ? (
+            <>
+              <textarea
+                rows={3}
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder="Qué debe corregirse"
+                aria-label="Observaciones de la devolución"
+                className={campo}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={secundario}
+                  onClick={() => a.devolver(motivo)}
+                  disabled={a.guardando || !motivo.trim()}
+                >
+                  <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Devolver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDevolviendo(false)}
+                  className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 px-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={primario}
+                onClick={a.aprobar}
+                disabled={a.guardando}
+              >
+                <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
+                Aprobar
+              </button>
+              <button
+                type="button"
+                className={secundario}
+                onClick={() => setDevolviendo(true)}
+                disabled={a.guardando}
+              >
+                <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+                Devolver con observaciones
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return marco(
       'espera',
       <>
         {encabezado(
           'En revisión · pendiente de aprobación',
-          a.quienAprueba.length ? `Espera a ${a.quienAprueba.join(' o ')}.` : undefined,
+          a.puedoAprobar
+            ? 'Te toca resolverla: la decisión está al final, bajo los documentos.'
+            : a.quienAprueba.length
+              ? `Espera a ${a.quienAprueba.join(' o ')}.`
+              : undefined,
         )}
 
         {/* Quien la envió puede retirarla mientras nadie la ha resuelto: sin
@@ -97,67 +180,12 @@ export function AprobacionDeLaActividad({ procesoId, numeral, onCambio }: Props)
             Retirar de aprobación
           </button>
         ) : null}
-
-        {a.puedoAprobar ? (
-          <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-2.5">
-            <p className="text-[12.5px] font-bold text-slate-800 m-0">Tu decisión</p>
-
-            {devolviendo ? (
-              <>
-                <textarea
-                  rows={3}
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                  placeholder="Qué debe corregirse"
-                  aria-label="Observaciones de la devolución"
-                  className={campo}
-                />
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className={secundario}
-                    onClick={() => a.devolver(motivo)}
-                    disabled={a.guardando || !motivo.trim()}
-                  >
-                    <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-                    Devolver
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDevolviendo(false)}
-                    className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 px-2"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={primario}
-                  onClick={a.aprobar}
-                  disabled={a.guardando}
-                >
-                  <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
-                  Aprobar
-                </button>
-                <button
-                  type="button"
-                  className={secundario}
-                  onClick={() => setDevolviendo(true)}
-                  disabled={a.guardando}
-                >
-                  <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Devolver con observaciones
-                </button>
-              </div>
-            )}
-          </div>
-        ) : null}
       </>,
     );
   }
+
+  // En los demás estados solo hay aviso: no hay nada que decidir abajo.
+  if (parte === 'decision') return null;
 
   // BORRADOR y DEVUELTO comparten pantalla: en ambos el gestor trabaja la
   // actividad abajo y la envía desde aquí. Lo único que cambia es que en la

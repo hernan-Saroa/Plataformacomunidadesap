@@ -12,6 +12,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
+import { PermisosService } from '../../auth/permisos.service';
 
 /** Un documento que la actividad pide, con lo que se haya entregado de él. */
 export interface DocumentoDeLaActividad {
@@ -30,6 +31,9 @@ export interface DocumentoDeLaActividad {
   } | null;
 }
 
+/** El permiso con el que se cargan y retiran documentos del módulo. */
+const PERMISO_CARGAR = 'contratacion.documento.upload';
+
 /**
  * Los documentos que una actividad entrega, según sus formatos (EFDS-1183).
  *
@@ -41,7 +45,10 @@ export interface DocumentoDeLaActividad {
  */
 @Injectable()
 export class DocumentosActividadService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly permisos: PermisosService,
+  ) {}
 
   /**
    * Qué pide la actividad y qué se ha entregado ya.
@@ -50,7 +57,7 @@ export class DocumentosActividadService {
    * correcta para las actividades que no exigen ningún documento, y obliga a
    * la pantalla a distinguirlo de un fallo.
    */
-  async estado(procesoId: string, numeral: string) {
+  async estado(procesoId: string, numeral: string, acceso?: HiringAccess) {
     const em = this.dataSource.manager;
 
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
@@ -119,7 +126,23 @@ export class DocumentosActividadService {
       adicionales,
       /** Si falta algún documento exigido por un formato. */
       completo: requeridos.every((r) => r.cargado !== null),
+      /*
+       * Si quien mira puede cargar y retirar.
+       *
+       * Lo resuelve el servidor y no la pantalla: ofrecerle «Cargar documento»
+       * a quien solo aprueba es ofrecerle un botón que el servicio va a
+       * rechazarle con un 403, y el gestor no sabría por qué no pasa nada.
+       */
+      puedeCargar: acceso ? await this.puedeCargar(acceso) : true,
     };
+  }
+
+  /** Si el usuario tiene el permiso de cargar documentos del módulo. */
+  private async puedeCargar(acceso: HiringAccess): Promise<boolean> {
+    if (acceso.roles?.includes('SUPER_ADMIN')) return true;
+
+    const permisos = await this.permisos.permisosDeRoles(acceso.roles ?? []);
+    return permisos.includes(PERMISO_CARGAR);
   }
 
   /**

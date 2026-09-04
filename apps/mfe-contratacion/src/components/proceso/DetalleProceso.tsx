@@ -692,6 +692,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               procesoId={procesoId}
               numeral={actividadSeleccionada.numeral}
               onCambio={() => setTokenExpediente((t) => t + 1)}
+              parte="aviso"
             />
           ) : null}
 
@@ -953,6 +954,16 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 numeral={actividadSeleccionada.numeral}
                 recargarToken={tokenExpediente}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
+                pie={
+                  !NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) ? (
+                    <AprobacionDeLaActividad
+                      procesoId={procesoId}
+                      numeral={actividadSeleccionada.numeral}
+                      onCambio={() => setTokenExpediente((t) => t + 1)}
+                      parte="decision"
+                    />
+                  ) : null
+                }
               />
             </div>
           ) : null}

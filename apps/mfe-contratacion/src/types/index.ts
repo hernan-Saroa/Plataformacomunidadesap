@@ -742,6 +742,8 @@ export interface EstadoDocumentosActividad {
   requeridos: DocumentoRequeridoPorFormato[];
   adicionales: DocumentoCargado[];
   completo: boolean;
+  /** Si quien mira puede cargar y retirar; lo resuelve el servidor. */
+  puedeCargar: boolean;
 }
 
 export interface PlantillaFormato {

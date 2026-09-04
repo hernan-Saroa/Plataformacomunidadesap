@@ -22,11 +22,16 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   ...cambios,
 });
 
-const montar = (respuesta: Record<string, unknown>) => {
+const montar = (
+  respuesta: Record<string, unknown>,
+  parte?: 'aviso' | 'decision',
+) => {
   vi.spyOn(contratacionService, 'aprobadoresDeActividad').mockResolvedValue(
     respuesta as never,
   );
-  return render(<AprobacionDeLaActividad procesoId={PROCESO} numeral="5.9" />);
+  return render(
+    <AprobacionDeLaActividad procesoId={PROCESO} numeral="5.9" parte={parte} />,
+  );
 };
 
 describe('AprobacionDeLaActividad · EFDS-1183', () => {
@@ -65,14 +70,32 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
   });
 
   it('solo ofrece decidir a quien puede aprobar', async () => {
-    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }));
+    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision');
 
     expect(await screen.findByRole('button', { name: /^Aprobar/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Devolver con observaciones/ })).toBeInTheDocument();
   });
 
+  it('no pone los botones arriba, donde se decidiría sin ver nada', async () => {
+    // La decisión va al final de los documentos: quien aprueba tiene que ver
+    // lo que le cargaron antes de resolver.
+    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'aviso');
+
+    expect(await screen.findByText(/pendiente de aprobación/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Aprobar/ })).not.toBeInTheDocument();
+  });
+
+  it('a quien no aprueba no le pinta nada abajo', async () => {
+    const { container } = montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: false }),
+      'decision',
+    );
+
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
   it('no deja devolver sin decir qué corregir', async () => {
-    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }));
+    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision');
 
     await userEvent.click(await screen.findByRole('button', { name: /Devolver con observaciones/ }));
 
