@@ -45,6 +45,7 @@ import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
 import { DocumentosDeLaActividad } from '../shared/DocumentosDeLaActividad';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
+import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
@@ -696,226 +697,185 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             />
           ) : null}
 
-          {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+          {/* El marco y el encabezado los pinta el contenedor, una sola vez y
+              para las sesenta y tres actividades: es la unica forma de que la
+              pantalla no cambie de forma segun que panel se abra. El panel de
+              abajo solo aporta el cuerpo.
+
+              El encabezado va aqui y no en cada panel porque `DetalleProceso`
+              es quien conoce el numeral y el nombre; los paneles no, y por eso
+              una actividad bloqueada abria diciendo solo «Pendiente del paso
+              4.2», sin decir de cual actividad hablaba. */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            {actividadSeleccionada ? (
+              <EncabezadoActividad
+                numeral={actividadSeleccionada.numeral}
+                nombre={actividadSeleccionada.nombre}
+              />
+            ) : null}
+
+            {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
               <PanelCdp
                 numeral={actividadSeleccionada.numeral}
                 procesoId={procesoId}
                 valorEstimado={datos.proceso.valorEstimado}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_ADENDAS ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_ADENDAS ? (
               <PanelAdendas
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_OFERTAS ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_OFERTAS ? (
               <PanelOfertas
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_COMITE ? (
               <PanelComite
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_EVALUACION ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_EVALUACION ? (
               <PanelEvaluacion
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada &&
-            NUMERALES_TRASLADO.includes(actividadSeleccionada.numeral) ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada &&
+              NUMERALES_TRASLADO.includes(actividadSeleccionada.numeral) ? (
               <PanelTraslado
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada &&
-            NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada &&
+              NUMERALES_ADJUDICACION.includes(actividadSeleccionada.numeral) ? (
               <PanelAdjudicacion
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_ARCHIVO_EXPEDIENTE ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_ARCHIVO_EXPEDIENTE ? (
               <PanelArchivoExpediente
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_CIERRE_FINANCIERO ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_CIERRE_FINANCIERO ? (
               <PanelCierreFinanciero
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_LIQUIDACION ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_LIQUIDACION ? (
               <PanelLiquidacion
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_INFORME_FINAL ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_INFORME_FINAL ? (
               <PanelInformeFinal
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_MODIFICACIONES ? (
               <PanelModificaciones
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_PAGOS ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_PAGOS ? (
               <PanelPagos
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada &&
-            NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada &&
+              NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
               <PanelActaInicio
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION_CONTRATO ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION_CONTRATO ? (
               <PanelPublicacionContrato
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_RP ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_RP ? (
               <PanelRegistroPresupuestal
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada &&
-            NUMERALES_SUPERVISION.includes(actividadSeleccionada.numeral) ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada &&
+              NUMERALES_SUPERVISION.includes(actividadSeleccionada.numeral) ? (
               <PanelSupervision
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
-            /**
-             * Dos paneles en la misma casilla.
-             *
-             * El presunto incumplimiento es un bloque transversal de la matriz
-             * y no una de las 63 actividades numeradas, así que no tiene
-             * casilla propia en el riel. Se cuelga de la 9.2 porque es donde el
-             * supervisor ya está: vigila la ejecución, y si algo no se cumple
-             * lo constata mirando esto mismo. Dejarlo sin sitio lo volvería
-             * inalcanzable desde la pantalla.
-             */
-            <div className="space-y-3">
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_SEGUIMIENTO ? (
+              /**
+               * Dos paneles en la misma casilla.
+               *
+               * El presunto incumplimiento es un bloque transversal de la matriz
+               * y no una de las 63 actividades numeradas, así que no tiene
+               * casilla propia en el riel. Se cuelga de la 9.2 porque es donde el
+               * supervisor ya está: vigila la ejecución, y si algo no se cumple
+               * lo constata mirando esto mismo. Dejarlo sin sitio lo volvería
+               * inalcanzable desde la pantalla.
+               */
+              <div className="space-y-3">
                 <PanelSeguimiento
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
-              </div>
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <PanelIncumplimiento
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
               </div>
-            </div>
-          ) : actividadSeleccionada &&
-            NUMERALES_CON_REGISTRO.includes(actividadSeleccionada.numeral) ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada &&
+              NUMERALES_CON_REGISTRO.includes(actividadSeleccionada.numeral) ? (
               <PanelRegistroActividad
                 procesoId={procesoId}
                 numeral={actividadSeleccionada.numeral}
-                nombre={ACTIVIDADES_CON_REGISTRO[actividadSeleccionada.numeral]}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
-            actividadSeleccionada?.numeral === NUMERAL_ARL ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_GARANTIAS ||
+              actividadSeleccionada?.numeral === NUMERAL_ARL ? (
               <PanelLegalizacion
                 procesoId={procesoId}
                 numeral={actividadSeleccionada.numeral as '8.4' | '8.5'}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_CONTRATO ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_CONTRATO ? (
               <PanelContrato
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_RIESGOS ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_RIESGOS ? (
               <PanelAudienciaRiesgos
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_APERTURA ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_APERTURA ? (
               <PanelApertura
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_DOCUMENTOS ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_DOCUMENTOS ? (
               <PanelDocumentosProceso
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_PUBLICACION ? (
               <PanelPublicacionPliego
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_OBSERVACIONES ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_OBSERVACIONES ? (
               <PanelObservaciones
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === NUMERAL_MIPYME ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === NUMERAL_MIPYME ? (
               <PanelMipyme
                 procesoId={procesoId}
                 onCambio={() => setTokenExpediente((t) => t + 1)}
               />
-            </div>
-          ) : actividadSeleccionada?.numeral === '3.1' ? (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+            ) : actividadSeleccionada?.numeral === '3.1' ? (
               <ContenidoEstudioPrevio
                 procesoId={procesoId}
                 onCambio={() => {
@@ -926,22 +886,23 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                   setTokenExpediente((t) => t + 1);
                 }}
               />
-            </div>
-          ) : (
-            /* El riel deja pulsar solo lo disponible, pero al entrar sin
-               actividad elegida hay que decir qué hacer. */
-            <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
-              <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
-              <p className="text-sm font-bold text-gray-600 m-0">
-                {actividadSeleccionada ? actividadSeleccionada.nombre : 'Elige una actividad'}
-              </p>
-              <p className="text-xs text-gray-400 m-0 mt-1">
-                {actividadSeleccionada
-                  ? 'Esta actividad aún no está habilitada en la plataforma.'
-                  : 'Selecciona una actividad del panel izquierdo para trabajar en ella.'}
-              </p>
-            </div>
-          )}
+            ) : (
+              /* El riel deja pulsar solo lo disponible, pero al entrar sin
+                 actividad elegida hay que decir qué hacer. Sin marco propio:
+                 el del contenedor ya lo envuelve. */
+              <div className="p-10 text-center">
+                <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
+                <p className="text-sm font-bold text-gray-600 m-0">
+                  {actividadSeleccionada ? actividadSeleccionada.nombre : 'Elige una actividad'}
+                </p>
+                <p className="text-xs text-gray-400 m-0 mt-1">
+                  {actividadSeleccionada
+                    ? 'Esta actividad aún no está habilitada en la plataforma.'
+                    : 'Selecciona una actividad del panel izquierdo para trabajar en ella.'}
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Los documentos que la actividad entrega, debajo del panel: primero
               se trabaja, después se adjunta. Salvo donde el panel ya los

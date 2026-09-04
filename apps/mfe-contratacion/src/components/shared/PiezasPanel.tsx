@@ -21,6 +21,51 @@ export const Titulo = ({ children }: { children: React.ReactNode }) => (
   <p className="text-[12.5px] font-bold text-slate-800 m-0">{children}</p>
 );
 
+/**
+ * El encabezado de la actividad: su numeral y su nombre.
+ *
+ * Lo pinta el contenedor y no cada panel porque `DetalleProceso` ya tiene la
+ * actividad seleccionada con los dos datos, y los paneles no: por eso hasta
+ * ahora una actividad bloqueada abría diciendo solo «Pendiente del paso 4.2»,
+ * sin decir de cuál actividad hablaba, y quien venía del riel perdía la
+ * referencia de dónde estaba.
+ *
+ * Al estar aquí vale para las sesenta y tres, incluidas las que aún no tienen
+ * panel construido.
+ *
+ * El nombre que se pinta es el de la matriz, el mismo que se acaba de pulsar en
+ * el riel: si el encabezado dijera otra cosa, el gestor dudaría de haber
+ * abierto lo que quería. Lo que cada panel añade debajo es el verbo de lo que
+ * toca hacer ahora —«Radicar la solicitud», «Expedir el CDP»—, que es
+ * información distinta y por eso no sobra: dice en qué punto de la actividad
+ * está, no cuál es.
+ */
+export const EncabezadoActividad = ({
+  numeral,
+  nombre,
+}: {
+  numeral: string;
+  nombre: string;
+}) => (
+  <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+    <p className="text-[11px] font-bold text-slate-400 m-0 tracking-wide">
+      ACTIVIDAD {numeral}
+    </p>
+    <p className="text-[13px] font-bold text-slate-800 m-0 mt-0.5 leading-snug">{nombre}</p>
+  </div>
+);
+
+/**
+ * El paso concreto que toca dentro de la actividad, bajo el encabezado.
+ *
+ * Es lo que antes pintaba cada panel con `Titulo` en su primera línea. Se
+ * distingue del encabezado en tamaño y peso para que se lean como lo que son:
+ * dónde estoy, y qué hago aquí ahora.
+ */
+export const PasoActual = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-[12.5px] font-bold text-slate-700 m-0">{children}</p>
+);
+
 export const Ayuda = ({ children }: { children: React.ReactNode }) => (
   <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">{children}</p>
 );

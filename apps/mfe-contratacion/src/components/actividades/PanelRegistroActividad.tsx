@@ -19,7 +19,6 @@ import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 interface Props {
   procesoId: string;
   numeral: string;
-  nombre: string;
   onCambio?: () => void;
 }
 
@@ -31,7 +30,7 @@ interface Props {
  * es lo mismo: cuándo pasó, qué pasó y con qué se respalda. La pantalla lo dice
  * en vez de aparentar que el dato viene de SECOP II o de Active Document.
  */
-export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }: Props) {
+export function PanelRegistroActividad({ procesoId, numeral, onCambio }: Props) {
   const [estado, setEstado] = useState<EstadoRegistroActividad | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,9 +117,6 @@ export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }:
   if (!estado.aplica) {
     return (
       <Marco>
-        <Titulo>
-          {numeral} · {nombre}
-        </Titulo>
         <Aviso tono="aviso" titulo="Esta modalidad no adelanta la actividad">
           {estado.motivoNoAplica ?? 'La matriz de flujo la excluye para esta modalidad.'}
         </Aviso>
@@ -132,10 +128,8 @@ export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }:
 
   return (
     <Marco>
-      <Titulo>
-        {numeral} · {nombre}
-      </Titulo>
-
+      {/* El numeral y el nombre los pinta el contenedor, para las sesenta y
+          tres actividades por igual: repetirlos aquí sería un título doble. */}
       {estado.notaFuente && <Ayuda>{estado.notaFuente}</Ayuda>}
 
       <Ayuda>
