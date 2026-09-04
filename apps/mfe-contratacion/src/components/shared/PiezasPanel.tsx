@@ -299,7 +299,7 @@ export const PieAprobacion = ({
   onEnviar?: () => void;
   onRetirar?: () => void;
   onAprobar?: () => void;
-  onDevolver?: () => void;
+  onDevolver?: (observaciones: string) => void;
   etiquetaRegistrar?: string;
 }) => {
   const [motivo, setMotivo] = React.useState('');
@@ -354,7 +354,7 @@ export const PieAprobacion = ({
                 <div className="flex flex-wrap gap-2">
                   <BotonSecundario
                     icono={<Undo2 className="w-3.5 h-3.5" />}
-                    onClick={() => onDevolver?.()}
+                    onClick={() => onDevolver?.(motivo)}
                     disabled={guardando || !motivo.trim()}
                   >
                     Devolver

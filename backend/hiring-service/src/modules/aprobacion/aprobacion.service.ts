@@ -81,6 +81,55 @@ export class AprobacionService {
     return { roles, personas };
   }
 
+  /**
+   * Todo lo que el panel necesita para pintar el pie de la actividad.
+   *
+   * En una sola consulta y no repartido entre endpoints: la pantalla necesita a
+   * la vez si requiere aprobación, en qué estado está, si quien mira puede
+   * decidir y qué observaciones le dejaron. Pedirlo por partes obligaría a
+   * cuatro llamadas para dibujar un botón.
+   */
+  async estadoDeAprobacion(procesoId: string, numeral: string, acceso: HiringAccess) {
+    const em = this.dataSource.manager;
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral } });
+
+    const aprobadores = await this.aprobadoresDe(numeral, proceso?.modalidad ?? null, em);
+
+    // La última decisión, para poder mostrar por qué se devolvió.
+    const revision = actividad
+      ? await em.getRepository(Revision).findOne({
+          where: { procesoActividadId: actividad.id },
+          order: { createdAt: 'DESC' },
+        })
+      : null;
+
+    const enviadoPorId = (actividad as any)?.enviadoPorId;
+    const esMia =
+      !!actividad &&
+      (enviadoPorId
+        ? enviadoPorId === acceso.userId
+        : actividad.enviadoPor === acceso.userName);
+
+    return {
+      requiereAprobacion: aprobadores !== null,
+      aprobadores,
+      // Se resuelve aquí y no en el cliente: la pantalla no debería replicar la
+      // regla de quién puede aprobar, porque quedaría desactualizada en cuanto
+      // cambie aquí.
+      puedoAprobar: aprobadores
+        ? this.puedeAprobar(aprobadores, acceso) && !esMia
+        : false,
+      estado: actividad?.estado ?? 'BORRADOR',
+      esMia,
+      observaciones: revision?.decision === 'DEVUELTO' ? revision.observaciones : null,
+      decididaPor: revision?.revisadoPor ?? null,
+    };
+  }
+
   /** Si el usuario está entre los aprobadores configurados. */
   puedeAprobar(aprobadores: Aprobadores, acceso: HiringAccess): boolean {
     if (acceso.roles?.includes('SUPER_ADMIN')) return true;

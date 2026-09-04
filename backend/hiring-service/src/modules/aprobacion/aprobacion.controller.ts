@@ -36,16 +36,7 @@ export class AprobacionController {
     @Req() req: any,
   ) {
     const acceso = getHiringAccess(req);
-    const aprobadores = await this.service.aprobadoresDe(numeral, null);
-
-    return {
-      requiereAprobacion: aprobadores !== null,
-      aprobadores,
-      // Se resuelve aquí y no en el cliente: la pantalla no debería replicar la
-      // regla de quién puede aprobar, porque quedaría desactualizada en cuanto
-      // cambie aquí.
-      puedoAprobar: aprobadores ? this.service.puedeAprobar(aprobadores, acceso) : false,
-    };
+    return this.service.estadoDeAprobacion(procesoId, numeral, acceso);
   }
 
   @Post('enviar-aprobacion')

@@ -2177,6 +2177,10 @@ export const contratacionService = {
       requiereAprobacion: boolean;
       aprobadores: { roles: string[]; personas: string[] } | null;
       puedoAprobar: boolean;
+      estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+      esMia: boolean;
+      observaciones: string | null;
+      decididaPor: string | null;
     }>(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/aprobadores`),
 
   enviarAprobacion: (procesoId: string, numeral: string) =>
