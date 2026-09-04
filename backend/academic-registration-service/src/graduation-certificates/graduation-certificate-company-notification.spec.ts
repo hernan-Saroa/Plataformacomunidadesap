@@ -121,6 +121,37 @@ describe('GraduationCertificatesService company notifications', () => {
     expect(result.failedCount).toBe(0);
   });
 
+  it('devuelve todos los títulos encontrados sin limitar las sugerencias a tres', async () => {
+    const service = createService() as any;
+    service.syncGraduatesFromMysqlByIdNumber = jest.fn().mockResolvedValue({
+      found: true,
+    });
+    service.findActiveGraduatesByIdNumber = jest.fn().mockResolvedValue(
+      Array.from({ length: 5 }, (_, index) => ({
+        id: `graduate-${index}`,
+        firstName: 'Persona',
+        lastName: 'Graduada',
+        fullName: 'Persona Graduada',
+        idNumber: '1234567',
+        programName: `Programa ${index + 1}`,
+        degreeTitle: `Título ${index + 1}`,
+        graduationDate: new Date(`202${index}-01-01`),
+        campus: 'Sede Principal',
+        seccionalName: 'Territorial Central',
+      })),
+    );
+    service.canIssueGraduationCertificate = jest.fn().mockReturnValue(true);
+
+    const result = await service.buscarCoincidenciasGraduado(
+      '1234567',
+      undefined,
+      'Persona Graduada',
+    );
+
+    expect(result.totalMatches).toBe(5);
+    expect(result.suggestions).toHaveLength(5);
+  });
+
   it('avisa al correo del graduado creado al finalizar el flujo manual de empresa', async () => {
     const service = createService() as any;
     service.sendGraduateCompanyNotificationEmail = jest

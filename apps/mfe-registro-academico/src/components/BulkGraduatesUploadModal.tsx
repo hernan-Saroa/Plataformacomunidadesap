@@ -106,7 +106,7 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   estudiante: 'ESTUDIANTE',
   titulo: 'TITULO',
   registro: 'REGISTRO',
-  acta: 'ACTA',
+  acta: 'ACTA/FOLIO',
   libro: 'LIBRO',
   fechaRegistro: 'FECHAREGISTRO',
   anioGrado: 'AñoGrado',
@@ -125,11 +125,11 @@ const BULK_REQUEST_BATCH_SIZE = 100;
 
 const NUMERIC_FIELD_RULES: Record<
   'registro' | 'acta' | 'libro',
-  { maxLength: number; label: string }
+  { minLength: number; maxLength: number; label: string }
 > = {
-  registro: { maxLength: 3, label: 'REGISTRO' },
-  acta: { maxLength: 2, label: 'ACTA' },
-  libro: { maxLength: 2, label: 'LIBRO' },
+  registro: { minLength: 1, maxLength: 20, label: 'REGISTRO' },
+  acta: { minLength: 1, maxLength: 10, label: 'ACTA/FOLIO' },
+  libro: { minLength: 1, maxLength: 10, label: 'LIBRO' },
 };
 
 const PHONE_MIN_LENGTH = 7;
@@ -171,7 +171,7 @@ const PREVIEW_COLUMNS: Array<{
   },
   {
     key: 'acta',
-    label: 'Acta',
+    label: 'Acta / Folio',
     className: 'min-w-[5rem]',
     getValue: (row) => row.acta,
   },
@@ -242,7 +242,7 @@ const TEMPLATE_RULES = [
   'TITULO, TERRITORIAL y SEDE deben copiarse exactamente desde los bloques de PARAMETROS.',
   'La SEDE debe pertenecer a la TERRITORIAL indicada en el bloque TERRITORIALES_Y_SEDES_DETALLE.',
   'IDENTIFICACION solo debe contener números; graduados no almacena tipo de documento.',
-  'REGISTRO, ACTA y LIBRO deben ser numéricos. REGISTRO máximo 3 dígitos; ACTA y LIBRO máximo 2.',
+  'REGISTRO, ACTA/FOLIO y LIBRO son obligatorios y numéricos. REGISTRO debe tener entre 1 y 20 dígitos; ACTA/FOLIO y LIBRO entre 1 y 10.',
   'DIPLOMA no se diligencia en la plantilla; el sistema lo asigna automáticamente al crear el graduado.',
   'CORREO es opcional, pero si se diligencia debe tener @ y un punto después del @.',
   'TELEFONO es opcional, pero si se diligencia solo debe contener números, mínimo 7 y máximo 10 dígitos.',
@@ -681,7 +681,10 @@ const validateNumericControlField = (
 ) => {
   const rule = NUMERIC_FIELD_RULES[field];
   if (!value) {
-    addError(field, 'es obligatorio.');
+    addError(
+      field,
+      `es obligatorio y debe tener entre ${rule.minLength} y ${rule.maxLength} dígitos.`,
+    );
     return;
   }
   if (!/^\d+$/.test(value)) {
@@ -692,8 +695,11 @@ const validateNumericControlField = (
     addError(field, 'no puede ser cero.');
     return;
   }
-  if (value.length > rule.maxLength) {
-    addError(field, `no puede superar ${rule.maxLength} dígitos.`);
+  if (value.length < rule.minLength || value.length > rule.maxLength) {
+    addError(
+      field,
+      `debe tener entre ${rule.minLength} y ${rule.maxLength} dígitos.`,
+    );
   }
 };
 
@@ -1007,9 +1013,9 @@ export function BulkGraduatesUploadModal({
       { width: 18 },
       { width: 34 },
       { width: 64 },
-      { width: 12 },
-      { width: 10 },
-      { width: 10 },
+      { width: 24 },
+      { width: 14 },
+      { width: 14 },
       { width: 16 },
       { width: 12 },
       { width: 28 },
@@ -1077,6 +1083,34 @@ export function BulkGraduatesUploadModal({
     addListValidation('C', 'LISTA_TITULOS_GRADUADOS', 'Título no válido');
     addListValidation('K', 'LISTA_TERRITORIALES_GRADUADOS', 'Territorial no válida');
     addListValidation('L', 'LISTA_SEDES_GRADUADOS', 'Sede no válida');
+
+    const addNumericControlValidation = (
+      targetColumn: string,
+      rule: (typeof NUMERIC_FIELD_RULES)[keyof typeof NUMERIC_FIELD_RULES],
+    ) => {
+      const firstCell = `${targetColumn}2`;
+      graduatesSheet.getColumn(targetColumn).numFmt = '@';
+      graduatesSheet.dataValidations.add(
+        `${targetColumn}2:${targetColumn}${XLSX_LAST_ROW}`,
+        {
+          type: 'custom',
+          allowBlank: false,
+          formulae: [
+            `IFERROR(AND(${firstCell}<>"",LEN(${firstCell})>=${rule.minLength},LEN(${firstCell})<=${rule.maxLength},ISNUMBER(--${firstCell}),--${firstCell}>0,ISERROR(FIND(".",${firstCell}&"")),ISERROR(FIND(",",${firstCell}&"")),ISERROR(FIND("-",${firstCell}&"")),ISERROR(FIND("+",${firstCell}&"")),ISERROR(FIND("E",UPPER(${firstCell}&"")))),FALSE)`,
+          ],
+          showInputMessage: true,
+          promptTitle: `${rule.label} obligatorio`,
+          prompt: `Digite entre ${rule.minLength} y ${rule.maxLength} dígitos, solamente números.`,
+          showErrorMessage: true,
+          errorStyle: 'stop',
+          errorTitle: `${rule.label} no válido`,
+          error: `${rule.label} es obligatorio y debe contener entre ${rule.minLength} y ${rule.maxLength} dígitos numéricos.`,
+        },
+      );
+    };
+    addNumericControlValidation('D', NUMERIC_FIELD_RULES.registro);
+    addNumericControlValidation('E', NUMERIC_FIELD_RULES.acta);
+    addNumericControlValidation('F', NUMERIC_FIELD_RULES.libro);
 
     const parametersSheet = workbook.addWorksheet('PARAMETROS', {
       views: [{ state: 'frozen', ySplit: 3 }],
@@ -1378,6 +1412,9 @@ export function BulkGraduatesUploadModal({
               <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-600">
                 <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" />
                 Se lee únicamente la hoja GRADUADOS. PARAMETROS es la guía para copiar valores válidos y evitar errores de escritura.
+              </p>
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                Controles numéricos obligatorios: <strong>REGISTRO de 1 a 20 dígitos</strong> y <strong>ACTA/FOLIO y LIBRO de 1 a 10 dígitos</strong>.
               </p>
             </div>
           </div>

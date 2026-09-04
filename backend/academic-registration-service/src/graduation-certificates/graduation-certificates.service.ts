@@ -27,6 +27,7 @@ import {
   SubmitReviewDecisionDto,
 } from './dto/approve-request.dto';
 import {
+  GRADUATE_MANAGEMENT_LIMITS,
   normalizeAndValidateGraduateManagementUpdate,
   normalizeAndValidateGraduateReviewPayload,
   normalizeReviewNotes,
@@ -1052,7 +1053,7 @@ export class GraduationCertificatesService {
       availableGraduates,
       lastName,
       gradDate,
-    ).slice(0, 3);
+    );
 
     return {
       hasMatches: suggestions.length > 0,
@@ -2220,28 +2221,43 @@ export class GraduationCertificatesService {
     const actaNumber = this.normalizeGraduateNumericControl(
       payload.actaNumber || payload.numActa,
       'ACTA',
-      2,
+      GRADUATE_MANAGEMENT_LIMITS.numFolio.max,
     );
     const numActa = this.normalizeGraduateNumericControl(
       payload.numActa || payload.actaNumber,
       'ACTA',
-      2,
+      GRADUATE_MANAGEMENT_LIMITS.numFolio.max,
     );
     const numFolio = this.normalizeGraduateNumericControl(
       payload.numFolio,
-      'ACTA',
-      2,
+      'FOLIO',
+      GRADUATE_MANAGEMENT_LIMITS.numFolio.max,
     );
     const numLibro = this.normalizeGraduateNumericControl(
       payload.numLibro,
       'LIBRO',
-      2,
+      GRADUATE_MANAGEMENT_LIMITS.numLibro.max,
     );
     const numRegistro = this.normalizeGraduateNumericControl(
       payload.numRegistro,
       'REGISTRO',
-      3,
+      GRADUATE_MANAGEMENT_LIMITS.numRegistro.max,
     );
+    if (options.strictBulk && !numRegistro) {
+      throw new BadRequestException(
+        `REGISTRO es obligatorio y debe tener entre ${GRADUATE_MANAGEMENT_LIMITS.numRegistro.min} y ${GRADUATE_MANAGEMENT_LIMITS.numRegistro.max} dígitos.`,
+      );
+    }
+    if (options.strictBulk && !numFolio) {
+      throw new BadRequestException(
+        `FOLIO es obligatorio y debe tener entre ${GRADUATE_MANAGEMENT_LIMITS.numFolio.min} y ${GRADUATE_MANAGEMENT_LIMITS.numFolio.max} dígitos.`,
+      );
+    }
+    if (options.strictBulk && !numLibro) {
+      throw new BadRequestException(
+        `LIBRO es obligatorio y debe tener entre ${GRADUATE_MANAGEMENT_LIMITS.numLibro.min} y ${GRADUATE_MANAGEMENT_LIMITS.numLibro.max} dígitos.`,
+      );
+    }
     const email = (payload.email || '').trim().toLowerCase();
     if (email && !this.isValidGraduateEmail(email)) {
       throw new BadRequestException('El correo no tiene un formato válido.');
@@ -4768,6 +4784,30 @@ export class GraduationCertificatesService {
       numLibro: graduate.numLibro,
     });
 
+    const nextIdNumber = (payload.idNumber ?? graduate.idNumber).trim();
+    const nextProgramName = (
+      payload.programName ??
+      graduate.programName ??
+      graduate.degreeTitle ??
+      ''
+    ).trim();
+    const normalizedNextProgramName = this.normalizeName(nextProgramName);
+    const graduatesWithSameDocument = await this.graduateRepository.find({
+      where: { idNumber: nextIdNumber },
+    });
+    const duplicatedGraduate = graduatesWithSameDocument.find(
+      (candidate) =>
+        candidate.id !== graduate.id &&
+        this.normalizeName(candidate.programName || candidate.degreeTitle || '') ===
+          normalizedNextProgramName,
+    );
+
+    if (duplicatedGraduate) {
+      throw new ConflictException(
+        `No se puede guardar el documento ${nextIdNumber}: ya existe otro graduado con este documento y el programa ${nextProgramName}.`,
+      );
+    }
+
     const update: Partial<Graduate> = {};
     const hasNameParts =
       payload.firstName !== undefined || payload.lastName !== undefined;
@@ -4865,7 +4905,16 @@ export class GraduationCertificatesService {
     }
 
     Object.assign(graduate, update);
-    return await this.graduateRepository.save(graduate);
+    try {
+      return await this.graduateRepository.save(graduate);
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'No se pudieron guardar los cambios porque otro graduado ya utiliza la misma combinación de documento y programa, o el mismo número de diploma.',
+        );
+      }
+      throw error;
+    }
   }
 
   /**
