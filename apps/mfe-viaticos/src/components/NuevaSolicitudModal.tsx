@@ -159,7 +159,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   // ========== Estado RF-LIQ-003 / RF-LIQ-004 (tiquetes y presupuesto) ==========
   const [tipoTransporte, setTipoTransporte] = useState<TipoTransporteTiquete>('AEREO');
   const [montoEstimadoTiquete, setMontoEstimadoTiquete] = useState<number>(0);
-  const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá');
+  const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá D.C.');
+  // Catálogo completo de ciudades de geopolítica para el selector de origen.
+  const [todasCiudades, setTodasCiudades] = useState<Geopolitica[]>([]);
+  const [cargandoTodasCiudades, setCargandoTodasCiudades] = useState(false);
   const [dependenciaId, setDependenciaId] = useState<string>('');
   const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
   const [validandoTiquete, setValidandoTiquete] = useState(false);
@@ -416,7 +419,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setAsignacionesBasicas([]);
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
-      setOrigenCiudad('Bogotá');
+      setOrigenCiudad('Bogotá D.C.');
+      setTodasCiudades([]);
+      setCargandoTodasCiudades(false);
       setDependenciaId('');
       setValidacionTiquete(null);
       setValidandoTiquete(false);
@@ -655,6 +660,40 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     tipoTransporte,
     montoEstimadoTiquete,
   ]);
+
+  // Carga el catálogo de ciudades de geopolítica para el selector de
+  // "Ciudad de origen" cuando la comisión requiere tiquetes. Por defecto el
+  // origen es la sede (Bogotá D.C.).
+  useEffect(() => {
+    if (!form.requiereTiquetes || todasCiudades.length > 0) return;
+    let activo = true;
+    setCargandoTodasCiudades(true);
+    void viaticosService
+      .obtenerTodasCiudades()
+      .then((lista) => {
+        if (!activo) return;
+        setTodasCiudades(lista || []);
+        const bogota = (lista || []).find((c) =>
+          /^bogota/i.test(String(c.nomDivGeopolitica || '').trim()),
+        );
+        if (bogota?.nomDivGeopolitica) {
+          setOrigenCiudad(bogota.nomDivGeopolitica.trim());
+        }
+      })
+      .catch((e) => {
+        if (activo) {
+          console.error('Error cargando ciudades de origen:', e);
+          setTodasCiudades([]);
+        }
+      })
+      .finally(() => {
+        if (activo) setCargandoTodasCiudades(false);
+      });
+    return () => {
+      activo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.requiereTiquetes, todasCiudades.length]);
 
   useEffect(() => {
     if (!previewDoc) return;
@@ -1231,6 +1270,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       <p className="text-[11px] text-slate-400 mt-1">Cargando ciudades...</p>
                     )}
                   </div>
+                  {form.requiereTiquetes && (
+                    <div>
+                      <label className={labelCls} htmlFor="origenCiudad">
+                        {renderLabel('requiereTiquetes', 'Ciudad de origen (sede)')}
+                      </label>
+                      <SearchableSelect
+                        id="origenCiudad"
+                        options={todasCiudades.map((c) => ({
+                          value: c.nomDivGeopolitica,
+                          label: c.nomDivGeopolitica,
+                        }))}
+                        value={origenCiudad}
+                        onChange={(nombre) => setOrigenCiudad(nombre)}
+                        placeholder="Seleccione la ciudad de origen..."
+                        disabled={cargandoTodasCiudades}
+                        loading={cargandoTodasCiudades}
+                        emptyText="No hay ciudades de origen"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Ciudad desde donde inicia el viaje (sede). Por defecto Bogotá D.C.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1325,11 +1387,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             inputMode="numeric"
                             required={esCampoObligatorio('montoViaticos')}
                             value={formatearMoneda(form.montoViaticos)}
+                            readOnly
+                            aria-readonly="true"
+                            title="Calculado automáticamente por el Autoliquidador (no editable)"
                             onChange={(e) => actualizar('montoViaticos', Number(soloNumeros(e.target.value)) || 0)}
-                            className={`${inputCls} pl-7 text-right font-bold`}
+                            className={`${inputCls} pl-7 pr-24 text-right font-bold bg-slate-100 cursor-not-allowed`}
                           />
+                          <span className="absolute right-2.5 top-2 text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5">
+                            Automático
+                          </span>
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-1">Valor total estimado de viáticos</p>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Calculado automáticamente por el Autoliquidador (no editable).
+                        </p>
                       </div>
                     )}
                     {!esCampoOculto('montoGastosViaje') && (
@@ -1546,20 +1616,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                          </p>
                        </div>
 
+                       <div className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mb-3">
+                         <Plane className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                         <span className="text-slate-400 font-semibold">Itinerario:</span>
+                         <span className="font-bold text-slate-700">{origenCiudad || '—'}</span>
+                         <span className="text-slate-400">→</span>
+                         <span className="font-bold text-slate-700">{form.destinoCiudad || 'Ciudad de destino'}</span>
+                       </div>
+
                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                         <div>
-                           <label className={labelCls} htmlFor="origenCiudad">
-                             Ciudad de origen
-                           </label>
-                           <input
-                             id="origenCiudad"
-                             type="text"
-                             value={origenCiudad}
-                             onChange={(e) => setOrigenCiudad(e.target.value)}
-                             placeholder="Bogotá"
-                             className={inputCls}
-                           />
-                         </div>
                           <div>
                             <label className={labelCls} htmlFor="dependenciaId">
                               Dependencia solicitante

@@ -113,7 +113,13 @@ function crearManager(mocks: {
       if (entityClass === ExcepcionTiqueteEntity) return Promise.resolve(mocks.excepciones ?? []);
       return Promise.resolve([]);
     }),
-    findOne: jest.fn().mockResolvedValue(mocks.saldo !== undefined ? mocks.saldo : null),
+    findOne: jest.fn().mockImplementation((entityClass: any) => {
+      // Carga de relaciones del expediente (ya bloqueado) vs. saldo de tiquetes.
+      if (entityClass === SolicitudComisionEntity) {
+        return Promise.resolve(mocks.expediente ?? null);
+      }
+      return Promise.resolve(mocks.saldo !== undefined ? mocks.saldo : null);
+    }),
   };
   return manager;
 }

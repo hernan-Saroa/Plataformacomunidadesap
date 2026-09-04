@@ -83,6 +83,9 @@ export class TicketsService {
       .replace(/[\u0300-\u036f]/g, '')
       .toUpperCase()
       .replace(/\s+/g, ' ')
+      // Normaliza el sufijo geopolítico "D.C." / ", D.C." (p. ej. "Bogotá D.C.")
+      // para que coincida con las rutas restringidas registradas como BOGOTA.
+      .replace(/\s*,?\s*D\.?C\.?$/i, '')
       .trim();
   }
 

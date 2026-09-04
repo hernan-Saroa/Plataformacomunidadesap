@@ -25,8 +25,9 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     objetoComision: '',
     destinoCiudad: '',
     destinoDepartamento: '',
-    fechaInicio: '',
-    fechaFin: '',
+    // Fechas por defecto: inicio HOY y fin el día siguiente (ajuste de forma).
+    fechaInicio: hoyISO(),
+    fechaFin: siguienteDiaISO(),
     rubroPresupuestal: '',
     prioridad: 'MEDIA',
     requiereTiquetes: true,
@@ -129,6 +130,16 @@ export function validarAnticipacionRadicacion(fechaInicio: string) {
 export function hoyISO(): string {
   const hoy = new Date();
   return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Fecha del día siguiente en formato yyyy-mm-dd (hora local).
+ * Se usa como fecha fin por defecto en el formulario de nueva solicitud.
+ */
+export function siguienteDiaISO(): string {
+  const dia = new Date();
+  dia.setDate(dia.getDate() + 1);
+  return `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, '0')}-${String(dia.getDate()).padStart(2, '0')}`;
 }
 
 /**

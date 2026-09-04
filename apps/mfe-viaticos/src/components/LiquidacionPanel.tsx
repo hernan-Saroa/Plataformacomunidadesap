@@ -40,6 +40,8 @@ export default function LiquidacionPanel({
   const [resultado, setResultado] = useState<LiquidacionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  // Evita re-aplicar el mismo resultado (feedback) cuando el padre re-renderiza.
+  const autoRef = useRef<string | null>(null);
 
   const puedeCalcular =
     fechaInicio &&
@@ -86,11 +88,16 @@ export default function LiquidacionPanel({
     };
   }, [fechaInicio, fechaFin, tipoComisionado, destinoCiudad, destinoDepartamento, aplicaExcepcionRegional, categoriaInvestigador, asignacionesBasicas, puedeCalcular]);
 
-  const handleAplicar = () => {
-    if (resultado?.data && onAplicarValor) {
-      onAplicarValor(resultado.data.valorTotalViaticos, resultado.data.numeroDiasNoches);
-    }
-  };
+  // Aplicación AUTOMÁTICA del resultado: en cuanto el Autoliquidador recalcula,
+  // el total de viáticos y los días se aplican solos al expediente (el campo
+  // "Viáticos" es de solo lectura). RF-LIQ-004.
+  useEffect(() => {
+    if (!resultado?.data || !onAplicarValor) return;
+    const clave = `${resultado.data.valorTotalViaticos}|${resultado.data.numeroDiasNoches}`;
+    if (autoRef.current === clave) return;
+    autoRef.current = clave;
+    onAplicarValor(resultado.data.valorTotalViaticos, resultado.data.numeroDiasNoches);
+  }, [resultado, onAplicarValor]);
 
   const esSinPernocta = resultado?.data?.factorPernocta === 0.5;
 
@@ -187,14 +194,10 @@ export default function LiquidacionPanel({
                     <p className="text-[11px] text-blue-600">{resultado.data.numeroDiasNoches} día(s) a liquidar</p>
                   </div>
                   {onAplicarValor && (
-                    <button
-                      type="button"
-                      onClick={handleAplicar}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-lg text-xs font-bold transition-colors"
-                    >
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      Aplicar
-                    </button>
+                      Aplicación automática a Viáticos
+                    </span>
                   )}
                 </div>
               </div>

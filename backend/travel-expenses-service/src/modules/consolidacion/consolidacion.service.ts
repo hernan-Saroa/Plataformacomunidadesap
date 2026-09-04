@@ -195,14 +195,29 @@ export class ConsolidacionService {
     usuarioId?: string,
   ): Promise<ResultadoConsolidacion> {
     return this.dataSource.transaction(async (manager) => {
-      // 1) Recuperar y BLOQUEAR la fila (pessimistic lock) hasta el COMMIT.
-      const expediente = await manager
+      // 1a) Recuperar y BLOQUEAR la fila principal (pessimistic lock) hasta el
+      // COMMIT. NOTA: el bloqueo se aplica SOLO sobre la tabla base (sin JOIN)
+      // porque PostgreSQL rechaza `FOR UPDATE` sobre el lado nullable de un
+      // LEFT JOIN (error 0A000: "FOR UPDATE cannot be applied to the nullable
+      // side of an outer join").
+      const filaBloqueada = await manager
         .createQueryBuilder(SolicitudComisionEntity, 's')
         .setLock('pessimistic_write')
-        .leftJoinAndSelect('s.comisionado', 'comisionado')
-        .leftJoinAndSelect('s.documentosSoporte', 'documentos')
         .where('s.id = :id', { id: solicitudId })
         .getOne();
+
+      if (!filaBloqueada) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      // 1b) Cargar las relaciones (comisionado + documentos de soporte) para
+      // poder validar la integridad del expediente. La fila ya quedó bloqueada
+      // en 1a dentro de la MISMA transacción, por lo que esta segunda consulta
+      // es segura y no introduce colisiones de estado.
+      const expediente = await manager.findOne(SolicitudComisionEntity, {
+        where: { id: solicitudId },
+        relations: ['comisionado', 'documentosSoporte'],
+      });
 
       if (!expediente) {
         throw new NotFoundException('Solicitud no encontrada.');
@@ -654,6 +669,9 @@ export class ConsolidacionService {
       .replace(/[\u0300-\u036f]/g, '')
       .toUpperCase()
       .replace(/\s+/g, ' ')
+      // Normaliza el sufijo geopolítico "D.C." / ", D.C." (p. ej. "Bogotá D.C.")
+      // para que coincida con las rutas restringidas registradas como BOGOTA.
+      .replace(/\s*,?\s*D\.?C\.?$/i, '')
       .trim();
   }
 
@@ -722,3 +740,4 @@ function campoPresente(valor: unknown): boolean {
   if (valor instanceof Date) return !Number.isNaN(valor.getTime());
   return true;
 }
+
