@@ -1,7 +1,7 @@
 import { GraduationCertificatesService } from './graduation-certificates.service';
 
 describe('GraduationCertificatesService company notifications', () => {
-  const createService = () =>
+  const createService = (programOptions = ['PROGRAMA DISPONIBLE']) =>
     new GraduationCertificatesService(
       {} as never,
       {} as never,
@@ -15,6 +15,9 @@ describe('GraduationCertificatesService company notifications', () => {
       {} as never,
       {} as never,
       {} as never,
+      {
+        listOptions: jest.fn().mockResolvedValue(programOptions),
+      } as never,
     );
 
   it('precarga el correo registrado en una revision por titulo faltante solicitada por empresa', () => {
@@ -39,6 +42,22 @@ describe('GraduationCertificatesService company notifications', () => {
     );
 
     expect(email).toBeUndefined();
+  });
+
+  it('rechaza una revisión manual si el programa ya no existe en el catálogo', async () => {
+    const service = createService();
+
+    await expect(
+      service.solicitarCertificadoLanding({
+        idNumber: '1234567',
+        lastName: 'Persona Graduada',
+        requesterType: 'GRADUATE',
+        requesterName: 'Persona Graduada',
+        requesterEmail: 'graduado@correo.com',
+        programName: 'PROGRAMA ELIMINADO',
+        forceManualReview: true,
+      }),
+    ).rejects.toThrow('ya no está disponible en el catálogo de programas');
   });
 
   it('avisa al correo del graduado creado al finalizar el flujo manual de empresa', async () => {

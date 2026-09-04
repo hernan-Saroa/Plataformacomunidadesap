@@ -56,6 +56,7 @@ import {
   GraduateMysqlIntegrationService,
   MysqlGraduateRecord,
 } from './graduate-mysql-integration.service';
+import { GraduateProgramsService } from './graduate-programs.service';
 import * as nodemailer from 'nodemailer';
 import * as geoip from 'geoip-lite';
 import * as fs from 'fs';
@@ -135,6 +136,7 @@ export class GraduationCertificatesService {
     private pdfGeneratorService: PdfGeneratorService,
     private graduateMysqlIntegrationService: GraduateMysqlIntegrationService,
     private graduateOracleIntegrationService: GraduateOracleIntegrationService,
+    private graduateProgramsService: GraduateProgramsService,
   ) {}
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
@@ -1091,6 +1093,7 @@ export class GraduationCertificatesService {
     const forceManualReview =
       dto.forceManualReview === true ||
       String(dto.forceManualReview || '').toLowerCase() === 'true';
+    let validatedManualReviewProgramName: string | null = null;
 
     if (dto.idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedición inválida');
@@ -1103,6 +1106,21 @@ export class GraduationCertificatesService {
       throw new BadRequestException(
         'El título que desea revisar es obligatorio',
       );
+    }
+    if (forceManualReview) {
+      const requestedProgramKey = this.normalizeName(dto.programName || '');
+      const availableProgramNames =
+        await this.graduateProgramsService.listOptions();
+      validatedManualReviewProgramName =
+        availableProgramNames.find(
+          (programName) =>
+            this.normalizeName(programName) === requestedProgramKey,
+        ) || null;
+      if (!validatedManualReviewProgramName) {
+        throw new BadRequestException(
+          'El título seleccionado ya no está disponible en el catálogo de programas. Actualice la lista y seleccione otro.',
+        );
+      }
     }
 
     this.logger.debug(
@@ -1167,7 +1185,9 @@ export class GraduationCertificatesService {
     }
 
     if (forceManualReview) {
-      const requestedProgramName = this.normalizeName(dto.programName || '');
+      const requestedProgramName = this.normalizeName(
+        validatedManualReviewProgramName || dto.programName || '',
+      );
       const activeGraduatesForDocument =
         await this.findActiveGraduatesByIdNumber(documentNumber);
       const existingProgramNames = (
@@ -1242,7 +1262,10 @@ export class GraduationCertificatesService {
       graduateEmail: graduateEmailForRequest,
       graduatePhone: requestGraduate?.phone,
       programName:
-        requestGraduate?.programName || dto.programName || 'No disponible',
+        requestGraduate?.programName ||
+        validatedManualReviewProgramName ||
+        dto.programName ||
+        'No disponible',
       graduationDate:
         requestGraduate?.graduationDate ||
         this.parseDate(dto.graduationDate) ||

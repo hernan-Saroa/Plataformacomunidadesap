@@ -95,6 +95,7 @@ export class ActuacionController {
         const data: Partial<Actuacion> = {
             ...body,
             usuarioResponsable: body.responsable || 'Sistema',
+            responsableId: body.responsableId || undefined,
             metadata: {
                 ...parsedMetadata,
                 estado: body.estado || 'Registrado',

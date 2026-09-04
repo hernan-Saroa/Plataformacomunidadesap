@@ -93,4 +93,8 @@ export class CreateSolicitudDto {
   @IsString()
   @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
   tipoComision?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  esInternacional?: boolean;
 }

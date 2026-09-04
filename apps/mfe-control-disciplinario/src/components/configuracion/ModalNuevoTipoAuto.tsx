@@ -144,9 +144,12 @@ export function ModalNuevoTipoAuto({
       let etapa = tipoEdicion.etapa;
       let tipoAccion = mapBackendToTipoAccion(tipoEdicion.tipo || '');
 
-      // Si es tipo dinámico de apertura y no hay etapa específica, extraerla del tipo
+      // Si es tipo dinámico de apertura y no hay etapa específica, extraerla del tipo.
+      // El sufijo del tipo ya viene con guiones bajos, igual que el value de las
+      // opciones del <select> de etapas (ej. AUTO_APERTURA_SEGUNDA_INSTANCIA -> SEGUNDA_INSTANCIA);
+      // no se debe convertir a espacios o el <select> no encuentra la opción.
       if (tipoEdicion.tipo?.startsWith('AUTO_APERTURA_') && tipoEdicion.tipo !== 'AUTO_APERTURA') {
-        const etapaFromTipo = tipoEdicion.tipo.replace('AUTO_APERTURA_', '').replace(/_/g, ' ');
+        const etapaFromTipo = tipoEdicion.tipo.replace('AUTO_APERTURA_', '');
         etapa = etapaFromTipo;
       }
 

@@ -186,6 +186,36 @@ describe('ExpedienteService', () => {
         });
     });
 
+    describe('existeRadicado()', () => {
+        it('debe retornar false cuando no hay expediente con ese radicado', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue(null);
+
+            await expect(service.existeRadicado('EXP-999')).resolves.toBe(false);
+            expect(mockExpedienteRepo.findOne).toHaveBeenCalledWith({
+                where: { radicado: 'EXP-999' },
+                select: ['id'],
+            });
+        });
+
+        it('debe retornar true cuando ya existe un expediente con ese radicado (sin restricción por abogado, a diferencia de listarExpedientes)', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'existing' });
+
+            await expect(service.existeRadicado('EXP-004')).resolves.toBe(true);
+        });
+
+        it('no debe considerar duplicado el propio expediente que se está editando (excludeId)', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: expedienteId });
+
+            await expect(service.existeRadicado('EXP-004', expedienteId)).resolves.toBe(false);
+        });
+
+        it('debe seguir detectando un duplicado real aunque se pase excludeId de otro expediente', async () => {
+            mockExpedienteRepo.findOne.mockResolvedValue({ id: 'otro-expediente' });
+
+            await expect(service.existeRadicado('EXP-004', expedienteId)).resolves.toBe(true);
+        });
+    });
+
     describe('listarExpedientes()', () => {
         it('debe resolver profesionales desde auth para los IDs encontrados', async () => {
             queryBuilder.getRawAndEntities.mockResolvedValue({

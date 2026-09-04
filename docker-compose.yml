@@ -141,6 +141,13 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
 
+      OPENKM_BASE_URL: ${OPENKM_BASE_URL:-}
+      OPENKM_USERNAME: ${OPENKM_USERNAME:-}
+      OPENKM_PASSWORD: ${OPENKM_PASSWORD:-}
+      OPENKM_TIMEOUT_MS: ${OPENKM_TIMEOUT_MS:-15000}
+      RUND_DOCUMENT_MAX_SIZE_BYTES: ${RUND_DOCUMENT_MAX_SIZE_BYTES:-10485760}
+      RUND_DOCUMENT_ALLOW_LOCAL: ${RUND_DOCUMENT_ALLOW_LOCAL:-true}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
@@ -352,6 +359,8 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3010
+      # Ruta del storage de archivos dentro del contenedor (se monta como volumen)
+      TRAVEL_EXPENSES_STORAGE_PATH: /app/uploads
 
       DB_HOST: db
       DB_PORT: 5432
@@ -362,6 +371,8 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+    volumes:
+      - ./backend/travel-expenses-service/uploads:/app/uploads
     ports:
       - "3010:3010"
     depends_on:

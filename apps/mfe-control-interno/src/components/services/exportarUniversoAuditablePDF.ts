@@ -260,7 +260,7 @@ function crearEncabezadoFormulario(doc: jsPDF, vigencia: number, logoBase64?: st
   
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Oficina de Control Interno de Gestión - OCI', tituloCentro, margen + 19, { align: 'center' });
+  doc.text('Oficina de Control Interno', tituloCentro, margen + 19, { align: 'center' });
   
   doc.setFontSize(10);
   doc.setTextColor(0, 61, 165);
@@ -614,7 +614,7 @@ function agregarHeaderFooterTodasPaginas(doc: jsPDF, vigencia: number, startPage
     // Footer
     doc.line(10, pageHeight - 15, pageWidth - 10, pageHeight - 15);
     doc.setTextColor(...COLORES_ESAP.gris);
-    doc.text('Oficina de Control Interno de Gestión - OCI', 10, pageHeight - 10);
+    doc.text('Oficina de Control Interno', 10, pageHeight - 10);
     doc.text(`Página ${i - startPage + 1} de ${pageCount - startPage + 1}`, pageWidth - 10, pageHeight - 10, { align: 'right' });
   }
 }
@@ -737,7 +737,7 @@ export async function exportarUniversoAuditableExcel(
     
     wsUniverso.mergeCells('C2:H2');
     const subtitleCell = wsUniverso.getCell('C2');
-    subtitleCell.value = 'Oficina de Control Interno de Gestión - OCI';
+    subtitleCell.value = 'Oficina de Control Interno';
     subtitleCell.font = { name: 'Calibri', size: 10, color: { argb: '444444' } };
     subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
     subtitleCell.border = {

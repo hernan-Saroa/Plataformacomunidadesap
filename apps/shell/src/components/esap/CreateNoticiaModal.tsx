@@ -1177,6 +1177,15 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     type="date"
                     value={formData.fechaHechos}
                     onChange={(e) => handleChange('fechaHechos', e.target.value)}
+                    onKeyDown={(e) => {
+                      // La fecha de los hechos solo se puede modificar desde el calendario:
+                      // se bloquea la escritura manual del año/día con el teclado (números,
+                      // flechas, borrado). Se deja pasar Tab para no atrapar el foco.
+                      if (e.key !== 'Tab') {
+                        e.preventDefault();
+                      }
+                    }}
+                    onPaste={(e) => e.preventDefault()}
                     max={new Date().toISOString().split('T')[0]}
                     className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                       errors.fechaHechos ? 'border-red-500' : 'border-gray-300'
