@@ -2249,5 +2249,20 @@ export const contratacionService = {
       body: JSON.stringify({ observaciones }),
     }),
 
-  urlDescarga: (descargaUrl: string) => `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}${descargaUrl}`,
+  /**
+   * La dirección desde la que el navegador descarga un adjunto.
+   *
+   * Lo que llega no tiene una sola forma: la columna guarda `/files/<archivo>`
+   * donde escribió la biblioteca de formatos y `hiring/files/<archivo>` donde
+   * escribieron los paneles, y solo unos pocos servicios la rearman antes de
+   * responder. Concatenar la segunda daría `/hiring/api/v1hiring/files/…`, un
+   * 404 que el usuario no puede distinguir de un documento borrado.
+   *
+   * Se resuelve aquí, que es por donde pasan las cuarenta descargas del
+   * módulo, quedándose con el nombre: es lo único que el controlador necesita.
+   */
+  urlDescarga: (descargaUrl: string) => {
+    const nombre = descargaUrl.split('/').pop() ?? '';
+    return `${getApiGatewayBaseUrl()}${SERVICE_PREFIX}/files/${nombre}`;
+  },
 };
