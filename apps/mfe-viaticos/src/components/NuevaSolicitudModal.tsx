@@ -567,7 +567,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     try {
       const resultado = await viaticosService.consultarComisionado(documento);
       if (!resultado) {
-        setErrorConsulta('No se encontró un comisionado con ese documento.');
+        setErrorConsulta(
+          `No se encontró un comisionado con documento ${documento} en ESAP. Verifique el número o contacte al administrador.`,
+        );
         return;
       }
       setComisionado(resultado);
@@ -575,9 +577,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error consultando comisionado:', e);
-      setErrorConsulta('Ocurrió un error al consultar el comisionado.');
+      // Mensaje proveniente del backend (origen único ESAP).
+      setErrorConsulta(
+        e?.message ||
+          'Ocurrió un error al consultar el comisionado. Intente nuevamente.',
+      );
     } finally {
       setConsultando(false);
     }

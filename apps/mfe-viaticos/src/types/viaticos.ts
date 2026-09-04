@@ -96,10 +96,11 @@ export interface Comisionado {
   email: string;
   telefonoContacto: string;
   tipoComisionado: TipoComisionado;
-  origenDatos: 'HUMANO' | 'SECOP';
+  origenDatos: 'HUMANO' | 'ESAP' | 'SECOP';
   autorizacionHabeasData: boolean;
   fechaAutorizacionHabeasData?: Date;
   ipRegistroHabeasData?: string;
+  idDependencia?: number | null;
 }
 
 export interface DocumentoSoporte {

@@ -310,8 +310,17 @@ export class ViaticosService {
   async consultarComisionado(documento: string): Promise<Comisionado | null> {
     try {
       return await apiClient.get<Comisionado>(`/viaticos/api/v1/comisionados/${documento}`);
-    } catch {
-      return null;
+    } catch (error: any) {
+      // 404: el documento no existe ni en comisionados ni en auth.personas
+      // (origen ESAP). Se propaga para que la UI bloquee el flujo.
+      if (error?.status === 404) {
+        throw new Error(
+          error?.message ||
+            `No se encontró un comisionado con documento ${documento} en ESAP.`,
+        );
+      }
+      console.error('[viaticos] Error consultando comisionado:', error);
+      throw error;
     }
   }
 

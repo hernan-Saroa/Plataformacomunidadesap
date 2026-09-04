@@ -29,6 +29,20 @@ function esDiaHabil(fecha: Date): boolean {
   return dia !== 0 && dia !== 6;
 }
 
+/**
+ * Subset de columnas de `auth.personas` consumidas por el módulo de viáticos
+ * al materializar un comisionado desde ESAP. La tabla vive en otro esquema y
+ * la consultamos directamente vía SQL (misma base de datos compartida).
+ */
+interface AuthPersonaRow {
+  num_identificacion: string;
+  nom_tercero: string;
+  pri_apellido: string;
+  dir_email: string | null;
+  tel_celular: string | null;
+  id_dependencia: string | number | null;
+}
+
 function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
   let count = 0;
   const fecha = new Date(fechaInicio);
@@ -176,16 +190,88 @@ export class TravelExpensesService {
 
   async consultarComisionado(
     documento: string,
-  ): Promise<ComisionadoEntity | null> {
-    const comisionado = await this.comisionadoRepo.findOne({
-      where: { numeroDocumento: documento },
-    });
-
-    if (!comisionado) {
-      return null;
+  ): Promise<ComisionadoEntity> {
+    const doc = (documento || '').trim();
+    if (!doc) {
+      throw new BadRequestException(
+        'Debe proporcionar el número de documento del comisionado.',
+      );
     }
 
-    return comisionado;
+    // 1) Búsqueda primaria: tabla local de comisionados (cache histórico).
+    const existente = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: doc },
+    });
+    if (existente) {
+      return existente;
+    }
+
+    // 2) Búsqueda secundaria: auth.personas (origen único ESAP).
+    //    Ambos microservicios comparten la misma base de datos
+    //    (`esap_db`), por lo que se consulta directamente vía DataSource
+    //    para evitar un round-trip HTTP y mantener la latencia baja.
+    const persona: AuthPersonaRow | undefined = await this.dataSource
+      .query(
+        `SELECT
+            p.num_identificacion,
+            p.nom_tercero,
+            p.pri_apellido,
+            p.dir_email,
+            p.tel_celular,
+            p.id_dependencia
+         FROM auth.personas p
+         WHERE p.num_identificacion = $1
+         LIMIT 1`,
+        [doc],
+      )
+      .then((rows: any[]) => rows?.[0])
+      .catch((err) => {
+        console.error(
+          '[travel-expenses] Error consultando auth.personas:',
+          err,
+        );
+        return undefined;
+      });
+
+    if (!persona) {
+      // 3) No existe ni en comisionados ni en auth.personas:
+      //    bloqueamos el flujo porque no hay un funcionario válido
+      //    para asociar a la solicitud de viáticos.
+      throw new NotFoundException(
+        `No se encontró un comisionado con documento ${doc} en ESAP. Verifique el número o contacte al administrador del módulo de autenticación.`,
+      );
+    }
+
+    // 4) Persistimos la "foto" de la persona de ESAP en
+    //    travel_expenses.comisionados para que las siguientes consultas
+    //    queden cacheadas localmente. El origen queda marcado como 'ESAP'.
+    const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
+    const apellidos = (persona.pri_apellido || '').trim().split(/\s+/);
+    const primerNombre = nombres.shift() || persona.nom_tercero || 'SIN NOMBRE';
+    const segundoNombre = nombres.join(' ') || null;
+    const primerApellido = apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
+    const segundoApellido = apellidos.join(' ') || null;
+
+    const idDependencia =
+      persona.id_dependencia != null
+        ? Number(persona.id_dependencia)
+        : null;
+
+    const nuevo = this.comisionadoRepo.create({
+      numeroDocumento: doc,
+      primerNombre,
+      segundoNombre,
+      primerApellido,
+      segundoApellido,
+      email: persona.dir_email || 'sin-correo@esap.edu.co',
+      telefonoContacto: persona.tel_celular || '0000000000',
+      tipoComisionado: 'FUNCIONARIO',
+      origenDatos: 'ESAP',
+      autorizacionHabeasData: false,
+      idDependencia,
+    } as Partial<ComisionadoEntity>);
+
+    return this.comisionadoRepo.save(nuevo as ComisionadoEntity);
   }
 
   async obtenerSolicitudCompleta(

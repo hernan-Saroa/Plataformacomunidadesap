@@ -44,7 +44,7 @@ export class CreateComisionadoDto {
   tipoComisionado: string;
 
   @IsString()
-  @IsIn(['HUMANO', 'SECOP'])
+  @IsIn(['HUMANO', 'SECOP', 'ESAP'])
   origenDatos: string;
 
   @IsOptional()
