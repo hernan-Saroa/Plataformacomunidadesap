@@ -716,11 +716,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           actividades={actividades}
           seleccionada={expandida}
           onSeleccionar={(numeral) => {
-            // El contador de formatos se reinicia al cambiar de actividad: si
-            // se arrastrara el de la anterior, la decisión de esta se
-            // bloquearía o se abriría por documentos que no son suyos. Lo
-            // mismo con la decisión: hasta que la nueva actividad diga que la
-            // tiene, no se reserva la columna.
+            // Volver a pulsar la actividad abierta no reinicia nada: el riel
+            // no deselecciona, así que sería apagar la columna sin que nadie
+            // vuelva a encenderla —la pieza de aprobación no se remonta y no
+            // repite el aviso—, y la tarjeta caía al final del flujo.
+            if (numeral === expandida) return;
+
+            // Al cambiar de actividad sí: el contador de formatos y la
+            // decisión son de la anterior, y arrastrarlos bloquearía o abriría
+            // esta por documentos que no son suyos.
             setFaltanFormatos(0);
             setHayDecision(false);
             setExpandida(numeral);

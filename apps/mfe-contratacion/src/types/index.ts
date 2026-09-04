@@ -2729,8 +2729,12 @@ export interface ExpedienteAuditoria {
    *
    * La lista de actividades solo dice en qué estado quedó cada una: sin esto,
    * una aprobada a la primera y otra devuelta tres veces se ven idénticas.
+   *
+   * Opcional a propósito: es un campo nuevo, y un servidor que todavía no se
+   * ha reiniciado responde sin él. Marcarlo obligatorio hacía que la pantalla
+   * lo diera por seguro y se cayera entera al pedirle el `length`.
    */
-  revisiones: {
+  revisiones?: {
     numeral: string;
     decision: 'APROBADO' | 'DEVUELTO';
     observaciones: string | null;

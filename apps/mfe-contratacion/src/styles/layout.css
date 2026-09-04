@@ -152,12 +152,21 @@
 
   /*
    * Con el expediente abierto son cuatro columnas y no caben: el formulario se
-   * quedaría sin ancho. La decisión pasa a ocupar la fila siguiente, completa,
-   * en vez de desaparecer: esconderla sin que el gestor lo haya pedido le
-   * quitaría de la vista justo lo que vino a resolver.
+   * quedaría sin ancho. Se mantienen las tres del expediente y la decisión
+   * pasa a la fila siguiente, completa, en vez de desaparecer: esconderla sin
+   * que el gestor lo haya pedido le quitaría de la vista lo que vino a
+   * resolver.
+   *
+   * Las dos filas se declaran juntas y no por separado porque esta regla llega
+   * después de la del expediente y redefine las columnas: sin repetir aquí su
+   * `grid-column`, el expediente perdía su sitio y caía estrecho bajo el riel.
    */
   .detalle-proceso.con-decision.con-expediente {
     grid-template-columns: 15rem minmax(0, 1fr) 19rem;
+  }
+
+  .detalle-proceso.con-decision.con-expediente > .panel-expediente {
+    grid-column: 1 / -1;
   }
 
   .detalle-proceso.con-decision.con-expediente > .panel-decision {

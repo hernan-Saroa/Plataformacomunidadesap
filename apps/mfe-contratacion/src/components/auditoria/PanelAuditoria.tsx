@@ -340,13 +340,23 @@ export function PanelAuditoria({ procesoId }: Props) {
    * distingue «sin documentos» de «no existe esa etapa».
    */
   /**
-   * Las revisiones agrupadas por actividad, para contarlas en la lista.
+   * Las revisiones, siempre como lista.
+   *
+   * Se normaliza en vez de leer `datos.revisiones` directamente porque el campo
+   * es nuevo: un servidor que aún no se ha reiniciado responde sin él, y la
+   * pantalla entera reventaba al pedirle el `length` a un `undefined`. El
+   * expediente no puede caerse por un dato que solo añade detalle.
+   */
+  const revisiones = datos?.revisiones ?? [];
+
+  /**
+   * Agrupadas por actividad, para contarlas en la lista.
    *
    * Se agrupa aquí y no se pide agrupado al servidor porque la respuesta ya
    * trae todas: recorrerlas una vez cuesta menos que una segunda consulta.
    */
   const revisionesPorNumeral = useMemo(() => {
-    const mapa: Record<string, typeof datos.revisiones> = {};
+    const mapa: Record<string, typeof revisiones> = {};
     for (const r of datos?.revisiones ?? []) {
       (mapa[r.numeral] ??= []).push(r);
     }
@@ -491,14 +501,14 @@ export function PanelAuditoria({ procesoId }: Props) {
         es lo que un ente de control viene a leer: quién firmó qué, cuándo, y
         qué se pidió corregir por el camino.
       */}
-      {datos.revisiones.length > 0 ? (
+      {revisiones.length > 0 ? (
         <BloqueColapsable
           icono={<ClipboardCheck className="w-4 h-4 text-slate-400" />}
           titulo="Historial de aprobaciones"
-          cuantos={datos.revisiones.length}
+          cuantos={revisiones.length}
         >
           <ul className="m-0 p-0 list-none space-y-2.5">
-            {datos.revisiones.map((r, i) => (
+            {revisiones.map((r, i) => (
               <li key={i} className="flex items-start gap-2">
                 <span
                   className={`text-[10px] font-bold rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5 ${
