@@ -42,7 +42,7 @@ describe('AlertasVencimientoTerminosService', () => {
             save: jest.fn((data: any) => Promise.resolve(data)),
             create: jest.fn((data: any) => data),
         };
-        mockLegalNotifications = { notifyTerminoProximoAVencer: jest.fn().mockResolvedValue(undefined) };
+        mockLegalNotifications = { notifyTerminoProximoAVencer: jest.fn().mockResolvedValue(true) };
         mockTerminosService = { addNota: jest.fn().mockResolvedValue(undefined) };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -199,6 +199,35 @@ describe('AlertasVencimientoTerminosService', () => {
             expect(result.alertasEnviadas).toBe(1);
             expect(result.recordatoriosEnviados).toBe(1);
             expect(mockLegalNotifications.notifyTerminoProximoAVencer).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('confiabilidad: no marcar como enviada una notificación que falló', () => {
+        it('NO debe crear el registro de AlertaTerminoEnviada ni la nota si notifyTerminoProximoAVencer retorna false', async () => {
+            const termino = terminoPendiente({ fechaVencimiento: new Date(Date.now() + 2 * HORA_MS) });
+            mockTerminoRepo.find.mockResolvedValue([termino]);
+            mockReglaRepo.find.mockResolvedValue([{ id: 'regla-1', horasAnticipacion: 72, activa: true }]);
+            mockLegalNotifications.notifyTerminoProximoAVencer.mockResolvedValue(false);
+
+            const result = await service.ejecutarVerificacionManual();
+
+            expect(mockAlertaEnviadaRepo.save).not.toHaveBeenCalled();
+            expect(mockTerminosService.addNota).not.toHaveBeenCalled();
+            expect(result.alertasEnviadas).toBe(0);
+        });
+
+        it('NO debe limpiar el recordatorio manual si notifyTerminoProximoAVencer retorna false (se reintenta luego)', async () => {
+            const termino = terminoPendiente({
+                fechaVencimiento: new Date(Date.now() + 10 * HORA_MS),
+                recordatorioManualHorasAnticipacion: 15 * 24,
+            });
+            mockTerminoRepo.find.mockResolvedValue([termino]);
+            mockLegalNotifications.notifyTerminoProximoAVencer.mockResolvedValue(false);
+
+            const result = await service.ejecutarVerificacionManual();
+
+            expect(mockTerminoRepo.update).not.toHaveBeenCalled();
+            expect(result.recordatoriosEnviados).toBe(0);
         });
     });
 
