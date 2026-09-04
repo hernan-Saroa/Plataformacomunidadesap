@@ -700,7 +700,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
       {/* `con-decision` abre la tercera columna solo cuando hay algo que
           resolver y nadie la ha apartado: en las demás actividades ese ancho
-          se lo queda el formulario, que es quien lo necesita. */}
+          se lo queda el formulario, que es quien lo necesita.
+
+          Dónde acaba cayendo la tarjeta lo decide `layout.css` según el ancho
+          disponible: columna propia con sitio, o franja completa al final
+          cuando el expediente ya ocupa la tercera. */}
       <div
         className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''} ${
           hayDecision && decisionEscondida !== expandida ? 'con-decision' : ''

@@ -139,23 +139,30 @@
  * buscarla con scroll, y pegada al bloque de documentos se leía como un anexo
  * más del expediente.
  *
- * Solo se convierte en columna cuando hay sitio de sobra —1440px— y cuando la
- * actividad realmente pide decisión. En pantallas menores vuelve al flujo
- * vertical, que es donde funciona sin robarle ancho al formulario.
+ * Se convierte en columna desde 1280px, el mismo umbral en el que el riel y
+ * el formulario ya se reparten el ancho: pedir más era dejarla en el flujo
+ * vertical en la mayoría de pantallas reales, que es justo lo que se quería
+ * evitar. La columna es estrecha —15rem— porque solo lleva dos botones y una
+ * línea de aviso.
  */
-@media (min-width: 1440px) {
+@media (min-width: 1280px) {
   .detalle-proceso.con-decision {
-    grid-template-columns: 15rem minmax(0, 1fr) 17rem;
+    grid-template-columns: 15rem minmax(0, 1fr) 15rem;
   }
 
-  /* Con el expediente abierto ya son tres columnas: la decisión no cabe como
-     cuarta sin dejar el formulario inservible, así que se pliega al badge. */
+  /*
+   * Con el expediente abierto son cuatro columnas y no caben: el formulario se
+   * quedaría sin ancho. La decisión pasa a ocupar la fila siguiente, completa,
+   * en vez de desaparecer: esconderla sin que el gestor lo haya pedido le
+   * quitaría de la vista justo lo que vino a resolver.
+   */
   .detalle-proceso.con-decision.con-expediente {
     grid-template-columns: 15rem minmax(0, 1fr) 19rem;
   }
 
   .detalle-proceso.con-decision.con-expediente > .panel-decision {
-    display: none;
+    grid-column: 1 / -1;
+    position: static;
   }
 
   /*
@@ -169,11 +176,15 @@
 }
 
 /*
- * Por debajo de 1440px la decisión no es columna, sino la última franja del
- * flujo. Sin `position: sticky`, que en una sola columna solo taparía
- * contenido.
+ * Por debajo de 1280px no hay columnas: la decisión es la última franja del
+ * flujo, a todo el ancho. Sin `position: sticky`, que en una sola columna solo
+ * taparía contenido.
+ *
+ * El `grid-column` es imprescindible: sin él la tarjeta caía en la primera
+ * pista de la rejilla, debajo del riel de actividades y a media anchura, lejos
+ * del trabajo al que se refiere.
  */
-@media (max-width: 1439px) {
+@media (max-width: 1279px) {
   .panel-decision {
     grid-column: 1 / -1;
   }
