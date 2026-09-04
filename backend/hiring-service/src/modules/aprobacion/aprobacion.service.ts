@@ -116,7 +116,9 @@ export class AprobacionService {
 
     return {
       requiereAprobacion: aprobadores !== null,
-      aprobadores,
+      aprobadores: aprobadores
+        ? { ...aprobadores, roles: await this.nombresDeRoles(aprobadores.roles) }
+        : null,
       // Se resuelve aquí y no en el cliente: la pantalla no debería replicar la
       // regla de quién puede aprobar, porque quedaría desactualizada en cuanto
       // cambie aquí.
@@ -128,6 +130,26 @@ export class AprobacionService {
       observaciones: revision?.decision === 'DEVUELTO' ? revision.observaciones : null,
       decididaPor: revision?.revisadoPor ?? null,
     };
+  }
+
+  /**
+   * Los nombres legibles de unos códigos de rol, para decirlos en pantalla.
+   *
+   * «Espera a DIRECTOR_CONTRATACION» es el código de la base, no algo que el
+   * gestor deba leer. Si un rol se borró después de configurarlo se deja su
+   * código: es peor callar que hay algo roto.
+   */
+  private async nombresDeRoles(codigos: string[]): Promise<string[]> {
+    if (!codigos.length) return [];
+
+    const filas = await this.dataSource.query(
+      `SELECT code, name FROM hiring.roles_del_modulo WHERE code = ANY($1::text[])`,
+      [codigos],
+    );
+
+    return codigos.map(
+      (c) => filas.find((f: any) => f.code === c)?.name ?? c,
+    );
   }
 
   /** Si el usuario está entre los aprobadores configurados. */
