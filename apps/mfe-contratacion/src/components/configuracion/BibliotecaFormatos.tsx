@@ -520,8 +520,12 @@ export function BibliotecaFormatos() {
           <div className="hidden lg:block overflow-x-auto rounded-xl border border-gray-200 bg-white">
             <table className="w-full text-left border-collapse">
               <thead>
+                {/* El nombre del formato es una frase larga —«Estudios previos
+                    para procesos de contratación por licitación pública…»— y
+                    sin ancho declarado la tabla reparte a partes iguales entre
+                    seis columnas, dejándolo en una tira de doce líneas. */}
                 <tr className="border-b border-gray-200 bg-slate-50">
-                  <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  <th className="w-2/5 px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
                     Formato
                   </th>
                   <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
