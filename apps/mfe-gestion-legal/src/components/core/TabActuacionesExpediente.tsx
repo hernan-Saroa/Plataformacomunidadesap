@@ -20,6 +20,7 @@ import { buildServiceAssetUrl } from '../../../../config/environment';
 import { authService } from '../../../../services/api/authService';
 import { legalService } from '../../../../services/api/legal.service';
 import { requiresSignature, isPreviewableInViewer } from '../../../../utils/fileUtils';
+import { ModalFirmaAprobacionActuacion } from '../modulos/ModalFirmaAprobacionActuacion';
 
 // ==================== TIPOS ====================
 
@@ -133,31 +134,43 @@ export function TabActuacionesExpediente({
     }
   };
 
-  // Helper to check if all associated documents that REQUIRE a signature are signed.
-  // Solo PDF y Word requieren firma; Excel, imágenes, video, etc. no la requieren y por
-  // tanto no bloquean la autorización. Si la actuación no tiene ningún documento firmable,
-  // se considera "lista" y el aprobador puede autorizar de una vez.
-  const checkAllAssociatedDocsSigned = (act: ActuacionExpediente) => {
+  const isDocSigned = (d: any) => {
+    if (!d) return false;
+    if (d.descripcion) {
+      try {
+        const data = JSON.parse(d.descripcion);
+        return !!(data && data.firmado);
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  };
+
+  // Documentos asociados a la actuación que SÍ requieren firma electrónica (solo PDF/Word;
+  // Excel, imágenes, video, etc. no la requieren).
+  const getDocumentosFirmables = (act: ActuacionExpediente) => {
     const associatedDocIds = act.metadata?.documentosAsociados || [];
     const resolvedDocs = documentosExpediente.filter(doc => {
       const docIdStr = String(doc.id);
       return Array.isArray(associatedDocIds) && associatedDocIds.some((id: any) => String(id) === docIdStr);
     });
-    const isDocSigned = (d: any) => {
-      if (!d) return false;
-      if (d.descripcion) {
-        try {
-          const data = JSON.parse(d.descripcion);
-          return !!(data && data.firmado);
-        } catch (e) {
-          return false;
-        }
-      }
-      return false;
-    };
-    return resolvedDocs
-      .filter(doc => requiresSignature(doc.nombre))
-      .every(doc => isDocSigned(doc));
+    return resolvedDocs.filter(doc => requiresSignature(doc.nombre));
+  };
+
+  /**
+   * ¿Puede autorizarse esta actuación SOLO porque sus documentos asociados ya están
+   * firmados? Requiere al menos un documento firmable asociado Y que todos estén firmados.
+   * Una actuación SIN documentos firmables nunca se considera "lista" por esta vía: antes,
+   * un array vacío hacía que .every() devolviera true por vacuidad y la actuación se
+   * autorizaba sola con solo entrar a la pestaña, sin firma ni token de ningún tipo
+   * (BUG 1461). Esas actuaciones deben aprobarse manualmente con OTP (ver
+   * handleAbrirAprobacionManual).
+   */
+  const checkAllAssociatedDocsSigned = (act: ActuacionExpediente) => {
+    const documentosFirmables = getDocumentosFirmables(act);
+    if (documentosFirmables.length === 0) return false;
+    return documentosFirmables.every(doc => isDocSigned(doc));
   };
 
   const handleSendEmail = async (actuacion: ActuacionExpediente) => {
@@ -306,6 +319,15 @@ export function TabActuacionesExpediente({
   const [modalDevolucionActuacion, setModalDevolucionActuacion] = useState<ActuacionExpediente | null>(null);
   const [observacionesDevolucion, setObservacionesDevolucion] = useState('');
   const [enviandoDevolucion, setEnviandoDevolucion] = useState(false);
+
+  /**
+   * Modal de Aprobación Manual (OTP + firma digitalizada). Se usa para actuaciones que
+   * requieren aprobación de etapa pero NO tienen documentos firmables asociados: al no
+   * haber ninguna firma de documento que sirva como verificación de identidad, esta
+   * actuación NUNCA se autoriza sola (ver checkAllAssociatedDocsSigned) y exige una
+   * acción explícita del usuario con token OTP antes de avanzar de etapa.
+   */
+  const [modalAprobacionActuacion, setModalAprobacionActuacion] = useState<ActuacionExpediente | null>(null);
 
   // Modal de Detalle de Actuación
   const [actuacionDetalle, setActuacionDetalle] = useState<ActuacionExpediente | null>(null);
@@ -571,6 +593,36 @@ export function TabActuacionesExpediente({
       toast.error('Error al procesar la devolución. Intenta de nuevo.');
     } finally {
       setEnviandoDevolucion(false);
+    }
+  };
+
+  const handleAbrirAprobacionManual = async (actuacion: ActuacionExpediente) => {
+    try {
+      const expId = expedienteId || String(actuacion.expedienteId);
+      await legalService.enviarOtpActuacion(expId, String(actuacion.id));
+      toast.success('📧 Código OTP enviado a tu correo');
+      setModalAprobacionActuacion(actuacion);
+    } catch (err) {
+      console.error('Error al enviar OTP de aprobación:', err);
+      toast.error('No se pudo enviar el código OTP. Intenta de nuevo.');
+    }
+  };
+
+  const handleConfirmarAprobacionManual = async ({ token, firmaFile }: { token: string; firmaFile: File }) => {
+    if (!modalAprobacionActuacion) return;
+    try {
+      const expId = expedienteId || String(modalAprobacionActuacion.expedienteId);
+      await legalService.autorizarActuacion(expId, String(modalAprobacionActuacion.id), token, firmaFile);
+      toast.success('✅ Actuación aprobada y firmada');
+      setModalAprobacionActuacion(null);
+      if (onAutoAdvanceStage) {
+        onAutoAdvanceStage();
+      } else if (onReloadExpediente) {
+        onReloadExpediente();
+      }
+    } catch (err: any) {
+      console.error('Error al aprobar la actuación:', err);
+      toast.error(err?.message || 'Código OTP inválido o expirado. Intenta de nuevo.');
     }
   };
 
@@ -926,6 +978,18 @@ export function TabActuacionesExpediente({
                                 <CheckCircle className="w-3 h-3 text-emerald-600" />
                                 Documentos Firmados
                               </Badge>
+                            ) : getDocumentosFirmables(actuacion).length === 0 && isUserAuthorizedToApprove() ? (
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAbrirAprobacionManual(actuacion);
+                                }}
+                                className="h-8 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-all flex items-center gap-1.5"
+                                title="Esta actuación no tiene documentos para firmar: apruébala con token OTP"
+                              >
+                                <PenTool className="w-3.5 h-3.5" />
+                                Aprobar Actuación
+                              </Button>
                             ) : (
                               <Badge className="bg-amber-50 border border-amber-200 text-amber-800 text-[9px] font-extrabold py-0.5 px-1.5 inline-flex items-center gap-1 rounded hover:bg-amber-50 shadow-none">
                                 <Lock className="w-3 h-3 text-amber-600 animate-pulse" />
@@ -1002,6 +1066,14 @@ export function TabActuacionesExpediente({
           })}
         </div>
       )}
+
+      {/* Modal de Aprobación Manual (OTP) para actuaciones sin documentos firmables */}
+      <ModalFirmaAprobacionActuacion
+        isOpen={!!modalAprobacionActuacion}
+        onClose={() => setModalAprobacionActuacion(null)}
+        onConfirm={handleConfirmarAprobacionManual}
+        actuacionTitulo={modalAprobacionActuacion?.descripcion}
+      />
 
       {/* Modal de Devolución */}
       {typeof document !== 'undefined' && createPortal(
@@ -1586,6 +1658,19 @@ export function TabActuacionesExpediente({
                               <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
                               Autorizando...
                             </Badge>
+                          ) : getDocumentosFirmables(actuacionDetalle).length === 0 ? (
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-md hover:shadow-lg transition-all h-9"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const act = actuacionDetalle;
+                                setActuacionDetalle(null);
+                                handleAbrirAprobacionManual(act);
+                              }}
+                            >
+                              <PenTool className="w-4 h-4" /> Aprobar Actuación
+                            </Button>
                           ) : (
                             <Badge className="bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold py-1 px-3 inline-flex items-center gap-1.5 rounded-lg hover:bg-amber-50 shadow-none">
                               <Lock className="w-4 h-4 text-amber-600 animate-pulse" />

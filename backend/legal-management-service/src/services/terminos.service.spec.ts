@@ -56,7 +56,10 @@ describe('TerminosService', () => {
         mockProcesoCoactivoRepo = { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
         mockActuacionRepo = { find: jest.fn().mockResolvedValue([]) };
         mockDataSource = { query: jest.fn().mockResolvedValue([]) };
-        mockLegalNotifications = { notifyResponsableAsignadoTermino: jest.fn().mockResolvedValue(undefined) };
+        mockLegalNotifications = {
+            notifyResponsableAsignadoTermino: jest.fn().mockResolvedValue(undefined),
+            notifyTerminoCreado: jest.fn().mockResolvedValue(undefined),
+        };
         mockSequenceService = { generateRadicado: jest.fn().mockResolvedValue('TERM-2026-0001') };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -281,6 +284,28 @@ describe('TerminosService', () => {
             await service.create({ nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' } as any);
 
             expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
+        });
+
+        it('debe notificar la creación del término (a Jefe/Resuelve) incluso sin responsableId asignado', async () => {
+            const result = await service.create({ nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' } as any);
+
+            expect(mockLegalNotifications.notifyTerminoCreado).toHaveBeenCalledWith(
+                expect.objectContaining({ terminoId: result.id, nombreActuacion: 'Sin responsable', origenModulo: 'MANUAL' }),
+            );
+        });
+
+        it('debe notificar la creación del término también cuando sí viene con responsableId', async () => {
+            mockDataSource.query.mockResolvedValue([{ id_user: 'resp-1', public_id: null, nombre: 'Juan Pérez' }]);
+
+            await service.create({
+                nombreActuacion: 'Con responsable',
+                origenModulo: 'MANUAL',
+                responsableId: 'resp-1',
+            } as any);
+
+            expect(mockLegalNotifications.notifyTerminoCreado).toHaveBeenCalledWith(
+                expect.objectContaining({ nombreActuacion: 'Con responsable', responsableNombre: 'Juan Pérez' }),
+            );
         });
 
         // -------------------------------------------------------------
@@ -517,6 +542,30 @@ describe('TerminosService', () => {
 
             expect(mockLegalNotifications.notifyResponsableAsignadoTermino).not.toHaveBeenCalled();
         });
+
+        it('debe notificar la creación cuando el término es nuevo (aunque no tenga responsable)', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue(null);
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-14', 'RAD-14', 'Actuación nueva', localDate(2026, 1, 1), 15,
+            );
+
+            expect(mockLegalNotifications.notifyTerminoCreado).toHaveBeenCalledWith(
+                expect.objectContaining({ nombreActuacion: 'Actuación nueva', origenModulo: 'DEFENSA' }),
+            );
+        });
+
+        it('NO debe notificar creación cuando el término ya existía (solo se está sincronizando/actualizando)', async () => {
+            mockTerminoRepo.findOne.mockResolvedValue({
+                id: 't-15', referenciaId: 'ref-15', origenModulo: 'DEFENSA', responsableId: null, responsableNombre: null, observaciones: null,
+            });
+
+            await service.createAutomatico(
+                'DEFENSA', 'ref-15', 'RAD-15', 'Actuación existente', localDate(2026, 1, 1), 15,
+            );
+
+            expect(mockLegalNotifications.notifyTerminoCreado).not.toHaveBeenCalled();
+        });
     });
 
     // ---------------------------------------------------------------------
@@ -527,7 +576,6 @@ describe('TerminosService', () => {
             await service.findAll({});
 
             expect(queryBuilder.orderBy).toHaveBeenCalledWith('termino.fechaVencimiento', 'ASC');
-            expect(queryBuilder.andWhere).not.toHaveBeenCalled();
         });
 
         it('debe filtrar por responsableId cuando viene en los filtros', async () => {
@@ -540,6 +588,45 @@ describe('TerminosService', () => {
             await service.findAll({ estado: 'VENCIDO' });
 
             expect(queryBuilder.andWhere).toHaveBeenCalledWith('termino.estado = :estado', { estado: 'VENCIDO' });
+        });
+
+        it('sin filtro de estado explícito, debe excluir por defecto los términos ELIMINADO (soft delete)', async () => {
+            await service.findAll({});
+
+            expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+                'termino.estado != :estadoEliminado',
+                { estadoEliminado: 'ELIMINADO' },
+            );
+        });
+
+        it('con responsableId pero sin estado, además de filtrar por responsable debe seguir excluyendo ELIMINADO', async () => {
+            await service.findAll({ responsableId: 'resp-1' });
+
+            expect(queryBuilder.andWhere).toHaveBeenCalledWith('termino.responsableId = :responsableId', { responsableId: 'resp-1' });
+            expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+                'termino.estado != :estadoEliminado',
+                { estadoEliminado: 'ELIMINADO' },
+            );
+        });
+
+        it('cuando se pide explícitamente estado ELIMINADO, no debe agregar la exclusión (debe poder auditarlos)', async () => {
+            await service.findAll({ estado: 'ELIMINADO' });
+
+            expect(queryBuilder.andWhere).toHaveBeenCalledWith('termino.estado = :estado', { estado: 'ELIMINADO' });
+            expect(queryBuilder.andWhere).not.toHaveBeenCalledWith(
+                'termino.estado != :estadoEliminado',
+                expect.anything(),
+            );
+        });
+
+        it('con estado explícito distinto de ELIMINADO, no debe agregar además la cláusula de exclusión', async () => {
+            await service.findAll({ estado: 'VENCIDO' });
+
+            expect(queryBuilder.andWhere).toHaveBeenCalledTimes(1);
+            expect(queryBuilder.andWhere).not.toHaveBeenCalledWith(
+                'termino.estado != :estadoEliminado',
+                expect.anything(),
+            );
         });
 
         it('con responsableKeys que incluyen un uuid válido debe filtrar por responsableId O responsableNombre', async () => {
@@ -564,7 +651,10 @@ describe('TerminosService', () => {
         it('con responsableKeys vacío no debe agregar ningún filtro de responsable', async () => {
             await service.findAll({ responsableKeys: [] });
 
-            expect(queryBuilder.andWhere).not.toHaveBeenCalled();
+            expect(queryBuilder.andWhere).not.toHaveBeenCalledWith(
+                expect.stringContaining('responsable'),
+                expect.anything(),
+            );
         });
 
         it('debe autocompletar responsableNombre en lote para los términos del listado que lo tengan faltante', async () => {
@@ -619,6 +709,18 @@ describe('TerminosService', () => {
     // ---------------------------------------------------------------------
     describe('getSemaforoList()', () => {
         const DAY_MS = 1000 * 60 * 60 * 24;
+
+        it('regresión bug "eliminar no actualiza el listado": debe delegar en findAll excluyendo ELIMINADO por defecto', async () => {
+            // El endpoint GET /terminos/listado (usado por el Timeline de Vencimientos) llama
+            // getSemaforoList sin filtro de estado. Debe seguir excluyendo ELIMINADO para que,
+            // tras un DELETE exitoso, el término soft-eliminado deje de aparecer en el listado.
+            await service.getSemaforoList({});
+
+            expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+                'termino.estado != :estadoEliminado',
+                { estadoEliminado: 'ELIMINADO' },
+            );
+        });
 
         it('debe marcar semáforo verde cuando faltan más de 5 días', async () => {
             queryBuilder.getMany.mockResolvedValue([

@@ -64,7 +64,7 @@ describe('graduation review validation', () => {
         {
           firstName: ' Ana ',
           lastName: ' María ',
-          idNumber: 'AB12345',
+          idNumber: '1234567',
           email: ' ana@example.com ',
         },
         {},
@@ -73,7 +73,7 @@ describe('graduation review validation', () => {
       fullName: 'Ana María',
       firstName: 'Ana',
       lastName: 'María',
-      idNumber: 'AB12345',
+      idNumber: '1234567',
       email: 'ana@example.com',
     });
   });
@@ -81,6 +81,7 @@ describe('graduation review validation', () => {
   it.each([
     ['nombre completo corto', { firstName: 'A', lastName: 'B' }],
     ['nombre con punto', { firstName: 'Ana.', lastName: 'María' }],
+    ['documento con letras', { idNumber: 'AB12345' }],
     ['documento con guion', { idNumber: 'AB-12345' }],
     ['correo corto', { email: 'a@b' }],
     ['registro vacio', { numRegistro: '' }],

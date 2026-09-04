@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { BancoDocentesService } from './banco-docentes.service';
 
 describe('BancoDocentesService - autorización documental de autogestión', () => {
+  const DOCENTE_ID = '11111111-1111-4111-8111-111111111111';
   const invitation = {
     id: 'invite-1',
     tokenAcceso: 'token-valido',
@@ -13,8 +14,8 @@ describe('BancoDocentesService - autorización documental de autogestión', () =
   const build = (overrides: any = {}) => {
     const docenteRepo = {
       findOne: jest.fn()
-        .mockResolvedValueOnce({ id: 'docente-1' })
-        .mockResolvedValueOnce({ id: 'docente-1', correoInstitucional: 'docente@esap.edu.co' }),
+        .mockResolvedValueOnce({ id: DOCENTE_ID })
+        .mockResolvedValueOnce({ id: DOCENTE_ID, correoInstitucional: 'docente@esap.edu.co' }),
       ...overrides.docenteRepo,
     };
     const invitacionRepo = {
@@ -32,13 +33,13 @@ describe('BancoDocentesService - autorización documental de autogestión', () =
   };
 
   it('autoriza únicamente la invitación gestionada que pertenece al perfil', async () => {
-    await expect(build().authorizeAutogestionDocumentUpload('docente-1', 'token-valido'))
+    await expect(build().authorizeAutogestionDocumentUpload(DOCENTE_ID, 'token-valido'))
       .resolves.toBe('AUTOGESTION:invite-1');
   });
 
   it('rechaza tokens inexistentes', async () => {
     const service = build({ invitacionRepo: { findOne: jest.fn().mockResolvedValue(null) } });
-    await expect(service.authorizeAutogestionDocumentUpload('docente-1', 'invalido'))
+    await expect(service.authorizeAutogestionDocumentUpload(DOCENTE_ID, 'invalido'))
       .rejects.toThrow(ForbiddenException);
   });
 
@@ -46,11 +47,11 @@ describe('BancoDocentesService - autorización documental de autogestión', () =
     const service = build({
       docenteRepo: {
         findOne: jest.fn()
-          .mockResolvedValueOnce({ id: 'docente-1' })
-          .mockResolvedValueOnce({ id: 'docente-1', correoInstitucional: 'otra@esap.edu.co' }),
+          .mockResolvedValueOnce({ id: DOCENTE_ID })
+          .mockResolvedValueOnce({ id: DOCENTE_ID, correoInstitucional: 'otra@esap.edu.co' }),
       },
     });
-    await expect(service.authorizeAutogestionDocumentUpload('docente-1', 'token-valido'))
+    await expect(service.authorizeAutogestionDocumentUpload(DOCENTE_ID, 'token-valido'))
       .rejects.toThrow(ForbiddenException);
   });
 });

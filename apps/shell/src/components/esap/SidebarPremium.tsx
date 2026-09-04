@@ -39,6 +39,7 @@ import {
   BarChart3,
   Gavel,
   Rows4,
+  BriefcaseBusiness,
   Plane
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -47,7 +48,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos'   | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'dependencias';
 
 export interface ActiveModuleItem {
   code: string;
@@ -134,6 +135,7 @@ const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string
   'gestion-legal': { name: 'Gestión Legal (SIGL)', description: 'Sistema Integrado Legal' },
   'contratacion': { name: 'Contratación', description: 'Licitaciones y Contratos' },
   'viaticos': { name: 'Viáticos y Gastos de Viaje', description: 'Comisiones de Servicios y Tiquetes' },
+  'dependencias': { name: 'Dependencias', description: 'Catálogo transversal ESAP' },
 };
 
 export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [], activeModules = [], activeModuleCodes: propsActiveModuleCodes, userPermissions = [] }: SidebarProps) {
@@ -153,6 +155,17 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             : (overrideSubtitle || DEFAULT_MODULE_CONFIG[module]?.description),
         };
       }
+    }
+
+    // Fallback al catálogo estático cuando el módulo no está dado de alta
+    // en auth.module (caso típico: módulos transversales nuevos como
+    // 'dependencias' que aún no se registran en la BD).
+    const cfg = DEFAULT_MODULE_CONFIG[module];
+    if (cfg) {
+      return {
+        title: overrideTitle || cfg.name,
+        subtitle: overrideSubtitle || cfg.description || '',
+      };
     }
 
     return {
@@ -176,7 +189,27 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       const aliases = getModuleAliases(module);
       return hasAllModules || aliases.some((alias) => assignedModules.includes(alias));
     }
-    if (userRole?.includes('SUPER_ADMIN') && module === 'modules') return true;
+    if (userRole?.includes('SUPER_ADMIN') && (module === 'modules' || module === 'dependencias')) return true;
+
+    // 'dependencias' es transversal a la plataforma (consumida por viáticos,
+    // estructura organizacional, control interno, etc.). Para que esté
+    // disponible en "Configuración General" sin requerir alta explícita en
+    // auth.module ni asignación por rol, se muestra a cualquier usuario
+    // con sesión activa. La autorización fina (CRUD) la hace el JwtAuthGuard
+    // global en el backend.
+    if (module === 'dependencias') {
+      if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) {
+        return true;
+      }
+      if (hasAllModules) return true;
+      if (activeModuleCodes && activeModuleCodes.length > 0) {
+        const aliases = getModuleAliases(module);
+        if (aliases.some(alias => activeModuleCodes.includes(alias))) return true;
+      }
+      if (!assignedModules || assignedModules.length === 0) return true;
+      const aliases = getModuleAliases(module);
+      return aliases.some(alias => assignedModules.includes(alias) || assignedModules.includes(module));
+    }
 
     // 1. Si la API devolvió los módulos activos de la DB (is_active = true),
     // verificar que el módulo no esté desactivado globalmente en auth.module.
@@ -1131,8 +1164,34 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 </AnimatePresence>
                 
                 {renderMenuItem('executive', <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
-                {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
               </div>
+
+              {/* Configuración General — agrupador transversal */}
+              {(
+                canShowModule('modules') ||
+                canShowModule('dependencias')
+              ) && (
+                <div className="mb-8">
+                  <AnimatePresence mode="wait">
+                    {!effectiveCollapsed && renderSectionHeader('config-general', <Settings className="w-3 h-3" />, 'CONFIGURACIÓN GENERAL', 5)}
+                  </AnimatePresence>
+                  <AnimatePresence>
+                    {(effectiveCollapsed || expandedSections['config-general']) && (
+                      <motion.div
+                        key="config-general-content"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                        className="overflow-hidden"
+                      >
+                        {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                        {renderMenuItem('dependencias', <BriefcaseBusiness className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
 
               {/* Módulos Administrativos (GESTIÓN PERSONAS) */}
               {hasGestionPersonas && (

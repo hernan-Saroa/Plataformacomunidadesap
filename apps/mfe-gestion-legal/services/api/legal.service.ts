@@ -1473,7 +1473,12 @@ export class CorreosJuridicosService {
      * a la pestaña Documentos del proceso destino.
      * @param targetModule 'DEFENSA' | 'DISCIPLINARIO' | 'ASESORIA' (o los valores canónicos)
      */
-    async derivarNuevoProceso(id: string, procesoId: string, targetModule: string): Promise<CorreoJuridico> {
+    async derivarNuevoProceso(id: string, procesoId: string, targetModule: string): Promise<{
+        correo: CorreoJuridico;
+        vinculado: boolean;
+        documentosCopiados: number;
+        documentosTotal: number;
+    }> {
         return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/derivar-nuevo-proceso`, { procesoId, targetModule });
     }
 

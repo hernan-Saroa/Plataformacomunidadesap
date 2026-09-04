@@ -12,7 +12,7 @@ import {
     Req,
 } from '@nestjs/common';
 import { CorreosJuridicosService } from '../services/correos-juridicos.service';
-import type { EmailFilters } from '../services/correos-juridicos.service';
+import type { EmailFilters, DerivarNuevoProcesoResult } from '../services/correos-juridicos.service';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 
 // DTO as class for decorator compatibility (must be a class, not imported interface)
@@ -323,7 +323,7 @@ export class CorreosJuridicosController {
     async derivarNuevoProceso(
         @Param('id') id: string,
         @Body() body: { procesoId: string; targetModule?: string }
-    ): Promise<CorreoJuridico> {
+    ): Promise<DerivarNuevoProcesoResult> {
         return this.correosService.derivarANuevoProceso(id, body.procesoId, body.targetModule);
     }
 
