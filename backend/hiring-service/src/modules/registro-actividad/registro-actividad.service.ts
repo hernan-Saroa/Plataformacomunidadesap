@@ -60,13 +60,26 @@ export class RegistroActividadService {
     numeral: string,
     modalidad: string | null,
   ): Promise<boolean> {
+    return (await this.formatosAplicables(em, numeral, modalidad)).length > 0;
+  }
+
+  /**
+   * Los formatos que esta actividad pide para esta modalidad.
+   *
+   * Alcance vacío significa todas; si el formato declara modalidades, la de
+   * este proceso tiene que estar. Es el mismo criterio con el que se listan.
+   */
+  private async formatosAplicables(
+    em: EntityManager,
+    numeral: string,
+    modalidad: string | null,
+  ): Promise<Plantilla[]> {
     const formatos = await em.getRepository(Plantilla).find({
       where: { numeral, activo: true },
+      order: { codigo: 'ASC' },
     });
 
-    // Alcance vacío significa todas; si el formato declara modalidades, la de
-    // este proceso tiene que estar. Es el mismo criterio con el que se listan.
-    return formatos.some(
+    return formatos.filter(
       (f) =>
         f.modalidades.length === 0 || (modalidad !== null && f.modalidades.includes(modalidad)),
     );
@@ -180,7 +193,15 @@ export class RegistroActividadService {
       }
 
       const documento = archivo
-        ? await this.guardarSoporte(em, procesoId, numeral, archivo, hash as string, acceso)
+        ? await this.guardarSoporte(
+            em,
+            procesoId,
+            numeral,
+            archivo,
+            hash as string,
+            acceso,
+            proceso.modalidad ?? null,
+          )
         : null;
 
       const registro = await em.save(
@@ -269,6 +290,15 @@ export class RegistroActividadService {
     return parametro;
   }
 
+  /**
+   * Guarda el soporte que pide el formulario de la actividad.
+   *
+   * Si la actividad tiene formatos asignados, el soporte cumple el primero que
+   * siga pendiente. Sin esa atadura el documento quedaba suelto: el requisito
+   * del formato seguía sin cumplirse, el bloque de abajo volvía a pedir el
+   * mismo papel —la doble carga que se veía en pantalla— y la actividad podía
+   * aprobarse con el formato en blanco.
+   */
   private async guardarSoporte(
     em: EntityManager,
     procesoId: string,
@@ -276,21 +306,33 @@ export class RegistroActividadService {
     archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
+    modalidad: string | null,
   ) {
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
     if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+    const formatos = await this.formatosAplicables(em, numeral, modalidad);
+    const entregados = formatos.length
+      ? await em.getRepository(Documento).find({
+          where: { expedienteId: expediente.id, numeral, tipo: 'ADJUNTO' },
+        })
+      : [];
+    const pendiente = formatos.find(
+      (f) => !entregados.some((d) => d.plantillaId === f.id),
+    );
 
     return em.save(
       em.create(Documento, {
         expedienteId: expediente.id,
         numeral,
         tipo: 'ADJUNTO',
-        nombre: `Soporte de la actividad ${numeral}`,
+        nombre: pendiente?.nombre ?? `Soporte de la actividad ${numeral}`,
         archivoUrl: `hiring/files/${archivo.filename}`,
         archivoNombreOriginal: archivo.originalname,
         archivoMimeType: archivo.mimetype,
         archivoTamano: archivo.size,
         hashSha256: hash,
+        plantillaId: pendiente?.id ?? null,
         subidoPor: acceso.userName,
       } as Partial<Documento>),
     );

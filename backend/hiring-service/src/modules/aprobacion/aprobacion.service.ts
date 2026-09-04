@@ -8,6 +8,9 @@ import {
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { HiringAccess } from '../../auth/hiring-access';
+import { Documento } from '../../entities/documento.entity';
+import { Expediente } from '../../entities/expediente.entity';
+import { Plantilla } from '../../entities/plantilla.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Revision } from '../../entities/revision.entity';
@@ -179,6 +182,42 @@ export class AprobacionService {
     return codigos.map(
       (c) => filas.find((f: any) => f.code === c)?.name ?? c,
     );
+  }
+
+  /**
+   * Los formatos que la actividad pide y que nadie ha entregado todavía.
+   *
+   * Devuelve sus códigos y no un número: «falta cargar BS-FO-101» le dice a
+   * quien aprueba qué pedir, y «falta 1 documento» no.
+   */
+  private async formatosPendientes(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+    modalidad: string | null,
+  ): Promise<string[]> {
+    const formatos = await em.getRepository(Plantilla).find({
+      where: { numeral, activo: true },
+      order: { codigo: 'ASC' },
+    });
+
+    // Alcance vacío significa todas; es el mismo criterio con el que se listan.
+    const aplicables = formatos.filter(
+      (f) =>
+        f.modalidades.length === 0 || (modalidad !== null && f.modalidades.includes(modalidad)),
+    );
+    if (!aplicables.length) return [];
+
+    const expediente = await em.getRepository(Expediente).findOne({ where: { procesoId } });
+    if (!expediente) return aplicables.map((f) => f.codigo);
+
+    const entregados = await em.getRepository(Documento).find({
+      where: { expedienteId: expediente.id, numeral, tipo: 'ADJUNTO' },
+    });
+
+    return aplicables
+      .filter((f) => !entregados.some((d) => d.plantillaId === f.id))
+      .map((f) => f.codigo);
   }
 
   /**
@@ -378,6 +417,24 @@ export class AprobacionService {
         throw new ForbiddenException(
           'La aprueba alguien distinto de quien la trabajó: es lo que hace que la revisión exista',
         );
+      }
+
+      /*
+       * No se aprueba con formatos sin entregar.
+       *
+       * La pantalla ya deshabilita el botón, pero eso solo protege a quien lo
+       * mira: el servicio aceptaba la aprobación de una actividad cuyo formato
+       * seguía en blanco, y el expediente quedaba dado por bueno sin el
+       * documento que lo respalda. Devolver sí sigue permitido con formatos
+       * pendientes, porque es exactamente el caso para el que sirve devolver.
+       */
+      if (decision === 'APROBADO') {
+        const faltan = await this.formatosPendientes(em, procesoId, numeral, proceso.modalidad);
+        if (faltan.length) {
+          throw new ConflictException(
+            `Falta cargar ${faltan.join(', ')}: la actividad no puede aprobarse sin su soporte`,
+          );
+        }
       }
 
       actividad.estado = decision;
