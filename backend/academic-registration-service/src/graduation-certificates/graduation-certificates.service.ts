@@ -248,7 +248,9 @@ export class GraduationCertificatesService {
     try {
       fs.unlinkSync(filePath);
     } catch (error) {
-      this.logger.warn(`No se pudo eliminar el archivo fisico ${filePath}: ${error}`);
+      this.logger.warn(
+        `No se pudo eliminar el archivo fisico ${filePath}: ${error}`,
+      );
     }
   }
 
@@ -267,7 +269,8 @@ export class GraduationCertificatesService {
       storedName,
       mimeType: request.requesterSupportMimeType || 'application/pdf',
       sizeBytes: Number(request.requesterSupportSizeBytes || 0),
-      uploadedAt: request.requesterSupportUploadedAt || request.requestDate || new Date(),
+      uploadedAt:
+        request.requesterSupportUploadedAt || request.requestDate || new Date(),
       url: this.requesterSupportUrl(storedName),
     };
   }
@@ -290,10 +293,14 @@ export class GraduationCertificatesService {
   }
 
   private normalizeReviewFilesForResponse<
-    T extends { reviewFiles?: GraduationRequestReviewFile[] } & Partial<GraduationCertificateRequest>,
+    T extends {
+      reviewFiles?: GraduationRequestReviewFile[];
+    } & Partial<GraduationCertificateRequest>,
   >(item: T) {
     const legacyRequesterSupport = Array.isArray(item.reviewFiles)
-      ? item.reviewFiles.find((file) => this.isLegacyPublicReviewSupportFile(file))
+      ? item.reviewFiles.find((file) =>
+          this.isLegacyPublicReviewSupportFile(file),
+        )
       : null;
 
     if (Array.isArray(item.reviewFiles)) {
@@ -305,10 +312,13 @@ export class GraduationCertificatesService {
         });
     }
 
-    (item as T & { requesterSupportFile?: RequesterSupportFileResponse | null })
-      .requesterSupportFile =
+    (
+      item as T & { requesterSupportFile?: RequesterSupportFileResponse | null }
+    ).requesterSupportFile =
       this.buildRequesterSupportFileFromRequest(item) ||
-      this.buildRequesterSupportFileFromLegacyReviewFile(legacyRequesterSupport);
+      this.buildRequesterSupportFileFromLegacyReviewFile(
+        legacyRequesterSupport,
+      );
 
     return item;
   }
@@ -784,7 +794,7 @@ export class GraduationCertificatesService {
         idNumber,
         100,
       );
-    
+
     if (!mysqlGraduates.length) {
       return {
         enabled: true,
@@ -809,11 +819,12 @@ export class GraduationCertificatesService {
 
     for (const mysqlRecord of mysqlGraduates) {
       const record = this.mapMysqlRecordToOracle(mysqlRecord);
-      const existing = this.findMatchingGraduateForOracleRecord(
-        record,
-        localGraduates,
-        usedGraduateIds,
-      ) ?? undefined;
+      const existing =
+        this.findMatchingGraduateForOracleRecord(
+          record,
+          localGraduates,
+          usedGraduateIds,
+        ) ?? undefined;
 
       if (existing) {
         usedGraduateIds.add(existing.id);
@@ -864,7 +875,8 @@ export class GraduationCertificatesService {
       throw new BadRequestException('Fecha de graduación inválida');
     }
 
-    const oracleSync = await this.syncGraduatesFromOracleByIdNumber(documentNumber);
+    const oracleSync =
+      await this.syncGraduatesFromOracleByIdNumber(documentNumber);
 
     if (oracleSync.enabled && !oracleSync.found) {
       return {
@@ -1013,7 +1025,8 @@ export class GraduationCertificatesService {
       updated: 0,
       unchanged: 0,
     };
-    const mysqlSync = await this.syncGraduatesFromMysqlByIdNumber(documentNumber);
+    const mysqlSync =
+      await this.syncGraduatesFromMysqlByIdNumber(documentNumber);
     let oracleSync = disabledSync;
 
     if (!mysqlSync.found) {
@@ -1035,7 +1048,8 @@ export class GraduationCertificatesService {
         fuente,
         mysqlSync,
         oracleSync,
-        message: 'No se encontraron graduados activos con ese número de documento.',
+        message:
+          'No se encontraron graduados activos con ese número de documento.',
       };
     }
 
@@ -1074,7 +1088,9 @@ export class GraduationCertificatesService {
     dto: LandingCertificateRequestDto,
     frontendBaseUrl?: string,
   ) {
-    const documentNumber = this.normalizeAndValidateDocumentNumber(dto.idNumber);
+    const documentNumber = this.normalizeAndValidateDocumentNumber(
+      dto.idNumber,
+    );
     const normalizedIdNumber = this.normalizeDocumentNumber(documentNumber);
     const issueDate = dto.idIssueDate
       ? this.normalizeDateString(dto.idIssueDate)
@@ -1312,10 +1328,9 @@ export class GraduationCertificatesService {
     if (shouldCreateManualReview) {
       return {
         existe: false,
-        mensaje:
-          forceManualReview
-            ? 'Se creó la solicitud de revisión manual para validar un título adicional no disponible en la plataforma.'
-            : 'No se encontró un graduado activo con esos datos. Se creó la solicitud de revisión manual (15 días hábiles).',
+        mensaje: forceManualReview
+          ? 'Se creó la solicitud de revisión manual para validar un título adicional no disponible en la plataforma.'
+          : 'No se encontró un graduado activo con esos datos. Se creó la solicitud de revisión manual (15 días hábiles).',
         solicitudId: request.requestNumber,
         requestId: request.id,
       };
@@ -1336,14 +1351,18 @@ export class GraduationCertificatesService {
     request.status = 'VALIDATED';
     await this.requestRepository.save(request);
 
-    const certificate = await this.generateCertificate(request, frontendBaseUrl);
+    const certificate = await this.generateCertificate(
+      request,
+      frontendBaseUrl,
+    );
 
     request.status = 'COMPLETED';
     request.completionDate = new Date();
     await this.requestRepository.save(request);
 
     try {
-      await this.notifyCertificateDelivery(
+      await this.sendCertificateToRequestRecipients(
+        request,
         requesterEmail || dto.requesterEmail,
         certificate,
         frontendBaseUrl,
@@ -1354,61 +1373,11 @@ export class GraduationCertificatesService {
       );
     }
 
-    await this.notifyGraduateAboutCompanyRequest(request, certificate, graduate);
-
-    if (normalizedRequesterType === 'GRADUATE') {
-      try {
-        const allGraduatesForId = await this.findActiveGraduatesByIdNumber(
-          dto.idNumber,
-        );
-        const normalizedRequesterEmail = (requesterEmail || dto.requesterEmail || '')
-          .trim()
-          .toLowerCase();
-        const uniqueRegisteredEmails = [
-          ...new Set(
-            allGraduatesForId
-              .map((g) => (g.email || '').trim())
-              .filter(
-                (email) =>
-                  email && email.toLowerCase() !== normalizedRequesterEmail,
-              ),
-          ),
-        ];
-
-        for (const registeredEmail of uniqueRegisteredEmails) {
-          const matchingGraduate = allGraduatesForId.find(
-            (g) => (g.email || '').trim().toLowerCase() === registeredEmail.toLowerCase(),
-          );
-          try {
-            await this.sendGraduateOwnerNotificationEmail({
-              registeredEmail,
-              graduateName:
-                matchingGraduate?.fullName ||
-                graduate?.fullName ||
-                request.fullName,
-              requesterName: requesterName || request.requesterName || 'No informado',
-              requesterEmail: requesterEmail || dto.requesterEmail || 'No informado',
-              requestDate: request.requestDate || new Date(),
-              certificateNumber: certificate.certificateNumber,
-            });
-          } catch (error) {
-            this.logger.warn(
-              `Solicitud ${request.requestNumber}: no se pudo enviar aviso al correo registrado ${registeredEmail}: ${error?.message || error}`,
-            );
-          }
-        }
-
-        if (uniqueRegisteredEmails.length === 0) {
-          this.logger.debug(
-            `Solicitud ${request.requestNumber}: no se requieren avisos adicionales (requesterEmail coincide con todos los correos registrados o no hay correos registrados)`,
-          );
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Solicitud ${request.requestNumber}: error al procesar avisos al graduado: ${error?.message || error}`,
-        );
-      }
-    }
+    await this.notifyGraduateAboutCompanyRequest(
+      request,
+      certificate,
+      graduate,
+    );
 
     return {
       existe: true,
@@ -1426,7 +1395,10 @@ export class GraduationCertificatesService {
       this.validatePublicManualReviewSupportFile(supportFile);
     }
 
-    const response = await this.solicitarCertificadoLanding(dto, frontendBaseUrl);
+    const response = await this.solicitarCertificadoLanding(
+      dto,
+      frontendBaseUrl,
+    );
     const manualReviewResponse = response as {
       existe: boolean;
       requestId?: string;
@@ -1508,8 +1480,12 @@ export class GraduationCertificatesService {
     }
 
     const uploadedBy =
-      (dto.requesterName || request.requesterName || request.fullName || '')
-        .trim() || 'Solicitante';
+      (
+        dto.requesterName ||
+        request.requesterName ||
+        request.fullName ||
+        ''
+      ).trim() || 'Solicitante';
 
     if (request.requesterSupportStoredName) {
       const previousPath = path.join(
@@ -1532,7 +1508,8 @@ export class GraduationCertificatesService {
       supportFile.originalname,
     );
     request.requesterSupportStoredName = supportFile.filename;
-    request.requesterSupportMimeType = supportFile.mimetype || 'application/pdf';
+    request.requesterSupportMimeType =
+      supportFile.mimetype || 'application/pdf';
     request.requesterSupportSizeBytes = supportFile.size;
     request.requesterSupportUploadedAt = now;
 
@@ -1668,7 +1645,10 @@ export class GraduationCertificatesService {
     await this.requestRepository.save(request);
 
     // Generar certificado
-    const certificate = await this.generateCertificate(request, frontendBaseUrl);
+    const certificate = await this.generateCertificate(
+      request,
+      frontendBaseUrl,
+    );
 
     // Marcar solicitud como completada
     request.status = 'COMPLETED';
@@ -2158,7 +2138,9 @@ export class GraduationCertificatesService {
       );
     }
     if (/[\u0000-\u001F\u007F]/.test(value)) {
-      throw new BadRequestException(`${label} contiene caracteres no permitidos.`);
+      throw new BadRequestException(
+        `${label} contiene caracteres no permitidos.`,
+      );
     }
   }
 
@@ -2280,7 +2262,9 @@ export class GraduationCertificatesService {
     const campus = (payload.campus || '').trim();
     const seccionalName = (payload.seccionalName || '').trim();
     if (options.strictBulk && !campus) {
-      throw new BadRequestException('La sede es obligatoria en la carga masiva.');
+      throw new BadRequestException(
+        'La sede es obligatoria en la carga masiva.',
+      );
     }
     if (options.strictBulk && !seccionalName) {
       throw new BadRequestException(
@@ -2314,8 +2298,7 @@ export class GraduationCertificatesService {
       degreeTitle,
       diplomaNumber,
       actaNumber,
-      resolutionNumber:
-        (payload.resolutionNumber || '').trim() || undefined,
+      resolutionNumber: (payload.resolutionNumber || '').trim() || undefined,
       numActa,
       numFolio,
       numLibro,
@@ -2341,8 +2324,13 @@ export class GraduationCertificatesService {
   }
 
   private isUniqueConstraintError(error: unknown): boolean {
-    const candidate = error as { code?: string; driverError?: { code?: string } };
-    return candidate?.code === '23505' || candidate?.driverError?.code === '23505';
+    const candidate = error as {
+      code?: string;
+      driverError?: { code?: string };
+    };
+    return (
+      candidate?.code === '23505' || candidate?.driverError?.code === '23505'
+    );
   }
 
   private getExceptionMessage(error: unknown): string {
@@ -2354,7 +2342,9 @@ export class GraduationCertificatesService {
     if (Array.isArray(responseMessage)) {
       return responseMessage.join(', ');
     }
-    return responseMessage || candidate?.message || 'No se pudo crear el graduado.';
+    return (
+      responseMessage || candidate?.message || 'No se pudo crear el graduado.'
+    );
   }
 
   private normalizeName(value: string): string {
@@ -2955,6 +2945,93 @@ export class GraduationCertificatesService {
     );
   }
 
+  private async resolveCertificateDeliveryRecipients(
+    request: GraduationCertificateRequest,
+    requestedEmail?: string,
+  ): Promise<string[]> {
+    const recipientsByNormalizedEmail = new Map<string, string>();
+    const addRecipient = (rawEmail?: string | null) => {
+      const email = (rawEmail || '').trim();
+      if (!email) return;
+      if (!this.isValidGraduateEmail(email)) {
+        this.logger.warn(
+          `Solicitud ${request.requestNumber}: se omite el correo registrado inválido ${email}`,
+        );
+        return;
+      }
+
+      const normalizedEmail = email.toLowerCase();
+      if (!recipientsByNormalizedEmail.has(normalizedEmail)) {
+        recipientsByNormalizedEmail.set(normalizedEmail, email);
+      }
+    };
+
+    addRecipient(requestedEmail);
+
+    addRecipient(request.graduateEmail);
+    addRecipient(request.graduate?.email);
+
+    try {
+      const graduates = await this.findActiveGraduatesByIdNumber(
+        request.idNumber,
+      );
+      graduates.forEach((graduate) => addRecipient(graduate.email));
+    } catch (error) {
+      this.logger.warn(
+        `Solicitud ${request.requestNumber}: no se pudieron consultar todos los correos asociados al documento; se continuará con los destinatarios disponibles (${error?.message || error})`,
+      );
+    }
+
+    return [...recipientsByNormalizedEmail.values()];
+  }
+
+  private async sendCertificateToRequestRecipients(
+    request: GraduationCertificateRequest,
+    requestedEmail: string | undefined,
+    certificate: GraduationCertificate,
+    frontendBaseUrl?: string,
+    reviewNotes?: string,
+  ): Promise<string[]> {
+    const recipients = await this.resolveCertificateDeliveryRecipients(
+      request,
+      requestedEmail,
+    );
+    if (!recipients.length) {
+      throw new BadRequestException(
+        'No se encontró un correo válido para enviar el certificado.',
+      );
+    }
+
+    const deliveredRecipients: string[] = [];
+    let firstError: unknown;
+
+    for (const recipient of recipients) {
+      try {
+        await this.notifyCertificateDelivery(
+          recipient,
+          certificate,
+          frontendBaseUrl,
+          reviewNotes,
+        );
+        deliveredRecipients.push(recipient);
+      } catch (error) {
+        firstError ??= error;
+        this.logger.warn(
+          `Solicitud ${request.requestNumber}: no se pudo enviar el certificado a ${recipient} (${error?.message || error})`,
+        );
+      }
+    }
+
+    if (!deliveredRecipients.length && firstError) {
+      throw firstError;
+    }
+
+    this.logger.log(
+      `Solicitud ${request.requestNumber}: certificado enviado a ${deliveredRecipients.length} correo(s) único(s)`,
+    );
+    return deliveredRecipients;
+  }
+
   private getMailTransporter() {
     const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } =
       process.env;
@@ -3234,6 +3311,7 @@ export class GraduationCertificatesService {
     contactEmail?: string;
     requestDate?: Date;
     certificateNumber?: string;
+    decision?: 'APPROVED' | 'REJECTED';
   }): Promise<void> {
     const graduateEmail = (data.graduateEmail || '').trim();
     if (!graduateEmail) {
@@ -3255,7 +3333,13 @@ export class GraduationCertificatesService {
     const companyNit = (data.companyNit || '').trim();
     const contactPerson = data.contactPerson || 'No informado';
     const contactEmail = data.contactEmail || 'No informado';
-    const certificateNumber = data.certificateNumber || 'N/A';
+    const certificateNumber = (data.certificateNumber || '').trim();
+    const decisionLabel =
+      data.decision === 'APPROVED'
+        ? 'Aprobada'
+        : data.decision === 'REJECTED'
+          ? 'Rechazada'
+          : '';
     const requestDate = data.requestDate || new Date();
 
     let formattedDate = requestDate.toISOString();
@@ -3274,8 +3358,16 @@ export class GraduationCertificatesService {
       formattedDate = requestDate.toISOString();
     }
 
-    const subject = `Notificación de solicitud de certificado - ${companyName}`;
+    const subject = decisionLabel
+      ? `Solicitud de certificado ${decisionLabel.toLowerCase()} - ${companyName}`
+      : `Notificación de solicitud de certificado - ${companyName}`;
     const nitTextLine = companyNit ? `NIT: ${companyNit}.\n` : '';
+    const decisionTextLine = decisionLabel
+      ? `Estado final de la solicitud: ${decisionLabel}.\n`
+      : '';
+    const certificateTextLine = certificateNumber
+      ? `Número de certificado: ${certificateNumber}.\n`
+      : '';
     const text =
       `Cordial saludo, ${data.graduateName || 'graduado'}.\n` +
       `La empresa ${companyName} solicitó un certificado de egresado a su nombre.\n` +
@@ -3283,7 +3375,8 @@ export class GraduationCertificatesService {
       `Fecha y hora de la solicitud: ${formattedDate}.\n` +
       `Persona de contacto: ${contactPerson}.\n` +
       `Correo de contacto: ${contactEmail}.\n` +
-      `Número de certificado: ${certificateNumber}.\n` +
+      decisionTextLine +
+      certificateTextLine +
       'Si no reconoce esta solicitud, por favor comuníquese con la ESAP.';
 
     const safeGraduateName = safe(data.graduateName || 'Graduado');
@@ -3292,9 +3385,16 @@ export class GraduationCertificatesService {
     const safeContactPerson = safe(contactPerson);
     const safeContactEmail = safe(contactEmail);
     const safeCertificateNumber = safe(certificateNumber);
+    const safeDecisionLabel = safe(decisionLabel);
     const safeFormattedDate = safe(formattedDate);
     const nitHtmlRow = companyNit
       ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">NIT</span><br><span style="font-size:14px;font-weight:600;color:#374151;">${safeCompanyNit}</span></td></tr>`
+      : '';
+    const decisionHtmlRow = decisionLabel
+      ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Estado final</span><br><span style="font-size:14px;font-weight:700;color:${data.decision === 'APPROVED' ? '#047857' : '#b91c1c'};">${safeDecisionLabel}</span></td></tr>`
+      : '';
+    const certificateHtmlRow = certificateNumber
+      ? `<tr><td style="padding:8px 0;"><span style="font-size:12px;color:#6b7280;">Número de certificado</span><br><span style="font-size:15px;font-weight:700;color:#1d4ed8;">${safeCertificateNumber}</span></td></tr>`
       : '';
 
     const html = `
@@ -3327,7 +3427,8 @@ export class GraduationCertificatesService {
                       <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Persona de contacto</span><br><span style="font-size:14px;font-weight:600;color:#374151;">${safeContactPerson}</span></td></tr>
                       <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Correo de contacto</span><br><span style="font-size:14px;color:#374151;">${safeContactEmail}</span></td></tr>
                       <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Fecha y hora</span><br><span style="font-size:14px;color:#374151;">${safeFormattedDate}</span></td></tr>
-                      <tr><td style="padding:8px 0;"><span style="font-size:12px;color:#6b7280;">Número de certificado</span><br><span style="font-size:15px;font-weight:700;color:#1d4ed8;">${safeCertificateNumber}</span></td></tr>
+                      ${decisionHtmlRow}
+                      ${certificateHtmlRow}
                     </table>
                   </td></tr>
                 </table>
@@ -3382,43 +3483,87 @@ export class GraduationCertificatesService {
 
   private async notifyGraduateAboutCompanyRequest(
     request: GraduationCertificateRequest,
-    certificate: GraduationCertificate,
+    certificate?: GraduationCertificate | null,
     graduate?: Graduate | null,
+    decision: 'APPROVED' | 'REJECTED' = 'APPROVED',
   ): Promise<void> {
     if (request.requesterType !== 'COMPANY') {
       return;
     }
 
-    const graduateEmail = (
-      graduate?.email ||
-      request.graduate?.email ||
-      request.graduateEmail ||
-      ''
-    ).trim();
-    if (!graduateEmail) {
+    const recipientsByNormalizedEmail = new Map<
+      string,
+      { email: string; graduateName: string }
+    >();
+    const defaultGraduateName =
+      graduate?.fullName ||
+      request.graduate?.fullName ||
+      request.fullName ||
+      'Graduado';
+    const addRecipient = (
+      rawEmail?: string | null,
+      graduateName?: string | null,
+    ) => {
+      const email = (rawEmail || '').trim();
+      if (!email || !this.isValidGraduateEmail(email)) {
+        return;
+      }
+
+      const normalizedEmail = email.toLowerCase();
+      if (!recipientsByNormalizedEmail.has(normalizedEmail)) {
+        recipientsByNormalizedEmail.set(normalizedEmail, {
+          email,
+          graduateName: graduateName || defaultGraduateName,
+        });
+      }
+    };
+
+    addRecipient(graduate?.email, graduate?.fullName);
+    addRecipient(request.graduate?.email, request.graduate?.fullName);
+    addRecipient(request.graduateEmail, request.fullName);
+
+    try {
+      const graduates = await this.findActiveGraduatesByIdNumber(
+        request.idNumber,
+      );
+      graduates.forEach((registeredGraduate) =>
+        addRecipient(registeredGraduate.email, registeredGraduate.fullName),
+      );
+    } catch (error) {
       this.logger.warn(
-        `Solicitud ${request.requestNumber}: no se pudo notificar al graduado porque no tiene email registrado`,
+        `Solicitud ${request.requestNumber}: no se pudieron consultar todos los correos del graduado para enviar el aviso de empresa (${error?.message || error})`,
+      );
+    }
+
+    const recipients = [...recipientsByNormalizedEmail.values()];
+    if (!recipients.length) {
+      this.logger.warn(
+        `Solicitud ${request.requestNumber}: no se pudo notificar a los graduados porque no hay correos válidos asociados al documento`,
       );
       return;
     }
 
-    try {
-      await this.sendGraduateCompanyNotificationEmail({
-        graduateEmail,
-        graduateName:
-          graduate?.fullName || request.graduate?.fullName || request.fullName,
-        companyName:
-          request.companyName || request.requesterName || 'Empresa solicitante',
-        companyNit: request.companyNit,
-        contactPerson: request.contactPerson || 'No informado',
-        contactEmail: request.requesterEmail,
-        requestDate: request.requestDate || new Date(),
-        certificateNumber: certificate.certificateNumber,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `Solicitud ${request.requestNumber}: no se pudo enviar la notificacion al graduado: ${error?.message || error}`,
-      );
+    for (const recipient of recipients) {
+      try {
+        await this.sendGraduateCompanyNotificationEmail({
+          graduateEmail: recipient.email,
+          graduateName: recipient.graduateName,
+          companyName:
+            request.companyName ||
+            request.requesterName ||
+            'Empresa solicitante',
+          companyNit: request.companyNit,
+          contactPerson: request.contactPerson || 'No informado',
+          contactEmail: request.requesterEmail,
+          requestDate: request.requestDate || new Date(),
+          certificateNumber: certificate?.certificateNumber,
+          decision,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Solicitud ${request.requestNumber}: no se pudo enviar la notificacion a ${recipient.email}: ${error?.message || error}`,
+        );
+      }
     }
   }
 
@@ -3699,9 +3844,9 @@ export class GraduationCertificatesService {
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
   ): Promise<boolean> {
-    const rawSnapshot = certificate.templateSnapshot as
-      | { schemaVersion?: number | string | null }
-      | null;
+    const rawSnapshot = certificate.templateSnapshot as {
+      schemaVersion?: number | string | null;
+    } | null;
     const storedSchemaVersion = Number.parseInt(
       String(rawSnapshot?.schemaVersion || '1'),
       10,
@@ -4222,7 +4367,9 @@ export class GraduationCertificatesService {
         const certificateRepository = manager.getRepository(
           GraduationCertificate,
         );
-        const validationRepository = manager.getRepository(CertificateValidation);
+        const validationRepository = manager.getRepository(
+          CertificateValidation,
+        );
         const graduateFileRepository = manager.getRepository(GraduateFile);
         const reviewFileRepository = manager.getRepository(
           GraduationRequestReviewFile,
@@ -4255,9 +4402,7 @@ export class GraduationCertificatesService {
         });
         const certificateIds = Array.from(
           new Set(
-            certificates
-              .map((certificate) => certificate.id)
-              .filter(Boolean),
+            certificates.map((certificate) => certificate.id).filter(Boolean),
           ),
         );
 
@@ -4267,7 +4412,12 @@ export class GraduationCertificatesService {
         graduateFiles.forEach((file) => {
           if (file.storedName) {
             filePathsToRemove.push(
-              path.join(process.cwd(), 'uploads', 'graduate-files', file.storedName),
+              path.join(
+                process.cwd(),
+                'uploads',
+                'graduate-files',
+                file.storedName,
+              ),
             );
           }
         });
@@ -4278,7 +4428,12 @@ export class GraduationCertificatesService {
             (certificate.pdfUrl ? path.basename(certificate.pdfUrl) : '');
           if (pdfName) {
             filePathsToRemove.push(
-              path.join(process.cwd(), 'uploads', 'graduation-certificates', pdfName),
+              path.join(
+                process.cwd(),
+                'uploads',
+                'graduation-certificates',
+                pdfName,
+              ),
             );
           }
         });
@@ -4450,9 +4605,7 @@ export class GraduationCertificatesService {
         'PENDING_HEAD_APPROVAL',
         'APPROVED_FINAL',
         'REJECTED_FINAL',
-      ].includes(
-        request.approvalStatus || '',
-      )
+      ].includes(request.approvalStatus || '')
     ) {
       throw new BadRequestException(
         'No se pueden modificar archivos en el estado actual de la solicitud',
@@ -4507,9 +4660,7 @@ export class GraduationCertificatesService {
         'PENDING_HEAD_APPROVAL',
         'APPROVED_FINAL',
         'REJECTED_FINAL',
-      ].includes(
-        request.approvalStatus || '',
-      )
+      ].includes(request.approvalStatus || '')
     ) {
       throw new BadRequestException(
         'No se pueden cargar archivos en el estado actual de la solicitud',
@@ -4663,7 +4814,8 @@ export class GraduationCertificatesService {
       String(graduateData.programName || ''),
     );
     const duplicatedGraduate = existingGraduatesByDocument.find((graduate) => {
-      const existingProgramName = graduate.programName || graduate.degreeTitle || '';
+      const existingProgramName =
+        graduate.programName || graduate.degreeTitle || '';
       return this.normalizeName(existingProgramName) === normalizedProgramName;
     });
     if (duplicatedGraduate) {
@@ -4715,9 +4867,11 @@ export class GraduationCertificatesService {
 
     for (const [index, graduatePayload] of graduates.entries()) {
       const rowNumber = index + 2;
-      const programName =
-        (graduatePayload?.programName || graduatePayload?.degreeTitle || '')
-          .trim();
+      const programName = (
+        graduatePayload?.programName ||
+        graduatePayload?.degreeTitle ||
+        ''
+      ).trim();
       const idNumber = (graduatePayload?.idNumber || '').trim();
       const fileKey = `${idNumber}::${this.normalizeName(programName)}`;
 
@@ -4798,8 +4952,9 @@ export class GraduationCertificatesService {
     const duplicatedGraduate = graduatesWithSameDocument.find(
       (candidate) =>
         candidate.id !== graduate.id &&
-        this.normalizeName(candidate.programName || candidate.degreeTitle || '') ===
-          normalizedNextProgramName,
+        this.normalizeName(
+          candidate.programName || candidate.degreeTitle || '',
+        ) === normalizedNextProgramName,
     );
 
     if (duplicatedGraduate) {
@@ -5046,7 +5201,8 @@ export class GraduationCertificatesService {
         headerLogoFilename: config.institutionLogoFilename || null,
         footerLogoDataUrl: config.footerLogoUrl || null,
         footerLogoFilename: config.footerLogoFilename || null,
-        defaultHeaderLogoDataUrl: this.loadTemplateImageDataUrl('img_primera.png'),
+        defaultHeaderLogoDataUrl:
+          this.loadTemplateImageDataUrl('img_primera.png'),
         defaultFooterLogoDataUrl: this.loadTemplateImageDataUrl(
           'logo_esap_footer.png',
         ),
@@ -5472,7 +5628,8 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Solicitud no encontrada');
     }
 
-    const currentRequest = await this.expireManualReviewRequestIfNeeded(request);
+    const currentRequest =
+      await this.expireManualReviewRequestIfNeeded(request);
     return this.normalizeReviewFilesForResponse(currentRequest);
   }
 
@@ -5509,7 +5666,11 @@ export class GraduationCertificatesService {
         ]),
       },
       relations: ['graduate', 'reviewFiles'],
-      order: { updatedAt: 'DESC', reviewSubmittedAt: 'DESC', requestDate: 'DESC' },
+      order: {
+        updatedAt: 'DESC',
+        reviewSubmittedAt: 'DESC',
+        requestDate: 'DESC',
+      },
     });
 
     return requests.map((request) =>
@@ -5544,7 +5705,8 @@ export class GraduationCertificatesService {
       return;
     }
 
-    const existingGraduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    const existingGraduates =
+      await this.findActiveGraduatesByIdNumber(idNumber);
     const duplicatedGraduate = existingGraduates.find((graduate) =>
       [graduate.programName, graduate.degreeTitle]
         .map((value) => this.normalizeName(value || ''))
@@ -5559,10 +5721,7 @@ export class GraduationCertificatesService {
     }
   }
 
-  async enviarDecisionRevision(
-    id: string,
-    payload: SubmitReviewDecisionDto,
-  ) {
+  async enviarDecisionRevision(id: string, payload: SubmitReviewDecisionDto) {
     const request = await this.requestRepository.findOne({
       where: { id },
       relations: ['graduate', 'reviewFiles'],
@@ -5626,9 +5785,7 @@ export class GraduationCertificatesService {
       normalizedPayload.reviewerName || request.reviewerName;
     request.reviewNotes = reason;
     request.reviewResolution =
-      decision === 'APPROVED'
-        ? 'graduate_found'
-        : 'graduate_not_found';
+      decision === 'APPROVED' ? 'graduate_found' : 'graduate_not_found';
     request.approverDecision = null;
     request.approverNotes = null;
     request.approvedAt = null;
@@ -5683,7 +5840,9 @@ export class GraduationCertificatesService {
       (decision === 'REJECTED' || decision === 'OBSERVATION') &&
       !reason
     ) {
-      throw new BadRequestException('Debe registrar una justificación para esta decisión');
+      throw new BadRequestException(
+        'Debe registrar una justificación para esta decisión',
+      );
     }
 
     if (!isFinalDecision) {
@@ -6140,7 +6299,8 @@ export class GraduationCertificatesService {
 
     if (deliveryEmail) {
       try {
-        await this.notifyCertificateDelivery(
+        await this.sendCertificateToRequestRecipients(
+          request,
           deliveryEmail,
           certificate,
           frontendBaseUrl,
@@ -6153,7 +6313,11 @@ export class GraduationCertificatesService {
       }
     }
 
-    await this.notifyGraduateAboutCompanyRequest(request, certificate, graduate);
+    await this.notifyGraduateAboutCompanyRequest(
+      request,
+      certificate,
+      graduate,
+    );
 
     return {
       request,
@@ -6204,7 +6368,19 @@ export class GraduationCertificatesService {
       `Solicitud ${request.requestNumber} rechazada. Notificar a ${request.requesterEmail}`,
     );
 
-    await this.sendRejectionEmail(request, frontendBaseUrl);
+    try {
+      await this.sendRejectionEmail(request, frontendBaseUrl);
+    } catch (error) {
+      this.logger.warn(
+        `Solicitud ${request.requestNumber}: no se pudo enviar el rechazo al solicitante (${error?.message || error})`,
+      );
+    }
+    await this.notifyGraduateAboutCompanyRequest(
+      request,
+      undefined,
+      undefined,
+      'REJECTED',
+    );
 
     return request;
   }
