@@ -38,7 +38,7 @@ export interface SemestreCatalogo {
   asignaturas: AsignaturaCatalogo[];
 }
 
-const BASE = '/programacion-academica/catalogo';
+const BASE = '/programacion-academica/api/v1/catalogo';
 
 async function pedir<T>(ruta: string): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
@@ -90,7 +90,7 @@ export interface Grupo {
   observaciones: string | null;
 }
 
-const BASE_GRUPOS = '/programacion-academica/grupos';
+const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
 
 async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
@@ -147,7 +147,7 @@ export interface Sesion {
   estado: string;
 }
 
-const BASE_HORARIOS = '/programacion-academica/horarios';
+const BASE_HORARIOS = '/programacion-academica/api/v1/horarios';
 
 export function getSesiones(idGrupo: string): Promise<Sesion[]> {
   return pedirJson<Sesion[]>(`${BASE_HORARIOS}?grupo=${encodeURIComponent(idGrupo)}`, { method: 'GET' });
