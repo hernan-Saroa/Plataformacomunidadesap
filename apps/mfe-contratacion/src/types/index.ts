@@ -709,6 +709,41 @@ export class ConflictoError extends Error {
  * formatos aprobados que se diligencian en Word y se firman. Aquí se registra
  * cuál corresponde a cada actividad y modalidad.
  */
+/** Un documento entregado en la actividad. */
+export interface DocumentoCargado {
+  id: string;
+  nombre: string;
+  descargaUrl: string | null;
+  subidoPor: string | null;
+  cargadoAt: string;
+}
+
+/** Un documento que la actividad pide, con lo que se haya entregado de él. */
+export interface DocumentoRequeridoPorFormato {
+  plantillaId: string;
+  codigo: string;
+  nombre: string;
+  version: string;
+  /** Ruta del formato en blanco; null mientras Contratación no lo suba. */
+  formatoUrl: string | null;
+  cargado: DocumentoCargado | null;
+}
+
+/**
+ * Qué pide una actividad y qué se ha entregado ya.
+ *
+ * `requeridos` sale de los formatos asignados: cada uno es una fila que hay
+ * que resolver. `adicionales` son los anexos que nadie exigió pero que el
+ * gestor consideró parte del expediente.
+ */
+export interface EstadoDocumentosActividad {
+  numeral: string;
+  modalidad: string | null;
+  requeridos: DocumentoRequeridoPorFormato[];
+  adicionales: DocumentoCargado[];
+  completo: boolean;
+}
+
 export interface PlantillaFormato {
   id: string;
   /** Código del SIG, p. ej. BS-FO-047. */

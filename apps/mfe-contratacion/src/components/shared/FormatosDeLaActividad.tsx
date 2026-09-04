@@ -26,6 +26,27 @@ export function useFormatosDeLaActividad(numeral: string, modalidad?: string | n
   return formatos;
 }
 
+/**
+ * Los formatos asignados a la actividad, con archivo o sin él.
+ *
+ * Separado del anterior porque son dos preguntas distintas: `useFormatos…`
+ * responde «qué puede descargar el gestor» y esto responde «qué documentos se
+ * entregan aquí», que es lo que dice la asignación aunque nadie haya subido
+ * todavía el archivo del formato.
+ */
+export function useFormatosAsignados(numeral: string, modalidad?: string | null) {
+  const [formatos, setFormatos] = useState<PlantillaFormato[]>([]);
+
+  useEffect(() => {
+    contratacionService
+      .plantillasDeActividad(numeral, modalidad ?? undefined)
+      .then(setFormatos)
+      .catch(() => setFormatos([]));
+  }, [numeral, modalidad]);
+
+  return formatos;
+}
+
 /** El enlace de descarga de un formato, con su código del SIG. */
 export function EnlaceFormato({ formato }: { formato: PlantillaFormato }) {
   return (
@@ -60,9 +81,20 @@ export function FormatosDeLaActividad({
   instruccion = 'Descarga el formato oficial, diligéncialo y carga aquí el documento firmado.',
   sinFormatos = 'Los documentos se redactan por fuera y se cargan aquí. Cuando Contratación suba los formatos oficiales a la biblioteca de plantillas, podrás descargarlos desde este panel.',
 }: Props) {
-  const formatos = useFormatosDeLaActividad(numeral, modalidad);
+  const formatos = useFormatosAsignados(numeral, modalidad);
+
+  // Que el formato exista y que se pueda descargar son cosas distintas: el
+  // asignado sin archivo igual anuncia que aquí se entrega ese documento, y
+  // callarlo dejaría al gestor creyendo que la actividad no pide nada.
+  const descargables = formatos.filter((f) => f.archivoUrl);
+  const sinArchivo = formatos.filter((f) => !f.archivoUrl);
 
   if (formatos.length === 0) {
+    // Cadena vacía: callar. Quien monta esto en todas las actividades no puede
+    // permitirse una caja explicando la ausencia en las treinta y ocho; quien
+    // lo pone en un panel concreto sí quiere decir por qué no hay formato.
+    if (sinFormatos === '') return null;
+
     return (
       <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 flex items-start gap-2.5">
         <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" aria-hidden="true" />
@@ -73,17 +105,47 @@ export function FormatosDeLaActividad({
 
   return (
     <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-2">
-      <p className="text-[11px] text-slate-600 m-0 leading-relaxed">{instruccion}</p>
-      <ul className="m-0 p-0 list-none space-y-1.5">
-        {formatos.map((f) => (
-          <li key={f.id} className="flex items-center gap-2">
-            <EnlaceFormato formato={f} />
-            <span className="text-[11px] text-slate-500 min-w-0 truncate">
-              {f.codigo} · {f.nombre}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {descargables.length > 0 && (
+        <>
+          <p className="text-[11px] text-slate-600 m-0 leading-relaxed">{instruccion}</p>
+          <ul className="m-0 p-0 list-none space-y-1.5">
+            {descargables.map((f) => (
+              <li key={f.id} className="flex items-center gap-2">
+                <EnlaceFormato formato={f} />
+                <span className="text-[11px] text-slate-500 min-w-0 truncate">
+                  {f.codigo} · {f.nombre}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {/* Se dice, y no se bloquea: el gestor no puede subir el formato oficial
+          —eso lo hace Contratación desde la biblioteca—, así que impedirle
+          avanzar lo dejaría esperando algo que no depende de él. Lo que sí
+          necesita saber es que en esta actividad se entrega ese documento. */}
+      {sinArchivo.length > 0 && (
+        <div className="flex items-start gap-2.5">
+          <Info className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-700 m-0 leading-relaxed">
+              {sinArchivo.length === 1
+                ? 'Esta actividad entrega un formato que'
+                : 'Esta actividad entrega formatos que'}{' '}
+              Contratación aún no ha subido a la biblioteca. Diligéncialo por fuera y cárgalo
+              aquí.
+            </p>
+            <ul className="m-0 mt-1 p-0 list-none">
+              {sinArchivo.map((f) => (
+                <li key={f.id} className="text-[11px] text-slate-500 truncate">
+                  {f.codigo} · {f.nombre}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

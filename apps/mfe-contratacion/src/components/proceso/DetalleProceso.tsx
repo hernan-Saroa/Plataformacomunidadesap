@@ -6,6 +6,11 @@ import { ActividadProceso, EstudioPrevio } from '../../types';
 import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
+import {
+  actividadesDisponibles,
+  motivoDelBloqueo,
+  PasoDelFlujo,
+} from './secuenciaActividades';
 import { RielActividades } from './RielActividades';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
@@ -38,10 +43,33 @@ import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
 import { DocumentosActividad } from '../shared/DocumentosActividad';
+import { DocumentosDeLaActividad } from '../shared/DocumentosDeLaActividad';
+import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
+
+/**
+ * Actividades cuyo panel ya reparte sus formatos documento por documento.
+ * El bloque genérico se salta ambas para no duplicarlos.
+ */
+const NUMERALES_CON_FORMATOS_PROPIOS = ['3.1', '5.1'];
+
+/**
+ * Actividades cuyo panel ya tiene su propio ciclo de aprobación.
+ *
+ * Solo el estudio previo: es la única que además de aprobarse a sí misma
+ * escribe en `proceso_actividades.estado`, el mismo sitio donde el trámite
+ * genérico guarda el suyo. Montar los dos dejaría al gestor con dos bloques
+ * pidiéndole lo mismo sobre un único estado, y a la primera decisión el otro
+ * se quedaría diciendo algo falso.
+ *
+ * Las garantías y las modificaciones no entran aquí aunque también aprueban:
+ * lo suyo es cada póliza y cada modificación por separado, no la actividad, y
+ * conviven sin pisarse.
+ */
+const NUMERALES_CON_APROBACION_PROPIA = ['3.1'];
 
 /** Elaboración de los documentos del proceso (EFDS-1149). */
 const NUMERAL_DOCUMENTOS = '5.1';
@@ -288,6 +316,25 @@ const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
 
 const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
 
+/**
+ * Si la plataforma tiene panel para trabajar la actividad.
+ *
+ * La secuencia lo necesita para no trancar el flujo con una actividad que
+ * nadie puede terminar: las que aún no se han construido se saltan, igual que
+ * las que la modalidad excluye. Cuando estén las sesenta y tres, esto devuelve
+ * siempre true y la excepción sobra.
+ */
+const TIENEN_PANEL = (numeral: string): boolean =>
+  numeral === '3.1' ||
+  NUMERALES_CDP.includes(numeral) ||
+  NUMERALES_ETAPA_5.includes(numeral) ||
+  NUMERALES_ETAPA_6.includes(numeral) ||
+  NUMERALES_ADJUDICACION.includes(numeral) ||
+  NUMERALES_ETAPA_8.includes(numeral) ||
+  NUMERALES_ETAPA_9.includes(numeral) ||
+  NUMERALES_ETAPA_10.includes(numeral) ||
+  NUMERALES_CON_REGISTRO.includes(numeral);
+
 const formatoPesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
   currency: 'COP',
@@ -401,7 +448,29 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   // El catálogo llega del backend desde EFDS-1342: la matriz tiene 63
   // actividades y corregir el nombre de una no debería exigir un despliegue.
   // Si la consulta falla se cae a la etapa 3, que es lo único que había antes.
-  const delCatalogo: ActividadEtapa[] = (catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3).map(
+  const catalogoDelProceso: any[] = catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3;
+
+  /*
+   * La secuencia del flujo, calculada una vez sobre el catálogo completo.
+   *
+   * El catálogo llega ordenado por etapa y orden, que es el orden de la
+   * matriz, así que recorrerlo tal cual basta para saber hasta dónde puede
+   * llegar el gestor. Se hace antes del map porque saber si la 4.1 está
+   * disponible exige haber mirado todo lo que viene antes, incluidas las
+   * etapas anteriores.
+   */
+  const flujo: PasoDelFlujo[] = catalogoDelProceso.map((act: any) => ({
+    numeral: act.numeral,
+    // La 3.1 no vive en `proceso_actividades` como las demás: su estado es el
+    // del estudio previo, que es lo que esta pantalla ya venía mostrando.
+    estado: act.numeral === '3.1' ? datos.estado : act.estado,
+    aplica: act.aplica !== false,
+    construida: TIENEN_PANEL(act.numeral),
+  }));
+
+  const disponibles = actividadesDisponibles(flujo);
+
+  const delCatalogo: ActividadEtapa[] = catalogoDelProceso.map(
     (act: any) => {
       const adjuntos = adjuntosPorNumeral[act.numeral] ?? 0;
       const aplica = act.aplica !== false;
@@ -411,6 +480,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           ...act,
           estado: aprobado ? 'aprobada' : 'en_curso',
           detalle: detalle31(),
+          // La primera del flujo: no hay nada antes que pueda bloquearla.
           disponible: true,
           adjuntos,
         };
@@ -418,17 +488,11 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       // Las actividades del CDP se trabajan aquí desde EFDS-1148, la
       // publicación del pliego desde EFDS-1150 y las observaciones y la
       // limitación a MIPYME desde EFDS-1151. Se tratan igual: el riel las
-      // habilita cuando la matriz las marca aplicables a la modalidad.
-      if (
-        NUMERALES_CDP.includes(act.numeral) ||
-        NUMERALES_ETAPA_5.includes(act.numeral) ||
-        NUMERALES_ETAPA_6.includes(act.numeral) ||
-        NUMERALES_ADJUDICACION.includes(act.numeral) ||
-        NUMERALES_ETAPA_8.includes(act.numeral) ||
-        NUMERALES_ETAPA_9.includes(act.numeral) ||
-        NUMERALES_ETAPA_10.includes(act.numeral) ||
-        NUMERALES_CON_REGISTRO.includes(act.numeral)
-      ) {
+      // habilita cuando la matriz las marca aplicables a la modalidad y la
+      // secuencia ya llegó hasta ellas.
+      if (TIENEN_PANEL(act.numeral)) {
+        const alcanzada = disponibles.has(act.numeral);
+
         // `no_aplica` y no `pendiente`: es lo que el riel tacha, y lo que hace
         // que no cuente en el avance de la etapa. Poniendo `pendiente` —como
         // se hacía— una actividad que la modalidad excluye se veía igual que
@@ -439,8 +503,12 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           // encendía en azul las nueve actividades de las etapas 4 y 5 desde el
           // minuto uno y el color dejaba de informar.
           estado: estadoDeActividad(aplica, act.estado),
-          disponible: aplica,
-          detalle: aplica ? undefined : 'No aplica a esta modalidad',
+          disponible: aplica && alcanzada,
+          detalle: !aplica
+            ? 'No aplica a esta modalidad'
+            : // Un candado sin explicación se lee como un fallo: decir cuál es
+              // la actividad que falta lo convierte en una instrucción.
+              (alcanzada ? undefined : motivoDelBloqueo(act.numeral, flujo) ?? undefined),
           adjuntos,
         };
       }
@@ -615,6 +683,33 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
         />
 
         <div className="min-w-0">
+          {/* Aprobación y documentos, encima del panel: los treinta y ocho
+              paneles no conocen su numeral y este sitio sí. Ninguno pinta nada
+              si no hay formatos asignados ni aprobación configurada. */}
+          {actividadSeleccionada ? (
+            <>
+              {!NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) && (
+                <AprobacionDeLaActividad
+                  procesoId={procesoId}
+                  numeral={actividadSeleccionada.numeral}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              )}
+              {/* Salvo donde el panel ya los muestra con su propio texto: el
+                  estudio previo explica que se elige entre cuatro formatos según
+                  el tipo de contratación, y la 5.1 los reparte documento por
+                  documento. Repetirlos aquí los duplicaría en pantalla. */}
+              {!NUMERALES_CON_FORMATOS_PROPIOS.includes(actividadSeleccionada.numeral) && (
+                <DocumentosDeLaActividad
+                  procesoId={procesoId}
+                  numeral={actividadSeleccionada.numeral}
+                  recargarToken={tokenExpediente}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              )}
+            </>
+          ) : null}
+
           {actividadSeleccionada && NUMERALES_CDP.includes(actividadSeleccionada.numeral) ? (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <PanelCdp
@@ -862,16 +957,17 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             </div>
           )}
 
-          {/* Los documentos que la actividad dejó en el expediente.
-              Va aquí y no dentro de cada panel porque los quince paneles no
-              conocen su propio numeral, y este sitio sí sabe cuál está abierta:
-              montarlo una vez evita repetirlo en todos y que se olvide en los
-              que vengan después. */}
+          {/* Todo lo que quedó en el expediente, venga de donde venga: lo que
+              sube el panel del CDP, la copia del formulario al enviar. El
+              bloque de arriba solo muestra lo que exigen los formatos. */}
           {actividadSeleccionada ? (
             <DocumentosActividad
               procesoId={procesoId}
               numeral={actividadSeleccionada.numeral}
               recargarToken={tokenExpediente}
+              omitirAdjuntos={
+                !NUMERALES_CON_FORMATOS_PROPIOS.includes(actividadSeleccionada.numeral)
+              }
             />
           ) : null}
         </div>

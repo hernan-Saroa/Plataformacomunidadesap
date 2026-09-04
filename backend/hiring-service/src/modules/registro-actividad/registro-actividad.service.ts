@@ -12,6 +12,7 @@ import {
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { Plantilla } from '../../entities/plantilla.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
@@ -38,6 +39,35 @@ interface ArchivoCargado {
 export class RegistroActividadService {
   constructor(private readonly dataSource: DataSource) {}
 
+  /**
+   * Si la actividad tiene un formato del SIG asignado que le aplique.
+   *
+   * Un formato asignado exige el documento por sí solo, sin regla aparte: «el
+   * sistema ofrece el que corresponde y controla que el documento firmado se
+   * adjunte», dice la entidad. Pedir además una regla era el segundo paso que
+   * nadie daba —hay cuatro formatos asignados y una sola regla, ambos sobre la
+   * misma actividad, y treinta y siete actividades sin ninguna de las dos.
+   *
+   * El formato sin archivo subido cuenta igual: lo que obliga es que el
+   * documento se entregue, no que Contratación ya haya publicado la plantilla.
+   */
+  private async tieneFormatoAsignado(
+    em: EntityManager,
+    numeral: string,
+    modalidad: string | null,
+  ): Promise<boolean> {
+    const formatos = await em.getRepository(Plantilla).find({
+      where: { numeral, activo: true },
+    });
+
+    // Alcance vacío significa todas; si el formato declara modalidades, la de
+    // este proceso tiene que estar. Es el mismo criterio con el que se listan.
+    return formatos.some(
+      (f) =>
+        f.modalidades.length === 0 || (modalidad !== null && f.modalidades.includes(modalidad)),
+    );
+  }
+
   // -------------------------------------------------------------- consulta --
 
   async estado(procesoId: string, numeral: string) {
@@ -62,13 +92,17 @@ export class RegistroActividadService {
       ? await em.getRepository(Documento).findOne({ where: { id: vigente.documentoId } })
       : null;
 
+    const porFormato = await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null);
+
     return {
       numeral,
       etapa: parametro.etapa,
-      exigeSoporte: parametro.exigeSoporte,
+      exigeSoporte: parametro.exigeSoporte || porFormato,
       // Se dice en la pantalla: una exigencia sin confirmar no se presenta como
-      // si viniera de la norma.
-      exigenciaConfirmada: parametro.confirmado,
+      // si viniera de la norma. Un formato asignado sí es decisión del área
+      // —alguien entró a la biblioteca y lo puso en esta actividad—, así que
+      // presentarlo como pendiente de confirmar sería decir algo falso.
+      exigenciaConfirmada: parametro.confirmado || porFormato,
       notaFuente: parametro.notaFuente,
       aplica: !excluida,
       motivoNoAplica: excluida?.motivo ?? null,
@@ -122,7 +156,12 @@ export class RegistroActividadService {
         fecha: dto.fecha,
         nota: dto.nota,
         tieneSoporte: archivo !== null,
-        exigeSoporte: parametro.exigeSoporte,
+        // El formato asignado exige igual que la matriz: si se comprobara solo
+        // al consultar, la pantalla pediría el soporte y el servicio lo dejaría
+        // pasar, que es la peor de las dos respuestas.
+        exigeSoporte:
+          parametro.exigeSoporte ||
+          (await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null)),
         hoy: new Date().toISOString().slice(0, 10),
       });
       if (falta) throw new BadRequestException(falta);

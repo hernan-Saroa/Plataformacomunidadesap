@@ -11,11 +11,9 @@ import {
   BotonSecundario,
   campo,
   Marco,
-  PieAprobacion,
   SelectorArchivo,
   Titulo,
 } from '../shared/PiezasPanel';
-import { usarAprobacion } from '../shared/usarAprobacion';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 
 interface Props {
@@ -38,8 +36,6 @@ export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }:
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-
-  const aprobacion = usarAprobacion(procesoId, numeral, onCambio);
 
   const [fecha, setFecha] = useState(hoyEnBogota());
   const [nota, setNota] = useState('');
@@ -246,27 +242,18 @@ export function PanelRegistroActividad({ procesoId, numeral, nombre, onCambio }:
             }
           />
 
-          {/* El pie decide si la actividad se cierra directo o pasa por
-              aprobación: lo dice la regla que el área configuró, no el panel. */}
-          <PieAprobacion
-            estado={aprobacion.estado}
-            requiereAprobacion={aprobacion.requiereAprobacion}
-            quienAprueba={aprobacion.quienAprueba}
-            puedoAprobar={aprobacion.puedoAprobar}
-            esMia={aprobacion.esMia}
-            observaciones={aprobacion.observaciones}
-            devueltaPor={aprobacion.decididaPor}
-            guardando={guardando || aprobacion.guardando}
-            etiquetaRegistrar="Registrar la actividad"
-            onRegistrar={registrar}
-            onEnviar={async () => {
-              await registrar();
-              await aprobacion.enviar();
-            }}
-            onRetirar={aprobacion.retirar}
-            onAprobar={aprobacion.aprobar}
-            onDevolver={aprobacion.devolver}
-          />
+          {/* El registro cierra la actividad; la aprobación, si el área la
+              configuró, la pide `AprobacionDeLaActividad` encima del panel.
+              Se separan porque los treinta y ocho paneles cierran su actividad
+              de formas distintas —el del CDP expide, el de garantías aprueba
+              pólizas— y el trámite de revisión es el mismo en todos. */}
+          <Boton
+            icono={<FilePlus2 className="w-3.5 h-3.5" />}
+            onClick={registrar}
+            disabled={guardando || nota.trim().length < 10 || (estado.exigeSoporte && !archivo)}
+          >
+            Registrar la actividad
+          </Boton>
         </>
       )}
 

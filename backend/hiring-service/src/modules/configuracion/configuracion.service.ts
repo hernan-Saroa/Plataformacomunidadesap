@@ -12,7 +12,10 @@ import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.enti
 import { Plantilla } from '../../entities/plantilla.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Documento } from '../../entities/documento.entity';
-import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import {
+  NUMERAL_ESTUDIO_PREVIO,
+  ProcesoActividad,
+} from '../../entities/proceso-actividad.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import {
   ActualizarActividadDto,
@@ -773,6 +776,22 @@ export class ConfiguracionService {
    * existe.
    */
   async guardarAprobacion(numeral: string, dto: GuardarAprobacionDto) {
+    /*
+     * El estudio previo ya se aprueba, y con su propio ciclo: se envía, se
+     * revisa y se devuelve con observaciones desde su panel, guardando el
+     * estado en la misma columna que usaría esta regla. Configurar aquí una
+     * segunda aprobación sobre la 3.1 crearía dos trámites peleándose por un
+     * único estado, y el que perdiera quedaría mostrando algo falso.
+     *
+     * Se rechaza al configurar y no al aprobar: descubrirlo cuando el gestor
+     * ya envió la actividad sería descubrirlo tarde.
+     */
+    if (numeral === NUMERAL_ESTUDIO_PREVIO && dto.requiereAprobacion) {
+      throw new BadRequestException(
+        'El estudio previo ya tiene su propia aprobación: se configura quién revisa desde los permisos del módulo, no desde aquí',
+      );
+    }
+
     return this.dataSource.transaction(async (em) => {
       const repo = em.getRepository(ReglaActividad);
 

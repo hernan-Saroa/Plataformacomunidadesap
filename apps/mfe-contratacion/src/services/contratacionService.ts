@@ -9,6 +9,7 @@ import {
   CondicionesMipymeConfig,
   ConflictoError,
   EstadoDocumentos,
+  EstadoDocumentosActividad,
   EstadoMipyme,
   EstadoComite,
   EstadoEvaluacion,
@@ -1211,6 +1212,47 @@ export const contratacionService = {
       `/procesos/plantillas/${encodeURIComponent(numeral)}${
         modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
       }`,
+    ),
+
+  /**
+   * Los documentos que una actividad entrega, según sus formatos asignados.
+   *
+   * Sirve a cualquier actividad, a diferencia de `documentosProceso`, que
+   * resuelve la lista fija de la 5.1: aquí las filas salen de la biblioteca,
+   * y por eso una actividad empieza a pedir documentos sin desplegar nada.
+   */
+  documentosDeActividad: (procesoId: string, numeral: string) =>
+    pedir<EstadoDocumentosActividad>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos`,
+    ),
+
+  /**
+   * Carga un documento de la actividad.
+   *
+   * Con `plantillaId` cumple el requisito de ese formato; sin él queda como
+   * anexo adicional, que se guarda pero no se exige.
+   */
+  cargarDocumentoDeActividad: (
+    procesoId: string,
+    numeral: string,
+    archivo: File,
+    plantillaId?: string,
+  ) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
+    if (plantillaId) cuerpo.append('plantillaId', plantillaId);
+
+    return pedir<{ id: string; nombre: string }>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos`,
+      { method: 'POST', body: cuerpo },
+    );
+  },
+
+  /** Retira un documento de la actividad; la traza queda. */
+  retirarDocumentoDeActividad: (procesoId: string, numeral: string, documentoId: string) =>
+    pedir<{ retirado: boolean }>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/${documentoId}`,
+      { method: 'DELETE' },
     ),
 
   /**

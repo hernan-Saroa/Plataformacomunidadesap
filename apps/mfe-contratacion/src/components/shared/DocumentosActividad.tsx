@@ -9,6 +9,12 @@ interface Props {
   numeral: string;
   /** Cambia cuando la actividad guarda algo, para volver a leer. */
   recargarToken?: number;
+  /**
+   * Si `DocumentosDeLaActividad` está montado arriba. Entonces todo lo que se
+   * cargó por él ya está listado allí, y repetirlo aquí sería mostrar dos
+   * veces el mismo archivo.
+   */
+  omitirAdjuntos?: boolean;
 }
 
 const ETIQUETA_MIME: Record<string, string> = {
@@ -40,7 +46,12 @@ function tamano(bytes?: number | null): string {
  * Se lee del expediente y se filtra aquí en vez de pedir un endpoint nuevo: el
  * dato ya viaja completo y con el numeral incluido.
  */
-export function DocumentosActividad({ procesoId, numeral, recargarToken }: Props) {
+export function DocumentosActividad({
+  procesoId,
+  numeral,
+  recargarToken,
+  omitirAdjuntos,
+}: Props) {
   const [documentos, setDocumentos] = useState<any[] | null>(null);
 
   useEffect(() => {
@@ -50,7 +61,12 @@ export function DocumentosActividad({ procesoId, numeral, recargarToken }: Props
       .obtenerExpediente(procesoId)
       .then((exp) => {
         if (!vigente) return;
-        setDocumentos(exp.documentos.filter((d: any) => d.numeral === numeral));
+        setDocumentos(
+          exp.documentos.filter(
+            (d: any) =>
+              d.numeral === numeral && !(omitirAdjuntos && d.tipo === 'ADJUNTO'),
+          ),
+        );
       })
       // Silencioso a propósito: es un panel de apoyo, y un fallo al listarlos
       // no debe tapar la actividad que el gestor está trabajando.
@@ -59,7 +75,7 @@ export function DocumentosActividad({ procesoId, numeral, recargarToken }: Props
     return () => {
       vigente = false;
     };
-  }, [procesoId, numeral, recargarToken]);
+  }, [procesoId, numeral, recargarToken, omitirAdjuntos]);
 
   // Mientras carga y cuando no hay nada se calla: un bloque vacío diciendo
   // «sin documentos» en cada actividad sería ruido en todas las que aún no han
