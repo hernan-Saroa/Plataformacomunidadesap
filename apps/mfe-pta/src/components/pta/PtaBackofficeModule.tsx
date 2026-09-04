@@ -1300,7 +1300,7 @@ function getComponentApprovalGroups(pta: any): { enRevision: any[]; pendientes: 
       label: String(item?.label || item?.nombre || item?.componente || 'Componente'),
       estado: String(item?.estado || 'pendiente').toLowerCase(),
     }))
-    .filter((item: any) => item.key || item.label);
+    .filter((item: any) => (item.key || item.label) && item.estado !== 'no_aplica');
 
   // 'en_revision': el componente todavía tiene revisión(es) pendiente(s) — el
   // backend solo emite este estado cuando NO está aprobado, así que se separa
@@ -1477,7 +1477,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     return items.some((item: any) => {
       const estado = String(item?.estado || 'pendiente').toLowerCase();
-      if (estado === 'aprobado' || estado === 'no_iniciado') return false;
+      if (estado === 'aprobado' || estado === 'no_iniciado' || estado === 'no_aplica') return false;
       return claveColapsadaAutorizada(String(item?.key || item?.componente || ''));
     });
   }, [shouldRestrictByComponentPermission, claveColapsadaAutorizada]);
@@ -1493,7 +1493,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const estadoDeMisComponentes = useCallback((pta: any): 'sin_alcance' | 'por_aprobar' | 'aprobados' => {
     const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
     const mios = items.filter((item: any) =>
-      claveColapsadaAutorizada(String(item?.key || item?.componente || '')),
+      item?.estado !== 'no_aplica' && claveColapsadaAutorizada(String(item?.key || item?.componente || '')),
     );
     if (mios.length === 0) return 'sin_alcance';
     const hayPendiente = mios.some((item: any) => {
@@ -4974,13 +4974,13 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                                 { key: 'doc', keys: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'], color: '#003DA5', has: pta.horas_docencia > 0 || pta.num_asignaturas > 0 || (pta.asignaturas && pta.asignaturas.length > 0) },
                                 { key: 'inv', keys: ['investigacion'], color: '#7C3AED', has: pta.horas_investigacion > 0 || (pta.investigacion_actividades && pta.investigacion_actividades.length > 0) || pta.investigacion_proyecto != null },
                                 { key: 'ext', keys: PTA_EXTENSION_COMPONENT_KEYS, color: '#059669', has: pta.horas_extension > 0 || (pta.extension_actividades && pta.extension_actividades.length > 0) },
-                                { key: 'comp', keys: ['complementarias'], color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) || pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
+                                { key: 'comp', keys: PTA_COMPLEMENTARIAS_COMPONENT_KEYS, color: '#D97706', has: pta.horas_complementarias > 0 || (pta.complementarias && pta.complementarias.length > 0) || pta.horas_acad_admin > 0 || (pta.academico_admin && pta.academico_admin.length > 0) },
                               ].filter(c => !shouldRestrictByComponentPermission || c.keys.some(key => visibleComponentKeySet.has(key))).map(c => (
                                 <div key={c.key} style={{
                                   width: 10, height: 10, borderRadius: 2,
                                   background: c.has ? c.color : '#E5E7EB',
                                   opacity: c.has ? 1 : 0.4,
-                                }} title={`${c.key.toUpperCase()}: ${c.has ? 'Diligenciado' : 'Sin datos'}`} />
+                                }} title={`${c.key.toUpperCase()}: ${c.has ? 'Diligenciado' : 'No aplica'}`} />
                               ))}
                             </div>
                           </div>

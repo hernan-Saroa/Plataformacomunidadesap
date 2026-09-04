@@ -23,8 +23,8 @@ export function ptaHabilitadoParaSeguimiento(pta: any): boolean {
   if (!pta) return false;
   const estado = String(pta.estado || '').trim();
   if (ESTADOS_PTA_SEGUIMIENTO.includes(estado)) return true;
-  // Los conteos enriquecidos pueden incluir componentes vacíos como aprobados,
-  // pero esa regla solo tiene sentido después de enviar el PTA a revisión.
+  // Los conteos enriquecidos incluyen solo componentes aplicables. El borrador
+  // nunca habilita el seguimiento, aunque conserve conteos de una versión previa.
   if (!estado || estado.toLocaleUpperCase('es') === 'BORRADOR') return false;
   const total = Number(pta.componentes_total || 0);
   const aprobados = Number(pta.componentes_aprobados || 0);
