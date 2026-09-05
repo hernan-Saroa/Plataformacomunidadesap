@@ -2943,9 +2943,9 @@ export class PtaService {
 
   /**
    * Adjunta a cada DTO de la lista el avance de aprobación por componente
-   * (componentes_aprobados / componentes_total), usando el mismo criterio que el
-   * panel de detalle: 4 componentes base (Docencia, Investigación, Complementarias,
-   * Acad-Admin) siempre + las sub-secciones de Extensión que tengan horas > 0.
+   * (componentes_aprobados / componentes_total). Siempre expone los cuatro
+   * componentes visibles; los que no tienen horas se marcan `no_aplica` y no
+   * participan en el denominador ni pueden presentarse como aprobados.
    * Es SOLO LECTURA (no persiste ni auto-aprueba) y tolerante a fallos: si algo falla,
    * simplemente no adjunta los conteos y el front cae al rótulo de estado.
    */
@@ -2962,10 +2962,15 @@ export class PtaService {
     }
 
     const estadoByPta = new Map<string, Map<string, string>>();
+    const reaprobacionByPta = new Map<string, Set<string>>();
     for (const a of approvals) {
       if (!a?.ptaId || !a?.componente || isRoleApprovalComponent(a.componente)) continue;
       if (!estadoByPta.has(a.ptaId)) estadoByPta.set(a.ptaId, new Map());
       estadoByPta.get(a.ptaId)!.set(a.componente, String(a.estado || 'pendiente'));
+      if (a.scope === 'solicitud_edicion' && ['pendiente', 'devuelto'].includes(String(a.estado))) {
+        if (!reaprobacionByPta.has(a.ptaId)) reaprobacionByPta.set(a.ptaId, new Set());
+        reaprobacionByPta.get(a.ptaId)!.add(a.componente);
+      }
     }
 
     // ── Etapa de Revisión: progreso por componente, calculado en lote para no
@@ -3172,17 +3177,18 @@ export class PtaService {
           ext_gobierno: extHoras(EXT_SUB_SECTIONS.ext_gobierno),
         };
 
-        const hayActividades = Object.values(horasPorComp).some(h => h > 0);
         const recs = estadoByPta.get(dto.id) || new Map<string, string>();
         const reviewRecs = reviewByPta.get(dto.id) || new Map<string, string>();
         const esBorrador = isDraftPtaState(dto?.estado);
-        // Un componente cuenta como aprobado si su registro está aprobado o si está vacío
-        // (auto-aprobación cuando el PTA tiene actividades), pero únicamente después
-        // de que el PTA haya salido de Borrador y comience realmente su revisión.
-        const estaAprobado = (k: string) => !esBorrador && (
-          recs.get(k) === 'aprobado'
-          || (hayActividades && (horasPorComp[k] || 0) === 0)
-        );
+        const estadoGlobalAprobado = ['APROBADO', 'EN FIRME', 'FINALIZADO']
+          .includes(String(dto?.estado || '').trim().toUpperCase());
+        const tieneHoras = (k: string) => (horasPorComp[k] || 0) > 0;
+        // La autoaprobación de filas vacías sigue siendo una implementación
+        // interna para no bloquear el workflow. En el DTO solo se considera una
+        // aprobación real cuando el componente tiene horas.
+        const estaAprobado = (k: string) => tieneHoras(k) && !esBorrador
+          && (recs.get(k) === 'aprobado' || estadoGlobalAprobado);
+        const estaSatisfecho = (k: string) => !tieneHoras(k) || estaAprobado(k);
 
         // Subsecciones de revisión que aplican a este PTA concreto (mismo criterio
         // que getRequiredSubsecciones, calculado en lote para no hacer N consultas).
@@ -3216,15 +3222,17 @@ export class PtaService {
         // aprobada solo si TODOS sus sub-componentes con horas lo están. El rótulo de
         // salida se mantiene 'academica' (no 'docencia') por compatibilidad con los
         // consumidores existentes de componentes_estado (reportes, portal docente).
-        const docTieneHoras = DOCENCIA_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
-        if (docTieneHoras) {
-          total++;
-          const docAprobada = DOCENCIA_KEYS.every(k => estaAprobado(k));
+        const docHorasTotales = DOCENCIA_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
+        const docTieneHoras = docHorasTotales > 0;
+        if (docTieneHoras) total++;
+        {
+          const docAprobada = docTieneHoras && DOCENCIA_KEYS.every(k => estaSatisfecho(k));
           if (docAprobada) aprobados++;
-          const docEstados = DOCENCIA_KEYS.map(k => recs.get(k)).filter(Boolean);
+          const docEstados = DOCENCIA_KEYS.filter(tieneHoras).map(k => recs.get(k)).filter(Boolean);
           const docEnRevision = DOCENCIA_KEYS.some(k => (horasPorComp[k] || 0) > 0 && !revisionCompleta(k));
           let docEstado: string;
-          if (esBorrador) docEstado = 'no_iniciado';
+          if (!docTieneHoras) docEstado = 'no_aplica';
+          else if (esBorrador) docEstado = 'no_iniciado';
           else if (docAprobada) docEstado = 'aprobado';
           else if (docEstados.includes('devuelto')) docEstado = 'devuelto';
           else if (docEnRevision) docEstado = 'en_revision';
@@ -3232,7 +3240,6 @@ export class PtaService {
           // Horas aprobadas/pendientes se calculan sub-componente por sub-componente
           // (Pregrado/Posgrado/Territorial pueden aprobarse por separado) en vez de
           // usar el booleano colapsado `docAprobada`, que solo es true si TODOS lo están.
-          const docHorasTotales = DOCENCIA_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
           const docHorasAprobadas = esBorrador ? 0 : DOCENCIA_KEYS.reduce(
             (s, k) => s + (estaAprobado(k) ? (horasPorComp[k] || 0) : 0), 0,
           );
@@ -3247,16 +3254,18 @@ export class PtaService {
         }
 
         for (const c of BASE_KEYS) {
-          total++;
-          const aprobado = estaAprobado(c);
+          const horasTotales = horasPorComp[c] || 0;
+          const aplica = horasTotales > 0;
+          if (aplica) total++;
+          const aprobado = aplica && estaAprobado(c);
           if (aprobado) aprobados++;
           let estado: string;
-          if (esBorrador) estado = 'no_iniciado';
+          if (!aplica) estado = 'no_aplica';
+          else if (esBorrador) estado = 'no_iniciado';
           else if (aprobado) estado = 'aprobado';
           else if (recs.get(c) === 'devuelto') estado = 'devuelto';
           else if (!revisionCompleta(c)) estado = 'en_revision';
           else estado = recs.get(c) || 'pendiente';
-          const horasTotales = horasPorComp[c] || 0;
           const horasAprobadas = aprobado ? horasTotales : 0;
           componentesEstado.push({
             key: c,
@@ -3272,22 +3281,23 @@ export class PtaService {
         // tiene horas en cualquiera de sus 3 componentes (sin programa/pregrado/
         // posgrado); aprobada solo si TODOS los que tienen horas lo están. El rótulo
         // de salida se mantiene 'complementarias' por compatibilidad.
-        const compTieneHoras = COMPLEMENTARIAS_KEYS_LOTE.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
-        if (compTieneHoras) {
-          total++;
-          const compAprobada = COMPLEMENTARIAS_KEYS_LOTE.every(k => estaAprobado(k));
+        const compHorasTotales = COMPLEMENTARIAS_KEYS_LOTE.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
+        const compTieneHoras = compHorasTotales > 0;
+        if (compTieneHoras) total++;
+        {
+          const compAprobada = compTieneHoras && COMPLEMENTARIAS_KEYS_LOTE.every(k => estaSatisfecho(k));
           if (compAprobada) aprobados++;
-          const compEstados = COMPLEMENTARIAS_KEYS_LOTE.map(k => recs.get(k)).filter(Boolean);
+          const compEstados = COMPLEMENTARIAS_KEYS_LOTE.filter(tieneHoras).map(k => recs.get(k)).filter(Boolean);
           const compEnRevision = COMPLEMENTARIAS_KEYS_LOTE.some(k => (horasPorComp[k] || 0) > 0 && !revisionCompleta(k));
           let compEstado: string;
-          if (esBorrador) compEstado = 'no_iniciado';
+          if (!compTieneHoras) compEstado = 'no_aplica';
+          else if (esBorrador) compEstado = 'no_iniciado';
           else if (compAprobada) compEstado = 'aprobado';
           else if (compEstados.includes('devuelto')) compEstado = 'devuelto';
           else if (compEnRevision) compEstado = 'en_revision';
           else compEstado = 'pendiente';
           // Igual que Docencia: horas aprobadas por sub-componente propio (sin
           // programa / pregrado / posgrado), no por el booleano colapsado.
-          const compHorasTotales = COMPLEMENTARIAS_KEYS_LOTE.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
           const compHorasAprobadas = esBorrador ? 0 : COMPLEMENTARIAS_KEYS_LOTE.reduce(
             (s, k) => s + (estaAprobado(k) ? (horasPorComp[k] || 0) : 0), 0,
           );
@@ -3301,22 +3311,23 @@ export class PtaService {
           });
         }
         // Extensión colapsada: cuenta como 1 si tiene horas; aprobada solo si TODAS sus subsecciones lo están.
-        const extTieneHoras = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0) > 0;
-        if (extTieneHoras) {
-          total++;
-          const extAprobada = EXT_KEYS.every(k => estaAprobado(k));
+        const extHorasTotales = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
+        const extTieneHoras = extHorasTotales > 0;
+        if (extTieneHoras) total++;
+        {
+          const extAprobada = extTieneHoras && EXT_KEYS.every(k => estaSatisfecho(k));
           if (extAprobada) aprobados++;
-          const extEstados = EXT_KEYS.map(k => recs.get(k)).filter(Boolean);
+          const extEstados = EXT_KEYS.filter(tieneHoras).map(k => recs.get(k)).filter(Boolean);
           const extEnRevision = EXT_KEYS.some(k => (horasPorComp[k] || 0) > 0 && !revisionCompleta(k));
           let extEstado: string;
-          if (esBorrador) extEstado = 'no_iniciado';
+          if (!extTieneHoras) extEstado = 'no_aplica';
+          else if (esBorrador) extEstado = 'no_iniciado';
           else if (extAprobada) extEstado = 'aprobado';
           else if (extEstados.includes('devuelto')) extEstado = 'devuelto';
           else if (extEnRevision) extEstado = 'en_revision';
           else extEstado = 'pendiente';
           // Igual patrón: cada sección de Extensión (capacitación, procesos,
           // fortalecimiento, alto gobierno) se aprueba de forma independiente.
-          const extHorasTotales = EXT_KEYS.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
           const extHorasAprobadas = esBorrador ? 0 : EXT_KEYS.reduce(
             (s, k) => s + (estaAprobado(k) ? (horasPorComp[k] || 0) : 0), 0,
           );
@@ -3328,6 +3339,24 @@ export class PtaService {
             horas_aprobadas: extHorasAprobadas,
             horas_pendientes: extHorasTotales - extHorasAprobadas,
           });
+        }
+
+        // Retirar la última actividad por solicitud de edición sigue exigiendo
+        // una decisión humana. No ocultar esa tarea en tarjetas ni contadores.
+        const reaprobaciones = reaprobacionByPta.get(dto.id);
+        const clavesPorGrupo: Record<string, readonly string[]> = {
+          academica: DOCENCIA_KEYS,
+          investigacion: BASE_KEYS,
+          extension: EXT_KEYS,
+          complementarias: COMPLEMENTARIAS_KEYS_LOTE,
+        };
+        for (const componente of componentesEstado) {
+          const pendientes = clavesPorGrupo[componente.key].filter(k => reaprobaciones?.has(k));
+          if (!pendientes.length || esBorrador) continue;
+          if (componente.estado === 'no_aplica') total++;
+          if (componente.estado === 'aprobado') aprobados--;
+          componente.estado = pendientes.some(k => recs.get(k) === 'devuelto') ? 'devuelto' : 'pendiente';
+          Object.assign(componente, { requiere_reaprobacion: true });
         }
 
         dto.componentes_total = total;
@@ -5213,6 +5242,39 @@ export class PtaService {
     return rows.map((row) => this.toEvidenciaDto(row));
   }
 
+  /** Valida la carga real, no la autoaprobación técnica de componentes vacíos. */
+  private async validarComponenteJustificacion(ptaId: string, componente: string | null | undefined, seccion: string | null | undefined, permitirLegacySinSeccion = false) {
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!pta) throw new NotFoundException('PTA no encontrado');
+    const { horasPorComponente } = await this.computeHorasPorComponente(pta.datosEstructurados || {});
+    const campos: Record<string, string[]> = {
+      docencia: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'],
+      investigacion: ['investigacion'],
+      extension: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'],
+      complementarias: ['complementarias', 'complementarias_pregrado', 'complementarias_posgrado', 'complementarias_territorial', 'complementarias_gestion_profesoral'],
+      acad_admin: [],
+    };
+    if (!componente || !Object.prototype.hasOwnProperty.call(campos, componente)) {
+      throw new BadRequestException('Selecciona un componente válido para la justificación.');
+    }
+    let horas = campos[componente].reduce((total, key) => total + (horasPorComponente[key] || 0), 0);
+    if (componente === 'acad_admin') {
+      horas = this.readComplementariasSecciones(pta.datosEstructurados || {}).aadm
+        .reduce((total: number, a: any) => total + (Number(a.horas) || 0), 0);
+    }
+    if (componente === 'extension' && !(permitirLegacySinSeccion && !seccion)) {
+      if (!seccion || !['capacitacion', 'seleccion', 'fortalecimiento', 'alto_gobierno'].includes(seccion)) {
+        throw new BadRequestException('Selecciona una sección válida de extensión para la justificación.');
+      }
+      const clave = { capacitacion: 'ext_capacitacion', seleccion: 'ext_procesos', fortalecimiento: 'ext_fortalecimiento', alto_gobierno: 'ext_gobierno' }[seccion]!;
+      horas = horasPorComponente[clave] || 0;
+    }
+    if (horas <= 0) {
+      throw new BadRequestException('Este componente o sección no aplica al PTA: no tiene horas asignadas para justificar.');
+    }
+    return { pta, horas };
+  }
+
   async registrarEvidenciaPTA(ptaId: string, body: any) {
     const nombre = coalesceString(body?.nombre, body?.originalName, body?.filename) || 'evidencia';
     const tipoArchivo = coalesceString(body?.tipoArchivo, body?.tipo_archivo, body?.tipo) || 'pdf';
@@ -5225,10 +5287,14 @@ export class PtaService {
       Math.round(Number(body?.horasAvance ?? body?.horas_avance ?? 0) || 0),
     );
     const esResolucionProyecto = isCategoriaResolucionProyecto(categoria);
+    const seccionExtension = coalesceString(body?.seccionExtension, body?.seccion_extension);
+    const { pta, horas } = await this.validarComponenteJustificacion(ptaId, componentePta, seccionExtension);
+    // Se mantienen los adjuntos de 0h de una justificación con varios archivos.
+    if (horasAvance > horas) {
+      throw new BadRequestException(`La justificación supera las ${horas}h asignadas a este componente o sección.`);
+    }
 
     if (esResolucionProyecto && horasAvance > 0) {
-      const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
-      if (!pta) throw new NotFoundException('PTA no encontrado');
       const proyecto = (pta.datosEstructurados as any)?.investigacion_proyecto;
       const horasObjetivo = resolveHorasResolucionProyecto(proyecto);
       if (componentePta !== 'investigacion' || horasObjetivo <= 0) {
@@ -5259,7 +5325,7 @@ export class PtaService {
       tamanioBytes,
       categoria: categoria as any,
       componentePta: componentePta as any,
-      seccionExtension: coalesceString(body?.seccionExtension, body?.seccion_extension) as any,
+      seccionExtension: seccionExtension as any,
       horasAvance,
       storageUrl: storageUrl,
       subidoPor: coalesceString(body?.subidoPor, body?.subido_por) as any,
@@ -5293,6 +5359,12 @@ export class PtaService {
         : decision === 'rechazado' || decision === 'rechazada'
           ? 'rechazado'
           : existing.estadoRevision;
+
+    if (estadoRevision === 'aprobado') {
+      // Una evidencia histórica puede seguir consultándose/rechazándose, pero
+      // no justificar un componente eliminado del plan actual.
+      await this.validarComponenteJustificacion(ptaId, existing.componentePta, existing.seccionExtension, true);
+    }
 
     const updated = await this.evidenciaRepo.save({
       ...existing,
@@ -8808,8 +8880,25 @@ export class PtaService {
     }
 
     return todosComponentes
-      .map(c => byComponent.get(c))
-      .filter((item): item is PtaComponentApprovalEntity => !!item);
+      .map(c => {
+        const item = byComponent.get(c);
+        if (!item) return null;
+        const requiereReaprobacionManual = item.scope === 'solicitud_edicion'
+          && ['pendiente', 'devuelto'].includes(String(item.estado || '').toLowerCase());
+        const aplica = (horasPorComponente[c] || 0) > 0 || requiereReaprobacionManual;
+        // `estado` conserva la semántica interna compatible con el workflow;
+        // `estado_visual` es la fuente de verdad para cualquier interfaz o reporte.
+        return Object.assign(item, {
+          aplica,
+          horas: horasPorComponente[c] || 0,
+          estado_visual: aplica ? item.estado : 'no_aplica',
+        });
+      })
+      .filter((item): item is PtaComponentApprovalEntity & {
+        aplica: boolean;
+        horas: number;
+        estado_visual: string;
+      } => !!item);
   }
 
   /**
