@@ -51,6 +51,8 @@ export interface FormNuevaSolicitud {
   tipoComision?: string;
   esInternacional?: boolean;
   documentos?: DocumentoFormItem[];
+  salarioBasico?: number;
+  costoEstimadoTiquete?: number;
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -150,6 +152,8 @@ export interface SolicitudComisionResponse {
    documentosSoporte?: DocumentoSoporte[];
    comisionado?: Comisionado;
    warningMessage?: string;
+   salarioBasico?: number;
+   costoEstimadoTiquete?: number;
 }
 
 /**
@@ -169,6 +173,8 @@ export interface CreateSolicitudRequest {
   montoViaticos: number;
   montoGastosViaje: number;
   diasComision: number;
+  salarioBasico: number;
+  costoEstimadoTiquete: number;
   creadoPorUsuarioId: string;
   aceptaHabeasData?: boolean;
   ipRegistroHabeasData?: string;
@@ -225,6 +231,8 @@ export interface SolicitudListaResponse {
   actualizadoEn: string;
   motivoDevolucion?: string | null;
   fechaRevision?: string | null;
+  salarioBasico?: number;
+  costoEstimadoTiquete?: number;
 }
 
 export interface BandejaSecretarioResponse {
@@ -270,6 +278,7 @@ export interface SolicitudViatico {
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
   requiereTiqueteAereo: boolean;
+  prioridad?: string;
   numeroResolucion?: string;
   fechaResolucion?: string;
   creadoEn: string;

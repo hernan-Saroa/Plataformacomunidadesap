@@ -79,7 +79,6 @@ interface Props {
 }
 
 interface UsuarioContexto {
-  esSuperAdmin: boolean;
   dependencia: {
     idDependencia?: number;
     codDependencia?: string;
@@ -99,6 +98,10 @@ const tieneRolSuperAdmin = (roles: string[] = []): boolean =>
     const limpio = String(r).replace(/[^a-zA-Z]/g, '').toUpperCase();
     return limpio.includes('SUPER') && limpio.includes('ADMIN');
   });
+
+const puedeElegirDependencia = (): boolean => {
+  return authService.hasPermission('travel_expenses:manage_config');
+};
 
 export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, onSolicitudConsolidada, solicitudAResumir, esSuperAdmin }: Props) {
   const [paso, setPaso] = useState(1);
@@ -199,16 +202,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   };
 
-  const cargarDependencias = async (ctx: UsuarioContexto) => {
-    // Usuario elevado (superadmin según el backend de viáticos): ve el
-    // catálogo completo de dependencias para elegir la solicitante.
-    if (ctx.esSuperAdmin) {
+  const cargarDependencias = async (depUsuario?: { codDependencia?: string; nomDependencia?: string; idDependencia?: number } | null) => {
+    if (puedeElegirDependencia()) {
       setCargandoDependencias(true);
       try {
         const data = await viaticosService.obtenerDependencias();
         setDependencias(data);
-        // Si el valor actual no existe en el catálogo (caso normal al abrir
-        // el modal vacío o al reanudar), seleccionamos la primera activa.
         if (data.length > 0) {
           const existe = data.some((d) => d.codDependencia === dependenciaId);
           if (!existe) {
@@ -224,17 +223,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       return;
     }
 
-    // Cualquier otro rol: el campo queda bloqueado a la dependencia asociada
-    // a su persona. Nunca se muestra el catálogo ni se permite cambiarla.
     setDependencias([]);
     setCargandoDependencias(false);
-    let codPropio = ctx.dependencia?.codDependencia || '';
-    let nomPropio = ctx.dependencia?.nomDependencia || '';
-    const idPropio = ctx.dependencia?.idDependencia;
+    const dep = depUsuario || usuarioActual?.dependencia;
+    let codPropio = dep?.codDependencia || '';
+    let nomPropio = dep?.nomDependencia || '';
+    const idPropio = dep?.idDependencia;
 
-    // Si la sesión sólo trajo idDependencia numérica (sin el objeto anidado
-    // con codDependencia), la resolvemos contra el catálogo para poder
-    // mostrarla y enviarla al validar tiquetes.
     if (!codPropio && idPropio != null) {
       setCargandoDependencias(true);
       try {
@@ -255,7 +250,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
     if (codPropio) {
       setDependenciaId(codPropio);
-      // Refleja el código/nombre resuelto para el campo bloqueado.
       setUsuarioActual((prev) =>
         prev
           ? {
@@ -287,23 +281,23 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         // viáticos en el efecto de apertura del modal).
         const superAdmin = tieneRolSuperAdmin(usuario.roles);
         setUsuarioActual({
-          userId: usuario.userId,
-          username: usuario.username,
-          roles: usuario.roles,
-          dependencia,
-        });
-        return { esSuperAdmin: superAdmin, dependencia };
-      }
-      setUsuarioActual(null);
-      return { esSuperAdmin: false, dependencia: null };
-    } catch (e) {
-      console.error('Error cargando usuario actual:', e);
-      setUsuarioActual(null);
-      return { esSuperAdmin: false, dependencia: null };
-    } finally {
-      setCargandoUsuario(false);
-    }
-  };
+           userId: usuario.userId,
+           username: usuario.username,
+           roles: usuario.roles,
+           dependencia,
+         });
+         return { dependencia };
+       }
+       setUsuarioActual(null);
+       return { dependencia: null };
+     } catch (e) {
+       console.error('Error cargando usuario actual:', e);
+       setUsuarioActual(null);
+       return { dependencia: null };
+     } finally {
+       setCargandoUsuario(false);
+     }
+   };
 
   const cargarParametrizacion = async () => {
     setCargandoParametrizacion(true);
@@ -352,6 +346,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   const cargarSolicitudAResumir = async (solicitud: SolicitudComisionResponse) => {
     setSolicitudBorrador(solicitud as SolicitudComisionResponse & { documentosSoporte?: DocumentoSoporte[] });
+    const salarioBasico = Number(solicitud.salarioBasico || 0);
+    const costoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+    setAsignacionesBasicas(salarioBasico > 0 ? [salarioBasico] : []);
+    setMontoEstimadoTiquete(costoEstimadoTiquete);
     setForm({
       documentoComisionado: solicitud.comisionado?.numeroDocumento || '',
       comisionadoId: solicitud.comisionadoId || solicitud.comisionado?.id || '',
@@ -366,6 +364,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       montoViaticos: Number(solicitud.montoViaticos || 0),
       montoGastosViaje: Number(solicitud.montoGastosViaje || 0),
       diasComision: solicitud.diasComision ?? 1,
+      salarioBasico,
+      costoEstimadoTiquete,
       aceptaHabeasData: true,
       tipoComision: solicitud.tipoComision || 'TERRESTRE',
       esInternacional: Boolean(solicitud.esInternacional),
@@ -440,9 +440,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       // vez que se abre el modal.
       void (async () => {
         const ctx = await cargarUsuarioActual();
-        const superAdmin = ctx.esSuperAdmin || esSuperAdmin === true;
+        const superAdmin = authService.hasPermission('travel_expenses:manage_config');
         setEsSuperAdminViaticos(superAdmin);
-        await cargarDependencias({ ...ctx, esSuperAdmin: superAdmin });
+
+        if (!puedeElegirDependencia() && ctx.dependencia?.codDependencia) {
+          setDependenciaId(ctx.dependencia.codDependencia);
+        }
+
+        await cargarDependencias(ctx.dependencia);
       })();
       if (solicitudAResumir) {
         void cargarSolicitudAResumir(solicitudAResumir);
@@ -483,16 +488,40 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setAsignacionesBasicas((prev) => {
       const nueva = [...prev];
       nueva[indice] = valor;
+      const validas = nueva.filter((v) => Number.isFinite(v) && v > 0);
+      if (validas.length > 0) {
+        setForm((f) => ({ ...f, salarioBasico: Math.max(...validas) }));
+      } else {
+        setForm((f) => ({ ...f, salarioBasico: 0 }));
+      }
       return nueva;
     });
   };
 
   const agregarAsignacionBasica = () => {
-    setAsignacionesBasicas((prev) => [...prev, 0]);
+    setAsignacionesBasicas((prev) => {
+      const nueva = [...prev, 0];
+      const validas = nueva.filter((v) => Number.isFinite(v) && v > 0);
+      if (validas.length > 0) {
+        setForm((f) => ({ ...f, salarioBasico: Math.max(...validas) }));
+      } else {
+        setForm((f) => ({ ...f, salarioBasico: 0 }));
+      }
+      return nueva;
+    });
   };
 
   const eliminarAsignacionBasica = (indice: number) => {
-    setAsignacionesBasicas((prev) => prev.filter((_, i) => i !== indice));
+    setAsignacionesBasicas((prev) => {
+      const nueva = prev.filter((_, i) => i !== indice);
+      const validas = nueva.filter((v) => Number.isFinite(v) && v > 0);
+      if (validas.length > 0) {
+        setForm((f) => ({ ...f, salarioBasico: Math.max(...validas) }));
+      } else {
+        setForm((f) => ({ ...f, salarioBasico: 0 }));
+      }
+      return nueva;
+    });
   };
 
   const obtenerAsignacionesBasicasValidas = (): number[] => {
@@ -614,6 +643,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       actualizar('diasComision', dias);
     }
   }, [form.fechaInicio, form.fechaFin]);
+
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, costoEstimadoTiquete: montoEstimadoTiquete }));
+  }, [montoEstimadoTiquete]);
+
+  useEffect(() => {
+    const validas = asignacionesBasicas.filter(
+      (v) => Number.isFinite(v) && v > 0,
+    );
+    if (validas.length > 0) {
+      setForm((prev) => ({ ...prev, salarioBasico: Math.max(...validas) }));
+    } else {
+      setForm((prev) => ({ ...prev, salarioBasico: 0 }));
+    }
+  }, [asignacionesBasicas]);
 
   // RF-LIQ-003/004 — Validación reactiva de ruta restringida y saldo
   // presupuestal de tiquetes. Se ejecuta cada vez que el usuario cambia
@@ -805,6 +849,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             montoViaticos: form.montoViaticos,
             montoGastosViaje: form.montoGastosViaje,
             diasComision: form.diasComision,
+            salarioBasico: form.salarioBasico,
+            costoEstimadoTiquete: form.costoEstimadoTiquete,
             tipoComision: form.esInternacional ? 'INTERNACIONAL' : (form.tipoComision || 'TERRESTRE'),
             esInternacional: Boolean(form.esInternacional),
           },
@@ -1613,52 +1659,53 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                          <span className="font-bold text-slate-700">{form.destinoCiudad || 'Ciudad de destino'}</span>
                        </div>
 
-                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className={labelCls} htmlFor="dependenciaId">
-                              Dependencia solicitante
-                            </label>
-                            {esSuperAdminViaticos ? (
-                              <>
-                                <SearchableSelect
-                                  id="dependenciaId"
-                                  options={dependencias.map((dep) => ({
-                                    value: dep.codDependencia,
-                                    label: `${dep.codDependencia} — ${dep.nomDependencia}`,
-                                  }))}
-                                  value={dependenciaId}
-                                  onChange={(valor) => setDependenciaId(valor)}
-                                  placeholder="Seleccione dependencia..."
-                                  disabled={cargandoDependencias}
-                                  loading={cargandoDependencias}
-                                  emptyText={cargandoDependencias ? 'Cargando...' : 'No hay dependencias disponibles'}
-                                />
-                                {cargandoDependencias && (
-                                  <p className="text-[11px] text-slate-400 mt-1">Cargando dependencias...</p>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <div
-                                  id="dependenciaId"
-                                  className={`${inputCls} bg-slate-50 cursor-not-allowed flex items-center justify-between`}
-                                  aria-readonly="true"
-                                >
-                                  <span className="truncate">
-                                    {dependenciaId
-                                      ? `${dependenciaId}${usuarioActual?.dependencia?.nomDependencia ? ` — ${usuarioActual.dependencia.nomDependencia}` : ''}`
-                                      : 'Sin dependencia asignada a su usuario'}
-                                  </span>
-                                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-2">
-                                    Automática
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-slate-500 mt-1">
-                                  Su dependencia se asigna automáticamente desde su perfil y no puede modificarse.
-                                </p>
-                              </>
-                            )}
-                          </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                           {puedeElegirDependencia() ? (
+                             <div>
+                               <label className={labelCls} htmlFor="dependenciaId">
+                                 Dependencia solicitante
+                               </label>
+                               <SearchableSelect
+                                 id="dependenciaId"
+                                 options={dependencias.map((dep) => ({
+                                   value: dep.codDependencia,
+                                   label: `${dep.codDependencia} — ${dep.nomDependencia}`,
+                                 }))}
+                                 value={dependenciaId}
+                                 onChange={(valor) => setDependenciaId(valor)}
+                                 placeholder="Seleccione dependencia..."
+                                 disabled={cargandoDependencias}
+                                 loading={cargandoDependencias}
+                                 emptyText={cargandoDependencias ? 'Cargando...' : 'No hay dependencias disponibles'}
+                               />
+                               {cargandoDependencias && (
+                                 <p className="text-[11px] text-slate-400 mt-1">Cargando dependencias...</p>
+                               )}
+                             </div>
+                            ) : (usuarioActual?.dependencia?.codDependencia || dependenciaId) ? (
+                             <div>
+                               <label className={labelCls} htmlFor="dependenciaId">
+                                 Dependencia solicitante
+                               </label>
+                               <div
+                                 id="dependenciaId"
+                                 className={`${inputCls} bg-slate-50 cursor-not-allowed flex items-center justify-between`}
+                                 aria-readonly="true"
+                               >
+                                 <span className="truncate">
+                                   {dependenciaId
+                                     ? `${dependenciaId}${usuarioActual?.dependencia?.nomDependencia ? ` — ${usuarioActual.dependencia.nomDependencia}` : ''}`
+                                     : 'Sin dependencia asignada a su usuario'}
+                                 </span>
+                                 <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-2">
+                                   Automática
+                                 </span>
+                               </div>
+                               <p className="text-[11px] text-slate-500 mt-1">
+                                 Su dependencia se asigna automáticamente desde su perfil y no puede modificarse.
+                               </p>
+                             </div>
+                           ) : null}
                          <div>
                            <label className={labelCls} htmlFor="tipoTransporte">
                              Tipo de transporte
@@ -2061,6 +2108,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="text-slate-400 font-bold">Gastos de viaje</span>
                     <span className="font-semibold text-slate-800">{formatearMoneda(form.montoGastosViaje)}</span>
+                  </div>
+                )}
+                {form.salarioBasico > 0 && (
+                  <div className="flex justify-between px-4 py-2.5">
+                    <span className="text-slate-400 font-bold">Salario básico mensual</span>
+                    <span className="font-semibold text-slate-800">{formatearMoneda(form.salarioBasico)}</span>
+                  </div>
+                )}
+                {form.costoEstimadoTiquete > 0 && (
+                  <div className="flex justify-between px-4 py-2.5">
+                    <span className="text-slate-400 font-bold">Costo estimado del tiquete</span>
+                    <span className="font-semibold text-slate-800">{formatearMoneda(form.costoEstimadoTiquete)}</span>
                   </div>
                 )}
                 {!esCampoOculto('montoViaticos') && !esCampoOculto('montoGastosViaje') && (

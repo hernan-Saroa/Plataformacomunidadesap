@@ -212,7 +212,7 @@ export class TravelExpensesController {
   }
 
   @Get('requests/:id')
-  @Permissions('travel_expenses:read')
+  @Permissions('travel_expenses:create_request')
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
   }
@@ -286,19 +286,16 @@ export class TravelExpensesController {
   }
 
   @Get('parametrizacion/checklist/:tipo')
-  @Permissions('travel_expenses:read')
   obtenerChecklistDocumentos(@Param('tipo') tipo: string) {
     return this.service.obtenerChecklistDocumentos(tipo);
   }
 
   @Get('parametrizacion/formulario')
-  @Permissions('travel_expenses:read')
   obtenerParametrizacionFormulario() {
     return this.service.obtenerParametrizacionFormulario();
   }
 
   @Get('parametrizacion/formulario/:codigo')
-  @Permissions('travel_expenses:read')
   async obtenerParametrizacionPorCodigo(@Param('codigo') codigo: string) {
     const config =
       await this.service.obtenerParametrizacionPorCodigoFormulario(codigo);
@@ -313,7 +310,6 @@ export class TravelExpensesController {
   }
 
   @Get('parametrizacion/validar-documentos')
-  @Permissions('travel_expenses:read')
   async validarDocumentosRequeridos(
     @Query('tipo') tipo: string,
     @Query('documentos') documentos?: string,
@@ -323,7 +319,6 @@ export class TravelExpensesController {
   }
 
   @Get('parametrizacion/validar-campos')
-  @Permissions('travel_expenses:read')
   async validarCamposObligatorios(
     @Query('tipo') tipo: string,
     @Query('campos') campos?: string,
@@ -342,7 +337,7 @@ export class TravelExpensesController {
   }
 
   @Get('solicitudes/:id/exportar/pdf')
-  @Permissions('travel_expenses:read')
+  @Permissions('travel_expenses:create_request')
   async exportarFormato023(
     @Param('id') id: string,
     @Req() req: Request,

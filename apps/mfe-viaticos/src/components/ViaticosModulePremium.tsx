@@ -26,9 +26,25 @@ import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import { SolicitudViatico, ResumenEstadisticoViaticos, SolicitudComisionResponse, DocumentoSoporte, ResultadoConsolidacion } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
+import { authService } from '../services/api/authService';
 import NuevaSolicitudModal from './NuevaSolicitudModal';
 import ParametrizacionManager from './ParametrizacionManager';
 import { formatearMoneda, getConfigEstado } from '../utils/viaticosUtils';
+
+const Permissions = {
+  VIATICOS_SOLICITUDES_READ_OWN: 'travel_expenses:view_own_requests',
+  VIATICOS_SOLICITUDES_CREATE: 'travel_expenses:create_request',
+  VIATICOS_SOLICITUDES_READ_INBOX: 'travel_expenses:read_inbox',
+  VIATICOS_SOLICITUDES_SET_PRIORITY: 'travel_expenses:set_priority',
+  VIATICOS_SOLICITUDES_RETURN: 'travel_expenses:return_request',
+  VIATICOS_TIQUETES_VIEW: 'travel_expenses:tickets.view',
+  VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
+  VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
+  VIATICOS_LEGALIZACIONES_MANAGE: 'travel_expenses:legalizations.manage',
+  VIATICOS_RESOLUCIONES_VIEW: 'travel_expenses:resolutions.view',
+  VIATICOS_RESOLUCIONES_MANAGE: 'travel_expenses:resolutions.manage',
+  VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
+} as const;
 
 type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion';
 
@@ -243,13 +259,45 @@ export default function ViaticosModulePremium() {
     }
   };
 
+  const puedeVerSolicitudes = authService.hasAnyPermission([
+    Permissions.VIATICOS_SOLICITUDES_READ_OWN,
+    Permissions.VIATICOS_SOLICITUDES_CREATE,
+  ]);
+  const puedeVerTiquetes = authService.hasAnyPermission([
+    Permissions.VIATICOS_TIQUETES_VIEW,
+    Permissions.VIATICOS_TIQUETES_MANAGE,
+  ]);
+  const puedeVerLegalizaciones = authService.hasAnyPermission([
+    Permissions.VIATICOS_LEGALIZACIONES_VIEW,
+    Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+  ]);
+  const puedeVerResoluciones = authService.hasAnyPermission([
+    Permissions.VIATICOS_RESOLUCIONES_VIEW,
+    Permissions.VIATICOS_RESOLUCIONES_MANAGE,
+  ]);
+  const puedeVerConfiguracion = authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
+
+  const gruposFiltrados: MenuGroup[] = grupos
+    .map((grupo) => ({
+      ...grupo,
+      items: grupo.items.filter((item) => {
+        if (item.id === 'solicitudes') return puedeVerSolicitudes;
+        if (item.id === 'tiquetes') return puedeVerTiquetes;
+        if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
+        if (item.id === 'resoluciones') return puedeVerResoluciones;
+        if (item.id === 'configuracion') return puedeVerConfiguracion;
+        return true;
+      }),
+    }))
+    .filter((grupo) => grupo.items.length > 0);
+
   return (
     <ModuleLayout
       moduleName="VIÁTICOS Y GASTOS DE VIAJE"
       moduleDescription="Gestión de Comisiones de Servicios y Tiquetes Institucionales · ESAP"
       moduleIcon={<Plane className="w-6 h-6" />}
       moduleColor="#003DA5"
-      groups={grupos}
+      groups={gruposFiltrados}
       activeSection={seccion}
       onSectionChange={(s) => {
         setSeccion(s as Seccion);
@@ -338,9 +386,9 @@ export default function ViaticosModulePremium() {
             </div>
           </div>
 
-          {/* ── SOLICITUDES ── */}
-          {seccion === 'solicitudes' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
+           {/* ── SOLICITUDES ── */}
+           {seccion === 'solicitudes' && puedeVerSolicitudes && (
+             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -407,13 +455,14 @@ export default function ViaticosModulePremium() {
                         <th className="px-4 py-3">Tipo & Transporte</th>
                         <th className="px-4 py-3">Monto Estimado</th>
                         <th className="px-4 py-3">Estado</th>
+                         {authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) && <th className="px-4 py-3">Prioridad</th>}
                         <th className="px-4 py-3 text-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {solicitudesFiltradas.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                           <td colSpan={authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
                             No se encontraron solicitudes de viáticos registradas.
                           </td>
                         </tr>
@@ -423,7 +472,7 @@ export default function ViaticosModulePremium() {
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-mono text-[10px] text-slate-400 tracking-wide">{sol.codigo}</span>
-                                {esSuperAdmin && sol.esCreadoPorMi && (
+                                {authService.isSuperAdmin() && sol.esCreadoPorMi && (
                                   <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
                                     <UserCheck className="w-3 h-3" />
                                   </span>
@@ -471,6 +520,25 @@ export default function ViaticosModulePremium() {
                                 )}
                               </div>
                             </td>
+                            {authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) && (
+                              <td className="px-4 py-3">
+                                {sol.prioridad ? (
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                      sol.prioridad === 'ALTA'
+                                        ? 'bg-red-50 text-red-700'
+                                        : sol.prioridad === 'MEDIA'
+                                          ? 'bg-amber-50 text-amber-700'
+                                          : 'bg-emerald-50 text-emerald-700'
+                                    }`}
+                                  >
+                                    {sol.prioridad}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400">—</span>
+                                )}
+                              </td>
+                            )}
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <button
@@ -529,9 +597,9 @@ export default function ViaticosModulePremium() {
             </div>
           )}
 
-          {/* ── TIQUETES ── */}
-          {seccion === 'tiquetes' && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+           {/* ── TIQUETES ── */}
+           {seccion === 'tiquetes' && puedeVerTiquetes && (
+             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -553,9 +621,9 @@ export default function ViaticosModulePremium() {
             </div>
           )}
 
-          {/* ── LEGALIZACIONES ── */}
-          {seccion === 'legalizaciones' && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+           {/* ── LEGALIZACIONES ── */}
+           {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
+             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -574,9 +642,9 @@ export default function ViaticosModulePremium() {
             </div>
           )}
 
-          {/* ── RESOLUCIONES ── */}
-          {seccion === 'resoluciones' && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+           {/* ── RESOLUCIONES ── */}
+           {seccion === 'resoluciones' && puedeVerResoluciones && (
+             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -605,7 +673,7 @@ export default function ViaticosModulePremium() {
                       <span className="font-mono text-[10px] text-slate-400 tracking-wide truncate">
                         {solicitudSeleccionada.codigo}
                       </span>
-                      {esSuperAdmin && solicitudSeleccionada.esCreadoPorMi && (
+                      {authService.isSuperAdmin() && solicitudSeleccionada.esCreadoPorMi && (
                         <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
                           <UserCheck className="w-3 h-3" />
                         </span>
@@ -659,7 +727,7 @@ export default function ViaticosModulePremium() {
                     </p>
                   </div>
 
-                  {esSuperAdmin && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
+                  {authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY) && ['SOLICITADO', 'EXTEMPORANEA'].includes(solicitudSeleccionada.estado) && (
                     <div className="mt-4 space-y-3">
                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                         <span className="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-2">Controles de Revisión (Etapa 4)</span>

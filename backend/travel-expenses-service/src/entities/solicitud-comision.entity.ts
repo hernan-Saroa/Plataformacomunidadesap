@@ -120,6 +120,24 @@ export class SolicitudComisionEntity {
   @Column({ name: 'es_internacional', type: 'boolean', default: false })
   esInternacional: boolean;
 
+  @Column({
+    name: 'salario_basico',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
+  salarioBasico: number;
+
+  @Column({
+    name: 'costo_estimado_tiquete',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
+  costoEstimadoTiquete: number;
+
   @Column({ name: 'creado_por_usuario_id', type: 'uuid' })
   creadoPorUsuarioId: string;
 

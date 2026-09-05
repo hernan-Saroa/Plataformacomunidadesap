@@ -58,9 +58,19 @@ export class CreateSolicitudDto {
   montoGastosViaje?: number;
 
   @IsOptional()
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   diasComision?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  salarioBasico?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  costoEstimadoTiquete?: number;
 
   @IsString()
   comisionadoId: string;

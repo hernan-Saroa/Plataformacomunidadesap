@@ -175,6 +175,7 @@ export class ViaticosService {
       extemporanea: Boolean(s.extemporanea),
       radicadoFueraJornada: Boolean(s.radicadoFueraJornada),
       requiereTiqueteAereo: s.requiereTiquetes,
+      prioridad: s.prioridad,
       creadoEn: s.creadoEn.slice(0, 10),
       actualizadoEn: s.actualizadoEn.slice(0, 10),
       esCreadoPorMi: s.esCreadoPorMi,

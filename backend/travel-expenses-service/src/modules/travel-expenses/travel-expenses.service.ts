@@ -626,6 +626,8 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
       diasComision: dto.diasComision ?? 1,
+      salarioBasico: dto.salarioBasico ?? 0,
+      costoEstimadoTiquete: dto.costoEstimadoTiquete ?? 0,
       estadoSolicitud,
       radicadoFueraJornada,
       extemporanea,
@@ -731,6 +733,12 @@ export class TravelExpensesService {
     }
     if (dto.diasComision !== undefined) {
       solicitud.diasComision = dto.diasComision;
+    }
+    if (dto.salarioBasico !== undefined) {
+      solicitud.salarioBasico = dto.salarioBasico;
+    }
+    if (dto.costoEstimadoTiquete !== undefined) {
+      solicitud.costoEstimadoTiquete = dto.costoEstimadoTiquete;
     }
     if (dto.tipoComision !== undefined) {
       solicitud.tipoComision = dto.tipoComision;

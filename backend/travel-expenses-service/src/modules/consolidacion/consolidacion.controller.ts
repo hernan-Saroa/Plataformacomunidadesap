@@ -58,7 +58,6 @@ export class ConsolidacionController {
    * Resumen de Expediente y Envío" del frontend.
    */
   @Get('requests/:id/consolidacion/preview')
-  @Permissions('travel_expenses:read')
   @ApiOperation({
     summary: 'Previsualiza la integridad del expediente para consolidación',
     description:
