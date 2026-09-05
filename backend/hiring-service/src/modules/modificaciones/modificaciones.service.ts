@@ -114,6 +114,16 @@ export class ModificacionesService {
         puedeSolicitar: false,
         motivoNoPuede: 'el proceso todavía no tiene contrato generado',
         modificaciones: [] as unknown[],
+        // La misma forma que cuando sí hay contrato. Omitir `tipos` dejaba a
+        // la pantalla recorriendo un `undefined`: abrir la 9.5 antes de tener
+        // contrato tumbaba el módulo entero con la pantalla de error.
+        tipos: TIPOS_CON_TRAMITE.map((tipo) => ({
+          tipo,
+          nombre: NOMBRE_TIPO[tipo],
+          puede: false,
+          motivo: 'el proceso todavía no tiene contrato generado',
+        })),
+        suspension: null,
       };
     }
 

@@ -347,9 +347,9 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
         <Pendiente falta="9.1" texto={`No se puede modificar: ${estado.motivoNoPuede}.`} />
       ) : null}
 
-      {estado.modificaciones.length > 0 ? (
+      {(estado.modificaciones ?? []).length > 0 ? (
         <div className="space-y-2">
-          {estado.modificaciones.map((m) => (
+          {(estado.modificaciones ?? []).map((m) => (
             <Modificacion
               key={m.id}
               modificacion={m}
@@ -375,9 +375,12 @@ export function PanelModificaciones({ procesoId, onCambio }: Props) {
 
       {/* Qué tipo cabe ahora lo resuelve el servidor: la pantalla solo lo
           muestra, y el que no cabe dice por qué en vez de estar apagado y ya. */}
+      {/* Con `?? []`: una respuesta sin `tipos` —el proceso sin contrato aún—
+          reventaba el panel y, con él, el módulo entero. Ninguna lista del
+          servidor merece tumbar la pantalla por venir vacía. */}
       {tipoNuevo === null ? (
         <div className="flex flex-wrap gap-2">
-          {estado.tipos.map((t) => (
+          {(estado.tipos ?? []).map((t) => (
             <BotonSecundario
               key={t.tipo}
               icono={<FilePlus2 className="w-3.5 h-3.5" />}

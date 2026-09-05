@@ -343,3 +343,41 @@ describe('PanelModificaciones · la regla del objeto (RF-MOD-04)', () => {
     }
   });
 });
+
+/**
+ * Qué pasa si el servidor no manda una lista (EFDS-1183).
+ *
+ * Abrir la 9.5 en un proceso sin contrato tumbaba el módulo entero con la
+ * pantalla de «algo no salió como esperábamos»: la respuesta omitía `tipos` y
+ * el panel lo recorría igual. Ninguna lista ausente debe costar la pantalla.
+ */
+describe('PanelModificaciones · respuestas incompletas', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** Lo que responde el servicio cuando el proceso aún no tiene contrato. */
+  const sinContrato = () => ({
+    contrato: null,
+    tope: { porcentaje: 50, fundamento: 'Ley 80 de 1993, art. 40', confirmado: false },
+    margen: null,
+    puedeSolicitar: false,
+    motivoNoPuede: 'el proceso todavía no tiene contrato generado',
+    modificaciones: [],
+  });
+
+  it('sin contrato explica por qué, en vez de caerse', async () => {
+    servicio.modificaciones.mockResolvedValue(sinContrato() as never);
+    pintar();
+
+    expect(await screen.findByText(/todavía no tiene contrato/)).toBeInTheDocument();
+  });
+
+  it('aguanta que falten las dos listas a la vez', async () => {
+    // Es la forma exacta que devolvía el servidor: sin `tipos` y, en versiones
+    // viejas del expediente, tampoco `modificaciones`.
+    const { tipos, modificaciones, ...resto } = { ...sinContrato(), tipos: undefined } as never;
+    servicio.modificaciones.mockResolvedValue(resto as never);
+    pintar();
+
+    expect(await screen.findByText(/todavía no tiene contrato/)).toBeInTheDocument();
+  });
+});
