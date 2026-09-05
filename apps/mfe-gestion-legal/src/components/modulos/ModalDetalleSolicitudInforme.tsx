@@ -925,7 +925,7 @@ export function ModalDetalleSolicitudInforme({
               <Button
                 variant="outline"
                 className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
-                onClick={() => onArchivar(solicitud.id)}
+                onClick={() => onArchivar(solicitud.metadata?.uuid || solicitud.id)}
               >
                 <Archive className="w-4 h-4 mr-2" />
                 Archivar
@@ -935,7 +935,7 @@ export function ModalDetalleSolicitudInforme({
               <Button
                 variant="outline"
                 className="text-red-700 border-red-200 hover:bg-red-50 hover:border-red-300"
-                onClick={() => onEliminar(solicitud.id)}
+                onClick={() => onEliminar(solicitud.metadata?.uuid || solicitud.id)}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Eliminar
@@ -974,7 +974,7 @@ export function ModalDetalleSolicitudInforme({
       {/* Modal de Alertas y Recordatorio de Vencimiento */}
       {mostrarModalRecordatorio && (
         <Dialog open={mostrarModalRecordatorio} onOpenChange={() => setMostrarModalRecordatorio(false)}>
-          <DialogContent hideCloseButton className="max-w-md">
+          <DialogContent hideCloseButton size="md">
             <DialogTitle className="sr-only">Alertas y Recordatorio de Vencimiento</DialogTitle>
             <DialogDescription className="sr-only">
               Programar un recordatorio manual o definir una anticipación de alerta personalizada para este término

@@ -109,4 +109,17 @@ describe('BancoDocentesController - autorizacion del perfil RUND', () => {
     expect(Reflect.getMetadata(RUND_PERMISSIONS_KEY, BancoDocentesController.prototype.getBloques))
       .toEqual(expect.arrayContaining([RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.VALIDATE]));
   });
+
+  it('protege la importacion, su historial y la descarga del soporte', () => {
+    for (const operation of ['bulkUpload', 'bulkHistory', 'bulkSupport'] as const) {
+      const handler = BancoDocentesController.prototype[operation];
+      expect(Reflect.getMetadata('roles', handler)).toEqual(
+        expect.arrayContaining(['GESTION_PROFESORAL', 'SUPER_ADMIN', 'ADMIN']),
+      );
+      expect(Reflect.getMetadata('roles', handler)).not.toContain('DOCENTE');
+      expect(Reflect.getMetadata(RUND_PERMISSIONS_KEY, handler)).toEqual(
+        expect.arrayContaining([RUND_PERMISSIONS.IMPORT, RUND_PERMISSIONS.MANAGE]),
+      );
+    }
+  });
 });

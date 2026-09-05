@@ -15,6 +15,7 @@ vi.mock('../../services/api/viaticosService', () => ({
     actualizarSaldoTiquete: vi.fn(),
     eliminarSaldoTiquete: vi.fn(),
     obtenerTodasCiudades: vi.fn(),
+    obtenerDependencias: vi.fn(),
   },
 }));
 
@@ -57,6 +58,20 @@ describe('TicketsAdminPanel - parametrización RF-LIQ-003/004', () => {
       { nomDivGeopolitica: 'Cali', tipDivision: 'CIUDAD' },
       { nomDivGeopolitica: 'Popayán', tipDivision: 'CIUDAD' },
       { nomDivGeopolitica: 'Medellín', tipDivision: 'CIUDAD' },
+    ]);
+    (viaticosService.obtenerDependencias as any).mockResolvedValue([
+      {
+        idDependencia: 1,
+        codDependencia: 'DEP-PLAN-01',
+        nomDependencia: 'Planificación',
+        activo: true,
+      },
+      {
+        idDependencia: 2,
+        codDependencia: 'DEP-ACAD-01',
+        nomDependencia: 'Subdirección Académica',
+        activo: true,
+      },
     ]);
     (viaticosService.actualizarHolguraGlobal as any).mockResolvedValue({
       id: 1,
@@ -208,7 +223,11 @@ describe('TicketsAdminPanel - parametrización RF-LIQ-003/004', () => {
     });
     fireEvent.click(screen.getByText(/^Nuevo saldo$/));
     expect(screen.getByText(/Nuevo saldo por dependencia/i)).toBeTruthy();
-    expect(screen.getByPlaceholderText('DEP-PLAN-01')).toBeTruthy();
+    // El campo de dependencia ahora es un SearchableSelect con su placeholder
+    // (en lugar de inputs de texto libre).
+    expect(
+      screen.getByRole('button', { name: /Buscar y seleccionar dependencia/i }),
+    ).toBeTruthy();
   });
 
   it('crea un saldo enviando el payload correcto al backend', async () => {
@@ -217,12 +236,16 @@ describe('TicketsAdminPanel - parametrización RF-LIQ-003/004', () => {
       expect(screen.getByText(/Planificación/i)).toBeTruthy();
     });
     fireEvent.click(screen.getByText(/^Nuevo saldo$/));
-    fireEvent.change(screen.getByPlaceholderText('DEP-PLAN-01'), {
-      target: { value: 'DEP-NEW-01' },
+
+    const selectorDep = await screen.findByRole('button', {
+      name: /Buscar y seleccionar dependencia/i,
     });
-    fireEvent.change(screen.getByPlaceholderText('Subdirección Académica'), {
-      target: { value: 'Nueva Dependencia' },
+    fireEvent.click(selectorDep);
+    const opcionAcad = await screen.findByRole('button', {
+      name: /DEP-ACAD-01 — Subdirección Académica/i,
     });
+    fireEvent.click(opcionAcad);
+
     fireEvent.change(screen.getByPlaceholderText('15.000.000'), {
       target: { value: '10000000' },
     });
@@ -230,8 +253,8 @@ describe('TicketsAdminPanel - parametrización RF-LIQ-003/004', () => {
     await waitFor(() => {
       expect(viaticosService.crearSaldoTiquete).toHaveBeenCalledWith(
         expect.objectContaining({
-          dependenciaId: 'DEP-NEW-01',
-          nombreDependencia: 'Nueva Dependencia',
+          dependenciaId: 'DEP-ACAD-01',
+          nombreDependencia: 'Subdirección Académica',
           presupuestoInicial: 10_000_000,
           activo: true,
         }),

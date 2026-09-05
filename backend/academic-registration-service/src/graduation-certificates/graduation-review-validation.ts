@@ -20,6 +20,7 @@ export const GRADUATE_MANAGEMENT_LIMITS = {
 
 const PERSON_NAME_REGEX = /^[\p{L}\s'’-]+$/u;
 const DOCUMENT_REGEX = /^[A-Za-z0-9]+$/;
+const MANAGEMENT_DOCUMENT_REGEX = /^\d+$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DIGITS_REGEX = /^\d+$/;
 
@@ -177,9 +178,9 @@ export function normalizeAndValidateGraduateManagementUpdate(
       GRADUATION_REVIEW_LIMITS.idNumber.min,
       GRADUATION_REVIEW_LIMITS.idNumber.max,
     );
-    if (!DOCUMENT_REGEX.test(normalized.idNumber!)) {
+    if (!MANAGEMENT_DOCUMENT_REGEX.test(normalized.idNumber!)) {
       throw new BadRequestException(
-        'El documento solo puede contener letras y números',
+        'El documento solo puede contener números',
       );
     }
   }

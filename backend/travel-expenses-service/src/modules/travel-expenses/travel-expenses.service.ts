@@ -11,7 +11,10 @@ import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
 import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entity';
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
-import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
+import {
+  EstadoSolicitud,
+  ESTADOS_SOLO_LECTURA,
+} from '../../entities/estado-solicitud.enum';
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
 import { UpdateSolicitudDto } from '../../dto/update-solicitud.dto';
 import { UploadDocumentoDto } from '../../dto/upload-documento.dto';
@@ -26,6 +29,20 @@ function esDiaHabil(fecha: Date): boolean {
   return dia !== 0 && dia !== 6;
 }
 
+/**
+ * Subset de columnas de `auth.personas` consumidas por el módulo de viáticos
+ * al materializar un comisionado desde ESAP. La tabla vive en otro esquema y
+ * la consultamos directamente vía SQL (misma base de datos compartida).
+ */
+interface AuthPersonaRow {
+  num_identificacion: string;
+  nom_tercero: string;
+  pri_apellido: string;
+  dir_email: string | null;
+  tel_celular: string | null;
+  id_dependencia: string | number | null;
+}
+
 function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
   let count = 0;
   const fecha = new Date(fechaInicio);
@@ -36,6 +53,30 @@ function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
     fecha.setDate(fecha.getDate() + 1);
   }
   return count;
+}
+
+/**
+ * Traduce el estado interno de una solicitud a una etiqueta humana para los
+ * mensajes orientados al usuario (evita exponer códigos internos).
+ */
+function etiquetaEstadoHumana(estado?: string): string {
+  const mapa: Record<string, string> = {
+    PENDIENTE: 'borrador/pendiente',
+    RADICADA: 'radicada',
+    EXTEMPORANEA: 'extemporánea',
+    DEVUELTA: 'devuelta para subsanar',
+    SOLICITADO: 'en revisión del Grupo de Viáticos',
+    APROBADO_JEFE: 'aprobada por el jefe inmediato',
+    APROBADO_TALENTO_HUMANO: 'aprobada por Talento Humano',
+    RESOLUCION_EMITIDA: 'con resolución emitida',
+    TIQUETES_COMPRADOS: 'con tiquetes gestionados',
+    EN_COMISION: 'en comisión',
+    PENDIENTE_LEGALIZACION: 'pendiente de legalización',
+    LEGALIZADO: 'legalizada',
+    RECHAZADO: 'rechazada',
+  };
+  if (!estado) return 'en trámite';
+  return mapa[estado.toUpperCase()] ?? estado;
 }
 
 @Injectable()
@@ -75,8 +116,20 @@ export class TravelExpensesService {
       query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
     }
 
+    // Orden por prioridad de estado (vista general): Radicadas → Extemporáneas →
+    // Solicitadas (en revisión) → Pendientes → resto. Dentro del mismo estado
+    // se ordena por fecha de creación (más reciente primero).
     query
-      .orderBy('s.extemporanea', 'DESC')
+      .orderBy(
+        `CASE s.estado_solicitud
+           WHEN 'RADICADA' THEN 1
+           WHEN 'EXTEMPORANEA' THEN 2
+           WHEN 'SOLICITADO' THEN 3
+           WHEN 'PENDIENTE' THEN 4
+           ELSE 5
+         END`,
+        'ASC',
+      )
       .addOrderBy('s.estadoSolicitud', 'ASC')
       .addOrderBy('s.creadoEn', 'DESC');
 
@@ -137,16 +190,88 @@ export class TravelExpensesService {
 
   async consultarComisionado(
     documento: string,
-  ): Promise<ComisionadoEntity | null> {
-    const comisionado = await this.comisionadoRepo.findOne({
-      where: { numeroDocumento: documento },
-    });
-
-    if (!comisionado) {
-      return null;
+  ): Promise<ComisionadoEntity> {
+    const doc = (documento || '').trim();
+    if (!doc) {
+      throw new BadRequestException(
+        'Debe proporcionar el número de documento del comisionado.',
+      );
     }
 
-    return comisionado;
+    // 1) Búsqueda primaria: tabla local de comisionados (cache histórico).
+    const existente = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: doc },
+    });
+    if (existente) {
+      return existente;
+    }
+
+    // 2) Búsqueda secundaria: auth.personas (origen único ESAP).
+    //    Ambos microservicios comparten la misma base de datos
+    //    (`esap_db`), por lo que se consulta directamente vía DataSource
+    //    para evitar un round-trip HTTP y mantener la latencia baja.
+    const persona: AuthPersonaRow | undefined = await this.dataSource
+      .query(
+        `SELECT
+            p.num_identificacion,
+            p.nom_tercero,
+            p.pri_apellido,
+            p.dir_email,
+            p.tel_celular,
+            p.id_dependencia
+         FROM auth.personas p
+         WHERE p.num_identificacion = $1
+         LIMIT 1`,
+        [doc],
+      )
+      .then((rows: any[]) => rows?.[0])
+      .catch((err) => {
+        console.error(
+          '[travel-expenses] Error consultando auth.personas:',
+          err,
+        );
+        return undefined;
+      });
+
+    if (!persona) {
+      // 3) No existe ni en comisionados ni en auth.personas:
+      //    bloqueamos el flujo porque no hay un funcionario válido
+      //    para asociar a la solicitud de viáticos.
+      throw new NotFoundException(
+        `No se encontró un comisionado con documento ${doc} en ESAP. Verifique el número o contacte al administrador del módulo de autenticación.`,
+      );
+    }
+
+    // 4) Persistimos la "foto" de la persona de ESAP en
+    //    travel_expenses.comisionados para que las siguientes consultas
+    //    queden cacheadas localmente. El origen queda marcado como 'ESAP'.
+    const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
+    const apellidos = (persona.pri_apellido || '').trim().split(/\s+/);
+    const primerNombre = nombres.shift() || persona.nom_tercero || 'SIN NOMBRE';
+    const segundoNombre = nombres.join(' ') || null;
+    const primerApellido = apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
+    const segundoApellido = apellidos.join(' ') || null;
+
+    const idDependencia =
+      persona.id_dependencia != null
+        ? Number(persona.id_dependencia)
+        : null;
+
+    const nuevo = this.comisionadoRepo.create({
+      numeroDocumento: doc,
+      primerNombre,
+      segundoNombre,
+      primerApellido,
+      segundoApellido,
+      email: persona.dir_email || 'sin-correo@esap.edu.co',
+      telefonoContacto: persona.tel_celular || '0000000000',
+      tipoComisionado: 'FUNCIONARIO',
+      origenDatos: 'ESAP',
+      autorizacionHabeasData: false,
+      idDependencia,
+    } as Partial<ComisionadoEntity>);
+
+    return this.comisionadoRepo.save(nuevo as ComisionadoEntity);
   }
 
   async obtenerSolicitudCompleta(
@@ -271,7 +396,7 @@ export class TravelExpensesService {
 
       if (solapamiento) {
         throw new ConflictException(
-          `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
+          this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
         );
       }
 
@@ -453,6 +578,10 @@ export class TravelExpensesService {
       throw new BadRequestException('Solicitud no encontrada.');
     }
 
+    // RF-LIQ-004 — Inmutabilidad: un expediente ya consolidado (SOLICITADO o
+    // superior) está en modo solo lectura y no admite subida de nuevos PDFs.
+    this.verificarExpedienteModificable(solicitud, 'subir documentos de soporte');
+
     const file = dto.file;
     const nombreArchivoOriginal =
       (file ? file.originalname : undefined) || dto.nombreArchivoOriginal;
@@ -495,6 +624,18 @@ export class TravelExpensesService {
     solicitudId: string,
     documentoId: string,
   ): Promise<{ success: boolean; message: string }> {
+    // RF-LIQ-004 — Inmutabilidad: bloquea la eliminación de soportes cuando el
+    // expediente ya fue consolidado (modo solo lectura).
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+    if (solicitud) {
+      this.verificarExpedienteModificable(
+        solicitud,
+        'eliminar documentos de soporte',
+      );
+    }
+
     const documento = await this.documentoRepo.findOne({
       where: { id: documentoId, solicitudId },
     });
@@ -627,7 +768,7 @@ export class TravelExpensesService {
 
     if (solapamiento) {
       throw new ConflictException(
-        `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) se cruzan con la solicitud ${solapamiento.id} en estado ${solapamiento.estadoSolicitud} (${this.formatearFecha(solapamiento.fechaInicio)} a ${this.formatearFecha(solapamiento.fechaFin)}). Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`,
+        this.mensajeConflictoFechas(solapamiento, fechaInicio, fechaFin),
       );
     }
 
@@ -670,6 +811,25 @@ export class TravelExpensesService {
       month: '2-digit',
       year: 'numeric',
     });
+  }
+
+  /**
+   * Mensaje de conflicto de fechas orientado al usuario: NO expone UUIDs ni
+   * códigos internos; muestra el consecutivo real (p. ej. COM-2026-0001) y el
+   * estado en lenguaje humano para mejorar la experiencia.
+   */
+  private mensajeConflictoFechas(
+    solapada: SolicitudComisionEntity,
+    fechaInicio: Date,
+    fechaFin: Date,
+  ): string {
+    const referencia = solapada.consecutivoUnico || solapada.id;
+    const estado = etiquetaEstadoHumana(solapada.estadoSolicitud);
+    return (
+      `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) ` +
+      `se cruzan con la solicitud ${referencia} (${estado}, ${this.formatearFecha(solapada.fechaInicio)} a ${this.formatearFecha(solapada.fechaFin)}). ` +
+      `Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`
+    );
   }
 
   private async validarChecklistCompleto(
@@ -716,6 +876,25 @@ export class TravelExpensesService {
     return (
       mime === 'application/pdf' || mime === 'pdf' || mime.endsWith('/pdf')
     );
+  }
+
+  /**
+   * RF-LIQ-004 — Verifica que el expediente NO esté en modo solo lectura.
+   * Una vez consolidado (estado SOLICITADO o superior) ningún enlace puede
+   * alterar los datos ni subir/eliminar archivos del expediente.
+   *
+   * @throws BadRequestException cuando el expediente está bloqueado.
+   */
+  private verificarExpedienteModificable(
+    solicitud: SolicitudComisionEntity,
+    accion: string,
+  ): void {
+    const estado = solicitud.estadoSolicitud as EstadoSolicitud;
+    if (ESTADOS_SOLO_LECTURA.has(estado)) {
+      throw new BadRequestException(
+        `El expediente ${solicitud.consecutivoUnico ?? solicitud.id} tiene estado ${solicitud.estadoSolicitud} (solo lectura). No puede ${accion} en un expediente ya consolidado.`,
+      );
+    }
   }
 
   async obtenerParametrizacionFormulario(): Promise<{

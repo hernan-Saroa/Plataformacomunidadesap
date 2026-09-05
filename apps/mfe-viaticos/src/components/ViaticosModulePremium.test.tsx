@@ -15,10 +15,12 @@ vi.mock('../services/api/viaticosService', () => ({
     subirDocumento: vi.fn(),
     obtenerDepartamentos: vi.fn(),
     obtenerCiudadesPorDepartamento: vi.fn(),
+    obtenerTodasCiudades: vi.fn().mockResolvedValue([]),
     obtenerParametrizacionFormulario: vi.fn().mockResolvedValue({ campos: [], configuraciones: {} }),
     obtenerParametrizacionPorCodigoFormulario: vi.fn().mockResolvedValue(null),
     obtenerChecklistDocumentos: vi.fn().mockResolvedValue({ obligatorios: [], opcionales: [] }),
     finalizarSolicitud: vi.fn().mockResolvedValue({ id: 'sol-nueva', estadoSolicitud: 'RADICADA' }),
+    obtenerDependencias: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -578,7 +580,7 @@ describe('ViaticosModulePremium', () => {
     });
   });
 
-  it('debe exigir fechas antes de radicar la solicitud', async () => {
+  it('debe exigir fechas antes de radicar la solicitud (aunque vengan precargadas hoy/mañana)', async () => {
     render(<ViaticosModulePremium />);
 
     await waitFor(() => {
@@ -586,6 +588,11 @@ describe('ViaticosModulePremium', () => {
     });
 
     await irAlPaso2();
+
+    // Las fechas vienen precargadas por defecto (inicio hoy / fin mañana); se
+    // limpian para comprobar que la validación sigue exigiendo fechas.
+    fireEvent.change(screen.getByLabelText(/Fecha Inicio/i), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: '' } });
 
     fireEvent.click(screen.getByText(/Guardar y continuar/i));
 

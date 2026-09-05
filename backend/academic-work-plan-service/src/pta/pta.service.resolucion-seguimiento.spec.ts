@@ -16,6 +16,7 @@ describe('PtaService - resolución de investigación en Seguimiento', () => {
 
   function createService(existing: any = null) {
     const service = Object.create(PtaService.prototype) as any;
+    service.configuracionRepo = { findOne: jest.fn().mockResolvedValue(null) };
     service.evidenciaRepo = {
       findOne: jest.fn().mockResolvedValue(existing),
       find: jest.fn().mockResolvedValue([]),

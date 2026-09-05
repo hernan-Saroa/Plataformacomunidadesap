@@ -329,6 +329,56 @@ export class AutoController {
   }
 
   /**
+   * Adjuntar documento de soporte a la devolución de un auto (llamado justo
+   * después de PATCH :id/approve con action RETURN).
+   */
+  @Patch(':id/upload-rejection-document')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Adjuntar documento de soporte a la devolución del auto' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = join(process.cwd(), 'uploads');
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `auto-${req.params.id}-devolucion-${uniqueSuffix}${ext}`);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
+        const ext = extname(file.originalname).toLowerCase();
+        if (allowed.includes(ext)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Solo se permiten archivos PDF, Word o imágenes'), false);
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async uploadRejectionDocument(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<LegalAuto> {
+    if (!file) {
+      throw new BadRequestException('No se ha subido ningún archivo');
+    }
+    const documentUrl = `/files/${file.filename}`;
+    return await this.autoService.uploadRejectionDocument(
+      id,
+      documentUrl,
+      file.originalname,
+    );
+  }
+
+  /**
    * Obtener historial de versiones
    */
   @Get(':id/versions')

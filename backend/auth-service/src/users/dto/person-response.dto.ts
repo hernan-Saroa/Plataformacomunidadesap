@@ -96,4 +96,14 @@ export class PersonResponseDto {
 
   @Expose()
   dir_residencia: string;
+
+   @Expose()
+   idDependencia: number | null;
+
+   @Expose()
+   dependencia?: {
+     idDependencia: number;
+     codDependencia: string;
+     nomDependencia: string;
+   } | null;
 }
