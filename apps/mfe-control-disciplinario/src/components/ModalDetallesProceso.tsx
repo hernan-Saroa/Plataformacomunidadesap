@@ -1181,7 +1181,13 @@ function formatFechaBogota(
 function mapActuacionFromApi(actuacion: DisciplinaryProcessActuacion): ActuacionItem {
   return {
     id: actuacion.id,
-    fecha: actuacion.fechaActuacion ? actuacion.fechaActuacion.split('T')[0] : '',
+    // No truncar a solo-fecha aquí: fechaActuacion es un timestamp UTC completo y
+    // recortarlo con split('T')[0] toma el día calendario en UTC antes de convertir
+    // a America/Bogota (UTC-5) — cualquier actuación registrada después de las 7pm
+    // hora Bogotá cae ya en el día siguiente en UTC y se mostraba con un día de más
+    // en el Historial de Cambios de Etapa. formatFechaActuacion() ya hace la
+    // conversión de zona horaria correctamente a partir del timestamp completo.
+    fecha: actuacion.fechaActuacion || '',
     descripcion: actuacion.descripcion,
     tipo: (actuacion.tipo || 'actuacion').toLowerCase(),
     responsable: actuacion.responsableNombre || 'Sin responsable',
@@ -3376,7 +3382,7 @@ export function ModalDetallesProceso({
     lines.push('═══ ACTUACIONES ═══');
     lines.push(['Fecha', 'Descripción', 'Tipo', 'Responsable', 'Etapa'].join(sep));
     actuaciones.forEach(a => {
-      lines.push([a.fecha, a.descripcion, a.tipo, a.responsable, a.etapa || '-'].join(sep));
+      lines.push([formatFechaActuacion(a.fecha, true), a.descripcion, a.tipo, a.responsable, a.etapa || '-'].join(sep));
     });
     lines.push(`Total Actuaciones: ${actuaciones.length}`);
     lines.push('');
@@ -3403,7 +3409,7 @@ export function ModalDetallesProceso({
     lines.push('═══ HISTORIAL DE CAMBIOS DE ETAPA ═══');
     lines.push(['Fecha', 'Desde', 'Hacia', 'Responsable', 'Motivo'].join(sep));
     historialEtapas.forEach(h => {
-      lines.push([h.fecha, h.desde, h.hacia, h.responsable, `"${h.motivo.replace(/"/g, '""')}"`].join(sep));
+      lines.push([formatFechaActuacion(h.fecha, true), h.desde, h.hacia, h.responsable, `"${h.motivo.replace(/"/g, '""')}"`].join(sep));
     });
     lines.push(`Total Transiciones: ${historialEtapas.length}`);
     lines.push('');
