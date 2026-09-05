@@ -100,3 +100,68 @@ describe('RegistroActividadService · a qué formato queda atado el soporte', ()
     expect(doc.plantillaId).toBeNull();
   });
 });
+
+/**
+ * Si el formulario vuelve a pedir el soporte (EFDS-1183).
+ *
+ * Al corregir una actividad devuelta el documento ya está cargado. Exigirlo
+ * otra vez por el solo hecho de que exista el formato dejaba el botón de
+ * registrar muerto: la actividad no se podía reenviar a aprobación y quedaba
+ * atascada en DEVUELTO.
+ */
+describe('RegistroActividadService · cuándo se sigue exigiendo el soporte', () => {
+  const servicio = () => new RegistroActividadService({} as never, {} as never);
+
+  const pendiente = (
+    formatos: unknown[],
+    entregados: unknown[],
+    expediente: unknown = { id: 'exp-1' },
+  ) => {
+    const em = {
+      findOne: async () => expediente,
+      getRepository: (entidad: { name: string }) => ({
+        find: async () => (entidad.name === 'Plantilla' ? formatos : entregados),
+      }),
+    };
+    return (
+      servicio() as unknown as {
+        formatoPendiente(
+          em: unknown,
+          procesoId: string,
+          numeral: string,
+          modalidad: string | null,
+        ): Promise<boolean>;
+      }
+    ).formatoPendiente(em, 'proc-1', '3.3', 'LICITACION_PUBLICA');
+  };
+
+  const formato = (id: string, modalidades: string[] = []) => ({
+    id,
+    codigo: 'BS-FO-102',
+    nombre: 'Radicación',
+    modalidades,
+    activo: true,
+  });
+
+  it('lo exige mientras el formato siga sin entregarse', async () => {
+    await expect(pendiente([formato('f1')], [])).resolves.toBe(true);
+  });
+
+  it('deja de exigirlo cuando el documento ya está cargado', async () => {
+    // El caso de la corrección: el bloque de abajo dice «Completos» y el
+    // formulario tiene que dejar registrar.
+    await expect(pendiente([formato('f1')], [{ plantillaId: 'f1' }])).resolves.toBe(false);
+  });
+
+  it('un adjunto suelto no releva de entregar el formato', async () => {
+    await expect(pendiente([formato('f1')], [{ plantillaId: null }])).resolves.toBe(true);
+  });
+
+  it('sin formatos asignados no lo exige por esta via', async () => {
+    await expect(pendiente([], [])).resolves.toBe(false);
+  });
+
+  it('sin expediente lo da por pendiente', async () => {
+    await expect(pendiente([formato('f1')], [], null)).resolves.toBe(true);
+  });
+});

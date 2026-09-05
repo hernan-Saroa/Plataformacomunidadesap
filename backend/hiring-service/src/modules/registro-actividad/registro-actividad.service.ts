@@ -64,6 +64,32 @@ export class RegistroActividadService {
   }
 
   /**
+   * Si queda algún formato de la actividad sin entregar.
+   *
+   * Es lo que decide si el formulario pide soporte: exigirlo por el solo hecho
+   * de que exista el formato dejaba atascada la corrección de una actividad
+   * devuelta, cuyo documento ya estaba cargado.
+   */
+  private async formatoPendiente(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+    modalidad: string | null,
+  ): Promise<boolean> {
+    const formatos = await this.formatosAplicables(em, numeral, modalidad);
+    if (!formatos.length) return false;
+
+    const expediente = await em.findOne(Expediente, { where: { procesoId } });
+    if (!expediente) return true;
+
+    const entregados = await em.getRepository(Documento).find({
+      where: { expedienteId: expediente.id, numeral, tipo: 'ADJUNTO' },
+    });
+
+    return formatos.some((f) => !entregados.some((d) => d.plantillaId === f.id));
+  }
+
+  /**
    * Los formatos que esta actividad pide para esta modalidad.
    *
    * Alcance vacío significa todas; si el formato declara modalidades, la de
@@ -109,17 +135,34 @@ export class RegistroActividadService {
       ? await em.getRepository(Documento).findOne({ where: { id: vigente.documentoId } })
       : null;
 
-    const porFormato = await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null);
+    /*
+     * Quién pide el soporte, y si todavía hace falta.
+     *
+     * Dos exigencias apuntan al mismo papel: la de esta tabla, marcada por el
+     * equipo, y la del formato asignado en la biblioteca. Sumarlas pedía el
+     * documento dos veces —el formulario por un lado y el bloque de formatos
+     * por otro—, y al corregir una actividad devuelta el botón de registrar
+     * quedaba muerto porque reclamaba un archivo que ya estaba cargado.
+     *
+     * Donde hay formato manda el formato: si ya se entregó, no hay nada
+     * pendiente. Donde no lo hay, la exigencia de la tabla sigue sola.
+     */
+    const conFormato = await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null);
+    const pendientePorFormato = conFormato
+      ? await this.formatoPendiente(em, procesoId, numeral, proceso.modalidad ?? null)
+      : false;
 
     return {
       numeral,
       etapa: parametro.etapa,
-      exigeSoporte: parametro.exigeSoporte || porFormato,
+      exigeSoporte: conFormato ? pendientePorFormato : parametro.exigeSoporte,
       // Se dice en la pantalla: una exigencia sin confirmar no se presenta como
       // si viniera de la norma. Un formato asignado sí es decisión del área
       // —alguien entró a la biblioteca y lo puso en esta actividad—, así que
       // presentarlo como pendiente de confirmar sería decir algo falso.
-      exigenciaConfirmada: parametro.confirmado || porFormato,
+      exigenciaConfirmada:
+        parametro.confirmado ||
+        (await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null)),
       notaFuente: parametro.notaFuente,
       aplica: !excluida,
       motivoNoAplica: excluida?.motivo ?? null,
@@ -176,9 +219,11 @@ export class RegistroActividadService {
         // El formato asignado exige igual que la matriz: si se comprobara solo
         // al consultar, la pantalla pediría el soporte y el servicio lo dejaría
         // pasar, que es la peor de las dos respuestas.
-        exigeSoporte:
-          parametro.exigeSoporte ||
-          (await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null)),
+        // La misma regla que al consultar: donde hay formato manda el formato.
+        // Si difirieran, la pantalla dejaría registrar y el servicio no.
+        exigeSoporte: (await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null))
+          ? await this.formatoPendiente(em, procesoId, numeral, proceso.modalidad ?? null)
+          : parametro.exigeSoporte,
         hoy: new Date().toISOString().slice(0, 10),
       });
       if (falta) throw new BadRequestException(falta);
